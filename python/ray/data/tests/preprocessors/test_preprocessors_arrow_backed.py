@@ -593,6 +593,389 @@ def test_integer_column_with_nulls_stays_usable(dataset):
         assert_numeric(rows, "cnt")
 
 
+# ---------------------------------------------------------------------------
+# transform_batch: the pandas -> Arrow -> pandas round trip
+# ---------------------------------------------------------------------------
+#
+# `Preprocessor.transform_batch` used to convert the whole pandas batch with
+# `pa.Table.from_pandas`, run `_transform_arrow`, and convert back. Since 2.56
+# the batch a pandas UDF receives is Arrow-backed, and `from_pandas` records
+# those dtypes in the schema metadata. `_transform_arrow` then changes the
+# column types -- int64 to double for a scaler, string to int64 for an ordinal
+# encoding -- while the metadata keeps describing the input, so the conversion
+# back cast the results to their pre-transform dtypes. Now only the columns a
+# preprocessor reads cross into Arrow, and only the ones it writes come back;
+# the rest of the result is the caller's frame.
+#
+# The round trip landed in 2.54 (#59810). 2.56 (#63017) did not change it; it
+# changed what gets fed to it, which is what made the bug reachable.
+#
+# These cases assert on values rather than on "did not raise", because the
+# failure has a silent mode as well as a loud one: where a cast is possible the
+# result is simply wrong -- an ordinal encoding comes back as the strings "0",
+# "1", "2" rather than integers.
+
+
+ROUND_TRIP = {
+    # name: (preprocessor, input columns, checked column, expected values)
+    "StandardScaler": (
+        lambda: StandardScaler(columns=["n"]),
+        {"n": [1, 2, 3, 4]},
+        "n",
+        [(v - 2.5) / np.sqrt(1.25) for v in (1, 2, 3, 4)],
+    ),
+    "OrdinalEncoder": (
+        lambda: OrdinalEncoder(columns=["s"]),
+        {"s": ["a", "b", "a", "c"]},
+        "s",
+        [0, 1, 0, 2],
+    ),
+    "OneHotEncoder": (
+        lambda: OneHotEncoder(columns=["s"]),
+        {"s": ["a", "b", "a", "c"]},
+        "s",
+        [[1, 0, 0], [0, 1, 0], [1, 0, 0], [0, 0, 1]],
+    ),
+}
+
+
+def assert_column_equals(rows, name, expected):
+    """The column must hold the expected numbers, not a cast-back rendering.
+
+    `assert_numeric` runs first and is the half that catches the silent failure:
+    a column of "0"/"1"/"2" compares unequal to [0, 1, 2] anyway, but saying
+    *why* it is wrong makes the report readable.
+    """
+    assert_numeric(rows, name)
+    got = np.array([np.asarray(v) for v in _column(rows, name)], dtype=float)
+    want = np.asarray(expected, dtype=float)
+    assert got.shape == want.shape, f"column {name!r}: got shape {got.shape}"
+    np.testing.assert_allclose(got, want, err_msg=f"column {name!r}")
+
+
+@pytest.mark.parametrize("arrow_backed", [True, False], ids=["arrow", "numpy"])
+@pytest.mark.parametrize("name", list(ROUND_TRIP))
+def test_transform_batch_inside_a_pandas_udf(name, arrow_backed, restore_data_context):
+    """A preprocessor called from a `batch_format="pandas"` UDF.
+
+    Both settings of `enable_arrow_backed_pandas_conversion` are covered: it is
+    the documented workaround for this failure, so the NumPy-backed half is the
+    control that says the fix did not simply move the problem.
+    """
+    ctx = restore_data_context
+    ctx.enable_arrow_backed_pandas_conversion = arrow_backed
+
+    make, columns, column, expected = ROUND_TRIP[name]
+    preprocessor = make().fit(ray.data.from_arrow(pa.table(columns)))
+
+    def udf(batch: pd.DataFrame, preprocessor=preprocessor) -> pd.DataFrame:
+        return preprocessor.transform_batch(batch)
+
+    rows = (
+        ray.data.from_arrow(pa.table(columns))
+        .map_batches(udf, batch_format="pandas")
+        .take_all()
+    )
+    assert len(rows) == 4
+    assert_column_equals(rows, column, expected)
+
+
+@pytest.mark.parametrize("name", list(ROUND_TRIP))
+def test_transform_batch_on_an_arrow_backed_pandas_block(name):
+    """The same UDF, over a pandas block that is already Arrow-backed.
+
+    `enable_arrow_backed_pandas_conversion` governs the Arrow-to-pandas
+    conversion, and a block built from an Arrow-backed frame never undergoes
+    one -- `pd.read_parquet(..., dtype_backend="pyarrow")` and
+    `convert_dtypes(dtype_backend="pyarrow")` both produce one. So this shape
+    reaches the round trip Arrow-backed whatever the setting, and the workaround
+    does not cover it.
+    """
+    make, columns, column, expected = ROUND_TRIP[name]
+    frame = pd.DataFrame(columns).convert_dtypes(dtype_backend="pyarrow")
+    preprocessor = make().fit(ray.data.from_pandas(frame))
+
+    def udf(batch: pd.DataFrame, preprocessor=preprocessor) -> pd.DataFrame:
+        return preprocessor.transform_batch(batch)
+
+    rows = (
+        ray.data.from_pandas(frame).map_batches(udf, batch_format="pandas").take_all()
+    )
+    assert len(rows) == 4
+    assert_column_equals(rows, column, expected)
+
+
+def test_transform_batch_passes_through_an_untouched_list_column():
+    """A list column only has to be *present* in the batch to break the trip.
+
+    `tags` is not an input to the scaler. Its dtype name round-trips through the
+    metadata as the string `"list<item: string>[pyarrow]"`, which pandas cannot
+    parse back into a dtype at all -- a third failure mode, distinct from a cast
+    that overflows and from one that silently succeeds.
+    """
+    table = pa.table(
+        {
+            "x": pa.array([1.0, 2.0, 3.0, 4.0], pa.float64()),
+            "tags": pa.array([["a"], ["b", "a"], ["c"], ["a"]], pa.list_(pa.string())),
+        }
+    )
+    scaler = StandardScaler(columns=["x"]).fit(ray.data.from_arrow(table))
+
+    def udf(batch: pd.DataFrame, scaler=scaler) -> pd.DataFrame:
+        return scaler.transform_batch(batch)
+
+    rows = ray.data.from_arrow(table).map_batches(udf, batch_format="pandas").take_all()
+
+    assert len(rows) == 4
+    assert_column_equals(rows, "x", [(v - 2.5) / np.sqrt(1.25) for v in (1, 2, 3, 4)])
+    assert [list(row["tags"]) for row in rows] == [["a"], ["b", "a"], ["c"], ["a"]]
+
+
+@pytest.mark.parametrize("arrow_backed", [True, False], ids=["arrow", "numpy"])
+def test_transform_batch_on_an_empty_batch(arrow_backed):
+    """Zero rows is a real case for a batch UDF."""
+    frame = pd.DataFrame({"n": pd.Series([], dtype="int64")})
+    if arrow_backed:
+        frame = frame.convert_dtypes(dtype_backend="pyarrow")
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    out = scaler.transform_batch(frame)
+
+    assert len(out) == 0
+    assert "n" in out.columns
+
+
+@pytest.mark.parametrize("arrow_backed", [True, False], ids=["arrow", "numpy"])
+def test_transform_batch_matches_the_input_backing(arrow_backed):
+    """The result is backed the way the input was.
+
+    Untouched columns are the caller's own and a rewritten one keeps its input's
+    backing, so a NumPy-backed frame comes back NumPy-backed exactly as before.
+    Both the transformed column and the untouched one are checked -- a
+    pass-through column changing dtype would be just as much of a break.
+    """
+    frame = pd.DataFrame({"n": [1, 2, 3, 4], "s": ["a", "b", "c", "d"]})
+    if arrow_backed:
+        frame = frame.convert_dtypes(dtype_backend="pyarrow")
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    out = scaler.transform_batch(frame)
+
+    backed = {
+        name: isinstance(dtype, pd.ArrowDtype) for name, dtype in out.dtypes.items()
+    }
+    if arrow_backed:
+        assert all(
+            backed.values()
+        ), f"expected Arrow-backed columns, got {dict(out.dtypes)}"
+    else:
+        assert not any(
+            backed.values()
+        ), f"expected NumPy-backed columns, got {dict(out.dtypes)}"
+
+
+PASS_THROUGH_DTYPES = {
+    # The nullable integer is the case that loses data rather than just dtype:
+    # NumPy has no integer NA, so the column degrades to float64 and any value
+    # past 2**53 is rounded on the way.
+    "nullable_int": (pd.array([1, None, 3, 2**62 + 1], dtype="Int64"), "Int64"),
+    "nullable_bool": (pd.array([True, None, False, True], dtype="boolean"), "boolean"),
+    "pandas_string": (pd.array(["w", None, "y", "z"], dtype="string"), "string"),
+}
+
+
+@pytest.mark.parametrize("name", list(PASS_THROUGH_DTYPES))
+def test_transform_batch_keeps_pass_through_extension_dtypes(name):
+    """A column the transform never touches keeps the dtype it arrived with.
+
+    It never leaves pandas, so it cannot change. Values are asserted as well as
+    the dtype, because a lossy round trip would have rounded the large integer.
+    """
+    values, expected_dtype = PASS_THROUGH_DTYPES[name]
+    frame = pd.DataFrame({"n": [1, 2, 3, 4], "passthrough": values})
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    out = scaler.transform_batch(frame)
+
+    assert (
+        str(out["passthrough"].dtype) == expected_dtype
+    ), f"pass-through column changed dtype: {dict(out.dtypes)}"
+    pd.testing.assert_series_equal(
+        out["passthrough"], pd.Series(values, name="passthrough")
+    )
+
+
+def test_transform_batch_decides_the_backing_per_column():
+    """A frame that mixes NumPy and Arrow-backed columns keeps both.
+
+    The rewritten column takes its backing from the column it replaces rather
+    than from the frame, and the untouched ones are the caller's own. Ray
+    produces mixed frames: the types mapper declines extension types, so a
+    tensor column arrives as `object` beside Arrow-backed ones.
+    """
+    frame = pd.DataFrame(
+        {
+            "n": np.array([1, 2, 3, 4], dtype="int64"),
+            "arrow_i": pd.array([10, 20, 30, 40], dtype="int64[pyarrow]"),
+            "plain_f": np.array([1.5, 2.5, 3.5, 4.5], dtype="float64"),
+            "plain_o": np.array(["p", "q", "r", "s"], dtype=object),
+        }
+    )
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    out = scaler.transform_batch(frame)
+
+    assert {name: str(dtype) for name, dtype in out.dtypes.items()} == {
+        "n": "float64",  # transformed, and NumPy in means NumPy out
+        "arrow_i": "int64[pyarrow]",
+        "plain_f": "float64",
+        "plain_o": "object",
+    }
+
+
+INDEXES = {
+    "named_int64": lambda: pd.Index([10, 20, 30, 40], name="rid"),
+    "multi": lambda: pd.MultiIndex.from_tuples(
+        [("a", 1), ("a", 2), ("b", 1), ("b", 2)], names=["g", "i"]
+    ),
+    "datetime_tz": lambda: pd.date_range("2026-01-01", periods=4, tz="UTC", name="ts"),
+}
+
+
+@pytest.mark.parametrize("arrow_backed", [True, False], ids=["arrow", "numpy"])
+@pytest.mark.parametrize("name", list(INDEXES))
+def test_transform_batch_preserves_the_index(name, arrow_backed):
+    """A caller's index and columns axis name survive, unchanged.
+
+    The result is built on the caller's frame, so the axis labels never leave
+    pandas and come back with their values, names and dtype intact -- which the
+    old metadata route did not manage: it converted an Arrow-backed index to
+    NumPy.
+
+    `transform_batch` is a public API, so this matters outside a Ray pipeline;
+    blocks themselves carry no index, as every pandas block operation resets it.
+    """
+    index = INDEXES[name]()
+    frame = pd.DataFrame({"n": [1, 2, 3, 4]})
+    if arrow_backed:
+        frame = frame.convert_dtypes(dtype_backend="pyarrow")
+    frame = frame.set_index(index)
+    frame.columns.name = "feature"
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    out = scaler.transform_batch(frame)
+
+    np.testing.assert_allclose(
+        np.asarray(out["n"], dtype=float),
+        [(v - 2.5) / np.sqrt(1.25) for v in (1, 2, 3, 4)],
+    )
+    assert list(out.index) == list(index)
+    assert out.index.names == index.names
+    assert out.index.dtype == index.dtype
+    assert list(out.columns) == ["n"], "the index must not leak in as a column"
+    assert out.columns.name == "feature", "the columns axis name was dropped"
+
+
+UNTOUCHED_COLUMNS = {
+    # Arrow infers a concrete type for an object column, so sending one through
+    # Arrow and back re-types it; a categorical over pandas strings has no way
+    # back at all.
+    "object_ints": lambda: pd.Series([1, 2, 3, 4], dtype=object),
+    "object_ints_with_none": lambda: pd.Series([1, None, 3, 4], dtype=object),
+    "object_floats": lambda: pd.Series([1.5, 2.5, 3.5, 4.5], dtype=object),
+    "categorical_of_pandas_strings": lambda: pd.Series(
+        pd.Categorical(pd.array(["a", "b", "a", "b"], dtype="string"))
+    ),
+    "python_lists": lambda: pd.Series([[1], [2, 3], [], [4]], dtype=object),
+}
+
+
+@pytest.mark.parametrize("name", list(UNTOUCHED_COLUMNS))
+def test_transform_batch_leaves_untouched_columns_exactly_as_they_were(name):
+    """A column the preprocessor does not read comes back as the caller's own.
+
+    These are the shapes that go wrong when every column is sent through Arrow
+    and rebuilt afterwards.
+    """
+    frame = pd.DataFrame({"n": [1, 2, 3, 4], "other": UNTOUCHED_COLUMNS[name]()})
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    out = scaler.transform_batch(frame)
+
+    pd.testing.assert_series_equal(out["other"], frame["other"])
+
+
+def test_transform_batch_keeps_integer_column_labels():
+    """Untouched columns keep their labels, including non-string ones.
+
+    Arrow column names are strings, so sending every column through Arrow turned
+    integer labels into `"0"` and `"1"`.
+    """
+    frame = pd.DataFrame(
+        {0: [1.0, 2.0, 3.0, 4.0], 1: [5.0, 6.0, 7.0, 8.0], "n": [1, 2, 3, 4]}
+    )
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    out = scaler.transform_batch(frame)
+
+    assert list(out.columns) == [0, 1, "n"]
+
+
+def test_transform_batch_does_not_modify_the_callers_frame():
+    """The result is a new frame; the caller's is left as it was.
+
+    The result starts as a shallow copy of the caller's frame, so the written
+    columns have to be replaced on it rather than written into.
+    """
+    frame = pd.DataFrame({"n": [1, 2, 3, 4], "k": [5, 6, 7, 8]}).convert_dtypes(
+        dtype_backend="pyarrow"
+    )
+    before = frame.copy(deep=True)
+
+    scaler = StandardScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+    scaler.transform_batch(frame)
+
+    pd.testing.assert_frame_equal(frame, before)
+
+
+class _FilteringScaler(StandardScaler):
+    """A preprocessor whose `_transform_arrow` drops rows."""
+
+    def _transform_arrow(self, table):
+        return super()._transform_arrow(table).slice(0, 2)
+
+
+def test_transform_batch_rejects_a_transform_that_changes_the_row_count():
+    """A row-changing `_transform_arrow` raises instead of misaligning.
+
+    The written columns go back into the caller's frame by position, so a result
+    with a different number of rows cannot be lined up with it.
+    """
+    frame = pd.DataFrame({"n": [1, 2, 3, 4], "k": [5, 6, 7, 8]})
+    scaler = _FilteringScaler(columns=["n"]).fit(
+        ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
+    )
+
+    with pytest.raises(ValueError, match="rows for a batch of 4"):
+        scaler.transform_batch(frame)
+
+
 if __name__ == "__main__":
     import sys
 

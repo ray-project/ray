@@ -373,22 +373,61 @@ class Preprocessor(abc.ABC):
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
         elif transform_type == BatchFormat.ARROW:
-            # Convert input to Arrow table and use Arrow transform
-            input_was_pandas = isinstance(data, pd.DataFrame)
-            if isinstance(data, pyarrow.Table):
-                arrow_table = data
-            elif input_was_pandas:
-                arrow_table = pyarrow.Table.from_pandas(data)
+            if isinstance(data, pd.DataFrame):
+                return self._transform_pandas_with_arrow(data)
+            if not isinstance(data, pyarrow.Table):
+                data = pyarrow.Table.from_pandas(
+                    _convert_batch_type_to_pandas(data), preserve_index=False
+                ).replace_schema_metadata(None)
+            return self._transform_arrow(data)
+
+    def _transform_pandas_with_arrow(self, df: "pd.DataFrame") -> "pd.DataFrame":
+        """Run `_transform_arrow` on a pandas batch.
+
+        Only the columns the preprocessor reads cross into Arrow, and only the
+        ones it writes cross back. The rest of the result is the caller's frame:
+        untouched columns, the index and the axis names never leave pandas.
+        """
+        import pandas as pd
+        import pyarrow
+
+        from ray.data.block import BlockAccessor
+
+        inputs = self.get_input_columns() or list(df.columns)
+        table = pyarrow.Table.from_pandas(
+            df[inputs], preserve_index=False
+        ).replace_schema_metadata(None)
+        result = self._transform_arrow(table)
+        if result.num_rows != len(df):
+            raise ValueError(
+                f"{type(self).__name__}._transform_arrow returned {result.num_rows} "
+                f"rows for a batch of {len(df)}; transform_batch needs a column "
+                "transform."
+            )
+        arrow_backed = any(isinstance(dtype, pd.ArrowDtype) for dtype in df.dtypes)
+        out = df.copy(deep=False)
+        for name in self.get_output_columns() or result.column_names:
+            column = result.column(name)
+            replaced = df[name] if name in table.column_names else None
+            if replaced is not None and column.type == table.schema.field(name).type:
+                # Same Arrow type as the column it overwrites: keep that dtype.
+                dtype = replaced.dtype
+                if hasattr(dtype, "__from_arrow__"):
+                    out[name] = dtype.__from_arrow__(column)
+                else:
+                    out[name] = column.to_pandas().array
+                continue
+            as_arrow = (
+                isinstance(replaced.dtype, pd.ArrowDtype)
+                if replaced is not None
+                else arrow_backed
+            )
+            if as_arrow:
+                converted = BlockAccessor.for_block(result.select([name])).to_pandas()
+                out[name] = converted[name].array
             else:
-                # Convert to pandas first, then to Arrow
-                arrow_table = pyarrow.Table.from_pandas(
-                    _convert_batch_type_to_pandas(data)
-                )
-            result = self._transform_arrow(arrow_table)
-            # Convert back to pandas if input was pandas
-            if input_was_pandas and isinstance(result, pyarrow.Table):
-                return result.to_pandas()
-            return result
+                out[name] = column.to_pandas().array
+        return out
 
     @classmethod
     def _derive_and_validate_output_columns(
@@ -422,7 +461,14 @@ class Preprocessor(abc.ABC):
 
     @DeveloperAPI
     def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
-        """Run the transformation on a data batch in a PyArrow Table format."""
+        """Run the transformation on a data batch in a PyArrow Table format.
+
+        For a pandas batch, `table` holds only the columns `get_input_columns`
+        names (all of them if it names none), and the returned columns are
+        written back into the caller's frame by position. The rows must come
+        back in the same number and order: a changed row count raises, but a
+        reordering would silently misalign the written columns with the rest.
+        """
         raise NotImplementedError()
 
     @DeveloperAPI
