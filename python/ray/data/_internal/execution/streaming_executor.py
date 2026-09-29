@@ -276,15 +276,6 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager,
             config=self._data_context.autoscaling_config,
         )
-        # Size OutputSplitter's locality buffer against the object store budget.
-        # Set once: the eligible op count only shrinks as ops finish, so the
-        # initial per-op share is the most conservative.
-        object_store_memory_share_per_op = (
-            self._resource_manager.get_object_store_memory_share_per_op()
-        )
-        for op in self._topology:
-            if isinstance(op, OutputSplitter):
-                op.set_buffer_memory_budget(object_store_memory_share_per_op)
         self._no_progress_guard = NoProgressGuard(
             self._topology,
             self._data_context.execution_no_progress_timeout_s,
@@ -528,6 +519,15 @@ class StreamingExecutor(Executor, threading.Thread):
             True if we should continue running the scheduling loop.
         """
         self._resource_manager.update_usages()
+        # Size OutputSplitter's locality buffer against the object store budget.
+        # Refreshed every step: the global limit grows as the cluster autoscaler
+        # reserves resources, and the eligible op count shrinks as ops finish.
+        object_store_memory_share_per_op = (
+            self._resource_manager.get_object_store_memory_share_per_op()
+        )
+        for op in topology:
+            if isinstance(op, OutputSplitter):
+                op.set_buffer_memory_budget(object_store_memory_share_per_op)
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.

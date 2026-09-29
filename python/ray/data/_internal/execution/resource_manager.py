@@ -451,7 +451,9 @@ class ResourceManager:
         """
         eligible_ops = [op for op in self._topology if self.is_op_eligible(op)]
         limit = self.get_global_limits().object_store_memory
-        if not eligible_ops or math.isinf(limit):
+        # A limit of 0 means it isn't known yet (e.g., the cluster autoscaler hasn't
+        # reserved resources yet), so don't bound anything by it.
+        if not eligible_ops or math.isinf(limit) or limit <= 0:
             return None
         return int(limit / len(eligible_ops))
 

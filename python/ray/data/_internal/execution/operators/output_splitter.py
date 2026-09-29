@@ -179,6 +179,10 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 object_store_memory_share_per_op
                 * DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION
             )
+        # If the cap dropped below the buffer size, release bundles now rather
+        # than waiting for another input that may never arrive.
+        if self._buffer and len(self._buffer) >= self._effective_max_buffer_size():
+            self._try_dispatch_bundles()
 
     def _effective_max_buffer_size(self) -> int:
         """Return the locality buffer cap: at most `_max_buffer_size` bundles,
