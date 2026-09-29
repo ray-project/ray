@@ -80,6 +80,24 @@ def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
     try:
         cursor = connection.cursor(user=spec.connection.user)
         columns = cursor.get_table_schema(table, database)
+        if any(type_name.strip().casefold() == "decimal" for _, type_name in columns):
+            # Impyla's GetColumns wrapper drops DECIMAL precision and scale.
+            # Hive's DESCRIBE result preserves them without reading table rows.
+            cursor.execute(f"DESCRIBE `{database}`.`{table}`")
+            described_types = {
+                name.casefold(): type_name
+                for name, type_name, *_ in cursor.fetchall()
+                if name and type_name
+            }
+            columns = [
+                (
+                    name,
+                    described_types.get(name.casefold(), type_name)
+                    if type_name.strip().casefold() == "decimal"
+                    else type_name,
+                )
+                for name, type_name in columns
+            ]
     except Exception:
         raise RuntimeError("HiveServer2 table schema lookup failed") from None
     finally:

@@ -1,8 +1,8 @@
-"""Validated inputs for the proposed HiveServer2 read API.
+"""Validated inputs for the HiveServer2 read API.
 
 This module defines the API boundary without opening a Hive connection or
-creating a Ray read task. The public call shape is specified separately in the
-read_hive API contract proposal.
+creating a Ray read task. The public read_hive facade is defined in
+ray.data.read_api.
 """
 
 from __future__ import annotations

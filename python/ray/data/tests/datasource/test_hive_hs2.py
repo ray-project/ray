@@ -83,10 +83,12 @@ def test_connection_uses_explicit_single_attempt_and_verifies_tls(monkeypatch):
         user="reader",
         password="secret",
         use_ssl=True,
+        ca_cert="ca.pem",
     )
     hive_hs2._connect(options)
     assert calls[0]["retries"] == 1
     assert calls[0]["verify_cert"] is True
+    assert calls[0]["ca_cert"] == "ca.pem"
     assert calls[0]["password"] == "secret"
 
     hive_hs2._connect(
@@ -96,6 +98,7 @@ def test_connection_uses_explicit_single_attempt_and_verifies_tls(monkeypatch):
     )
     assert calls[1]["auth_mechanism"] == "GSSAPI"
     assert calls[1]["kerberos_service_name"] == "custom-hive"
+    assert calls[1]["verify_cert"] is False
 
 
 def test_table_schema_uses_metadata_and_closes_session(monkeypatch):
@@ -111,6 +114,30 @@ def test_table_schema_uses_metadata_and_closes_session(monkeypatch):
 
     assert schema == pa.schema([("id", pa.int64()), ("name", pa.string())])
     assert cursor.statements == []
+    assert cursor.closed and connection.closed
+
+
+def test_table_decimal_schema_recovers_precision_from_describe(monkeypatch):
+    class DecimalCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            assert (table, database) == ("events", "analytics")
+            return [("amount", "DECIMAL")]
+
+        def fetchall(self):
+            return [("amount", "decimal(12,2)", "")]
+
+    cursor = DecimalCursor()
+    connection = _Connection(cursor)
+    monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
+    spec = HiveReadSpec(
+        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        table="analytics.events",
+    )
+
+    schema = hive_hs2.infer_table_schema(spec)
+
+    assert schema == pa.schema([("amount", pa.decimal128(12, 2))])
+    assert cursor.statements == ["DESCRIBE `analytics`.`events`"]
     assert cursor.closed and connection.closed
 
 

@@ -891,14 +891,16 @@ with a table name. Table reads obtain their Arrow schema from HiveServer2 metada
 For a trusted SQL statement, pass `query` and an explicit `pyarrow.Schema` instead.
 Query schema columns must match the server result in count and order; names
 match case-insensitively, and types must match the supported Arrow mapping.
-Non-nullable schema fields reject null rows. Table reads
-support Hive scalar booleans, integers, floats, strings, binary values, dates,
-and decimals. Timestamp and complex column types raise an error.
-Choose `auth_mechanism` explicitly. Hive server mode `NONE` uses `PLAIN` SASL;
-use a non-sensitive placeholder password because the server doesn't check it.
+Non-nullable schema fields reject null rows. Table reads map supported Hive
+scalar booleans, integers, floats, strings, binary values, dates, and decimals
+to Arrow when HS2 metadata agrees with the planned schema. Timestamp and
+complex column types raise an error.
+Choose `auth_mechanism` explicitly. Use `NOSASL` only with a HiveServer2
+configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN` SASL; use a
+non-sensitive placeholder password because the server doesn't check it.
 `PLAIN` doesn't encrypt the password when `use_ssl=False`.
-For Kerberos authentication, install `impyla[kerberos]` and provide credentials
-on both the driver and read worker.
+For Hive `KERBEROS`, use `GSSAPI`, install `impyla[kerberos]`, and provide
+Kerberos credentials on both the driver and read worker.
 
 ```python
 import os
