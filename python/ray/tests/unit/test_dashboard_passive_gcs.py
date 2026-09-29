@@ -3,10 +3,12 @@ import asyncio
 import json
 import logging
 import sys
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
+import ray
+import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.agent as agent_module
 import ray.dashboard.consts as dashboard_consts
@@ -261,8 +263,9 @@ async def test_head_replays_every_address_on_promotion(make_head, head_logs):
         (ray_constants.DASHBOARD_ADDRESS.encode(), DASHBOARD_ADDRESS.encode()),
         # Node.start_api_server() skips this one on a passive head and exits.
         (b"webui:url", DASHBOARD_ADDRESS.encode()),
-        # Node._write_cluster_info_to_kv() skips this one the same way.
+        # Node._write_cluster_info_to_kv() skips these two the same way.
         (b"session_name", SESSION_NAME.encode()),
+        (usage_constant.CLUSTER_METADATA_KEY, ANY),
     ]
     assert not head._waiting_for_promotion
     assert _count_logged(head_logs, "GCS was promoted to leader") == 1
@@ -283,6 +286,31 @@ async def test_head_does_not_overwrite_an_existing_session_name(make_head):
         ray_constants.KV_NAMESPACE_SESSION,
     )
     assert _put_args(head.gcs_client, b"webui:url")[1] is True
+
+
+async def test_head_replaces_the_previous_head_s_cluster_metadata(make_head):
+    """`Node.__init__` overwrites it on every head start; a promotion is one.
+
+    Leaving the dead head's copy would version-check joining workers against a
+    head that is gone, which breaks a rolling upgrade.
+    """
+    head = make_head(leader=False)
+    head._dashboard_address = DASHBOARD_ADDRESS
+    await _register_dashboard_address(head)
+
+    _set_leader(head.gcs_client, True)
+    await _await_registration(head)
+
+    value, overwrite, namespace = _put_args(
+        head.gcs_client, usage_constant.CLUSTER_METADATA_KEY
+    )
+    assert overwrite is True
+    assert namespace == ray_constants.KV_NAMESPACE_CLUSTER
+    metadata = json.loads(value)
+    assert metadata["ray_version"] == ray.__version__
+    # The dashboard never sees Node's ctor argument, and a standby head is
+    # always started by `ray start --head`.
+    assert metadata["ray_init_cluster"] is False
 
 
 async def test_head_stops_polling_once_registered(make_head):
