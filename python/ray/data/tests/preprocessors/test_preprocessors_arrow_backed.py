@@ -852,6 +852,78 @@ def test_transform_batch_decides_the_backing_per_column():
     }
 
 
+def test_transform_batch_backs_a_new_column_like_its_source():
+    """A new output column is backed like its input, not like the other columns."""
+    frame = pd.DataFrame(
+        {
+            "a": pd.array([1, 2, 3, 4], dtype="int64[pyarrow]"),
+            "b": np.array([1.0, 2.0, 3.0, 4.0]),
+        }
+    )
+    scaler = StandardScaler(columns=["a", "b"], output_columns=["a", "b_scaled"]).fit(
+        ray.data.from_pandas(frame)
+    )
+
+    out = transform_frame(scaler, frame)
+
+    assert str(out["a"].dtype) == "double[pyarrow]"
+    assert str(out["b_scaled"].dtype) == "float64"
+
+
+NULLABLE = {
+    # name: (preprocessor, input values, expected output dtype)
+    "scaled_Int64": (
+        lambda: StandardScaler(columns=["c"]),
+        pd.array([1, None, 3, 4], dtype="Int64"),
+        "Float64",
+    ),
+    "encoded_string": (
+        lambda: OrdinalEncoder(columns=["c"]),
+        pd.array(["a", "b", "a", "c"], dtype="string[pyarrow]"),
+        "Int64",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(NULLABLE))
+def test_transform_batch_keeps_a_nullable_column_nullable(name):
+    """A column with a pandas nullable dtype comes back with a nullable dtype."""
+    make, values, expected_dtype = NULLABLE[name]
+    frame = pd.DataFrame({"c": values})
+    preprocessor = make().fit(ray.data.from_pandas(frame))
+
+    out = transform_frame(preprocessor, frame)
+
+    assert str(out["c"].dtype) == expected_dtype
+
+
+def test_transform_batch_on_an_arrow_table_converts_back_to_pandas():
+    """The returned table carries no pandas metadata describing its input."""
+    frame = pd.DataFrame({"n": pd.array([1, 2, 3, 4], dtype="int64[pyarrow]")})
+    scaler = StandardScaler(columns=["n"]).fit(ray.data.from_pandas(frame))
+
+    out = scaler.transform_batch(pa.Table.from_pandas(frame))
+
+    assert isinstance(out, pa.Table)
+    np.testing.assert_allclose(
+        out.to_pandas()["n"], [(v - 2.5) / np.sqrt(1.25) for v in (1, 2, 3, 4)]
+    )
+
+
+def test_transform_on_an_arrow_backed_pandas_dataset_with_the_flag_off(
+    restore_data_context,
+):
+    """`fit_transform` on Arrow-backed pandas blocks, with the 2.56 opt-out set."""
+    restore_data_context.enable_arrow_backed_pandas_conversion = False
+    frame = pd.DataFrame({"n": pd.array([1, 2, 3, 4], dtype="int64[pyarrow]")})
+
+    out = StandardScaler(columns=["n"]).fit_transform(ray.data.from_pandas(frame))
+
+    np.testing.assert_allclose(
+        out.to_pandas()["n"], [(v - 2.5) / np.sqrt(1.25) for v in (1, 2, 3, 4)]
+    )
+
+
 @pytest.mark.parametrize("name", list(ROUND_TRIP))
 def test_transform_batch_keeps_arrow_backing_with_the_flag_off(
     name, restore_data_context
