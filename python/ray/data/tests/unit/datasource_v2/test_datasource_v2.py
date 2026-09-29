@@ -58,6 +58,9 @@ class _Members:
         self.scanner = _RecordingScanner(filesystem)
         return self.scanner
 
+    def get_file_partitioner(self, *, hints=None):
+        return None
+
 
 class _MetadataSource(_Members, DataSourceWithMetadata):
     """Implements exactly the abstract members of ``DataSourceWithMetadata``."""
