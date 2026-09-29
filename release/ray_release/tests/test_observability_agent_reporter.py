@@ -1210,6 +1210,8 @@ def test_the_analysis_is_still_reported_when_comments_are_disabled(caplog):
     assert len(annotates) == 1
     assert SUMMARY in annotates[0][-1]
     assert issue.comments == []
+    # The build's comment claim is left for a build that will actually use it.
+    assert not [c for c in agent.commands if c[1] == "meta-data"]
 
 
 def test_the_annotation_is_not_deduped_by_build():
