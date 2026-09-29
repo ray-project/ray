@@ -509,9 +509,10 @@ class TestLearner(unittest.TestCase):
 
     def test_never_skip_update(self):
         """`never_skip_update=True` turns the skip into an error: `_should_skip_update`
-        is not consulted and an empty batch raises. The Learners still settle on the
-        number of minibatches -- that is what keeps unequal shards from desyncing a
-        group, skip or no skip."""
+        is not consulted and an empty batch raises -- but only after taking part in
+        the group agreement, so that no peer is left waiting in it. The Learners also
+        still settle on the number of minibatches, which is what keeps unequal
+        shards from desyncing a group, skip or no skip."""
         from unittest import mock
 
         config = BaseTestingAlgorithmConfig().learners(never_skip_update=True)
@@ -528,9 +529,15 @@ class TestLearner(unittest.TestCase):
             batch = learner._convert_batch_type(reader.next()[:512].as_multi_agent())
             learner.update(batch=batch, minibatch_size=128)
             hook.assert_not_called()
-            # ... but not without proposing its minibatch count to the group:
-            # ceil(512 / 128) = 4.
-            sync.assert_called_once_with(UpdatePlan(skip=False, num_minibatches=4))
+            # The empty batch voted to skip before raising; the real one proposed its
+            # minibatch count, ceil(512 / 128) = 4.
+            self.assertEqual(
+                [
+                    mock.call(UpdatePlan(skip=True, num_minibatches=0)),
+                    mock.call(UpdatePlan(skip=False, num_minibatches=4)),
+                ],
+                sync.call_args_list,
+            )
 
 
 if __name__ == "__main__":

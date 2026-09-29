@@ -1284,32 +1284,21 @@ class Learner(Checkpointable):
                     (len(b) for b in batch.policy_batches.values()), default=0
                 )
 
+            modules_without_rows = []
             if self.config.never_skip_update:
                 # Opt-out of the skip: the user promises that every Learner always
                 # receives data for every module it trains, so a batch without
-                # timesteps for one is an error here rather than a skipped update, and
-                # `_should_skip_update` is not consulted.
+                # timesteps for one is an error rather than a skipped update, and
+                # `_should_skip_update` is not consulted. The error is raised only
+                # after the group agreement below, and then on every Learner: a
+                # Learner that raised before it would leave its peers waiting in
+                # that collective forever.
                 modules_without_rows = [
                     module_id
                     for module_id, module_batch in batch.policy_batches.items()
                     if len(module_batch) == 0
                 ]
-                if not batch.policy_batches or modules_without_rows:
-                    raise ValueError(
-                        "Received a train batch without timesteps "
-                        + (
-                            f"for module(s) {modules_without_rows} "
-                            if modules_without_rows
-                            else "for any module "
-                        )
-                        + "while `never_skip_update=True`. Either ensure every Learner "
-                        "always receives data for every module it trains (e.g. apply "
-                        "backpressure so Learners are never starved, and keep sampled "
-                        "episodes from being lost), or unset `never_skip_update` (the "
-                        "default) so that such batches make all Learners skip the "
-                        "update together."
-                    )
-                wants_to_skip = False
+                wants_to_skip = not batch.policy_batches or bool(modules_without_rows)
             else:
                 wants_to_skip = self._should_skip_update(batch)
             # Shards hold different amounts of data, so the number of minibatches
@@ -1331,6 +1320,26 @@ class Learner(Checkpointable):
                 UpdatePlan(skip=wants_to_skip, num_minibatches=num_total_minibatches)
             )
             num_total_minibatches = plan.num_minibatches
+            if plan.skip and self.config.never_skip_update:
+                raise ValueError(
+                    (
+                        "Received a train batch without timesteps "
+                        + (
+                            f"for module(s) {modules_without_rows} "
+                            if modules_without_rows
+                            else "for any module "
+                        )
+                        if wants_to_skip
+                        else "Another Learner of the group received a train batch "
+                        "without timesteps "
+                    )
+                    + "while `never_skip_update=True`, so this update fails on every "
+                    "Learner. Either ensure every Learner always receives data for "
+                    "every module it trains (e.g. apply backpressure so Learners are "
+                    "never starved, and keep sampled episodes from being lost), or "
+                    "unset `never_skip_update` (the default) so that such batches make "
+                    "all Learners skip the update together."
+                )
             if plan.skip:
                 if log_once(
                     "learner_skip_update"
@@ -1414,8 +1423,8 @@ class Learner(Checkpointable):
         skip or all train; a Learner never skips on its own (it would drop out of
         the group's collective communication and deadlock the others). Do not skip
         by other means (e.g. returning early from `update()`), for the same reason.
-        Not called if `config.never_skip_update` is set; an empty batch is an error
-        then.
+        Not called if `config.never_skip_update` is set; a batch that would be
+        skipped by default is an error then, raised on every Learner of the group.
 
         Args:
             batch: The train batch of this `update()` call.

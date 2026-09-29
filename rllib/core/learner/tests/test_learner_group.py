@@ -408,10 +408,13 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
         finally:
             learner_group.shutdown()
 
-    def test_never_skip_update_keeps_the_minibatch_count_agreement(self):
-        """`never_skip_update` turns a skip into an error; the Learners must still
-        settle on one number of minibatches. On their own, shards of 256 and 64 rows
-        would step 8 and 2 times over 32-row minibatches, and the group would hang
+    def test_never_skip_update_in_a_group(self):
+        """`never_skip_update` turns a skip into an error, raised on every Learner.
+
+        The Learners must still settle on one number of minibatches: on their own,
+        shards of 256 and 64 rows would step 8 and 2 times over 32-row minibatches.
+        And a Learner handed no data must not raise before the group agreement, or
+        its peer waits in that collective forever. Either way the group would hang
         -- as this test then does, rather than fail.
         """
         config = (
@@ -432,6 +435,27 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 [5 * 32, 5 * 32],
                 [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
             )
+
+            # A Learner without data raises, and so does its peer: both leave
+            # `update()` right after the agreement, ...
+            with self.assertRaisesRegex(Exception, "never_skip_update"):
+                learner_group.update(batches=[fake_batch(128), NO_DATA])
+            # ... so their collectives still line up, and the next update trains. (The
+            # actor manager takes a Learner that raised out of service, as for any
+            # error; put both back first.)
+            learner_group.foreach_learner(
+                lambda learner: None, healthy_only=False, mark_healthy=True
+            )
+            learner_group.update(batches=[fake_batch(64), fake_batch(64)])
+            learner_0_weights, learner_1_weights = [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[DEFAULT_MODULE_ID].get_state()
+                    )
+                )
+            ]
+            check(learner_0_weights, learner_1_weights)
         finally:
             learner_group.shutdown()
 

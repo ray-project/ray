@@ -2371,10 +2371,14 @@ class AlgorithmConfig(_Config):
                 sampled episodes were lost to EnvRunner or node failures), and with
                 `num_learners > 1` all Learners first agree on that via one small
                 collective per `update()`, so that they skip together and stay in
-                sync. Set to True to turn the skip into an error: `_should_skip_update`
-                is not consulted, and a train batch without timesteps for a module
-                raises instead. For setups that guarantee every Learner always
-                receives data and want to be told loudly when that guarantee breaks.
+                sync. Set to True to turn the skip into an error, raised on every
+                Learner of the group: `_should_skip_update` is not consulted, and a
+                train batch that would be skipped by default raises instead -- in a
+                group, one in which some module has no timesteps; with a single
+                Learner, which drops modules without timesteps, one in which no
+                module has any. For setups that guarantee every Learner
+                always receives data and want to be told loudly when that guarantee
+                breaks.
                 Independent of this setting, the Learners of a group agree on the
                 number of minibatches to step through when `minibatch_size` is set
                 (the same collective), so that shards of different sizes cannot make
