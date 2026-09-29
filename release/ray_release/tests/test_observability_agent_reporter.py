@@ -1181,19 +1181,19 @@ def test_prose_after_a_code_region_is_still_defused(summary, expected):
 def test_no_comment_when_github_comments_are_not_enabled():
     """A release-branch build runs the agent but must not comment."""
     issue = FakeIssue(state="open")
-    repo = FakeRepo(issue=issue)
+    get_ray_repo = MagicMock(return_value=FakeRepo(issue=issue))
 
     _report(
         _result(ResultStatus.ERROR.value),
         [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
         test=_test_with_issue(),
-        repo=repo,
+        get_ray_repo=get_ray_repo,
         comments_disabled=True,
     )
 
     assert issue.comments == []
-    # Not even looked up: the flag is checked before the repo handle is built.
-    assert repo.get_issue_calls == []
+    # The handle is never built, so the AWS secret behind it is never fetched.
+    get_ray_repo.assert_not_called()
 
 
 def test_the_analysis_is_still_reported_when_comments_are_disabled(caplog):

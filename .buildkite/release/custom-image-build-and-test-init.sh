@@ -54,8 +54,9 @@ if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
   export OBS_AGENT_COMMENT_ON_GITHUB_ISSUE=1
 fi
 
-# The agent only reads, so it is safe on release branches too. Automatic builds
-# only: release branch tests are always triggered through automation.
+# Safe on release branches because it moves no test state: it creates a debug
+# session and posts to slack, but writes nothing this repo records. Automatic
+# builds only: release branch tests are always triggered through automation.
 if [[ "${AUTOMATIC:-0}" == "1" ]] &&
    [[ "${BUILDKITE_BRANCH}" == "master" || "${BUILDKITE_BRANCH}" == "releases/"* ]]; then
   export TRIGGER_OBSERVABILITY_AGENT=1
