@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_publisher.h"
@@ -28,22 +29,32 @@
 namespace ray {
 namespace gcs {
 
+// Owns the io_context, event recorder, and Clock that back GcsNodeManager.
+// Inherited privately and first by the fake so these are constructed before the
+// GcsNodeManager base (base-from-member idiom); plain members would be
+// constructed after the base, which reads them.
+struct FakeGcsNodeManagerDeps {
+  instrumented_io_context io_context;
+  observability::FakeRayEventRecorder ray_event_recorder;
+  Clock clock;
+};
+
 // Hand-written fake for GcsNodeManager. Subclasses the concrete manager and
 // overrides the RPC handlers/DrainNode with no-op recording bodies. Public
 // record vectors + optional std::function hooks let tests inspect calls and
 // program behavior.
-class FakeGcsNodeManager : public GcsNodeManager {
+class FakeGcsNodeManager : private FakeGcsNodeManagerDeps, public GcsNodeManager {
  public:
   FakeGcsNodeManager()
       : GcsNodeManager(/*gcs_publisher=*/nullptr,
                        /*gcs_table_storage=*/nullptr,
-                       /*io_context=*/fake_io_context_,
+                       /*io_context=*/io_context,
                        /*raylet_client_pool=*/nullptr,
                        /*cluster_id=*/ClusterID::Nil(),
-                       /*ray_event_recorder=*/fake_ray_event_recorder_,
+                       /*ray_event_recorder=*/ray_event_recorder,
                        /*session_name=*/"",
                        /*observability_publisher=*/FakeObsPublisher(),
-                       /*clock=*/clock_) {}
+                       /*clock=*/clock) {}
 
   static pubsub::ObservabilityPublisher *FakeObsPublisher() {
     static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
@@ -102,10 +113,6 @@ class FakeGcsNodeManager : public GcsNodeManager {
       rpc::GetAllNodeInfoRequest, rpc::GetAllNodeInfoReply *, rpc::SendReplyCallback)>
       handle_get_all_node_info;
   std::function<void(const NodeID &)> drain_node;
-
-  instrumented_io_context fake_io_context_;
-  observability::FakeRayEventRecorder fake_ray_event_recorder_;
-  Clock clock_;
 };
 
 }  // namespace gcs

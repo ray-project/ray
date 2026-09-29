@@ -41,6 +41,9 @@ class FakeBitGen {
   }
   explicit FakeBitGen(std::vector<uint64_t> values) : values_(std::move(values)) {}
   result_type operator()() {
+    if (values_.empty()) {
+      return 0;
+    }
     result_type value = values_[index_ % values_.size()];
     ++index_;
     return value;

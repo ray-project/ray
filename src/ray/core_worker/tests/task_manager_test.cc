@@ -5221,7 +5221,7 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   node_info.set_node_id(node_id.Binary());
   node_info.mutable_death_info()->set_reason(
       rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  fake_gcs_client_->fake_node_accessor->node_address_and_liveness[node_id] = node_info;
+  fake_gcs_client_->fake_node_accessor->SetNodeAddressAndLiveness(node_id, node_info);
 
   // Task should be retried because the node was preempted, even with 0 retries left
   rpc::RayErrorInfo node_died_error;

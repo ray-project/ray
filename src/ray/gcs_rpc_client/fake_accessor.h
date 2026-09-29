@@ -24,6 +24,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs_rpc_client/accessor.h"
@@ -146,8 +147,9 @@ class FakeNodeInfoAccessor : public NodeInfoAccessor {
 
   std::optional<rpc::GcsNodeAddressAndLiveness> GetNodeAddressAndLiveness(
       const NodeID &node_id, bool filter_dead_nodes) const override {
-    auto it = node_address_and_liveness.find(node_id);
-    if (it == node_address_and_liveness.end()) {
+    absl::MutexLock lock(&node_state_mutex_);
+    auto it = node_address_and_liveness_.find(node_id);
+    if (it == node_address_and_liveness_.end()) {
       return std::nullopt;
     }
     return it->second;
@@ -155,7 +157,8 @@ class FakeNodeInfoAccessor : public NodeInfoAccessor {
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>
   GetAllNodeAddressAndLiveness() const override {
-    return node_address_and_liveness;
+    absl::MutexLock lock(&node_state_mutex_);
+    return node_address_and_liveness_;
   }
 
   Status CheckAlive(const std::vector<NodeID> &node_ids,
@@ -167,14 +170,34 @@ class FakeNodeInfoAccessor : public NodeInfoAccessor {
   }
 
   bool IsNodeDead(const NodeID &node_id) const override {
-    return dead_nodes.contains(node_id);
+    absl::MutexLock lock(&node_state_mutex_);
+    return dead_nodes_.contains(node_id);
   }
 
   bool IsNodeAlive(const NodeID &node_id) const override {
-    return alive_nodes.contains(node_id);
+    absl::MutexLock lock(&node_state_mutex_);
+    return alive_nodes_.contains(node_id);
   }
 
   void AsyncResubscribe() override { async_resubscribe_call_count++; }
+
+  // Thread-safe mutators for the node-liveness state, which the const getters
+  // above may read from a different thread (e.g. an ASIO event-loop thread).
+  void SetNodeAddressAndLiveness(const NodeID &node_id,
+                                 rpc::GcsNodeAddressAndLiveness info) {
+    absl::MutexLock lock(&node_state_mutex_);
+    node_address_and_liveness_[node_id] = std::move(info);
+  }
+
+  void AddDeadNode(const NodeID &node_id) {
+    absl::MutexLock lock(&node_state_mutex_);
+    dead_nodes_.insert(node_id);
+  }
+
+  void AddAliveNode(const NodeID &node_id) {
+    absl::MutexLock lock(&node_state_mutex_);
+    alive_nodes_.insert(node_id);
+  }
 
   std::vector<rpc::GcsNodeInfo> register_self_calls;
   rpc::StatusCallback register_self_callback;
@@ -195,14 +218,20 @@ class FakeNodeInfoAccessor : public NodeInfoAccessor {
   std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
       node_address_and_liveness_subscribe;
   rpc::StatusCallback node_address_and_liveness_done;
-  // Backing store for the local-cache getters; populate to control return values.
-  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_address_and_liveness;
   std::vector<std::vector<NodeID>> check_alive_calls;
   std::vector<bool> check_alive_result;
   Status check_alive_status = Status::OK();
-  absl::flat_hash_set<NodeID> dead_nodes;
-  absl::flat_hash_set<NodeID> alive_nodes;
   int async_resubscribe_call_count = 0;
+
+ private:
+  // Node-liveness state read by the const getters (possibly from an ASIO thread)
+  // and written by the mutators above; guarded to avoid data races. Populate via
+  // SetNodeAddressAndLiveness / AddDeadNode / AddAliveNode.
+  mutable absl::Mutex node_state_mutex_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_address_and_liveness_
+      ABSL_GUARDED_BY(node_state_mutex_);
+  absl::flat_hash_set<NodeID> dead_nodes_ ABSL_GUARDED_BY(node_state_mutex_);
+  absl::flat_hash_set<NodeID> alive_nodes_ ABSL_GUARDED_BY(node_state_mutex_);
 };
 
 class FakeNodeResourceInfoAccessor : public NodeResourceInfoAccessor {

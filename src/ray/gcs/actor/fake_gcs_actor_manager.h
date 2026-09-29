@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
@@ -27,10 +28,22 @@
 namespace ray {
 namespace gcs {
 
+// Owns the io_context, event recorder, gauges, and Clock that back
+// GcsActorManager. Inherited privately and first by the fake so these are
+// constructed before the GcsActorManager base (base-from-member idiom); plain
+// members would be constructed after the base, which reads them.
+struct FakeGcsActorManagerDeps {
+  instrumented_io_context io_context;
+  observability::FakeRayEventRecorder ray_event_recorder;
+  observability::FakeGauge actor_by_state_gauge;
+  observability::FakeGauge gcs_actor_by_state_gauge;
+  Clock clock;
+};
+
 // Hand-written fake for GcsActorManager. Subclasses the concrete manager with a
 // null scheduler/storage/publisher and fake dependencies, and overrides the RPC
 // handlers with no-op bodies.
-class FakeGcsActorManager : public GcsActorManager {
+class FakeGcsActorManager : private FakeGcsActorManagerDeps, public GcsActorManager {
  public:
   FakeGcsActorManager(RuntimeEnvManager &runtime_env_manager,
                       GCSFunctionManager &function_manager,
@@ -39,19 +52,19 @@ class FakeGcsActorManager : public GcsActorManager {
       : GcsActorManager(
             /*scheduler=*/nullptr,
             /*gcs_table_storage=*/nullptr,
-            /*io_context=*/fake_io_context_,
+            /*io_context=*/io_context,
             /*gcs_publisher=*/nullptr,
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},
             raylet_client_pool,
             worker_client_pool,
-            /*ray_event_recorder=*/fake_ray_event_recorder_,
+            /*ray_event_recorder=*/ray_event_recorder,
             /*session_name=*/"",
-            /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
-            /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_,
+            /*actor_by_state_gauge=*/actor_by_state_gauge,
+            /*gcs_actor_by_state_gauge=*/gcs_actor_by_state_gauge,
             /*observability_publisher=*/FakeObsPublisher(),
-            /*clock=*/clock_) {}
+            /*clock=*/clock) {}
 
   static pubsub::ObservabilityPublisher *FakeObsPublisher() {
     static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
@@ -80,12 +93,6 @@ class FakeGcsActorManager : public GcsActorManager {
   void HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
                              rpc::KillActorViaGcsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override {}
-
-  Clock clock_;
-  instrumented_io_context fake_io_context_;
-  observability::FakeRayEventRecorder fake_ray_event_recorder_;
-  observability::FakeGauge fake_actor_by_state_gauge_;
-  observability::FakeGauge fake_gcs_actor_by_state_gauge_;
 };
 
 }  // namespace gcs

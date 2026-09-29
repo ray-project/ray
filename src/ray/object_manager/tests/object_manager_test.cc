@@ -159,7 +159,7 @@ class ObjectManagerTest : public ::testing::Test {
     node_info.set_node_id(node_id.Binary());
     node_info.set_node_manager_address("127.0.0.1");
     node_info.set_object_manager_port(8076);
-    fake_gcs_client_->fake_node_accessor->node_address_and_liveness[node_id] = node_info;
+    fake_gcs_client_->fake_node_accessor->SetNodeAddressAndLiveness(node_id, node_info);
   }
 
   /// Whether Push() took the queue-and-wait path for this object.

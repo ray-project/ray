@@ -26,28 +26,36 @@
 namespace ray {
 namespace gcs {
 
-// File-scope helpers used by the default/2-arg constructors. Each translation
-// unit that includes this header gets its own copies (internal linkage).
-static instrumented_io_context __fake_resource_manager_io_context_;
-static ClusterResourceManager __fake_cluster_resource_manager_(
-    PeriodicalRunner::Create(__fake_resource_manager_io_context_));
-static FakeGcsNodeManager __fake_gcs_node_manager_for_resource_manager_;
+// Owns the io_context (and, for the default constructor, a ClusterResourceManager
+// and GcsNodeManager) that back GcsResourceManager. Inherited privately and first
+// by the fake so these are constructed before the GcsResourceManager base
+// (base-from-member idiom); plain members would be constructed after the base,
+// which reads them.
+struct FakeGcsResourceManagerDeps {
+  instrumented_io_context io_context;
+  ClusterResourceManager cluster_resource_manager{
+      PeriodicalRunner::Create(io_context)};
+  FakeGcsNodeManager node_manager;
+};
 
 // Hand-written fake for GcsResourceManager. Overrides the two autoscaler RPC
 // handlers with no-op recording bodies.
-class FakeGcsResourceManager : public GcsResourceManager {
+class FakeGcsResourceManager : private FakeGcsResourceManagerDeps,
+                               public GcsResourceManager {
  public:
+  // Inherit the real constructors for tests that supply their own io_context,
+  // cluster resource manager, and node manager.
   using GcsResourceManager::GcsResourceManager;
 
   explicit FakeGcsResourceManager()
-      : GcsResourceManager(__fake_resource_manager_io_context_,
-                           __fake_cluster_resource_manager_,
-                           __fake_gcs_node_manager_for_resource_manager_,
+      : GcsResourceManager(io_context,
+                           cluster_resource_manager,
+                           node_manager,
                            NodeID::FromRandom()) {}
 
   explicit FakeGcsResourceManager(ClusterResourceManager &cluster_resource_manager,
                                   GcsNodeManager &gcs_node_manager)
-      : GcsResourceManager(__fake_resource_manager_io_context_,
+      : GcsResourceManager(io_context,
                            cluster_resource_manager,
                            gcs_node_manager,
                            NodeID::FromRandom()) {}

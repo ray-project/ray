@@ -1162,7 +1162,7 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
                                                       std::string(),
                                                       &violations,
                                                       &is_infeasible));
-  gcs_client_->fake_node_accessor->dead_nodes.insert(node_id);
+  gcs_client_->fake_node_accessor->AddDeadNode(node_id);
   ASSERT_TRUE(resource_scheduler
                   .GetBestSchedulableNode(resource,
                                           LabelSelector(),

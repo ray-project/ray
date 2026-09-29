@@ -675,8 +675,8 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  fake_gcs_client_->fake_node_accessor->node_address_and_liveness[local_node_id] =
-      node_info;
+  fake_gcs_client_->fake_node_accessor->SetNodeAddressAndLiveness(local_node_id,
+                                                                  node_info);
 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
@@ -1748,8 +1748,8 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  fake_gcs_client_->fake_node_accessor->node_address_and_liveness[local_node_id] =
-      node_info;
+  fake_gcs_client_->fake_node_accessor->SetNodeAddressAndLiveness(local_node_id,
+                                                                  node_info);
 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
@@ -1873,8 +1873,8 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  fake_gcs_client_->fake_node_accessor->node_address_and_liveness[local_node_id] =
-      node_info;
+  fake_gcs_client_->fake_node_accessor->SetNodeAddressAndLiveness(local_node_id,
+                                                                  node_info);
 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));

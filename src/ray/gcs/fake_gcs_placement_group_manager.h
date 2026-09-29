@@ -26,11 +26,21 @@
 namespace ray {
 namespace gcs {
 
+// Owns the Clock and io_context that back GcsPlacementGroupManager. Inherited
+// privately and first by the fake so that these are constructed before the
+// GcsPlacementGroupManager base (base-from-member idiom); a plain member would be
+// constructed after the base, which reads them.
+struct FakeGcsPlacementGroupManagerDeps {
+  Clock clock;
+  instrumented_io_context context;
+};
+
 // Hand-written fake for GcsPlacementGroupManager. Uses the protected
 // testing-only base constructor. Overrides the RPC handlers with no-op recording
 // bodies and exposes settable return fields for GetBundlesOnNode /
 // GetPlacementGroupLoad.
-class FakeGcsPlacementGroupManager : public GcsPlacementGroupManager {
+class FakeGcsPlacementGroupManager : private FakeGcsPlacementGroupManagerDeps,
+                                     public GcsPlacementGroupManager {
  public:
   explicit FakeGcsPlacementGroupManager(
       GcsResourceManager &gcs_resource_manager,
@@ -40,13 +50,13 @@ class FakeGcsPlacementGroupManager : public GcsPlacementGroupManager {
       ray::observability::MetricInterface
           &placement_group_scheduling_latency_in_ms_histogram,
       ray::observability::MetricInterface &placement_group_count_gauge)
-      : GcsPlacementGroupManager(context_,
+      : GcsPlacementGroupManager(context,
                                  gcs_resource_manager,
                                  placement_group_gauge,
                                  placement_group_creation_latency_in_ms_histogram,
                                  placement_group_scheduling_latency_in_ms_histogram,
                                  placement_group_count_gauge,
-                                 clock_) {}
+                                 clock) {}
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
@@ -81,9 +91,6 @@ class FakeGcsPlacementGroupManager : public GcsPlacementGroupManager {
   // Settable return values.
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> get_bundles_on_node_return;
   std::shared_ptr<rpc::PlacementGroupLoad> get_placement_group_load_return;
-
-  Clock clock_;
-  instrumented_io_context context_;
 };
 
 }  // namespace gcs
