@@ -1292,3 +1292,29 @@
   run:
     timeout: 5400
     script: python tpch/tpch_{{query}}.py --sf 1000
+
+# Disk-based shuffle counterpart of the nightly TPC-H runs above. A separate
+# test (rather than a variation) so the existing tests keep their names and
+# perf history.
+- name: "tpch_{{query}}_disk_shuffle"
+  python: "3.10"
+  group: data-tpch
+  frequency: nightly
+  matrix:
+    setup:
+      query: [q1, q8, q13, q15, q21, q22]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        RAY_max_direct_call_object_size: "8192"
+        RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
+        # Shuffles are all-to-all, so high object store utilization is expected
+        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_{{query}}.py --sf 1000
