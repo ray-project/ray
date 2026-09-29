@@ -270,6 +270,23 @@ class ResourceManager:
         """Return the global pending resource usage at the current time."""
         return self._global_pending_usage
 
+    def get_global_usage_excluding_output_backpressure(self) -> ExecutionResources:
+        """Return the global usage, excluding ops in task output backpressure and
+        their downstream ineligible ops (e.g., ``Limit``).
+
+        These ops' tasks are paused waiting on downstream consumers, so adding
+        cluster capacity can't relieve their usage.
+        """
+        excluded_ops = set()
+        for op in self._op_usages:
+            if op.in_task_output_backpressure:
+                excluded_ops.add(op)
+                excluded_ops.update(self._get_downstream_ineligible_ops(op))
+
+        return ExecutionResources.combine_sum(
+            usage for op, usage in self._op_usages.items() if op not in excluded_ops
+        )
+
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.
 
