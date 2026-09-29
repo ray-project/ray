@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray.data._internal.execution.bundle_queue import (
     HashLinkedQueue,
-    ObjectStoreAwareBundleQueue,
+    ResidentFirstBundleQueue,
     create_bundle_queue,
 )
 from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
@@ -154,17 +154,15 @@ def test_clear():
 @pytest.mark.parametrize(
     "env_value, preserve_order, expected_type",
     [
-        (None, False, ObjectStoreAwareBundleQueue),
-        ("1", False, ObjectStoreAwareBundleQueue),
+        (None, False, ResidentFirstBundleQueue),
+        ("1", False, ResidentFirstBundleQueue),
         ("0", False, HashLinkedQueue),
         (None, True, HashLinkedQueue),
     ],
 )
 def test_create_bundle_queue(env_value, preserve_order, expected_type, monkeypatch):
     if env_value is not None:
-        monkeypatch.setenv(
-            "RAY_DATA_ENABLE_OBJECT_STORE_AWARE_BUNDLE_QUEUES", env_value
-        )
+        monkeypatch.setenv("RAY_DATA_ENABLE_RESIDENT_FIRST_BUNDLE_QUEUES", env_value)
 
     assert isinstance(create_bundle_queue(preserve_order=preserve_order), expected_type)
 
@@ -191,7 +189,7 @@ def test_rotates_missing_bundles():
         resident2.block_refs[0]: ["node1"],
     }
 
-    queue = ObjectStoreAwareBundleQueue()
+    queue = ResidentFirstBundleQueue()
     # Queue more lost instances than there are distinct bundles, so a rotation
     # budget counted in distinct bundles would stop before reaching a resident.
     for bundle in (lost, lost, lost, lost, resident1, resident2):
@@ -216,7 +214,7 @@ def test_has_resident_next():
     resident = _create_bundle("resident")
     node_ids_by_ref = {lost.block_refs[0]: [], resident.block_refs[0]: ["node1"]}
 
-    queue = ObjectStoreAwareBundleQueue()
+    queue = ResidentFirstBundleQueue()
     with _mock_object_locations(node_ids_by_ref), patch(
         "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
     ):
@@ -239,7 +237,7 @@ def test_refreshes_size():
     # Two replicas of the block across nodes.
     node_ids_by_ref = {bundle.block_refs[0]: ["node1", "node2"]}
 
-    queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+    queue = ResidentFirstBundleQueue(update_frequency_s=0)
     queue.add(bundle)
 
     with _mock_object_locations(node_ids_by_ref):
@@ -260,7 +258,7 @@ def test_thread_safety():
     ), patch(
         "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
     ):
-        queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+        queue = ResidentFirstBundleQueue(update_frequency_s=0)
         exceptions = []
 
         def add_pop_worker():
@@ -297,7 +295,7 @@ def test_thread_safety():
 
 def test_remove_duplicates():
     bundle = _create_bundle(0)
-    queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+    queue = ResidentFirstBundleQueue(update_frequency_s=0)
 
     queue.add(bundle)
     queue.add(bundle)
@@ -312,7 +310,7 @@ def test_remove_duplicates():
 
 def test_size_with_duplicates():
     bundle = _create_bundle(0)
-    queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+    queue = ResidentFirstBundleQueue(update_frequency_s=0)
 
     queue.add(bundle)
     initial_estimate = queue.estimate_size_bytes()

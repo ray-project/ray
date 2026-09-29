@@ -13,8 +13,8 @@ from .bundler import (
 )
 from .fifo import FIFOBundleQueue
 from .hash_link import HashLinkedQueue
-from .object_store_aware import ObjectStoreAwareBundleQueue
 from .reordering import ReorderingBundleQueue
+from .resident_first import ResidentFirstBundleQueue
 from .thread_safe import ThreadSafeBundleQueue
 
 
@@ -27,18 +27,18 @@ def create_bundle_queue(*, preserve_order: bool = False) -> QueueWithRemoval:
             reading ``DataContext``.
 
     Returns:
-        An ``ObjectStoreAwareBundleQueue`` unless disabled or order must be
+        An ``ResidentFirstBundleQueue`` unless disabled or order must be
         preserved, in which case a ``HashLinkedQueue``.
     """
     from ray._common.utils import env_bool
 
     if (
-        env_bool("RAY_DATA_ENABLE_OBJECT_STORE_AWARE_BUNDLE_QUEUES", True)
-        # The object-store-aware queue reorders inputs to serve bundles still
+        env_bool("RAY_DATA_ENABLE_RESIDENT_FIRST_BUNDLE_QUEUES", True)
+        # The resident-first queue reorders inputs to serve bundles still
         # resident in the object store first, which breaks order preservation.
         and not preserve_order
     ):
-        return ObjectStoreAwareBundleQueue()
+        return ResidentFirstBundleQueue()
     return HashLinkedQueue()
 
 
@@ -46,7 +46,7 @@ __all__ = [
     "BaseBundleQueue",
     "create_bundle_queue",
     "HashLinkedQueue",
-    "ObjectStoreAwareBundleQueue",
+    "ResidentFirstBundleQueue",
     "RebundleQueue",
     "EstimateBytes",
     "EstimateSize",

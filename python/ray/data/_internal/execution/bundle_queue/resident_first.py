@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 DEFAULT_UPDATE_FREQUENCY_S = 30
 
 
-class ObjectStoreAwareBundleQueue(QueueWithRemoval):
+class ResidentFirstBundleQueue(QueueWithRemoval):
     """FIFO queue that serves bundles whose blocks still reside in the object
     store before bundles whose blocks have been lost (e.g. evicted, or on a
     drained node) and would need lineage reconstruction.
