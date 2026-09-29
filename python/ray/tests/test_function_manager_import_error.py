@@ -1,4 +1,5 @@
 import logging
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,3 +36,7 @@ def test_actor_import_error_is_logged(caplog):
     assert "No module named 'missing_module'" in caplog.text
     with pytest.raises(RuntimeError, match="failed to import on the worker"):
         actor_class().run()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
