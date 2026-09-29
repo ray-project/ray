@@ -168,7 +168,9 @@ class DifferentiableLearner(Checkpointable):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            The gradients in the same (dict) format as `params`.
+            The gradients of the modules in `loss_per_module`, in the (dict) format of
+            `params`. A module that had no data in the minibatch has no loss term and
+            therefore no entry; `apply_gradients` passes its parameters through.
         """
 
     @OverrideToImplementCustomLogic
@@ -185,11 +187,13 @@ class DifferentiableLearner(Checkpointable):
         optimizer or directly within the `MultiRLModule`).
 
         Args:
-            gradients: A dictionary containing named gradients for each module id.
+            gradients: A dictionary containing named gradients for each module id
+                that took part in this update (see `compute_gradients`).
             params: A dictionary containing named parameters for each module id.
 
         Returns:
-            The updated parameters in the same (dict) format as `params`.
+            The updated parameters in the same (dict) format as `params`, for every
+            module in `params`: those without gradients pass through unchanged.
         """
 
     @OverrideToImplementCustomLogic
@@ -326,8 +330,6 @@ class DifferentiableLearner(Checkpointable):
         training_data.solve_refs()
         assert training_data.batches is None, "`training_data.batches` must be None!"
 
-        self._weights_seq_no += 1
-
         batch_iter = self._create_iterator_if_necessary(
             training_data=training_data,
             num_total_minibatches=self.learner_config.num_total_minibatches,
@@ -336,11 +338,13 @@ class DifferentiableLearner(Checkpointable):
             shuffle_batch_per_epoch=self.learner_config.shuffle_batch_per_epoch,
         )
 
-        # `None` means: skip this update.
+        # `None` means: skip this update. The weights keep their sequence number.
         if batch_iter is None:
             if not _no_metrics_reduce:
                 return params, {}, self.metrics.reduce()
             return params, {}, {}
+
+        self._weights_seq_no += 1
 
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):

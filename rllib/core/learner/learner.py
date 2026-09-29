@@ -1113,8 +1113,6 @@ class Learner(Checkpointable):
         training_data.solve_refs()
         assert training_data.batches is None, "`training_data.batches` must be None!"
 
-        self._weights_seq_no += 1
-
         batch_iter = self._create_iterator_if_necessary(
             training_data=training_data,
             num_total_minibatches=num_total_minibatches,
@@ -1127,11 +1125,15 @@ class Learner(Checkpointable):
         # `None` means: skip this update. No gradient-based update takes place, so
         # neither of its hooks runs -- they would otherwise read back metrics that
         # this update never measured, or step a target network that has nothing to
-        # follow. `_create_iterator_if_necessary` has already warned and counted it.
+        # follow -- and the weights keep their sequence number, which counts updates
+        # of the weights. `_create_iterator_if_necessary` has already warned and
+        # counted it.
         if batch_iter is None:
             if not _no_metrics_reduce:
                 return self.metrics.reduce()
             return
+
+        self._weights_seq_no += 1
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
@@ -1410,12 +1412,14 @@ class Learner(Checkpointable):
         Experimental: this hook and its contract may change or be removed without a
         deprecation cycle.
 
-        Called once per `update()` with the train batch (after modules not in
-        `policies_to_train` have been removed). By default an update is skipped when
-        ANY module has no timesteps to train on.
-        That covers a batch that is empty outright (all sampled episodes lost to
-        EnvRunner or node failures) and one that still carries its ModuleIDs
-        with nothing under them.
+        Called once per `update()` with the train batch, after modules not in
+        `policies_to_train` have been removed and -- with a single Learner, which has
+        no group to stay in step with -- modules without timesteps as well. By
+        default an update is skipped when ANY module of that batch has no timesteps
+        to train on. In a group, that covers a batch that is empty outright (all
+        sampled episodes lost to EnvRunner or node failures) and one that still
+        carries its ModuleIDs with nothing under them; a single Learner only skips a
+        batch in which no module has timesteps left.
 
         Override to add conditions, based on any information available on this
         Learner -- it need not be consistent across Learners. In a multi-Learner

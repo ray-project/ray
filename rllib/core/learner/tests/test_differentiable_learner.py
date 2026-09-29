@@ -196,6 +196,14 @@ class TestDifferentiableLearnerSkip(unittest.TestCase):
                 (ALL_MODULES, LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME)
             ),
         )
+        # Through `update()`, the parameters pass through and the weights keep their
+        # sequence number.
+        params = _clone_params(learner)
+        updated_params, _, _ = learner.update(
+            params=params, training_data=TrainingData(batch=_batch({"m1": 0, "m2": 0}))
+        )
+        self.assertIs(params, updated_params)
+        self.assertEqual(0, learner._weights_seq_no)
 
 
 class TestTorchMetaLearnerSkip(unittest.TestCase):
@@ -236,11 +244,14 @@ class TestTorchMetaLearnerSkip(unittest.TestCase):
             learner.update(batch=MultiAgentBatch(policy_batches={}, env_steps=0))
             self.assertEqual(0, before.call_count)
             self.assertEqual(0, after.call_count)
+            # Nor does a skip count as an update of the weights.
+            self.assertEqual(0, learner._weights_seq_no)
 
             # A real update runs them as a pair, inner learners and all.
             learner.update(batch=_batch({"m1": 64, "m2": 64}, env_steps=64))
             self.assertEqual(1, before.call_count)
             self.assertEqual(1, after.call_count)
+            self.assertEqual(1, learner._weights_seq_no)
 
 
 if __name__ == "__main__":

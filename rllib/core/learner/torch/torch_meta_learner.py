@@ -143,9 +143,6 @@ class TorchMetaLearner(TorchLearner):
         training_data.solve_refs()
         assert training_data.batches is None, "`training_data.batches` must be None!"
 
-        # Increase the _weigths_seq_no in each `update` run.
-        self._weights_seq_no += 1
-
         # Create a batch iterator.
         # TODO (simon): Create this method in the `Learner`.
         batch_iter = self._create_iterator_if_necessary(
@@ -158,11 +155,15 @@ class TorchMetaLearner(TorchLearner):
         )
 
         # `None` means: skip this update. No gradient-based update takes place, so
-        # neither of its hooks runs (see `Learner.update`).
+        # neither of its hooks runs and the weights keep their sequence number (see
+        # `Learner.update`).
         if batch_iter is None:
             if not _no_metrics_reduce:
                 return self.metrics.reduce()
             return
+
+        # Increase the _weigths_seq_no in each `update` run that updates the weights.
+        self._weights_seq_no += 1
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.

@@ -346,6 +346,8 @@ class TestLearner(unittest.TestCase):
 
         learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
         timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
+        # The weights' sequence number counts updates of the weights.
+        seq_no = learner._weights_seq_no
 
         def check_skipped(results):
             all_modules = results[ALL_MODULES]
@@ -378,6 +380,7 @@ class TestLearner(unittest.TestCase):
             check_skipped(learner.update(episodes=[], timesteps=timesteps))
             self.assertEqual(0, before.call_count)
             self.assertEqual(0, after.call_count)
+            self.assertEqual(seq_no, learner._weights_seq_no)
 
             # A real batch after the skips must still train, hooks and all.
             reader = get_cartpole_dataset_reader(batch_size=512)
@@ -385,6 +388,7 @@ class TestLearner(unittest.TestCase):
             results = learner.update(batch=batch)
             self.assertEqual(1, before.call_count)
             self.assertEqual(1, after.call_count)
+            self.assertEqual(seq_no + 1, learner._weights_seq_no)
         self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
 
     def test_should_skip_update_single_learner(self):
