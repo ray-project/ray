@@ -52,6 +52,7 @@ from ray.serve.config import (
     GangSchedulingConfig,
     RequestRouterConfig,
 )
+from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.generated.serve_pb2 import (
@@ -391,24 +392,8 @@ def test_ingress_request_router_rejects_autoscaling_config():
         )
 
 
-def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
-    ingress_api = FastAPI()
-    router_api = FastAPI()
-
-    @serve.deployment
-    @serve.ingress(ingress_api)
-    class LLMServer:
-        pass
-
-    @serve.deployment
-    @serve.ingress(router_api)
-    class IngressRequestRouter:
-        pass
-
-    llm_server = LLMServer.bind()
-    app = llm_server._with_ingress_request_router(
-        IngressRequestRouter.bind(llm_deployment=llm_server)
-    )
+def _build_serve_application_deploy_args(app: Application) -> List[Dict]:
+    """Runs the declarative build task on `app` under HAProxy; returns its deploy args."""
     runtime_context = Mock()
     runtime_context.runtime_env = {}
     runtime_context.get_job_id.return_value = "job-id"
@@ -435,6 +420,28 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
         )
 
     assert error is None
+    return deploy_args
+
+
+def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class LLMServer:
+        pass
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class IngressRequestRouter:
+        pass
+
+    llm_server = LLMServer.bind()
+    app = llm_server._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=llm_server)
+    )
+    deploy_args = _build_serve_application_deploy_args(app)
     assert [
         (args["deployment_name"], args["ingress_request_router"])
         for args in deploy_args
@@ -455,32 +462,7 @@ def test_build_serve_application_puts_router_marker_on_ingress_args():
             pass
 
     app = Router.bind(Helper.bind())._as_router_application()
-    runtime_context = Mock()
-    runtime_context.runtime_env = {}
-    runtime_context.get_job_id.return_value = "job-id"
-
-    with (
-        patch("ray.serve._private.application_state.import_attr", return_value=app),
-        patch(
-            "ray.serve._private.application_state.ray.get_runtime_context",
-            return_value=runtime_context,
-        ),
-        patch("ray.serve._private.application_state.configure_component_logger"),
-        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
-    ):
-        _, deploy_args, error = build_serve_application._function(
-            "module.app",
-            "code-version",
-            "default",
-            {},
-            LoggingConfig(),
-            None,
-            {},
-            {},
-            {},
-        )
-
-    assert error is None
+    deploy_args = _build_serve_application_deploy_args(app)
     assert {
         args["deployment_name"]: args["router_application"] for args in deploy_args
     } == {"Helper": False, "Router": True}

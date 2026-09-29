@@ -943,16 +943,10 @@ def test_get_target_groups_keeps_router_marker_with_no_running_replicas(
         app_name=app_name, from_proxy_manager=True
     )
 
-    assert [
-        tg.is_router_application
-        for tg in target_groups
-        if tg.protocol == RequestProtocol.HTTP
-    ] == [True]
-    assert not any(
-        tg.is_router_application
-        for tg in target_groups
-        if tg.protocol == RequestProtocol.GRPC
-    )
+    assert [(tg.protocol, tg.is_router_application) for tg in target_groups] == [
+        (RequestProtocol.HTTP, True),
+        (RequestProtocol.GRPC, False),
+    ]
 
 
 def test_get_target_groups_app_with_no_running_replicas(
