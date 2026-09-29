@@ -33,8 +33,7 @@ namespace gcs {
 // which reads them.
 struct FakeGcsResourceManagerDeps {
   instrumented_io_context io_context;
-  ClusterResourceManager cluster_resource_manager{
-      PeriodicalRunner::Create(io_context)};
+  ClusterResourceManager cluster_resource_manager{PeriodicalRunner::Create(io_context)};
   FakeGcsNodeManager node_manager;
 };
 
@@ -48,10 +47,8 @@ class FakeGcsResourceManager : private FakeGcsResourceManagerDeps,
   using GcsResourceManager::GcsResourceManager;
 
   explicit FakeGcsResourceManager()
-      : GcsResourceManager(io_context,
-                           cluster_resource_manager,
-                           node_manager,
-                           NodeID::FromRandom()) {}
+      : GcsResourceManager(
+            io_context, cluster_resource_manager, node_manager, NodeID::FromRandom()) {}
 
   explicit FakeGcsResourceManager(ClusterResourceManager &cluster_resource_manager,
                                   GcsNodeManager &gcs_node_manager)
