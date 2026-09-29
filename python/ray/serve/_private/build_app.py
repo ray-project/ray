@@ -93,7 +93,7 @@ class BuiltApplication:
     # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
-    # See `Application._as_router_application`.
+    # When set, the application serves as an application level router.
     is_router_application: bool = False
 
     def validate_single_fastapi_ingress(self) -> None:

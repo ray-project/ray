@@ -42,7 +42,6 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.ingress = ingress
         self.ingress_request_router = ingress_request_router
-        # App-level, set on the ingress. See `Application._as_router_application`.
         self.router_application = router_application
 
         self.target_capacity = target_capacity
