@@ -18,15 +18,12 @@ from ray.data._internal.datasource_v2.common.synthesized_columns import (
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
-    ParquetRowGroupChunkMetadata,
-)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileManifest,
-    create_chunk_metadata,
+    UnitRun,
 )
 
 ROW_GROUP_SIZE = 25
@@ -45,15 +42,13 @@ def _write_file(path, num_rows=NUM_ROWS, extra_columns=None):
 def _row_group_chunk(row_group_ids, *, aligned=False):
     row_group_ids = tuple(row_group_ids)
     per_group = (ROW_GROUP_SIZE,) * len(row_group_ids) if aligned else ()
-    return create_chunk_metadata(
-        ParquetRowGroupChunkMetadata,
-        row_group_ids=row_group_ids,
+    return UnitRun(
+        unit_ids=row_group_ids,
         num_rows=ROW_GROUP_SIZE * len(row_group_ids),
-        uncompressed_size=ROW_GROUP_SIZE * 8 * len(row_group_ids),
-        fully_matched=True,
-        rg_sizes=tuple(n * 8 for n in per_group),
-        rg_rows=per_group,
-    )
+        size_bytes=ROW_GROUP_SIZE * 8 * len(row_group_ids),
+        unit_sizes=tuple(n * 8 for n in per_group),
+        unit_rows=per_group,
+    ).to_metadata()
 
 
 def _manifest(rows):

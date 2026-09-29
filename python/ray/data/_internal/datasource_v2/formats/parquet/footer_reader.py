@@ -15,7 +15,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_util
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
     FileChunks,
-    RowGroupInfo,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_row_group_coalescing import (
     coalesce_row_groups,
@@ -23,6 +22,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_row_group_coalesci
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     _row_group_uncompressed_size,
 )
+from ray.data._internal.datasource_v2.interfaces.file_manifest import UnitRun
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -168,13 +168,13 @@ class FooterReader:
 
         return indices or None
 
-    def _row_group_info(
+    def _row_group_run(
         self,
         row_group: RowGroupMetaData,
         rg_idx: int,
         leaf_indices: list[int] | None,
         fully_matched: bool = False,
-    ) -> RowGroupInfo:
+    ) -> UnitRun:
         # Sum per-column sizes on both paths -- with a projection, only the
         # leaves the reader decodes, so bin packing reflects the bytes it will
         # actually pull. Deliberately not ``row_group.total_byte_size``, which
@@ -183,10 +183,10 @@ class FooterReader:
         # tasks, which is the failure this whole path exists to avoid. Shares
         # the V1 helper so the three call sites cannot drift.
         uncompressed = _row_group_uncompressed_size(row_group, leaf_indices)
-        return RowGroupInfo(
-            rg_idx=rg_idx,
-            uncompressed_size=uncompressed,
+        return UnitRun(
+            unit_ids=(rg_idx,),
             num_rows=row_group.num_rows,
+            size_bytes=uncompressed,
             fully_matched=fully_matched,
         )
 
@@ -357,7 +357,7 @@ class FooterReader:
             fully_by_idx = {}
 
         per_rg = [
-            self._row_group_info(
+            self._row_group_run(
                 row_group=metadata.row_group(rg_idx),
                 rg_idx=rg_idx,
                 leaf_indices=leaf_indices,

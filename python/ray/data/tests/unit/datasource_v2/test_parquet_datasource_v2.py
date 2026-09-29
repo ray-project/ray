@@ -26,15 +26,13 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
     FileChunks,
-    ParquetRowGroupChunkMetadata,
-    RowGroupInfo,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileManifest,
-    create_chunk_metadata,
+    UnitRun,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
@@ -288,9 +286,7 @@ class _RecordingFooterActor:
                 FileChunks(
                     path=path,
                     size=size,
-                    row_groups=(
-                        RowGroupInfo(rg_idx=0, uncompressed_size=size, num_rows=1),
-                    ),
+                    row_groups=(UnitRun(unit_ids=(0,), size_bytes=size, num_rows=1),),
                 )
             ]
             for path, size in ordered
@@ -401,17 +397,13 @@ def _row_group_manifest(path, row_group_ids, num_rows):
         paths=[path],
         sizes=[0],
         chunk_metadatas=[
-            create_chunk_metadata(
-                ParquetRowGroupChunkMetadata,
-                row_group_ids=tuple(row_group_ids),
+            UnitRun(
+                unit_ids=tuple(row_group_ids),
                 num_rows=num_rows,
                 # Nominal projected uncompressed size (8-byte int64 ids); only
                 # used for footer-free batch sizing, not row selection.
-                uncompressed_size=num_rows * 8,
-                fully_matched=True,
-                rg_sizes=(),
-                rg_rows=(),
-            )
+                size_bytes=num_rows * 8,
+            ).to_metadata()
         ],
     )
 

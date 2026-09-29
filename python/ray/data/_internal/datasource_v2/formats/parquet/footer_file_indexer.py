@@ -23,12 +23,8 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
     FileChunks,
-    ParquetRowGroupChunkMetadata,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    FileManifest,
-    create_chunk_metadata,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -70,8 +66,9 @@ _DEFAULT_MAX_INFLIGHT_BATCHES: Optional[int] = env_integer(
 def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
     """One listing row per row-group run of a file.
 
-    The row carries the run's exact footer stats, so a downstream partitioner
-    can group runs into read units -- and split them at row-group boundaries --
+    The row is the run's ``UnitRun`` with its exact footer stats (``size_bytes``
+    is the projection-scoped uncompressed size), so a downstream partitioner
+    can group runs into read tasks -- and split them at row-group boundaries --
     without re-reading the footer. Grouping is deliberately *not* done here:
     listing discovers, the partitioner groups.
     """
@@ -79,18 +76,7 @@ def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
     return FileManifest.construct_manifest(
         paths=[file_chunks.path] * n,
         sizes=[file_chunks.size] * n,
-        chunk_metadatas=[
-            create_chunk_metadata(
-                ParquetRowGroupChunkMetadata,
-                row_group_ids=tuple(range(rg.rg_idx, rg.rg_idx + rg.rg_count)),
-                num_rows=rg.num_rows,
-                uncompressed_size=rg.uncompressed_size,
-                fully_matched=rg.fully_matched,
-                rg_sizes=rg.rg_sizes,
-                rg_rows=rg.rg_rows,
-            )
-            for rg in file_chunks.row_groups
-        ],
+        chunk_metadatas=[run.to_metadata() for run in file_chunks.row_groups],
     )
 
 

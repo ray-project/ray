@@ -32,16 +32,13 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import Foote
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
-    ParquetRowGroupChunkMetadata,
-)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
-    create_chunk_metadata,
+    UnitRun,
 )
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
@@ -80,15 +77,11 @@ def _write_file(path, num_rows=NUM_ROWS):
 
 def _row_group_chunk(row_group_ids):
     row_group_ids = tuple(row_group_ids)
-    return create_chunk_metadata(
-        ParquetRowGroupChunkMetadata,
-        row_group_ids=row_group_ids,
+    return UnitRun(
+        unit_ids=row_group_ids,
         num_rows=ROW_GROUP_SIZE * len(row_group_ids),
-        uncompressed_size=ROW_GROUP_SIZE * 8 * len(row_group_ids),
-        fully_matched=True,
-        rg_sizes=(),
-        rg_rows=(),
-    )
+        size_bytes=ROW_GROUP_SIZE * 8 * len(row_group_ids),
+    ).to_metadata()
 
 
 def _read(manifest):
@@ -105,7 +98,7 @@ def _footer_reader(**kwargs):
 
 def _chunked_row_groups(chunks):
     """``(rg_idx, fully_matched)`` per row group of a ``FileChunks``."""
-    return [(rg.rg_idx, rg.fully_matched) for rg in chunks.row_groups]
+    return [(rg.unit_ids[0], rg.fully_matched) for rg in chunks.row_groups]
 
 
 def _task_context(**kwargs):
@@ -144,7 +137,7 @@ def test_footer_reader_ignores_unknown_ids_and_drops_a_finished_file(tmp_path):
 
     unknown = {"/elsewhere.parquet", _row_group_unit_id(path, 7)}
     chunks = _footer_reader(excluded_read_unit_ids=unknown)._read_and_chunk(path, size)
-    assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
+    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
 
     # Every row group finished: the file contributes no chunk, and
     # ``read_footers`` yields nothing for it.
@@ -285,7 +278,7 @@ def test_excluding_units_at_listing_time_packs_only_remaining_work(tmp_path):
 
     # A bin holds exactly one file's worth of row groups.
     one_file = _footer_reader()._read_and_chunk(*files[0])
-    file_bytes = sum(rg.uncompressed_size for rg in one_file.row_groups)
+    file_bytes = sum(rg.size_bytes for rg in one_file.row_groups)
     partitioner = OnlineBinPacker(max_bin_bytes=file_bytes)
     full = _partitions(None)
     assert len(full) == num_files
@@ -305,7 +298,7 @@ def test_excluding_units_at_listing_time_packs_only_remaining_work(tmp_path):
         (str(path), int(rg))
         for m in resumed
         for path, chunk in zip(m.paths, m.file_chunk_metadatas)
-        for rg in chunk["row_group_ids"]
+        for rg in chunk["unit_ids"]
     }
     assert listed == remaining
     # Eight quarter-file row groups pack into two bins, not eight.

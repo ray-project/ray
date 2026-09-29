@@ -100,12 +100,12 @@ class TestReadAndChunk:
 
         assert chunks.path == path
         assert chunks.size == size
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
         assert [rg.num_rows for rg in chunks.row_groups] == [25, 25, 25, 25]
         # No predicate means every group is an exact survivor, which is what
         # lets limit push-down count rows without re-filtering.
         assert all(rg.fully_matched for rg in chunks.row_groups)
-        assert all(rg.uncompressed_size > 0 for rg in chunks.row_groups)
+        assert all(rg.size_bytes > 0 for rg in chunks.row_groups)
 
     def test_predicate_prunes_row_groups_by_statistics(self, four_row_groups):
         path, size = four_row_groups
@@ -113,7 +113,7 @@ class TestReadAndChunk:
         # id >= 50 excludes the first two row groups (0-24, 25-49) outright.
         chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(path, size)
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [2, 3]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
 
     def test_fully_matched_marks_only_wholly_surviving_groups(self, four_row_groups):
         path, size = four_row_groups
@@ -121,7 +121,7 @@ class TestReadAndChunk:
         # id >= 30 splits row group 1 (25-49) and fully covers 2 and 3.
         chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
 
-        by_idx = {rg.rg_idx: rg.fully_matched for rg in chunks.row_groups}
+        by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
         assert by_idx[1] is False, "partially matching group must not count as exact"
         assert by_idx[2] is True
         assert by_idx[3] is True
@@ -140,7 +140,7 @@ class TestReadAndChunk:
         pads = _reader(projected_cols=["pad"])._read_and_chunk(path, size)
 
         def total(c):
-            return sum(rg.uncompressed_size for rg in c.row_groups)
+            return sum(rg.size_bytes for rg in c.row_groups)
 
         assert total(ids) + total(pads) == total(full)
         assert 0 < total(ids) < total(full)
@@ -162,8 +162,7 @@ class TestReadAndChunk:
         def sizes(**kwargs):
             reader = _reader(**kwargs)
             return [
-                rg.uncompressed_size
-                for rg in reader._read_and_chunk(path, size).row_groups
+                rg.size_bytes for rg in reader._read_and_chunk(path, size).row_groups
             ]
 
         filtered = sizes(projected_cols=["id"], filter_expr=predicate)
@@ -177,7 +176,7 @@ class TestReadAndChunk:
         path, size = four_row_groups
 
         uncoalesced = _reader()._read_and_chunk(path, size)
-        per_rg = uncoalesced.row_groups[0].uncompressed_size
+        per_rg = uncoalesced.row_groups[0].size_bytes
         coalesced = _reader(coalesce_bytes=per_rg * 2)._read_and_chunk(path, size)
 
         assert len(coalesced.row_groups) < len(uncoalesced.row_groups)
@@ -411,7 +410,7 @@ class TestFloatsAreNeverExactSurvivors:
 
         chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
     def test_a_float_leaf_outside_the_predicate_stays_exact(self, tmp_path):
@@ -510,7 +509,7 @@ class TestMissingFilterColumnsSkipPruning:
 
         chunks = _reader(filter_expr=col("b") > 0)._read_and_chunk(path, size)
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
     def test_does_not_abort_sibling_files_in_the_batch(self, tmp_path):
@@ -562,7 +561,7 @@ class TestMissingFilterColumnsSkipPruning:
         reader.file_format = _Format(reader.file_format)
         chunks = reader._read_and_chunk(path, size)
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
 
@@ -614,10 +613,10 @@ class TestReadLeafIndices:
         absent = _reader(projected_cols=["absent"])._read_and_chunk(path, size)
         full = _reader()._read_and_chunk(path, size)
 
-        assert [rg.uncompressed_size for rg in absent.row_groups] == [
-            rg.uncompressed_size for rg in full.row_groups
+        assert [rg.size_bytes for rg in absent.row_groups] == [
+            rg.size_bytes for rg in full.row_groups
         ]
-        assert all(rg.uncompressed_size > 0 for rg in absent.row_groups)
+        assert all(rg.size_bytes > 0 for rg in absent.row_groups)
 
     def test_nested_column_expands_to_all_its_leaves(self, tmp_path):
         table = pa.table(

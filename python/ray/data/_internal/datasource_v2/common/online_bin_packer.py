@@ -4,15 +4,12 @@ import bisect
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Tuple, cast
+from typing import Deque, List, Optional, Tuple
 
-from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
-    ParquetRowGroupChunkMetadata,
-)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     ChunkMetadata,
     FileManifest,
-    create_chunk_metadata,
+    UnitRun,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import FilePartitioner
 
@@ -21,33 +18,24 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class BinItem:
-    """One file's row-group chunk placed into a bin.
+    """One listing row placed into a bin: a file's run of read units, or the
+    whole file. ``path`` is the packer's "colour"."""
 
-    Same contiguous-run shape as :class:`RowGroupInfo`; ``path`` is the packer's
-    "colour". A (possibly-split) item covers physical row groups
-    ``range(rg_idx, rg_idx + rg_count)``.
-    """
-
-    path: str  # colour
-    rg_idx: int  # start row-group index (see RowGroupInfo.rg_idx)
-    uncompressed_size: int
-    num_rows: int
-    fully_matched: bool = True  # see RowGroupInfo.fully_matched
-    rg_count: int = 1  # number of consecutive physical row groups this item covers
-    # Per-physical-row-group breakdown (rg_idx order), populated only for
-    # coalesced runs (rg_count > 1); lets the packer split at row-group boundaries.
-    rg_sizes: Tuple[int, ...] = ()
-    rg_rows: Tuple[int, ...] = ()
+    path: str
+    size_bytes: int
+    # ``None`` for a whole-file listing row: indivisible, sized by the listing.
+    # Otherwise ``size_bytes == run.size_bytes``.
+    run: Optional[UnitRun] = None
 
 
 @dataclass(frozen=True)
 class Bin:
-    """A sealed bin: a set of row-group chunks (across one or more files) whose
-    combined uncompressed size targets one bin budget. Becomes one
-    ``FileManifest`` block == one downstream read task."""
+    """A sealed bin: a set of items (across one or more files) whose combined
+    size targets one bin budget. Becomes one ``FileManifest`` block == one
+    downstream read task."""
 
     items: Tuple[BinItem, ...]
-    total_uncompressed_size: int
+    total_bytes: int
 
 
 @dataclass
@@ -57,7 +45,7 @@ class _OpenBin:
 
     def add(self, item: BinItem) -> None:
         self.items.append(item)
-        self.used_bytes += item.uncompressed_size
+        self.used_bytes += item.size_bytes
 
     def seal(self) -> Bin:
         return Bin(tuple(self.items), self.used_bytes)
@@ -72,11 +60,11 @@ def _prefix_sums(unit_sizes: List[int]) -> List[int]:
 
 
 def _largest_prefix_fit(prefix_sums: List[int], start: int, capacity_left: int) -> int:
-    # Largest end (exclusive), end >= start, such that the row groups [start, end)
-    # sum to <= capacity_left. prefix_sums[i] is the cumulative size of the first i row
-    # groups, so sum(sizes[start:end]) == prefix_sums[end] - prefix_sums[start]. Binary
+    # Largest end (exclusive), end >= start, such that the units [start, end)
+    # sum to <= capacity_left. prefix_sums[i] is the cumulative size of the first i
+    # units, so sum(sizes[start:end]) == prefix_sums[end] - prefix_sums[start]. Binary
     # search for the largest end with prefix_sums[end] <= capacity_left + prefix_sums[start].
-    # Returns ``start`` when not even one row group fits (caller treats that as
+    # Returns ``start`` when not even one unit fits (caller treats that as
     # "nothing fits here").
     end = bisect.bisect_right(prefix_sums, capacity_left + prefix_sums[start]) - 1
     return max(end, start)
@@ -90,28 +78,28 @@ def _fit_at_least_one(prefix_sums: List[int], start: int, capacity_left: int) ->
 
 
 def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
-    # Row groups [a, b) of a coalesced item as a new contiguous BinItem. Uses the
-    # exact per-RG sizes/rows so num_rows stays an exact survivor count for the
-    # limit push-down, and rg_idx shifts by ``a`` because the run is contiguous.
-    sizes = item.rg_sizes[a:b]
-    rows = item.rg_rows[a:b]
-    count = b - a
-    return BinItem(
-        path=item.path,
-        rg_idx=item.rg_idx + a,
-        uncompressed_size=sum(sizes),
+    # Units [a, b) of a multi-unit item as a new BinItem. Uses the exact
+    # per-unit sizes/rows so num_rows stays an exact survivor count for the
+    # limit push-down.
+    run = item.run
+    assert run is not None
+    sizes = run.unit_sizes[a:b]
+    rows = run.unit_rows[a:b]
+    piece = UnitRun(
+        unit_ids=run.unit_ids[a:b],
         num_rows=sum(rows),
-        fully_matched=item.fully_matched,
-        rg_count=count,
-        rg_sizes=sizes if count > 1 else (),
-        rg_rows=rows if count > 1 else (),
+        size_bytes=sum(sizes),
+        fully_matched=run.fully_matched,
+        unit_sizes=sizes if b - a > 1 else (),
+        unit_rows=rows if b - a > 1 else (),
     )
+    return BinItem(path=item.path, size_bytes=piece.size_bytes, run=piece)
 
 
 def _subitem(item: BinItem, num_units: int, start: int, end: int) -> BinItem:
     # The item covering units [start, end). When that is the whole item, return it
-    # unchanged (so a non-split item keeps its original rg_count/rg_sizes);
-    # otherwise carve out the row-group range -- only reached for splittable runs.
+    # unchanged (so a non-split item keeps its original run); otherwise carve
+    # out the unit range -- only reached for splittable runs.
     if start == 0 and end == num_units:
         return item
     return _slice_bin_item(item, start, end)
@@ -177,7 +165,7 @@ class _SharedBinPool(_BinPool):
         # First Fit on the WHOLE item: place it unsplit in the first bin it fits.
         # Returns False when it fits nowhere, leaving the caller to fall back to
         # the best-fit-per-unit walk.
-        total = item.uncompressed_size
+        total = item.size_bytes
         target = next(
             (b for b in self._bins if b.used_bytes + total <= self._cap), None
         )
@@ -269,46 +257,30 @@ class _SingleFileBinPool(_BinPool):
 def _bin_items(manifest: FileManifest) -> List[BinItem]:
     """Read a listing manifest as bin items, one per row.
 
-    A row carrying :class:`ParquetRowGroupChunkMetadata` becomes a row-group run
-    with exact stats. A row with no chunk metadata -- the plain whole-file
-    listing path -- becomes a single indivisible unit sized by the file itself,
-    which is what lets this partitioner sit behind any indexer rather than only
-    a footer-reading one.
+    A row carrying a :class:`UnitRun` becomes a run with exact stats. A row
+    with no chunk metadata -- the plain whole-file listing path -- becomes a
+    single indivisible item sized by the file itself, which is what lets this
+    partitioner sit behind any indexer rather than only one that knows the
+    file's units.
     """
     items: List[BinItem] = []
     for path, file_size, md in zip(
         manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas
     ):
-        if md is None or "row_group_ids" not in md:
-            items.append(
-                BinItem(
-                    path=str(path),
-                    rg_idx=0,
-                    uncompressed_size=int(file_size),
-                    num_rows=0,
-                )
-            )
-            continue
-        ids = md["row_group_ids"]
-        items.append(
-            BinItem(
-                path=str(path),
-                rg_idx=ids[0],
-                uncompressed_size=md["uncompressed_size"],
-                num_rows=md["num_rows"],
-                fully_matched=md["fully_matched"],
-                rg_count=len(ids),
-                rg_sizes=tuple(md["rg_sizes"]),
-                rg_rows=tuple(md["rg_rows"]),
-            )
-        )
+        if md is None or "unit_ids" not in md:
+            items.append(BinItem(path=str(path), size_bytes=int(file_size)))
+        else:
+            run = UnitRun.from_metadata(md)
+            items.append(BinItem(path=str(path), size_bytes=run.size_bytes, run=run))
     return items
 
 
 class OnlineBinPacker(FilePartitioner):
     """Streaming coloured bin packer over listing rows.
 
-    Feed manifests via :meth:`add_input`; drain sealed bins via
+    Works for any format: a row is either a whole file or a :class:`UnitRun`
+    of the file's read units, and the packer only sums ``size_bytes`` against
+    its budget. Feed manifests via :meth:`add_input`; drain sealed bins via
     :meth:`has_partition` / :meth:`next_partition` as they become available;
     call :meth:`finalize` once all input is added to flush the still-open bins.
 
@@ -325,11 +297,11 @@ class OnlineBinPacker(FilePartitioner):
     ):
         # ``max_bin_bytes`` doubles as the "file turns heavy" isolate threshold.
         self._cap = max_bin_bytes
-        # When True, a coalesced item (rg_count > 1) that does not fit whole is
-        # split at physical-row-group boundaries to fill residual bin space
-        # instead of opening a fresh bin. Single row groups stay atomic, so with
-        # coalescing off (every rg_count == 1) this is a no-op and the packer
-        # behaves exactly as when the flag is False.
+        # When True, a multi-unit run that does not fit whole is split at unit
+        # boundaries to fill residual bin space instead of opening a fresh bin.
+        # Single units stay atomic, so with coalescing off (every run is one
+        # unit) this is a no-op and the packer behaves exactly as when the flag
+        # is False.
         self._split_coalesced = split_coalesced
 
         self._seen_bytes_by_path: dict = {}  # running w(f) per file
@@ -350,16 +322,17 @@ class OnlineBinPacker(FilePartitioner):
             self._place(item)
 
     def _units(self, item: BinItem) -> List[int]:
-        # The row-group boundaries an item may be cut between, as unit sizes. A
-        # splittable coalesced run (split_coalesced and rg_count > 1) yields one
-        # unit per physical row group; anything else yields a single indivisible
-        # unit (the whole item). Placement only ever cuts at unit boundaries.
-        if self._split_coalesced and item.rg_count > 1:
-            return list(item.rg_sizes)
-        return [item.uncompressed_size]
+        # The boundaries an item may be cut between, as unit sizes. A splittable
+        # run (split_coalesced and more than one unit) yields one entry per
+        # unit; anything else yields a single indivisible entry (the whole
+        # item). Placement only ever cuts at unit boundaries.
+        run = item.run
+        if self._split_coalesced and run is not None and len(run.unit_ids) > 1:
+            return list(run.unit_sizes)
+        return [item.size_bytes]
 
     def _place(self, item: BinItem) -> None:
-        item_bytes = item.uncompressed_size
+        item_bytes = item.size_bytes
         seen_bytes = self._seen_bytes_by_path.get(item.path, 0)
         self._seen_bytes_by_path[item.path] = seen_bytes + item_bytes
 
@@ -386,8 +359,8 @@ class OnlineBinPacker(FilePartitioner):
 
     def _pack(self, item: BinItem, pool: _BinPool) -> None:
         # Walk the item's units, handing each run the pool accepts to the bin it
-        # picked. Cutting only at unit boundaries keeps every piece a contiguous
-        # row-group run with exact sizes and row counts.
+        # picked. Cutting only at unit boundaries keeps every piece a run with
+        # exact sizes and row counts.
         units = self._units(item)
         prefix_sums = _prefix_sums(units)
         start = 0
@@ -405,10 +378,10 @@ class OnlineBinPacker(FilePartitioner):
     def next_partition(self) -> FileManifest:
         bin_ = self._output.popleft()
         logger.debug(
-            "Emitting bin with %d uncompressed bytes: %s",
-            bin_.total_uncompressed_size,
+            "Emitting bin with %d bytes: %s",
+            bin_.total_bytes,
             [
-                (item.path, item.rg_idx, item.rg_idx + item.rg_count - 1)
+                item.path if item.run is None else (item.path, item.run.unit_ids)
                 for item in bin_.items
             ],
         )
@@ -422,45 +395,31 @@ class OnlineBinPacker(FilePartitioner):
 
     @staticmethod
     def _bin_to_manifest(bin_: Bin) -> FileManifest:
-        # One manifest row per distinct file in the bin. A file's (possibly-split)
-        # items cover disjoint contiguous runs, so union their physical row-group
-        # ids into the read unit for that file.
-        ids_by_path: defaultdict = defaultdict(list)
-        rows_by_path: defaultdict = defaultdict(int)
-        size_by_path: defaultdict = defaultdict(int)
-        matched_by_path: dict = {}
-        for item in bin_.items:
-            ids_by_path[item.path].extend(
-                range(item.rg_idx, item.rg_idx + item.rg_count)
-            )
-            rows_by_path[item.path] += item.num_rows
-            size_by_path[item.path] += item.uncompressed_size
-            matched_by_path[item.path] = (
-                matched_by_path.get(item.path, True) and item.fully_matched
-            )
-
+        # A whole-file item is one manifest row with no chunk metadata, as it
+        # came in. A file's runs cover disjoint unit ranges, so union them into
+        # one row per distinct file.
         paths: List[str] = []
         sizes: List[int] = []
-        chunk_metadatas: List[ParquetRowGroupChunkMetadata] = []
-        for path, ids in ids_by_path.items():
-            paths.append(path)
-            sizes.append(size_by_path[path])
-            chunk_metadatas.append(
-                create_chunk_metadata(
-                    ParquetRowGroupChunkMetadata,
-                    row_group_ids=tuple(sorted(ids)),
-                    num_rows=rows_by_path[path],
-                    uncompressed_size=size_by_path[path],
-                    fully_matched=matched_by_path[path],
-                    rg_sizes=(),
-                    rg_rows=(),
-                )
+        chunk_metadatas: List[Optional[ChunkMetadata]] = []
+        runs_by_path: defaultdict = defaultdict(list)
+        for item in bin_.items:
+            if item.run is None:
+                paths.append(item.path)
+                sizes.append(item.size_bytes)
+                chunk_metadatas.append(None)
+            else:
+                runs_by_path[item.path].append(item.run)
+
+        for path, runs in runs_by_path.items():
+            merged = UnitRun(
+                unit_ids=tuple(sorted(i for run in runs for i in run.unit_ids)),
+                num_rows=sum(run.num_rows for run in runs),
+                size_bytes=sum(run.size_bytes for run in runs),
+                fully_matched=all(run.fully_matched for run in runs),
             )
-        # TypedDict invariance: ``ParquetRowGroupChunkMetadata`` has extra keys
-        # beyond the empty ``ChunkMetadata`` base, so the concrete list is not
-        # assignable to ``List[Optional[ChunkMetadata]]`` without a cast.
+            paths.append(path)
+            sizes.append(merged.size_bytes)
+            chunk_metadatas.append(merged.to_metadata())
         return FileManifest.construct_manifest(
-            paths=paths,
-            sizes=sizes,
-            chunk_metadatas=cast(List[Optional[ChunkMetadata]], chunk_metadatas),
+            paths=paths, sizes=sizes, chunk_metadatas=chunk_metadatas
         )
