@@ -295,6 +295,10 @@ def test_async_callback(ray_start_regular_shared):
     wait_for_condition(lambda: "completed-2" in global_set)
 
 
+@pytest.mark.skipif(
+    client_mode_should_convert(),
+    reason="_on_ready and _ready are not supported on Ray Client ObjectRefs.",
+)
 @pytest.mark.asyncio
 async def test_async_wait_for_object_ref_ready(ray_start_regular_shared):
     signal = SignalActor.remote()
@@ -313,6 +317,10 @@ async def test_async_wait_for_object_ref_ready(ray_start_regular_shared):
     assert await ref == "secret"
 
 
+@pytest.mark.skipif(
+    client_mode_should_convert(),
+    reason="_on_ready and _ready are not supported on Ray Client ObjectRefs.",
+)
 @pytest.mark.asyncio
 async def test_async_wait_for_object_ref_ready_cancel(ray_start_regular_shared):
     signal = SignalActor.remote()
@@ -333,6 +341,10 @@ async def test_async_wait_for_object_ref_ready_cancel(ray_start_regular_shared):
     assert await ref == "secret"
 
 
+@pytest.mark.skipif(
+    client_mode_should_convert(),
+    reason="_on_ready and _ready are not supported on Ray Client ObjectRefs.",
+)
 def test_on_ready_ref_drop_does_not_invoke_callback(ray_start_regular_shared):
     """Dropping the ObjectRef leaves _on_ready pending, same as _on_completed."""
     signal = SignalActor.remote()
