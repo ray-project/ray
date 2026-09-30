@@ -740,8 +740,13 @@ def print_verbose_scaling_log():
 
 
 def _push_freshness_window_s(health_check_period_s: float) -> float:
-    """How long a pushed health result stays fresh enough to stand in for a probe."""
-    return max(health_check_period_s * 1.5, 1.0)
+    """How long a pushed health result stays fresh enough to stand in for a probe.
+
+    Keyed on the push cadence, which is twice the probe cadence, rather than on the
+    period itself: a crash is invisible until this expires and a probe is armed, so a
+    wider window would detect one later than pull probing alone did.
+    """
+    return max(health_check_period_s * 0.75, 1.0)
 
 
 class ReplicaHealthPushRegistry:
