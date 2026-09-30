@@ -25,6 +25,8 @@ logger = get_logger(__name__)
 
 # The replica's last chunk; it is held back so uvicorn ends the client response itself.
 TERMINATOR = b"0\r\n\r\n"
+# Hop-by-hop headers, plus expect: the relay reads the whole body before forwarding it,
+# so a 100-continue handshake with the replica has nothing left to wait for.
 HOP_BY_HOP = {
     b"connection",
     b"keep-alive",
@@ -32,16 +34,49 @@ HOP_BY_HOP = {
     b"content-length",
     b"host",
     b"te",
+    b"trailer",
     b"upgrade",
+    b"expect",
+    b"proxy-authenticate",
+    b"proxy-authorization",
 }
 # Past HIGH_WATER bytes buffered for a slow client, the relay stops reading from the replica.
 HIGH_WATER, LOW_WATER = 256 * 1024, 64 * 1024
+# When reading resumes the client still has LOW_WATER bytes queued, far more than a poll's worth.
+RESUME_POLL_S = 0.01
 # choose_replica returns one replica per call, so sample enough calls to see them all.
 ENDPOINT_SAMPLES, ENDPOINT_REFRESH_S = 48, 5.0
 # Refreshes in a row that must miss a replica before it leaves the rotation.
 ENDPOINT_MAX_MISSES = 3
 # Replicas to try per request before answering 502.
 CONNECT_ATTEMPTS = 3
+
+
+def _held_back(data: bytes) -> int:
+    """How many trailing bytes could be the start of the final chunk and must wait."""
+    for n in range(len(TERMINATOR), 0, -1):
+        if data.endswith(TERMINATOR[:n]):
+            return n
+    return 0
+
+
+def _request_bytes(scope, body: bytes, prefix: bytes, host: bytes) -> bytes:
+    """The client's request, re-addressed to the backend without hop-by-hop headers."""
+    path = prefix + (scope.get("raw_path") or scope["path"].encode())
+    if scope.get("query_string"):
+        path += b"?" + scope["query_string"]
+    lines = [
+        b"%s %s HTTP/1.1" % (scope["method"].encode(), path),
+        # uvicorn and Serve do not route by Host, and the replica is chosen later.
+        b"host: " + host,
+        b"content-length: %d" % len(body),
+    ]
+    lines += [
+        name + b": " + value
+        for name, value in scope["headers"]
+        if name.lower() not in HOP_BY_HOP
+    ]
+    return b"\r\n".join(lines) + b"\r\n\r\n" + body
 
 
 def _find_transport(send):
@@ -146,14 +181,25 @@ class _Upstream(asyncio.Protocol):
         """Flush what arrived before the client socket was known, then write reads straight to it."""
         pending = bytes(self.buf)
         self.buf = None
-        self.tail = pending[-5:]
-        if len(pending) > 5:
-            out.write(pending[:-5])
+        self._forward(out, pending)
         if self.tail == TERMINATOR:
             self.finish()
         else:
             # No await since the flush above, so no read can slip in between.
             self.out = out
+
+    def _forward(self, out, data: bytes):
+        # Hold back only what could begin the final chunk, so each complete chunk goes out at once.
+        if self.tail:
+            data = self.tail + data
+        held = _held_back(data)
+        if held:
+            self.tail = data[-held:]
+            data = data[:-held]
+        else:
+            self.tail = b""
+        if data:
+            out.write(data)
 
     def finish(self):
         self.complete = True
@@ -168,23 +214,24 @@ class _Upstream(asyncio.Protocol):
                 # Closing the upstream is what tells the replica to stop generating.
                 self.transport.close()
                 return
-            data = self.tail + data
-            self.tail = data[-5:]
-            if len(data) > 5:
-                out.write(data[:-5])
+            self._forward(out, data)
             if self.tail == TERMINATOR:
                 self.finish()
             elif out.get_write_buffer_size() > HIGH_WATER:
                 self.pause()
             return
         self.buf += data
-        if not self.head_ready.done():
+        while not self.head_ready.done():
             end = self.buf.find(b"\r\n\r\n")
             if end < 0:
                 return
             head = bytes(self.buf[:end]).split(b"\r\n")
             del self.buf[: end + 4]
-            self.status = int(head[0].split(b" ", 2)[1])
+            status = int(head[0].split(b" ", 2)[1])
+            if 100 <= status < 200:
+                # Interim responses such as 100 Continue come before the real one.
+                continue
+            self.status = status
             for line in head[1:]:
                 name, _, value = line.partition(b":")
                 name, value = name.strip().lower(), value.strip()
@@ -202,7 +249,7 @@ class _Upstream(asyncio.Protocol):
         if not self.paused:
             self.paused = True
             self.transport.pause_reading()
-            self.loop.call_later(0.001, self.resume_when_drained)
+            self.loop.call_later(RESUME_POLL_S, self.resume_when_drained)
 
     def resume_when_drained(self):
         if self.out is None or self.closed:
@@ -210,7 +257,7 @@ class _Upstream(asyncio.Protocol):
         if self.out.is_closing():
             self.transport.close()
         elif self.out.get_write_buffer_size() > LOW_WATER:
-            self.loop.call_later(0.001, self.resume_when_drained)
+            self.loop.call_later(RESUME_POLL_S, self.resume_when_drained)
         else:
             self.paused = False
             self.transport.resume_reading()
@@ -382,21 +429,7 @@ class ByteRelay:
             body += message.get("body", b"")
             if not message.get("more_body"):
                 break
-        path = self._prefix + (scope.get("raw_path") or scope["path"].encode())
-        if scope.get("query_string"):
-            path += b"?" + scope["query_string"]
-        lines = [
-            b"%s %s HTTP/1.1" % (scope["method"].encode(), path),
-            # uvicorn and Serve do not route by Host, and the replica is chosen later.
-            b"host: " + self._host,
-            b"content-length: %d" % len(body),
-        ]
-        lines += [
-            name + b": " + value
-            for name, value in scope["headers"]
-            if name.lower() not in HOP_BY_HOP
-        ]
-        request = b"\r\n".join(lines) + b"\r\n\r\n" + bytes(body)
+        request = _request_bytes(scope, bytes(body), self._prefix, self._host)
         try:
             endpoint, up = await self._open(request)
         except ConnectionError as e:

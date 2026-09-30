@@ -9,6 +9,8 @@ from ray.llm._internal.serve.core.ingress.byte_relay import (
     ByteRelay,
     _ChunkDecoder,
     _find_transport,
+    _held_back,
+    _request_bytes,
     _Upstream,
 )
 
@@ -88,6 +90,66 @@ def test_streamed_body_passes_through_without_terminator():
     asyncio.run(run())
 
 
+def test_complete_chunks_are_written_as_soon_as_they_are_read():
+    async def run():
+        up = _upstream()
+        up.data_received(HEAD)
+        client = _Transport()
+        up.attach(client)
+        for event in _events(3):
+            up.data_received(event)
+            # Nothing waits for the next read, so each token reaches the client right away.
+            assert bytes(client.written).endswith(event)
+        assert up.tail == b""
+
+    asyncio.run(run())
+
+
+def test_held_back_only_holds_a_possible_final_chunk():
+    assert _held_back(_events(1)[0]) == 0
+    assert _held_back(b"...\r\n0") == 1
+    assert _held_back(b"...\r\n0\r\n\r") == 4
+    assert _held_back(b"...\r\n" + TERMINATOR) == 5
+    # A chunk size ending in 0 looks like the start of the terminator until more bytes arrive.
+    assert _held_back(b"...\r\na0\r\n") == 3
+
+
+def test_interim_1xx_responses_are_skipped():
+    async def run():
+        up = _upstream()
+        event = _events(1)[0]
+        up.data_received(b"HTTP/1.1 100 Continue\r\n\r\n" + HEAD + event)
+        assert up.head_ready.done() and up.status == 200 and up.chunked
+        assert bytes(up.buf) == event
+
+    asyncio.run(run())
+
+
+def test_request_drops_hop_by_hop_headers():
+    scope = {
+        "method": "POST",
+        "path": "/v1/completions",
+        "raw_path": b"/v1/completions",
+        "query_string": b"",
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"expect", b"100-continue"),
+            (b"connection", b"close"),
+            (b"host", b"client-facing:8000"),
+        ],
+    }
+    request = _request_bytes(scope, b"{}", b"/llm", b"llm")
+    head, _, body = request.partition(b"\r\n\r\n")
+    lines = head.split(b"\r\n")
+    assert lines[0] == b"POST /llm/v1/completions HTTP/1.1"
+    assert set(lines[1:]) == {
+        b"host: llm",
+        b"content-length: 2",
+        b"content-type: application/json",
+    }
+    assert body == b"{}"
+
+
 def test_response_that_ends_before_attach_completes_on_flush():
     async def run():
         up = _upstream()
@@ -124,7 +186,7 @@ def test_backpressure_pauses_reading_until_the_client_drains():
         up.data_received(_events(1)[0])
         assert up.paused and not up.transport.reading
         client.buffered = 0
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
         assert not up.paused and up.transport.reading
 
     asyncio.run(run())
