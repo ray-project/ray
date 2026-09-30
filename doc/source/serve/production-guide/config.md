@@ -28,6 +28,7 @@ proxy_location: ...
 http_options: 
   host: ...
   port: ...
+  root_path: ...
   request_timeout_s: ...
   keep_alive_timeout_s: ...
 
@@ -84,6 +85,11 @@ The `http_options` are as follows. Note that the HTTP config is global to your R
 - **`port`**: The port for Serve's HTTP proxies. This parameter is optional and can be omitted. By default, the port is set to `8000`. 
 - **`request_timeout_s`**: Allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. By default, there is no request timeout.
 - **`keep_alive_timeout_s`**: Allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
+- **`root_path`**: The path that Serve is mounted at behind a proxy or load balancer, for example `/serve`. This follows the [ASGI `root_path`](https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope): the proxy in front of Serve strips this prefix before forwarding requests, and Serve adds it back to the `path` and `root_path` that your applications see. Serve uses the value as-is, so leave off the trailing slash: `/serve/` produces paths like `/serve//hello`. This parameter is optional and can be omitted. By default, `root_path` is empty.
+
+:::{warning}
+Starting with Ray 2.60, Ray Serve follows the ASGI spec for `root_path`. Requests that reach Serve with the `root_path` prefix, such as `/serve/hello` or `/serve/-/healthz`, return a 404, whereas earlier versions served them. Strip the prefix at your ingress or load balancer, or leave `root_path` unset.
+:::
 
 (grpc-config)=
 
