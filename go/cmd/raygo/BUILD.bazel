@@ -21,6 +21,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//go/cmd/raygo/dashboard",
+        "//go/cmd/raygo/dashboard_agent",
         "//go/cmd/raygo/default_worker",
         "//go/cmd/raygo/log_monitor",
         "//go/cmd/raygo/runtime_env_agent",

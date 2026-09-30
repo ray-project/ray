@@ -1934,61 +1934,99 @@ def start_raylet(
     if labels:
         labels_json_str = json.dumps(labels)
 
-    dashboard_agent_command = [
-        *_build_python_executable_command_memory_profileable(
-            ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
-        ),
-        os.path.join(RAY_PATH, "dashboard", "agent.py"),
-        f"--node-id={node_id}",
-        f"--node-ip-address={node_ip_address}",
-        f"--metrics-export-port={metrics_export_port}",
-        f"--grpc-port={metrics_agent_port}",
-        f"--listen-port={dashboard_agent_listen_port}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--temp-dir={temp_dir}",
-        f"--session-dir={session_dir}",
-        f"--log-dir={log_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-        f"--session-name={session_name}",
-        f"--gcs-address={gcs_address}",
-        f"--cluster-id-hex={cluster_id}",
-    ]
-    if dashboard_agent_stdout_filepath:
-        dashboard_agent_command.append(
-            f"--stdout-filepath={dashboard_agent_stdout_filepath}"
-        )
-    if dashboard_agent_stderr_filepath:
-        dashboard_agent_command.append(
-            f"--stderr-filepath={dashboard_agent_stderr_filepath}"
-        )
-    if dashboard_agent_log_filepath:
-        dashboard_agent_command.append(
-            f"--logging-filename={os.path.basename(dashboard_agent_log_filepath)}"
-        )
-    if (
-        dashboard_agent_stdout_filepath is None
-        and dashboard_agent_stderr_filepath is None
-    ):
-        # If not redirecting logging to files, unset log filename.
-        # This will cause log records to go to stderr.
-        dashboard_agent_command.append("--logging-filename=")
-        # Use stderr log format with the component name as a message prefix.
-        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
-            component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
-        )
-        dashboard_agent_command.append(f"--logging-format={logging_format}")
+    if ray_constants.ENABLE_GO_DASHBOARD_AGENT:
+        # Launch the Go dashboard agent (raygo dashboard-agent) instead of the
+        # Python one. The Go command derives is_head from GCS itself, so the
+        # Python-only --head / --minimal / logging appends below are skipped.
+        dashboard_agent_command = [
+            RAYGO_EXECUTABLE,
+            "dashboard-agent",
+            f"--node-id-hex={node_id}",
+            f"--node-ip-address={node_ip_address}",
+            f"--grpc-port={metrics_agent_port}",
+            f"--listen-port={dashboard_agent_listen_port}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--temp-dir={temp_dir}",
+            f"--session-dir={session_dir}",
+            f"--session-name={session_name}",
+            f"--log-dir={log_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
+            f"--cluster-id-hex={cluster_id}",
+        ]
+        if dashboard_agent_stdout_filepath:
+            dashboard_agent_command.append(
+                f"--stdout-filepath={dashboard_agent_stdout_filepath}"
+            )
+        else:
+            # The Go command always declares its stdout/stderr targets, even
+            # when not redirected to files.
+            dashboard_agent_command.append("--stdout-filepath=")
+        if dashboard_agent_stderr_filepath:
+            dashboard_agent_command.append(
+                f"--stderr-filepath={dashboard_agent_stderr_filepath}"
+            )
+        else:
+            dashboard_agent_command.append("--stderr-filepath=")
+    else:
+        dashboard_agent_command = [
+            *_build_python_executable_command_memory_profileable(
+                ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
+            ),
+            os.path.join(RAY_PATH, "dashboard", "agent.py"),
+            f"--node-id={node_id}",
+            f"--node-ip-address={node_ip_address}",
+            f"--metrics-export-port={metrics_export_port}",
+            f"--grpc-port={metrics_agent_port}",
+            f"--listen-port={dashboard_agent_listen_port}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--temp-dir={temp_dir}",
+            f"--session-dir={session_dir}",
+            f"--log-dir={log_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--session-name={session_name}",
+            f"--gcs-address={gcs_address}",
+            f"--cluster-id-hex={cluster_id}",
+        ]
+        if dashboard_agent_stdout_filepath:
+            dashboard_agent_command.append(
+                f"--stdout-filepath={dashboard_agent_stdout_filepath}"
+            )
+        if dashboard_agent_stderr_filepath:
+            dashboard_agent_command.append(
+                f"--stderr-filepath={dashboard_agent_stderr_filepath}"
+            )
+        if dashboard_agent_log_filepath:
+            dashboard_agent_command.append(
+                f"--logging-filename={os.path.basename(dashboard_agent_log_filepath)}"
+            )
+        if (
+            dashboard_agent_stdout_filepath is None
+            and dashboard_agent_stderr_filepath is None
+        ):
+            # If not redirecting logging to files, unset log filename.
+            # This will cause log records to go to stderr.
+            dashboard_agent_command.append("--logging-filename=")
+            # Use stderr log format with the component name as a message prefix.
+            logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+                component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
+            )
+            dashboard_agent_command.append(f"--logging-format={logging_format}")
 
-    if ray._private.utils.get_dashboard_dependency_error() is not None:
-        # If dependencies are not installed, it is the minimally packaged
-        # ray. We should restrict the features within dashboard agent
-        # that requires additional dependencies to be downloaded.
-        dashboard_agent_command.append("--minimal")
+        if ray._private.utils.get_dashboard_dependency_error() is not None:
+            # If dependencies are not installed, it is the minimally packaged
+            # ray. We should restrict the features within dashboard agent
+            # that requires additional dependencies to be downloaded.
+            dashboard_agent_command.append("--minimal")
 
-    if is_head_node:
-        dashboard_agent_command.append("--head")
+        if is_head_node:
+            dashboard_agent_command.append("--head")
 
     if ray_constants.ENABLE_GO_RUNTIME_ENV_AGENT:
         runtime_env_agent_command = build_go_runtime_env_agent_command(

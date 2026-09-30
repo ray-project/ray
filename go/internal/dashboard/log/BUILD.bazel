@@ -1,0 +1,40 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_test(
+    name = "log_test",
+    srcs = [
+        "log_agent_test.go",
+        "module_test.go",
+    ],
+    embed = [":log"],
+    deps = [
+        "//go/internal/dashboard/agent",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
+    ],
+)
+
+go_library(
+    name = "log",
+    srcs = [
+        "log_agent.go",
+        "log_consts.go",
+        "logservice_stub.go",
+        "module.go",
+        "utils.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/log",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/agent",
+        "//go/pkg/log",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
+    ],
+)

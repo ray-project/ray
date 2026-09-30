@@ -1,0 +1,30 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "agent",
+    srcs = [
+        "agent.go",
+        "consts.go",
+        "grpc_server.go",
+        "http_server.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/agent",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "agent_test",
+    srcs = ["agent_test.go"],
+    embed = [":agent"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

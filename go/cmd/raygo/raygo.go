@@ -18,6 +18,7 @@ import (
 	"os"
 
 	"github.com/ray-project/ray/go/cmd/raygo/dashboard"
+	"github.com/ray-project/ray/go/cmd/raygo/dashboard_agent"
 	"github.com/ray-project/ray/go/cmd/raygo/default_worker"
 	"github.com/ray-project/ray/go/cmd/raygo/log_monitor"
 	"github.com/ray-project/ray/go/cmd/raygo/runtime_env_agent"
@@ -45,9 +46,10 @@ func init() {
 	rootCmd.AddCommand(log_monitor.GetLogMonitorCmd())
 	// Register runtime-env-agent subcommand.
 	rootCmd.AddCommand(runtime_env_agent.GetRuntimeEnvAgentCmd())
-	// Register dashboard subcommand (the Go dashboard head). The v1/v2 monitor
-	// (autoscaler) and dashboard-agent subcommands are not registered yet.
+	// Register dashboard subcommand (the Go dashboard head).
 	rootCmd.AddCommand(dashboard.GetDashboardCmd())
+	// Register dashboard-agent subcommand (node-side dashboard module host).
+	rootCmd.AddCommand(dashboard_agent.GetDashboardAgentCmd())
 }
 
 func main() {

@@ -1,0 +1,26 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "healthz",
+    srcs = ["healthz.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/healthz",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/agent",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "healthz_test",
+    srcs = ["healthz_test.go"],
+    embed = [":healthz"],
+    deps = [
+        "//go/internal/dashboard/agent",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+    ],
+)

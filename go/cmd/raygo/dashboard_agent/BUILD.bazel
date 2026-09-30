@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "dashboard_agent",
+    srcs = ["dashboard_agent.go"],
+    importpath = "github.com/ray-project/ray/go/cmd/raygo/dashboard_agent",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/healthz",
+        "//go/internal/dashboard/log",
+        "//go/internal/gcs/native",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+go_test(
+    name = "dashboard_agent_test",
+    srcs = ["dashboard_agent_test.go"],
+    embed = [":dashboard_agent"],
+    deps = [
+        "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/healthz",
+        "//go/internal/dashboard/log",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/proto",
+    ],
+)
