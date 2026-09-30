@@ -234,14 +234,14 @@ def test_has_resident_next():
 
 def test_refreshes_size():
     bundle = _create_bundle("test1")
-    # Two replicas of the block across nodes.
+    # Pulled copies on other nodes don't add to the estimate.
     node_ids_by_ref = {bundle.block_refs[0]: ["node1", "node2"]}
 
     queue = ResidentFirstBundleQueue(update_frequency_s=0)
     queue.add(bundle)
 
     with _mock_object_locations(node_ids_by_ref):
-        assert queue.estimate_size_bytes() == 2 * 2**20
+        assert queue.estimate_size_bytes() == 2**20
 
     # Objects lost from the object store no longer count towards the estimate.
     node_ids_by_ref[bundle.block_refs[0]] = []
