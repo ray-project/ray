@@ -25,9 +25,8 @@ class Chain(SerializablePreprocessorBase):
     When you call ``fit``, each preprocessor is fit on the dataset produced by the
     preceeding preprocessor's ``fit_transform``.
 
-    When :attr:`DataContext.enable_aggregation_based_preprocessors
-    <ray.data.context.DataContext.enable_aggregation_based_preprocessors>` is
-    set and every fittable member supports it, ``fit`` instead only registers
+    When ``DataContext.enable_aggregation_based_preprocessors`` is set and every
+    fittable member supports it, ``fit`` instead only registers
     each member's statistics as aggregation queries; the first ``transform()``
     (or ``transform_batch()``, or serialization) computes them over the fit
     dataset, batching independent members' aggregations into a single dataset

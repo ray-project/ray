@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Sequence, Set
+from typing import TYPE_CHECKING, List, Sequence, Set, cast
 
 from ray.data.preprocessor import Preprocessor
 
@@ -52,7 +52,9 @@ class _AggregationNode(_DAGNode):
 
     @property
     def agg_fn(self) -> "AggregateFnV2":
-        return self.spec.stat_fn
+        # NOTE: A plan's aggregate specs always hold an aggregation (callable
+        #       stats are separate specs), but the spec type is a broader union.
+        return cast("AggregateFnV2", self.spec.stat_fn)
 
 
 class _PlaceholderNode(_DAGNode):
