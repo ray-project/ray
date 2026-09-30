@@ -124,12 +124,12 @@ def test_reservation_must_satisfy_the_requested_placement_strategy(
 @pytest.mark.parametrize(
     "placement_strategy,reserved_resources,expected_nodes",
     [
-        # PACK fills the node with the most reserved slots first.
+        # PACK fills nodes first-fit in reservation order, as the coordinator does.
         pytest.param(
             "PACK",
             {"node-a": {"CPU": 1}, "node-b": {"CPU": 3}, "node-c": {"CPU": 2}},
-            ["node-b", "node-b", "node-b", "node-c"],
-            id="pack_largest_nodes_first",
+            ["node-a", "node-b", "node-b", "node-b"],
+            id="pack_first_fit",
         ),
         pytest.param(
             "STRICT_PACK",

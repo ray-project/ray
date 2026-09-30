@@ -186,8 +186,7 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         # The cached reservation can still include a node that just died, and
         # the worker group start pins against a recomputed one. Confirm the
-        # size against that same fresh view, or the start waits out its full
-        # timeout for workers that were never there.
+        # size against a fresh view
         num_workers = self._count_possible_workers(
             self._get_reserved_resources(recompute=True)
         )

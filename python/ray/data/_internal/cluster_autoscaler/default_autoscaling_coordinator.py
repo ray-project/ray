@@ -189,11 +189,7 @@ class OngoingRequest:
     strategy: ResourceRequestStrategy
 
     def requested_resources_sum(self) -> ResourceDict:
-        bundle_sum: ResourceDict = {}
-        for bundle in self.requested_resources:
-            for key, val in bundle.items():
-                bundle_sum[key] = bundle_sum.get(key, 0) + val
-        return bundle_sum
+        return _sum_bundles(self.requested_resources)
 
     def __lt__(self, other):
         """Used to sort requests when reserving resources.
@@ -651,7 +647,8 @@ class _AutoscalingCoordinatorActor:
             subcluster = _subcluster_of(requester_id)
             node_resources = cluster_node_resources.get(subcluster, {})
             reservations = _compute_reservations(
-                ongoing_request=ongoing_req,
+                bundles=ongoing_req.requested_resources,
+                strategy=ongoing_req.strategy,
                 node_resources=node_resources,
             )
             for node_id, bundle in reservations.items():
@@ -711,10 +708,11 @@ class _AutoscalingCoordinatorActor:
 
 
 def _compute_reservations(
-    ongoing_request: OngoingRequest,
+    bundles: List[ResourceDict],
+    strategy: ResourceRequestStrategy,
     node_resources: NodeResources,
 ) -> ReservedResources:
-    """Compute per-node reservations for ``ongoing_request`` without mutating inputs.
+    """Compute per-node reservations for ``bundles`` without mutating inputs.
 
     Reservation is best effort in all strategies: a bundle that fits nowhere is
     skipped and the remaining bundles are still attempted, so a partially
@@ -722,7 +720,8 @@ def _compute_reservations(
     comparing what came back against what they asked for.
 
     Args:
-        ongoing_request: The request to place.
+        bundles: The resource bundles to place.
+        strategy: How to distribute ``bundles`` over nodes.
         node_resources: Remaining per-node capacity. Not mutated; a working copy
             is used so later bundles in this request see prior placements.
 
@@ -735,15 +734,14 @@ def _compute_reservations(
         node_id: dict(resources) for node_id, resources in node_resources.items()
     }
     node_items = list(available.items())
-    if not node_items or not ongoing_request.requested_resources:
+    if not node_items or not bundles:
         return {}
 
-    strategy = ongoing_request.strategy
     reservations: ReservedResources = {}
 
     if strategy is ResourceRequestStrategy.STRICT_PACK:
+        bundle = _sum_bundles(bundles)
         for node_id, node_resource in node_items:
-            bundle = ongoing_request.requested_resources_sum()
             if _bundle_can_fit_on_node(bundle=bundle, node=node_resource):
                 _subtract_bundle_in_place(node_resource, bundle)
                 _add_bundle_in_place(
@@ -756,7 +754,7 @@ def _compute_reservations(
 
     used_node_ids: Set[NodeIdStr] = set()
     scan_start: int = 0
-    for bundle in ongoing_request.requested_resources:
+    for bundle in bundles:
         for offset in range(len(node_items)):
             idx = (scan_start + offset) % len(node_items)
             node_id, node_resource = node_items[idx]
@@ -779,6 +777,14 @@ def _compute_reservations(
                 break
 
     return reservations
+
+
+def _sum_bundles(bundles: List[ResourceDict]) -> ResourceDict:
+    bundle_sum: ResourceDict = {}
+    for bundle in bundles:
+        for key, val in bundle.items():
+            bundle_sum[key] = bundle_sum.get(key, 0) + val
+    return bundle_sum
 
 
 def _bundle_can_fit_on_node(bundle: ResourceDict, node: ResourceDict) -> bool:

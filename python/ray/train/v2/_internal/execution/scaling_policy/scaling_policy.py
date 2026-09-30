@@ -7,6 +7,10 @@ from typing import Dict, List, Optional
 
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     LabelSelector,
+    ResourceRequestStrategy,
+)
+from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+    _compute_reservations,
 )
 from ray.train._internal.autoscaling_coordinator_client import (
     RequesterId,
@@ -29,62 +33,6 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
-
-
-def _select_reserved_bundles(
-    label_selectors: List[LabelSelector],
-    num_workers: int,
-    placement_strategy: str,
-) -> Optional[List[LabelSelector]]:
-    """Pick ``num_workers`` reserved slots laid out per ``placement_strategy``.
-
-    Args:
-        label_selectors: One node pin per reserved worker slot, as returned by
-            ``_reserved_resources_to_bundle_label_selectors``. May cover more
-            slots than ``num_workers``.
-        num_workers: The number of workers to pin.
-        placement_strategy: The placement group strategy the pins must satisfy.
-
-    Returns:
-        ``num_workers`` node pins grouped by node, or ``None`` if the reserved
-        slots cannot satisfy ``placement_strategy``.
-    """
-    if len(label_selectors) < num_workers:
-        return None
-
-    slots_per_node: Dict[frozenset, List[LabelSelector]] = {}
-    for selector in label_selectors:
-        slots_per_node.setdefault(frozenset(selector.items()), []).append(selector)
-    nodes = list(slots_per_node)
-    num_to_take = dict.fromkeys(nodes, 0)
-
-    if placement_strategy == "STRICT_PACK":
-        node = next((n for n in nodes if len(slots_per_node[n]) >= num_workers), None)
-        if node is None:
-            return None
-        num_to_take[node] = num_workers
-    elif placement_strategy in ("STRICT_SPREAD", "SPREAD"):
-        if placement_strategy == "STRICT_SPREAD" and len(nodes) < num_workers:
-            return None
-        # Round-robin over nodes to use as many distinct nodes as possible.
-        remaining = num_workers
-        while remaining:
-            for node in nodes:
-                if remaining and num_to_take[node] < len(slots_per_node[node]):
-                    num_to_take[node] += 1
-                    remaining -= 1
-    else:
-        # PACK: fill the nodes with the most reserved slots first.
-        remaining = num_workers
-        for node in sorted(nodes, key=lambda n: len(slots_per_node[n]), reverse=True):
-            num_to_take[node] = min(remaining, len(slots_per_node[node]))
-            remaining -= num_to_take[node]
-
-    return [
-        selector
-        for node in nodes
-        for selector in slots_per_node[node][: num_to_take[node]]
-    ]
 
 
 @dataclass
@@ -242,36 +190,27 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         if not reserved_resources:
             return None
 
-        label_selectors = _reserved_resources_to_bundle_label_selectors(
-            reserved_resources=reserved_resources,
-            resources_per_worker=self.scaling_config._resources_per_worker_not_none,
-            trainer_resources=self.scaling_config._trainer_resources_not_none,
-        )
-        # The reservation can cover more workers than this group needs: the
-        # elastic policy requests ``max_workers`` bundles, so the reservation
-        # keeps growing as nodes join after a ``ResizeDecision`` was made.
-        # Pin to a subset of it rather than waiting for an exact match that
-        # may never come.
-        #
-        # The pins also have to satisfy the requested placement, or they
-        # would quietly violate the strategy the user asked for -- e.g.
-        # STRICT_SPREAD workers all landing on one node. The coordinator
-        # honors both strategies, so a mismatch means its view of the cluster
-        # moved; wait for it to settle rather than pin to a layout that
-        # contradicts the placement group we are about to create.
+        resources_per_worker = self.scaling_config._resources_per_worker_not_none
         placement_strategy = self.scaling_config.placement_strategy
-        selected = _select_reserved_bundles(
-            label_selectors, num_workers, placement_strategy
+        selected_resources = _compute_reservations(
+            bundles=[resources_per_worker] * num_workers,
+            strategy=ResourceRequestStrategy(placement_strategy),
+            node_resources=reserved_resources,
         )
-        if selected is None:
+        label_selectors = _reserved_resources_to_bundle_label_selectors(
+            reserved_resources=selected_resources,
+            resources_per_worker=resources_per_worker,
+            # ignore `scaling_config._trainer_resources_not_none` as these are worker resources
+        )
+        if len(label_selectors) < num_workers:
             logger.debug(
-                "Reserved capacity covers %s workers but %s are required "
-                "with %s; not ready to pin the worker group yet.",
-                len(label_selectors),
+                "Reserved capacity cannot place %s workers with %s; not ready "
+                "to pin the worker group yet.",
                 num_workers,
                 placement_strategy,
             )
-        return selected
+            return None
+        return label_selectors
 
     @property
     def _autoscaling_coordinator(self):
