@@ -209,6 +209,30 @@ def _get_max_chunk_size(
         return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
+# Maps an Arrow type to the Arrow-backed pandas dtype it converts to, preserving
+# Arrow dtypes through the pandas round-trip:
+# - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
+#   can reconstruct them exactly without lossy numpy conversion.
+# - Extension types (Ray's ArrowTensorType / ArrowPythonObjectType and
+#   pyarrow's native FixedShapeTensorType) return None, falling back to
+#   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
+#   subclasses BaseExtensionType but not ExtensionType, so we check the
+#   broader BaseExtensionType.
+# - Arrow's null type carries no type information, and pandas cannot box a
+#   non-null value into a null[pyarrow] column, so fillna and masked
+#   assignment raise ArrowInvalid (and can abort the worker from Arrow
+#   C++). Fall back to pandas' default conversion; PandasBlockAccessor
+#   .to_arrow() coerces all-null columns back to pa.null(), so the
+#   round-trip is unchanged. A column that is all-null in every block
+#   therefore stays null-typed rather than being promoted.
+def _arrow_backed_pandas_dtype(t: "pyarrow.DataType") -> Optional["pd.ArrowDtype"]:
+    if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(t):
+        return None
+    if pyarrow.types.is_null(t):
+        return None
+    return pd.ArrowDtype(t)
+
+
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
@@ -273,37 +297,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
 
-        # types_mapper preserves Arrow dtypes through the pandas round-trip:
-        # - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
-        #   can reconstruct them exactly without lossy numpy conversion.
-        # - Extension types (Ray's ArrowTensorType / ArrowPythonObjectType and
-        #   pyarrow's native FixedShapeTensorType) return None, falling back to
-        #   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
-        #   subclasses BaseExtensionType but not ExtensionType, so we check the
-        #   broader BaseExtensionType.
-        # - Arrow's null type carries no type information, and pandas cannot box a
-        #   non-null value into a null[pyarrow] column, so fillna and masked
-        #   assignment raise ArrowInvalid (and can abort the worker from Arrow
-        #   C++). Fall back to pandas' default conversion; PandasBlockAccessor
-        #   .to_arrow() coerces all-null columns back to pa.null(), so the
-        #   round-trip is unchanged. A column that is all-null in every block
-        #   therefore stays null-typed rather than being promoted.
-        def _types_mapper(t):
-            if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(
-                t
-            ):
-                return None
-            if pyarrow.types.is_null(t):
-                return None
-            return pd.ArrowDtype(t)
-
         # Gated on enable_arrow_backed_pandas_conversion so callers can restore the
         # pre-2.56 numpy conversion (standard Arrow types -> numpy dtypes). See
         # https://github.com/ray-project/ray/issues/64765.
         df = self._table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
             types_mapper=(
-                _types_mapper if ctx.enable_arrow_backed_pandas_conversion else None
+                _arrow_backed_pandas_dtype
+                if ctx.enable_arrow_backed_pandas_conversion
+                else None
             ),
         )
         if ctx.enable_tensor_extension_casting:
