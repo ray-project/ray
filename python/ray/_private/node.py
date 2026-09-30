@@ -27,6 +27,7 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.gcs_passive_utils import is_refused_by_passive_gcs
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -47,7 +48,6 @@ from ray._raylet import (
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
-from ray.exceptions import GcsPassiveError
 
 import psutil
 
@@ -64,13 +64,6 @@ logger = logging.getLogger(__name__)
 # is still around after this long is parked in an uninterruptible syscall and
 # will never be reaped by waiting longer.
 KILLED_PROCESS_REAP_TIMEOUT_SECONDS = 30
-
-
-def _refused_by_passive_gcs(exc: Exception) -> bool:
-    """Returns whether the exception was a refusal by a passive GCS."""
-    return ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
-        exc, GcsPassiveError
-    )
 
 
 class Node:
@@ -1375,7 +1368,7 @@ class Node:
                         ray_constants.KV_NAMESPACE_DASHBOARD,
                     )
                 except Exception as e:
-                    if not _refused_by_passive_gcs(e):
+                    if not is_refused_by_passive_gcs(e):
                         raise
                     # The dashboard head registers webui:url once this GCS is
                     # promoted.
@@ -1676,7 +1669,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_TRACING,
                 )
         except Exception as e:
-            if not _refused_by_passive_gcs(e):
+            if not is_refused_by_passive_gcs(e):
                 raise
             # The cluster metadata describes the head that is currently active --
             # it is rewritten with overwrite=True on every head start -- so a head

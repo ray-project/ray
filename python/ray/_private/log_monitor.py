@@ -15,9 +15,9 @@ from typing import Callable, List, Optional, Set
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
 from ray._private import logging_utils
+from ray._private.gcs_passive_utils import PassiveLatch
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
-from ray.exceptions import GcsPassiveError
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -181,7 +181,12 @@ class LogMonitor:
         self.can_open_more_files: bool = True
         self.max_files_open: int = max_files_open
         self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
-        self.publish_rejected_by_passive_gcs: bool = False
+        self._publish_passive_latch = PassiveLatch(
+            "log publish",
+            logger,
+            action_desc_passive="GCS is in passive mode and rejected a log publish.",
+            action_desc_promoted="GCS accepted a log publish again. Resuming publishing.",
+        )
         self.is_autoscaler_v2: bool = self.get_is_autoscaler_v2(gcs_address)
 
         logger.info(
@@ -374,20 +379,10 @@ class LogMonitor:
         """
         try:
             self.gcs_client.publish_logs(data)
+            self._publish_passive_latch.promoted()
         except Exception as e:
-            rejected_as_passive = ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and (
-                isinstance(e, GcsPassiveError)
-            )
-            if not rejected_as_passive:
+            if not self._publish_passive_latch.is_refused_by_passive_gcs(e):
                 logger.exception(f"Failed to publish log messages {data}")
-            elif not self.publish_rejected_by_passive_gcs:
-                self.publish_rejected_by_passive_gcs = True
-                # Logged once, not per batch, so a long passive window stays quiet.
-                logger.warning("GCS is in passive mode and rejected a log publish.")
-        else:
-            if self.publish_rejected_by_passive_gcs:
-                self.publish_rejected_by_passive_gcs = False
-                logger.info("GCS accepted a log publish again. Resuming publishing.")
 
     def check_log_files_and_publish_updates(self):
         """Gets updates to the log files and publishes them.
@@ -521,7 +516,7 @@ class LogMonitor:
 
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
-            if self.publish_rejected_by_passive_gcs:
+            if self._publish_passive_latch.waiting_for_promotion:
                 time.sleep(PASSIVE_GCS_POLL_INTERVAL_S)
             # If nothing was published, then wait a little bit before checking
             # for logs to avoid using too much CPU.

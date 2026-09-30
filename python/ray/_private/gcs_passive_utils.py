@@ -1,7 +1,7 @@
 # coding: utf-8
 import asyncio
 import logging
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any, Optional
 
 from ray._private import ray_constants
 from ray.exceptions import GcsPassiveError
@@ -150,27 +150,3 @@ async def wait_until_gcs_leader(
 
     if latch is not None:
         latch.promoted()
-
-
-async def retry_until_promoted(
-    write_fn: Callable[[], Coroutine[Any, Any, bool]],
-    retry_interval_s: float,
-    *,
-    latch: Optional[PassiveLatch] = None,
-) -> bool:
-    """Repeatedly retry write_fn at retry_interval_s until it succeeds.
-
-    Returns True once write_fn() returns True or lands without error.
-    If latch is provided, latch.promoted() is called upon success.
-    Non-passive exceptions are re-raised immediately.
-    """
-    while True:
-        await asyncio.sleep(retry_interval_s)
-        try:
-            if await write_fn():
-                if latch is not None:
-                    latch.promoted()
-                return True
-        except Exception as e:
-            if not is_refused_by_passive_gcs(e):
-                raise

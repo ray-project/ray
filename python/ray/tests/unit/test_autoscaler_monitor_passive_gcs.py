@@ -155,13 +155,13 @@ def test_v1_monitor_starts_against_a_passive_gcs(make_v1_monitor):
     # The write is its own probe: attempted once, refused, no CheckAlive needed.
     assert len(_metrics_address_writes(monitor.gcs_client)) == 1
     monitor.gcs_client.is_gcs_leader.assert_not_called()
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v1_monitor_registers_its_metrics_address_when_leading(make_v1_monitor):
     monitor = make_v1_monitor(leader=True)
 
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
     assert len(_metrics_address_writes(monitor.gcs_client)) == 1
 
 
@@ -220,7 +220,7 @@ def test_v1_monitor_takes_over_the_active_head_keys_on_promotion(
     monitor = make_v1_monitor(leader=False)
     monitor.autoscaler = None
     _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
     refused_writes = len(_metrics_address_writes(monitor.gcs_client))
 
     monitor.gcs_client.is_gcs_leader.return_value = True
@@ -232,7 +232,7 @@ def test_v1_monitor_takes_over_the_active_head_keys_on_promotion(
 
     _run_passes(monitor, monkeypatch, v1_monitor_module, 2)
 
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
     # Both keys describe the autoscaler currently running the cluster, and both
     # are taken over exactly once however many passes follow the promotion.
     assert len(_metrics_address_writes(monitor.gcs_client)) == refused_writes + 1
@@ -284,7 +284,7 @@ def test_v1_monitor_reports_every_leadership_change(
 
     assert _count_logged(v1_logs, "GCS is in passive mode") == 2
     assert _count_logged(v1_logs, "Resuming autoscaling") == 1
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v1_monitor_still_retries_other_failures(make_v1_monitor, monkeypatch, v1_logs):
@@ -297,7 +297,7 @@ def test_v1_monitor_still_retries_other_failures(make_v1_monitor, monkeypatch, v
     _run_passes(monitor, monkeypatch, v1_monitor_module, 2)
 
     assert _count_logged(v1_logs, "Monitor: Execution exception") == 2
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v1_monitor_run_reaches_the_loop_on_a_passive_gcs(make_v1_monitor):
@@ -364,13 +364,13 @@ def test_v2_monitor_starts_against_a_passive_gcs(make_v2_monitor):
     # The write is its own probe: attempted once, refused, no CheckAlive needed.
     assert len(_metrics_address_writes(monitor.gcs_client)) == 1
     monitor.gcs_client.is_gcs_leader.assert_not_called()
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v2_monitor_registers_its_metrics_address_when_leading(make_v2_monitor):
     monitor = make_v2_monitor(leader=True)
 
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
     assert len(_metrics_address_writes(monitor.gcs_client)) == 1
 
 
@@ -408,7 +408,7 @@ def test_v2_monitor_takes_over_the_metrics_address_on_promotion(
 ):
     monitor = make_v2_monitor(leader=False)
     _run_passes(monitor, monkeypatch, v2_monitor_module, 1)
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
     refused_writes = len(_metrics_address_writes(monitor.gcs_client))
 
     monitor.gcs_client.is_gcs_leader.return_value = True
@@ -416,7 +416,7 @@ def test_v2_monitor_takes_over_the_metrics_address_on_promotion(
 
     _run_passes(monitor, monkeypatch, v2_monitor_module, 2)
 
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
     assert len(_metrics_address_writes(monitor.gcs_client)) == refused_writes + 1
     assert _count_logged(v2_logs, "Resuming autoscaling") == 1
     # Check that autoscaler v2 usage tag is published on promotion.
@@ -442,7 +442,7 @@ def test_v2_monitor_survives_a_demotion_racing_the_promotion_write(
     # Recognized as a demotion rather than a crash, so the next promotion retries.
     assert len(passes) == 2
     assert _count_logged(v2_logs, "Monitor: Execution exception") == 0
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v2_monitor_still_restarts_on_an_authentication_error(

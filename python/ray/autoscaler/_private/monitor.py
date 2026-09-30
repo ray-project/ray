@@ -26,6 +26,7 @@ from ray._common.ray_constants import (
 )
 from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
+from ray._private.gcs_passive_utils import PassiveLatch
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -44,7 +45,6 @@ from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated import gcs_pb2
 from ray.core.generated.autoscaler_pb2 import NodeStatus
 from ray.core.generated.event_pb2 import Event as RayEvent
-from ray.exceptions import GcsPassiveError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -159,8 +159,15 @@ class Monitor:
 
         _initialize_internal_kv(self.gcs_client)
 
-        # Set once this head is known to be standing by for a promotion.
-        self._waiting_for_promotion = False
+        self._autoscaler_passive_latch = PassiveLatch(
+            "Autoscaling",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode. Autoscaling stays paused until this head is "
+                "promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Resuming autoscaling.",
+        )
         self._metrics_address = (
             build_address(monitor_ip, AUTOSCALER_METRIC_PORT) if monitor_ip else None
         )
@@ -235,7 +242,7 @@ class Monitor:
                 b"AutoscalerMetricsAddress", self._metrics_address.encode(), True, None
             )
         except Exception as e:
-            if not self._refused_by_passive_gcs(e):
+            if not self._autoscaler_passive_latch.is_refused_by_passive_gcs(e):
                 raise
 
     def _clear_previous_autoscaling_error(self):
@@ -244,18 +251,8 @@ class Monitor:
         try:
             _internal_kv_del(ray_constants.DEBUG_AUTOSCALING_ERROR)
         except Exception as e:
-            if not self._refused_by_passive_gcs(e):
+            if not self._autoscaler_passive_latch.is_refused_by_passive_gcs(e):
                 raise
-
-    def _note_passive_gcs(self):
-        if self._waiting_for_promotion:
-            return
-        self._waiting_for_promotion = True
-        # Logged once, not once per pass, so a passive window stays quiet.
-        logger.warning(
-            "GCS is in passive mode. Autoscaling stays paused until this head is "
-            "promoted."
-        )
 
     def _resume_after_promotion(self):
         """Take over the keys this head could not write while it was passive.
@@ -263,21 +260,10 @@ class Monitor:
         The metrics address names the current leader's endpoint, so every promotion
         rewrites it. Both writes get one attempt, as they do at startup.
         """
-        if not self._waiting_for_promotion:
+        if not self._autoscaler_passive_latch.promoted():
             return
-        self._waiting_for_promotion = False
-        logger.info("GCS was promoted to leader. Resuming autoscaling.")
         self._publish_metrics_address()
         self._clear_previous_autoscaling_error()
-
-    def _refused_by_passive_gcs(self, exc: Exception) -> bool:
-        """Returns whether the exception was a refusal by a passive GCS."""
-        if ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
-            exc, GcsPassiveError
-        ):
-            self._note_passive_gcs()
-            return True
-        return False
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
@@ -447,7 +433,7 @@ class Monitor:
                     ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
                     and not self.gcs_client.is_gcs_leader()
                 ):
-                    self._note_passive_gcs()
+                    self._autoscaler_passive_latch.note_passive()
                 else:
                     self._resume_after_promotion()
                     gcs_request_start_time = time.time()
@@ -513,7 +499,7 @@ class Monitor:
                     status["load_metrics_report"] = asdict(load_metrics_summary)
                     as_json = json.dumps(status)
                     if _internal_kv_initialized():
-                        _internal_kv_put(
+                        _internal_kv_put(  # passive-ok: loop body runs only when active leader
                             ray_constants.DEBUG_AUTOSCALING_STATUS,
                             as_json,
                             overwrite=True,
@@ -632,7 +618,7 @@ class Monitor:
         if (
             self.autoscaler is not None
             # Those workers belong to the head that is leading, not to this one.
-            and not self._waiting_for_promotion
+            and not self._autoscaler_passive_latch.waiting_for_promotion
             and os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1"
         ):
             self.autoscaler.kill_workers()
@@ -649,7 +635,7 @@ class Monitor:
                 )
             except Exception as e:
                 # Recording the failure must not replace reporting it below.
-                if not self._refused_by_passive_gcs(e):
+                if not self._autoscaler_passive_latch.is_refused_by_passive_gcs(e):
                     raise
         from ray._private.utils import publish_error_to_driver
 
@@ -684,7 +670,7 @@ class Monitor:
             # Nothing above is expected to leak a passive rejection, but if one
             # does: a standby head's autoscaler is parked, not dead, and saying
             # otherwise would tell every driver the cluster lost its autoscaler.
-            if not self._refused_by_passive_gcs(e):
+            if not self._autoscaler_passive_latch.is_refused_by_passive_gcs(e):
                 self._handle_failure(traceback.format_exc())
             raise
 

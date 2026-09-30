@@ -213,7 +213,7 @@ async def test_head_registers_both_addresses_when_active(make_head, head_logs):
         (b"DashboardMetricsAddress", METRICS_ADDRESS.encode()),
         (ray_constants.DASHBOARD_ADDRESS.encode(), DASHBOARD_ADDRESS.encode()),
     ]
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
     assert _count_logged(head_logs, "GCS is in passive mode") == 0
 
 
@@ -225,7 +225,7 @@ async def test_head_survives_a_passive_rejection(make_head, head_logs):
     head._dashboard_address = DASHBOARD_ADDRESS
     await _register_dashboard_address(head)
 
-    assert head._waiting_for_promotion
+    assert head._dashboard_passive_latch.waiting_for_promotion
     # Once for the window, not once per refused write.
     assert _count_logged(head_logs, "GCS is in passive mode") == 1
 
@@ -236,7 +236,7 @@ async def test_head_reraises_passive_rejection_when_flag_off(monkeypatch, make_h
 
     with pytest.raises(GcsPassiveError):
         await _register_dashboard_address(head)
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_reraises_other_rpc_errors(make_head):
@@ -247,7 +247,7 @@ async def test_head_reraises_other_rpc_errors(make_head):
 
     with pytest.raises(RpcError):
         await _register_dashboard_address(head)
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_replays_every_address_on_promotion(make_head, head_logs):
@@ -269,7 +269,7 @@ async def test_head_replays_every_address_on_promotion(make_head, head_logs):
         (b"session_name", SESSION_NAME.encode()),
         (usage_constant.CLUSTER_METADATA_KEY, ANY),
     ]
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
     assert _count_logged(head_logs, "GCS was promoted to leader") == 1
 
 
@@ -361,7 +361,7 @@ async def test_head_has_no_tracing_startup_hook_to_replay(make_head, hook):
     await _await_registration(head)
 
     assert _put_args(head.gcs_client, b"tracing_startup_hook") is None
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_stops_polling_once_registered(make_head):
@@ -389,7 +389,7 @@ async def test_head_keeps_waiting_when_the_replay_is_refused(make_head, head_log
 
     await _registration_keeps_waiting(head)
 
-    assert head._waiting_for_promotion
+    assert head._dashboard_passive_latch.waiting_for_promotion
     # The retries are silent; the window was already reported once.
     assert _count_logged(head_logs, "GCS is in passive mode") == 1
 
@@ -403,7 +403,7 @@ async def test_head_does_not_replay_while_still_passive(make_head):
     await _registration_keeps_waiting(head)
 
     assert _puts(head.gcs_client) == []
-    assert head._waiting_for_promotion
+    assert head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_does_not_poll_when_flag_off(monkeypatch, make_head):

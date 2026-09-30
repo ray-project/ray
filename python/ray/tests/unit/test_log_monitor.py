@@ -261,7 +261,7 @@ def test_each_leadership_change_is_reported_once(log_monitor, monitor_logs):
 
     assert _count_logged(monitor_logs, "GCS is in passive mode") == 2
     assert _count_logged(monitor_logs, "Resuming publishing") == 1
-    assert log_monitor.publish_rejected_by_passive_gcs
+    assert log_monitor._publish_passive_latch.waiting_for_promotion
 
 
 class _StopLoop(Exception):
@@ -293,7 +293,7 @@ def test_a_passive_gcs_slows_the_loop_down_without_stopping_it(
 def test_promotion_restores_the_active_poll_rate(log_monitor, monkeypatch):
     log_monitor.gcs_client.publish_logs.side_effect = _passive_gcs_rejection()
     _log_and_drain(log_monitor, "written while passive")
-    assert log_monitor.publish_rejected_by_passive_gcs
+    assert log_monitor._publish_passive_latch.waiting_for_promotion
 
     log_monitor.gcs_client.publish_logs.side_effect = None
     _write_worker_log(log_monitor, "written after promotion")
@@ -321,7 +321,7 @@ def test_other_publish_failures_are_still_reported(log_monitor, monitor_logs):
     _log_and_drain(log_monitor, "written while the GCS is down")
 
     assert _count_logged(monitor_logs, "Failed to publish log messages") == 1
-    assert not log_monitor.publish_rejected_by_passive_gcs
+    assert not log_monitor._publish_passive_latch.waiting_for_promotion
 
 
 def test_the_feature_flag_makes_the_passive_handling_unreachable(
@@ -345,7 +345,7 @@ def test_the_feature_flag_makes_the_passive_handling_unreachable(
     # Every new branch stays out of the way: generic handling, no latch, no backoff.
     assert _count_logged(monitor_logs, "Failed to publish log messages") == 1
     assert _count_logged(monitor_logs, "GCS is in passive mode") == 0
-    assert not monitor.publish_rejected_by_passive_gcs
+    assert not monitor._publish_passive_latch.waiting_for_promotion
     assert slept == [0.1]
 
 
