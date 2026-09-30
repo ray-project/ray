@@ -184,6 +184,16 @@ class ElasticScalingPolicy(ScalingPolicy):
                 self._latest_insufficient_workers_warning_time = now
             return NoopDecision()
 
+        # The cached reservation can still include a node that just died, and
+        # the worker group start pins against a recomputed one. Confirm the
+        # size against that same fresh view, or the start waits out its full
+        # timeout for workers that were never there.
+        num_workers = self._count_possible_workers(
+            self._get_reserved_resources(recompute=True)
+        )
+        if num_workers < self.scaling_config.min_workers:
+            return NoopDecision()
+
         logger.info(
             f"Detected ready resources for {num_workers} workers "
             "in the cluster. "
@@ -254,8 +264,8 @@ class ElasticScalingPolicy(ScalingPolicy):
     # Methods for interacting with AutoscalingCoordinator
     # ---------------------------------------------------
 
-    def _get_reserved_resources(self) -> ReservedResources:
+    def _get_reserved_resources(self, recompute: bool = False) -> ReservedResources:
         """Get reserved resources from AutoscalingCoordinator.
         Return None if there is an error."""
         assert self._coordinator_client is not None
-        return self._coordinator_client.get_reserved_resources()
+        return self._coordinator_client.get_reserved_resources(recompute=recompute)

@@ -6,6 +6,9 @@ from ray.train._internal.autoscaling_coordinator_client import (
     build_train_resource_request,
 )
 from ray.train.v2._internal.constants import WORKER_GROUP_START_TIMEOUT_S_ENV_VAR
+from ray.train.v2._internal.execution.scaling_policy.elastic import (
+    ElasticScalingPolicy,
+)
 from ray.train.v2._internal.execution.scaling_policy.fixed import FixedScalingPolicy
 
 NODE_ID_KEY = ray._raylet.RAY_NODE_ID_KEY
@@ -46,7 +49,6 @@ def test_reserved_resources_become_one_node_pin_per_worker():
     [
         pytest.param({}, {"CPU": 1}, id="nothing_reserved"),
         pytest.param({"node-a": {"CPU": 1}}, {"CPU": 1}, id="covers_one_of_two"),
-        pytest.param({"node-a": {"CPU": 5}}, {"CPU": 1}, id="covers_more_than_asked"),
         # Nothing to reserve for a zero-resource worker, so there is nothing to
         # pin to either -- and nothing to wait for.
         pytest.param({}, {"CPU": 0}, id="zero_resource_workers"),
@@ -117,6 +119,104 @@ def test_reservation_must_satisfy_the_requested_placement_strategy(
     selectors = policy.get_reserved_bundle_label_selectors(2)
 
     assert (selectors is not None) == is_ready
+
+
+@pytest.mark.parametrize(
+    "placement_strategy,reserved_resources,expected_nodes",
+    [
+        # PACK fills the node with the most reserved slots first.
+        pytest.param(
+            "PACK",
+            {"node-a": {"CPU": 1}, "node-b": {"CPU": 3}, "node-c": {"CPU": 2}},
+            ["node-b", "node-b", "node-b", "node-c"],
+            id="pack_largest_nodes_first",
+        ),
+        pytest.param(
+            "STRICT_PACK",
+            {"node-a": {"CPU": 2}, "node-b": {"CPU": 5}},
+            ["node-b"] * 4,
+            id="strict_pack_picks_a_node_that_fits",
+        ),
+        # SPREAD round-robins so workers land on as many nodes as possible.
+        pytest.param(
+            "SPREAD",
+            {"node-a": {"CPU": 3}, "node-b": {"CPU": 3}},
+            ["node-a", "node-a", "node-b", "node-b"],
+            id="spread_round_robin",
+        ),
+        pytest.param(
+            "STRICT_SPREAD",
+            {f"node-{i}": {"CPU": 2} for i in range(5)},
+            ["node-0", "node-1", "node-2", "node-3"],
+            id="strict_spread_one_per_node",
+        ),
+    ],
+)
+def test_reservation_larger_than_the_worker_group_is_ready(
+    placement_strategy, reserved_resources, expected_nodes, monkeypatch
+):
+    """The elastic policy requests ``max_workers`` bundles, so its reservation can
+    outgrow a smaller ``ResizeDecision``. Pin to a subset of it that respects the
+    placement strategy rather than waiting for an exact match."""
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0")
+    policy = _policy_with_reservation(
+        reserved_resources,
+        num_workers=4,
+        resources_per_worker={"CPU": 1},
+        placement_strategy=placement_strategy,
+    )
+
+    assert policy.get_reserved_bundle_label_selectors(4) == [
+        {NODE_ID_KEY: node} for node in expected_nodes
+    ]
+
+
+@pytest.mark.parametrize(
+    "placement_strategy,reserved_resources",
+    [
+        pytest.param(
+            "STRICT_PACK",
+            {"node-a": {"CPU": 3}, "node-b": {"CPU": 3}},
+            id="strict_pack_no_node_fits",
+        ),
+        pytest.param(
+            "STRICT_SPREAD",
+            {"node-a": {"CPU": 3}, "node-b": {"CPU": 3}, "node-c": {"CPU": 3}},
+            id="strict_spread_too_few_nodes",
+        ),
+    ],
+)
+def test_reservation_larger_than_the_worker_group_must_satisfy_strict_strategies(
+    placement_strategy, reserved_resources, monkeypatch
+):
+    """Surplus slots do not help if no subset of them fits a strict strategy."""
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0")
+    policy = _policy_with_reservation(
+        reserved_resources,
+        num_workers=4,
+        resources_per_worker={"CPU": 1},
+        placement_strategy=placement_strategy,
+    )
+
+    assert policy.get_reserved_bundle_label_selectors(4) is None
+
+
+def test_elastic_resize_pins_when_the_reservation_outgrows_the_decision(monkeypatch):
+    """Regression test: an elastic run decides to resize to 14 workers, then more
+    nodes join and the ``max_workers=32`` reservation grows to 20 slots. The
+    worker group must still start instead of timing out."""
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0")
+    policy = ElasticScalingPolicy(
+        ray.train.ScalingConfig(num_workers=(4, 32), use_gpu=True)
+    )
+    reserved_resources = {f"node-{i}": {"GPU": 1} for i in range(16)}
+    reserved_resources["node-16"] = {"GPU": 4}
+    policy._coordinator_client = _StubCoordinatorClient(reserved_resources)
+
+    selectors = policy.get_reserved_bundle_label_selectors(14)
+
+    assert selectors is not None
+    assert len(selectors) == 14
 
 
 def test_reservation_wait_polls_until_ready(monkeypatch):

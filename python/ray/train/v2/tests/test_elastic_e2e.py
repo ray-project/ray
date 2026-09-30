@@ -1,16 +1,19 @@
+import itertools
 import sys
 import time
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pytest
 
 import ray
 import ray.train
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 @pytest.fixture
@@ -26,9 +29,44 @@ def cluster():
     cluster.shutdown()
 
 
+PROGRESS_TRACKER_NAME = "elastic_e2e_progress_tracker"
+
+
+@ray.remote(num_cpus=0)
+class ProgressTracker:
+    """Lets the test driver observe training progress and decide when it ends.
+
+    The driver waits on the world size rank 0 reports instead of sleeping for
+    fixed intervals, so each cluster change happens in the training state it is
+    meant to exercise, however slow nodes are to start on the test machine.
+    """
+
+    def __init__(self):
+        self._epoch = 0
+        self._world_size = None
+        self._final_epoch = None
+
+    def record(self, epoch: int, world_size: int):
+        self._epoch = epoch
+        self._world_size = world_size
+
+    def world_size(self) -> Optional[int]:
+        return self._world_size
+
+    def final_epoch(self) -> Optional[int]:
+        return self._final_epoch
+
+    def finish(self, num_more_epochs: int) -> int:
+        # Ranks are at most one epoch ahead of rank 0's last record, so any
+        # margin > 1 is an epoch that every rank has yet to finish.
+        self._final_epoch = self._epoch + num_more_epochs
+        return self._final_epoch
+
+
 def train_fn(config: dict):
     train_context = ray.train.get_context()
     rank = train_context.get_world_rank()
+    tracker = ray.get_actor(PROGRESS_TRACKER_NAME)
 
     start_epoch = 1
     checkpoint = ray.train.get_checkpoint()
@@ -42,7 +80,7 @@ def train_fn(config: dict):
         if rank == 0:
             print("Restoring from epoch: ", start_epoch)
 
-    for epoch in range(start_epoch, config.get("num_epochs", 60) + 1):
+    for epoch in itertools.count(start_epoch):
         world_size = train_context.get_world_size()
         if min_world_size is None:
             min_world_size = world_size
@@ -78,6 +116,11 @@ def train_fn(config: dict):
             )
         if rank == 0:
             print("Finished epoch: ", epoch)
+            ray.get(tracker.record.remote(epoch, world_size))
+
+        final_epoch = ray.get(tracker.final_epoch.remote())
+        if final_epoch is not None and epoch >= final_epoch:
+            break
 
 
 def test_elastic_training(monkeypatch, tmp_path, cluster):
@@ -90,21 +133,24 @@ def test_elastic_training(monkeypatch, tmp_path, cluster):
     * Checkpointing + restoration
     * Preemption failure handling
     """
-    unit_time_s = 0.1
-    health_check_interval_s = unit_time_s
-    elastic_resize_monitor_interval_s = unit_time_s * 10
-    num_epochs = 30
+    health_check_interval_s = 0.1
+    elastic_resize_monitor_interval_s = 1
 
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, str(health_check_interval_s))
+
+    # Pin the tracker to the head node, which the test never removes.
+    tracker = ProgressTracker.options(
+        name=PROGRESS_TRACKER_NAME,
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(), soft=False
+        ),
+    ).remote()
 
     @ray.remote(num_cpus=0)
     def run_training():
         trainer = DataParallelTrainer(
             train_fn,
-            train_loop_config={
-                "num_epochs": num_epochs,
-                "health_check_interval_s": health_check_interval_s,
-            },
+            train_loop_config={"health_check_interval_s": health_check_interval_s},
             scaling_config=ray.train.ScalingConfig(
                 num_workers=(4, 32),
                 use_gpu=True,
@@ -119,6 +165,7 @@ def test_elastic_training(monkeypatch, tmp_path, cluster):
         )
         return trainer.fit()
 
+    # Submitted while the head node is the only node, so it runs there.
     run_training_future = run_training.remote()
 
     start = time.time()
@@ -138,8 +185,12 @@ def test_elastic_training(monkeypatch, tmp_path, cluster):
         print("-" * 80)
         print()
 
-    def sleep(num_units):
-        time.sleep(unit_time_s * num_units)
+    def wait_for_world_size(world_size: int):
+        wait_for_condition(
+            lambda: ray.get(tracker.world_size.remote()) == world_size,
+            timeout=60,
+        )
+        print_status(f"Training is running with world size {world_size}.")
 
     def add_nodes(gpus: List[int]) -> List:
         added_nodes = []
@@ -147,8 +198,8 @@ def test_elastic_training(monkeypatch, tmp_path, cluster):
             node = cluster.add_node(num_gpus=num_gpus, wait=False)
             added_nodes.append(node)
 
-        print_status(f"Added {len(gpus)} node(s) with num_gpus: {gpus}")
         cluster.wait_for_nodes()
+        print_status(f"Added {len(gpus)} node(s) with num_gpus: {gpus}")
         return added_nodes
 
     def remove_nodes(nodes: List):
@@ -158,48 +209,38 @@ def test_elastic_training(monkeypatch, tmp_path, cluster):
         cluster.wait_for_nodes()
         print_status(f"Removed nodes: {nodes}")
 
-    # Wait a bit before adding resources.
+    # Elastic startup: nothing can run until the first node joins.
     print_status("Waiting for training to start...")
-    sleep(8)
-
-    # Add a node with 4 GPUs
+    assert ray.get(tracker.world_size.remote()) is None
     ALL_NODES.extend(add_nodes([4]))
+    wait_for_world_size(4)
 
-    # Wait a bit before adding more resources.
-    sleep(8)
-    print("Adding 4 GPU node.")
-    ALL_NODES.extend(add_nodes([4]))
-    sleep(1)
-    ALL_NODES.extend(add_nodes([4]))
-    # Should not upscale here due to the elastic resize monitor interval.
+    # Scale up while running.
+    ALL_NODES.extend(add_nodes([4, 4]))
+    wait_for_world_size(12)
 
-    # Should upscale to 12 during this sleep.
-    sleep(20)
-
-    # Kill a node.
+    # Scale down after a node failure.
     remove_nodes([ALL_NODES.pop(0)])
-    sleep(12)
+    wait_for_world_size(8)
 
-    # Kill all worker nodes.
+    # Lose every worker node, then recover on many smaller nodes.
     remove_nodes(ALL_NODES)
-    ALL_NODES = []
+    ALL_NODES = add_nodes([2] * 8)
+    wait_for_world_size(16)
 
-    sleep(8)
-    ALL_NODES.extend(add_nodes(gpus=[1] * 16))
+    # Scale up to max_workers. The 4 extra GPUs shouldn't be used.
+    ALL_NODES.extend(add_nodes([4] * 4 + [2] * 2))
+    wait_for_world_size(32)
 
-    sleep(12)
-    # 4 extra GPUs shouldn't be used.
-    ALL_NODES.extend(add_nodes(gpus=[4] * 4 + [1] * 4))
-
+    final_epoch = ray.get(tracker.finish.remote(num_more_epochs=3))
     result: ray.train.Result = ray.get(run_training_future)
 
     print_status(f"Training finished with result: {result}")
     assert not result.error
-    assert result.metrics["min_world_size"] >= 4
-    assert result.metrics["max_world_size"] <= 32
-    assert result.metrics["max_world_size"] >= result.metrics["min_world_size"]
+    assert result.metrics["min_world_size"] == 4
+    assert result.metrics["max_world_size"] == 32
     assert result.checkpoint
-    assert Path(result.checkpoint.path).name == f"checkpoint-epoch={num_epochs}"
+    assert Path(result.checkpoint.path).name == f"checkpoint-epoch={final_epoch}"
 
 
 if __name__ == "__main__":

@@ -31,6 +31,62 @@ from ray.train.v2.api.config import ScalingConfig
 logger = logging.getLogger(__name__)
 
 
+def _select_reserved_bundles(
+    label_selectors: List[LabelSelector],
+    num_workers: int,
+    placement_strategy: str,
+) -> Optional[List[LabelSelector]]:
+    """Pick ``num_workers`` reserved slots laid out per ``placement_strategy``.
+
+    Args:
+        label_selectors: One node pin per reserved worker slot, as returned by
+            ``_reserved_resources_to_bundle_label_selectors``. May cover more
+            slots than ``num_workers``.
+        num_workers: The number of workers to pin.
+        placement_strategy: The placement group strategy the pins must satisfy.
+
+    Returns:
+        ``num_workers`` node pins grouped by node, or ``None`` if the reserved
+        slots cannot satisfy ``placement_strategy``.
+    """
+    if len(label_selectors) < num_workers:
+        return None
+
+    slots_per_node: Dict[frozenset, List[LabelSelector]] = {}
+    for selector in label_selectors:
+        slots_per_node.setdefault(frozenset(selector.items()), []).append(selector)
+    nodes = list(slots_per_node)
+    num_to_take = dict.fromkeys(nodes, 0)
+
+    if placement_strategy == "STRICT_PACK":
+        node = next((n for n in nodes if len(slots_per_node[n]) >= num_workers), None)
+        if node is None:
+            return None
+        num_to_take[node] = num_workers
+    elif placement_strategy in ("STRICT_SPREAD", "SPREAD"):
+        if placement_strategy == "STRICT_SPREAD" and len(nodes) < num_workers:
+            return None
+        # Round-robin over nodes to use as many distinct nodes as possible.
+        remaining = num_workers
+        while remaining:
+            for node in nodes:
+                if remaining and num_to_take[node] < len(slots_per_node[node]):
+                    num_to_take[node] += 1
+                    remaining -= 1
+    else:
+        # PACK: fill the nodes with the most reserved slots first.
+        remaining = num_workers
+        for node in sorted(nodes, key=lambda n: len(slots_per_node[n]), reverse=True):
+            num_to_take[node] = min(remaining, len(slots_per_node[node]))
+            remaining -= num_to_take[node]
+
+    return [
+        selector
+        for node in nodes
+        for selector in slots_per_node[node][: num_to_take[node]]
+    ]
+
+
 @dataclass
 class ScalingDecision:
     pass
@@ -191,43 +247,31 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
             trainer_resources=self.scaling_config._trainer_resources_not_none,
         )
-        if len(label_selectors) != num_workers:
+        # The reservation can cover more workers than this group needs: the
+        # elastic policy requests ``max_workers`` bundles, so the reservation
+        # keeps growing as nodes join after a ``ResizeDecision`` was made.
+        # Pin to a subset of it rather than waiting for an exact match that
+        # may never come.
+        #
+        # The pins also have to satisfy the requested placement, or they
+        # would quietly violate the strategy the user asked for -- e.g.
+        # STRICT_SPREAD workers all landing on one node. The coordinator
+        # honors both strategies, so a mismatch means its view of the cluster
+        # moved; wait for it to settle rather than pin to a layout that
+        # contradicts the placement group we are about to create.
+        placement_strategy = self.scaling_config.placement_strategy
+        selected = _select_reserved_bundles(
+            label_selectors, num_workers, placement_strategy
+        )
+        if selected is None:
             logger.debug(
-                "Reserved capacity covers %s workers but %s are required; "
-                "not ready to pin the worker group yet.",
+                "Reserved capacity covers %s workers but %s are required "
+                "with %s; not ready to pin the worker group yet.",
                 len(label_selectors),
                 num_workers,
-            )
-            return None
-
-        # The reservation has to actually satisfy the requested placement, or
-        # pinning to it would quietly violate the strategy the user asked for
-        # -- e.g. STRICT_SPREAD workers all landing on one node. The
-        # coordinator honors both strategies, so a mismatch means its view of
-        # the cluster moved; wait for it to settle rather than pin to a layout
-        # that contradicts the placement group we are about to create.
-        placement_strategy = self.scaling_config.placement_strategy
-        num_distinct_nodes = len(
-            {frozenset(selector.items()) for selector in label_selectors}
-        )
-        expected_distinct_nodes = {
-            "STRICT_PACK": 1,
-            "STRICT_SPREAD": num_workers,
-        }.get(placement_strategy)
-        if (
-            expected_distinct_nodes is not None
-            and num_distinct_nodes != expected_distinct_nodes
-        ):
-            logger.debug(
-                "Reserved capacity spans %s nodes but %s requires %s; "
-                "not ready to pin the worker group yet.",
-                num_distinct_nodes,
                 placement_strategy,
-                expected_distinct_nodes,
             )
-            return None
-
-        return label_selectors
+        return selected
 
     @property
     def _autoscaling_coordinator(self):

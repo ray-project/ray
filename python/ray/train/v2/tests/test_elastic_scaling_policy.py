@@ -139,6 +139,38 @@ def test_non_running_worker_group_decision():
     assert decision.num_workers == max_workers
 
 
+@pytest.mark.parametrize(
+    "num_fresh_nodes,expected_num_workers",
+    [
+        pytest.param(8, 8, id="node_died"),
+        pytest.param(3, None, id="below_min_workers"),
+    ],
+)
+def test_non_running_decision_uses_a_fresh_reservation(
+    num_fresh_nodes, expected_num_workers
+):
+    """A cached reservation can still include a node that just died. The worker
+    group start pins against a recomputed reservation, so size the group from
+    that same view or the start waits out its timeout for missing workers."""
+    resources_per_worker = {"GPU": 1}
+    policy = ElasticScalingPolicy(ScalingConfig(num_workers=(4, 32), use_gpu=True))
+    _start_scaling_policy(policy)
+    mock_coordinator = policy._autoscaling_coordinator
+    stale = _make_reserved(resources_per_worker, 12)
+    fresh = _make_reserved(resources_per_worker, num_fresh_nodes)
+    mock_coordinator.get_reserved_resources.remote.side_effect = (
+        lambda _, recompute=False: fresh if recompute else stale
+    )
+
+    decision = policy.make_decision_for_non_running_worker_group()
+
+    if expected_num_workers is None:
+        assert isinstance(decision, NoopDecision)
+    else:
+        assert isinstance(decision, ResizeDecision)
+        assert decision.num_workers == expected_num_workers
+
+
 def test_before_controller_abort():
     """Test that before_controller_abort sends a cancel request to the AutoscalingCoordinator."""
     resources_per_worker = {"CPU": 4, "GPU": 1}
