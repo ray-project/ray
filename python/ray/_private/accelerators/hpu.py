@@ -86,15 +86,19 @@ class HPUAcceleratorManager(AcceleratorManager):
     def get_current_node_accelerator_type() -> Optional[str]:
         """Attempt to detect the HPU family type.
         Returns:
-            The device name (GAUDI, GAUDI2) if detected else None.
+            Intel-GAUDI if available else None.
         """
-        if HPUAcceleratorManager.is_initialized():
+        # Call is_available() instead of get_device_name() to prevent device
+        # reservation - this also means returning the generic GAUDI instead
+        # of specific GAUDI2 or GAUDI3
+        if HPU_PACKAGE_AVAILABLE:
             import habana_frameworks.torch.hpu as torch_hpu
 
-            return f"Intel-{torch_hpu.get_device_name()}"
-        else:
-            logging.info("HPU type cannot be detected")
-            return None
+            if torch_hpu.is_available():
+                return "Intel-GAUDI"
+
+        logging.info("HPU type cannot be detected")
+        return None
 
     @staticmethod
     def validate_resource_request_quantity(
