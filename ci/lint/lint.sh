@@ -152,4 +152,8 @@ doc_no_new_rst() {
   python doc/test_no_new_rst.py
 }
 
+doc_literal_paths() {
+  python doc/test_literal_paths.py
+}
+
 "$@"

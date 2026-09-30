@@ -98,7 +98,7 @@
 /python/ray/serve/llm/ @ray-project/ray-llm
 /doc/source/llm/ @ray-project/ray-llm @ray-project/ray-docs @ray-project/ray-docs-reviewers
 /doc/source/serve/llm/ @ray-project/ray-llm @ray-project/ray-docs @ray-project/ray-docs-reviewers
-/doc/source/data/working-with-llms.rst @ray-project/ray-llm @ray-project/ray-docs @ray-project/ray-docs-reviewers
+/doc/source/data/working-with-llms.md @ray-project/ray-llm @ray-project/ray-docs @ray-project/ray-docs-reviewers
 /doc/source/data/doc_code/working-with-llms/ @ray-project/ray-llm @ray-project/ray-docs @ray-project/ray-docs-reviewers
 
 # LLM dependencies
