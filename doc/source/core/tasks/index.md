@@ -12,7 +12,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate worker
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/tasks.py
+```{literalinclude} ../doc_code/tasks.py
 :language: python
 :start-after: __tasks_start__
 :end-before: __tasks_end__
@@ -117,7 +117,7 @@ You can specify resource requirements in tasks (see {ref}`resource-requirements`
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/tasks.py
+```{literalinclude} ../doc_code/tasks.py
 :language: python
 :start-after: __resource_start__
 :end-before: __resource_end__
@@ -143,11 +143,11 @@ ray::Task(MyFunction).SetResource("CPU", 4.0).SetResource("GPU", 2.0).Remote();
 
 ## Passing object refs to Ray tasks
 
-In addition to values, {doc}`Object refs <objects>` can also be passed into remote functions. When the task gets executed, inside the function body **the argument will be the underlying value**. For example, take this function:
+In addition to values, {doc}`Object refs <../objects/index>` can also be passed into remote functions. When the task gets executed, inside the function body **the argument will be the underlying value**. For example, take this function:
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/tasks.py
+```{literalinclude} ../doc_code/tasks.py
 :language: python
 :start-after: __pass_by_ref_start__
 :end-before: __pass_by_ref_end__
@@ -201,7 +201,7 @@ Calling **ray.get** on Ray task results will block until the task finished execu
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/tasks.py
+```{literalinclude} ../doc_code/tasks.py
 :language: python
 :start-after: __wait_start__
 :end-before: __wait_end__
@@ -234,7 +234,7 @@ By default, a Ray task only returns a single Object Ref. However, you can config
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/tasks.py
+```{literalinclude} ../doc_code/tasks.py
 :language: python
 :start-after: __multiple_returns_start__
 :end-before: __multiple_returns_end__
@@ -246,7 +246,7 @@ For tasks that return multiple objects, Ray also supports remote generators that
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/tasks.py
+```{literalinclude} ../doc_code/tasks.py
 :language: python
 :start-after: __generator_start__
 :end-before: __generator_end__
@@ -262,7 +262,7 @@ Ray tasks can be canceled by calling {func}`ray.cancel() <ray.cancel>` on the re
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/tasks.py
+```{literalinclude} ../doc_code/tasks.py
 :language: python
 :start-after: __cancel_start__
 :end-before: __cancel_end__
@@ -295,5 +295,5 @@ You can change this behavior by setting `enable_task_events` options in {func}`r
 ```{toctree}
 :maxdepth: 1
 
-tasks/nested-tasks
+nested-tasks
 ```

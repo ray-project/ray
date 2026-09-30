@@ -15,15 +15,15 @@ If you’re brand new to Ray, we recommend starting with the {ref}`walkthrough <
 ```{toctree}
 :maxdepth: 4
 
-tasks
-actors
-objects
+tasks/index
+actors/index
+objects/index
 handling-dependencies
 scheduling/index
-fault-tolerance
+fault-tolerance/index
 patterns/index
-direct-transport/direct-transport
-compiled-graph/ray-compiled-graph
+direct-transport/index
+compiled-graph/index
 resource-isolation-with-cgroupv2
 sandboxes
 advanced-topics
