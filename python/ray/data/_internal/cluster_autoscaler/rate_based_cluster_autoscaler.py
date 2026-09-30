@@ -4,7 +4,10 @@ import time
 from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from .base_autoscaling_coordinator import AutoscalingCoordinator
+from .base_autoscaling_coordinator import (
+    STANDARD_RESOURCE_TYPES,
+    AutoscalingCoordinator,
+)
 from .base_cluster_autoscaler import ClusterAutoscaler
 from .default_autoscaling_coordinator import DefaultAutoscalingCoordinator
 from .resource_utilization_gauge import (
@@ -23,6 +26,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    ShuffleMapOp,
+)
 from ray.data._internal.util import get_max_task_capacity
 
 if TYPE_CHECKING:
@@ -31,7 +37,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SHUFFLE_OP_TYPES = (AllToAllOperator, HashShufflingOperatorBase)
+SHUFFLE_OP_TYPES = (AllToAllOperator, HashShufflingOperatorBase, ShuffleMapOp)
+# Object-store shuffles that hold every input until they finish; their upstream
+# needs object store memory, not more CPUs.
+_OBJECT_STORE_ALL_TO_ALL_TYPES = (AllToAllOperator, ShuffleMapOp)
 
 
 def _to_resource_bundle(resources: ExecutionResources) -> Dict[str, float]:
@@ -501,7 +510,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         2. There is at least one incomplete all-to-all op in the pipeline.
         """
         has_incomplete_all_to_all = any(
-            isinstance(op, AllToAllOperator) and not op.has_completed()
+            isinstance(op, _OBJECT_STORE_ALL_TO_ALL_TYPES) and not op.has_completed()
             for op in self._shuffle_ops
         )
         if not has_incomplete_all_to_all:
@@ -582,7 +591,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         self._autoscaling_coordinator.request_resources(
             resources=[r.copy() for r in resource_request],
             expire_after_s=self._autoscaling_request_expire_time_s,
-            request_remaining=True,
+            request_remaining=STANDARD_RESOURCE_TYPES,
         )
         self._last_request_time = time.monotonic()
 
@@ -601,7 +610,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
     def get_total_resources(self) -> ExecutionResources:
         resources = self._autoscaling_coordinator.get_reserved_resources()
         total = ExecutionResources.zero()
-        for res in resources:
+        for res in resources.values():
             total = total.add(ExecutionResources.from_resource_dict(res))
         return total
 

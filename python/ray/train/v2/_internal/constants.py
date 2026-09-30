@@ -12,6 +12,8 @@ _DEPRECATED = "DEPRECATED"
 VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 # The name of the file that is used to store the checkpoint manager snapshot.
 CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
+# The name of the directory that nccl ras hang detector uploads its diagnostics to.
+HANG_DETECTOR_DIRNAME = "hang_detector"
 
 AWS_RETRYABLE_TOKENS = (
     "AWS Error SLOW_DOWN",

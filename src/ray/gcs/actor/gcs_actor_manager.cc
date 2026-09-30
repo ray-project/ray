@@ -135,6 +135,18 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(
   return death_cause;
 }
 
+const ray::rpc::ActorDeathCause GenActorNotLoadableAtInitCause(
+    const ray::rpc::ActorTableData *actor_data) {
+  ray::rpc::ActorDeathCause death_cause;
+  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+  actor_died_error_ctx->set_reason(ray::rpc::ActorDiedErrorContext::UNSPECIFIED);
+  AddActorInfo(actor_data, actor_died_error_ctx);
+  actor_died_error_ctx->set_error_message(
+      "The actor is dead because GCS could not load it during initialization (for "
+      "example, its owner is dead) and is removing its task spec.");
+  return death_cause;
+}
+
 // Returns true if an actor should be loaded to registered_actors_.
 // `false` Cases:
 // 0. state is DEAD, and is not restartable
@@ -155,7 +167,16 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
     return false;
   }
 
-  const auto &actor_task_spec = ray::map_find_or_die(actor_task_specs, actor_id);
+  // A loadable actor must have a task spec to be reconstructed. A prior
+  // `Initialize` can de-select an actor (for example, its owner is dead) and
+  // BatchDelete its task spec; if that row was left non-DEAD, it reappears here
+  // as a non-DEAD actor with no spec. Return false so `Initialize` isolates it
+  // instead of aborting the whole GCS with a fatal lookup.
+  const auto actor_task_spec_it = actor_task_specs.find(actor_id);
+  if (actor_task_spec_it == actor_task_specs.end()) {
+    return false;
+  }
+  const auto &actor_task_spec = actor_task_spec_it->second;
   ray::ActorID root_detached_actor_id =
       ray::TaskSpecification(actor_task_spec).RootDetachedActorId();
   if (root_detached_actor_id.IsNil()) {
@@ -1819,13 +1840,56 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
       }
     } else {
-      dead_actors.push_back(actor_id);
-      // Populate the observability cache from persisted actors. Bump the state counter.
-      destroyed_actor_observability_data_.emplace(actor_id, actor_table_data);
+      // This actor should not be loaded (for example, its owning job or root
+      // detached actor is dead). If it is not already permanently dead, mark it
+      // DEAD and persist that row, then delete its task spec inside the Put
+      // completion callback. Ordering the spec delete after the DEAD row is
+      // durable means a crash in between can only leave a DEAD row (survivable),
+      // never a non-DEAD row without a task spec, which is the state that aborts
+      // GCS in map_find_or_die on the next restart. Publishing the death also
+      // unblocks any client still waiting on it (its owner may still be alive
+      // after a GCS failover). Actors that are already permanently dead keep the
+      // existing behavior: their (expected absent) spec is cleaned up by the
+      // batch delete below.
+      rpc::ActorTableData observability_data = actor_table_data;
+      const bool actor_is_dead_and_not_restartable =
+          actor_table_data.state() == ray::rpc::ActorTableData::DEAD &&
+          !IsActorRestartable(actor_table_data);
+      if (!actor_is_dead_and_not_restartable) {
+        RAY_LOG(WARNING).WithField(actor_id)
+            << "Actor is not loadable during GCS initialization (for example, its "
+               "owner is dead); marking it dead and removing its task spec so the "
+               "actor table stays consistent.";
+        observability_data.set_state(rpc::ActorTableData::DEAD);
+        const auto time = clock_.NowUnixMillis();
+        observability_data.set_end_time(time);
+        observability_data.set_timestamp(time);
+        observability_data.mutable_death_cause()->CopyFrom(
+            GenActorNotLoadableAtInitCause(&actor_table_data));
+        gcs_table_storage_->ActorTable().Put(
+            actor_id,
+            observability_data,
+            {[this, actor_id = actor_id, observability_data = observability_data](
+                 Status status) {
+               gcs_publisher_->PublishActor(
+                   actor_id, GenActorDataOnlyWithStates(observability_data));
+               // Delete the task spec only after the DEAD row is persisted, so a
+               // crash in between cannot resurrect the missing-spec landmine.
+               gcs_table_storage_->ActorTaskSpecTable().Delete(
+                   actor_id, {[](auto) {}, io_context_});
+             },
+             io_context_});
+      } else {
+        // Already permanently dead; its spec is expected absent. Clean up any
+        // residual spec with the other permanently-dead actors below.
+        dead_actors.push_back(actor_id);
+      }
+      // Populate the observability cache and bump the state counter.
+      destroyed_actor_observability_data_.emplace(actor_id, observability_data);
       actor_state_counter_->Increment(
-          {actor_table_data.state(), actor_table_data.class_name()});
+          {observability_data.state(), observability_data.class_name()});
       sorted_destroyed_actor_observability_list_.emplace_back(
-          actor_id, static_cast<int64_t>(actor_table_data.timestamp()));
+          actor_id, static_cast<int64_t>(observability_data.timestamp()));
     }
   }
   if (!dead_actors.empty()) {
