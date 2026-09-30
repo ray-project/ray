@@ -88,7 +88,7 @@ class RedisAsyncContext {
   /// The object's own address is preserved, which matters because in-flight
   /// `RedisRequestContext`s hold a raw pointer to it. Recreating the
   /// `RedisAsyncContext` instead (as `RedisContext::Connect` does) would leave
-  /// those pointers dangling, which is what blocked an in-place reconnect.
+  /// those pointers dangling.
   ///
   /// The caller must have finished every mutation of the raw context (its
   /// `data` pointer, connect/disconnect callbacks, queued commands) before
@@ -99,11 +99,6 @@ class RedisAsyncContext {
   /// \param redis_async_context A raw context to adopt, typically with its
   /// non-blocking connect still in progress.
   void Reset(std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
-
-  /// Whether a live raw context is currently attached. Test-only: the answer
-  /// can be stale as soon as the lock is dropped, so production code should
-  /// just issue the command and handle Status::Disconnected.
-  bool IsConnected();
 
   /// Set a handler invoked when hiredis reports the connection was lost.
   ///

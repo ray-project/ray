@@ -603,9 +603,8 @@ void RedisAsyncContextConnectCallback(const redisAsyncContext *context, int stat
   async_context->NotifyDisconnected();
 }
 
-void SetConnectionCallbacks(RedisAsyncContext *redis_async_context) {
-  redisAsyncContext *raw_redis_async_context =
-      redis_async_context->GetRawRedisAsyncContext();
+void SetConnectionCallbacks(redisAsyncContext *raw_redis_async_context,
+                            RedisAsyncContext *redis_async_context) {
   raw_redis_async_context->data = redis_async_context;
   redisAsyncSetConnectCallback(raw_redis_async_context, RedisAsyncContextConnectCallback);
   redisAsyncSetDisconnectCallback(raw_redis_async_context,
@@ -1023,7 +1022,8 @@ Status RedisContext::Connect(const std::string &address,
       new RedisAsyncContext(io_service_, std::move(async_context)));
   redis_async_context_->SetDisconnectHandler([this] { OnAsyncDisconnected(); });
   redis_async_context_->SetConnectHandler([this] { OnAsyncConnected(); });
-  SetConnectionCallbacks(redis_async_context_.get());
+  SetConnectionCallbacks(redis_async_context_->GetRawRedisAsyncContext(),
+                         redis_async_context_.get());
 
   // handle validation and primary connection for different types of redis
   auto is_sentinel = IsRedisSentinel();
@@ -1220,10 +1220,7 @@ Status RedisContext::ConnectToResolvedAddress() {
   // and hiredis is not thread-safe. Nothing below can fail, so the callbacks
   // never outlive a context we abandon. Registering the connect callback asks
   // hiredis to arm a write before our event hooks exist; Reset() re-arms it.
-  async_context->data = redis_async_context_.get();
-  redisAsyncSetConnectCallback(async_context.get(), RedisAsyncContextConnectCallback);
-  redisAsyncSetDisconnectCallback(async_context.get(),
-                                  RedisAsyncContextDisconnectCallback);
+  SetConnectionCallbacks(async_context.get(), redis_async_context_.get());
 
   // Rebind rather than recreate: in-flight RedisRequestContexts hold a raw
   // pointer to this RedisAsyncContext.
@@ -1308,11 +1305,6 @@ void RedisContext::ScheduleReconnectRetry() {
 
 void RedisContext::AttemptReconnect() {
   if (!reconnecting_) {
-    return;
-  }
-  if (redis_async_context_ == nullptr) {
-    // Disconnect() ran concurrently; we are shutting down.
-    reconnecting_ = false;
     return;
   }
   if (reconnect_pending_) {

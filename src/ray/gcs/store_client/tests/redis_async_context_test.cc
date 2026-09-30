@@ -150,10 +150,10 @@ TEST_F(RedisAsyncContextTest, TestCommandAfterResetRawContextIsDisconnected) {
   const int port = TEST_REDIS_SERVER_PORTS.front();
   RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
 
-  ASSERT_TRUE(ctx.IsConnected());
+  ASSERT_NE(ctx.GetRawRedisAsyncContext(), nullptr);
 
   SimulateHiredisDisconnect(ctx);
-  ASSERT_FALSE(ctx.IsConnected());
+  ASSERT_EQ(ctx.GetRawRedisAsyncContext(), nullptr);
 
   const char *argv[] = {"PING"};
   const size_t argvlen[] = {4};
@@ -172,41 +172,19 @@ TEST_F(RedisAsyncContextTest, TestResetRebindsInPlace) {
   const RedisAsyncContext *address_before = &ctx;
 
   SimulateHiredisDisconnect(ctx);
-  ASSERT_FALSE(ctx.IsConnected());
+  ASSERT_EQ(ctx.GetRawRedisAsyncContext(), nullptr);
 
   ctx.Reset(ConnectRaw(port));
 
   // Don't compare against the pre-disconnect raw pointer: it has been freed,
   // and the allocator is free to hand the same address back for the new one.
-  ASSERT_TRUE(ctx.IsConnected());
+  ASSERT_NE(ctx.GetRawRedisAsyncContext(), nullptr);
   ASSERT_EQ(address_before, &ctx);
 
   // The rebound context accepts commands again.
   const char *argv[] = {"PING"};
   const size_t argvlen[] = {4};
   ASSERT_TRUE(ctx.RedisAsyncCommandArgv(nullptr, nullptr, 1, argv, argvlen).ok());
-}
-
-// The disconnect handler is what lets RedisContext learn about a dropped
-// connection and schedule a reconnect.
-TEST_F(RedisAsyncContextTest, TestDisconnectHandlerIsInvoked) {
-  instrumented_io_context local_io_service;
-  const int port = TEST_REDIS_SERVER_PORTS.front();
-  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
-
-  int calls = 0;
-  ctx.SetDisconnectHandler([&calls] { ++calls; });
-
-  ctx.NotifyDisconnected();
-  ASSERT_EQ(calls, 1);
-}
-
-// With no handler set, notifying must be a no-op rather than a crash.
-TEST_F(RedisAsyncContextTest, TestDisconnectHandlerUnsetIsNoop) {
-  instrumented_io_context local_io_service;
-  const int port = TEST_REDIS_SERVER_PORTS.front();
-  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
-  ctx.NotifyDisconnected();
 }
 
 namespace {

@@ -417,9 +417,8 @@ class RedisContext {
   /// Sentinel letting a posted/delayed reconnect callback detect that this
   /// RedisContext was destroyed before the callback ran.
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
-  /// Resolves the address asynchronously on reconnect. Declared after alive_;
-  /// its destruction cancels a pending resolve, whose handler then sees the
-  /// already-expired alive_ and returns.
+  /// Resolves the address asynchronously on reconnect. Disconnect() cancels a
+  /// pending resolve; its handler then returns without touching this object.
   boost::asio::ip::tcp::resolver resolver_;
 };
 

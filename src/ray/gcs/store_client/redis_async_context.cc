@@ -161,11 +161,6 @@ absl::Time RedisAsyncContext::OutageDeadline(absl::Time now, absl::Duration grac
 
 void RedisAsyncContext::ClearOutage() { outage_deadline_ns_.store(kNoOutage); }
 
-bool RedisAsyncContext::IsConnected() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return redis_async_context_ != nullptr;
-}
-
 void RedisAsyncContext::SetDisconnectHandler(std::function<void()> handler) {
   disconnect_handler_ = std::move(handler);
 }
