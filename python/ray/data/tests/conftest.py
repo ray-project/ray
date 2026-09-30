@@ -27,7 +27,12 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import (  # noqa: F401
+    _isolate_token_auth_state,
+    _ray_start,
+    _restore_token_auth_env,
+    _token_auth_env_baseline,
+)
 from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
 
