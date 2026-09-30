@@ -305,8 +305,9 @@ class RDTManager:
     ) -> Optional["TensorTransportMetadata"]:
         with self._tensor_transport_meta_cv:
             if self._tensor_transport_meta_cv.wait_for(
-                lambda: self._managed_rdt_metadata[obj_id].tensor_transport_meta
-                is not None,
+                lambda: (
+                    self._managed_rdt_metadata[obj_id].tensor_transport_meta is not None
+                ),
                 timeout=timeout,
             ):
                 return self._managed_rdt_metadata[obj_id].tensor_transport_meta
@@ -511,12 +512,8 @@ class RDTManager:
             self.free_object_primary_copy(obj_id)
         if dst_actors:
             for dst_actor in dst_actors:
-                # Trigger the transfer in a background thread so the C++ callback returns immediately
-                threading.Thread(
-                    target=self.trigger_out_of_band_tensor_transfer,
-                    args=(dst_actor, obj_id),
-                    daemon=True,
-                ).start()
+                # Trigger the transfer now that the metadata is available.
+                self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
     def set_target_buffers_for_ref(self, ref: ObjectRef, target_buffers: List[Any]):
         with self._lock:
@@ -735,11 +732,7 @@ class RDTManager:
                     if tensor_transport_meta is None:
                         self._queued_transfers[obj_id].append(dst_actor)
                 if tensor_transport_meta is not None:
-                    threading.Thread(
-                        target=self.trigger_out_of_band_tensor_transfer,
-                        args=(dst_actor, obj_id),
-                        daemon=True,
-                    ).start()
+                    self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
     def trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", obj_id: str
@@ -819,78 +812,57 @@ class RDTManager:
                 src_actor != RDTSource.DRIVER
                 or tensor_transport_manager.__class__.is_one_sided()
             )
-
-        # Call get_communicator_metadata outside self._lock to avoid deadlocks
-        if tensor_transport_meta is None:
-            tensor_transport_meta = self.wait_for_tensor_transport_metadata(
-                obj_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+            communicator_meta = tensor_transport_manager.get_communicator_metadata(
+                None if src_actor == RDTSource.DRIVER else src_actor,
+                dst_actor,
+                rdt_meta.tensor_transport_backend,
             )
-            if tensor_transport_meta is None:
-                raise TimeoutError(
-                    f"Timed out after {ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS}s waiting for "
-                    f"tensor transport metadata for object {obj_id}"
+
+            send_ref = None
+            if not tensor_transport_manager.__class__.is_one_sided():
+                # Send tensors stored in the `src_actor`'s GPU object store to the
+                # destination rank `dst_rank`.
+                # NOTE: We put this task on the background thread to avoid tasks
+                # executing on the main thread blocking the data transfer.
+                send_ref = src_actor.__ray_call__.options(
+                    concurrency_group="_ray_system"
+                ).remote(
+                    __ray_send__,
+                    obj_id,
+                    tensor_transport_meta,
+                    communicator_meta,
+                    rdt_meta.tensor_transport_backend,
                 )
 
-        communicator_meta = tensor_transport_manager.get_communicator_metadata(
-            None if src_actor == RDTSource.DRIVER else src_actor,
-            dst_actor,
-            rdt_meta.tensor_transport_backend,
-            tensor_transport_meta=tensor_transport_meta,
-            obj_id=obj_id,
-        )
-
-        send_ref = None
-        if not tensor_transport_manager.__class__.is_one_sided():
-            # Send tensors stored in the `src_actor`'s GPU object store to the
-            # destination rank `dst_rank`.
-            # NOTE: We put this task on the background thread to avoid tasks
-            # executing on the main thread blocking the data transfer.
-            send_ref = src_actor.__ray_call__.options(
+            # Receive tensors from the source rank and store them in the
+            # `dst_actor`'s GPU object store.
+            # NOTE: Putting this task on the background thread is technically only
+            # needed for the sender task, but we put the receiver task on the same
+            # background thread to ensure that all communication operations are
+            # executed in a global order.
+            recv_ref = dst_actor.__ray_call__.options(
                 concurrency_group="_ray_system"
             ).remote(
-                __ray_send__,
+                __ray_recv__,
                 obj_id,
                 tensor_transport_meta,
                 communicator_meta,
                 rdt_meta.tensor_transport_backend,
             )
 
-        if send_ref is not None and rdt_meta.tensor_transport_backend == "TPU_SYNC":
-            # For TPU_SYNC (push-based TCP streaming), wait for the send (push) to complete
-            # before submitting __ray_recv__, so that all tensor bytes are in the receiver's
-            # host staging memory before __ray_recv__ executes ws.h2d().
-            ray.get(send_ref)
-
-        # Receive tensors from the source rank and store them in the
-        # `dst_actor`'s GPU object store.
-        # NOTE: Putting this task on the background thread is technically only
-        # needed for the sender task, but we put the receiver task on the same
-        # background thread to ensure that all communication operations are
-        # executed in a global order.
-        recv_ref = dst_actor.__ray_call__.options(
-            concurrency_group="_ray_system"
-        ).remote(
-            __ray_recv__,
-            obj_id,
-            tensor_transport_meta,
-            communicator_meta,
-            rdt_meta.tensor_transport_backend,
-        )
-
-        with self._lock:
-            self._unmonitored_transfers.put(
-                TransferMetadata(
-                    src_actor=src_actor,
-                    dst_actor=dst_actor,
-                    send_ref=send_ref,
-                    recv_ref=recv_ref,
-                    communicator_meta=communicator_meta,
-                    backend=rdt_meta.tensor_transport_backend,
-                    obj_id=obj_id,
-                    timeout=time.time() + ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS,
-                )
+        self._unmonitored_transfers.put(
+            TransferMetadata(
+                src_actor=src_actor,
+                dst_actor=dst_actor,
+                send_ref=send_ref,
+                recv_ref=recv_ref,
+                communicator_meta=communicator_meta,
+                backend=rdt_meta.tensor_transport_backend,
+                obj_id=obj_id,
+                timeout=time.time() + ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS,
             )
-            self.start_monitor_thread_if_needed()
+        )
+        self.start_monitor_thread_if_needed()
 
     def get_rdt_objects(
         self,
@@ -988,9 +960,9 @@ class RDTManager:
         for object_id in object_ids:
             if object_id in result:
                 continue
-            assert self.is_managed_object(
-                object_id
-            ), f"No metadata found for {object_id}"
+            assert self.is_managed_object(object_id), (
+                f"No metadata found for {object_id}"
+            )
 
             fetch_requests[object_id] = self._trigger_fetch(object_id, use_object_store)
 

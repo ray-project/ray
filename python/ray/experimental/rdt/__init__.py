@@ -19,6 +19,7 @@ from ray.experimental.rdt.util import (
 
 from ray.experimental.rdt.tpu_sync_tensor_transport import (
     TpuSyncCommunicatorMetadata,
+    TpuSyncFetchRequest,
     TpuSyncTensorTransport,
     TpuSyncTransportMetadata,
 )
@@ -39,4 +40,5 @@ __all__ = [
     "TpuSyncTensorTransport",
     "TpuSyncTransportMetadata",
     "TpuSyncCommunicatorMetadata",
+    "TpuSyncFetchRequest",
 ]
