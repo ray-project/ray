@@ -1473,10 +1473,17 @@ def test_dataset_stats_sort(ray_start_regular_shared):
     mds = ds.materialize()
 
     stats_summary = mds.get_stats_summary()
-    assert_operator_count(stats_summary, expected_count=2)
+    # Shuffle v2 plans sort as three operators: sample -> map -> reduce. The
+    # sampling op forwards blocks unchanged and reports no block stats.
+    find_stats_summary_in_parents(stats_summary, "SortSample")
+    for name in ("SortShuffleMap", "SortShuffleReduce"):
+        summary = find_stats_summary_in_parents(stats_summary, name)
+        assert_operator_count(summary, expected_count=1)
+        get_operator(summary, name_pattern=name)
 
-    get_operator(stats_summary, name_pattern="SortMap")
-    get_operator(stats_summary, name_pattern="SortReduce")
+    reduce_op = get_operator(stats_summary, name_pattern="SortShuffleReduce")
+    assert_basic_operator_metrics(reduce_op)
+    assert reduce_op.output_num_rows.sum == 1000
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):

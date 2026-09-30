@@ -1,0 +1,18 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#capitalize-ray-components-and-product-names'
+level: warning
+# Case-sensitive, unlike Terms.yml. Package and module names such as
+# `huggingface_hub` sit in inline code, which Vale skips, and a case-sensitive
+# match keeps lowercase identifiers that leak into prose from matching. The
+# literal has no other sense, so the swap is safe to apply by hand from Vale's
+# output. It lives outside Terms.yml because that file matches case-insensitively,
+# and the docs team's Layer 0 swap script reads only Terms.yml files, so it doesn't
+# auto-apply this swap.
+#
+# `vocab: false` so an accept-list entry can't silently shadow a swap. See the note
+# in .vale/styles/KubeRay/Terms.yml.
+ignorecase: false
+vocab: false
+swap:
+  HuggingFace: Hugging Face
