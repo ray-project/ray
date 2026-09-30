@@ -756,9 +756,9 @@ class TestTopKUnique:
     )
     def test_topk_unique_combine_column_matches_pairwise_combine(self, blocks):
         agg = TopKUnique(on="v", k=2)
-        accumulators = [agg.aggregate_block(block) for block in blocks]
+        partials = [agg.aggregate_block(block) for block in blocks]
         # A null accumulator row (an empty group) must be tolerated.
-        accumulators.insert(1, None)
+        accumulators = [partials[0], None, *partials[1:]]
 
         vectorized = agg._combine_column(self._accumulator_column(accumulators))
         pairwise = self._pairwise_merge(agg, accumulators)

@@ -2148,7 +2148,7 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
     def combine(
         self,
         current_accumulator: Dict[str, List],
-        new_accumulator: Dict[str, List],
+        new: Dict[str, List],
     ) -> Dict[str, List]:
         # NOTE: The engine merges whole accumulator columns through
         #       `_combine_column`. This pairwise merge is the row-wise
@@ -2158,7 +2158,7 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
 
         value_to_index = {v: i for i, v in enumerate(values)}
 
-        for v_new, c_new in zip(new_accumulator["values"], new_accumulator["counts"]):
+        for v_new, c_new in zip(new["values"], new["counts"]):
             v_new = self._normalize_value(v_new)
             if v_new in value_to_index:
                 counts[value_to_index[v_new]] += c_new
