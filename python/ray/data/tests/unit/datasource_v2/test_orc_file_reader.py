@@ -7,10 +7,10 @@ import pytest
 from pyarrow import orc
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.readers.orc_file_reader import OrcFileReader
-from ray.data._internal.datasource_v2.readers.synthesized_columns import PathColumn
-from ray.data._internal.datasource_v2.scanners.orc_scanner import OrcScanner
+from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
+from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
@@ -203,7 +203,7 @@ def test_orc_reader_nested_struct(tmp_path):
 def test_orc_reader_projects_synthesized_path(tmp_path):
     path = tmp_path / "data.orc"
     _write_orc(path, pa.table({"id": [1, 2]}))
-    schema = pa.schema([("id", pa.int64()), ("path", pa.string())])
+    schema = pa.schema([("id", pa.int64())])
     scanner = OrcScanner(
         schema=schema, synthesized_columns=(PathColumn(),)
     ).prune_columns(["path"])
@@ -215,6 +215,38 @@ def test_orc_reader_projects_synthesized_path(tmp_path):
         {"path": str(path)},
         {"path": str(path)},
     ]
+
+
+def test_orc_scanner_read_schema_projects_synthesized_column_missing_from_schema():
+    scanner = OrcScanner(
+        schema=pa.schema([("id", pa.int64())]),
+        synthesized_columns=(PathColumn(),),
+    ).prune_columns(["path"])
+
+    assert scanner.read_schema() == pa.schema([("path", pa.string())])
+
+
+def test_orc_scanner_read_schema_uses_synthesized_type_for_existing_field():
+    schema = pa.schema([("id", pa.int64()), ("path", pa.int64())])
+    scanner = OrcScanner(
+        schema=schema, synthesized_columns=(PathColumn(),)
+    ).prune_columns(["path"])
+
+    assert scanner.read_schema() == pa.schema([("path", pa.string())])
+
+
+def test_orc_reader_uses_synthesized_type_when_replacing_file_column(tmp_path):
+    path = tmp_path / "data.orc"
+    table = pa.table({"id": [1, 2], "path": [10, 20]})
+    _write_orc(path, table)
+
+    scanner = OrcScanner(schema=table.schema, synthesized_columns=(PathColumn(),))
+    batches = list(scanner.create_reader().read(_manifest(path)))
+    result = pa.concat_tables(batches)
+
+    assert scanner.read_schema().field("path").type == pa.string()
+    assert result.schema.field("path").type == pa.string()
+    assert result.column("path").to_pylist() == [str(path), str(path)]
 
 
 if __name__ == "__main__":

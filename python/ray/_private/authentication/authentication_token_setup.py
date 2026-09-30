@@ -89,15 +89,16 @@ def _warn_token_auth_enabled() -> None:
     )
 
 
-def maybe_enable_token_auth_if_token_available() -> bool:
-    """Enable token auth for ``ray start --head`` if a token already exists."""
+def maybe_enable_token_auth_if_token_available(warn_if_disabled: bool = True) -> bool:
+    """Enable token auth if RAY_AUTH_MODE is unset and a token already exists."""
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
         # Mode set explicitly; respect it without warning.
         return auth_mode_env.lower() == "token"
 
     if not AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True):
-        _warn_token_auth_disabled()
+        if warn_if_disabled:
+            _warn_token_auth_disabled()
         return False
 
     _enable_token_auth()
