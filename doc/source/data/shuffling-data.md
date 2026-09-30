@@ -199,7 +199,7 @@ hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
 ```
 
 :::{tip}
-By default, key-based repartitioning uses {ref}`shuffle v2 <shuffle-v2>`, which is `ShuffleStrategy.SHUFFLE_V2`. For the available settings, see {ref}`Tuning shuffle v2 <tuning-shuffle-v2>`.
+By default, key-based repartitioning uses {ref}`shuffle v2 <shuffle-v2>`, which is `ShuffleStrategy.SHUFFLE_V2`. For the available settings, see {ref}`Tune shuffle v2 <tuning-shuffle-v2>`.
 
 To fall back to the previous {ref}`hash-shuffle <hash-shuffle>` implementation, set `DataContext.shuffle_strategy` to `ShuffleStrategy.HASH_SHUFFLE`:
 

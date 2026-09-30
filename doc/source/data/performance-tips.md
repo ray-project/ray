@@ -6,19 +6,29 @@ myst:
 
 (data_performance_tips)=
 
-# Advanced: Performance Tips and Tuning
+# Advanced: Performance tips and tuning
 
-## Optimizing transforms
+This page describes how to tune Ray Data performance for transforms, reads, memory usage, and execution.
 
-### Batching transforms
+(optimizing-transforms)=
 
-If your transformation is vectorized like most NumPy or pandas operations, use {meth}`~ray.data.Dataset.map_batches` rather than {meth}`~ray.data.Dataset.map`. It's faster.
+## Optimize transforms
+
+The following sections describe how to speed up transforms.
+
+(batching-transforms)=
+
+### Batch transforms
+
+If your transformation is vectorized, as most NumPy or pandas operations are, use {meth}`~ray.data.Dataset.map_batches` instead of {meth}`~ray.data.Dataset.map`. It's faster.
 
 If your transformation isn't vectorized, there's no performance benefit.
 
-### Enabling Polars for sort operations
+(enabling-polars-for-sort-operations)=
 
-You can speed up {meth}`~ray.data.Dataset.sort` and operations that sort internally, such as {meth}`~ray.data.grouped_data.GroupedData.map_groups`, by enabling Polars:
+### Enable Polars for sort operations
+
+To speed up {meth}`~ray.data.Dataset.sort` and operations that sort internally, such as {meth}`~ray.data.grouped_data.GroupedData.map_groups`, enable Polars:
 
 ```{testcode}
 import ray
@@ -29,25 +39,30 @@ ctx.use_polars_sort = True
 
 When you enable this flag, Ray Data uses Polars instead of PyArrow for the internal sorting step, which can improve performance for large tabular datasets. This flag doesn't affect other operations such as {meth}`~ray.data.Dataset.map_batches`.
 
-## Optimizing reads
+(optimizing-reads)=
+
+## Optimize reads
+
+The following sections describe how to tune reads.
 
 (read_output_blocks)=
+(tuning-output-blocks-for-read)=
 
-### Tuning output blocks for read
+### Tune output blocks for reads
 
-By default, Ray Data automatically selects the number of output blocks for read according to the following procedure:
+By default, Ray Data automatically selects the number of output blocks for a read according to the following procedure:
 
-- The `override_num_blocks` parameter passed to Ray Data's {ref}`read APIs <loading-data-api>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
-- Usually, if the read is followed by a {func}`~ray.data.Dataset.map` or {func}`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore `override_num_blocks` also determines the number of map tasks.
+- The `override_num_blocks` parameter that you pass to Ray Data's {ref}`read APIs <loading-data-api>` specifies the number of output blocks, which equals the number of read tasks to create.
+- If a {func}`~ray.data.Dataset.map` or {func}`~ray.data.Dataset.map_batches` follows the read, Ray Data usually fuses the map with the read. In that case, `override_num_blocks` also determines the number of map tasks.
 
-Ray Data decides the default value for number of output blocks based on the following heuristics, applied in order:
+Ray Data chooses the default number of output blocks by applying the following heuristics in order:
 
-1. Start with the default value of 200. You can overwrite this by setting {class}`DataContext.read_op_min_num_blocks <ray.data.context.DataContext>`.
-2. Min block size (default=1 MiB). If number of blocks would make blocks smaller than this threshold, reduce number of blocks to avoid the overhead of tiny blocks. You can override by setting {class}`DataContext.target_min_block_size <ray.data.context.DataContext>` (bytes).
-3. Max block size (default=128 MiB). If number of blocks would make blocks larger than this threshold, increase number of blocks to avoid out-of-memory errors during processing. You can override by setting {class}`DataContext.target_max_block_size <ray.data.context.DataContext>` (bytes).
-4. Available CPUs. Increase number of blocks to utilize all of the available CPUs in the cluster. Ray Data chooses the number of read tasks to be at least 2x the number of available CPUs.
+1. Start with the default value of 200. To override it, set {class}`DataContext.read_op_min_num_blocks <ray.data.context.DataContext>`.
+1. Apply the minimum block size, which defaults to 1 MiB. If the number of blocks would make blocks smaller than this threshold, reduce the number of blocks to avoid the overhead of tiny blocks. To override the threshold, set {class}`DataContext.target_min_block_size <ray.data.context.DataContext>` in bytes.
+1. Apply the maximum block size, which defaults to 128 MiB. If the number of blocks would make blocks larger than this threshold, increase the number of blocks to avoid out-of-memory errors during processing. To override the threshold, set {class}`DataContext.target_max_block_size <ray.data.context.DataContext>` in bytes.
+1. Account for available CPUs. Increase the number of blocks to use all available CPUs in the cluster. Ray Data sets the number of read tasks to at least 2x the number of available CPUs.
 
-Occasionally, it's advantageous to manually tune the number of blocks to optimize the application. For example, the following code batches multiple files into the same read task to avoid creating blocks that are too large.
+In some cases, tuning the number of blocks manually helps optimize your application. For example, the following code batches multiple files into the same read task to avoid creating blocks that are too large.
 
 ```{testcode}
 :hide:
@@ -76,7 +91,7 @@ MaterializedDataset(
 )
 ```
 
-But suppose that you knew that you wanted to read all 16 files in parallel. This could be, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream operator to transform each file's contents in parallel. You can get this behavior by setting the `override_num_blocks` parameter. Notice how the number of output blocks is equal to `override_num_blocks` in the following code:
+Suppose that you want to read all 16 files in parallel. For example, you might expect the autoscaler to add CPUs to the cluster, or you might want the downstream operator to transform each file's contents in parallel. To get this behavior, set the `override_num_blocks` parameter. In the following code, the number of output blocks equals `override_num_blocks`:
 
 ```{testcode}
 :hide:
@@ -105,8 +120,7 @@ MaterializedDataset(
 )
 ```
 
-
-When using the default auto-detected number of blocks, Ray Data attempts to cap each task's output to {class}`DataContext.target_max_block_size <ray.data.context.DataContext>` many bytes. Note however that Ray Data can't perfectly predict the size of each task's output, so it's possible that each task produces one or more output blocks. Thus, the total blocks in the final {class}`~ray.data.Dataset` may differ from the specified `override_num_blocks`. Here's an example where we manually specify `override_num_blocks=1`, but the one task still produces multiple blocks in the materialized Dataset:
+When you use the default auto-detected number of blocks, Ray Data attempts to cap each task's output at {class}`DataContext.target_max_block_size <ray.data.context.DataContext>` bytes. However, Ray Data can't perfectly predict the size of each task's output, so each task might produce one or more output blocks. As a result, the total number of blocks in the final {class}`~ray.data.Dataset` might differ from the specified `override_num_blocks`. In the following example, the code sets `override_num_blocks=1` manually, but the one task still produces multiple blocks in the materialized Dataset:
 
 ```{testcode}
 :hide:
@@ -135,8 +149,7 @@ MaterializedDataset(
 )
 ```
 
-
-Currently, Ray Data can assign at most one read task per input file. Thus, if the number of input files is smaller than `override_num_blocks`, the number of read tasks is capped to the number of input files. To ensure that downstream transforms can still execute with the desired number of blocks, Ray Data splits the read tasks' outputs into a total of `override_num_blocks` blocks and prevents fusion with the downstream transform. In other words, each read task's output blocks are materialized to Ray's object store before the consuming map task executes. For example, the following code executes {func}`~ray.data.read_csv` with only one task, but its output is split into 4 blocks before executing the {func}`~ray.data.Dataset.map`:
+Currently, Ray Data can assign at most one read task per input file. So if the number of input files is smaller than `override_num_blocks`, Ray Data caps the number of read tasks at the number of input files. To make sure that downstream transforms can still run with the desired number of blocks, Ray Data splits the read tasks' outputs into a total of `override_num_blocks` blocks and prevents fusion with the downstream transform. In other words, Ray Data materializes each read task's output blocks to Ray's object store before the consuming map task runs. For example, the following code runs {func}`~ray.data.read_csv` with only one task, but Ray Data splits its output into four blocks before it runs the {func}`~ray.data.Dataset.map`:
 
 ```{testcode}
 :hide:
@@ -165,7 +178,7 @@ Operator 2 Map(<lambda>): 4 tasks executed, 4 blocks produced in 0.3s
 ...
 ```
 
-To turn off this behavior and allow the read and map operators to be fused, set `override_num_blocks` manually. For example, this code sets the number of files equal to `override_num_blocks`:
+To turn off this behavior so that Ray Data can fuse the read and map operators, set `override_num_blocks` manually. For example, the following code sets `override_num_blocks` equal to the number of files:
 
 ```{testcode}
 :hide:
@@ -191,18 +204,18 @@ Operator 1 ReadCSV->Map(<lambda>): 1 tasks executed, 1 blocks produced in 0.01s
 ...
 ```
 
-
 (tuning_read_resources)=
 
-### Tuning read resources
+### Tune read resources
 
-By default, Ray requests 1 CPU per read task, which means one read task per CPU can execute concurrently. For datasources that benefit from more IO parallelism, you can reserve fewer CPUs for each read task. For example, use `ray.data.read_parquet(path, num_cpus=0.25)` to allow up to four read tasks per CPU.
+By default, Ray requests 1 CPU per read task, so one read task per CPU can run concurrently. For datasources that benefit from more IO parallelism, reserve fewer CPUs for each read task. For example, use `ray.data.read_parquet(path, num_cpus=0.25)` to run up to four read tasks per CPU.
 
 (parquet_column_pruning)=
+(parquet-column-pruning-projection-pushdown)=
 
-### Parquet column pruning (projection pushdown)
+### Prune Parquet columns with projection pushdown
 
-By default, {func}`ray.data.read_parquet` reads all columns in the Parquet files into memory. If you only need a subset of the columns, make sure to specify the list of columns explicitly when calling {func}`ray.data.read_parquet` to avoid loading unnecessary data (projection pushdown). Note that this is more efficient than calling {func}`~ray.data.Dataset.select_columns`, since column selection is pushed down to the file scan.
+By default, {func}`ray.data.read_parquet` reads all columns in the Parquet files into memory. If you need only a subset of the columns, specify the list of columns explicitly when you call {func}`ray.data.read_parquet`. This technique, called projection pushdown, avoids loading unnecessary data. It's more efficient than calling {func}`~ray.data.Dataset.select_columns`, because column selection is pushed down to the file scan.
 
 ```{testcode}
 import ray
@@ -222,38 +235,44 @@ sepal.length  double
 variety       string
 ```
 
-
 (data_memory)=
+(reducing-memory-usage)=
 
-## Reducing memory usage
+## Reduce memory usage
 
-### Avoiding object spilling
+The following sections describe how to reduce memory usage.
 
-A Dataset's intermediate and output blocks are stored in Ray's object store. Although Ray Data attempts to minimize object store usage with {ref}`streaming execution <streaming_execution>`, it's still possible that the working set exceeds the object store capacity. In this case, Ray begins spilling blocks to disk, which can slow down execution significantly or even cause out-of-disk errors.
+(avoiding-object-spilling)=
 
-There are some cases where spilling is expected. In particular, if the total Dataset's size is larger than object store capacity, and one of the following is true:
+### Avoid object spilling
 
-1. An {ref}`all-to-all shuffle operation <optimizing_shuffles>` is used. Or,
-2. There is a call to {meth}`ds.materialize() <ray.data.Dataset.materialize>`.
+Ray Data stores a Dataset's intermediate and output blocks in Ray's object store. Although Ray Data attempts to minimize object store usage with {ref}`streaming execution <streaming_execution>`, the working set can still exceed the object store capacity. In that case, Ray begins spilling blocks to disk, which can slow execution significantly or even cause out-of-disk errors.
 
-Otherwise, it's best to tune your application to avoid spilling. The recommended strategy is to manually increase the {ref}`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
+Spilling is expected in some cases, in particular when the Dataset's total size is larger than the object store capacity and one of the following is true:
+
+- You use an {ref}`all-to-all shuffle operation <optimizing_shuffles>`.
+- You call {meth}`ds.materialize() <ray.data.Dataset.materialize>`.
+
+Otherwise, tune your application to avoid spilling. The recommended strategy is to manually increase the {ref}`read output blocks <read_output_blocks>` or to change your application code so that each task reads less data.
 
 :::{note}
-This is an active area of development. If your Dataset is causing spilling and you don't know why, [file a Ray Data issue on GitHub](https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+).
+This is an active area of development. If your Dataset causes spilling and you don't know why, [file a Ray Data issue on GitHub](https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+).
 :::
 
-### Handling too-small blocks
+(handling-too-small-blocks)=
 
-When different operators of your Dataset produce different-sized outputs, you may end up with very small blocks, which can hurt performance and even cause crashes from excessive metadata. Use {meth}`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are each at least 1 MB and ideally >100 MB.
+### Handle too-small blocks
 
-If your blocks are smaller than this, consider repartitioning into larger blocks. There are two ways to do this:
+When different operators of your Dataset produce different-sized outputs, you might end up with tiny blocks, which can hurt performance and even cause crashes from excessive metadata. Use {meth}`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are at least 1 MB each, and ideally larger than 100 MB.
 
-1. If you need control over the exact number of output blocks, use {meth}`ds.repartition(num_partitions) <ray.data.Dataset.repartition>`. Note that this is an {ref}`all-to-all operation <optimizing_shuffles>` and it materializes all blocks into memory before performing the repartition.
-2. If you don't need control over the exact number of output blocks and just want to produce larger blocks, use {meth}`ds.map_batches(lambda batch: batch, batch_size=batch_size) <ray.data.Dataset.map_batches>` and set `batch_size` to the desired number of rows per block. This is executed in a streaming fashion and avoids materialization.
+If your blocks are smaller than this, consider repartitioning them into larger blocks. You can do this in two ways:
 
-When {meth}`ds.map_batches() <ray.data.Dataset.map_batches>` is used, Ray Data coalesces blocks so that each map task can process at least this many rows. Note that the chosen `batch_size` is a lower bound on the task's input block size but it doesn't necessarily determine the task's final *output* block size.
+1. If you need control over the exact number of output blocks, use {meth}`ds.repartition(num_partitions) <ray.data.Dataset.repartition>`. This is an {ref}`all-to-all operation <optimizing_shuffles>`, and it materializes all blocks into memory before performing the repartition.
+1. If you don't need control over the exact number of output blocks and want only to produce larger blocks, use {meth}`ds.map_batches(lambda batch: batch, batch_size=batch_size) <ray.data.Dataset.map_batches>` and set `batch_size` to the desired number of rows per block. This approach runs in a streaming fashion and avoids materialization.
 
-To illustrate these, the following code uses both strategies to coalesce the 10 tiny blocks with 1 row each into 1 larger block with 10 rows:
+When you use {meth}`ds.map_batches() <ray.data.Dataset.map_batches>`, Ray Data coalesces blocks so that each map task can process at least `batch_size` rows. The chosen `batch_size` is a lower bound on the task's input block size, but it doesn't necessarily determine the task's final *output* block size.
+
+The following code uses both strategies to coalesce 10 tiny blocks of one row each into one larger block of 10 rows:
 
 ```{testcode}
 :hide:
@@ -301,19 +320,25 @@ Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 1 blocks produced 
 * Output num rows: 10 min, 10 max, 10 mean, 10 total
 ```
 
-## Configuring execution
+(configuring-execution)=
 
-### Configuring resources and locality
+## Configure execution
 
-By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
+The following section describes how to configure execution resources.
 
-You may want to customize these limits in the following scenarios:
+(configuring-resources-and-locality)=
 
-- If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
-- If you want to fine-tune the memory limit to maximize performance.
-- For data loading into training jobs, you may want to set the object store memory to a low value (for example, 2 GB) to limit resource usage.
+### Configure resources
 
-You can configure execution options with the global DataContext. The options are applied for future jobs launched in the process:
+By default, Ray Data sets the CPU and GPU limits to the cluster size. It conservatively sets the object store memory limit to 1/4 of the total object store size to avoid the possibility of disk spilling.
+
+You might want to customize these limits in the following scenarios:
+
+- When you run multiple concurrent jobs on the cluster, lower limits can avoid resource contention between the jobs.
+- When you want to fine-tune the memory limit to maximize performance.
+- When you load data into training jobs, you might want to set the object store memory to a low value, such as 2 GB, to limit resource usage.
+
+Configure execution options with the global DataContext. The options apply to future jobs launched in the process:
 
 ```
 ctx = ray.data.DataContext.get_current()
@@ -324,13 +349,17 @@ ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.co
 )
 ```
 
-## Reproducibility
+## Make execution reproducible
 
-### Deterministic execution
+The following section describes how to make execution deterministic.
+
+(deterministic-execution)=
+
+### Enable deterministic execution
+
+To enable deterministic execution, set `preserve_order` to `True`, as in the following code. This setting might decrease performance, but it ensures that block ordering is preserved through execution. The flag defaults to `False`.
 
 ```
 # By default, this is set to False.
 ctx.execution_options.preserve_order = True
 ```
-
-To enable deterministic execution, set the preceding to True. This setting may decrease performance, but ensures block ordering is preserved through execution. This flag defaults to False.
