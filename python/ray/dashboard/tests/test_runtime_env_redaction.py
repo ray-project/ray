@@ -196,6 +196,19 @@ Unit tests for the browser gate.
 """
 
 
+def test_redact_runtime_env_accepts_runtime_env_objects():
+    """The runtime env plugins log `RuntimeEnv` objects, a `dict` subclass."""
+    from ray.runtime_env import RuntimeEnv
+
+    runtime_env = RuntimeEnv(env_vars={"MY_SECRET": SECRET})
+
+    redacted = redact_runtime_env(runtime_env)
+
+    assert redacted["env_vars"] == {"MY_SECRET": REDACTED_PLACEHOLDER}
+    assert SECRET not in str(redacted)
+    assert runtime_env["env_vars"] == {"MY_SECRET": SECRET}
+
+
 def test_redact_runtime_env_deep_covers_train_worker_runtime_env():
     """Train V2 runs carry a second runtime env under `worker_runtime_env`."""
     payload = {
