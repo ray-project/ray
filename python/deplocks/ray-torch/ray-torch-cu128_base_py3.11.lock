@@ -4564,9 +4564,9 @@ sniffio==1.3.1 \
     --hash=sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2 \
     --hash=sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc
     # via openai
-soupsieve==2.8.3 \
-    --hash=sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349 \
-    --hash=sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95
+soupsieve==2.9 \
+    --hash=sha256:a2b2c76d67df2382d245409fd71e321a571717e58463efa32ace87dcadac2c12 \
+    --hash=sha256:acee8417325c5653e1377dc31eccad59eb82cbc65942afe6174c53b3aaad63fc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   beautifulsoup4
