@@ -164,15 +164,6 @@ frontend http_frontend
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
     log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)] router_status=%[var(txn.ingress_request_router_status)] fallback=%[var(txn.ingress_request_router_fallback)]{% endif %}]"
     {%- endif %}
-    {%- if config.root_path %}
-    # Strip the configured global root_path so the health/routes endpoints, the
-    # per-backend path ACLs, and the path forwarded to replicas are all
-    # root_path-agnostic. Mirrors the native Serve proxy, which mounts the app
-    # under root_path. An exact root_path match becomes "/", and paths outside
-    # root_path are left unchanged.
-    http-request set-path / if { path {{ config.root_path }} }
-    http-request set-path %[path,regsub(^{{ config.root_path }}/,/)] if { path_beg {{ config.root_path }}/ }
-    {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
     acl routes path -i /-/routes
@@ -221,6 +212,9 @@ frontend http_frontend
     # Remove client-supplied values from the router-owned header namespace.
     # Lua then applies trusted metadata returned by /internal/route.
     http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
+    {%- for header in multiplexed_model_id_headers %}
+    http-request del-header {{ header }} if has_ingress_request_router_app
+    {%- endfor %}
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}

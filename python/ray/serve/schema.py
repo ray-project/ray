@@ -1041,8 +1041,11 @@ class HTTPOptionsSchema(BaseModel):
     root_path: str = Field(
         default="",
         description=(
-            'Root path to mount the serve application (for example, "/serve"). All '
-            'deployment routes will be prefixed with this path. Defaults to "".'
+            "ASGI root path that the serve application is mounted at (for "
+            'example, "/serve"), for when Serve runs behind a proxy that strips '
+            "this prefix before forwarding. Requests reach Serve without the "
+            "prefix, and applications see it in the ASGI scope's root_path and "
+            'path. Defaults to "".'
         ),
     )
     request_timeout_s: Optional[float] = Field(
@@ -1911,6 +1914,14 @@ class ServeInstanceDetails(BaseModel):
     controller_health_metrics: ControllerHealthMetrics = Field(
         default_factory=ControllerHealthMetrics,
         description="Health metrics for the Ray Serve controller.",
+    )
+
+    restores_unset_config_options: bool = Field(
+        default=False,
+        description=(
+            "Whether removing a deployment config override restores the value "
+            "defined in code. Older versions omit this field and keep the override."
+        ),
     )
 
     @staticmethod

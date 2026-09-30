@@ -80,6 +80,7 @@ from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     SERVE_SESSION_ID,
 )
@@ -772,14 +773,6 @@ class HAProxyConfig:
         return self.grpc_options.port
 
     @property
-    def root_path(self) -> str:
-        """Global root_path prefix, normalized without a trailing slash.
-
-        Empty when unset so the config template omits root_path handling.
-        """
-        return (self.http_options.root_path or "").rstrip("/")
-
-    @property
     def timeout_http_keep_alive_s(self) -> int:
         return self.http_options.keep_alive_timeout_s
 
@@ -1412,6 +1405,10 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_header_prefix": (
                         SERVE_INGRESS_ROUTER_HEADER_PREFIX
+                    ),
+                    "multiplexed_model_id_headers": (
+                        SERVE_MULTIPLEXED_MODEL_ID,
+                        SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-"),
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_enabled": self.cfg.metrics_enabled,
