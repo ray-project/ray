@@ -448,7 +448,7 @@ public class RayDemo {
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
-```{button-ref}  ../core/walkthrough
+```{button-ref}  ../core/index
 :color: primary
 :outline:
 :expand:
@@ -560,7 +560,7 @@ public class RayDemo {
 }
 ```
 
-```{button-ref}  ../core/walkthrough
+```{button-ref}  ../core/index
 :color: primary
 :outline:
 :expand:

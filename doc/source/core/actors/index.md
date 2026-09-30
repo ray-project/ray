@@ -182,7 +182,7 @@ assert(*object_ref.Get() == 1);
 Methods called on different actors execute in parallel, and methods called on the same actor execute serially in the order you call them. Methods on the same actor share state with one another, as shown below.
 
 :::{note}
-Actor state is per actor instance. Each actor runs in its own process, so class variables and static fields aren't shared across actor instances. Mutations to class-level state stay local to that actor process. To share mutable state across actors, store it in another actor and pass that actor handle where it is needed. See {doc}`patterns/global-variables` for an anti-pattern and a replacement pattern.
+Actor state is per actor instance. Each actor runs in its own process, so class variables and static fields aren't shared across actor instances. Mutations to class-level state stay local to that actor process. To share mutable state across actors, store it in another actor and pass that actor handle where it is needed. See {doc}`../patterns/global-variables` for an anti-pattern and a replacement pattern.
 :::
 
 ::::{tab-set}
@@ -427,7 +427,7 @@ Cancel Actor Tasks by calling {func}`ray.cancel() <ray.cancel>` on the returned 
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/actors.py
+```{literalinclude} ../doc_code/actors.py
 :language: python
 :start-after: __cancel_start__
 :end-before: __cancel_end__
@@ -454,7 +454,7 @@ For non-async actor tasks, you can periodically check whether a cancellation has
 
 ::::{tab-set}
 :::{tab-item} Python
-```{literalinclude} doc_code/actors.py
+```{literalinclude} ../doc_code/actors.py
 :language: python
 :start-after: __cancel_graceful_actor_start__
 :end-before: __cancel_graceful_actor_end__
@@ -497,7 +497,7 @@ You can disable task event reporting for the actor by setting the `enable_task_e
 
 You can also disable task event reporting for some actor methods by setting the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>` on the actor method. Method settings override the actor setting:
 
-```{literalinclude} doc_code/actors.py
+```{literalinclude} ../doc_code/actors.py
 :language: python
 :start-after: __enable_task_events_start__
 :end-before: __enable_task_events_end__
@@ -509,11 +509,11 @@ You can also disable task event reporting for some actor methods by setting the 
 ```{toctree}
 :maxdepth: 1
 
-actors/named-actors
-actors/terminating-actors
-actors/async_api
-actors/concurrency_group_api
-actors/actor-utils
-actors/out-of-band-communication
-actors/task-orders
+named-actors
+terminating-actors
+async-api
+concurrency-group-api
+actor-utils
+out-of-band-communication
+task-orders
 ```
