@@ -13,21 +13,11 @@ The embedded RocksDB GCS backend is in alpha and may change before becoming stab
 If you try it, please share your experience on [GitHub](https://github.com/ray-project/ray/issues).
 ```
 
-The Global Control Service (GCS) manages cluster-level metadata. By default it keeps that
-metadata in memory, so a GCS restart takes down the whole Ray cluster. {ref}`GCS fault
-tolerance <fault-tolerance-gcs>` fixes this by persisting the metadata to durable storage.
+The Global Control Service (GCS) manages cluster-level metadata. By default it keeps that metadata in memory, so a GCS restart takes down the whole Ray cluster. {ref}`GCS fault tolerance <fault-tolerance-gcs>` fixes this by persisting the metadata to durable storage.
 
-The {ref}`Redis-backed setup <kuberay-gcs-ft>` does this with an external, highly available
-Redis instance that you deploy and operate alongside Ray. The **embedded RocksDB backend**
-persists GCS state to a local [RocksDB](https://rocksdb.org/) database on a Kubernetes
-`PersistentVolume` instead, so there's no Redis to run. You opt in with
-`gcsFaultToleranceOptions.backend: rocksdb`, and KubeRay provisions the volume, mounts it on
-the head Pod, sets the required environment variables, and garbage-collects the volume with
-the cluster. When the head Pod restarts, it reattaches the same volume, reads the metadata
-back from disk, and workers reconnect while the GCS recovers.
+The {ref}`Redis-backed setup <kuberay-gcs-ft>` does this with an external, highly available Redis instance that you deploy and operate alongside Ray. The **embedded RocksDB backend** persists GCS state to a local [RocksDB](https://rocksdb.org/) database on a Kubernetes `PersistentVolume` instead, so there's no Redis to run. You opt in with `gcsFaultToleranceOptions.backend: rocksdb`, and KubeRay provisions the volume, mounts it on the head Pod, sets the required environment variables, and garbage-collects the volume with the cluster. When the head Pod restarts, it reattaches the same volume, reads the metadata back from disk, and workers reconnect while the GCS recovers.
 
-For the concepts, the Redis-vs-RocksDB trade-offs, and non-Kubernetes usage, see
-{ref}`fault-tolerance-gcs-rocksdb`.
+For the concepts, the Redis-vs-RocksDB trade-offs, and non-Kubernetes usage, see {ref}`fault-tolerance-gcs-rocksdb`.
 
 ```{seealso}
 For the officially supported, Redis-backed setup, see
@@ -39,38 +29,25 @@ For the officially supported, Redis-backed setup, see
 * KubeRay v1.7 or later, which is the first release that supports the embedded RocksDB backend.
 * Ray 2.57.0 or later, which is the first release that contains the embedded RocksDB backend.
 * Linux worker nodes (the RocksDB backend is Linux only).
-* A `StorageClass` that provisions a durable volume which can reattach to the node that runs
-  the recovered head Pod.
+* A `StorageClass` that provisions a durable volume which can reattach to the node that runs the recovered head Pod.
 
 ## Enable the operator feature gate
 
-The embedded backend is alpha and gated behind the KubeRay `GCSFaultToleranceEmbeddedStorage`
-feature gate, which is **off by default**. Start the KubeRay operator with the gate enabled:
+The embedded backend is alpha and gated behind the KubeRay `GCSFaultToleranceEmbeddedStorage` feature gate, which is **off by default**. Start the KubeRay operator with the gate enabled:
 
 ```sh
 --feature-gates=GCSFaultToleranceEmbeddedStorage=true
 ```
 
-Set this on the operator Deployment (for example through the Helm chart's `featureGates`
-value). Without it, KubeRay rejects any RayCluster that sets `backend: rocksdb` during
-validation.
+Set this on the operator Deployment (for example through the Helm chart's `featureGates` value). Without it, KubeRay rejects any RayCluster that sets `backend: rocksdb` during validation.
 
 ## How it works
 
-* You set `gcsFaultToleranceOptions.backend: rocksdb` on the RayCluster. KubeRay provisions a
-  `PersistentVolumeClaim` named `{cluster}-gcs-pvc`, mounts it on the head Pod at `/data/gcs`,
-  and sets `RAY_gcs_storage=rocksdb` and `RAY_gcs_storage_path` automatically. You don't set
-  those environment variables yourself.
-* The GCS writes its state to a RocksDB database on that volume, syncing every mutating write
-  to disk.
-* KubeRay injects `RAY_gcs_rpc_server_reconnect_timeout_s=600` into the worker Pods, exactly
-  as it does for the Redis backend, so workers wait for the head Pod to come back instead of
-  exiting during recovery.
-* If the head Pod dies and Kubernetes reschedules it, the new Pod reattaches the *same*
-  volume and the GCS recovers from the on-disk database.
-* The operator-managed PVC is owned by the RayCluster, so by default Kubernetes
-  garbage-collects it when you delete the cluster. Set `deletionPolicy: Retain` to keep the
-  volume and its data after the cluster is gone.
+* You set `gcsFaultToleranceOptions.backend: rocksdb` on the RayCluster. KubeRay provisions a `PersistentVolumeClaim` named `{cluster}-gcs-pvc`, mounts it on the head Pod at `/data/gcs`, and sets `RAY_gcs_storage=rocksdb` and `RAY_gcs_storage_path` automatically. You don't set those environment variables yourself.
+* The GCS writes its state to a RocksDB database on that volume, syncing every mutating write to disk.
+* KubeRay injects `RAY_gcs_rpc_server_reconnect_timeout_s=600` into the worker Pods, exactly as it does for the Redis backend, so workers wait for the head Pod to come back instead of exiting during recovery.
+* If the head Pod dies and Kubernetes reschedules it, the new Pod reattaches the *same* volume and the GCS recovers from the on-disk database.
+* The operator-managed PVC is owned by the RayCluster, so by default Kubernetes garbage-collects it when you delete the cluster. Set `deletionPolicy: Retain` to keep the volume and its data after the cluster is gone.
 
 ```{admonition} Single writer
 :class: note
@@ -83,9 +60,7 @@ one Pod at a time, and must never be shared between clusters.
 
 ## Deploy a RayCluster with the RocksDB backend
 
-Apply the following manifest. Setting `gcsFaultToleranceOptions.backend: rocksdb` is all it
-takes to enable the backend; KubeRay handles the PVC, the mount, and the environment
-variables.
+Apply the following manifest. Setting `gcsFaultToleranceOptions.backend: rocksdb` is all it takes to enable the backend; KubeRay handles the PVC, the mount, and the environment variables.
 
 ```yaml
 apiVersion: ray.io/v1
@@ -158,8 +133,7 @@ throughput your workload needs rather than for the metadata footprint alone, and
 
 ## Verify recovery
 
-Confirm the head Pod is running, then delete it to simulate a GCS crash and watch KubeRay
-recreate it against the same volume:
+Confirm the head Pod is running, then delete it to simulate a GCS crash and watch KubeRay recreate it against the same volume:
 
 ```sh
 # Confirm KubeRay provisioned the operator-managed PVC.
@@ -176,9 +150,7 @@ kubectl delete pod -l ray.io/node-type=head
 kubectl get pods -l ray.io/node-type=head -w
 ```
 
-Because the GCS metadata persisted to the volume, the recovered cluster keeps its state
-instead of starting fresh. During recovery, cluster-level operations such as actor and
-placement group creation are briefly unavailable, exactly as with the Redis backend.
+Because the GCS metadata persisted to the volume, the recovered cluster keeps its state instead of starting fresh. During recovery, cluster-level operations such as actor and placement group creation are briefly unavailable, exactly as with the Redis backend.
 
 ## Clean up
 
@@ -186,10 +158,7 @@ placement group creation are briefly unavailable, exactly as with the Redis back
 kubectl delete raycluster raycluster-rocksdb-ft
 ```
 
-Under the default `deletionPolicy: DeleteWithCluster`, KubeRay garbage-collects the
-operator-managed `raycluster-rocksdb-ft-gcs-pvc` PVC with the cluster, so there's no separate
-volume to delete. If you set `deletionPolicy: Retain` or brought your own PVC with
-`claimName`, delete the PVC manually when you no longer need the data:
+Under the default `deletionPolicy: DeleteWithCluster`, KubeRay garbage-collects the operator-managed `raycluster-rocksdb-ft-gcs-pvc` PVC with the cluster, so there's no separate volume to delete. If you set `deletionPolicy: Retain` or brought your own PVC with `claimName`, delete the PVC manually when you no longer need the data:
 
 ```sh
 kubectl delete pvc raycluster-rocksdb-ft-gcs-pvc
