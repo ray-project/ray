@@ -42,7 +42,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark()
+    # The sf1000 joins shuffle 1000 partitions and observed p90 scheduling loop
+    # durations of ~1.5s on Ray 2.59.
+    #
+    # TODO: Ratchet this down as we improve scheduling loop overhead.
+    benchmark = Benchmark(max_sched_loop_duration_s=3)
 
     def benchmark_fn():
         left_ds = ray.data.read_parquet(args.left_dataset)
