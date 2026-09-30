@@ -97,8 +97,7 @@ This is useful for scaling out an existing FastAPI app with no modifications nec
 
 ### FastAPI Middleware
 
-Configure HTTP middleware on the FastAPI app that you pass to {mod}`@serve.ingress <ray.serve.ingress>`.
-The `HTTPOptions.middlewares` field is deprecated.
+Configure HTTP middleware on the FastAPI app that you pass to {mod}`@serve.ingress <ray.serve.ingress>`. The `HTTPOptions.middlewares` field is deprecated.
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi_middleware__
