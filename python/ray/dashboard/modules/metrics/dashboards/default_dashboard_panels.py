@@ -1,6 +1,8 @@
 # ruff: noqa: E501
 
 from ray.dashboard.modules.metrics.dashboards.common import (
+    K8S_DISK_USAGE_NOTE,
+    K8S_DISK_UTILIZATION_NOTE,
     DashboardConfig,
     Panel,
     Row,
@@ -63,7 +65,8 @@ OVERVIEW_AND_HEALTH_PANELS = [
     Panel(
         id=41,
         title="Cluster Utilization",
-        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster.",
+        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster.\n\n"
+        + K8S_DISK_UTILIZATION_NOTE,
         unit="%",
         targets=[
             # CPU
@@ -531,7 +534,9 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     Panel(
         id=6,
         title="Node Disk Usage",
-        description="Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
+        description="Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\n"
+        "NOTE: When Ray is deployed within a container, this shows the disk usage from the host machine.\n\n"
+        + K8S_DISK_USAGE_NOTE,
         unit="bytes",
         targets=[
             Target(
@@ -547,7 +552,9 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     Panel(
         id=57,
         title="Node Disk Usage %",
-        description="Node's physical (hardware) disk usage. \n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
+        description="Node's physical (hardware) disk usage.\n\n"
+        "NOTE: When Ray is deployed within a container, this shows the disk usage from the host machine.\n\n"
+        + K8S_DISK_USAGE_NOTE,
         unit="%",
         targets=[
             Target(

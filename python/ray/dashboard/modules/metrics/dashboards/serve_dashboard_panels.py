@@ -1,6 +1,7 @@
 # ruff: noqa: E501
 
 from ray.dashboard.modules.metrics.dashboards.common import (
+    K8S_DISK_UTILIZATION_NOTE,
     DashboardConfig,
     GridPos,
     Panel,
@@ -11,7 +12,8 @@ SERVE_GRAFANA_PANELS = [
     Panel(
         id=5,
         title="Cluster Utilization",
-        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster. Ignores application variable.",
+        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster. Ignores application variable.\n\n"
+        + K8S_DISK_UTILIZATION_NOTE,
         unit="%",
         targets=[
             # CPU
