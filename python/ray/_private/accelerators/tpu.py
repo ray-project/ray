@@ -64,6 +64,9 @@ DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 # See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
 
+# Default port for MegaScale coordinator in multi-slice TPU training.
+DEFAULT_MEGASCALE_PORT = "8081"
+
 # Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
 TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 

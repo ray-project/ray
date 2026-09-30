@@ -6,11 +6,11 @@ myst:
 
 (mixing_data)=
 
-# Weighted Dataset Mixing
+# Weighted dataset mixing
 
-Ray Data allows you to combine multiple datasets into a single streaming dataset with control over how often rows from each source appear. This is useful for:
+This page describes how to combine multiple datasets into a single streaming dataset and control how often rows from each source appear. Weighted mixing helps with goals such as the following:
 
-- **Class / scenario balancing**: upsample rare scenarios or harder tasks so that training batches see them more often.
+- **Class or scenario balancing**: upsample rare scenarios or harder tasks so training batches see them more often.
 - **Multi-task pretraining**: combine code and web text datasets at fixed ratios.
 - **Catastrophic forgetting prevention**: keep a small fraction of an older dataset in the mix while training on a newer one.
 
@@ -44,29 +44,31 @@ trainer = TorchTrainer(
 )
 ```
 
-## Mixing strategies
+(mixing-strategies)=
+## Choose a mixing strategy
 
-You can compose {meth}`~ray.data.Dataset.mix` with other Ray Data operations to implement different mixing strategies, depending on how granular you want the mixing ratio to be. The sections below cover **per-block mixing** ({meth}`~ray.data.Dataset.mix` on its own) and **random mixing** ({meth}`~ray.data.Dataset.mix` followed by a shuffle).
+Compose {meth}`~ray.data.Dataset.mix` with other Ray Data operations to implement a mixing strategy that matches how granular you want the mixing ratio to be. The following sections cover two strategies. *Per-block mixing* uses {meth}`~ray.data.Dataset.mix` on its own. *Random mixing* follows {meth}`~ray.data.Dataset.mix` with a shuffle.
 
-### Per-block mixing
+(per-block-mixing)=
+### How does per-block mixing work?
 
-By default, each output block comes from exactly one input dataset. {meth}`~ray.data.Dataset.mix` keeps a running row count per source and, on every step, pulls the next block from whichever dataset is furthest behind its target ratio. Over time, the cumulative row counts converge to the requested weights.
+By default, each output block comes from exactly one input dataset. {meth}`~ray.data.Dataset.mix` keeps a running row count for each source. At every step, it pulls the next block from whichever dataset is furthest behind its target ratio. Over time, the cumulative row counts converge to the requested weights.
 
-Suppose you mix two datasets `ds1` and `ds2` with `weights=[0.75, 0.25]`, and both sources produce blocks of equal size. This data pipeline then splits across 4 training workers, and data parallel training constructs a global batch across all workers.
+Suppose you mix two datasets, `ds1` and `ds2`, with `weights=[0.75, 0.25]`, and both sources produce blocks of equal size. The pipeline then splits across four training workers, and data parallel training builds a global batch across all workers.
 
 ```{image} /data/images/dataset_mixing/per_block_mix.png
-:alt: Per-block mixing: blocks from ds1 and ds2 are interleaved in a 3:1 pattern, then split across 4 training workers to form a global batch.
+:alt: Per-block mixing, where blocks from ds1 and ds2 interleave in a 3:1 pattern and then split across four training workers to form a global batch.
 ```
 
-With uniform block sizes, the ratio is exact within any window of `1 / min(weights)` blocks. With `weights=[0.9, 0.1]`, you're guaranteed a block from the second dataset at least once in every 10-block window.
+With uniform block sizes, the ratio is exact within any window of `1 / min(weights)` blocks. With `weights=[0.9, 0.1]`, every 10-block window contains at least one block from the second dataset.
 
 :::{note}
-{ref}`Blocks <dataset_concept>` are the unit of data transfer in Ray Data, and they don't map 1:1 to training batches. Workers construct each batch by pulling rows from one or more blocks. With per-block mixing, this means each local batch may contain data from one or more of the input datasets, depending on how block sizes compare to batch sizes. The next section covers how to align them with a streaming repartition.
+{ref}`Blocks <dataset_concept>` are the unit of data transfer in Ray Data, and they don't map one-to-one to training batches. Workers build each batch by pulling rows from one or more blocks. With per-block mixing, each local batch might contain data from one or more of the input datasets, depending on how block sizes compare to batch sizes. The next section shows how to align them with a streaming repartition.
 :::
 
 #### Advanced: Standardize input block sizes
 
-If your input datasets produce blocks of very different sizes, a single large block can temporarily push that source ahead of its target ratio. {meth}`~ray.data.Dataset.mix` self-corrects on subsequent pulls, so the ratio is still correct in expectation---but a global batch built from a small number of those blocks can look skewed.
+If your input datasets produce blocks that differ widely in size, a single large block can temporarily push that source ahead of its target ratio. {meth}`~ray.data.Dataset.mix` self-corrects on later pulls, so the ratio is still correct in expectation. However, a global batch built from a small number of those blocks can look skewed.
 
 To tighten the per-batch window, standardize input block sizes upstream with {meth}`ds.repartition(target_num_rows_per_block) <ray.data.Dataset.repartition>`:
 
@@ -83,27 +85,27 @@ ds2 = ds2.repartition(target_num_rows_per_block=LOCAL_BATCH_SIZE)
 mixed = ds1.mix(ds2, weights=[0.75, 0.25])
 ```
 
-
-:::{note}
-You may want to repartition to some multiple of batch size (for example, `N * LOCAL_BATCH_SIZE`) if your rows are small in terms of bytes. This prevents splitting blocks into extremely small pieces that increase overhead.
+:::{tip}
+If your rows are small in bytes, repartition to a multiple of the batch size, such as `N * LOCAL_BATCH_SIZE`. This prevents splitting blocks into tiny pieces that increase overhead.
 :::
 
-### Random mixing
+(random-mixing)=
+### Add a shuffle for random mixing
 
-The per-batch ratio quality of per-block mixing depends on two things: the sizes of the input blocks (covered in the preceding section) and the number of training workers contributing to each global batch. A global batch aggregates `num_workers * grad_accum_steps` local batches, each drawn from a single dataset, so the more local batches you have per global batch, the closer the ratio holds to the target.
+Two factors determine how closely each batch matches the target ratio under per-block mixing. The first is the size of the input blocks, which the preceding section covers. The second is the number of training workers that contribute to each global batch. A global batch aggregates `num_workers * grad_accum_steps` local batches, each drawn from a single dataset. The more local batches each global batch contains, the closer its ratio stays to the target.
 
-The extreme case: training on a single worker with no gradient accumulation means every global batch is a local batch, so every batch comes from a single dataset.
+In the extreme case, you train on a single worker with no gradient accumulation. Every global batch is then a single local batch, so every batch comes from a single dataset.
 
-Adding a streaming shuffle after {meth}`~ray.data.Dataset.mix` switches you to **random mixing**: the shuffle redistributes rows across block boundaries so each batch directly contains rows from multiple datasets in roughly the requested proportion, regardless of how many workers you're training on. {meth}`~ray.data.Dataset.mix` still governs the ratio; the shuffle just spreads it within each batch.
+To switch to random mixing, add a streaming shuffle after {meth}`~ray.data.Dataset.mix`. The shuffle redistributes rows across block boundaries, so each batch directly contains rows from multiple datasets in roughly the requested proportion, regardless of how many workers you train on. {meth}`~ray.data.Dataset.mix` still governs the ratio, and the shuffle spreads that ratio within each batch.
 
 ```{image} /data/images/dataset_mixing/random_mix.png
-:alt: Random mixing: after mix(), a shuffle redistributes rows so that each worker batch contains rows from multiple datasets in the target proportion.
+:alt: Random mixing, where a shuffle after mix() redistributes rows so that each worker batch contains rows from multiple datasets in the target proportion.
 ```
 
-Two streaming-friendly shuffle options in Ray Data:
+Use either of the following streaming-friendly shuffle options in Ray Data:
 
-- {ref}`Local buffer shuffle <local_shuffle_buffer>` ({meth}`~ray.data.DataIterator.iter_batches` with `local_shuffle_buffer_size`)
-- {ref}`map_batches shuffle <map_batches_shuffle>`
+- {ref}`Local buffer shuffle <local_shuffle_buffer>`, which you enable by passing `local_shuffle_buffer_size` to {meth}`~ray.data.DataIterator.iter_batches`.
+- {ref}`map_batches shuffle <map_batches_shuffle>`.
 
 ```{testcode}
 import numpy as np
@@ -129,27 +131,31 @@ SHUFFLE_BUFFER_SIZE = 64 * LOCAL_BATCH_SIZE
 mixed = mixed.map_batches(random_shuffle, batch_size=SHUFFLE_BUFFER_SIZE, batch_format="pyarrow")
 ```
 
+(stopping-conditions)=
+## Choose a stopping condition
 
-## Stopping conditions
+The stopping condition determines when the mixed pipeline ends. The following table describes each condition.
 
 ```{list-table}
 :header-rows: 1
 
 * - Condition
   - Behavior
-* - `STOP_ON_LONGEST_DROP` (default)
-  - Pipeline ends when the longest dataset is exhausted. Shorter datasets drop out once exhausted; remaining batches come from the still-active datasets.
+* - `STOP_ON_LONGEST_DROP`
+  - The default. The pipeline ends when the longest dataset is exhausted. Each shorter dataset drops out when it's exhausted, and the remaining batches come from the datasets that are still active.
 * - `STOP_ON_SHORTEST`
-  - Pipeline ends when the shortest dataset is exhausted. Other datasets are truncated.
+  - The pipeline ends when the shortest dataset is exhausted. The other datasets are truncated.
 ```
 
-See {class}`~ray.data.MixStoppingCondition` for more details.
+For details, see {class}`~ray.data.MixStoppingCondition`.
 
 ## Limitations
 
-- **Avoid** {meth}`~ray.data.Dataset.map` / {meth}`~ray.data.Dataset.filter` **after** {meth}`~ray.data.Dataset.mix`. Downstream transformations can combine or split blocks before they reach the trainer, which breaks the row-ratio guarantees {meth}`~ray.data.Dataset.mix` provides. Apply per-dataset transforms upstream of {meth}`~ray.data.Dataset.mix`.
-- **Schemas must match.** {meth}`~ray.data.Dataset.mix` does not unify schemas for you. Apply {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.select_columns` upstream to make all inputs structurally identical.
-- **Heavily skewed weights (current limitation).** All input datasets currently execute concurrently with some portion of cluster resources equally divided between them. With heavily skewed weights (for example, `[0.95, 0.05]`), the high-weight dataset may bottleneck while the low-weight dataset idles. For now, keep weights within roughly 5x of each other (for example, `[0.4, 0.3, 0.2, 0.1]`).
+Keep the following limitations in mind when you mix datasets:
+
+- **Transform before mixing.** Avoid calling {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.filter` after {meth}`~ray.data.Dataset.mix`. Downstream transformations can combine or split blocks before they reach the trainer, which breaks the row-ratio guarantees that {meth}`~ray.data.Dataset.mix` provides. Apply per-dataset transforms upstream of {meth}`~ray.data.Dataset.mix`.
+- **Match input schemas.** {meth}`~ray.data.Dataset.mix` doesn't unify schemas for you. Apply {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.select_columns` upstream to make all inputs structurally identical.
+- **Avoid heavily skewed weights.** This is a current limitation. All input datasets execute concurrently, with a portion of cluster resources divided equally between them. With heavily skewed weights, such as `[0.95, 0.05]`, the high-weight dataset might bottleneck while the low-weight dataset idles. For now, keep weights within roughly 5x of each other, such as `[0.4, 0.3, 0.2, 0.1]`.
 
 ## See also
 

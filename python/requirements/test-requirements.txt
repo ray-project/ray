@@ -77,7 +77,7 @@ tqdm==4.67.1
 trustme==0.9.0
 testfixtures==7.0.0
 uv==0.8.9
-uvicorn==0.22.0
+uvicorn>=0.26
 werkzeug==2.3.8
 xlrd==2.0.1
 yq==3.2.2
@@ -148,7 +148,7 @@ numexpr==2.14.1
 tensordict==0.8.3 ; sys_platform != "darwin"
 
 # For `serve run --reload` CLI.
-watchfiles==0.19.0
+watchfiles>=0.20
 
 # Upgrades
 typing-extensions>=4.10
