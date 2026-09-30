@@ -231,8 +231,7 @@ Get Started with Ray Serve
 **Key Concepts**
 ^^^
 
-Understand the key concepts behind Ray Serve.
-Learn about {ref}`Deployments <serve-key-concepts-deployment>`, {ref}`how to query them <serve-key-concepts-ingress-deployment>`, and using {ref}`DeploymentHandles <serve-key-concepts-deployment-handle>` to compose multiple models and business logic together.
+Understand the key concepts behind Ray Serve. Learn about {ref}`Deployments <serve-key-concepts-deployment>`, {ref}`how to query them <serve-key-concepts-ingress-deployment>`, and using {ref}`DeploymentHandles <serve-key-concepts-deployment-handle>` to compose multiple models and business logic together.
 
 +++
 ```{button-ref} serve-key-concepts
