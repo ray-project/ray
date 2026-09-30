@@ -39,6 +39,19 @@ var initOnce sync.Mutex
 // (base.Initialize would attempt a real driver-mode GCS handshake).
 var initWithConfigFn = initWithConfig
 
+// initRetryBackoff is the cool-down after a failed lazy init. Each attempt
+// constructs the C++ CoreWorker, which exits the whole process when the local
+// raylet is unreachable, so retries are rate-limited instead of running per
+// request. A package-level variable so tests can shorten it.
+var initRetryBackoff = time.Minute
+
+// lastInitErr/lastInitFailAt record the most recent lazy-init failure. Guarded
+// by initOnce.
+var (
+	lastInitErr    error
+	lastInitFailAt time.Time
+)
+
 // EnsureInitialized lazily initializes the Go runtime as a driver, aligned
 // with the Python dashboard's require_initialized (optional_utils.py), which
 // calls ray.init() on first use when ray.is_initialized() is false. The
@@ -49,6 +62,14 @@ var initWithConfigFn = initWithConfig
 //
 // It is a no-op when the runtime is already initialized. Double-checked
 // locking (initOnce + IsInitialized) makes concurrent calls safe.
+//
+// A failed attempt enters a cool-down: until initRetryBackoff elapses,
+// subsequent calls return the cached error without re-entering the
+// initializer. This matters because every attempt constructs the C++
+// CoreWorker, and a CoreWorker that cannot reach the local raylet exits the
+// whole process from the C++ side — an unrecoverable per-request crash. After
+// the cool-down the retry is allowed again, preserving the recover-on-next-
+// request design for a GCS or raylet that comes back.
 func EnsureInitialized(cfg *HeadConfig) error {
 	if api.IsInitialized() {
 		return nil
@@ -58,9 +79,15 @@ func EnsureInitialized(cfg *HeadConfig) error {
 	if api.IsInitialized() {
 		return nil
 	}
+	if lastInitErr != nil && time.Since(lastInitFailAt) < initRetryBackoff {
+		return lastInitErr
+	}
 	if err := initWithConfigFn(cfg); err != nil {
+		lastInitErr = err
+		lastInitFailAt = time.Now()
 		return err
 	}
+	lastInitErr = nil
 	log.Log.Info("go runtime initialized lazily for dashboard head", "gcs", cfg.GCSAddress, "node", cfg.NodeIPAddress)
 	return nil
 }

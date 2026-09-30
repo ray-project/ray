@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // TestEnsureInitializedCallsInitOnce verifies the uninitialized path invokes
@@ -87,5 +88,66 @@ func TestEnsureInitializedPropagatesInitError(t *testing.T) {
 	err := EnsureInitialized(cfg)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("EnsureInitialized error = %v, want sentinel %v", err, sentinel)
+	}
+}
+
+// TestEnsureInitializedBackoffAfterFailure verifies that a failed lazy init
+// enters a cool-down: within initRetryBackoff subsequent calls return the
+// cached error without re-entering the initializer. Every attempt constructs
+// the C++ CoreWorker, and a CoreWorker that cannot reach the local raylet
+// exits the whole process from the C++ side, so the retry must not run per
+// request.
+func TestEnsureInitializedBackoffAfterFailure(t *testing.T) {
+	sentinel := errors.New("raylet unreachable")
+	var calls atomic.Int32
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error {
+		calls.Add(1)
+		return sentinel
+	}
+	defer func() { initWithConfigFn = orig }()
+	origBackoff := initRetryBackoff
+	initRetryBackoff = time.Minute
+	defer func() { initRetryBackoff = origBackoff }()
+	lastInitErr = nil
+
+	cfg := &HeadConfig{GCSAddress: "127.0.0.1:6379", ClusterIDHex: "abc", NodeIPAddress: "127.0.0.1"}
+	if err := EnsureInitialized(cfg); !errors.Is(err, sentinel) {
+		t.Fatalf("first EnsureInitialized error = %v, want sentinel", err)
+	}
+	if err := EnsureInitialized(cfg); !errors.Is(err, sentinel) {
+		t.Fatalf("second EnsureInitialized (within backoff) error = %v, want sentinel", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("initWithConfig called %d times within backoff, want 1 (no re-entry)", calls.Load())
+	}
+}
+
+// TestEnsureInitializedRetriesAfterBackoff verifies the cool-down expires and
+// a retry is allowed, preserving the recover-on-next-request design for a GCS
+// or raylet that comes back.
+func TestEnsureInitializedRetriesAfterBackoff(t *testing.T) {
+	sentinel := errors.New("gcs not ready")
+	var calls atomic.Int32
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error {
+		calls.Add(1)
+		return sentinel
+	}
+	defer func() { initWithConfigFn = orig }()
+	origBackoff := initRetryBackoff
+	initRetryBackoff = 0
+	defer func() { initRetryBackoff = origBackoff }()
+	lastInitErr = nil
+
+	cfg := &HeadConfig{GCSAddress: "127.0.0.1:6379", ClusterIDHex: "abc", NodeIPAddress: "127.0.0.1"}
+	if err := EnsureInitialized(cfg); !errors.Is(err, sentinel) {
+		t.Fatalf("first EnsureInitialized error = %v, want sentinel", err)
+	}
+	if err := EnsureInitialized(cfg); !errors.Is(err, sentinel) {
+		t.Fatalf("second EnsureInitialized (backoff expired) error = %v, want sentinel", err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("initWithConfig called %d times after backoff expiry, want 2", calls.Load())
 	}
 }

@@ -29,7 +29,9 @@ import (
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // kvNamespaceJob is KV_NAMESPACE_JOB; kvHeadNodeIDKey is KV_HEAD_NODE_ID_KEY.
@@ -128,6 +130,14 @@ func (d *DataSource) Start(ctx context.Context) error {
 					d.mu.Unlock()
 					d.persistHeadNodeID(ctx, n)
 				case err := <-errCh:
+					if status.Code(err) == codes.Unimplemented {
+						// GCS servers built without the pubsub service report
+						// Unimplemented here. The query path already serves
+						// this data, so drop the realtime subscription quietly
+						// instead of logging an error on every startup.
+						log.Log.V(1).Info("node subscription unavailable: GCS server has no pubsub service; using query fallback")
+						return
+					}
 					log.Log.Error(err, "node subscription error")
 					return
 				}
@@ -157,6 +167,10 @@ func (d *DataSource) Start(ctx context.Context) error {
 					d.actors[hex.EncodeToString(a.ActorId)] = a
 					d.mu.Unlock()
 				case err := <-errCh:
+					if status.Code(err) == codes.Unimplemented {
+						log.Log.V(1).Info("actor subscription unavailable: GCS server has no pubsub service; using query fallback")
+						return
+					}
 					log.Log.Error(err, "actor subscription error")
 					return
 				}
@@ -186,6 +200,10 @@ func (d *DataSource) Start(ctx context.Context) error {
 					d.stats[u.NodeID] = parsed
 					d.mu.Unlock()
 				case err := <-errCh:
+					if status.Code(err) == codes.Unimplemented {
+						log.Log.V(1).Info("resource usage subscription unavailable: GCS server has no pubsub service; using query fallback")
+						return
+					}
 					log.Log.Error(err, "resource usage subscription error")
 					return
 				}
