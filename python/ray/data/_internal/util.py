@@ -1,3 +1,4 @@
+import contextvars
 import functools
 import importlib
 import logging
@@ -1267,8 +1268,11 @@ def make_async_gen(
             output_queue.put(e)
 
     # Start workers threads
+    # Run workers in a copy of the caller's context so context variables (e.g.
+    # the untrusted-unpickling guard around reads) carry over to them.
     filling_worker_thread = threading.Thread(
-        target=_run_filling_worker,
+        target=contextvars.copy_context().run,
+        args=(_run_filling_worker,),
         name=f"map_tp_filling_worker-{gen_id}",
         daemon=True,
     )
@@ -1276,9 +1280,13 @@ def make_async_gen(
 
     transforming_worker_threads = [
         threading.Thread(
-            target=_run_transforming_worker,
+            target=contextvars.copy_context().run,
+            args=(
+                _run_transforming_worker,
+                input_queues[idx % num_input_queues],
+                output_queues[idx],
+            ),
             name=f"map_tp_transforming_worker-{gen_id}-{idx}",
-            args=(input_queues[idx % num_input_queues], output_queues[idx]),
             daemon=True,
         )
         for idx in range(num_workers)

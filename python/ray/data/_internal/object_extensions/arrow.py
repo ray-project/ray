@@ -20,6 +20,44 @@ _check_pyarrow_version()
 ARROW_PYTHON_OBJECT_EXTENSION_NAME = "ray.data.arrow_pickled_object"
 
 
+def raise_on_pickle_object_columns(table: "pa.Table") -> None:
+    """Raise if ``table`` has a pickled-object column and unpickling is forbidden.
+
+    For datasources handed tables that were built before the read (so the
+    extension type was never rebuilt under the guard), such as HuggingFace
+    datasets loaded by the user.
+    """
+    if not is_unpickling_forbidden():
+        return
+    pickle_cols = [
+        field.name for field in table.schema if _contains_pickle_object_type(field.type)
+    ]
+    if pickle_cols:
+        raise UntrustedUnpicklingError(
+            f"This data contains columns stored as "
+            f"'{ARROW_PYTHON_OBJECT_EXTENSION_NAME}': {pickle_cols}. Reading them "
+            f"requires unpickling, which can execute arbitrary code and is unsafe "
+            f"with untrusted data. If you trust the source of this data, set "
+            f"{AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 on all worker nodes "
+            f"(e.g. via 'runtime_env')."
+        )
+
+
+def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
+    """Return whether ``dtype`` is, or nests, the pickled-object extension type."""
+    if isinstance(dtype, pa.ExtensionType):
+        if dtype.extension_name == ARROW_PYTHON_OBJECT_EXTENSION_NAME:
+            return True
+        return _contains_pickle_object_type(dtype.storage_type)
+    # Dictionary-encoded columns report ``num_fields == 0``, so recurse explicitly.
+    if pa.types.is_dictionary(dtype):
+        return _contains_pickle_object_type(dtype.value_type)
+    return any(
+        _contains_pickle_object_type(dtype.field(i).type)
+        for i in range(dtype.num_fields)
+    )
+
+
 # Please see https://arrow.apache.org/docs/python/extending_types.html for more info
 @PublicAPI(stability="alpha")
 class ArrowPythonObjectType(pa.ExtensionType):

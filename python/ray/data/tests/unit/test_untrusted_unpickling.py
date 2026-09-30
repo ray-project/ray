@@ -151,6 +151,41 @@ def test_guard_iterator_covers_producer_not_consumer():
     assert seen == [1, 2]
 
 
+def test_guard_iterator_covers_threaded_reads():
+    # Readers fan fragments out to worker threads via ``make_async_gen``; the
+    # flag must follow them there.
+    from ray.data._internal.util import make_async_gen
+
+    def read_fragments(fragments):
+        for _ in fragments:
+            with pytest.raises(UntrustedUnpicklingError):
+                pickle.loads(pickle.dumps(_Payload()))
+            yield is_unpickling_forbidden()
+
+    def reader():
+        return make_async_gen(
+            iter(range(4)), read_fragments, preserve_ordering=True, num_workers=2
+        )
+
+    assert list(guard_iterator(reader)) == [True] * 4
+
+
+def test_guard_iterator_closes_producer_on_early_exit():
+    closed_guarded = []
+
+    def producer():
+        try:
+            yield 1
+            yield 2
+        finally:
+            closed_guarded.append(is_unpickling_forbidden())
+
+    gen = guard_iterator(producer)
+    assert next(gen) == 1
+    gen.close()
+    assert closed_guarded == [True]
+
+
 class _RecordingDatasource(Datasource):
     """Records whether unpickling was forbidden in each driver-side hook."""
 
@@ -178,6 +213,20 @@ class _RecordingSubclass(_RecordingDatasource):
     def __init__(self):
         super().__init__()
         self.seen["subclass__init__"] = is_unpickling_forbidden()
+
+
+class _ReadTasksMixin:
+    def get_read_tasks(self, parallelism, per_task_row_limit=None, data_context=None):
+        return [is_unpickling_forbidden()]
+
+
+class _MixinDatasource(_ReadTasksMixin, Datasource):
+    def estimate_inmemory_data_size(self):
+        return None
+
+
+def test_datasource_hooks_from_mixin_run_guarded():
+    assert _MixinDatasource().get_read_tasks(1) == [True]
 
 
 def test_datasource_hooks_run_guarded():
