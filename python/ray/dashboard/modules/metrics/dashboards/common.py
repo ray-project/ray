@@ -23,10 +23,6 @@ K8S_DISK_USAGE_NOTE = (
     "With it set, each pod reports the disk of the whole Kubernetes node it runs on, not its own usage: "
     "pods on the same node show the same values, and a pod's usage can come from other pods on that node."
 )
-K8S_DISK_UTILIZATION_NOTE = (
-    "On Kubernetes, disk shows 0% unless RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE=1 is set "
-    "in the Ray container's environment."
-)
 
 GRAPH_TARGET_TEMPLATE = {
     "exemplar": True,
