@@ -3236,6 +3236,39 @@ class DeploymentState:
         """
         return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
+    def rollout_complete(self) -> bool:
+        """Check config rollout readiness without waiting for autoscaling to settle.
+
+        Fixed-size deployments must settle at the target count. Autoscaling may
+        continue within bounds; zero running replicas requires a zero target.
+        """
+        target_version = self._target_state.version
+        if target_version is None or self._target_state.deleting:
+            return False
+        if (
+            self._replicas.count(exclude_version=target_version) > 0
+            or self._replicas.count(
+                states=[ReplicaState.UPDATING, ReplicaState.RECOVERING]
+            )
+            > 0
+            or self._orphaned_deployment_actor_code_versions()
+            or not self._deployment_actors_satisfied_for_target()
+        ):
+            return False
+        running = self._replicas.count(states=[ReplicaState.RUNNING])
+        target_num_replicas = self._target_state.target_num_replicas
+        if self.should_autoscale():
+            return self._autoscaling_state_manager.is_within_bounds(
+                self._id, running
+            ) and (target_num_replicas == 0 or running > 0)
+        return (
+            running == target_num_replicas
+            and self._replicas.count(
+                states=[ReplicaState.STARTING, ReplicaState.STOPPING]
+            )
+            == 0
+        )
+
     def get_checkpoint_data(self) -> DeploymentTargetState:
         """
         Return deployment's target state submitted by user's deployment call.
@@ -6697,6 +6730,7 @@ class DeploymentStateManager:
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
                 replicas=deployment_state.list_replica_details(),
                 recent_dead_replicas=deployment_state.list_recent_dead_replicas(),
+                rollout_complete=deployment_state.rollout_complete(),
             )
 
     def get_deployment_statuses(
