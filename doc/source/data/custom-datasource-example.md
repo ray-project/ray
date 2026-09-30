@@ -22,7 +22,7 @@ The core abstraction for reading files is {class}`~ray.data.datasource.FileBased
 
 To subclass {class}`~ray.data.datasource.FileBasedDatasource`, implement the constructor and `_read_stream`.
 
-### Implement the constructor
+### Implement the datasource constructor
 
 Call the superclass constructor and specify the files you want to read. Optionally, specify valid file extensions. Ray Data ignores files with other extensions.
 
@@ -68,7 +68,7 @@ To write one row per file, subclass {class}`~ray.data.datasource.RowBasedFileDat
 
 This example writes one image per file, so it subclasses {class}`~ray.data.datasource.RowBasedFileDatasink`. To subclass {class}`~ray.data.datasource.RowBasedFileDatasink`, implement the constructor and {meth}`~ray.data.datasource.RowBasedFileDatasink.write_row_to_file`.
 
-### Implement the constructor
+### Implement the datasink constructor
 
 Call the superclass constructor and specify the folder to write to. Optionally, specify a string for the file format, such as `"png"`. Ray Data uses the file format as the file extension.
 

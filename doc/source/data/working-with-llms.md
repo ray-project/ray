@@ -713,10 +713,6 @@ ImportError: libcudart.so.12: cannot open shared object file: No such file or di
 Remove the incompatible package, or make sure the installed `nixl_ep` package is compatible with the CUDA runtime and vLLM build in your environment.
 :::
 
-:::{note}
-Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see {ref}`usage stats collection <ref-usage-stats>`.
-:::
-
 ### Get help
 
 If this guide doesn't cover your issue, use the following resources:
@@ -726,3 +722,7 @@ If this guide doesn't cover your issue, use the following resources:
 - [Ray Discourse Forum](https://discuss.ray.io): Ask questions and share knowledge.
 - [Ray LLM Office Hours](https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month): Learn about new Ray LLM features, ask questions, and get guidance from the team.
   - [Past Office Hours Recordings](https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN): View recordings from previous sessions.
+
+## Usage data collection
+
+Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see {ref}`usage stats collection <ref-usage-stats>`.

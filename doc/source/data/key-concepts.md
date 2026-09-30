@@ -26,6 +26,7 @@ A *block* is a set of rows that represents a single partition of the dataset. Bl
 The following figure shows a dataset with three blocks, each holding 1000 rows. Ray Data holds the {class}`~ray.data.Dataset` on the process that triggers execution. That process is usually the entrypoint of the program, called the {term}`driver`. Ray Data stores the blocks as objects in Ray's shared-memory {ref}`object store <objects-in-ray>`. Internally, Ray Data can natively handle a block as either a pandas `DataFrame` or a PyArrow `Table`.
 
 ```{image} images/dataset-arch-with-blocks.svg
+:alt: A ray.data.Dataset holds a table that maps row ranges 1-1000, 1001-2000, and 2001-3000 to object references. Each reference points to a block of 1000 rows with the columns col1 and col2.
 ```
 <!--
 https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
@@ -42,6 +43,7 @@ The following diagram shows the complete planning process.
 <!-- https://docs.google.com/drawings/d/1WrVAg3LwjPo44vjLsn17WLgc3ta2LeQGgRfE8UHrDA0/edit -->
 
 ```{image} images/get_execution_plan.svg
+:alt: The LogicalOptimizer turns a logical plan into an optimized logical plan. The Planner converts the optimized logical plan into a physical plan, and the PhysicalOptimizer turns that into an optimized physical plan.
 :width: 600
 :align: center
 ```
@@ -63,7 +65,7 @@ dataset = dataset.select_columns("test")
 
 You can inspect the resulting logical plan by printing the dataset:
 
-```
+```text
 Project
 +- MapBatches(add_column)
    +- Dataset(schema={...})
@@ -116,7 +118,7 @@ ds.show(5)
 
 This code creates a logical plan like the following:
 
-```
+```text
 Filter(filter_func)
 +- Map(cpu_function2)
    +- Map(GPUClass)
@@ -129,6 +131,7 @@ The streaming topology looks like the following:
 <!-- https://docs.google.com/drawings/d/10myFIVtpI_ZNdvTSxsaHlOhA_gHRdUde_aHRC9zlfOw/edit -->
 
 ```{image} images/streaming-topology.svg
+:alt: A streaming topology of Read, Map, Map, Map, and Filter operators. Each operator writes to a queue that feeds the next operator. A legend marks each queue as an out-queue for its operator and an in-queue for the next one.
 :width: 1000
 :align: center
 ```
