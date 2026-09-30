@@ -749,7 +749,7 @@ First, install the required dependencies:
 pip install huggingface_hub
 ```
 
-Set your Hugging Face token to authenticate. The following example passes the token to `HfFileSystem`.
+To authenticate, set the `HF_TOKEN` environment variable to your Hugging Face token. The Parquet example later in this section reads the variable and passes the token to `HfFileSystem`.
 
 ```console
 export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
