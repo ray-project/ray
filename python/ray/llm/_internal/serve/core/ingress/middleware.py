@@ -1,6 +1,8 @@
+import os
+import secrets
 import uuid
 from asyncio import CancelledError
-from typing import Optional
+from typing import Iterable, Optional
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -179,3 +181,127 @@ def get_user_id(request: Request) -> Optional[str]:
         Id identifying the particular user, or ``None`` if not set.
     """
     return getattr(request.state, "user_id", None)
+
+
+# Marker written into ``request.state.user_id`` once a request has passed the
+# bearer-token check, so ``get_user_id`` (and the metrics layer that consumes
+# it) can distinguish authenticated traffic without exposing the key itself.
+AUTHENTICATED_USER_ID = "authenticated"
+
+# Environment variable the ingress reads for its bearer key, matching the
+# variable the standalone vLLM OpenAI server enforces.
+VLLM_API_KEY_ENV_VAR = "VLLM_API_KEY"
+
+
+class AuthMiddleware:
+    """Enforces bearer-token authentication on the OpenAI-compatible ingress.
+
+    Ray Serve LLM serves requests from a FastAPI ingress that is a separate
+    process from the model replicas, so the engine-level ``VLLM_API_KEY`` /
+    ``api_key`` never reaches the HTTP boundary. This middleware restores that
+    enforcement at the ingress: when ``api_key`` is set, a request must carry
+    an ``Authorization: Bearer <key>`` header matching it, or it is rejected
+    with a 401 before it reaches any handler or model deployment.
+
+    When ``api_key`` is empty/``None`` the middleware is a no-op, preserving
+    the endpoint's open-by-default behavior (enforcement is opt-in).
+
+    On success the request is tagged via ``request.state.user_id`` (see
+    ``AUTHENTICATED_USER_ID``), filling the slot ``get_user_id`` documents.
+
+    NOTE: This is a raw ASGI middleware (mirroring ``SetRequestIdMiddleware``)
+          so it can short-circuit with a 401 without invoking downstream
+          layers. CORS preflight (``OPTIONS``) requests and ``exempt_paths``
+          (e.g. health/metrics) bypass the check.
+    """
+
+    def __init__(
+        self,
+        app,
+        *,
+        api_key: Optional[str] = None,
+        api_key_env_var: Optional[str] = None,
+        exempt_paths: Iterable[str] = (),
+    ):
+        self.app = app
+        # An explicit key wins; otherwise fall back to the env var. This resolves
+        # here, not at build time, because Starlette instantiates the middleware
+        # in the ingress replica process -- so the env read reflects the replica
+        # (the process that actually owns the HTTP boundary), not the driver that
+        # assembled the app.
+        resolved = api_key or (
+            os.environ.get(api_key_env_var) if api_key_env_var else None
+        )
+        self.api_key = resolved or None
+        self.exempt_paths = frozenset(exempt_paths)
+
+    def _is_authorized(self, request: Request) -> bool:
+        auth_header = request.headers.get("authorization", "")
+        scheme, _, param = auth_header.partition(" ")
+        if scheme.lower() != "bearer":
+            return False
+        token = param.strip()
+        # Constant-time comparison to avoid leaking the key via response timing.
+        return bool(token) and secrets.compare_digest(token, self.api_key)
+
+    async def __call__(self, scope, receive, send):
+        # No key configured, or non-HTTP scope (lifespan/websocket): pass through.
+        if not self.api_key or scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        # CORS preflight carries no Authorization header; rejecting it would
+        # break browsers before they ever send the real request.
+        if scope.get("method") == "OPTIONS":
+            return await self.app(scope, receive, send)
+
+        if scope.get("path") in self.exempt_paths:
+            return await self.app(scope, receive, send)
+
+        request = Request(scope)
+        if not self._is_authorized(request):
+            response = JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": {
+                        "message": (
+                            "Incorrect API key provided. You can set the API "
+                            "key via the VLLM_API_KEY environment variable or "
+                            "the ingress api_key configuration."
+                        ),
+                        "type": "authentication_error",
+                        "param": None,
+                        "code": "invalid_api_key",
+                    }
+                },
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            return await response(scope, receive, send)
+
+        # Authenticated: tag the request for downstream consumers (e.g. metrics).
+        request.state.user_id = AUTHENTICATED_USER_ID
+        return await self.app(scope, receive, send)
+
+
+def add_auth_middleware(
+    app: FastAPI,
+    *,
+    api_key: Optional[str] = None,
+    api_key_env_var: Optional[str] = None,
+    exempt_paths: Iterable[str] = (),
+) -> None:
+    """Install :class:`AuthMiddleware` on ``app``.
+
+    A no-op when neither ``api_key`` nor ``api_key_env_var`` is provided. When
+    ``api_key_env_var`` is given the middleware is installed even without an
+    explicit key, since the key may be supplied via the environment at replica
+    startup; in that case an unset variable makes the middleware a runtime
+    no-op (open endpoint), preserving backwards compatibility.
+    """
+    if not (api_key or api_key_env_var):
+        return
+    app.add_middleware(
+        AuthMiddleware,
+        api_key=api_key,
+        api_key_env_var=api_key_env_var,
+        exempt_paths=frozenset(exempt_paths),
+    )

@@ -157,6 +157,14 @@ class LLMServingArgs(BaseModelExtended):
             The Ray @server.deployment options for the ingress server.
         """,
     )
+    api_key: Optional[str] = Field(
+        default=None,
+        description="Bearer key required on the OpenAI-compatible HTTP "
+        "endpoints. When set, requests must send `Authorization: Bearer "
+        "<key>` or receive a 401. Takes precedence over the `VLLM_API_KEY` "
+        "environment variable read by the ingress; if neither is set the "
+        "endpoints remain open (no enforcement).",
+    )
 
     @field_validator("ingress_cls_config")
     @classmethod
@@ -282,7 +290,9 @@ def build_openai_app(builder_config: dict) -> Application:
         default_ingress_options, builder_config.ingress_deployment_config
     )
 
-    ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
+    ingress_cls = make_fastapi_ingress(
+        ingress_cls_config.ingress_cls, api_key=builder_config.api_key
+    )
 
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
