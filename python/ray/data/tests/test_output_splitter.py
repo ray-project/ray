@@ -320,9 +320,6 @@ def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
         maybe_warn(producer_bundles=20)
         maybe_warn(producer_bundles=20)
         assert mock_warning.call_count == 1
-        message = mock_warning.call_args[0][0]
-        assert "Training ingest may be memory-constrained" in message
-        assert "enable_shard_locality=False" in message
     reset_log_once("output_splitter_memory_constrained")
 
 

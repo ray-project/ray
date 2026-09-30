@@ -189,11 +189,12 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             f"{memory_string(producer_object_store_memory)}. Blocks held by "
             "consumers stay charged to the operator that produced them, so "
             "ingestion can slow down or stall. To fix this, either:\n"
-            "  - Increase object store memory available to Ray Data: add nodes or "
-            "use larger ones, or raise RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION "
-            "(default 0.5).\n"
-            "  - Reduce training-side buffering: lower prefetch_batches or "
-            "batch_size, use smaller blocks, or disable shard locality with "
+            "  - Increase object store memory: add nodes or use larger ones, or "
+            "raise RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION (default 0.3) when "
+            "starting the Ray cluster.\n"
+            "  - Reduce training-side buffering: lower prefetch_batches, use "
+            "smaller blocks, or disable the shard locality buffer with "
+            "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR=0 or "
             "DataConfig(enable_shard_locality=False)."
         )
 
