@@ -11982,6 +11982,15 @@ class TestPushedHealthRegressions:
         assert w._health_check_ref is None
         w._actor_handle.check_health.remote.assert_not_called()
 
+    def test_the_window_stays_under_the_probe_cadence(self):
+        """A crash is invisible until the window expires and a probe is armed, so the
+        window has to stay under the cadence it replaces or push detects crashes later
+        than pull probing did. Absolute values, so a change here has to be deliberate."""
+        for period in (2.0, 10.0, 30.0):
+            assert ds_mod._push_freshness_window_s(period) < period
+        assert ds_mod._push_freshness_window_s(10.0) == 7.5
+        assert ds_mod._push_freshness_window_s(0.5) == 1.0  # the floor still applies
+
     def test_registry_rejects_out_of_order_reports(self):
         r = ReplicaHealthPushRegistry()
         r.record("r1", checked_at=200.0, healthy=True)
