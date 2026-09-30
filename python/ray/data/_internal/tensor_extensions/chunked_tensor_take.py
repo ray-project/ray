@@ -11,7 +11,7 @@ import logging
 import math
 from enum import Enum
 from itertools import chain
-from typing import Any, Iterable, NamedTuple, Optional, Tuple, Union
+from typing import Any, Iterable, Iterator, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -412,20 +412,21 @@ class PreparedFixedShapedTensorTake(NamedTuple):
             )
             local_indices = subbatch_indices - self.chunk_starts[chunk_ids]
 
-            if np.all(chunk_ids[1:] >= chunk_ids[:-1]):
-                _gather_monotonic_chunk_ids(
-                    output_slice,
-                    local_indices,
-                    self.chunk_views,
-                    chunk_ids,
-                )
-            else:
-                _gather_by_sorted_chunk_ids(
-                    output_slice,
-                    local_indices,
-                    self.chunk_views,
-                    chunk_ids,
-                )
+            already_sorted = bool(np.all(chunk_ids[1:] >= chunk_ids[:-1]))
+            for chunk_id, positions in _iter_chunk_groups(
+                chunk_ids, already_sorted=already_sorted
+            ):
+                rows = local_indices[positions]
+                chunk = self.chunk_views[chunk_id]
+                if already_sorted and (
+                    len(rows) <= 1 or np.all(rows[1:] == rows[:-1] + 1)
+                ):
+                    source_start = int(rows[0])
+                    output_slice[positions] = chunk[
+                        source_start : source_start + len(rows)
+                    ]
+                else:
+                    output_slice[positions] = chunk[rows]
 
     def _wrap_tensor_output(self, output: np.ndarray) -> pa.Array:
         """Wrap the owned output buffer with the original Ray tensor type.
@@ -456,76 +457,36 @@ class PreparedFixedShapedTensorTake(NamedTuple):
         return self.tensor_type.wrap_array(storage)
 
 
-def _gather_monotonic_chunk_ids(
-    output: np.ndarray,
-    local_indices: np.ndarray,
-    chunks: tuple[np.ndarray, ...],
-    chunk_ids: np.ndarray,
-) -> None:
-    """Gather chunk groups that already occur in nondecreasing chunk order.
+def _iter_chunk_groups(
+    chunk_ids: np.ndarray, *, already_sorted: bool = False
+) -> Iterator[Tuple[int, Union[slice, np.ndarray]]]:
+    """Yield each selected source chunk and its original output positions.
 
-    A change in ``chunk_ids`` marks a group boundary. Because every group
-    occupies a contiguous output range, it can be written without sorting or
-    scattering. Consecutive local row indices use a source slice; other rows
-    use NumPy advanced indexing.
+    Callers choose the grouping strategy. If ``already_sorted`` is true,
+    chunk IDs must be nondecreasing and each group is a contiguous output
+    slice. Otherwise, sort positions by chunk and return index arrays that
+    scatter each group back to the requested output order. False does not
+    imply unordered input; it simply selects sorting without an order check.
 
-    Args:
-        output: Destination for this subbatch.
-        local_indices: Source-row indices relative to their chunks.
-        chunks: Zero-copy NumPy views of the source tensor chunks.
-        chunk_ids: Nondecreasing source chunk IDs for each output position.
+    Sorting costs O(K log K) for K rows and avoids scanning all requested rows
+    for every chunk. A stable sort is unnecessary: each row is written to its
+    original output position. Neither strategy sorts tensor payloads.
     """
-    boundaries = np.flatnonzero(chunk_ids[1:] != chunk_ids[:-1]) + 1
-    group_start = 0
-    # Add the final sentinel lazily instead of materializing a Python tuple
-    # proportional to the number of chunk groups.
-    for group_stop in chain(boundaries, (len(chunk_ids),)):
-        chunk_id = chunk_ids[group_start]
-        group_indices = local_indices[group_start:group_stop]
-        if len(group_indices) <= 1 or np.all(
-            group_indices[1:] == group_indices[:-1] + 1
-        ):
-            source_start = int(group_indices[0])
-            source_stop = source_start + len(group_indices)
-            output[group_start:group_stop] = chunks[chunk_id][source_start:source_stop]
-        else:
-            output[group_start:group_stop] = chunks[chunk_id][group_indices]
-        group_start = group_stop
-
-
-def _gather_by_sorted_chunk_ids(
-    output: np.ndarray,
-    local_indices: np.ndarray,
-    chunks: tuple[np.ndarray, ...],
-    chunk_ids: np.ndarray,
-) -> None:
-    """Gather unordered rows after sorting positions into chunk groups.
-
-    ``argsort`` returns output positions ordered by source chunk. Equal chunk
-    IDs then form contiguous processing groups, so each source chunk is gathered
-    once. Results are scattered through the saved original positions, preserving
-    the caller-visible row order. A stable sort is unnecessary because every
-    gathered row is written to its own original position.
-
-    Sorting costs ``O(K log K)`` for ``K`` subbatch rows, but avoids one full
-    ``chunk_ids`` scan per chunk and therefore scales better for many chunks.
-
-    Args:
-        output: Destination for this subbatch.
-        local_indices: Source-row indices relative to their chunks.
-        chunks: Zero-copy NumPy views of the source tensor chunks.
-        chunk_ids: Potentially unordered source chunk IDs for each output
-            position.
-    """
-    order = np.argsort(chunk_ids, kind="quicksort")
-    sorted_chunk_ids = chunk_ids[order]
-    boundaries = np.flatnonzero(sorted_chunk_ids[1:] != sorted_chunk_ids[:-1]) + 1
-    group_start = 0
-    for group_stop in chain(boundaries, (len(order),)):
-        positions = order[group_start:group_stop]
-        chunk_id = chunk_ids[positions[0]]
-        output[positions] = chunks[chunk_id][local_indices[positions]]
-        group_start = group_stop
+    if already_sorted:
+        order = None
+        sorted_ids = chunk_ids
+    else:
+        order = np.argsort(chunk_ids)
+        sorted_ids = chunk_ids[order]
+    boundaries = np.flatnonzero(sorted_ids[1:] != sorted_ids[:-1]) + 1
+    start = 0
+    # Add the final sentinel without materializing a tuple of all boundaries.
+    for stop in chain(boundaries, (len(sorted_ids),)):
+        if start == stop:
+            continue
+        positions = slice(start, stop) if order is None else order[start:stop]
+        yield int(sorted_ids[start]), positions
+        start = stop
 
 
 class _VariableTensorChunk(NamedTuple):
@@ -768,21 +729,13 @@ class PreparedVariableShapedTensorTake(NamedTuple):
         lengths = np.empty(len(indices), dtype=np.int64)
         source_offsets = np.empty(len(indices), dtype=np.int64)
         shapes = np.empty((len(indices), self.tensor_type.ndim), dtype=np.int64)
-        # Sort once to avoid scanning every requested row for every source chunk.
-        order = np.argsort(chunk_ids)
-        sorted_ids = chunk_ids[order]
-        boundaries = np.flatnonzero(sorted_ids[1:] != sorted_ids[:-1]) + 1
-        start = 0
-        for stop in chain(boundaries, (len(order),)):
-            if start == stop:
-                continue
-            positions = order[start:stop]
-            chunk = self.chunks[int(sorted_ids[start])]
+        # Group row metadata by source chunk without an extra order check.
+        for chunk_id, positions in _iter_chunk_groups(chunk_ids, already_sorted=False):
+            chunk = self.chunks[chunk_id]
             rows = local[positions]
             source_offsets[positions] = chunk.offsets[rows]
             lengths[positions] = chunk.offsets[rows + 1] - chunk.offsets[rows]
             shapes[positions] = chunk.shapes[rows]
-            start = stop
         offsets = np.empty(len(indices) + 1, dtype=np.int64)
         offsets[0] = 0
         np.cumsum(lengths, out=offsets[1:])
