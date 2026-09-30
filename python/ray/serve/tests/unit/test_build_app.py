@@ -607,6 +607,9 @@ def test_build_app_adds_model_multiplexing_ingress_request_router(monkeypatch):
 def test_build_app_does_not_add_model_multiplexing_router_without_haproxy(
     monkeypatch,
 ):
+    # The Python proxy already routes every request through the ingress
+    # deployment's ordinary Serve request router. The peer ingress request
+    # router is an HAProxy adapter and would be an unused deployment here.
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", False)
 
     @serve.deployment
