@@ -1305,9 +1305,6 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert resp.json()["body_length"] == large_body_size
             assert router_captured["bodies"][-1] == large_body
 
-            # An ingress request router owns replica selection for every
-            # request, regardless of HTTP method. It receives the original
-            # end-to-end headers but not connection framing fields.
             n_router_calls_before_get = len(router_captured["bodies"])
             resp = requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough",

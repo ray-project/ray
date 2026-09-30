@@ -8,16 +8,10 @@
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local FORWARD_BODY = ${FORWARD_BODY}
--- The model ID is forwarded even when request-body forwarding is disabled.
--- The frontend accepts both supported separator spellings and stores the
--- selected value in a transaction variable before stripping client metadata.
 local MODEL_ID_HEADER = "serve_multiplexed_model_id"
 
--- These headers describe the client-to-HAProxy hop or frame the internal
--- request itself. Forwarding them verbatim could corrupt the router request.
--- Content-Length is regenerated from the body copy below. Headers named by a
--- client Connection header are filtered dynamically as well.
-local HOP_BY_HOP_HEADERS = {
+-- Headers named by Connection are added dynamically.
+local ROUTER_REQUEST_HEADER_EXCLUSIONS = {
     ["connection"] = true,
     ["content-length"] = true,
     ["expect"] = true,
@@ -44,7 +38,7 @@ local _rr_cursor = {}
 
 local function request_headers_for_router(headers)
     local excluded = {}
-    for name, _ in pairs(HOP_BY_HOP_HEADERS) do
+    for name, _ in pairs(ROUTER_REQUEST_HEADER_EXCLUSIONS) do
         excluded[name] = true
     end
 
@@ -53,7 +47,7 @@ local function request_headers_for_router(headers)
     if connection then
         for _, value in pairs(connection) do
             for token in value:gmatch("[^,]+") do
-                excluded[token:match("^%s*(.-)%s*$"):lower()] = true
+                excluded[token:match("^%s*(.-)%s*$$"):lower()] = true
             end
         end
     end
@@ -175,14 +169,8 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         end
     end
 
-    -- Give the ingress request router the same end-to-end request headers as
-    -- the selected replica. HAProxy already removed its reserved router-owned
-    -- namespace above; call_router filters connection framing fields.
     local headers = txn.http:req_get_headers()
 
-    -- The frontend saves this before stripping client-supplied routing
-    -- metadata. The router returns the trusted value for HAProxy to restore on
-    -- the data-plane request.
     local model_id = txn:get_var("txn.multiplexed_model_id")
 
     -- Round-robin over the app's routers, one cursor step per request. On a
