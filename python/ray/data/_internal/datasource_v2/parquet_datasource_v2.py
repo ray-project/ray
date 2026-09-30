@@ -362,7 +362,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
             idx = schema.get_field_index(column.name)
             if idx == -1:
                 schema = schema.append(pa.field(column.name, column.type))
-            elif column.name == self._custom_path_column_name:
+            elif isinstance(column, PathColumn):
                 # The reader appends a synthesized path after the file columns.
                 # Keep the inferred order consistent when its name collides.
                 schema = schema.remove(idx).append(pa.field(column.name, column.type))

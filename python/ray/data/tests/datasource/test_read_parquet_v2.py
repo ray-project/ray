@@ -129,6 +129,22 @@ def test_read_parquet_v2_only_path_projection_uses_synthesized_value(
     assert ds.take_all() == [{"path": str(file_path)}] * 2
 
 
+@pytest.mark.parametrize("include_paths", [True, "path"])
+def test_read_parquet_v2_default_path_collision_preserves_column_order(
+    tmp_path, restore_ctx, include_paths
+):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"path": ["physical"], "id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(file_path), include_paths=include_paths)
+
+    assert ds.schema().names == ["id", "path"]
+    batch = ds.take_batch(batch_format="pyarrow")
+    assert batch.column_names == ds.schema().names
+    assert batch.to_pylist() == [{"id": 1, "path": str(file_path)}]
+
+
 def test_read_parquet_custom_path_column_requires_v2(tmp_path, restore_ctx):
     file_path = tmp_path / "data.parquet"
     _write(file_path, pa.table({"id": [1]}))
