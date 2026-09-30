@@ -278,7 +278,7 @@ if setup_spec.type == SetupType.RAY:
             "memray; sys_platform != 'win32'",
         ],
         "serve": [
-            "uvicorn[standard]",
+            "uvicorn[standard] >= 0.26.0",  # >= 0.26.0 includes root_path in the ASGI path.
             "requests",
             "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
             "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.

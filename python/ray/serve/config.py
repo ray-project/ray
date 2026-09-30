@@ -837,9 +837,11 @@ class HTTPOptions(BaseModel):
       localhost. To expose Serve publicly, you probably want to set
       this to "0.0.0.0" for IPv4 or "::" for IPv6.
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
-    - root_path: An optional root path to mount the serve application
-      (for example, "/prefix"). All deployment routes are prefixed
-      with this path.
+    - root_path: An optional ASGI root path that the serve application is
+      mounted at (for example, "/prefix"), for when Serve runs behind a
+      proxy that strips this prefix before forwarding. Requests reach Serve
+      without the prefix, and applications see it in the ASGI scope's
+      "root_path" and "path".
     - request_timeout_s: End-to-end timeout for HTTP requests.
     - keep_alive_timeout_s: Duration to keep idle connections alive when no
       requests are ongoing.
