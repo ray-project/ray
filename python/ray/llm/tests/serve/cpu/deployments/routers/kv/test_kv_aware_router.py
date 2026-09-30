@@ -1,55 +1,38 @@
-"""KVRouterActor attachment and live replica-membership tracking.
-
-Attachment is covered two ways: ``build_openai_app`` with a Python ``LLMConfig``,
-and a declarative YAML config deployed via ``serve deploy`` (the dotted-string
-router class only YAML can express). Membership tracking is covered by deploying
-a dummy multi-replica deployment and asserting the actor's LongPoll listener
-stays in sync with the live replicas across scale up/down.
+"""KV routing behavior: the non-KV warning path, ``select_worker`` guards, the
+``KVAwareRouter.choose_replicas`` candidate mapping, and ``_on_deployment_targets``
+replica reconciliation.
 """
 
-import os
-import subprocess
 import sys
 from typing import List
 from unittest import mock
 
 import pytest
 
-import ray
-from ray import serve
-from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs,
     build_openai_app,
 )
-from ray.llm._internal.serve.core.ingress.tokenizer import REQUEST_TOKEN_IDS_KWARG
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
-    KV_ROUTER_ACTOR_NAME,
-    KVRouterActor,
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    REQUEST_TOKEN_IDS_KWARG,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    KVTokenTracker,
     get_worker_id,
 )
 from ray.serve._private.common import (
-    REPLICA_ID_FULL_ID_STR_PREFIX,
     DeploymentID,
     DeploymentTargetInfo,
     ReplicaID,
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
 from ray.serve._private.request_router import PendingRequest
-from ray.serve.config import DeploymentActorConfig
 from ray.serve.llm.request_router import KVAwareRouter
-from ray.util.state import list_actors
-
-
-def get_kv_actor_configs(deployment):
-    return [
-        cfg
-        for cfg in (deployment._deployment_config.deployment_actors or [])
-        if (cfg["name"] if isinstance(cfg, dict) else cfg.name) == KV_ROUTER_ACTOR_NAME
-    ]
 
 
 def build_test_llm_config(experimental_configs=None) -> LLMConfig:
@@ -82,49 +65,6 @@ def build_non_kv_llm_config(**engine_kwargs) -> LLMConfig:
     )
 
 
-def get_kv_actor_names(app_name: str) -> list:
-    prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::"
-    suffix = f"::{KV_ROUTER_ACTOR_NAME}"
-    return [
-        a["name"]
-        for a in list_actors(filters=[("state", "=", "ALIVE")])
-        if a["name"] and a["name"].startswith(prefix) and a["name"].endswith(suffix)
-    ]
-
-
-def discover_deployment_actor(app_name, deployment_name, actor_name):
-    """Handle to a deployment-scoped actor by app/deployment/logical name."""
-    prefix = f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{app_name}::{deployment_name}::"
-    suffix = f"::{actor_name}"
-    for entry in ray.util.list_named_actors(all_namespaces=True):
-        name = entry.get("name") or ""
-        if (
-            entry.get("namespace") == SERVE_NAMESPACE
-            and name.startswith(prefix)
-            and (name.endswith(suffix))
-        ):
-            return ray.get_actor(name, namespace=SERVE_NAMESPACE)
-    return None
-
-
-def get_candidate_ids(app_name):
-    handle = discover_deployment_actor(
-        app_name, "ReplicaTrackingDeployment", KV_ROUTER_ACTOR_NAME
-    )
-    assert handle is not None
-    return ray.get(handle.get_candidate_worker_ids.remote())
-
-
-def get_live_replica_worker_ids(app_name, deployment_name="ReplicaTrackingDeployment"):
-    """Worker ids derived directly from the deployment's alive replica actors."""
-    prefix = f"{REPLICA_ID_FULL_ID_STR_PREFIX}{app_name}#{deployment_name}#"
-    return {
-        get_worker_id(a["name"][len(prefix) :])
-        for a in list_actors(filters=[("state", "=", "ALIVE")])
-        if a["name"] and a["name"].startswith(prefix)
-    }
-
-
 @pytest.fixture(autouse=True)
 def enable_direct_streaming(monkeypatch):
     monkeypatch.setattr(
@@ -134,38 +74,10 @@ def enable_direct_streaming(monkeypatch):
     )
 
 
-@pytest.fixture(scope="module")
-def serve_instance():
-    if not ray.is_initialized():
-        ray.init(address="auto")
-    yield
-    serve.shutdown()
-
-
-def test_build_openai_app_attaches_kv_actor():
-    """A KVAwareRouter on the LLMConfig attaches the KVRouterActor."""
-    app = build_openai_app(LLMServingArgs(llm_configs=[build_test_llm_config()]))
-
-    configs = get_kv_actor_configs(app._bound_deployment)
-    assert len(configs) == 1
-    actor_cfg = configs[0]
-    assert actor_cfg.get_actor_class().__ray_actor_class__ is KVRouterActor
-    assert actor_cfg.actor_options["num_cpus"] == 0
-    assert actor_cfg.init_kwargs == {"indexer_threads": 4}
-
-
-def test_configurable_indexer_threads():
-    llm_config = build_test_llm_config(experimental_configs={"KV_INDEXER_THREADS": 8})
-    app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
-
-    actor_cfg = get_kv_actor_configs(app._bound_deployment)[0]
-    assert actor_cfg.init_kwargs["indexer_threads"] == 8
-
-
 def test_non_kv_router_warns_kv_events_config():
-    """Without a KVAwareRouter no KVRouterActor is attached and a user-provided
-    kv_events_config is left untouched (just unused), with a warning pointing at
-    how to consume the engine's KV events."""
+    """Without a KVAwareRouter a user-provided kv_events_config is left untouched
+    (just unused), with a warning pointing at how to consume the engine's KV
+    events."""
     kv_events_config = {
         "enable_kv_cache_events": True,
         "publisher": "zmq",
@@ -176,139 +88,44 @@ def test_non_kv_router_warns_kv_events_config():
     with mock.patch(
         "ray.llm._internal.serve.routing_policies.kv_aware.utils.logger"
     ) as logger:
-        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
-    assert get_kv_actor_configs(app._bound_deployment) == []
     assert llm_config.engine_kwargs["kv_events_config"] == kv_events_config
     logger.warning.assert_called_once()
     assert "KVAwareRouter" in logger.warning.call_args.args[0]
 
 
-def test_yaml_config_attaches_kv_actor(serve_instance):
-    """Deploying a YAML config that selects KVAwareRouter creates the KVRouterActor."""
-    config_file = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "llm_kv_aware_deployment.yaml"
+def test_build_openai_app_configures_kv_routing():
+    """A KVAwareRouter LLMConfig enables the engine's KV-cache events at build
+    time, so the tracker the LLMRouter ingress builds has events to index."""
+    llm_config = build_test_llm_config()
+    build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+
+    kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
+    assert kv_events_config is not None
+    assert kv_events_config["enable_kv_cache_events"] is True
+
+
+def test_string_router_enables_kv_routing():
+    """A dotted-string request_router_class (as YAML configs use) resolves as
+    KV-aware and enables the engine's KV-cache events."""
+    llm_config = LLMConfig(
+        model_loading_config={
+            "model_id": "qwen3-0.6b",
+            "model_source": "Qwen/Qwen3-0.6B",
+        },
+        accelerator_type=None,
+        deployment_config={
+            "autoscaling_config": {"min_replicas": 1, "max_replicas": 1},
+            "request_router_config": {
+                "request_router_class": "ray.serve.llm.request_router.KVAwareRouter"
+            },
+        },
     )
-    app_name = "kv-llm"
+    assert is_kv_aware(llm_config) is True
 
-    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
-    try:
-        wait_for_condition(lambda: len(get_kv_actor_names(app_name)) == 1, timeout=60)
-    finally:
-        serve.delete(app_name, _blocking=True)
-
-
-class _TestKVRouterActor(KVRouterActor):
-    """KVRouterActor augmented with test-only introspection."""
-
-    async def get_candidate_worker_ids(self) -> List[int]:
-        """The workers currently tracked from running replicas.
-
-        Async so it runs on the actor's event loop, serialized with
-        ``_on_deployment_targets`` which mutates the same map on that loop.
-        """
-        return sorted(self._replica_id_by_worker)
-
-
-@serve.deployment(
-    num_replicas=4,
-    deployment_actors=[
-        DeploymentActorConfig(
-            name=KV_ROUTER_ACTOR_NAME,
-            actor_class=ray.remote(_TestKVRouterActor),
-            actor_options={"num_cpus": 0},
-            init_kwargs={},
-        ),
-    ],
-)
-class ReplicaTrackingDeployment:
-    """Dummy deployment with a KVRouterActor deployment actor.
-
-    Advertises a per-replica KV-events endpoint via ``record_routing_stats`` as a
-    real engine would, so the selection service tracks each replica as a worker.
-    """
-
-    async def __call__(self) -> str:
-        return "ok"
-
-    async def record_routing_stats(self) -> dict:
-        rank = serve.get_replica_context().rank.local_rank
-        return {
-            "kv_event_metadata": {
-                "endpoint": f"tcp://{ray.util.get_node_ip_address()}:{25000 + rank}",
-                "block_size": 16,
-                "max_num_batched_tokens": 8192,
-                "dp_rank": 0,
-            }
-        }
-
-
-class TestReplicaTrackingIntegration:
-    def test_tracks_running_replicas(self, serve_instance):
-        """KVRouterActor's LongPollClient receives the running replicas."""
-        app_name = "kv-replica-tracking"
-        serve.run(
-            ReplicaTrackingDeployment.bind(), name=app_name, route_prefix="/kv_track"
-        )
-        try:
-            wait_for_condition(
-                lambda: len(get_candidate_ids(app_name)) == 4, timeout=30
-            )
-            # The tracked workers are exactly those of the live replica actors.
-            assert set(get_candidate_ids(app_name)) == get_live_replica_worker_ids(
-                app_name
-            )
-        finally:
-            serve.delete(app_name, _blocking=True)
-
-    def test_membership_broadcast_on_scale(self, serve_instance):
-        """A scale up then down is broadcast over LongPoll; the actor re-syncs to
-        exactly the live replica set each time.
-        """
-        app_name = "kv-replica-scale"
-
-        def tracks_live_replicas(expected):
-            # The tracked workers match the live replica actors by their actual
-            # ids (a stale handle is possible while the deployment is updated).
-            try:
-                tracked = set(get_candidate_ids(app_name))
-            except ray.exceptions.RayActorError:
-                return False
-            return len(tracked) == expected and tracked == get_live_replica_worker_ids(
-                app_name
-            )
-
-        def scale(num_replicas):
-            serve.run(
-                ReplicaTrackingDeployment.options(num_replicas=num_replicas).bind(),
-                name=app_name,
-                route_prefix="/kv_scale",
-            )
-
-        scale(2)
-        try:
-            wait_for_condition(lambda: tracks_live_replicas(2), timeout=30)
-            scale(4)  # upscale: the new replicas are picked up over LongPoll.
-            wait_for_condition(lambda: tracks_live_replicas(4), timeout=30)
-            scale(2)  # downscale: the departed replicas are dropped.
-            wait_for_condition(lambda: tracks_live_replicas(2), timeout=30)
-        finally:
-            serve.delete(app_name, _blocking=True)
-
-
-class _LocalKVRouterActor(_TestKVRouterActor):
-    """In-process KVRouterActor with the selection service and LongPoll disabled,
-    to drive ``_on_deployment_targets`` directly with synthetic snapshots.
-    """
-
-    def _create_selection_service(self) -> None:
-        self._svc = None  # reconcile membership without dynamo
-
-    def _start_replica_tracking(self) -> None:
-        pass
-
-    def _schedule(self, coro) -> None:
-        coro.close()  # _svc is None, so the scheduled upsert is a no-op
+    build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+    assert llm_config.engine_kwargs.get("kv_events_config") is not None
 
 
 def make_target_info(unique_ids):
@@ -337,17 +154,40 @@ def make_target_info(unique_ids):
     return DeploymentTargetInfo(is_available=True, running_replicas=running_replicas)
 
 
+class _LocalKVTokenTracker(KVTokenTracker):
+    """Router-local KVTokenTracker with the selection service and LongPoll disabled,
+    to drive ``_on_deployment_targets`` directly with synthetic snapshots.
+    """
+
+    async def get_candidate_worker_ids(self) -> List[int]:
+        """The workers currently tracked from running replicas.
+
+        Async so it runs on the ingress event loop, serialized with
+        ``_on_deployment_targets`` which mutates the same map on that loop.
+        """
+        return sorted(self._replica_id_by_worker)
+
+    def _create_selection_service(self) -> None:
+        self._svc = None  # reconcile membership without dynamo
+
+    def _start_replica_tracking(self) -> None:
+        pass
+
+    def _schedule(self, coro) -> None:
+        coro.close()  # _svc is None, so the scheduled upsert is a no-op
+
+
 class TestOnDeploymentTargets:
     async def test_reconciles_added_and_removed_workers(self):
-        actor = _LocalKVRouterActor()
-        actor._on_deployment_targets(make_target_info(["a", "b"]))
-        assert set(await actor.get_candidate_worker_ids()) == {
+        tracker = _LocalKVTokenTracker()
+        tracker._on_deployment_targets(make_target_info(["a", "b"]))
+        assert set(await tracker.get_candidate_worker_ids()) == {
             get_worker_id("a"),
             get_worker_id("b"),
         }
         # "a" departs and "c" joins: the tracked set follows the new snapshot.
-        actor._on_deployment_targets(make_target_info(["b", "c"]))
-        assert set(await actor.get_candidate_worker_ids()) == {
+        tracker._on_deployment_targets(make_target_info(["b", "c"]))
+        assert set(await tracker.get_candidate_worker_ids()) == {
             get_worker_id("b"),
             get_worker_id("c"),
         }
@@ -367,10 +207,14 @@ class _SelectWorkerStub:
         self._worker_id = worker_id
         self.token_ids = None
         self.allowed = None
+        self.expected_output_tokens = None
 
-    async def remote(self, request_id, token_ids, allowed_worker_ids):
+    async def __call__(
+        self, request_id, token_ids, allowed_worker_ids, expected_output_tokens=None
+    ):
         self.token_ids = token_ids
         self.allowed = allowed_worker_ids
+        self.expected_output_tokens = expected_output_tokens
         return {
             "worker_id": self._worker_id,
             "dp_rank": 0,
@@ -379,45 +223,45 @@ class _SelectWorkerStub:
         }
 
 
-class _KVRouterActorStub:
+class _KVTokenTrackerStub:
     def __init__(self, worker_id: int):
         self.select_worker = _SelectWorkerStub(worker_id)
 
 
 class _StubKVAwareRouter(KVAwareRouter):
-    """KVAwareRouter with the scorer actor injected, bypassing actor discovery."""
+    """KVAwareRouter with the router-local tracker injected, bypassing discovery."""
 
-    def __init__(self, kv_router_actor):
-        self._kv_router_actor = kv_router_actor
+    def __init__(self, kv_token_tracker):
+        self._kv_token_tracker = kv_token_tracker
 
 
 def _build_kv_aware_router(worker_id: int) -> KVAwareRouter:
-    return _StubKVAwareRouter(_KVRouterActorStub(worker_id))
+    return _StubKVAwareRouter(_KVTokenTrackerStub(worker_id))
 
 
 @pytest.mark.asyncio
 async def test_select_worker_requires_tokens():
-    actor = KVRouterActor.__new__(KVRouterActor)
-    actor._svc = object()
+    tracker = KVTokenTracker.__new__(KVTokenTracker)
+    tracker._svc = object()
 
     with pytest.raises(ValueError, match="non-empty token_ids"):
-        await actor.select_worker("req-empty", [], [get_worker_id("r1")])
+        await tracker.select_worker("req-empty", [], [get_worker_id("r1")])
 
 
 @pytest.mark.asyncio
 async def test_select_worker_without_dynamo_raises():
-    """Without ai-dynamo the actor cannot score, so it raises a clear error
+    """Without ai-dynamo the tracker cannot score, so it raises a clear error
     instead of silently degrading to a non-KV-aware pick."""
-    actor = KVRouterActor.__new__(KVRouterActor)
-    actor._svc = None
+    tracker = KVTokenTracker.__new__(KVTokenTracker)
+    tracker._svc = None
 
     with pytest.raises(RuntimeError, match="ai-dynamo is not installed"):
-        await actor.select_worker("req", [1, 2, 3], [get_worker_id("r1")])
+        await tracker.select_worker("req", [1, 2, 3], [get_worker_id("r1")])
 
 
 @pytest.mark.asyncio
 async def test_choose_replicas_routes_to_selected_worker():
-    """choose_replicas maps candidates to worker ids, asks the actor to select,
+    """choose_replicas maps candidates to worker ids, asks the tracker to select,
     and returns the chosen worker's replica."""
     replicas = [_StubReplica("r1"), _StubReplica("r2")]
     worker_ids = [get_worker_id("r1"), get_worker_id("r2")]
@@ -431,12 +275,13 @@ async def test_choose_replicas_routes_to_selected_worker():
 
     groups = await router.choose_replicas(replicas, pending)
 
-    # The actor selected r2's worker, so r2 is returned.
+    # The tracker selected r2's worker, so r2 is returned.
     assert groups == [[replicas[1]]]
     # choose_replicas forwarded the prompt token ids and the full candidate set.
-    select = router._kv_router_actor.select_worker
+    select = router._kv_token_tracker.select_worker
     assert select.token_ids == [10, 11, 12]
     assert sorted(select.allowed) == sorted(worker_ids)
+    assert select.expected_output_tokens is None
 
 
 @pytest.mark.asyncio
@@ -460,7 +305,7 @@ async def test_missing_token_ids_picks_random_replica():
 
     # The picked replica varies across calls, so load spreads (not stuck on one).
     assert picked == {"r1", "r2"}
-    assert router._kv_router_actor.select_worker.token_ids is None
+    assert router._kv_token_tracker.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
@@ -485,7 +330,7 @@ async def test_tokenize_call_picks_random_replica():
 
     assert len(groups) == 1 and len(groups[0]) == 1
     assert groups[0][0] in replicas
-    assert router._kv_router_actor.select_worker.token_ids is None
+    assert router._kv_token_tracker.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
@@ -507,7 +352,7 @@ async def test_empty_token_ids_picks_random_replica():
 
     assert len(groups) == 1 and len(groups[0]) == 1
     assert groups[0][0] in replicas
-    assert router._kv_router_actor.select_worker.token_ids is None
+    assert router._kv_token_tracker.select_worker.token_ids is None
 
 
 @pytest.mark.asyncio
@@ -522,7 +367,7 @@ async def test_no_pending_request_picks_random_replica():
 
     assert len(groups) == 1 and len(groups[0]) == 1
     assert groups[0][0] in replicas
-    assert router._kv_router_actor.select_worker.token_ids is None
+    assert router._kv_token_tracker.select_worker.token_ids is None
 
 
 if __name__ == "__main__":

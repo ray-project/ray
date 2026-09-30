@@ -155,7 +155,7 @@ documentation, sorted alphabetically.
 
     .. TODO: DAG
 
-    Ray Dashboard
+    Ray dashboard
         Ray’s built-in dashboard is a web interface that provides metrics, charts,
         and other features that help Ray users to understand and debug Ray applications.
 

@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client_kv.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/util/compat.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -53,8 +54,11 @@ class GcsWorkerManagerTest : public Test {
           io_service_.get_executor());
       io_service_.run();
     });
-    worker_manager_ = std::make_shared<gcs::GcsWorkerManager>(
-        *gcs_table_storage_, io_service_, *gcs_publisher_);
+    worker_manager_ = std::make_shared<gcs::GcsWorkerManager>(*gcs_table_storage_,
+                                                              io_service_,
+                                                              *gcs_publisher_,
+                                                              fake_ray_event_recorder_,
+                                                              "test_session");
   }
 
   void TearDown() override {
@@ -73,6 +77,10 @@ class GcsWorkerManagerTest : public Test {
 
   std::shared_ptr<gcs::GcsWorkerManager> GetWorkerManager() { return worker_manager_; }
 
+  std::vector<std::unique_ptr<observability::RayEventInterface>> FlushRecordedEvents() {
+    return fake_ray_event_recorder_.FlushBuffer();
+  }
+
   gcs::GcsInitData LoadInitData() {
     gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
     std::promise<void> promise;
@@ -86,8 +94,77 @@ class GcsWorkerManagerTest : public Test {
   instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  observability::FakeRayEventRecorder fake_ray_event_recorder_;
   std::shared_ptr<gcs::GcsWorkerManager> worker_manager_;
 };
+
+TEST_F(GcsWorkerManagerTest, TestWorkerLifecycleEventEmittedForWorker) {
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+
+  rpc::WorkerTableData worker = GenWorkerTableData(1234);
+  worker.set_worker_type(rpc::WorkerType::WORKER);
+
+  rpc::AddWorkerInfoRequest request;
+  request.mutable_worker_data()->CopyFrom(worker);
+  rpc::AddWorkerInfoReply reply;
+  std::promise<void> promise;
+  auto callback = [&promise](Status status,
+                             std::function<void()> success,
+                             std::function<void()> failure) { promise.set_value(); };
+  GetWorkerManager()->HandleAddWorkerInfo(request, &reply, callback);
+  promise.get_future().get();
+
+  auto events = FlushRecordedEvents();
+  ASSERT_EQ(events.size(), 2);
+  ASSERT_EQ(events[0]->GetEventType(), rpc::events::RayEvent::WORKER_DEFINITION_EVENT);
+  ASSERT_EQ(events[1]->GetEventType(), rpc::events::RayEvent::WORKER_LIFECYCLE_EVENT);
+}
+
+TEST_F(GcsWorkerManagerTest, TestRetriedAddWorkerInfoDoesNotDuplicateEvents) {
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+
+  rpc::WorkerTableData worker = GenWorkerTableData(1234);
+  worker.set_worker_type(rpc::WorkerType::WORKER);
+
+  // Register the same worker twice, simulating a retried AddWorkerInfo RPC
+  // (e.g. the first reply was lost and the retryable gRPC client resent it).
+  for (int i = 0; i < 2; i++) {
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    GetWorkerManager()->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  // Only the first registration emits events; the retry is deduped against the
+  // existing worker table record.
+  auto events = FlushRecordedEvents();
+  ASSERT_EQ(events.size(), 2);
+  ASSERT_EQ(events[0]->GetEventType(), rpc::events::RayEvent::WORKER_DEFINITION_EVENT);
+  ASSERT_EQ(events[1]->GetEventType(), rpc::events::RayEvent::WORKER_LIFECYCLE_EVENT);
+}
+
+TEST_F(GcsWorkerManagerTest, TestDriverDoesNotEmitWorkerLifecycleEvent) {
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+
+  rpc::WorkerTableData driver = GenWorkerTableData(1234);
+
+  rpc::AddWorkerInfoRequest request;
+  request.mutable_worker_data()->CopyFrom(driver);
+  rpc::AddWorkerInfoReply reply;
+  std::promise<void> promise;
+  auto callback = [&promise](Status status,
+                             std::function<void()> success,
+                             std::function<void()> failure) { promise.set_value(); };
+  GetWorkerManager()->HandleAddWorkerInfo(request, &reply, callback);
+  promise.get_future().get();
+
+  ASSERT_TRUE(FlushRecordedEvents().empty());
+}
 
 TEST_F(GcsWorkerManagerTest, TestGetAllWorkersLimit) {
   auto num_workers = 3;

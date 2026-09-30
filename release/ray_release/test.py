@@ -42,6 +42,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
+DATAPLANE_ECR_TORCH_REPO = "anyscale/ray-torch"
 
 MACOS_TEST_PREFIX = "darwin:"
 LINUX_TEST_PREFIX = "linux:"
@@ -52,18 +53,6 @@ WINDOWS_BISECT_DAILY_RATE_LIMIT = 3
 BISECT_DAILY_RATE_LIMIT = 10
 
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
-
-
-def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
-    env_dict = {}
-    for env in env_list:
-        # an env can be "a=b" or just "a"
-        eq_pos = env.find("=")
-        if eq_pos < 0:
-            env_dict[env] = os.environ.get(env, "")
-        else:
-            env_dict[env[:eq_pos]] = env[eq_pos + 1 :]
-    return env_dict
 
 
 class TestState(enum.Enum):
@@ -449,6 +438,8 @@ class Test(dict):
             return byod_type[len("llm-") :]
         if byod_type.startswith("gpu-"):
             return byod_type[len("gpu-") :]
+        if byod_type.startswith("torch-"):
+            return byod_type[len("torch-") :]
         return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
@@ -461,7 +452,8 @@ class Test(dict):
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """Returns the runtime environment variables for the BYOD cluster."""
-        return _convert_env_list_to_dict(self._get_byod_config().get("runtime_env", []))
+        runtime_env = self._get_byod_config().get("runtime_env") or {}
+        return {name: str(value) for name, value in runtime_env.items()}
 
     def get_ray_version(self) -> Optional[str]:
         """
@@ -574,12 +566,17 @@ class Test(dict):
     def use_byod_llm_image(self) -> bool:
         return self.get_byod_type().startswith("llm-")
 
+    def use_byod_torch_image(self) -> bool:
+        return self.get_byod_type().startswith("torch-")
+
     def get_byod_repo(self) -> str:
         """Returns the byod repo to use for this test."""
         if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
         if self.use_byod_llm_image():
             return DATAPLANE_ECR_LLM_REPO
+        if self.use_byod_torch_image():
+            return DATAPLANE_ECR_TORCH_REPO
         return DATAPLANE_ECR_REPO
 
     def get_byod_ecr(self) -> str:

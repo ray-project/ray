@@ -25,10 +25,17 @@ memray
 modin
 # mosaicml-streaming
 numpy
+obstore
 openai-whisper
 openskill
 orjson
+# peft is pulled in by lm_eval; 0.17.x imports HybridCache, removed in
+# transformers 5.x, breaking `import transformers` at runtime.
+peft>=0.18
 petastorm
+# Ray Data joins each hash partition with Polars, so the join benchmarks in
+# release_data_tests.yaml need it present in the image.
+polars
 protobuf
 pyarrow
 pybase64

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Ray on YARN with Skein: configuration, dependency packaging, head and worker node commands, and cleanup.
+
 .. _ray-yarn-deploy:
 
 Deploying on YARN

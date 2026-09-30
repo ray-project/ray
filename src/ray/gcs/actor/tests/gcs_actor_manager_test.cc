@@ -282,6 +282,17 @@ class GcsActorManagerTest : public ::testing::Test {
                                                               : nullptr;
   }
 
+  size_t DestroyedActorObservabilityCount(
+      const gcs::GcsActorManager &actor_manager) const {
+    return actor_manager.destroyed_actor_observability_data_.size();
+  }
+
+  // Mirrors what HandleGetActorInfo returns to clients.
+  const rpc::ActorTableData *GetActorInfo(const gcs::GcsActorManager &actor_manager,
+                                          const ActorID &actor_id) const {
+    return actor_manager.GetActorTableData(actor_id);
+  }
+
   /**
    * Helper function to perform the complete cycle of named actor creation.
    * 1. Register the actor
@@ -892,6 +903,214 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
 
   ASSERT_TRUE(worker_client_->Reply());
+}
+
+TEST_F(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart) {
+  // Verify that on actor restart, the departing (worker_id, node_id) is
+  // appended to ActorTableData.previous_incarnations in order (oldest
+  // first), and that a restart onto a different node preserves the prior
+  // node_id (so log lookups can still find the old node's files).
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id,
+                                        /*max_restarts=*/3,
+                                        /*detached=*/false);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) {
+        finished_actors.emplace_back(result_actor);
+      }));
+
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // First incarnation: alive.
+  auto address1 = RandomAddress();
+  auto node_id1 = NodeID::FromBinary(address1.node_id());
+  auto worker_id1 = WorkerID::FromBinary(address1.worker_id());
+  actor->UpdateAddress(address1);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 0);
+
+  // Kill node1 → restart triggered → (worker_id1, node_id1) recorded.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id1));
+  OnNodeDead(node_id1);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 1);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
+            worker_id1.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).node_id(),
+            node_id1.Binary());
+
+  // Second incarnation on a *different* node.
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  mock_actor_scheduler_->actors.clear();
+  auto address2 = RandomAddress();
+  auto node_id2 = NodeID::FromBinary(address2.node_id());
+  auto worker_id2 = WorkerID::FromBinary(address2.worker_id());
+  ASSERT_NE(node_id1, node_id2);
+  actor->UpdateAddress(address2);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // Kill node2 → second entry appended, in order. The prior entry must
+  // still carry the *original* node_id, not the current actor's node_id.
+  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id2));
+  OnNodeDead(node_id2);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 2);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
+            worker_id1.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).node_id(),
+            node_id1.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(1).worker_id(),
+            worker_id2.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(1).node_id(),
+            node_id2.Binary());
+
+  ASSERT_TRUE(worker_client_->Reply());
+}
+
+TEST_F(GcsActorManagerTest, TestPreviousIncarnationsBoundedByLimit) {
+  // Verify that when previous_incarnations exceeds
+  // maximum_actor_previous_incarnations, the oldest entry is evicted FIFO.
+  RayConfig::instance().initialize(
+      R"(
+{
+  "maximum_actor_previous_incarnations": 2
+}
+  )");
+
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id,
+                                        /*max_restarts=*/-1,
+                                        /*detached=*/false);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) {
+        finished_actors.emplace_back(result_actor);
+      }));
+
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  // Drive 3 restarts. After each, verify the list never exceeds the limit
+  // and retains the newest entries.
+  std::vector<WorkerID> worker_ids;
+  std::vector<NodeID> node_ids;
+  for (int i = 0; i < 3; ++i) {
+    auto address = RandomAddress();
+    node_ids.push_back(NodeID::FromBinary(address.node_id()));
+    worker_ids.push_back(WorkerID::FromBinary(address.worker_id()));
+    actor->UpdateAddress(address);
+    gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+    io_service_.run_one();
+    if (i > 0) {
+      io_service_.run_one();
+    }
+    ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+    EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_ids.back()));
+    OnNodeDead(node_ids.back());
+    ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+
+    ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+    mock_actor_scheduler_->actors.clear();
+  }
+
+  // After 3 restarts with a cap of 2, expect only indices [1] and [2];
+  // index [0] must have been evicted FIFO.
+  const auto &previous = actor->GetActorTableData().previous_incarnations();
+  ASSERT_EQ(previous.size(), 2);
+  ASSERT_EQ(previous.Get(0).worker_id(), worker_ids[1].Binary());
+  ASSERT_EQ(previous.Get(0).node_id(), node_ids[1].Binary());
+  ASSERT_EQ(previous.Get(1).worker_id(), worker_ids[2].Binary());
+  ASSERT_EQ(previous.Get(1).node_id(), node_ids[2].Binary());
+
+  // Restore default limit so subsequent tests aren't affected.
+  RayConfig::instance().initialize(
+      R"(
+{
+  "maximum_gcs_destroyed_actor_cached_count": 10
+}
+  )");
+}
+
+TEST_F(GcsActorManagerTest, TestPreviousIncarnationsIdempotentOnRetriedRestart) {
+  // A restart can be driven more than once for the same incarnation — a
+  // retried/duplicated death notification, or a worker-death signal racing
+  // node death. The incarnation history must record that incarnation
+  // exactly once; appending it twice would waste the bounded history and
+  // make the dashboard query the same worker repeatedly.
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id,
+                                        /*max_restarts=*/3,
+                                        /*detached=*/false);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) {
+        finished_actors.emplace_back(result_actor);
+      }));
+
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.pop_back();
+
+  auto address = RandomAddress();
+  auto node_id = NodeID::FromBinary(address.node_id());
+  auto worker_id = WorkerID::FromBinary(address.worker_id());
+  actor->UpdateAddress(address);
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  io_service_.run_one();
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  const auto actor_id = actor->GetActorID();
+  rpc::ActorDeathCause death_cause;
+  death_cause.mutable_actor_died_error_context()->set_error_message("worker died");
+
+  // First restart records the departing incarnation.
+  gcs_actor_manager_->RestartActor(actor_id, /*need_reschedule=*/true, death_cause);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 1);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
+            worker_id.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).node_id(),
+            node_id.Binary());
+
+  // The actor has not been rescheduled yet, so its address is still cleared.
+  // A repeated restart for that same incarnation must be a no-op for the
+  // history rather than appending a duplicate entry.
+  gcs_actor_manager_->RestartActor(actor_id, /*need_reschedule=*/true, death_cause);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 1);
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
+            worker_id.Binary());
+  ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).node_id(),
+            node_id.Binary());
 }
 
 TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
@@ -2620,6 +2839,148 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->node_id(), node_id.Binary());
   ASSERT_EQ(local_raylet_address->ip_address(), "127.0.0.1");
   ASSERT_EQ(local_raylet_address->port(), 9999);
+}
+
+TEST_F(GcsActorManagerTest, TestInitializeIsolatesActorWithMissingTaskSpec) {
+  // find() guard: a non-DEAD actor whose task spec is missing must not abort
+  // Initialize (map_find_or_die used to crash the whole GCS).
+  auto job_id = JobID::FromInt(1);
+  rpc::JobTableData job_data;
+  job_data.set_job_id(job_id.Binary());
+  job_data.set_is_dead(true);
+
+  auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  actor_table_data.set_class_name("MissingSpecActor");
+  auto *owner_address = actor_table_data.mutable_owner_address();
+  owner_address->set_node_id(NodeID::FromRandom().Binary());
+  owner_address->set_worker_id(WorkerID::FromRandom().Binary());
+
+  TestGcsInitData gcs_init_data(*gcs_table_storage_);
+
+  absl::flat_hash_map<JobID, rpc::JobTableData> job_data_map;
+  job_data_map[job_id] = job_data;
+  gcs_init_data.SetJobTableData(job_data_map);
+
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data;
+  actor_data[actor_id] = actor_table_data;
+  gcs_init_data.SetActorTableData(actor_data);
+
+  // Intentionally leave the actor task spec table empty for this actor.
+  gcs_init_data.SetActorTaskSpecTableData({});
+
+  auto test_gcs_actor_manager = CreateActorManagerForInitializeTest();
+
+  // Must not FATAL on the missing task spec.
+  test_gcs_actor_manager->Initialize(gcs_init_data);
+
+  ASSERT_EQ(RegisteredActorCount(*test_gcs_actor_manager), 0u);
+  ASSERT_EQ(GetRegisteredActor(*test_gcs_actor_manager, actor_id), nullptr);
+  ASSERT_EQ(DestroyedActorObservabilityCount(*test_gcs_actor_manager), 1u);
+  const auto *actor_info = GetActorInfo(*test_gcs_actor_manager, actor_id);
+  ASSERT_NE(actor_info, nullptr);
+  ASSERT_EQ(actor_info->state(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(actor_info->death_cause().has_actor_died_error_context());
+
+  drain_io_context();
+  std::optional<rpc::ActorTableData> reloaded_actor_data;
+  gcs_table_storage_->ActorTable().Get(
+      actor_id,
+      {[&reloaded_actor_data](Status, std::optional<rpc::ActorTableData> result) {
+         reloaded_actor_data = std::move(result);
+       },
+       io_service_});
+  drain_io_context();
+  ASSERT_TRUE(reloaded_actor_data.has_value());
+  ASSERT_EQ(reloaded_actor_data->state(), rpc::ActorTableData::DEAD);
+}
+
+TEST_F(GcsActorManagerTest, TestInitializeMarksDeadWhenOwnerJobDeadAndReloads) {
+  // Real root-cause path: an actor whose owning job is dead but whose task spec
+  // is still present. Initialize must mark it DEAD, persist the row, and delete
+  // its task spec; a later Initialize from the persisted state must reload it as
+  // DEAD without aborting.
+  auto job_id = JobID::FromInt(1);
+  rpc::JobTableData job_data;
+  job_data.set_job_id(job_id.Binary());
+  job_data.set_is_dead(true);
+
+  auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  actor_table_data.set_class_name("DeadJobActor");
+  auto *owner_address = actor_table_data.mutable_owner_address();
+  owner_address->set_node_id(NodeID::FromRandom().Binary());
+  owner_address->set_worker_id(WorkerID::FromRandom().Binary());
+
+  rpc::TaskSpec task_spec;
+  task_spec.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
+  task_spec.set_root_detached_actor_id("");
+
+  gcs_table_storage_->ActorTaskSpecTable().Put(
+      actor_id, task_spec, {[](auto) {}, io_service_});
+  drain_io_context();
+
+  TestGcsInitData gcs_init_data(*gcs_table_storage_);
+  absl::flat_hash_map<JobID, rpc::JobTableData> job_data_map;
+  job_data_map[job_id] = job_data;
+  gcs_init_data.SetJobTableData(job_data_map);
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data;
+  actor_data[actor_id] = actor_table_data;
+  gcs_init_data.SetActorTableData(actor_data);
+  absl::flat_hash_map<ActorID, rpc::TaskSpec> task_spec_data;
+  task_spec_data[actor_id] = task_spec;
+  gcs_init_data.SetActorTaskSpecTableData(task_spec_data);
+
+  auto manager = CreateActorManagerForInitializeTest();
+  manager->Initialize(gcs_init_data);
+  drain_io_context();
+
+  ASSERT_EQ(RegisteredActorCount(*manager), 0u);
+  const auto *actor_info = GetActorInfo(*manager, actor_id);
+  ASSERT_NE(actor_info, nullptr);
+  ASSERT_EQ(actor_info->state(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(actor_info->death_cause().has_actor_died_error_context());
+
+  std::optional<rpc::ActorTableData> persisted_actor;
+  gcs_table_storage_->ActorTable().Get(
+      actor_id,
+      {[&persisted_actor](Status, std::optional<rpc::ActorTableData> result) {
+         persisted_actor = std::move(result);
+       },
+       io_service_});
+  drain_io_context();
+  ASSERT_TRUE(persisted_actor.has_value());
+  ASSERT_EQ(persisted_actor->state(), rpc::ActorTableData::DEAD);
+
+  bool spec_present = true;
+  gcs_table_storage_->ActorTaskSpecTable().Get(
+      actor_id,
+      {[&spec_present](Status, std::optional<rpc::TaskSpec> result) {
+         spec_present = result.has_value();
+       },
+       io_service_});
+  drain_io_context();
+  ASSERT_FALSE(spec_present);
+
+  TestGcsInitData reload_init_data(*gcs_table_storage_);
+  reload_init_data.SetJobTableData(job_data_map);
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> reloaded_actor_map;
+  reloaded_actor_map[actor_id] = *persisted_actor;
+  reload_init_data.SetActorTableData(reloaded_actor_map);
+  reload_init_data.SetActorTaskSpecTableData({});
+
+  auto reloaded_manager = CreateActorManagerForInitializeTest();
+  reloaded_manager->Initialize(reload_init_data);
+  drain_io_context();
+
+  ASSERT_EQ(RegisteredActorCount(*reloaded_manager), 0u);
+  const auto *reloaded_info = GetActorInfo(*reloaded_manager, actor_id);
+  ASSERT_NE(reloaded_info, nullptr);
+  ASSERT_EQ(reloaded_info->state(), rpc::ActorTableData::DEAD);
 }
 
 }  // namespace gcs

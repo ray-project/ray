@@ -285,11 +285,15 @@ class ObjectManager : public ObjectManagerInterface,
  private:
   friend class ObjectManagerTest;
 
-  /// Pushing a known local object to a remote object manager.
+  /// Try to push an object to a remote object manager from this node's in-memory
+  /// object store.
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
+  /// \return true if the object was resident and the push was started; false if the
+  ///         store read failed (stale mirror from ObjectManager's local_plasma_objects_),
+  ///         so the caller should fall back to the spilled copy.
+  bool PushFromPlasma(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pushing a known spilled object to a remote object manager.
   /// \param object_id The object's object id.
@@ -438,9 +442,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   instrumented_io_context &rpc_service_;
 
-  /// Mapping from locally available objects to information about those objects
-  /// including when the object was last pushed to other object managers.
-  absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
+  /// Potentially lagging mirror of objects this ObjectManager believes are resident in
+  /// the local plasma store (metadata used for pushes/pulls). Updated from plasma
+  /// add/delete notifications, so an entry may briefly remain after the object
+  /// has already left plasma (eviction or spill).
+  absl::flat_hash_map<ObjectID, LocalObjectInfo> local_plasma_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to

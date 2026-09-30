@@ -1,0 +1,32 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#word-choice'
+level: warning
+ignorecase: true
+# Library-agnostic plain-word swaps from the "Prefer plain words" and "Streamline
+# references" sections of writing-style.md. This package is shared across all Ray
+# libraries; per-library terminology lives in that library's own style directory.
+#
+# `vocab: false` so an accept-list entry can't silently shadow a swap. See the note
+# in .vale/styles/KubeRay/Terms.yml for why that shadowing is easy to miss.
+vocab: false
+swap:
+  utilize: use
+  utilizes: uses
+  utilized: used
+  utilizing: using
+  leverage: use
+  leverages: uses
+  leveraged: used
+  leveraging: using
+  via: through
+  prior to: before
+  in order to: to
+  due to the fact that: because
+  # Only the "please refer to" form, which is unambiguously a reference. Bare
+  # "refer to" is deliberately NOT swapped: it collides with the "pertain to"
+  # sense ("these examples refer to the old API stack"), where "see" is wrong.
+  # No literal string separates imperative "Refer to X" from "Y refers to X",
+  # and this file's swaps auto-apply (scripts/ray_style_autofix.py), so a broad
+  # "refer to" swap silently corrupts prose. Leave the bare form to the LLM pass.
+  please refer to: see

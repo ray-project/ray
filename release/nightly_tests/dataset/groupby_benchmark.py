@@ -29,10 +29,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--shuffle-strategy",
         required=False,
-        default=ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
+        default=ShuffleStrategy.SHUFFLE_V2.value,
         nargs="?",
         type=str,
         help="Strategy to use when shuffling data (see ShuffleStrategy for accepted values)",
+    )
+
+    parser.add_argument(
+        "--num-partitions",
+        type=int,
+        default=None,
+        help=(
+            "Number of shuffle partitions. Sets "
+            "DataContext.default_hash_shuffle_parallelism (hash strategies only)."
+        ),
     )
 
     consume_group = parser.add_mutually_exclusive_group()
@@ -43,7 +53,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark()
+    # 1.5 is ~2x the p90 scheduling loop duration observed on Ray 2.59.
+    #
+    # TODO: Ratchet this down as we improve scheduling loop overhead.
+    benchmark = Benchmark(max_sched_loop_duration_s=1.5)
     consume_fn = get_consume_fn(args)
 
     def benchmark_fn():
@@ -53,15 +66,23 @@ def main(args):
         DataContext.get_current().shuffle_strategy = ShuffleStrategy(
             args.shuffle_strategy
         )
+        if args.num_partitions is not None:
+            DataContext.get_current().default_hash_shuffle_parallelism = (
+                args.num_partitions
+            )
         # TODO: Don't override once we fix range-based shuffle
         override_num_blocks = (
             100
             if args.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED.value
             else None
         )
-        grouped_ds = ray.data.read_parquet(
-            path, override_num_blocks=override_num_blocks
-        ).groupby(args.group_by)
+        ds = ray.data.read_parquet(path, override_num_blocks=override_num_blocks)
+
+        if args.aggregate:
+            ds = ds.select_columns(list(dict.fromkeys([*args.group_by, "column05"])))
+        else:
+            ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
+        grouped_ds = ds.groupby(args.group_by)
         consume_fn(grouped_ds)
 
         # Report arguments for the benchmark.
@@ -89,6 +110,21 @@ def get_consume_fn(args: argparse.Namespace):
         assert False, f"Invalid consume argument: {args}"
 
     return consume_fn
+
+
+def _cast_strings_to_large(table: pa.Table) -> pa.Table:
+    schema = pa.schema(
+        [
+            pa.field(
+                f.name,
+                pa.large_string() if types.is_string(f.type) else f.type,
+                f.nullable,
+            )
+            for f in table.schema
+        ],
+        metadata=table.schema.metadata,
+    )
+    return table.cast(schema)
 
 
 def normalize_table(table: pa.Table) -> pa.Table:

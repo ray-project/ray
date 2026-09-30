@@ -47,6 +47,7 @@ ray_cc_test(
         "//src/ray/util:process",
         "//src/ray/util:process_interface",
         "//src/ray/util:raii",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

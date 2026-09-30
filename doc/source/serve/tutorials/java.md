@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Deploy a Java application as a Ray Serve deployment and call it over HTTP, starting from the Maven dependency."
 ---
 (serve-java-tutorial)=
 

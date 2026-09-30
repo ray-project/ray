@@ -168,7 +168,7 @@ class _JaxBackend(Backend):
             workers_per_slice, _ = get_tpu_worker_resources(
                 topology=scaling_config.topology,
                 accelerator_type=scaling_config.accelerator_type,
-                resources_per_unit=scaling_config.resources_per_worker,
+                resources_per_worker=scaling_config.resources_per_worker,
                 num_slices=1,
             )
         else:

@@ -493,7 +493,7 @@ def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enab
     x = dependent_task.remote(obj)
     ray.get(dependent_task.remote(x))
 
-    ray.internal.free(obj)
+    del obj
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(num_cpus=1, object_store_memory=10**8)
 
@@ -502,8 +502,6 @@ def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enab
     else:
         with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(x)
-        with pytest.raises(ray.exceptions.ObjectFreedError):
-            ray.get(obj)
 
 
 def test_object_reconstruction_dead_actor(config, ray_start_cluster):

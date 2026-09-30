@@ -15,9 +15,14 @@
 #include "ray/gcs/store_client/redis_context.h"
 
 #include <cerrno>
+#include <charconv>
+#include <cstddef>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -30,13 +35,72 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
+#include "absl/functional/function_ref.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/status_or.h"
 
 namespace ray {
 
 namespace gcs {
+
+namespace {
+
+constexpr size_t kMaxRedisCommandLabelLength = 16;
+
+}  // namespace
+
+size_t ResponsePayloadBytes(const redisReply &reply) {
+  switch (reply.type) {
+  case REDIS_REPLY_STRING:
+  case REDIS_REPLY_STATUS:
+  // Only reachable for an error nested inside an aggregate reply; a top-level
+  // error is retried before it gets here. See the header.
+  case REDIS_REPLY_ERROR:
+  case REDIS_REPLY_VERB:
+  case REDIS_REPLY_BIGNUM:
+    return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_INTEGER: {
+    char buffer[std::numeric_limits<long long>::digits10 + 3];
+    const auto [end, error] =
+        std::to_chars(buffer, buffer + sizeof(buffer), reply.integer);
+    RAY_CHECK(error == std::errc{});
+    return static_cast<size_t>(end - buffer);
+  }
+  case REDIS_REPLY_DOUBLE:
+    // hiredis preserves the original RESP3 decimal representation in `str`.
+    return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_BOOL:
+    // RESP3 encodes booleans as one application byte: `t` or `f`.
+    return 1;
+  case REDIS_REPLY_NIL:
+    return 0;
+  case REDIS_REPLY_ARRAY:
+  case REDIS_REPLY_MAP:
+  case REDIS_REPLY_SET:
+  case REDIS_REPLY_PUSH: {
+    // hiredis leaves `element` uninitialized when `elements` is 0, so the loop
+    // bound is what keeps this from dereferencing garbage.
+    size_t total = 0;
+    for (size_t i = 0; i < reply.elements; ++i) {
+      total += ResponsePayloadBytes(*reply.element[i]);
+    }
+    return total;
+  }
+  default:
+    // Unknown reply types have no payload definition.
+    return 0;
+  }
+}
+
+std::string NormalizeRedisCommandLabel(std::string_view verb) {
+  std::string label(verb.substr(0, kMaxRedisCommandLabelLength));
+  absl::AsciiStrToUpper(&label);
+  return label;
+}
 
 CallbackReply::CallbackReply(const redisReply &redis_reply)
     : reply_type_(redis_reply.type) {
@@ -45,7 +109,10 @@ CallbackReply::CallbackReply(const redisReply &redis_reply)
     break;
   }
   case REDIS_REPLY_ERROR: {
-    RAY_LOG(FATAL) << "Got an error in redis reply: " << redis_reply.str;
+    // Do not crash on a Redis error reply: store it so callers can surface it
+    // as a Status (e.g. ValidateRedisDB during a non-fatal Connect) instead of
+    // aborting the process.
+    error_reply_ = std::string(redis_reply.str, redis_reply.len);
     break;
   }
   case REDIS_REPLY_INTEGER: {
@@ -158,7 +225,9 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
                                          RedisAsyncContext *context,
                                          std::vector<std::string> args,
-                                         ClockInterface &clock)
+                                         ClockInterface &clock,
+                                         RedisMetrics *metrics,
+                                         std::string_view table_label)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
@@ -168,12 +237,23 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
       callback_(std::move(callback)),
       start_time_(clock.Now()),
       redis_cmds_(std::move(args)),
-      clock_(clock) {
+      clock_(clock),
+      metrics_(metrics) {
+  RAY_CHECK(!redis_cmds_.empty());
   argc_.reserve(redis_cmds_.size());
   argv_.reserve(redis_cmds_.size());
   for (size_t i = 0; i < redis_cmds_.size(); ++i) {
     argv_.push_back(redis_cmds_[i].data());
     argc_.push_back(redis_cmds_[i].size());
+  }
+  if (metrics_ != nullptr) {
+    command_label_ = NormalizeRedisCommandLabel(redis_cmds_.front());
+    table_label_ = std::string(table_label);
+    // This context owns the argument buffers, so their sizes remain valid even
+    // when a caller moved a value into the command on the way here.
+    for (const auto &command_arg : redis_cmds_) {
+      request_payload_bytes_ += command_arg.size();
+    }
   }
 }
 
@@ -199,6 +279,15 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
   } else {
+    // Measure while hiredis still owns the reply, and before anything is posted
+    // to the io_service: `request_cxt` is deleted at the end of this branch, so
+    // every read of it has to happen above the post.
+    if (request_cxt->metrics_ != nullptr) {
+      request_cxt->metrics_->response_payload_bytes_sum.Record(
+          static_cast<double>(ResponsePayloadBytes(*redis_reply)),
+          {{"Command", request_cxt->command_label_},
+           {"TableName", request_cxt->table_label_}});
+    }
     auto reply = std::make_shared<CallbackReply>(*redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {
@@ -223,12 +312,50 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
+  struct AcceptedRequestMetrics {
+    RedisMetrics metrics;
+    std::string command_label;
+    std::string table_label;
+    size_t request_payload_bytes;
+  };
+  std::optional<AcceptedRequestMetrics> accepted;
+  auto capture_acceptance = [&]() {
+    if (request_metrics_claimed_) {
+      return;
+    }
+    // The submission lock keeps this request alive while copying its labels.
+    // Claim the records now: a retry may run before the records finish below.
+    accepted.emplace(AcceptedRequestMetrics{
+        *metrics_, command_label_, table_label_, request_payload_bytes_});
+    request_metrics_claimed_ = true;
+  };
   Status status = redis_context_->RedisAsyncCommandArgv(
-      RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
-
-  if (!status.ok()) {
-    RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
+      RedisResponseFn,
+      this,
+      argv_.size(),
+      argv_.data(),
+      argc_.data(),
+      metrics_ != nullptr
+          ? std::make_optional(absl::FunctionRef<void()>(capture_acceptance))
+          : std::nullopt);
+  if (status.ok()) {
+    // The submission lock has been released, so a reply on the IO thread may
+    // already have deleted this request. Only use the independent local snapshot,
+    // and do not hold the Redis mutex while acquiring metric recorder locks.
+    if (accepted.has_value()) {
+      const std::vector<std::pair<std::string_view, std::string>> tags{
+          {"Command", accepted->command_label}, {"TableName", accepted->table_label}};
+      accepted->metrics.request_payload_bytes_sum.Record(
+          static_cast<double>(accepted->request_payload_bytes), tags);
+      accepted->metrics.command_count_counter.Record(1, tags);
+    }
+    return;
   }
+
+  // A rejected submission has no hiredis callback. Use the owned Status for
+  // diagnostics; the raw context may have been freed since submission returned.
+  RAY_LOG(ERROR) << "Redis command submission failed: " << status;
+  RedisResponseFn(nullptr, nullptr, this);
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \
@@ -239,9 +366,12 @@ void RedisRequestContext::Run() {
     return Status::RedisError(REPLY->str);      \
   }
 
-RedisContext::RedisContext(instrumented_io_context &io_service, ClockInterface &clock)
+RedisContext::RedisContext(instrumented_io_context &io_service,
+                           ClockInterface &clock,
+                           std::optional<RedisMetrics> metrics)
     : io_service_(io_service),
       clock_(clock),
+      metrics_(std::move(metrics)),
       context_(nullptr),
       ssl_context_(nullptr),
       redis_db_probe_timeout_milliseconds_(
@@ -420,7 +550,10 @@ ConnectWithRetries(const std::string &address,
   auto status = resp.first;
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
-      RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
+      // Do not crash here. Return the failed status so callers (e.g. an
+      // in-place reconnect) can decide how to recover. Existing callers still
+      // RAY_CHECK_OK the result, so startup behavior is unchanged.
+      RAY_LOG(ERROR) << RayConfig::instance().redis_db_connect_retries() << " attempts "
                      << "to connect have all failed. Please check whether the"
                      << " redis storage is alive or not. The last error message was: "
                      << status.ToString();
@@ -448,21 +581,27 @@ std::optional<std::pair<std::string, int>> ParseIffMovedError(
   if (parts[0] != "MOVED") {
     return std::nullopt;
   }
-  RAY_CHECK_EQ(parts.size(), 3u);
+  if (parts.size() != 3u) {
+    return std::nullopt;
+  }
   auto ip_port = ParseAddress(parts[2]);
-  RAY_CHECK(ip_port.has_value());
+  if (!ip_port.has_value()) {
+    return std::nullopt;
+  }
   return std::make_pair((*ip_port)[0], std::stoi((*ip_port)[1]));
 }
 }  // namespace
 
-void RedisContext::ValidateRedisDB() {
+Status RedisContext::ValidateRedisDB() {
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
   // cluster_state:ok
   // cluster_slots_assigned:16384
   // cluster_slots_ok:16384
   // cluster_slots_pfail:0
   // cluster_size:1
-  RAY_CHECK(reply && !reply->IsNil()) << "Failed to get Redis cluster info";
+  if (!reply || reply->IsNil() || reply->IsError()) {
+    return Status::RedisError("Failed to get Redis cluster info");
+  }
   auto cluster_info = reply->ReadAsString();
 
   std::vector<std::string> parts = absl::StrSplit(cluster_info, "\r\n");
@@ -476,15 +615,18 @@ void RedisContext::ValidateRedisDB() {
       continue;
     }
     std::vector<std::string> kv = absl::StrSplit(part, ":");
-    RAY_CHECK(kv.size() == 2);
+    if (kv.size() != 2) {
+      return Status::RedisError(
+          absl::StrCat("Malformed INFO CLUSTER entry from Redis: ", part));
+    }
     if (kv[0] == "cluster_state") {
       if (kv[1] == "ok") {
         cluster_mode = true;
       } else if (kv[1] == "fail") {
-        RAY_LOG(FATAL)
-            << "The Redis cluster is not healthy. cluster_state shows failed status: "
-            << cluster_info << "."
-            << " Please check Redis cluster used.";
+        return Status::RedisError(absl::StrCat(
+            "The Redis cluster is not healthy. cluster_state shows failed status: ",
+            cluster_info,
+            ". Please check Redis cluster used."));
       }
     }
     if (kv[0] == "cluster_size") {
@@ -492,13 +634,14 @@ void RedisContext::ValidateRedisDB() {
     }
   }
 
-  if (cluster_mode) {
-    RAY_CHECK(cluster_size == 1)
-        << "Ray currently doesn't support Redis Cluster with more than one shard. ";
+  if (cluster_mode && cluster_size != 1) {
+    return Status::RedisError(
+        "Ray currently doesn't support Redis Cluster with more than one shard.");
   }
+  return Status::OK();
 }
 
-bool RedisContext::IsRedisSentinel() {
+StatusOr<bool> RedisContext::IsRedisSentinel() {
   // Apply the probe timeout for the INFO SENTINEL command,
   // which is the first command we send to the Redis server if auth is not required.
   // (AUTH command is applied with the timeout as well.)
@@ -510,16 +653,19 @@ bool RedisContext::IsRedisSentinel() {
   //
   // Once we confirmed the Redis server behaves normally, we clear the timeout for
   // not affecting normal operations.
-  RAY_CHECK_OK(
+  RAY_RETURN_NOT_OK(
       SetRedisProbeTimeout(sync_context(), redis_db_probe_timeout_milliseconds_));
 
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
 
-  RAY_CHECK(reply) << "Failed to get Redis info. The command may have timed out after "
-                   << redis_db_probe_timeout_milliseconds_
-                   << "ms or failed due to a Redis connection error.";
+  if (reply == nullptr) {
+    return Status::RedisError(
+        absl::StrCat("Failed to get Redis info. The command may have timed out after ",
+                     redis_db_probe_timeout_milliseconds_,
+                     "ms or failed due to a Redis connection error."));
+  }
 
-  RAY_CHECK_OK(RestoreRedisTimeout(sync_context()));
+  RAY_RETURN_NOT_OK(RestoreRedisTimeout(sync_context()));
 
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
     return false;
@@ -534,7 +680,7 @@ Status RedisContext::ConnectRedisCluster(const std::string &username,
                                          const std::string &redis_address) {
   RAY_LOG(INFO) << "Connect to Redis Cluster";
   // Ray has some restrictions for RedisDB. Validate it here.
-  ValidateRedisDB();
+  RAY_RETURN_NOT_OK(ValidateRedisDB());
 
   // Find the true leader
   std::vector<const char *> argv;
@@ -548,14 +694,23 @@ Status RedisContext::ConnectRedisCluster(const std::string &username,
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(sync_context(), cmds.size(), argv.data(), argc.data()));
 
+  if (redis_reply == nullptr) {
+    // A null reply means the command could not be sent (e.g. the connection
+    // dropped during cluster setup). Return instead of dereferencing it.
+    return Status::RedisError(absl::StrCat(
+        "Failed to run DEL DUMMY during Redis cluster setup: ", sync_context()->errstr));
+  }
   if (redis_reply->type == REDIS_REPLY_ERROR) {
     // This should be a MOVED error
     // MOVED 14946 10.xx.xx.xx:7001
     std::string error_msg(redis_reply->str, redis_reply->len);
     freeReplyObject(redis_reply);
     auto maybe_ip_port = ParseIffMovedError(error_msg);
-    RAY_CHECK(maybe_ip_port.has_value())
-        << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
+    if (!maybe_ip_port.has_value()) {
+      Disconnect();
+      return Status::RedisError(
+          absl::StrCat("Setup Redis cluster failed in the dummy deletion: ", error_msg));
+    }
     Disconnect();
     const auto &[ip, port] = maybe_ip_port.value();
     // Connect to the true leader.
@@ -597,12 +752,26 @@ Status ConnectRedisSentinel(RedisContext &context,
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
 
-  RAY_CHECK(redis_reply) << "Failed to get redis sentinel masters info";
-  RAY_CHECK_EQ(redis_reply->type, REDIS_REPLY_ARRAY)
-      << "Redis sentinel master info should be REDIS_REPLY_ARRAY but got "
-      << redis_reply->type;
-  RAY_CHECK_EQ(redis_reply->elements, 1UL)
-      << "There should be only one primary behind the Redis sentinel";
+  if (redis_reply == nullptr) {
+    return Status::RedisError("Failed to get redis sentinel masters info");
+  }
+  if (redis_reply->type != REDIS_REPLY_ARRAY) {
+    const int reply_type = redis_reply->type;
+    freeReplyObject(redis_reply);
+    return Status::RedisError(absl::StrCat(
+        "Redis sentinel master info should be REDIS_REPLY_ARRAY but got ", reply_type));
+  }
+  if (redis_reply->elements != 1UL) {
+    freeReplyObject(redis_reply);
+    return Status::RedisError(
+        "There should be only one primary behind the Redis sentinel");
+  }
+  if (redis_reply->element[0] == nullptr ||
+      redis_reply->element[0]->type != REDIS_REPLY_ARRAY ||
+      redis_reply->element[0]->elements % 2 != 0) {
+    freeReplyObject(redis_reply);
+    return Status::RedisError("Malformed Redis sentinel master response");
+  }
   auto primary = redis_reply->element[0];
   std::string actual_ip, actual_port;
   for (size_t i = 0; i < primary->elements; i += 2) {
@@ -667,51 +836,99 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!redis_async_context_);
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
-  auto ip_addresses = ResolveDNS(io_service_, address, port);
-  RAY_CHECK(!ip_addresses.empty())
-      << "Failed to resolve DNS for " << BuildAddress(address, port);
+  // ResolveDNS may throw (boost resolver) when the name cannot be resolved
+  // (e.g. during a failover before the new primary's DNS has propagated), so
+  // translate that into a Status instead of letting it abort the process.
+  std::vector<std::string> ip_addresses;
+  try {
+    ip_addresses = ResolveDNS(io_service_, address, port);
+  } catch (const std::exception &e) {
+    return Status::RedisError(absl::StrCat(
+        "Failed to resolve DNS for ", BuildAddress(address, port), ": ", e.what()));
+  }
+  if (ip_addresses.empty()) {
+    return Status::RedisError(
+        absl::StrCat("Failed to resolve DNS for ", BuildAddress(address, port)));
+  }
 
   RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
 
   {
     auto resp = ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect);
-    RAY_CHECK_OK(resp.first /* status */);
+    RAY_RETURN_NOT_OK(resp.first /* status */);
     context_ = std::move(resp.second /* redisContext */);
   }
 
   if (enable_ssl) {
-    RAY_CHECK(ssl_context_ != nullptr);
-    RAY_CHECK(redisInitiateSSLWithContext(context_.get(), ssl_context_) == REDIS_OK)
-        << "Failed to setup encrypted redis: " << context_->errstr;
+    if (ssl_context_ == nullptr) {
+      Disconnect();
+      return Status::RedisError("SSL context is not initialized for encrypted Redis");
+    }
+    if (redisInitiateSSLWithContext(context_.get(), ssl_context_) != REDIS_OK) {
+      Status status = Status::RedisError(
+          absl::StrCat("Failed to setup encrypted redis: ", context_->errstr));
+      Disconnect();
+      return status;
+    }
   }
-  RAY_CHECK_OK(AuthenticateRedis(
-      context_.get(), username, password, redis_db_probe_timeout_milliseconds_));
+  if (auto status = AuthenticateRedis(
+          context_.get(), username, password, redis_db_probe_timeout_milliseconds_);
+      !status.ok()) {
+    Disconnect();
+    return status;
+  }
 
   // Connect to async context
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
     auto resp =
         ConnectWithRetries<redisAsyncContext>(ip_addresses[0], port, redisAsyncConnect);
-    RAY_CHECK_OK(resp.first);
+    if (!resp.first.ok()) {
+      Disconnect();
+      return resp.first;
+    }
     async_context = std::move(resp.second);
   }
   if (enable_ssl) {
-    RAY_CHECK(ssl_context_ != nullptr);
-    RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
-        << "Failed to setup encrypted redis: " << async_context->errstr;
+    if (ssl_context_ == nullptr) {
+      Disconnect();
+      return Status::RedisError("SSL context is not initialized for encrypted Redis");
+    }
+    if (redisInitiateSSLWithContext(&async_context->c, ssl_context_) != REDIS_OK) {
+      Status status = Status::RedisError(
+          absl::StrCat("Failed to setup encrypted redis: ", async_context->errstr));
+      Disconnect();
+      return status;
+    }
   }
-  RAY_CHECK_OK(AuthenticateRedis(async_context.get(), username, password));
+  if (auto status = AuthenticateRedis(async_context.get(), username, password);
+      !status.ok()) {
+    Disconnect();
+    return status;
+  }
   redis_async_context_.reset(
       new RedisAsyncContext(io_service_, std::move(async_context)));
   SetDisconnectCallback(redis_async_context_.get());
 
   // handle validation and primary connection for different types of redis
-  if (IsRedisSentinel()) {
-    return ConnectRedisSentinel(*this, username, password, enable_ssl);
+  auto is_sentinel = IsRedisSentinel();
+  if (!is_sentinel.ok()) {
+    Disconnect();
+    return is_sentinel.status();
+  }
+  Status status;
+  if (is_sentinel.value()) {
+    status = ConnectRedisSentinel(*this, username, password, enable_ssl);
   } else {
-    return ConnectRedisCluster(
+    status = ConnectRedisCluster(
         username, password, enable_ssl, BuildAddress(ip_addresses[0], port));
   }
+  // Reset partial state on failure so a later attempt (e.g. an in-place
+  // reconnect) starts from the clean precondition checked at the top.
+  if (!status.ok()) {
+    Disconnect();
+  }
+  return status;
 }
 
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
@@ -740,13 +957,18 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 }
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
-                                RedisCallback redis_callback) {
+                                RedisCallback redis_callback,
+                                std::string_view table_label) {
   RAY_CHECK(redis_async_context_);
-  auto request_context = new RedisRequestContext(io_service_,
-                                                 std::move(redis_callback),
-                                                 redis_async_context_.get(),
-                                                 std::move(args),
-                                                 clock_);
+  RAY_CHECK(!args.empty());
+  auto request_context =
+      new RedisRequestContext(io_service_,
+                              std::move(redis_callback),
+                              redis_async_context_.get(),
+                              std::move(args),
+                              clock_,
+                              metrics_.has_value() ? &*metrics_ : nullptr,
+                              table_label);
   // RedisRequestContext is thread safe.
   request_context->Run();
 }

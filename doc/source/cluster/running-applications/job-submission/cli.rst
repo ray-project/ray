@@ -1,3 +1,6 @@
+.. meta::
+   :description: CLI reference for Ray Jobs: the submit, status, logs, stop, and list commands of the job submission API.
+
 .. _ray-job-submission-cli-ref:
 
 Ray Jobs CLI API Reference

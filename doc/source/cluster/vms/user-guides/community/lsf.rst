@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Ray clusters on an LSF-managed HPC system using the community-supported deployment steps.
+
 .. _ray-LSF-deploy:
 
 Deploying on LSF

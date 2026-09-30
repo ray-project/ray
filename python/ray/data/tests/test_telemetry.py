@@ -33,7 +33,9 @@ def test_used_on_data_range(reset_usage_lib, callsite: TelemetryCallsite):
     check_library_usage_telemetry(
         _call_data_range,
         callsite=callsite,
-        expected_library_usages=[{"core", "dataset"}],
+        expected_library_usages=[
+            {"dataset"} if callsite == TelemetryCallsite.DRIVER else {"core", "dataset"}
+        ],
     )
 
 

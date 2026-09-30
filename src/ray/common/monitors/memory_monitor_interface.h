@@ -56,10 +56,21 @@ struct CgroupMemorySnapshot {
   /// size of shared memory mappings within the cgroup in bytes.
   int64_t shmem_memory_bytes;
 
+  /// Numeric value parsed from memory.swap.max for the cgroup. 0 when swap
+  /// accounting is disabled, memory.swap.max is "max" / missing / overflows
+  /// int64, or RayConfig::count_swap_in_memory_monitor is false.
+  int64_t swap_max_bytes = 0;
+
+  /// Value read from memory.swap.current for the cgroup. 0 when swap_max_bytes
+  /// is 0 (treat swap as effectively disabled) or RayConfig is off.
+  int64_t swap_used_bytes = 0;
+
   friend std::ostream &operator<<(std::ostream &os,
                                   const CgroupMemorySnapshot &memory_snapshot) {
     os << "Anon memory bytes: " << memory_snapshot.anon_memory_bytes
-       << ", Shmem memory bytes: " << memory_snapshot.shmem_memory_bytes;
+       << ", Shmem memory bytes: " << memory_snapshot.shmem_memory_bytes
+       << ", Swap max bytes: " << memory_snapshot.swap_max_bytes
+       << ", Swap used bytes: " << memory_snapshot.swap_used_bytes;
     return os;
   }
 };
