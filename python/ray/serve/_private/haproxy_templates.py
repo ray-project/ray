@@ -218,6 +218,10 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    # Save the multiplexed model ID before removing untrusted client routing
+    # metadata. Prefer the canonical underscore spelling when both are sent.
+    http-request set-var-fmt(txn.multiplexed_model_id) %[req.hdr(serve_multiplexed_model_id)] if { req.hdr(serve_multiplexed_model_id) -m found } has_ingress_request_router_app
+    http-request set-var-fmt(txn.multiplexed_model_id) %[req.hdr(serve-multiplexed-model-id)] if { req.hdr(serve-multiplexed-model-id) -m found } !{ var(txn.multiplexed_model_id) -m found } has_ingress_request_router_app
     # Remove client-supplied values from the router-owned header namespace.
     # Lua then applies trusted metadata returned by /internal/route.
     http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
@@ -225,9 +229,9 @@ frontend http_frontend
     http-request del-header {{ header }} if has_ingress_request_router_app
     {%- endfor %}
     {%- if ingress_request_router_forward_body %}
-    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if has_ingress_request_router_app
     {%- endif %}
-    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    http-request lua.route_via_ingress_request_router if has_ingress_request_router_app
     # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
     # per app so the 503 below fails loud for apps with none.
     {%- for backend in backends %}
