@@ -7,6 +7,7 @@ triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
 
+import logging
 from dataclasses import dataclass
 
 import pyarrow as pa
@@ -702,6 +703,33 @@ def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ct
     assert rows[16]["new_feature"] == "latest"
 
 
+def test_merge_schema_warns_for_large_candidate_set(
+    tmp_path, restore_ctx, monkeypatch, caplog
+):
+    import importlib
+
+    first = tmp_path / "a.parquet"
+    second = tmp_path / "b.parquet"
+    _write(first, pa.table({"id": [1]}))
+    _write(second, pa.table({"id": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    read_api = importlib.import_module("ray.data.read_api")
+    monkeypatch.setattr(read_api, "_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT", 1)
+
+    with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
+        ray.data.read_parquet([str(first), str(second)], merge_schema=True)
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "ray.data.read_api"
+        and "candidate files" in record.getMessage()
+    ]
+    assert len(messages) == 1
+    assert "2 candidate files" in messages[0]
+
+
 def test_merge_schema_null_fills_nested_struct_field(tmp_path, restore_ctx):
     old_schema = pa.schema(
         [
@@ -781,6 +809,57 @@ def test_merge_schema_prelisted_blocks_feed_one_listing_task(
     rows = sorted(ds.take_all(), key=lambda row: row["id"])
     assert rows[0]["later"] is None
     assert rows[1]["later"] == 3
+
+
+def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
+    tmp_path, restore_ctx, monkeypatch
+):
+    from ray.data._internal.datasource_v2.common import listing_utils
+
+    monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
+    first = tmp_path / "a.parquet"
+    second = tmp_path / "b.parquet"
+    _write(first, pa.table({"id": [1]}))
+    _write(second, pa.table({"id": [2], "later": [3]}))
+
+    original_sample_files = listing_utils.sample_files
+    discovered_file_info_tables = []
+
+    def capture_discovered_file_infos(*args, **kwargs):
+        manifest = original_sample_files(*args, **kwargs)
+        if kwargs.get("max_files") is None:
+            discovered_file_info_tables.append(
+                manifest.as_block().select(["__path", "__file_size"])
+            )
+        return manifest
+
+    monkeypatch.setattr(listing_utils, "sample_files", capture_discovered_file_infos)
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([str(first), str(second)], merge_schema=True)
+    list_files = ds._logical_plan.dag.input_dependencies[0]
+    blocks = list_files.prelisted_file_infos
+    source = discovered_file_info_tables[0]
+
+    assert len(blocks) == 2
+    assert all(block.schema == source.schema for block in blocks)
+    assert [path for block in blocks for path in block["__path"].to_pylist()] == source[
+        "__path"
+    ].to_pylist()
+
+    def buffer_addresses(table):
+        return {
+            buffer.address
+            for column in table.columns
+            for chunk in column.chunks
+            for buffer in chunk.buffers()
+            if buffer is not None
+        }
+
+    retained_buffer_addresses = set().union(
+        *(buffer_addresses(block) for block in blocks)
+    )
+    assert buffer_addresses(source).isdisjoint(retained_buffer_addresses)
 
 
 def test_merge_schema_prelisted_listing_skips_checkpointed_row_group(

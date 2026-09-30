@@ -149,6 +149,8 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
+_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
 INT32_MAX = 2**31 - 1
 
 
@@ -620,6 +622,17 @@ def _read_datasource_v2(
                 f"no files found under {datasource.paths!r}. Check the path and any "
                 "configured `partition_filter` or `file_extensions` filters."
             )
+        if (
+            sample_all_files_for_schema
+            and len(sample) > _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT
+        ):
+            logger.warning(
+                "Full schema inference discovered %d candidate files, exceeding "
+                "the %d-file warning threshold. Reading every footer before "
+                "read_parquet returns may make planning slow.",
+                len(sample),
+                _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
+            )
 
     listing_elapsed = (
         time.perf_counter() - listing_started if listing_started is not None else None
@@ -641,12 +654,11 @@ def _read_datasource_v2(
         for i in builtins.range(
             0, file_infos.num_rows, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE
         ):
-            batch = file_infos.slice(i, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE)
-            # Copy each slice into its own buffers; retained chunks must not
-            # each keep the full listing's Arrow buffers alive.
-            prelisted_file_infos.append(
-                pa.Table.from_pydict(batch.to_pydict(), schema=file_infos.schema)
-            )
+            stop = min(i + DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE, file_infos.num_rows)
+            indices = pa.array(builtins.range(i, stop), type=pa.int64())
+            # Keep the chunking in Arrow to avoid converting every path to
+            # Python objects.
+            prelisted_file_infos.append(file_infos.take(indices))
         assert listing_elapsed is not None and schema_elapsed is not None
         logger.info(
             "Full Parquet schema inference: %d candidate files, %.2fs listing, "
@@ -1799,8 +1811,10 @@ def read_parquet(
             datasets. The files discovered for inference are also the files
             considered when the Dataset executes. Files appended after discovery
             aren't included, and a changing directory isn't an atomic snapshot.
-            Defaults to ``False``, which infers from up to 16 files. Requires
-            the V2 datasource.
+            Retained path and size metadata grows with file count and adds
+            O(files) data to serialized lineage. More than 10,000 candidates
+            emits a warning before footer merging. Defaults to ``False``, which
+            infers from up to 16 files. Requires the V2 datasource.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
