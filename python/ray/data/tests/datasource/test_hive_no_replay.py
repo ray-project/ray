@@ -76,14 +76,24 @@ def test_failed_read_submits_one_data_query(tmp_path: Path, failure_mode: str):
         },
     )
     try:
+        if failure_mode == "after_first_block":
+            # Flush the first fetched rows as their own output block so the
+            # read task produces output before the injected failure. Note the
+            # block only becomes visible downstream once the task ends, so
+            # consume with take_all like the other failure modes.
+            ray.data.DataContext.get_current().target_max_block_size = 1
         dataset = ray.data.read_hive(
             query="SELECT id",
             host="hive.invalid",
             auth_mechanism="NOSASL",
             schema=pa.schema([("id", pa.int64())]),
         )
-        with pytest.raises(Exception):
-            dataset.take_all()
+        if failure_mode == "worker_crash":
+            with pytest.raises(Exception):
+                dataset.take_all()
+        else:
+            with pytest.raises(Exception, match="HiveServer2 read failed"):
+                dataset.take_all()
     finally:
         ray.shutdown()
 

@@ -72,6 +72,15 @@ def _connect(options: HiveConnectionOptions):
         raise RuntimeError("HiveServer2 connection failed") from None
 
 
+def _metadata_pattern(identifier: str) -> str:
+    """Escape HS2 GetColumns wildcards so the identifier matches only itself.
+
+    HiveServer2 treats ``_`` and ``%`` in GetColumns schema/table arguments as
+    single- and multi-character wildcards, and ``\\`` as the escape character.
+    """
+    return identifier.replace("\\", "\\\\").replace("_", "\\_").replace("%", "\\%")
+
+
 def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
     """Use the HS2 metadata operation; never execute a data query."""
     database, table = spec.table_identifier
@@ -79,7 +88,9 @@ def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
     cursor = None
     try:
         cursor = connection.cursor(user=spec.connection.user)
-        columns = cursor.get_table_schema(table, database)
+        columns = cursor.get_table_schema(
+            _metadata_pattern(table), _metadata_pattern(database)
+        )
         if any(type_name.strip().casefold() == "decimal" for _, type_name in columns):
             # Impyla's GetColumns wrapper drops DECIMAL precision and scale.
             # Hive's DESCRIBE result preserves them without reading table rows.
@@ -109,6 +120,14 @@ def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
 
     if not columns:
         raise ValueError("HiveServer2 table has no columns")
+    unresolved = [
+        name for name, type_name in columns if type_name.strip().casefold() == "decimal"
+    ]
+    if unresolved:
+        raise ValueError(
+            "HiveServer2 DECIMAL columns lack precision and scale: "
+            + ", ".join(sorted(unresolved))
+        )
     names = [name for name, _ in columns]
     if len({name.casefold() for name in names}) != len(names):
         raise ValueError("HiveServer2 table has duplicate column names")

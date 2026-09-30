@@ -141,6 +141,101 @@ def test_table_decimal_schema_recovers_precision_from_describe(monkeypatch):
     assert cursor.closed and connection.closed
 
 
+def test_metadata_lookup_escapes_identifier_wildcards(monkeypatch):
+    class UnderscoreCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            assert (table, database) == ("events\\_2024", "sales\\_db")
+            return [("amount", "DECIMAL")]
+
+        def fetchall(self):
+            return [("amount", "decimal(12,2)", "")]
+
+    cursor = UnderscoreCursor()
+    connection = _Connection(cursor)
+    monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
+    spec = HiveReadSpec(
+        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        table="sales_db.events_2024",
+    )
+
+    schema = hive_hs2.infer_table_schema(spec)
+
+    assert schema == pa.schema([("amount", pa.decimal128(12, 2))])
+    assert cursor.statements == ["DESCRIBE `sales_db`.`events_2024`"]
+    assert cursor.closed and connection.closed
+
+
+def test_decimal_describe_ignores_partition_header_rows(monkeypatch):
+    class PartitionedCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            return [("id", "BIGINT"), ("amount", "DECIMAL"), ("day", "STRING")]
+
+        def fetchall(self):
+            return [
+                ("id", "bigint", ""),
+                ("amount", "decimal(12,2)", ""),
+                ("day", "string", ""),
+                ("", None, None),
+                ("# Partition Information", "", ""),
+                ("# col_name", "data_type", ""),
+                ("day", "string", ""),
+            ]
+
+    cursor = PartitionedCursor()
+    connection = _Connection(cursor)
+    monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
+    spec = HiveReadSpec(
+        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        table="analytics.events",
+    )
+
+    schema = hive_hs2.infer_table_schema(spec)
+
+    assert schema == pa.schema(
+        [("id", pa.int64()), ("amount", pa.decimal128(12, 2)), ("day", pa.string())]
+    )
+    assert cursor.closed and connection.closed
+
+
+def test_decimal_without_describe_precision_fails_closed(monkeypatch):
+    class SparseCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            return [("amount", "DECIMAL")]
+
+        def fetchall(self):
+            return [("other", "bigint", "")]
+
+    cursor = SparseCursor()
+    connection = _Connection(cursor)
+    monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
+    spec = HiveReadSpec(
+        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        table="analytics.events",
+    )
+
+    with pytest.raises(ValueError, match="lack precision and scale.*amount"):
+        hive_hs2.infer_table_schema(spec)
+    assert cursor.closed and connection.closed
+
+
+def test_table_schema_rejects_duplicate_column_names(monkeypatch):
+    class DuplicateCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            return [("id", "BIGINT"), ("ID", "bigint")]
+
+    cursor = DuplicateCursor()
+    connection = _Connection(cursor)
+    monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
+    spec = HiveReadSpec(
+        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        table="analytics.events",
+    )
+
+    with pytest.raises(ValueError, match="duplicate column names"):
+        hive_hs2.infer_table_schema(spec)
+    assert cursor.closed and connection.closed
+
+
 @pytest.mark.parametrize(
     "hive_type, arrow_type",
     [

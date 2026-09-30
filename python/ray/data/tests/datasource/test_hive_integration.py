@@ -1,6 +1,7 @@
 """Real HiveServer2 tests, enabled with RAY_HIVE_TEST_HOST."""
 
 import os
+import socket
 import uuid
 from contextlib import contextmanager
 from datetime import date
@@ -52,9 +53,7 @@ def _connection_options():
 
 
 def _connect(options):
-    from impala.dbapi import connect
-
-    return connect(**options, verify_cert=options["use_ssl"], retries=1)
+    return connect_read_hive(HiveConnectionOptions(**options))
 
 
 @contextmanager
@@ -117,7 +116,7 @@ def test_hive_table_query_limit_and_repartition():
 
 def test_hive_scalar_types_over_real_hs2():
     if _AUTH != "PLAIN":
-        pytest.skip("Run the scalar type matrix once against the PLAIN/NONE profile")
+        pytest.skip("Run the scalar type matrix once with RAY_HIVE_TEST_AUTH=PLAIN")
     options = _connection_options()
     columns = (
         "flag BOOLEAN, tiny TINYINT, small SMALLINT, id INT, big BIGINT, "
@@ -156,13 +155,31 @@ def test_hive_scalar_types_over_real_hs2():
 
 
 def test_hive_tls_rejects_untrusted_or_mismatched_server():
+    """TLS negative tests against a real HiveServer2.
+
+    Assumes the test CA is untrusted by the system CA bundle and that the
+    server certificate has no SAN for RAY_HIVE_TEST_WRONG_HOST (default
+    127.0.0.1). The positive control and the TCP probe below ensure the
+    negative assertions fail at TLS certificate validation rather than at
+    connection setup.
+    """
     options = _connection_options()
     if not options["use_ssl"] or not options["ca_cert"]:
         pytest.skip("Run against a TLS-enabled HiveServer2 with a test CA certificate")
 
+    # Positive control: the configured endpoint trusts the test CA.
+    connect_read_hive(HiveConnectionOptions(**options)).close()
+
     wrong_host = os.environ.get("RAY_HIVE_TEST_WRONG_HOST", "127.0.0.1")
     if wrong_host == options["host"]:
         pytest.fail("RAY_HIVE_TEST_WRONG_HOST must differ from RAY_HIVE_TEST_HOST")
+    try:
+        socket.create_connection((wrong_host, options["port"]), timeout=10).close()
+    except OSError:
+        pytest.fail(
+            "RAY_HIVE_TEST_WRONG_HOST must route to the same TLS-enabled HiveServer2"
+        )
+
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
         connect_read_hive(HiveConnectionOptions(**{**options, "host": wrong_host}))
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
