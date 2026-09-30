@@ -2,6 +2,7 @@ import pytest
 
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.deployment_state import DeploymentVersion
+from ray.serve._private.utils import DeploymentOptionUpdateType
 from ray.serve.config import BackpressureConfig
 
 
@@ -432,6 +433,30 @@ def test_requires_long_poll_broadcast():
     v1 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=5), {})
     v2 = DeploymentVersion("1", DeploymentConfig(health_check_timeout_s=10), {})
     assert not v1.requires_long_poll_broadcast(v2)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["prefer_local_node_routing", "prefer_local_az_routing"],
+)
+def test_prefer_local_routing_flags_are_lightweight(field_name):
+    v1 = DeploymentVersion("1", DeploymentConfig(**{field_name: False}), {})
+    v2 = DeploymentVersion("1", DeploymentConfig(**{field_name: True}), {})
+
+    assert v1 == v2
+    assert hash(v1) == hash(v2)
+    assert v1.reconfigure_actor_hash == v2.reconfigure_actor_hash
+    assert not v1.requires_actor_restart(v2)
+    assert not v1.requires_actor_reconfigure(v2)
+    assert not v1.requires_long_poll_broadcast(v2)
+
+    for option in ("prefer_local_node_routing", "prefer_local_az_routing"):
+        json_schema_extra = DeploymentConfig.model_fields[option].json_schema_extra
+        assert isinstance(json_schema_extra, dict)
+        assert (
+            json_schema_extra.get("update_type")
+            == DeploymentOptionUpdateType.LightWeight
+        )
 
 
 if __name__ == "__main__":
