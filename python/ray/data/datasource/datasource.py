@@ -198,10 +198,10 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         # Driver-side datasource code runs with the forbid flag set (read tasks
-        # are covered by the read operator). Only methods the subclass defines
-        # itself are wrapped; inherited ones were wrapped by their own class.
+        # are covered by the read operator). ``getattr`` also catches methods
+        # inherited from mixins; wrapping is idempotent.
         for name in ("__init__", "get_read_tasks", "estimate_inmemory_data_size"):
-            fn = cls.__dict__.get(name)
+            fn = getattr(cls, name, None)
             if isinstance(fn, types.FunctionType):
                 setattr(cls, name, guard_datasource_call(fn))
 

@@ -114,10 +114,17 @@ def guard_iterator(
     """
     with forbid_untrusted_unpickling(hint):
         it = iter(get_iterable())
-    while True:
-        with forbid_untrusted_unpickling(hint):
-            try:
-                item = next(it)
-            except StopIteration:
-                return
-        yield item
+    try:
+        while True:
+            with forbid_untrusted_unpickling(hint):
+                try:
+                    item = next(it)
+                except StopIteration:
+                    return
+            yield item
+    finally:
+        # On early exit, close the producer now (and guarded) rather than at GC.
+        close = getattr(it, "close", None)
+        if close is not None:
+            with forbid_untrusted_unpickling(hint):
+                close()

@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import datasets
 import pyarrow
-import pyarrow.parquet as pq
 import pytest
 import requests
 from packaging.version import Version
@@ -482,15 +481,11 @@ def test_huggingface_datasource_rejects_pickle_object_columns(tmp_path):
     )
     # ``datasets`` refuses to build Features for unknown extension types, so drive
     # the datasource with a stand-in that yields the Arrow batch HF would produce.
-    # HF reads its cache files with pyarrow: mimic that by reading a real parquet
-    # file when the batch is requested, so the pickled-object type is rebuilt
-    # during the read, where it is refused.
-    path = tmp_path / "data.parquet"
-    pq.write_table(poisoned, path)
+    # The table is built here, outside the guard, the way a user-loaded HF
+    # dataset reaches the read task: its extension type is never rebuilt during
+    # the read, so the datasource must check the schema itself.
     hf_dataset = MagicMock()
-    hf_dataset.with_format.return_value.iter.side_effect = lambda *a, **kw: iter(
-        [pq.read_table(path)]
-    )
+    hf_dataset.with_format.return_value.iter.return_value = iter([poisoned])
 
     read_task = HuggingFaceDatasource(hf_dataset).get_read_tasks(1)[0]
     # Run the read function the way the read operator does: under the guard.
