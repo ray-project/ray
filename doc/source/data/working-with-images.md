@@ -6,33 +6,31 @@ myst:
 
 (working_with_images)=
 
-# Working with Images
+# Working with images
 
-With Ray Data, you can easily read and transform large image datasets.
+Use Ray Data to read and transform large image datasets.
 
-This guide shows you how to:
+This guide shows you how to do the following:
 
-* {ref}`Read images <reading_images>`
-* {ref}`Transform images <transforming_images>`
-* {ref}`Perform inference on images <performing_inference_on_images>`
-* {ref}`Save images <saving_images>`
+* {ref}`Read images <reading_images>`.
+* {ref}`Transform images <transforming_images>`.
+* {ref}`Perform inference on images <performing_inference_on_images>`.
+* {ref}`Save images <saving_images>`.
 
 (reading_images)=
 
-## Reading images
+## Read images
 
-Ray Data can read images from a variety of formats.
-
-To view the full list of supported file formats, see the {ref}`Loading Data API <loading-data-api>`.
+Ray Data can read images in many formats. For the full list of supported file formats, see {ref}`Loading Data API <loading-data-api>`.
 
 :::::{tab-set}
 
 ::::{tab-item} Raw images
 
-To load raw images like JPEG files, call {func}`~ray.data.read_images`.  In the schema, the column name defaults to "image".
+To load raw images such as JPEG files, call {func}`~ray.data.read_images`. The column name in the schema defaults to `image`.
 
 :::{note}
-{func}`~ray.data.read_images` uses [PIL](https://pillow.readthedocs.io/en/stable/index.html). For a list of supported file formats, see [Image file formats](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html).
+{func}`~ray.data.read_images` uses [Pillow](https://pillow.readthedocs.io/en/stable/index.html). For a list of supported file formats, see [Image file formats](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html).
 :::
 
 ```{testcode}
@@ -51,9 +49,9 @@ image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
 ::::
 
-::::{tab-item} Images from Dataset of URIs
+::::{tab-item} Images from a dataset of URIs
 
-To load images from a dataset of URIs, use the {func}`~ray.data.Dataset.with_column` method together with the {func}`~ray.data.expressions.download` expression.
+To load images from a dataset of URIs, call {func}`~ray.data.Dataset.with_column` with the {func}`~ray.data.expressions.download` expression.
 
 ```{testcode}
 import pyarrow.fs
@@ -127,7 +125,7 @@ features {
 }
 ```
 
-To load examples stored in this format, call {func}`~ray.data.read_tfrecords`. Then, call {meth}`~ray.data.Dataset.map` to decode the raw image bytes.
+To load examples stored in this format, call {func}`~ray.data.read_tfrecords`. Then call {meth}`~ray.data.Dataset.map` to decode the raw image bytes.
 
 ```{testcode}
 import io
@@ -192,12 +190,11 @@ label   int64
 
 :::::
 
-
 For more information on creating datasets, see {ref}`Loading data <loading_data>`.
 
 (transforming_images)=
 
-## Transforming images
+## Transform images
 
 To transform images, call {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.map_batches`.
 
@@ -220,7 +217,7 @@ For more information on transforming data, see {ref}`Transforming data <transfor
 
 (performing_inference_on_images)=
 
-## Performing inference on images
+## Perform inference on images
 
 To perform inference with a pre-trained model, first load and transform your data.
 
@@ -281,13 +278,13 @@ predictions.show(3)
 {'class': 296}
 ```
 
-For more information on performing inference, see {ref}`End-to-end: Offline Batch Inference <batch_inference_home>` and {ref}`Stateful Transforms <stateful_transforms>`.
+For more information on performing inference, see {ref}`End-to-end: Offline Batch Inference <batch_inference_home>` and {ref}`Stateful transforms <stateful_transforms>`.
 
 (saving_images)=
 
-## Saving images
+## Save images
 
-Save images with formats like PNG, Parquet, and NumPy. To view all supported formats, see the {ref}`Saving Data API <saving-data-api>`.
+You can save images in formats such as PNG, Parquet, and NumPy. For all supported formats, see {ref}`Saving Data API <saving-data-api>`.
 
 ::::{tab-set}
 
@@ -316,7 +313,6 @@ ds.write_parquet("/tmp/simple")
 ```
 
 :::
-
 
 :::{tab-item} NumPy
 
