@@ -29,7 +29,7 @@ For the officially supported, Redis-backed setup, see
 * KubeRay v1.7 or later, which is the first release that supports the embedded RocksDB backend.
 * Ray 2.57.0 or later, which is the first release that contains the embedded RocksDB backend.
 * Linux worker nodes (the RocksDB backend is Linux only).
-* A `StorageClass` that provisions a durable volume which can reattach to the node that runs the recovered head Pod.
+* A `StorageClass` that provisions a durable volume capable of reattaching to the node that runs the recovered head Pod.
 
 ## Enable the operator feature gate
 
