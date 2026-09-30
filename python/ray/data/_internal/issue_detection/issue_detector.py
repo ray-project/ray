@@ -35,8 +35,12 @@ class IssueDetector(ABC):
         pass
 
     @abstractmethod
-    def detect(self) -> List[Issue]:
+    def detect_periodic(self) -> List[Issue]:
         pass
+
+    def detect_final(self) -> List[Issue]:
+        """Detect issues after execution reaches a terminal state."""
+        return []
 
     @abstractmethod
     def detection_time_interval_s(self) -> float:

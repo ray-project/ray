@@ -140,9 +140,16 @@ def verify_placement() -> dict:
     bad_on_head = []  # dataset-shaped task that escaped to head / unlabeled node
     tasks_on_labeled = 0
     tasks_on_head = 0
+    tasks_unscheduled = 0
     total_tasks = 0
 
     for t in list_tasks(detail=True, limit=LIST_TASKS_LIMIT):
+        # A task with no node assignment never ran, so its placement says
+        # nothing. ``node_subcluster.get(None)`` returns None, which would
+        # otherwise bucket it with the head node and report it as an escape.
+        if not t.node_id:
+            tasks_unscheduled += 1
+            continue
         total_tasks += 1
         node_sc = node_subcluster.get(t.node_id)
         if node_sc in SUBCLUSTERS:
@@ -158,9 +165,10 @@ def verify_placement() -> dict:
                 bad_on_head.append((t.task_id, t.name))
 
     print(
-        f"Placement: scanned {total_tasks} tasks "
+        f"Placement: scanned {total_tasks} scheduled tasks "
         f"(limit={LIST_TASKS_LIMIT}; if equal, results may be truncated). "
-        f"{tasks_on_labeled} on labeled nodes, {tasks_on_head} on head/unlabeled."
+        f"{tasks_on_labeled} on labeled nodes, {tasks_on_head} on head/unlabeled, "
+        f"{tasks_unscheduled} skipped with no node assignment."
     )
 
     if bad_on_labeled:
@@ -186,6 +194,7 @@ def verify_placement() -> dict:
         "tasks_scanned": total_tasks,
         "tasks_on_labeled_nodes": tasks_on_labeled,
         "tasks_on_head_or_unlabeled": tasks_on_head,
+        "tasks_unscheduled": tasks_unscheduled,
         "subcluster_mismatches": len(bad_on_labeled),
         "head_escapes": len(bad_on_head),
         "list_tasks_limit": LIST_TASKS_LIMIT,
@@ -294,7 +303,7 @@ if __name__ == "__main__":
     benchmark.write_result()
 
     # Raise after metrics have been written so the dashboard still records
-    # the failed run (matches the sort_benchmark.py "print then raise"
+    # the failed run (matches the random_shuffle_benchmark.py "print then raise"
     # convention).
     if errors:
         raise AssertionError("; ".join(errors))

@@ -5,13 +5,21 @@ from typing import TYPE_CHECKING, Optional
 import lightgbm
 
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+_LIGHTGBM_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`LightGBMCheckpoint` is deprecated and will be removed in a future release. "
+    "Use `ray.train.Checkpoint` directly instead. "
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
+)
+
 
 @PublicAPI(stability="beta")
+@Deprecated(message=_LIGHTGBM_CHECKPOINT_DEPRECATION_MESSAGE, warning=True)
 class LightGBMCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with LightGBM-specific functionality."""
 
