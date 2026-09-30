@@ -54,23 +54,23 @@ def test_write_cluster_info_survives_a_passive_gcs():
     assert node._write_cluster_info_to_kv() is True
 
 
-def test_write_cluster_info_still_fails_on_an_unreachable_gcs():
-    # An unreachable GCS also yields UNAVAILABLE; only the passive one is benign.
+@pytest.mark.parametrize(
+    "flag_on, exc, expected_exc",
+    [
+        (False, _passive_gcs_rejection(), GcsPassiveError),
+        (
+            True,
+            RpcError("Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE),
+            RpcError,
+        ),
+    ],
+)
+def test_write_cluster_info_reraises_errors(monkeypatch, flag_on, exc, expected_exc):
+    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", flag_on)
     node = _make_node(passive=False)
-    node._gcs_client.internal_kv_put.side_effect = RpcError(
-        "Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
-    )
+    node._gcs_client.internal_kv_put.side_effect = exc
 
-    with pytest.raises(RpcError):
-        node._write_cluster_info_to_kv()
-
-
-def test_write_cluster_info_still_fails_with_leader_election_off(monkeypatch):
-    # No GCS is passive with the feature off, so the rejection is a real error.
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", False)
-    node = _make_node(passive=True)
-
-    with pytest.raises(GcsPassiveError):
+    with pytest.raises(expected_exc):
         node._write_cluster_info_to_kv()
 
 
@@ -127,24 +127,27 @@ def _prepare_for_api_server(node, monkeypatch):
     return node
 
 
-@pytest.mark.parametrize("passive", [True, False])
-def test_start_api_server_survives_a_passive_gcs(monkeypatch, passive):
+@pytest.mark.parametrize(
+    "flag_on, passive, should_raise",
+    [
+        (True, True, False),
+        (True, False, False),
+        (False, True, True),
+    ],
+)
+def test_start_api_server_passive_handling(monkeypatch, flag_on, passive, should_raise):
+    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", flag_on)
     node = _prepare_for_api_server(_make_node(passive=passive), monkeypatch)
 
-    node.start_api_server(include_dashboard=True, raise_on_failure=True)
-
-    attempted_keys = [
-        call.args[0] for call in node._gcs_client.internal_kv_put.call_args_list
-    ]
-    assert attempted_keys == [b"webui:url"]
-
-
-def test_start_api_server_still_fails_with_leader_election_off(monkeypatch):
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", False)
-    node = _prepare_for_api_server(_make_node(passive=True), monkeypatch)
-
-    with pytest.raises(GcsPassiveError):
+    if should_raise:
+        with pytest.raises(GcsPassiveError):
+            node.start_api_server(include_dashboard=True, raise_on_failure=True)
+    else:
         node.start_api_server(include_dashboard=True, raise_on_failure=True)
+        attempted_keys = [
+            call.args[0] for call in node._gcs_client.internal_kv_put.call_args_list
+        ]
+        assert attempted_keys == [b"webui:url"]
 
 
 def test_start_api_server_keeps_the_dashboard_when_passive(monkeypatch):

@@ -31,7 +31,10 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import utils
-from ray._private.gcs_passive_utils import PassiveLatch
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    is_refused_by_passive_gcs,
+)
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
@@ -2104,7 +2107,9 @@ class ReporterAgent(
                 self._physical_stats_passive_latch.promoted()
 
             except Exception as e:
-                if not self._physical_stats_passive_latch.is_refused_by_passive_gcs(e):
+                if not is_refused_by_passive_gcs(
+                    e, latch=self._physical_stats_passive_latch
+                ):
                     logger.exception("Error publishing node physical stats.")
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)

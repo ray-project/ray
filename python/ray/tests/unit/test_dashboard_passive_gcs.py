@@ -197,9 +197,9 @@ async def _registration_keeps_waiting(head):
         await asyncio.wait_for(head._register_addresses_loop(), timeout=0.1)
 
 
-#
+# ==============================================================================
 # Dashboard head
-#
+# ==============================================================================
 
 
 async def test_head_registers_both_addresses_when_active(make_head, head_logs):
@@ -213,7 +213,7 @@ async def test_head_registers_both_addresses_when_active(make_head, head_logs):
         (b"DashboardMetricsAddress", METRICS_ADDRESS.encode()),
         (ray_constants.DASHBOARD_ADDRESS.encode(), DASHBOARD_ADDRESS.encode()),
     ]
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
     assert _count_logged(head_logs, "GCS is in passive mode") == 0
 
 
@@ -225,29 +225,30 @@ async def test_head_survives_a_passive_rejection(make_head, head_logs):
     head._dashboard_address = DASHBOARD_ADDRESS
     await _register_dashboard_address(head)
 
-    assert head._waiting_for_promotion
+    assert head._dashboard_passive_latch.waiting_for_promotion
     # Once for the window, not once per refused write.
     assert _count_logged(head_logs, "GCS is in passive mode") == 1
 
 
-async def test_head_reraises_passive_rejection_when_flag_off(monkeypatch, make_head):
-    head = make_head(leader=False)
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", False)
-
-    with pytest.raises(GcsPassiveError):
-        await _register_dashboard_address(head)
-    assert not head._waiting_for_promotion
-
-
-async def test_head_reraises_other_rpc_errors(make_head):
+@pytest.mark.parametrize(
+    "flag_on, exc, expected_exc",
+    [
+        (False, _passive_gcs_rejection(), GcsPassiveError),
+        (
+            True,
+            RpcError("boom", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE),
+            RpcError,
+        ),
+    ],
+)
+async def test_head_reraises_errors(monkeypatch, make_head, flag_on, exc, expected_exc):
     head = make_head(leader=True)
-    head.gcs_client.async_internal_kv_put.side_effect = RpcError(
-        "boom", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
-    )
+    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", flag_on)
+    head.gcs_client.async_internal_kv_put.side_effect = exc
 
-    with pytest.raises(RpcError):
+    with pytest.raises(expected_exc):
         await _register_dashboard_address(head)
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_replays_every_address_on_promotion(make_head, head_logs):
@@ -269,7 +270,7 @@ async def test_head_replays_every_address_on_promotion(make_head, head_logs):
         (b"session_name", SESSION_NAME.encode()),
         (usage_constant.CLUSTER_METADATA_KEY, ANY),
     ]
-    assert not head._waiting_for_promotion
+    assert not head._dashboard_passive_latch.waiting_for_promotion
     assert _count_logged(head_logs, "GCS was promoted to leader") == 1
 
 
@@ -315,20 +316,28 @@ async def test_head_replaces_the_previous_head_s_cluster_metadata(make_head):
     assert metadata["ray_init_cluster"] is False
 
 
-async def test_head_replays_the_tracing_startup_hook(make_head):
+@pytest.mark.parametrize(
+    "hook, should_replay",
+    [(TRACING_HOOK, True), (None, False), ("", False)],
+)
+async def test_head_tracing_startup_hook_replay(make_head, hook, should_replay):
     """`ray start --tracing-startup-hook` writes it, and that head is gone."""
-    head = make_head(leader=False, tracing_startup_hook=TRACING_HOOK)
+    head = make_head(leader=False, tracing_startup_hook=hook)
     head._dashboard_address = DASHBOARD_ADDRESS
     await _register_dashboard_address(head)
 
     _set_leader(head.gcs_client, True)
     await _await_registration(head)
 
-    assert _put_args(head.gcs_client, b"tracing_startup_hook") == (
-        TRACING_HOOK.encode(),
-        True,
-        ray_constants.KV_NAMESPACE_TRACING,
-    )
+    if should_replay:
+        assert _put_args(head.gcs_client, b"tracing_startup_hook") == (
+            TRACING_HOOK.encode(),
+            True,
+            ray_constants.KV_NAMESPACE_TRACING,
+        )
+    else:
+        assert _put_args(head.gcs_client, b"tracing_startup_hook") is None
+    assert not head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_replays_all_named_replay_keys_on_promotion(make_head):
@@ -348,20 +357,6 @@ async def test_head_replays_all_named_replay_keys_on_promotion(make_head):
     }
     expected = set(dashboard_consts.HEAD_PROMOTION_REPLAY_KEYS)
     assert replayed == expected
-
-
-@pytest.mark.parametrize("hook", [None, ""])
-async def test_head_has_no_tracing_startup_hook_to_replay(make_head, hook):
-    """services.py passes "" when the node was started without the flag."""
-    head = make_head(leader=False, tracing_startup_hook=hook)
-    head._dashboard_address = DASHBOARD_ADDRESS
-    await _register_dashboard_address(head)
-
-    _set_leader(head.gcs_client, True)
-    await _await_registration(head)
-
-    assert _put_args(head.gcs_client, b"tracing_startup_hook") is None
-    assert not head._waiting_for_promotion
 
 
 async def test_head_stops_polling_once_registered(make_head):
@@ -389,7 +384,7 @@ async def test_head_keeps_waiting_when_the_replay_is_refused(make_head, head_log
 
     await _registration_keeps_waiting(head)
 
-    assert head._waiting_for_promotion
+    assert head._dashboard_passive_latch.waiting_for_promotion
     # The retries are silent; the window was already reported once.
     assert _count_logged(head_logs, "GCS is in passive mode") == 1
 
@@ -403,7 +398,7 @@ async def test_head_does_not_replay_while_still_passive(make_head):
     await _registration_keeps_waiting(head)
 
     assert _puts(head.gcs_client) == []
-    assert head._waiting_for_promotion
+    assert head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_does_not_poll_when_flag_off(monkeypatch, make_head):
@@ -417,58 +412,60 @@ async def test_head_does_not_poll_when_flag_off(monkeypatch, make_head):
     assert _puts(head.gcs_client) == []
 
 
-#
+# ==============================================================================
 # Dashboard agent
-#
+# ==============================================================================
 
 
 def _agent_puts(gcs_client):
     return {key: json.loads(value) for key, value in _puts(gcs_client)}
 
 
-async def test_agent_registers_without_a_retry_task_when_active(make_agent):
-    agent = make_agent(leader=True)
-
-    assert await agent._register_agent_address(1, 2) is None
-    assert _agent_puts(agent.gcs_client) == {
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{NODE_ID}".encode(): [
-            NODE_IP,
-            1,
-            2,
-        ],
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{NODE_IP}".encode(): [
-            NODE_ID,
-            1,
-            2,
-        ],
-    }
-
-
-async def test_agent_defers_registration_when_passive(make_agent, agent_logs):
-    agent = make_agent(leader=False)
-
+@pytest.mark.parametrize("leader", [True, False])
+async def test_agent_registration(make_agent, agent_logs, leader):
+    agent = make_agent(leader=leader)
     retry_task = await agent._register_agent_address(1, 2)
 
-    assert retry_task is not None
-    retry_task.cancel()
-    assert _count_logged(agent_logs, "GCS is in passive mode") == 1
+    if leader:
+        assert retry_task is None
+        assert _agent_puts(agent.gcs_client) == {
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{NODE_ID}".encode(): [
+                NODE_IP,
+                1,
+                2,
+            ],
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{NODE_IP}".encode(): [
+                NODE_ID,
+                1,
+                2,
+            ],
+        }
+        assert _count_logged(agent_logs, "GCS is in passive mode") == 0
+    else:
+        assert retry_task is not None
+        retry_task.cancel()
+        assert _count_logged(agent_logs, "GCS is in passive mode") == 1
 
 
-async def test_agent_reraises_passive_rejection_when_flag_off(monkeypatch, make_agent):
-    agent = make_agent(leader=False)
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", False)
-
-    with pytest.raises(GcsPassiveError):
-        await agent._register_agent_address(1, 2)
-
-
-async def test_agent_reraises_other_rpc_errors(make_agent):
+@pytest.mark.parametrize(
+    "flag_on, exc, expected_exc",
+    [
+        (False, _passive_gcs_rejection(), GcsPassiveError),
+        (
+            True,
+            RpcError("boom", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE),
+            RpcError,
+        ),
+    ],
+)
+async def test_agent_reraises_errors(
+    monkeypatch, make_agent, flag_on, exc, expected_exc
+):
     agent = make_agent(leader=True)
-    agent.gcs_client.async_internal_kv_put.side_effect = RpcError(
-        "boom", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
-    )
+    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", flag_on)
+    agent.gcs_client.async_internal_kv_put.side_effect = exc
 
-    with pytest.raises(RpcError):
+    with pytest.raises(expected_exc):
         await agent._register_agent_address(1, 2)
 
 

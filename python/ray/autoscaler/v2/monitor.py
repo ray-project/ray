@@ -29,6 +29,7 @@ from ray._common.usage.usage_lib import (
 )
 from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
+from ray._private.gcs_passive_utils import PassiveLatch, put_kv_passive_safe
 from ray._private.ray_logging import setup_component_logger
 from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
@@ -49,7 +50,7 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
-from ray.exceptions import AuthenticationError, GcsPassiveError
+from ray.exceptions import AuthenticationError
 
 try:
     import prometheus_client
@@ -89,8 +90,15 @@ class AutoscalerMonitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        # Set once this head is known to be standing by for a promotion.
-        self._waiting_for_promotion = False
+        self._autoscaler_passive_latch = PassiveLatch(
+            "Autoscaling",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode. Autoscaling stays paused until this head is "
+                "promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Resuming autoscaling.",
+        )
         self._metrics_address = (
             build_address(monitor_ip, AUTOSCALER_METRIC_PORT) if monitor_ip else None
         )
@@ -157,22 +165,12 @@ class AutoscalerMonitor:
     def _publish_metrics_address(self):
         if self._metrics_address is None:
             return
-        try:
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", self._metrics_address.encode(), True, None
-            )
-        except Exception as e:
-            if not self._refused_by_passive_gcs(e):
-                raise
-
-    def _note_passive_gcs(self):
-        if self._waiting_for_promotion:
-            return
-        self._waiting_for_promotion = True
-        # Logged once, not once per pass, so a passive window stays quiet.
-        logger.warning(
-            "GCS is in passive mode. Autoscaling stays paused until this head is "
-            "promoted."
+        put_kv_passive_safe(
+            self.gcs_client,
+            b"AutoscalerMetricsAddress",
+            self._metrics_address,
+            overwrite=True,
+            latch=self._autoscaler_passive_latch,
         )
 
     def _resume_after_promotion(self):
@@ -181,23 +179,12 @@ class AutoscalerMonitor:
         The metrics address names the current leader's endpoint, so every promotion
         rewrites it. It gets one attempt, as it does at startup.
         """
-        if not self._waiting_for_promotion:
+        if not self._autoscaler_passive_latch.promoted():
             return
-        self._waiting_for_promotion = False
-        logger.info("GCS was promoted to leader. Resuming autoscaling.")
         self._publish_metrics_address()
         # __init__ recorded the autoscaler version before the cluster had a
         # leader, so its write was dropped.
         put_recorded_extra_usage_tags(self.gcs_client)
-
-    def _refused_by_passive_gcs(self, exc: Exception) -> bool:
-        """Returns whether the exception was a refusal by a passive GCS."""
-        if ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
-            exc, GcsPassiveError
-        ):
-            self._note_passive_gcs()
-            return True
-        return False
 
     @staticmethod
     def _get_session_name(gcs_client: GcsClient) -> Optional[str]:
@@ -239,7 +226,7 @@ class AutoscalerMonitor:
                     ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
                     and not self.gcs_client.is_gcs_leader()
                 ):
-                    self._note_passive_gcs()
+                    self._autoscaler_passive_latch.note_passive()
                 else:
                     self._resume_after_promotion()
                     autoscaling_state = self.autoscaler.update_autoscaling_state()

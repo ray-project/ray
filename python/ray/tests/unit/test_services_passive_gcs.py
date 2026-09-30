@@ -54,23 +54,25 @@ def _start_api_server(
     )
 
 
-def test_start_api_server_does_not_wait_for_a_passive_gcs(dashboard_process):
-    dashboard_url, process_info = _start_api_server(gcs_is_passive=True)
-
-    # No address to report, but the dashboard is running and must stay tracked.
-    assert dashboard_url is None
-    assert process_info is dashboard_process
-    internal_kv.internal_kv_get_gcs_client().internal_kv_get.assert_not_called()
-
-
-def test_start_api_server_reports_the_address_when_active(dashboard_process):
+@pytest.mark.parametrize(
+    "gcs_is_passive, expected_url",
+    [(True, None), (False, DASHBOARD_URL)],
+)
+def test_start_api_server_address_resolution(
+    dashboard_process, gcs_is_passive, expected_url
+):
     gcs_client = services.GcsClient.return_value
-    gcs_client.internal_kv_get.return_value = DASHBOARD_URL.encode()
+    gcs_client.internal_kv_get.return_value = (
+        DASHBOARD_URL.encode() if expected_url else None
+    )
 
-    dashboard_url, process_info = _start_api_server(gcs_is_passive=False)
+    dashboard_url, process_info = _start_api_server(gcs_is_passive=gcs_is_passive)
 
-    assert dashboard_url == DASHBOARD_URL
+    # In passive mode, returns None without waiting; when active, returns url.
+    assert dashboard_url == expected_url
     assert process_info is dashboard_process
+    if gcs_is_passive:
+        internal_kv.internal_kv_get_gcs_client().internal_kv_get.assert_not_called()
 
 
 @pytest.mark.parametrize(

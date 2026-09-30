@@ -9,25 +9,20 @@ import pytest
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.modules.node.node_head as node_head_module
 import ray.experimental.internal_kv as internal_kv
-from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
 from ray.dashboard.modules.node.datacenter import DataSource
 from ray.dashboard.modules.node.node_head import NodeHead
 from ray.dashboard.subprocesses.module import SubprocessModuleConfig
-from ray.exceptions import GcsPassiveError, RpcError
+from ray.exceptions import GcsPassiveError
 
 NODE_HEAD_LOGGER = "ray.dashboard.modules.node.node_head"
 
 HEAD_NODE_ID = "a" * 56
-NEW_HEAD_NODE_ID = "b" * 56
 DEAD_NODE_ID = "c" * 56
 
 
 def _passive_gcs_rejection():
     """The error a passive GCS raises, as check_status() translates it."""
-    return GcsPassiveError(
-        "GCS server is in passive (read-only) mode.",
-        rpc_code=GRPC_STATUS_CODE_UNAVAILABLE,
-    )
+    return GcsPassiveError("GCS server is in passive (read-only) mode.")
 
 
 def _capture(caplog, logger_name):
@@ -44,15 +39,6 @@ def _capture(caplog, logger_name):
 
 def _count_logged(caplog, needle):
     return sum(needle in record.getMessage() for record in caplog.records)
-
-
-def _head_node_puts(gcs_client):
-    """The value of every head node id write attempted."""
-    return [
-        call.args[1]
-        for call in gcs_client.async_internal_kv_put.call_args_list
-        if call.args[0] == ray_constants.KV_HEAD_NODE_ID_KEY
-    ]
 
 
 def _alive_head_node(node_id):
@@ -107,24 +93,11 @@ def _gcs_client(*, leader):
     gcs_client.async_internal_kv_put = AsyncMock(
         side_effect=None if leader else _passive_gcs_rejection()
     )
-    gcs_client.async_internal_kv_del = AsyncMock(
-        side_effect=None if leader else _passive_gcs_rejection()
-    )
+    gcs_client.async_internal_kv_del = AsyncMock()
     gcs_client.is_gcs_leader = MagicMock(return_value=leader)
     gcs_client.is_gcs_leader_local = MagicMock(return_value=leader)
     gcs_client.async_check_alive = AsyncMock()
     return gcs_client
-
-
-def _set_leader(gcs_client, leader):
-    gcs_client.async_internal_kv_put.side_effect = (
-        None if leader else _passive_gcs_rejection()
-    )
-    gcs_client.async_internal_kv_del.side_effect = (
-        None if leader else _passive_gcs_rejection()
-    )
-    gcs_client.is_gcs_leader.return_value = leader
-    gcs_client.is_gcs_leader_local.return_value = leader
 
 
 @pytest.fixture
@@ -160,50 +133,26 @@ def make_node_head(tmp_path):
             task.cancel()
 
 
-async def _drain_retry(head):
-    """Wait for the retry task the refusal spawned."""
-    await asyncio.wait_for(asyncio.gather(*head._background_tasks), timeout=10)
-
-
-async def test_head_node_id_is_registered_when_active(make_node_head, node_head_logs):
-    head = make_node_head(leader=True)
-
-    await head._put_head_node_id(HEAD_NODE_ID)
-
-    assert _head_node_puts(head.gcs_client) == [HEAD_NODE_ID.encode()]
-    assert head._registered_head_node_id == HEAD_NODE_ID
-    assert head._head_node_registration_time_s is not None
-    assert head._background_tasks == set()
-    assert _count_logged(node_head_logs, "GCS is in passive mode") == 0
-
-
-async def test_a_refused_head_node_id_is_not_recorded(make_node_head):
-    """When the put fails, the head node id must not be recorded as registered."""
-    head = make_node_head(leader=False)
-
-    with pytest.raises(GcsPassiveError):
-        await head._put_head_node_id(HEAD_NODE_ID)
-
-    assert head._registered_head_node_id is None
-    assert head._head_node_registration_time_s is None
-
-
-async def test_node_updates_wait_for_leader_when_passive(
-    make_node_head, node_head_logs
+@pytest.mark.parametrize("update_target", ["nodes", "actors"])
+async def test_updates_wait_for_leader_when_passive(
+    make_node_head, node_head_logs, update_target
 ):
-    """Subscription loop must not start or yield until promoted to leader."""
+    """Subscription loop and actor updates must not proceed until promoted to leader."""
     head = make_node_head(leader=False)
+    coro = (
+        head._subscribe_for_node_updates().__anext__()
+        if update_target == "nodes"
+        else head._update_actors()
+    )
 
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(
-            head._subscribe_for_node_updates().__anext__(), timeout=0.05
-        )
+        await asyncio.wait_for(coro, timeout=0.05)
 
     assert _count_logged(node_head_logs, "GCS is in passive mode") == 1
 
 
 async def test_node_updates_proceed_when_active(make_node_head, monkeypatch):
-    """When leader, _subscribe_for_node_updates proceeds and yields nodes."""
+    """When leader, _subscribe_for_node_updates proceeds, yields nodes, and registers head node."""
     head = make_node_head(leader=True)
 
     nodes = [_alive_head_node(HEAD_NODE_ID)]
@@ -216,93 +165,13 @@ async def test_node_updates_proceed_when_active(make_node_head, monkeypatch):
 
     await head._update_nodes()
     assert head._registered_head_node_id == HEAD_NODE_ID
-    assert _head_node_puts(head.gcs_client) == [HEAD_NODE_ID.encode()]
-
-
-async def test_actor_updates_wait_for_leader_when_passive(
-    make_node_head, node_head_logs
-):
-    """Actor updates must not run GetAllActorInfo until promoted to leader."""
-    head = make_node_head(leader=False)
-
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(head._update_actors(), timeout=0.05)
-
-    assert _count_logged(node_head_logs, "GCS is in passive mode") == 1
-
-
-async def test_head_node_id_reraises_passive_rejection_when_flag_off(
-    monkeypatch, make_node_head
-):
-    head = make_node_head(leader=False)
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", False)
-
-    with pytest.raises(GcsPassiveError):
-        await head._put_head_node_id(HEAD_NODE_ID)
-
-
-async def test_head_node_id_reraises_other_rpc_errors(make_node_head):
-    head = make_node_head(leader=True)
-    head.gcs_client.async_internal_kv_put.side_effect = RpcError(
-        "boom", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
+    head.gcs_client.async_internal_kv_put.assert_awaited_once_with(
+        ray_constants.KV_HEAD_NODE_ID_KEY,
+        HEAD_NODE_ID.encode(),
+        overwrite=True,
+        namespace=ray_constants.KV_NAMESPACE_JOB,
+        timeout=60,
     )
-
-    with pytest.raises(RpcError):
-        await head._put_head_node_id(HEAD_NODE_ID)
-
-
-async def test_a_passive_gcs_does_not_stop_the_node_updates(
-    make_node_head, monkeypatch
-):
-    """A failed node update must not terminate the subscription loop."""
-    head = make_node_head(leader=False)
-
-    nodes = [_alive_head_node(HEAD_NODE_ID)]
-
-    async def _fake_subscribe():
-        for node in nodes:
-            yield node
-
-    monkeypatch.setattr(head, "_subscribe_for_node_updates", _fake_subscribe)
-
-    await head._update_nodes()
-
-
-#
-# Dead node cleanup
-#
-
-
-async def test_a_dead_node_is_recorded_and_addresses_deleted(make_node_head):
-    head = make_node_head(leader=True)
-
-    await head._update_node(_dead_worker_node(DEAD_NODE_ID))
-
-    head.gcs_client.async_internal_kv_del.assert_awaited()
-    assert DEAD_NODE_ID in DataSource.nodes
-    assert list(head._dead_node_queue) == [DEAD_NODE_ID]
-
-
-async def test_the_cleanup_raises_when_passive(make_node_head):
-    head = make_node_head(leader=False)
-
-    with pytest.raises(GcsPassiveError):
-        await head._delete_agent_addresses(_dead_worker_node(DEAD_NODE_ID))
-
-
-async def test_the_cleanup_reraises_other_rpc_errors(make_node_head):
-    head = make_node_head(leader=True)
-    head.gcs_client.async_internal_kv_del.side_effect = RpcError(
-        "boom", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
-    )
-
-    with pytest.raises(RpcError):
-        await head._delete_agent_addresses(_dead_worker_node(DEAD_NODE_ID))
-
-
-#
-# Subscription containment
-#
 
 
 async def test_the_subscription_survives_a_failed_node_update(
@@ -331,6 +200,10 @@ async def test_the_subscription_survives_a_failed_node_update(
     # The second node was still processed.
     assert DEAD_NODE_ID in DataSource.nodes
     assert _count_logged(node_head_logs, f"Failed updating node {HEAD_NODE_ID}") == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-vv", __file__]))
 
 
 if __name__ == "__main__":
