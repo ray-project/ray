@@ -210,7 +210,7 @@ trainer.fit()
 
 ### Loading data
 
-Ray Datasets can be created from many different data sources and formats. For more details, see {ref}`Loading Data <loading_data>`.
+Ray Datasets can be created from many different data sources and formats. For more details, see {ref}`Loading data <loading_data>`.
 
 (train-datasets-preprocess)=
 
