@@ -91,6 +91,8 @@ class TestDeploymentOptions:
         "graceful_shutdown_timeout_s": 10,
         "health_check_period_s": 10,
         "health_check_timeout_s": 10,
+        "prefer_local_node_routing": False,
+        "prefer_local_az_routing": False,
     }
 
     deployment_option_combos = get_random_dict_combos(deployment_options, 1000)
@@ -172,6 +174,19 @@ class TestDeploymentOptions:
 
         f = f.options(**options)
         assert f._deployment_config.user_configured_option_names == set(options.keys())
+
+    def test_options_prefer_local_node_routing_false(self):
+        """Explicit False via .options() is stored and tracked as user-configured."""
+
+        @serve.deployment
+        def f():
+            pass
+
+        f = f.options(prefer_local_node_routing=False)
+        assert f._deployment_config.prefer_local_node_routing is False
+        assert "prefer_local_node_routing" in (
+            f._deployment_config.user_configured_option_names
+        )
 
     def test_deployment_decorator_version_removed(self):
         with pytest.raises(
