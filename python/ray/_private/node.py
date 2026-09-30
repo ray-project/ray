@@ -31,6 +31,10 @@ from ray._private.authentication import authentication_utils as auth_utils
 from ray._private.authentication.authentication_constants import (
     K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE,
 )
+from ray._private.gcs_passive_utils import (
+    is_refused_by_passive_gcs,
+    put_kv_passive_safe,
+)
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -68,13 +72,6 @@ logger = logging.getLogger(__name__)
 # is still around after this long is parked in an uninterruptible syscall and
 # will never be reaped by waiting longer.
 KILLED_PROCESS_REAP_TIMEOUT_SECONDS = 30
-
-
-def _refused_by_passive_gcs(exc: Exception) -> bool:
-    """Returns whether the exception was a refusal by a passive GCS."""
-    return ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
-        exc, GcsPassiveError
-    )
 
 
 class Node:
@@ -1378,22 +1375,17 @@ class Node:
             ]
             # A passive head has no url to write: the dashboard defers its
             # registration, so start_api_server() returns None for it.
+            # The dashboard head registers webui:url once this GCS is promoted.
             if self._webui_url is not None:
-                try:
-                    self.get_gcs_client().internal_kv_put(
-                        b"webui:url",
-                        self._webui_url.encode(),
-                        True,
-                        ray_constants.KV_NAMESPACE_DASHBOARD,
-                    )
-                except Exception as e:
-                    if not _refused_by_passive_gcs(e):
-                        raise
-                    # The dashboard head registers webui:url once this GCS is
-                    # promoted.
-                    logger.warning(
-                        "GCS is in passive mode. Skipping writing webui:url to KV."
-                    )
+                put_kv_passive_safe(
+                    self.get_gcs_client(),
+                    b"webui:url",
+                    self._webui_url,
+                    overwrite=True,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    warning_message=True,
+                    logger=logger,
+                )
 
     def start_gcs_server(self):
         """Start the gcs server."""
@@ -1688,7 +1680,7 @@ class Node:
                     ray_constants.KV_NAMESPACE_TRACING,
                 )
         except Exception as e:
-            if not _refused_by_passive_gcs(e):
+            if not is_refused_by_passive_gcs(e):
                 raise
             # The cluster metadata describes the head that is currently active --
             # it is rewritten with overwrite=True on every head start -- so a head

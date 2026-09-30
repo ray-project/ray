@@ -259,7 +259,7 @@ class NodeHead(SubprocessModule):
         TODO(architkulkarni): Remove once State API exposes which node is the
         head node.
         """
-        await self.gcs_client.async_internal_kv_put(
+        await self.gcs_client.async_internal_kv_put(  # passive-ok: node updates wait for leader election
             ray_constants.KV_HEAD_NODE_ID_KEY,
             node_id.encode(),
             overwrite=True,
@@ -275,7 +275,7 @@ class NodeHead(SubprocessModule):
             f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
         ]
         tasks = [
-            self.gcs_client.async_internal_kv_del(
+            self.gcs_client.async_internal_kv_del(  # passive-ok: node updates wait for leader election
                 key,
                 del_by_prefix=False,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
