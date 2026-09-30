@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union, o
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
 from starlette.types import ASGIApp
+from typing_extensions import TypedDict, Unpack
 
 import ray
 from ray import cloudpickle
@@ -518,78 +519,44 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     return decorator
 
 
+# Keyword options accepted by `deployment`. Kept in sync with its signature
+# below; used only to type the `@overload`s.
+class _DeploymentOptions(TypedDict, total=False):
+    name: Default[str]
+    version: Default[str]
+    num_replicas: Default[Optional[Union[int, str]]]
+    ray_actor_options: Default[Dict]
+    placement_group_bundles: Default[List[Dict[str, float]]]
+    placement_group_strategy: Default[str]
+    placement_group_bundle_label_selector: Default[List[Dict[str, str]]]
+    max_replicas_per_node: Default[int]
+    user_config: Default[Optional[Any]]
+    max_ongoing_requests: Default[int]
+    max_queued_requests: Default[int]
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]]
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]]
+    graceful_shutdown_wait_loop_s: Default[float]
+    graceful_shutdown_timeout_s: Default[float]
+    health_check_period_s: Default[float]
+    health_check_timeout_s: Default[float]
+    logging_config: Default[Union[Dict, LoggingConfig, None]]
+    request_router_config: Default[Union[Dict, RequestRouterConfig, None]]
+    max_constructor_retry_count: Default[int]
+    gang_scheduling_config: Default[Union[Dict, GangSchedulingConfig, None]]
+    deployment_actors: Default[Optional[List[Union[Dict, DeploymentActorConfig]]]]
+    rolling_update_percentage: Default[float]
+
+
 @overload
 def deployment(
-    _func_or_class: Callable,
-    name: Default[str] = DEFAULT.VALUE,
-    version: Default[str] = DEFAULT.VALUE,
-    num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
-    placement_group_strategy: Default[str] = DEFAULT.VALUE,
-    placement_group_bundle_label_selector: Default[
-        List[Dict[str, str]]
-    ] = DEFAULT.VALUE,
-    max_replicas_per_node: Default[int] = DEFAULT.VALUE,
-    user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-    max_ongoing_requests: Default[int] = DEFAULT.VALUE,
-    max_queued_requests: Default[int] = DEFAULT.VALUE,
-    backpressure_config: Default[Union[Dict, BackpressureConfig, None]] = DEFAULT.VALUE,
-    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
-    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
-    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
-    health_check_period_s: Default[float] = DEFAULT.VALUE,
-    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-    request_router_config: Default[
-        Union[Dict, RequestRouterConfig, None]
-    ] = DEFAULT.VALUE,
-    max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
-    gang_scheduling_config: Default[
-        Union[Dict, GangSchedulingConfig, None]
-    ] = DEFAULT.VALUE,
-    deployment_actors: Default[
-        Optional[List[Union[Dict, DeploymentActorConfig]]]
-    ] = DEFAULT.VALUE,
-    rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+    _func_or_class: Callable, /, **options: Unpack[_DeploymentOptions]
 ) -> Deployment:
     ...
 
 
 @overload
 def deployment(
-    _func_or_class: None = None,
-    name: Default[str] = DEFAULT.VALUE,
-    version: Default[str] = DEFAULT.VALUE,
-    num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
-    placement_group_strategy: Default[str] = DEFAULT.VALUE,
-    placement_group_bundle_label_selector: Default[
-        List[Dict[str, str]]
-    ] = DEFAULT.VALUE,
-    max_replicas_per_node: Default[int] = DEFAULT.VALUE,
-    user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-    max_ongoing_requests: Default[int] = DEFAULT.VALUE,
-    max_queued_requests: Default[int] = DEFAULT.VALUE,
-    backpressure_config: Default[Union[Dict, BackpressureConfig, None]] = DEFAULT.VALUE,
-    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
-    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
-    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
-    health_check_period_s: Default[float] = DEFAULT.VALUE,
-    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
-    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
-    request_router_config: Default[
-        Union[Dict, RequestRouterConfig, None]
-    ] = DEFAULT.VALUE,
-    max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
-    gang_scheduling_config: Default[
-        Union[Dict, GangSchedulingConfig, None]
-    ] = DEFAULT.VALUE,
-    deployment_actors: Default[
-        Optional[List[Union[Dict, DeploymentActorConfig]]]
-    ] = DEFAULT.VALUE,
-    rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+    _func_or_class: None = None, /, **options: Unpack[_DeploymentOptions]
 ) -> Callable[[Callable], Deployment]:
     ...
 
