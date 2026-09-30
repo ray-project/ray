@@ -149,35 +149,34 @@ def _run_passes(monitor, monkeypatch, module, count):
 # ---------------------------------------------------------------- autoscaler v1
 
 
-def test_v1_monitor_starts_against_a_passive_gcs(make_v1_monitor):
-    monitor = make_v1_monitor(leader=False)
+@pytest.mark.parametrize("leader", [True, False])
+def test_v1_monitor_startup_registration(make_v1_monitor, leader):
+    monitor = make_v1_monitor(leader=leader)
 
-    # The write is its own probe: attempted once, refused, no CheckAlive needed.
     assert len(_metrics_address_writes(monitor.gcs_client)) == 1
-    monitor.gcs_client.is_gcs_leader.assert_not_called()
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion is (not leader)
+    if not leader:
+        monitor.gcs_client.is_gcs_leader.assert_not_called()
 
 
-def test_v1_monitor_registers_its_metrics_address_when_leading(make_v1_monitor):
-    monitor = make_v1_monitor(leader=True)
-
-    assert not monitor._waiting_for_promotion
-    assert len(_metrics_address_writes(monitor.gcs_client)) == 1
-
-
-def test_v1_monitor_still_fails_to_start_against_an_unreachable_gcs(monkeypatch):
-    # An unreachable GCS also yields UNAVAILABLE; only the passive one is benign.
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_monitor_still_fails_to_start_against_an_unreachable_gcs(monkeypatch, version):
     gcs_client = MagicMock()
     gcs_client.internal_kv_put.side_effect = RpcError(
         "Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
     )
-    monkeypatch.setattr(
-        v1_monitor_module, "GcsClient", lambda *args, **kwargs: gcs_client
+    module = v1_monitor_module if version == "v1" else v2_monitor_module
+    cls = Monitor if version == "v1" else AutoscalerMonitor
+    kwargs = (
+        {"autoscaling_config": None}
+        if version == "v1"
+        else {"config_reader": MagicMock()}
     )
-    monkeypatch.setattr(v1_monitor_module, "prometheus_client", None)
+    monkeypatch.setattr(module, "GcsClient", lambda *args, **kwargs: gcs_client)
+    monkeypatch.setattr(module, "prometheus_client", None)
 
     with pytest.raises(RpcError):
-        Monitor("127.0.0.1:6379", autoscaling_config=None, monitor_ip="1.2.3.4")
+        cls("127.0.0.1:6379", monitor_ip="1.2.3.4", **kwargs)
 
 
 def test_v1_monitor_leaves_a_passive_rejection_alone_without_the_feature_flag(
@@ -189,8 +188,8 @@ def test_v1_monitor_leaves_a_passive_rejection_alone_without_the_feature_flag(
         make_v1_monitor(leader=False)
 
 
-def test_v1_monitor_does_not_scale_while_the_gcs_is_passive(
-    make_v1_monitor, monkeypatch
+def test_v1_monitor_stays_idle_and_warns_once_while_passive(
+    make_v1_monitor, monkeypatch, v1_logs
 ):
     monitor = make_v1_monitor(leader=False)
     monitor.autoscaler = MagicMock()
@@ -200,16 +199,6 @@ def test_v1_monitor_does_not_scale_while_the_gcs_is_passive(
     monitor.autoscaler.update.assert_not_called()
     # Not even the read the cloud provider decision is based on.
     monitor.gcs_client.get_all_resource_usage.assert_not_called()
-
-
-def test_v1_monitor_reports_a_passive_gcs_once_not_once_per_pass(
-    make_v1_monitor, monkeypatch, v1_logs
-):
-    monitor = make_v1_monitor(leader=False)
-    monitor.autoscaler = MagicMock()
-
-    _run_passes(monitor, monkeypatch, v1_monitor_module, 3)
-
     assert _count_logged(v1_logs, "GCS is in passive mode") == 1
     assert _count_logged(v1_logs, "Monitor: Execution exception") == 0
 
@@ -220,7 +209,7 @@ def test_v1_monitor_takes_over_the_active_head_keys_on_promotion(
     monitor = make_v1_monitor(leader=False)
     monitor.autoscaler = None
     _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
     refused_writes = len(_metrics_address_writes(monitor.gcs_client))
 
     monitor.gcs_client.is_gcs_leader.return_value = True
@@ -232,7 +221,7 @@ def test_v1_monitor_takes_over_the_active_head_keys_on_promotion(
 
     _run_passes(monitor, monkeypatch, v1_monitor_module, 2)
 
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
     # Both keys describe the autoscaler currently running the cluster, and both
     # are taken over exactly once however many passes follow the promotion.
     assert len(_metrics_address_writes(monitor.gcs_client)) == refused_writes + 1
@@ -240,7 +229,9 @@ def test_v1_monitor_takes_over_the_active_head_keys_on_promotion(
     assert _count_logged(v1_logs, "Resuming autoscaling") == 1
 
 
-def test_v1_monitor_takes_the_keys_over_on_each_promotion(make_v1_monitor, monkeypatch):
+def test_v1_monitor_handles_repeated_promotions_and_demotions(
+    make_v1_monitor, monkeypatch, v1_logs
+):
     # Both keys name whoever is leading right now, so every promotion rewrites them.
     monitor = make_v1_monitor(leader=False)
     monitor.autoscaler = None
@@ -262,29 +253,9 @@ def test_v1_monitor_takes_the_keys_over_on_each_promotion(make_v1_monitor, monke
 
     assert monitor.gcs_client.internal_kv_del.call_count == 2
     assert len(_metrics_address_writes(monitor.gcs_client)) == refused_writes + 2
-
-
-def test_v1_monitor_reports_every_leadership_change(
-    make_v1_monitor, monkeypatch, v1_logs
-):
-    monitor = make_v1_monitor(leader=False)
-    monitor.autoscaler = None
-    _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
-
-    monitor.gcs_client.is_gcs_leader.return_value = True
-    monitor.gcs_client.internal_kv_put.side_effect = None
-    monitor.gcs_client.internal_kv_del.side_effect = None
-    monkeypatch.setattr(
-        v1_monitor_module, "get_cluster_resource_state", lambda _: MagicMock()
-    )
-    _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
-
-    monitor.gcs_client.is_gcs_leader.return_value = False
-    _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
-
     assert _count_logged(v1_logs, "GCS is in passive mode") == 2
-    assert _count_logged(v1_logs, "Resuming autoscaling") == 1
-    assert monitor._waiting_for_promotion
+    assert _count_logged(v1_logs, "Resuming autoscaling") == 2
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v1_monitor_still_retries_other_failures(make_v1_monitor, monkeypatch, v1_logs):
@@ -297,7 +268,7 @@ def test_v1_monitor_still_retries_other_failures(make_v1_monitor, monkeypatch, v
     _run_passes(monitor, monkeypatch, v1_monitor_module, 2)
 
     assert _count_logged(v1_logs, "Monitor: Execution exception") == 2
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v1_monitor_run_reaches_the_loop_on_a_passive_gcs(make_v1_monitor):
@@ -358,36 +329,14 @@ def test_v1_monitor_leaves_the_leaders_workers_alone_when_passive(
 # ---------------------------------------------------------------- autoscaler v2
 
 
-def test_v2_monitor_starts_against_a_passive_gcs(make_v2_monitor):
-    monitor = make_v2_monitor(leader=False)
+@pytest.mark.parametrize("leader", [True, False])
+def test_v2_monitor_startup_registration(make_v2_monitor, leader):
+    monitor = make_v2_monitor(leader=leader)
 
-    # The write is its own probe: attempted once, refused, no CheckAlive needed.
     assert len(_metrics_address_writes(monitor.gcs_client)) == 1
-    monitor.gcs_client.is_gcs_leader.assert_not_called()
-    assert monitor._waiting_for_promotion
-
-
-def test_v2_monitor_registers_its_metrics_address_when_leading(make_v2_monitor):
-    monitor = make_v2_monitor(leader=True)
-
-    assert not monitor._waiting_for_promotion
-    assert len(_metrics_address_writes(monitor.gcs_client)) == 1
-
-
-def test_v2_monitor_still_fails_to_start_against_an_unreachable_gcs(monkeypatch):
-    gcs_client = MagicMock()
-    gcs_client.internal_kv_put.side_effect = RpcError(
-        "Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
-    )
-    monkeypatch.setattr(
-        v2_monitor_module, "GcsClient", lambda *args, **kwargs: gcs_client
-    )
-    monkeypatch.setattr(v2_monitor_module, "prometheus_client", None)
-
-    with pytest.raises(RpcError):
-        AutoscalerMonitor(
-            "127.0.0.1:6379", config_reader=MagicMock(), monitor_ip="1.2.3.4"
-        )
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion is (not leader)
+    if not leader:
+        monitor.gcs_client.is_gcs_leader.assert_not_called()
 
 
 def test_v2_monitor_does_not_scale_while_the_gcs_is_passive(
@@ -408,7 +357,7 @@ def test_v2_monitor_takes_over_the_metrics_address_on_promotion(
 ):
     monitor = make_v2_monitor(leader=False)
     _run_passes(monitor, monkeypatch, v2_monitor_module, 1)
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
     refused_writes = len(_metrics_address_writes(monitor.gcs_client))
 
     monitor.gcs_client.is_gcs_leader.return_value = True
@@ -416,7 +365,7 @@ def test_v2_monitor_takes_over_the_metrics_address_on_promotion(
 
     _run_passes(monitor, monkeypatch, v2_monitor_module, 2)
 
-    assert not monitor._waiting_for_promotion
+    assert not monitor._autoscaler_passive_latch.waiting_for_promotion
     assert len(_metrics_address_writes(monitor.gcs_client)) == refused_writes + 1
     assert _count_logged(v2_logs, "Resuming autoscaling") == 1
     # Check that autoscaler v2 usage tag is published on promotion.
@@ -442,7 +391,7 @@ def test_v2_monitor_survives_a_demotion_racing_the_promotion_write(
     # Recognized as a demotion rather than a crash, so the next promotion retries.
     assert len(passes) == 2
     assert _count_logged(v2_logs, "Monitor: Execution exception") == 0
-    assert monitor._waiting_for_promotion
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
 def test_v2_monitor_still_restarts_on_an_authentication_error(

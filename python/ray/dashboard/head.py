@@ -14,6 +14,11 @@ from ray._common.network_utils import build_address, get_localhost_ip, is_localh
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    async_put_kv_passive_safe,
+    is_refused_by_passive_gcs,
+)
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
 from ray.dashboard.consts import (
@@ -26,7 +31,6 @@ from ray.dashboard.utils import (
     DashboardHeadModuleConfig,
     async_loop_forever,
 )
-from ray.exceptions import GcsPassiveError
 
 import psutil
 
@@ -147,8 +151,15 @@ class DashboardHead:
         # Created in run(), before the modules that share it are loaded.
         self.gcs_client: Optional[GcsClient] = None
 
-        # Set once this head is known to be standing by for a promotion.
-        self._waiting_for_promotion = False
+        self._dashboard_passive_latch = PassiveLatch(
+            "dashboard addresses",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode. The dashboard addresses stay unregistered "
+                "until this head is promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Registered the dashboard addresses.",
+        )
         # Filled in as each server binds; None means there is nothing to publish.
         self._metrics_address: Optional[str] = None
         self._dashboard_address: Optional[str] = None
@@ -191,26 +202,19 @@ class DashboardHead:
         assert self.http_server, "Accessing unsupported API in a minimal ray."
         return self.http_server.http_session
 
-    async def _put_kv(
-        self, key: bytes, value: str, *, overwrite: bool, namespace: Optional[bytes]
-    ) -> bool:
-        """Returns whether the write landed, i.e. was not refused as passive."""
-        try:
-            await self.gcs_client.async_internal_kv_put(
-                key, value.encode(), overwrite, namespace=namespace
-            )
-        except Exception as e:
-            if not self._refused_by_passive_gcs(e):
-                raise
-            return False
-        return True
-
     async def _put_address(
         self, key: bytes, address: Optional[str], namespace: Optional[bytes]
     ) -> bool:
         if address is None:
             return True
-        return await self._put_kv(key, address, overwrite=True, namespace=namespace)
+        return await async_put_kv_passive_safe(
+            self.gcs_client,
+            key,
+            address,
+            overwrite=True,
+            namespace=namespace,
+            latch=self._dashboard_passive_latch,
+        )
 
     async def _resume_after_promotion(self):
         """Write the keys this head could not while it was passive."""
@@ -233,23 +237,22 @@ class DashboardHead:
             await self._put_tracing_startup_hook(),
         ]
         if all(registered):
-            self._waiting_for_promotion = False
+            self._dashboard_passive_latch.promoted()
             # Best effort, and last: telemetry must not hold up the keys above.
             await ray_usage_lib.async_put_recorded_extra_usage_tags(self.gcs_client)
-            logger.info(
-                "GCS was promoted to leader. Registered the dashboard addresses."
-            )
 
     async def _insert_session_name(self) -> bool:
         """Insert the session name into the KV store if it is absent.
 
         It closes the session_name gap left by a leader that died before writing it.
         """
-        return await self._put_kv(
+        return await async_put_kv_passive_safe(
+            self.gcs_client,
             b"session_name",
             self.session_name,
             overwrite=False,
             namespace=ray_constants.KV_NAMESPACE_SESSION,
+            latch=self._dashboard_passive_latch,
         )
 
     async def _put_tracing_startup_hook(self) -> bool:
@@ -260,11 +263,13 @@ class DashboardHead:
         """
         if self._tracing_startup_hook is None:
             return True
-        return await self._put_kv(
+        return await async_put_kv_passive_safe(
+            self.gcs_client,
             b"tracing_startup_hook",
             self._tracing_startup_hook,
             overwrite=True,
             namespace=ray_constants.KV_NAMESPACE_TRACING,
+            latch=self._dashboard_passive_latch,
         )
 
     async def _put_cluster_metadata(self) -> bool:
@@ -275,25 +280,10 @@ class DashboardHead:
                 self.gcs_client, ray_init_cluster=False
             )
         except Exception as e:
-            if not self._refused_by_passive_gcs(e):
+            if not is_refused_by_passive_gcs(e, latch=self._dashboard_passive_latch):
                 raise
             return False
         return True
-
-    def _refused_by_passive_gcs(self, exc: Exception) -> bool:
-        """Returns whether the exception was a refusal by a passive GCS."""
-        if ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
-            exc, GcsPassiveError
-        ):
-            if not self._waiting_for_promotion:
-                self._waiting_for_promotion = True
-                # Logged once per passive window, not once per refused write or poll.
-                logger.warning(
-                    "GCS is in passive mode. The dashboard addresses stay unregistered "
-                    "until this head is promoted."
-                )
-            return True
-        return False
 
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
     async def _gcs_check_alive(self):
@@ -310,7 +300,7 @@ class DashboardHead:
         """
         if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
             return
-        while self._waiting_for_promotion:
+        while self._dashboard_passive_latch.waiting_for_promotion:
             await asyncio.sleep(dashboard_consts.GCS_REGISTER_RETRY_INTERVAL_S)
             if self.gcs_client.is_gcs_leader_local():
                 await self._resume_after_promotion()

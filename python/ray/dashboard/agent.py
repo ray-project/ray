@@ -19,6 +19,10 @@ from ray._common.network_utils import (
 )
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    is_refused_by_passive_gcs,
+)
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
@@ -33,7 +37,6 @@ from ray.dashboard.event_loop_monitor import (
     EVENT_LOOP_MONITOR_ENABLED,
     EventLoopMonitor,
 )
-from ray.exceptions import GcsPassiveError
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +101,15 @@ class DashboardAgent:
         )
 
         self.is_head = is_head
+        self._address_passive_latch = PassiveLatch(
+            "agent address",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode and refused the agent address registration. "
+                "Retrying until this GCS is promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Registered the agent address.",
+        )
 
         if not self.minimal:
             self._init_non_minimal()
@@ -238,10 +250,7 @@ class DashboardAgent:
         try:
             await asyncio.gather(put_by_node_id, put_by_ip)
         except Exception as e:
-            if not (
-                ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
-                and isinstance(e, GcsPassiveError)
-            ):
+            if not is_refused_by_passive_gcs(e):
                 raise
             return False
         return True
@@ -254,19 +263,14 @@ class DashboardAgent:
             return None
         # A passive head's agent talks to its own passive GCS, which refuses the
         # write.
-        logger.warning(
-            "GCS is in passive mode and refused the agent address registration. "
-            "Retrying until this GCS is promoted."
-        )
+        self._address_passive_latch.note_passive()
         return asyncio.create_task(self._retry_agent_address(http_port, grpc_port))
 
     async def _retry_agent_address(self, http_port: int, grpc_port: int):
         """Re-attempt the registration until the local GCS stops refusing it."""
-        registered = False
-        while not registered:
+        while not await self._put_agent_address(http_port, grpc_port):
             await asyncio.sleep(dashboard_consts.GCS_REGISTER_RETRY_INTERVAL_S)
-            registered = await self._put_agent_address(http_port, grpc_port)
-        logger.info("GCS was promoted to leader. Registered the agent address.")
+        self._address_passive_latch.promoted()
 
     async def run(self):
         # Start a grpc asyncio server.

@@ -52,51 +52,33 @@ def make_usage_head(tmp_path):
     return factory
 
 
-#
+# ==============================================================================
 # Usage reporting
-#
+# ==============================================================================
 
 
-async def test_a_leader_reports(make_usage_head):
-    head = make_usage_head(leader=True)
-
-    with patch.object(head, "_report_usage_sync") as report:
-        await head._report_usage_async()
-
-    report.assert_called_once()
-
-
-async def test_a_standby_does_not_report(make_usage_head):
-    """Its report would carry the leader's session id but almost no data.
-
-    Every GCS query behind the report is gated and falls back to a default, so
-    without this the report is still generated and still sent -- just wrong.
-    """
-    head = make_usage_head(leader=False)
+@pytest.mark.parametrize("leader, should_report", [(True, True), (False, False)])
+async def test_usage_reporting_respects_leadership(
+    make_usage_head, leader, should_report
+):
+    head = make_usage_head(leader=leader)
 
     with patch.object(head, "_report_usage_sync") as report:
         await head._report_usage_async()
 
-    report.assert_not_called()
+    assert report.called is should_report
 
 
-async def test_a_leader_sends_the_disabled_ping(make_usage_head):
-    head = make_usage_head(leader=True, usage_stats_enabled=False)
-
-    with patch.object(head, "_report_disabled_usage_sync") as report:
-        await head._report_disabled_usage_async()
-
-    report.assert_called_once()
-
-
-async def test_a_standby_does_not_send_the_disabled_ping(make_usage_head):
-    """The leader already sent it, and it is a one-shot, not a heartbeat."""
-    head = make_usage_head(leader=False, usage_stats_enabled=False)
+@pytest.mark.parametrize("leader, should_send", [(True, True), (False, False)])
+async def test_disabled_usage_ping_respects_leadership(
+    make_usage_head, leader, should_send
+):
+    head = make_usage_head(leader=leader, usage_stats_enabled=False)
 
     with patch.object(head, "_report_disabled_usage_sync") as report:
         await head._report_disabled_usage_async()
 
-    report.assert_not_called()
+    assert report.called is should_send
 
 
 async def test_reporting_resumes_after_a_promotion(make_usage_head):
@@ -110,9 +92,9 @@ async def test_reporting_resumes_after_a_promotion(make_usage_head):
     report.assert_called_once()
 
 
-#
+# ==============================================================================
 # Cluster metadata reads
-#
+# ==============================================================================
 
 
 def _reader(stored):
@@ -121,23 +103,19 @@ def _reader(stored):
     return gcs_client
 
 
-def test_get_cluster_metadata_returns_none_when_absent():
+def test_cluster_metadata_helpers():
     assert ray_usage_lib.get_cluster_metadata(_reader(None)) is None
-
-
-def test_get_cluster_metadata_decodes_a_stored_value():
-    gcs_client = _reader(json.dumps({"ray_version": "1.2.3"}).encode())
-
-    assert ray_usage_lib.get_cluster_metadata(gcs_client) == {"ray_version": "1.2.3"}
-
-
-def test_is_ray_init_cluster_is_false_when_metadata_is_absent():
     assert ray_usage_lib.is_ray_init_cluster(_reader(None)) is False
 
+    stored = json.dumps({"ray_version": "1.2.3"}).encode()
+    assert ray_usage_lib.get_cluster_metadata(_reader(stored)) == {
+        "ray_version": "1.2.3"
+    }
 
-#
+
+# ==============================================================================
 # Usage tag replay
-#
+# ==============================================================================
 
 
 def _tag_writes(gcs_client):
@@ -148,75 +126,56 @@ def _async_tag_writes(gcs_client):
     return [call.args[0] for call in gcs_client.async_internal_kv_put.call_args_list]
 
 
-def test_a_refused_tag_is_replayed():
-    """The recording sites run once, so the replay is the only second chance."""
-    from ray._common.usage.usage_lib import TagKey
-
+@pytest.mark.parametrize(
+    "tags",
+    [
+        [],
+        [ray_usage_lib.TagKey._TEST1],
+        [ray_usage_lib.TagKey._TEST1, ray_usage_lib.TagKey._TEST2],
+    ],
+)
+def test_recorded_extra_usage_tags_replay(tags):
     gcs_client = MagicMock()
     gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
-    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
+    for tag in tags:
+        ray_usage_lib.record_extra_usage_tag(tag, "val", gcs_client)
     gcs_client.internal_kv_put.reset_mock(side_effect=True)
 
     ray_usage_lib.put_recorded_extra_usage_tags(gcs_client)
 
-    assert _tag_writes(gcs_client) == [b"extra_usage_tag__test1"]
+    expected = sorted(
+        [
+            f"extra_usage_tag_{ray_usage_lib.TagKey.Name(tag).lower()}".encode()
+            for tag in tags
+        ]
+    )
+    assert sorted(_tag_writes(gcs_client)) == expected
 
 
-def test_every_recorded_tag_is_replayed():
-    from ray._common.usage.usage_lib import TagKey
-
-    gcs_client = MagicMock()
-    gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
-    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
-    ray_usage_lib.record_extra_usage_tag(TagKey._TEST2, "v2", gcs_client)
-    gcs_client.internal_kv_put.reset_mock(side_effect=True)
-
-    ray_usage_lib.put_recorded_extra_usage_tags(gcs_client)
-
-    assert sorted(_tag_writes(gcs_client)) == [
-        b"extra_usage_tag__test1",
-        b"extra_usage_tag__test2",
-    ]
-
-
-def test_the_replay_is_a_no_op_without_recorded_tags():
-    gcs_client = MagicMock()
-
-    ray_usage_lib.put_recorded_extra_usage_tags(gcs_client)
-
-    assert _tag_writes(gcs_client) == []
-
-
+@pytest.mark.parametrize(
+    "tags",
+    [
+        [ray_usage_lib.TagKey._TEST1],
+        [ray_usage_lib.TagKey._TEST1, ray_usage_lib.TagKey._TEST2],
+    ],
+)
 @pytest.mark.asyncio
-async def test_async_a_refused_tag_is_replayed():
-    from ray._common.usage.usage_lib import TagKey
-
+async def test_async_recorded_extra_usage_tags_replay(tags):
     gcs_client = MagicMock()
     gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
-    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
+    for tag in tags:
+        ray_usage_lib.record_extra_usage_tag(tag, "val", gcs_client)
     gcs_client.async_internal_kv_put = AsyncMock()
 
     await ray_usage_lib.async_put_recorded_extra_usage_tags(gcs_client)
 
-    assert _async_tag_writes(gcs_client) == [b"extra_usage_tag__test1"]
-
-
-@pytest.mark.asyncio
-async def test_async_every_recorded_tag_is_replayed():
-    from ray._common.usage.usage_lib import TagKey
-
-    gcs_client = MagicMock()
-    gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
-    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
-    ray_usage_lib.record_extra_usage_tag(TagKey._TEST2, "v2", gcs_client)
-    gcs_client.async_internal_kv_put = AsyncMock()
-
-    await ray_usage_lib.async_put_recorded_extra_usage_tags(gcs_client)
-
-    assert sorted(_async_tag_writes(gcs_client)) == [
-        b"extra_usage_tag__test1",
-        b"extra_usage_tag__test2",
-    ]
+    expected = sorted(
+        [
+            f"extra_usage_tag_{ray_usage_lib.TagKey.Name(tag).lower()}".encode()
+            for tag in tags
+        ]
+    )
+    assert sorted(_async_tag_writes(gcs_client)) == expected
 
 
 if __name__ == "__main__":
