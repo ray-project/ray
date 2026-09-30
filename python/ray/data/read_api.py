@@ -3936,8 +3936,8 @@ def read_hive(
     Args:
         table: Hive table name, optionally qualified as ``database.table``.
         host: HiveServer2 hostname.
-        query: Trusted SQL statement to execute instead of reading a table.
-            The statement is sent to HiveServer2 as given.
+        query: Trusted, row-producing SQL query to execute instead of reading a
+            table. It must return a result set. HiveServer2 receives it as given.
         schema: Required Arrow schema for a query read. Column names
             (case-insensitively) and order must match the result; table reads
             infer their schema.

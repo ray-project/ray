@@ -888,7 +888,9 @@ Ray Data reads from databases like MySQL, PostgreSQL, MongoDB, and BigQuery.
 
 Install `impyla` on the driver and Ray workers, then call {func}`~ray.data.read_hive`
 with a table name. Table reads obtain their Arrow schema from HiveServer2 metadata.
-For a trusted SQL statement, pass `query` and an explicit `pyarrow.Schema` instead.
+For a trusted, row-producing SQL query, pass `query` and an explicit
+`pyarrow.Schema` instead. The query must return a result set and is sent to
+HiveServer2 as given.
 Query schema columns must match the server result in count and order; names
 match case-insensitively, and types must match the supported Arrow mapping.
 Non-nullable schema fields reject null rows. Table reads map supported Hive
@@ -926,8 +928,9 @@ The initial reader uses the binary HiveServer2 protocol and executes each read
 through one HS2 data query in one Ray task. `override_num_blocks` repartitions
 the result inside Ray; it does not parallelize the database query. Failed reads
 aren't retried, and a new Dataset execution starts a new query. Query SQL is
-sent to the server as given, so use only trusted statements. The `ca_cert` path,
-when supplied, must be accessible on both the driver and the read worker.
+sent to the server as given, so pass only trusted, row-producing queries. The
+`ca_cert` path, when supplied, must be accessible on both the driver and the read
+worker.
 
 (reading_sql)=
 
