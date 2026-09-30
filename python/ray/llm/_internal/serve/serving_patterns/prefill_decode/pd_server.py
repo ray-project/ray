@@ -167,24 +167,62 @@ class PDOrchestratorMixin:
                 ids = getattr(choices[0], "prompt_token_ids", None)
         return ids
 
+    @staticmethod
+    def _can_reuse_prompt_token_ids(request: RequestType) -> bool:
+        """Allow reuse for completions and text-only chats without echo or prompt text."""
+        if isinstance(request, CompletionRequest):
+            return True
+        if not isinstance(request, ChatCompletionRequest):
+            return False
+        if request.echo or request.return_prompt_text:
+            return False
+        for message in request.messages:
+            if not isinstance(message, dict):
+                return False
+            content = message.get("content")
+            if content is None or isinstance(content, str):
+                continue
+            if not isinstance(content, list):
+                return False
+            for part in content:
+                if isinstance(part, str):
+                    continue
+                if not (
+                    isinstance(part, dict)
+                    and part.get("type") == "text"
+                    # vLLM parses UUID-bearing parts by their media fields,
+                    # even when an explicit type is present.
+                    and part.get("uuid") is None
+                ):
+                    return False
+        return True
+
     def _request_prefill_token_ids(self, prefill_request) -> None:
         """Ask prefill to echo its prompt token ids so decode can reuse them.
 
         No-op when disabled or the request lacks the field. Used on sequential handoff
         only. Concurrent decode starts before prefill returns, so it has nothing to
         reuse."""
-        if self._pd_tokenize_once and hasattr(prefill_request, "return_token_ids"):
+        if (
+            self._pd_tokenize_once
+            and self._can_reuse_prompt_token_ids(prefill_request)
+            and hasattr(prefill_request, "return_token_ids")
+        ):
             prefill_request.return_token_ids = True
 
     def _forward_prefill_token_ids(self, decode_request, prefill_chunk) -> None:
         """Forward prefill ids through vLLM's native reuse interface."""
         ids = self._decode_reuse_ids(prefill_chunk)
-        if ids and isinstance(decode_request, CompletionRequest):
+        if not ids or not self._can_reuse_prompt_token_ids(decode_request):
+            return
+        if isinstance(decode_request, CompletionRequest):
             decode_request.prompt = ids
             return
         kv_transfer_params = getattr(decode_request, "kv_transfer_params", None)
-        if ids and isinstance(kv_transfer_params, dict):
-            kv_transfer_params["prompt_token_ids"] = ids
+        if not isinstance(kv_transfer_params, dict):
+            kv_transfer_params = {}
+            decode_request.kv_transfer_params = kv_transfer_params
+        kv_transfer_params["prompt_token_ids"] = ids
 
     # ---- Orchestrated Request Flow ----
 

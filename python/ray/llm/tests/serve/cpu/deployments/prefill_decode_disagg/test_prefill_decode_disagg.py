@@ -246,11 +246,16 @@ class TestPDOrchestratorMixin:
     def test_pd_skips_chat_tokenization(self):
         server = PDDecodeServer.__new__(PDDecodeServer)
         server._pd_tokenize_once = True
-        decode_request = SimpleNamespace(
-            kv_transfer_params={"remote_engine_id": "prefill-1"}
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[{"role": "user", "content": "not rendered"}],
         )
+        request.kv_transfer_params = {"remote_engine_id": "prefill-1"}
         server._forward_prefill_token_ids(
-            decode_request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+            request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+        )
+        decode_request = SimpleNamespace(
+            kv_transfer_params=request.kv_transfer_params,
         )
 
         online_renderer = pytest.importorskip("vllm.renderers.online_renderer")
@@ -281,7 +286,7 @@ class TestPDOrchestratorMixin:
         conversation, engine_inputs = asyncio.run(
             renderer.preprocess_chat(
                 decode_request,
-                messages=[{"role": "user", "content": "not rendered"}],
+                messages=request.messages,
                 default_template=None,
                 default_template_content_format="auto",
                 default_template_kwargs=None,
@@ -290,6 +295,55 @@ class TestPDOrchestratorMixin:
 
         assert conversation == []
         assert engine_inputs[0]["prompt_token_ids"] == [1, 2, 3]
+
+    @pytest.mark.parametrize(
+        "content, request_options, reuse_ids",
+        [
+            ([{"type": "text", "text": "hello", "metadata": {}}], {}, True),
+            (
+                [
+                    {
+                        "type": "text",
+                        "text": "hello",
+                        "uuid": "cached-image",
+                        "image_url": None,
+                    }
+                ],
+                {},
+                False,
+            ),
+            ([{"type": "future_modality"}], {}, False),
+            ("hello", {"echo": True}, False),
+            ("hello", {"return_prompt_text": True}, False),
+        ],
+    )
+    def test_chat_token_reuse(self, content, request_options, reuse_ids):
+        """Cover reuse guards not exercised by the image/audio release tests."""
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[
+                {"role": "user", "content": "Previous question"},
+                {"role": "assistant", "content": "Previous reply"},
+                {"role": "user", "content": "Follow-up question"},
+            ],
+            **request_options,
+        )
+        # Use the ingress-normalized shape, including future content types.
+        request.messages[0]["content"] = content
+        request.return_token_ids = False
+        server._request_prefill_token_ids(request)
+        assert request.return_token_ids is reuse_ids
+
+        request.kv_transfer_params = {"remote_engine_id": "prefill-1"}
+        server._forward_prefill_token_ids(
+            request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+        )
+        assert request.kv_transfer_params == {
+            "remote_engine_id": "prefill-1",
+            **({"prompt_token_ids": [1, 2, 3]} if reuse_ids else {}),
+        }
 
     def test_pd_skips_completion_tokenization(self):
         server = PDDecodeServer.__new__(PDDecodeServer)
