@@ -188,12 +188,13 @@ def test_infer_schema_with_include_row_hash_existing_column_promoted_to_uint64(
     tmp_path,
 ):
     file_path = tmp_path / "data.parquet"
-    _write_parquet(str(file_path), pa.table({"val": [1, 2], "row_hash": [10, 20]}))
+    _write_parquet(str(file_path), pa.table({"row_hash": [10, 20], "val": [1, 2]}))
 
     datasource = ParquetDatasourceV2([str(file_path)], include_row_hash=True)
     schema = datasource.infer_schema(_manifest_of([str(file_path)]))
 
     assert schema.field("row_hash").type == pa.uint64()
+    assert schema.names == ["val", "row_hash"]
 
 
 def test_create_scanner_propagates_include_row_hash(tmp_path):

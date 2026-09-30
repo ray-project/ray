@@ -366,12 +366,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
             idx = schema.get_field_index(column.name)
             if idx == -1:
                 schema = schema.append(pa.field(column.name, column.type))
-            elif isinstance(column, PathColumn):
-                # The reader appends a synthesized path after the file columns.
-                # Keep the inferred order consistent when its name collides.
+            else:
+                # The reader appends synthesized columns after the file columns.
+                # Keep the inferred order consistent when a name collides.
                 schema = schema.remove(idx).append(pa.field(column.name, column.type))
-            elif schema.field(idx).type != column.type:
-                schema = schema.set(idx, pa.field(column.name, column.type))
 
         check_for_legacy_tensor_type(schema)
         return schema

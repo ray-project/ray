@@ -176,6 +176,21 @@ def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
     assert schema.types[schema.names.index("row_hash")] == pa.uint64()
 
 
+def test_read_parquet_v2_row_hash_collision_preserves_column_order(
+    tmp_path, restore_ctx
+):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"row_hash": ["physical"], "id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(file_path), include_row_hash=True)
+
+    assert ds.schema().names == ["id", "row_hash"]
+    batch = ds.take_batch(batch_format="pyarrow")
+    assert batch.column_names == ds.schema().names
+    assert batch.schema.field("row_hash").type == pa.uint64()
+
+
 def test_read_parquet_v2_columns_applies_select_columns(tmp_path, restore_ctx):
     from ray.data._internal.logical.operators.map_operator import Project
 
