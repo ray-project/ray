@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
@@ -195,6 +196,83 @@ Unit tests for the browser gate.
 """
 
 
+def test_redact_runtime_env_deep_covers_train_worker_runtime_env():
+    """Train V2 runs carry a second runtime env under `worker_runtime_env`."""
+    payload = {
+        "train_runs": [
+            {
+                "job_details": {"runtime_env": _make_runtime_env()},
+                "run_settings": {
+                    "run_config": {"worker_runtime_env": _make_runtime_env()}
+                },
+            }
+        ]
+    }
+
+    redacted = redact_runtime_env_deep(payload)
+
+    assert SECRET not in json.dumps(redacted)
+    run = redacted["train_runs"][0]
+    worker_runtime_env = run["run_settings"]["run_config"]["worker_runtime_env"]
+    assert worker_runtime_env["env_vars"]["DB_PASSWORD"] == REDACTED_PLACEHOLDER
+    assert run["job_details"]["runtime_env"]["working_dir"] == (
+        "gcs://_ray_pkg_abc123.zip"
+    )
+
+
+@pytest.mark.parametrize(
+    "headers,redact",
+    [(h, True) for h in BROWSER_HEADERS] + [(h, False) for h in NON_BROWSER_HEADERS],
+)
+def test_train_runs_response_redacts_only_for_browsers(headers, redact):
+    """Both `/api/train/v2/runs` routes serialize through this helper."""
+    from ray.dashboard.modules.train.train_head import _train_runs_response
+
+    details = MagicMock()
+    details.json.return_value = json.dumps(
+        {
+            "train_runs": [
+                {
+                    "job_details": {"runtime_env": _make_runtime_env()},
+                    "run_settings": {
+                        "run_config": {"worker_runtime_env": _make_runtime_env()}
+                    },
+                }
+            ]
+        }
+    )
+
+    body = _train_runs_response(_mock_request(headers), details).text
+
+    assert (SECRET in body) is not redact
+    assert (REDACTED_PLACEHOLDER in body) is redact
+    assert "DB_PASSWORD" in body
+
+
+def test_redact_cmdline_masks_runtime_env_context():
+    from ray.dashboard.modules.reporter.reporter_agent import _redact_cmdline
+
+    context = json.dumps({"env_vars": {"MY_SECRET": SECRET}, "py_executable": "py"})
+    cmdline = [
+        "python",
+        "setup_worker.py",
+        "--language=PYTHON",
+        f"--serialized-runtime-env-context={context}",
+        "--worker-id=abc",
+    ]
+
+    redacted = _redact_cmdline(cmdline)
+
+    assert SECRET not in json.dumps(redacted)
+    assert "MY_SECRET" in redacted[3]
+    assert redacted[:3] == cmdline[:3]
+    assert redacted[4] == cmdline[4]
+    # Doesn't mutate the input and passes through empty cmdlines.
+    assert SECRET in cmdline[3]
+    assert _redact_cmdline([]) == []
+    assert _redact_cmdline(None) is None
+
+
 @pytest.mark.parametrize("headers", BROWSER_HEADERS)
 def test_should_redact_for_browser_requests(headers):
     assert should_redact_runtime_env(_mock_request(headers)) is True
@@ -374,6 +452,61 @@ def test_serve_applications_endpoint_redacts_only_for_browsers(dashboard_url):
             assert REDACTED_PLACEHOLDER in body
     finally:
         serve.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [{"runtime_env": {"env_vars": {"MY_SECRET": SECRET}}}],
+    indirect=True,
+)
+def test_train_v2_runs_endpoint_redacts_only_for_browsers(dashboard_url, monkeypatch):
+    """A Train run embeds its job's runtime env and its `worker_runtime_env`."""
+    pytest.importorskip("ray.train")
+    monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", "1")
+    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
+    from ray.train import RunConfig, ScalingConfig
+    from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+
+    DataParallelTrainer(
+        lambda: None,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="secret_run",
+            worker_runtime_env={"env_vars": {"WORKER_SECRET": SECRET}},
+        ),
+    ).fit()
+
+    def get_runs(headers):
+        resp = request_with_auth_token(
+            "GET", f"{dashboard_url}/api/train/v2/runs/v1", headers=headers, timeout=30
+        )
+        resp.raise_for_status()
+        return resp.text
+
+    plain = get_runs(NON_BROWSER_HEADERS[0])
+    assert plain.count(SECRET) == 2
+
+    for headers in BROWSER_HEADERS:
+        body = get_runs(headers)
+        assert SECRET not in body, f"secret leaked for headers {headers}"
+        assert "MY_SECRET" in body
+        assert "WORKER_SECRET" in body
+
+
+def test_runtime_env_agent_log_redacts_env_vars(dashboard_url):
+    """The Logs page serves `runtime_env_agent.log` to browsers verbatim."""
+    handle = _actor_with_secret_env_var()  # noqa: F841 -- keep the actor alive
+
+    log_path = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(), "runtime_env_agent.log"
+    )
+
+    def read_log():
+        with open(log_path) as f:
+            return f.read()
+
+    wait_for_condition(lambda: "MY_SECRET" in read_log(), timeout=30)
+    assert SECRET not in read_log()
 
 
 def test_runtime_env_redaction_endpoint_reports_flag(dashboard_url):
