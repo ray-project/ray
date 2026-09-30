@@ -75,7 +75,9 @@ CARD_SEP_RE = re.compile(r"^\s*(\^{3,}|\+{3,})\s*$")
 # A MyST line comment. Every line starting with % is its own comment, so joining
 # a run of them folds a commented-out block, such as a Mermaid source, onto one
 # unreadable line. Comments don't render, so verify.py's oracle can't see this.
-MYST_COMMENT_RE = re.compile(r"^\s{0,3}%")
+# Any indentation counts: MyST still parses a % line nested four or more spaces
+# deep in a list item as a comment, and joining it would render it as text.
+MYST_COMMENT_RE = re.compile(r"^\s*%")
 HARDBREAK_RE = re.compile(r"(\S  +|\\)$")
 # CommonMark indented code block: four spaces (or a tab) opens a code block
 # anywhere a paragraph isn't already open, and it runs until the next non-blank
@@ -376,6 +378,11 @@ SELFTEST_CASES = [
         "MyST % comment lines keep their lines",
         "% flowchart TD\n%     A --> B\n\nProse that\njoins.\n",
         "% flowchart TD\n%     A --> B\n\nProse that joins.\n",
+    ),
+    (
+        "a nested MyST % comment line keeps its line",
+        "* Item 1\n    % comment line\n",
+        "* Item 1\n    % comment line\n",
     ),
 ]
 
