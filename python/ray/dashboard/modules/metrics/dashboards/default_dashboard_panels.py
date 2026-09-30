@@ -2,7 +2,6 @@
 
 from ray.dashboard.modules.metrics.dashboards.common import (
     K8S_DISK_USAGE_NOTE,
-    K8S_DISK_UTILIZATION_NOTE,
     DashboardConfig,
     Panel,
     Row,
@@ -65,8 +64,7 @@ OVERVIEW_AND_HEALTH_PANELS = [
     Panel(
         id=41,
         title="Cluster Utilization",
-        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster.\n\n"
-        + K8S_DISK_UTILIZATION_NOTE,
+        description="Aggregated utilization of all physical resources (CPU, GPU, memory, disk, or etc.) across the cluster.",
         unit="%",
         targets=[
             # CPU
