@@ -512,6 +512,123 @@ class TestFooterIndexerFileShuffle:
         assert len(batches) > 1
 
 
+class TestRowGroupShuffle:
+    """``small_chunks_shuffle`` permutes row-group runs across all files."""
+
+    @staticmethod
+    def _manifests():
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            _file_chunks_to_manifest,
+        )
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
+            FileChunks,
+            RowGroupInfo,
+        )
+
+        return [
+            _file_chunks_to_manifest(
+                FileChunks(
+                    path=f"f{f}.parquet",
+                    size=100,
+                    row_groups=tuple(
+                        RowGroupInfo(rg_idx=i, uncompressed_size=10, num_rows=5)
+                        for i in range(4)
+                    ),
+                )
+            )
+            for f in range(3)
+        ]
+
+    @staticmethod
+    def _runs(manifests):
+        return [
+            (str(path), md["row_group_ids"][0])
+            for manifest in manifests
+            for path, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+        ]
+
+    def test_seeded_shuffle_mixes_files_and_ignores_input_order(self):
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            _shuffle_row_group_runs,
+        )
+
+        manifests = self._manifests()
+        shuffled = self._runs(
+            _shuffle_row_group_runs(manifests, seed=42, max_rows_per_output=100)
+        )
+        reordered = self._runs(
+            _shuffle_row_group_runs(
+                list(reversed(manifests)), seed=42, max_rows_per_output=100
+            )
+        )
+        unshuffled = self._runs(manifests)
+
+        assert shuffled == reordered
+        assert sorted(shuffled) == sorted(unshuffled)
+        # Runs of one file no longer arrive back to back.
+        switches = sum(a[0] != b[0] for a, b in zip(shuffled, shuffled[1:]))
+        assert switches > len(manifests) - 1
+
+    def test_output_is_rebatched(self):
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            _shuffle_row_group_runs,
+        )
+
+        out = list(
+            _shuffle_row_group_runs(self._manifests(), seed=0, max_rows_per_output=5)
+        )
+
+        assert [len(m) for m in out] == [5, 5, 2]
+
+    def test_mixes_coalesced_and_single_row_group_files(self):
+        # A coalesced run carries ``rg_sizes``; a single row group leaves it
+        # empty, so the two per-file manifests infer different Arrow types.
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            _file_chunks_to_manifest,
+            _shuffle_row_group_runs,
+        )
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
+            FileChunks,
+            RowGroupInfo,
+        )
+
+        coalesced = RowGroupInfo(
+            rg_idx=0,
+            uncompressed_size=20,
+            num_rows=10,
+            rg_count=2,
+            rg_sizes=(10, 10),
+            rg_rows=(5, 5),
+        )
+        single = RowGroupInfo(rg_idx=0, uncompressed_size=10, num_rows=5)
+        manifests = [
+            _file_chunks_to_manifest(
+                FileChunks(path="a.parquet", size=20, row_groups=(coalesced,))
+            ),
+            _file_chunks_to_manifest(
+                FileChunks(path="b.parquet", size=10, row_groups=(single,))
+            ),
+        ]
+
+        out = list(_shuffle_row_group_runs(manifests, seed=0, max_rows_per_output=10))
+
+        by_path = {
+            str(path): md
+            for manifest in out
+            for path, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+        }
+        assert list(by_path["a.parquet"]["row_group_ids"]) == [0, 1]
+        assert list(by_path["a.parquet"]["rg_sizes"]) == [10, 10]
+        assert list(by_path["b.parquet"]["row_group_ids"]) == [0]
+
+    def test_empty_listing_yields_nothing(self):
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            _shuffle_row_group_runs,
+        )
+
+        assert list(_shuffle_row_group_runs([], seed=0, max_rows_per_output=5)) == []
+
+
 def test_list_file_infos_rejects_missing_filesystem():
     # The FileIndexer base accepts ``filesystem=None`` for indexers that do
     # their own IO; this one cannot, and must say so instead of failing on a
