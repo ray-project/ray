@@ -415,10 +415,10 @@ class TestDeploymentSchema:
         # Schema should be createable with valid fields
         DeploymentSchema.model_validate(deployment_schema)
 
-        # Schema should raise error when extra field is included
+        # Schema should NOT raise error when extra field is included
+        # (forward-compatible: older versions accept configs from newer versions)
         deployment_schema["extra_field"] = None
-        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            DeploymentSchema.model_validate(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
     def test_user_config_nullable(self):
         deployment_options = {"name": "test", "user_config": None}

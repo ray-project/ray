@@ -390,7 +390,7 @@ def _check_extra_fields(data: dict, model_cls: type) -> None:
 
 @PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True)
     """
     Specifies options for one deployment within a Serve application. For each deployment
     this can optionally be included in `ServeApplicationSchema` to override deployment
@@ -602,8 +602,10 @@ class DeploymentSchema(BaseModel):
         if not isinstance(values, dict):
             return values
 
-        # Validate dict keys against their typed model fields to catch
-        # unknown fields early (e.g. max_ongoing_requests mistakenly placed
+        # DeploymentSchema itself stays forward-compatible (and tolerates
+        # legacy keys such as route_prefix). Only the nested dicts are
+        # validated strictly: validate dict keys against their typed model
+        # fields to catch unknown fields early (e.g. max_ongoing_requests mistakenly placed
         # inside autoscaling_config). We check keys directly rather than
         # constructing model instances to avoid side effects from __init__
         # overrides (e.g. serialization in RequestRouterConfig). The dicts
