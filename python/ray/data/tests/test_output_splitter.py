@@ -1,17 +1,20 @@
 import collections
 import itertools
 import random
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.operators import output_splitter
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import noop_counter
 from ray.tests.conftest import *  # noqa
+from ray.util.debug import reset_log_once
 
 
 @pytest.mark.parametrize("equal", [False, True])
@@ -275,6 +278,52 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
         f"Expected >=85% with locality-aware dispatching. "
         f"Hits: {locality_hits}/{total}"
     )
+
+
+def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
+    """Warns once when the locality buffer plus consumer prefetch can hold at
+    least half of the producer's object store memory."""
+    num_splits = 4  # Locality buffer holds up to 2 * 4 = 8 bundles.
+    bundles = make_ref_bundles([[i] for i in range(2)])
+    bundle_bytes = bundles[0].size_bytes()
+    input_op = InputDataBuffer(DataContext.get_current(), bundles)
+    op = OutputSplitter(
+        input_op,
+        num_splits,
+        equal=False,
+        data_context=DataContext.get_current(),
+        locality_hints=[f"node{i}" for i in range(num_splits)],
+    )
+    op._get_locations = lambda bundle: ["elsewhere"]
+    op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
+
+    def maybe_warn(producer_bundles: int) -> None:
+        # Buffering is 8 bundles (locality buffer) + 2 bundles (prefetch).
+        op.maybe_warn_memory_constrained(
+            producer_name="Map",
+            producer_object_store_memory=producer_bundles * bundle_bytes,
+            consumer_bytes=2 * bundle_bytes,
+        )
+
+    reset_log_once("output_splitter_memory_constrained")
+    with patch.object(output_splitter.logger, "warning") as mock_warning:
+        # The bundle size isn't known before the first input.
+        maybe_warn(producer_bundles=1)
+        assert not mock_warning.called
+
+        op.add_input(input_op.get_next(), 0)
+        # 10 bundles buffered < half of 30.
+        maybe_warn(producer_bundles=30)
+        assert not mock_warning.called
+
+        # 10 bundles buffered >= half of 20, warned only once.
+        maybe_warn(producer_bundles=20)
+        maybe_warn(producer_bundles=20)
+        assert mock_warning.call_count == 1
+        message = mock_warning.call_args[0][0]
+        assert "Training ingest may be memory-constrained" in message
+        assert "enable_shard_locality=False" in message
+    reset_log_once("output_splitter_memory_constrained")
 
 
 if __name__ == "__main__":

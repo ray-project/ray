@@ -25,18 +25,24 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.execution.util import locality_string
+from ray.data._internal.execution.util import locality_string, memory_string
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
     "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
 )
+
+# Warn when consumer-side buffering (the locality buffer plus consumer prefetch)
+# can hold at least this fraction of the object store memory allocated to the
+# upstream operator producing this operator's input.
+MEMORY_CONSTRAINED_WARNING_FRACTION = 0.5
 
 
 class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
@@ -138,6 +144,58 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             self._max_buffer_size = 0
 
         super().start(options, block_ref_counter)
+
+    def maybe_warn_memory_constrained(
+        self,
+        *,
+        producer_name: str,
+        producer_object_store_memory: float,
+        consumer_bytes: int,
+    ) -> None:
+        """Warn once if consumer-side buffering can hold a large share of the
+        upstream producer's object store memory.
+
+        Blocks buffered here and in consumers' prefetch stay charged to the
+        upstream operator that produced them. If they can take up most of its
+        allocation, that operator can't produce more, and ingestion slows down
+        or stalls (for example, while the locality buffer waits to fill up).
+
+        Args:
+            producer_name: Name of the upstream operator producing this
+                operator's input.
+            producer_object_store_memory: That operator's object store memory
+                allocation, in bytes.
+            consumer_bytes: Bytes currently prefetched by consumers.
+        """
+        num_inputs = self._metrics.num_inputs_received
+        if not num_inputs:
+            # The bundle size isn't known yet.
+            return
+        avg_bundle_bytes = self._metrics.bytes_inputs_received / num_inputs
+        locality_buffer_bytes = self._max_buffer_size * avg_bundle_bytes
+        buffered_bytes = locality_buffer_bytes + consumer_bytes
+        if buffered_bytes < (
+            MEMORY_CONSTRAINED_WARNING_FRACTION * producer_object_store_memory
+        ):
+            return
+        if not log_once("output_splitter_memory_constrained"):
+            return
+        logger.warning(
+            "Training ingest may be memory-constrained: consumer prefetch "
+            f"({memory_string(consumer_bytes)}) and the shard locality buffer "
+            f"({memory_string(locality_buffer_bytes)}) can hold up to "
+            f"{memory_string(buffered_bytes)} of object store memory, while "
+            f"{producer_name}, which produces that data, has "
+            f"{memory_string(producer_object_store_memory)}. Blocks held by "
+            "consumers stay charged to the operator that produced them, so "
+            "ingestion can slow down or stall. To fix this, either:\n"
+            "  - Increase object store memory available to Ray Data: add nodes or "
+            "use larger ones, or raise RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION "
+            "(default 0.5).\n"
+            "  - Reduce training-side buffering: lower prefetch_batches or "
+            "batch_size, use smaller blocks, or disable shard locality with "
+            "DataConfig(enable_shard_locality=False)."
+        )
 
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.

@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import threading
 import time
@@ -29,6 +30,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -570,6 +572,7 @@ class StreamingExecutor(Executor, threading.Thread):
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
+            self._maybe_warn_output_splitter_memory_constrained()
             self._last_debug_log_time = time.time()
 
         for op, state in topology.items():
@@ -656,6 +659,25 @@ class StreamingExecutor(Executor, threading.Thread):
                 "External Input", op.name, len(input_q)
             )
 
+    def _maybe_warn_output_splitter_memory_constrained(self) -> None:
+        """Let a terminal OutputSplitter (from `Dataset.streaming_split`) warn if
+        consumer-side buffering can hold a large share of its producer's object
+        store memory."""
+        output_op, _ = self._output_node
+        if not isinstance(output_op, OutputSplitter):
+            return
+        producer = _nearest_upstream_eligible_op(output_op, self._resource_manager)
+        if producer is None:
+            return
+        allocation = self._resource_manager.get_allocation(producer)
+        if allocation is None or math.isinf(allocation.object_store_memory):
+            return
+        output_op.maybe_warn_memory_constrained(
+            producer_name=producer.name,
+            producer_object_store_memory=allocation.object_store_memory,
+            consumer_bytes=self._resource_manager.get_external_consumer_bytes(),
+        )
+
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but
         # not necessarily available
@@ -740,6 +762,19 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._get_state_dict(state=state),
             )
             self._metrics_last_updated = now
+
+
+def _nearest_upstream_eligible_op(
+    op: PhysicalOperator, resource_manager: ResourceManager
+) -> Optional[PhysicalOperator]:
+    """Return the nearest upstream operator eligible for resource allocation,
+    skipping ineligible ones like `MixOperator`. For operators with multiple
+    inputs, follows the first input."""
+    while op.input_dependencies:
+        op = op.input_dependencies[0]
+        if resource_manager.is_op_eligible(op):
+            return op
+    return None
 
 
 def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) -> None:
