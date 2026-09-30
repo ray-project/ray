@@ -721,7 +721,7 @@ class DeploymentScheduler(ABC):
                 else "PACK"
             )
             try:
-                pg = self._create_placement_group_fn(
+                per_replica_pg = self._create_placement_group_fn(
                     CreatePlacementGroupRequest(
                         bundles=scheduling_request.placement_group_bundles,
                         strategy=placement_group_strategy,
@@ -741,12 +741,11 @@ class DeploymentScheduler(ABC):
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
                 return False
-            per_replica_pg = pg
             # Pin the actor as a subset of bundle 0. ReplicaConfig
             # validates that actor resources fit in bundle 0, and
             # required_resources assumes this pin.
             scheduling_strategy = PlacementGroupSchedulingStrategy(
-                placement_group=pg,
+                placement_group=per_replica_pg,
                 placement_group_bundle_index=0,
                 placement_group_capture_child_tasks=True,
             )

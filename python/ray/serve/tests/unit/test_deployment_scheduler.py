@@ -847,6 +847,73 @@ def test_actor_creation_failure_removes_replica_pg():
         mock_remove_pg.assert_called_once_with(created_pgs[0])
 
 
+def test_pg_cleanup_raises_actor_creation_failed_status():
+    """When actor creation fails and the subsequent placement group
+    cleanup also raises, the status should still be ACTOR_CREATION_FAILED.
+    """
+
+    d_id = DeploymentID(name="deployment1")
+
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+
+    created_pgs = []
+
+    def tracking_create_pg(request):
+        pg = MockPlacementGroup(request)
+        created_pgs.append(pg)
+        return pg
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=tracking_create_pg,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        ReplicaConfig.create(
+            dummy,
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+        ),
+    )
+
+    class AlwaysFailActorClass(MockActorClass):
+        def remote(self, *args):
+            raise RuntimeError("Simulated actor creation failure")
+
+    on_scheduled_mock = Mock()
+    r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+
+    req0 = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=AlwaysFailActorClass(),
+        actor_resources={"CPU": 0},
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="STRICT_PACK",
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=on_scheduled_mock,
+    )
+
+    scheduler._pending_replicas[d_id][r0_id] = req0
+
+    with mock.patch(
+        "ray.util.remove_placement_group",
+        side_effect=RuntimeError("Simulated PG removal failure"),
+    ) as mock_remove_pg:
+        scheduler._schedule_replica(
+            scheduling_request=req0,
+            default_scheduling_strategy="SPREAD",
+        )
+
+        assert req0.status == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+        assert on_scheduled_mock.call_count == 0
+        assert len(created_pgs) == 1
+        mock_remove_pg.assert_called_once_with(created_pgs[0])
+
+
 def test_actor_creation_failure_does_not_remove_gang_pg():
     """When actor creation fails for a gang scheduled replica, the
     gang placement group must not be removed.
