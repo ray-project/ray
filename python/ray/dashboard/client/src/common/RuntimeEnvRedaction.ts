@@ -44,7 +44,7 @@ export const useRuntimeEnvRedacted = () => {
 
 /**
  * Placeholder the dashboard substitutes for redacted values.
- * Keep in sync with REDACTED_PLACEHOLDER in dashboard/runtime_env_redaction.py.
+ * Keep in sync with REDACTED_PLACEHOLDER in _private/runtime_env/redaction.py.
  */
 export const REDACTED_PLACEHOLDER = "<redacted>";
 
