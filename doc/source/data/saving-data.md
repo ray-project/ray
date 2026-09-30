@@ -220,7 +220,7 @@ Convert a dataset to a pandas DataFrame, or to a DataFrame from a distributed da
 
 ### Convert datasets to pandas
 
-To convert a {class}`~ray.data.dataset.Dataset` to a pandas DataFrame, call {meth}`Dataset.to_pandas() <ray.data.Dataset.to_pandas>`. Your data must fit in memory on the head node.
+To convert a {class}`~ray.data.dataset.Dataset` to a pandas DataFrame, call {meth}`Dataset.to_pandas() <ray.data.Dataset.to_pandas>`. The whole dataset must fit in the memory of the process that calls `to_pandas()`.
 
 ```{testcode}
 import ray
