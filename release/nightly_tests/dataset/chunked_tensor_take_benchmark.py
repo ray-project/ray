@@ -10,10 +10,10 @@ image decoding are outside this data-ingestion benchmark.
 Set RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE before starting the process to compare
 implementations. Both release entries use the same workload and measurement
 code, with no internal function patches or manually constructed Arrow buffers.
-Each case measures at least 60 seconds and five complete iterations after an
-untimed correctness warmup. Use --min-duration-s 0 for fixed-iteration runs.
-Iteration counts can differ between modes; compare median_iteration_s or
-throughput, not total case time.
+Each case uses the same fixed iteration count in both modes after an untimed
+correctness warmup. Counts target roughly one minute per disabled case on the
+local reference machine; elapsed time varies with hardware. Use --iterations
+to override the count in both modes.
 """
 
 import argparse
@@ -41,19 +41,34 @@ class Workload:
     blocks: int
     batch_size: int
     shuffle_buffer_rows: int
+    iterations: int
 
     def shape_for_row(self, row_id: int) -> Tuple[int, ...]:
         return self.shapes[row_id % len(self.shapes)]
 
 
 WORKLOADS = (
-    Workload("image_tensor_ingest", ((224, 224, 3),), 2048, 64, 32, 256),
-    Workload("wide_tensor_ingest", ((2000, 1697),), 256, 64, 8, 64),
-    Workload("variable_short_ingest", ((4, 8), (8, 8), (16, 8)), 8192, 64, 64, 256),
+    Workload("image_tensor_ingest", ((224, 224, 3),), 2048, 64, 32, 256, iterations=12),
+    Workload("wide_tensor_ingest", ((2000, 1697),), 256, 64, 8, 64, iterations=4),
+    Workload(
+        "variable_short_ingest",
+        ((4, 8), (8, 8), (16, 8)),
+        8192,
+        64,
+        64,
+        256,
+        iterations=50,
+    ),
     # Match wide_tensor_ingest's row count, average payload, and shuffle settings.
     # Each four-row source block contains two short and two long tensors.
     Workload(
-        "variable_wide_matched_ingest", ((1000, 1697), (3000, 1697)), 256, 64, 8, 64
+        "variable_wide_matched_ingest",
+        ((1000, 1697), (3000, 1697)),
+        256,
+        64,
+        8,
+        64,
+        iterations=3,
     ),
     # Match the fixed image workload's total and per-block payload.
     Workload(
@@ -63,6 +78,7 @@ WORKLOADS = (
         64,
         32,
         256,
+        iterations=10,
     ),
     # Same total and per-block payload as matched wide, with a 12:1 row-size
     # spread. Each four-row source block contains one complete shape cycle.
@@ -73,6 +89,7 @@ WORKLOADS = (
         64,
         8,
         64,
+        iterations=4,
     ),
 )
 
@@ -144,18 +161,14 @@ def measure_pipeline(
     workload: Workload,
     iterations: int,
     expected_order: np.ndarray,
-    *,
-    min_duration_s: float,
 ) -> Dict[str, Any]:
-    """Measure until both the iteration count and timed-duration minimum are met."""
+    """Measure a fixed number of complete pipeline executions after a warmup."""
     durations = []
-    elapsed = 0.0
-    while len(durations) < iterations or elapsed < min_duration_s:
+    for _ in range(iterations):
         start = time.perf_counter()
         actual_order = run_pipeline(workload, validate_payload=False)
         duration = time.perf_counter() - start
         durations.append(duration)
-        elapsed += duration
         np.testing.assert_array_equal(actual_order, expected_order)
     median = statistics.median(durations)
     payload_values = sum(
@@ -169,8 +182,7 @@ def measure_pipeline(
         "batch_size": workload.batch_size,
         "shuffle_buffer_rows": workload.shuffle_buffer_rows,
         "iterations": len(durations),
-        "min_duration_s": min_duration_s,
-        "measured_time_s": elapsed,
+        "measured_time_s": sum(durations),
         "iteration_times_s": durations,
         "median_iteration_s": median,
         "rows_per_s": workload.rows / median,
@@ -181,13 +193,9 @@ def measure_pipeline(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--iterations", type=int, default=5, help="Minimum timed iterations per case."
-    )
-    parser.add_argument(
-        "--min-duration-s",
-        type=float,
-        default=60,
-        help="Minimum cumulative pipeline time per case, excluding warmup (0 disables).",
+        "--iterations",
+        type=int,
+        help="Override each case's fixed iteration count; use the same value for both modes.",
     )
     parser.add_argument("--case", choices=[w.name for w in WORKLOADS])
     parser.add_argument("--num-cpus", type=int, help="CPU count for local Ray runs.")
@@ -195,10 +203,8 @@ def main() -> None:
         "--object-store-memory", type=int, help="Object store bytes for local Ray runs."
     )
     args = parser.parse_args()
-    if args.iterations < 1:
+    if args.iterations is not None and args.iterations < 1:
         parser.error("--iterations must be positive")
-    if not math.isfinite(args.min_duration_s) or args.min_duration_s < 0:
-        parser.error("--min-duration-s must be finite and nonnegative")
 
     ray.init(num_cpus=args.num_cpus, object_store_memory=args.object_store_memory)
     context = ray.data.DataContext.get_current()
@@ -213,9 +219,8 @@ def main() -> None:
                 workload.name,
                 measure_pipeline,
                 workload,
-                args.iterations,
+                args.iterations if args.iterations is not None else workload.iterations,
                 expected_order,
-                min_duration_s=args.min_duration_s,
             )
     finally:
         benchmark.write_result()
