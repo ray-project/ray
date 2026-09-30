@@ -57,12 +57,24 @@ def _add_serve_metric_default_tags(default_tags: Dict[str, str]):
     return default_tags
 
 
-def _add_serve_context_tag_values(tag_keys: Tuple, tags: Dict[str, str]):
-    """Add serve context tag values to the metric tags"""
+def _add_serve_context_tag_values(
+    tag_keys: Tuple, tags: Optional[Dict[str, str]]
+) -> Optional[Dict[str, str]]:
+    """Add serve context tag values to the metric tags.
 
-    _request_context = ray.serve.context._get_serve_request_context()
-    if ROUTE_TAG in tag_keys and ROUTE_TAG not in tags:
-        tags[ROUTE_TAG] = _request_context.route
+    Returns the tags to record with, which callers must use in place of the
+    tags they passed in: the record methods default `tags` to `None`, so when
+    the route tag has to be filled in a new dict is allocated. A caller-provided
+    dict is still updated in place and returned as-is.
+    """
+    if ROUTE_TAG not in tag_keys:
+        return tags
+
+    if tags is None:
+        tags = {}
+    if ROUTE_TAG not in tags:
+        tags[ROUTE_TAG] = ray.serve.context._get_serve_request_context().route
+    return tags
 
 
 @PublicAPI(stability="beta")
@@ -72,8 +84,11 @@ class Counter(metrics.Counter):
     This corresponds to Prometheus' counter metric:
     https://prometheus.io/docs/concepts/metric_types/#counter
 
-    Serve-related tags ("deployment", "replica", "application", "route")
-    are added automatically if not provided.
+    The "deployment", "replica" and "application" tags are added automatically
+    when the metric is created inside a deployment replica. The "route" tag is
+    not added automatically: declare it in ``tag_keys`` and its value is filled
+    in from the current request context on every record call, unless you pass an
+    explicit value.
 
     .. code-block:: python
 
@@ -127,7 +142,7 @@ class Counter(metrics.Counter):
         """Increment the counter by the given value, add serve context
         tag values to the tags
         """
-        _add_serve_context_tag_values(self._tag_keys, tags)
+        tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().inc(value, tags)
 
 
@@ -138,8 +153,11 @@ class Gauge(metrics.Gauge):
     This corresponds to Prometheus' gauge metric:
     https://prometheus.io/docs/concepts/metric_types/#gauge
 
-    Serve-related tags ("deployment", "replica", "application", "route")
-    are added automatically if not provided.
+    The "deployment", "replica" and "application" tags are added automatically
+    when the metric is created inside a deployment replica. The "route" tag is
+    not added automatically: declare it in ``tag_keys`` and its value is filled
+    in from the current request context on every record call, unless you pass an
+    explicit value.
 
     .. code-block:: python
 
@@ -182,7 +200,7 @@ class Gauge(metrics.Gauge):
         """Set the gauge to the given value, add serve context
         tag values to the tags
         """
-        _add_serve_context_tag_values(self._tag_keys, tags)
+        tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().set(value, tags)
 
 
@@ -196,8 +214,11 @@ class Histogram(metrics.Histogram):
     This corresponds to Prometheus' histogram metric:
     https://prometheus.io/docs/concepts/metric_types/#histogram
 
-    Serve-related tags ("deployment", "replica", "application", "route")
-    are added automatically if not provided.
+    The "deployment", "replica" and "application" tags are added automatically
+    when the metric is created inside a deployment replica. The "route" tag is
+    not added automatically: declare it in ``tag_keys`` and its value is filled
+    in from the current request context on every record call, unless you pass an
+    explicit value.
 
     .. code-block:: python
 
@@ -245,5 +266,5 @@ class Histogram(metrics.Histogram):
         """Observe the given value, add serve context
         tag values to the tags
         """
-        _add_serve_context_tag_values(self._tag_keys, tags)
+        tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().observe(value, tags)
