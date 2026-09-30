@@ -9,10 +9,6 @@ from ray.data import DataContext
 from ray.data.context import ShuffleStrategy
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-# Write to node-local disk instead of S3: the benchmark measures the shuffle,
-# not the sink, and the output (~3 TB at SF10000) is discarded with the
-# cluster. `/mnt/local_storage` is the data disk on Anyscale nodes. The random
-# suffix avoids collisions if a cluster is reused across runs.
 DEFAULT_OUTPUT_DIR = f"/mnt/local_storage/repartition_benchmark_{uuid.uuid4().hex}"
 
 
