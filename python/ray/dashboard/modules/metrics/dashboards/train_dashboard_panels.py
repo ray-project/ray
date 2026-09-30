@@ -1,5 +1,6 @@
 # flake8: noqa E501
 from ray.dashboard.modules.metrics.dashboards.common import (
+    K8S_DISK_USAGE_NOTE,
     DashboardConfig,
     Panel,
     Row,
@@ -176,7 +177,7 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
 DISK_UTILIZATION_PANEL = Panel(
     id=9,
     title="Disk Space Usage",
-    description="Disk space usage across all workers.",
+    description="Disk space usage across all workers.\n\n" + K8S_DISK_USAGE_NOTE,
     unit="bytes",
     targets=[
         Target(
