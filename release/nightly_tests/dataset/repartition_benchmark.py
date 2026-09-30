@@ -78,8 +78,6 @@ def _create_output_dir_on_all_nodes(path: str) -> None:
 
 
 def main(args):
-    # Connect up front: _create_output_dir_on_all_nodes needs ray.nodes()
-    # before any other Ray call would auto-init.
     ray.init()
 
     # Don't gate on scheduling-loop duration until this SF10000-scale test has
@@ -89,7 +87,6 @@ def main(args):
     def benchmark_fn():
         path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
 
-        # Configure appropriate shuffle-strategy
         DataContext.get_current().shuffle_strategy = ShuffleStrategy(
             args.shuffle_strategy
         )
@@ -100,7 +97,6 @@ def main(args):
         ds = ds.repartition(args.num_partitions, keys=args.keys)
         ds.write_parquet(args.output_dir)
 
-        # Report arguments for the benchmark.
         return vars(args)
 
     benchmark.run_fn("main", benchmark_fn)
