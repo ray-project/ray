@@ -365,6 +365,54 @@
           runtime_env:
             RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
+###################
+# Repartition tests
+###################
+
+# Keyed repartition (hash shuffle) of the whole SF10000 lineitem table
+# (~60B rows, ~3 TB in Parquet), written back out to Parquet on node-local
+# disk (the output is discarded with the cluster; the benchmark measures the
+# shuffle, not the sink). The dataset is far larger than the cluster's
+# aggregate object store, so this exercises the out-of-core shuffle path:
+# object-store spilling in the regular variant, and file transport in the
+# disk variant. 'column00' is 'l_orderkey'.
+- name: repartition_by_key_sf10000
+  python: "3.10"
+  frequency: weekly
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Shuffles are all-to-all, so high object store utilization is expected
+        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 18000
+    script: >
+      python repartition_benchmark.py --sf 10000
+      --keys column00
+      --num-partitions 10000
+
+  variations:
+    - __suffix__: regular
+      cluster:
+        byod:
+          runtime_env:
+            # Keep small shuffle shards out of the driver: map tasks return
+            # num_partitions shard objects each, and inlined shard payloads
+            # accumulate in the owner's memory. The disk variant doesn't
+            # need this -- shard bytes travel via files, and map tasks
+            # return a single metadata handle.
+            RAY_max_direct_call_object_size: "8192"
+
+    - __suffix__: disk
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
+
 ###############
 # Join tests
 ###############
