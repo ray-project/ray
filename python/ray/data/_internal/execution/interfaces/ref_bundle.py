@@ -23,7 +23,7 @@ class ReconstructionStamp(NamedTuple):
 
     - We need the consuming task's data task ID, which is stable across reconstruction attempts,
       to find what downstream tasks depend on this reconstruction task.
-    - We need the plan ID to identify which target block triggered this reconstruction plan, and
+    - We need the plan ID to identify which target task triggered this reconstruction plan, and
       therefore which output blocks of this particular reconstruction task need to be reused
       for downstream reconstruction tasks, which blocks can be discarded/pruned,
       and which blocks can be propagated as new/fresh blocks.
