@@ -450,7 +450,7 @@ redirects:
   to: /rllib/index.html
   type: page
 - from: /placement-group.html
-  to: /en/master/ray-core/scheduling/placement-group.html
+  to: /en/master/core/scheduling/placement-group.html
   type: page
 - from: /joblib.html
   to: /ray-more-libs/joblib.html
@@ -804,10 +804,13 @@ redirects:
 - from: /serve/tutorials/*
   to: /serve/index.html
   type: page
-- from: /ray-core/examples/*
+- from: /ray-core/*
+  to: /core/:splat
+  type: page
+- from: /core/examples/*
   to: /ray-overview/examples.html
   type: page
-- from: /ray-core/api/*
+- from: /core/api/*
   to: /ray-core/api/index.html
   type: page
 - from: /ray-observability/*

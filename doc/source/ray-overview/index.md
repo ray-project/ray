@@ -72,10 +72,10 @@ Ray AI Libraries
 
 **Build distributed applications**
 ^^^
-Build and run distributed applications with a {doc}`simple and flexible API <../ray-core/walkthrough>`. {doc}`Parallelize <../ray-core/walkthrough>` single machine code with little to zero code changes.
+Build and run distributed applications with a {doc}`simple and flexible API <../core/walkthrough>`. {doc}`Parallelize <../core/walkthrough>` single machine code with little to zero code changes.
 
 +++
-```{button-ref} ../ray-core/walkthrough
+```{button-ref} ../core/walkthrough
 :color: primary
 :outline:
 :expand:
@@ -109,6 +109,6 @@ Each of [Ray's](../ray-air/getting-started) five native libraries distributes a 
 
 Ray's libraries are for both data scientists and ML engineers. For data scientists, these libraries can be used to scale individual workloads and end-to-end ML applications. For ML engineers, these libraries provide scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
 
-For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
+For custom applications, the [Ray Core](../core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing [ecosystem of community integrations](ray-libraries).

@@ -82,7 +82,7 @@ clean:
 	rm -rf ./source/__pycache__/
 	rm -rf ./source/_ext/__pycache__/
 	rm -rf ./source/*/api/doc/*
-	rm -rf ./source/ray-core/compiled-graph/doc/*
+	rm -rf ./source/core/compiled-graph/doc/*
 	rm -rf ./source/ray-references/api/*/doc/*
 	rm -rf ./source/cluster/running-applications/doc/*
 	rm -rf ./source/cluster/running-applications/job-submission/doc/*

@@ -54,14 +54,14 @@
 #
 # The six per-team dirs match the API-page set in doc/source/_ext/api_sidebar.py
 # (API_PATH_PREFIXES). ray-observability/reference/ is here too because the Ray
-# Core landing (ray-core/api/index.md) toctrees into its api.rst, so those
+# Core landing (core/api/index.md) toctrees into its api.rst, so those
 # pages are part of the Core API surface the check walks despite living outside
-# ray-core/api/. //ci/pipeline:test_doc_api_rules_sync enforces this alignment,
+# core/api/. //ci/pipeline:test_doc_api_rules_sync enforces this alignment,
 # so adding a library's API dir to API_PATH_PREFIXES without adding it here (or
 # vice versa) fails CI.
 doc/source/data/api/
 doc/source/serve/api/
-doc/source/ray-core/api/
+doc/source/core/api/
 doc/source/train/api/
 doc/source/tune/api/
 doc/source/rllib/package_ref/
@@ -403,13 +403,13 @@ doc/source/train/examples.yml
 # highly_parallel.ipynb is executed by no premerge step. Its `py_test` in
 # doc/BUILD.bazel carries a `highly_parallel` tag that the ml docs example
 # step excludes (`--except-tags ...,highly_parallel` in ml.rayci.yml), and
-# the notebook glob in doc/source/ray-core/examples/BUILD.bazel excludes it
+# the notebook glob in doc/source/core/examples/BUILD.bazel excludes it
 # as well: it needs a live multi-node cluster and belongs in a release test.
 # Routing it to `ml_doc` alongside its four siblings would start the whole ml
 # example suite while skipping the one file that changed. The documentation
 # build renders it (`nb_execution_mode` is `off`, so render-and-lint only, no
 # execution), which is the only validation premerge actually offers here.
-doc/source/ray-core/examples/highly_parallel.ipynb
+doc/source/core/examples/highly_parallel.ipynb
 # Snippet sources that a rendered page pulls in with `literalinclude`. No bazel
 # target executes any of them, so the docs example steps have nothing to run;
 # but Sphinx reads them at build time, so renaming or deleting one breaks the
@@ -466,24 +466,24 @@ doc/source/ray-air/
 @ ml_doc
 ;
 
-# These four notebooks live under ray-core/ but their targets in
+# These four notebooks live under core/ but their targets in
 # doc/BUILD.bazel are tagged `team:ml`, and the team argument to
 # ci/ray_ci:test_in_docker filters targets by `team:<team>`
 # (ci/ray_ci/tester.py:372). So the core step would not execute them: routing
-# them to core_doc would run a step that tests everything under ray-core/
+# them to core_doc would run a step that tests everything under core/
 # except the file that changed. They route to ml_doc, the step that actually
 # owns the targets, and carry no tag the step excludes. Re-tagging the targets
 # `team:core` in doc/BUILD.bazel would be the alternative fix and would let
 # these lines go away. Their fifth sibling, highly_parallel.ipynb, is routed to
 # `doc` above: no step executes it at all.
-doc/source/ray-core/examples/plot_hyperparameter.ipynb
-doc/source/ray-core/examples/batch_prediction.ipynb
-doc/source/ray-core/examples/plot_parameter_server.ipynb
-doc/source/ray-core/examples/plot_pong_example.ipynb
+doc/source/core/examples/plot_hyperparameter.ipynb
+doc/source/core/examples/batch_prediction.ipynb
+doc/source/core/examples/plot_parameter_server.ipynb
+doc/source/core/examples/plot_pong_example.ipynb
 @ ml_doc
 ;
 
-doc/source/ray-core/
+doc/source/core/
 doc/source/ray-observability/
 @ core_doc
 ;
