@@ -1,6 +1,6 @@
 """Parquet chunk helpers for DataSourceV2.
 
-Maps the ``unit_ids`` of a ``UnitRun`` row (the explicit surviving row groups
+Maps the ``unit_ids`` of a ``FileChunk`` row (the explicit surviving row groups
 a bin assigns to a file) to PyArrow ``ParquetFileFragment`` subsets for reading, and
 names the read unit each subset stands for.
 """
@@ -51,7 +51,7 @@ def _fragments_from_row_group_ids(
 ) -> List[ReadUnitFragment]:
     """Slice ``fragment`` to the explicit physical ``row_group_ids`` of one bin.
 
-    Used by the footer-based chunking path, where a ``UnitRun`` row names
+    Used by the footer-based chunking path, where a ``FileChunk`` row names
     the exact surviving row groups for a file (predicate pruning + bin
     packing already happened upstream), so no size-based reconciliation is needed.
 

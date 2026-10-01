@@ -347,7 +347,7 @@ def _row_group_pairs(manifests):
     for manifest in manifests:
         for path, md in zip(manifest.paths, manifest.file_chunk_metadatas):
             assert md is not None and "unit_ids" in md, (
-                "FooterFileIndexer must emit row-group runs as UnitRun rows; "
+                "FooterFileIndexer must emit row-group runs as FileChunk rows; "
                 "without them OnlineBinPacker packs whole files"
             )
             pairs.extend((str(path), int(rg_id)) for rg_id in md["unit_ids"])

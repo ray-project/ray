@@ -173,7 +173,7 @@ def _estimate_batch_size_from_chunk_stats(
     ``ListFiles`` already read each file's footer and recorded the
     projection-scoped uncompressed byte size and row count of the row groups it
     assigned to this chunk (the ``size_bytes`` and ``num_rows`` of its
-    :class:`UnitRun`). Sizing from
+    :class:`FileChunk`). Sizing from
     those avoids the extra footer read that
     :func:`_estimate_batch_size_from_metadata` incurs. Mirrors that function's
     math but over the whole chunk (its row-group average) rather than the first
@@ -294,7 +294,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         subsequent ``read()`` calls on the same instance use the refined value.
 
         The metadata estimate prefers the footer-derived stats ``ListFiles``
-        already recorded on the manifest (:class:`UnitRun`),
+        already recorded on the manifest (:class:`FileChunk`),
         so the common footer-chunking path sizes batches without re-reading the
         footer. It falls back to reading the first fragment's metadata only when
         the manifest carries no such stats (e.g. the whole-file path).
@@ -365,7 +365,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
           row offset of 0. When a synthesized column needs read unit
           boundaries the unit also carries the file's row count, read from
           the footer pyarrow opens to scan the file anyway.
-        - Otherwise the row carries a :class:`UnitRun` whose ``unit_ids``
+        - Otherwise the row carries a :class:`FileChunk` whose ``unit_ids``
           are the exact physical row groups the bin assigned to this file
           (predicate pruning + bin packing already happened in ``ListFiles``);
           we slice the fragment via

@@ -59,7 +59,7 @@ def get_file_partitioner(self, *, hints=None):
 on-disk to in-memory ratio. Write a footer-style indexer or partitioner only
 when the format has per-chunk metadata worth planning on (see
 `formats/parquet/footer_file_indexer.py` and `common/online_bin_packer.py`).
-An indexer that lists a file's read units as `UnitRun` rows
+An indexer that lists a file's read units as `FileChunk` rows
 (`interfaces/file_manifest.py`) can hand them to `OnlineBinPacker` as they
 are: it budgets on `size_bytes` and never asks what the number measures.
 

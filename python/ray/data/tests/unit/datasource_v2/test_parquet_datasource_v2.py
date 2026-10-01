@@ -16,6 +16,7 @@ from ray.data._internal.datasource_v2.common.online_bin_packer import (
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import RowHashColumn
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+    ChunkedFile,
     FooterFileIndexer,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
@@ -24,15 +25,12 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 impo
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
-    FileChunks,
-)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
     FileManifest,
-    UnitRun,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
@@ -268,7 +266,7 @@ class _RecordingFooterActor:
     Lets the wiring be asserted without spinning up Ray: ``read_footers.remote``
     returns the batch's chunks inline, shaped like the streaming generator the
     driver expects (an iterable of refs, each resolving to a list of
-    ``FileChunks``).
+    ``ChunkedFile``).
     """
 
     def __init__(self, calls):
@@ -283,13 +281,14 @@ class _RecordingFooterActor:
         ordered = batch if preserve_order else list(reversed(batch))
         return [
             [
-                FileChunks(
-                    path=path,
-                    size=size,
-                    row_groups=(UnitRun(unit_ids=(0,), size_bytes=size, num_rows=1),),
+                ChunkedFile(
+                    file=file,
+                    row_groups=(
+                        FileChunk(unit_ids=(0,), size_bytes=file.size, num_rows=1),
+                    ),
                 )
             ]
-            for path, size in ordered
+            for file in ordered
         ]
 
 
@@ -397,7 +396,7 @@ def _row_group_manifest(path, row_group_ids, num_rows):
         paths=[path],
         sizes=[0],
         chunk_metadatas=[
-            UnitRun(
+            FileChunk(
                 unit_ids=tuple(row_group_ids),
                 num_rows=num_rows,
                 # Nominal projected uncompressed size (8-byte int64 ids); only

@@ -4,12 +4,13 @@ import bisect
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     ChunkMetadata,
+    FileChunk,
     FileManifest,
-    UnitRun,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import FilePartitioner
 
@@ -19,13 +20,20 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class BinItem:
     """One listing row placed into a bin: a file's run of read units, or the
-    whole file. ``path`` is the packer's "colour"."""
+    whole file. ``file.path`` is the packer's "colour"."""
 
-    path: str
-    size_bytes: int
+    file: FileInfo
     # ``None`` for a whole-file listing row: indivisible, sized by the listing.
-    # Otherwise ``size_bytes == run.size_bytes``.
-    run: Optional[UnitRun] = None
+    run: Optional[FileChunk] = None
+
+    @property
+    def size_bytes(self) -> int:
+        # What the packer budgets: the run's bytes for a run, else the on-disk
+        # file size.
+        if self.run is not None:
+            return self.run.size_bytes
+        assert self.file.size is not None
+        return self.file.size
 
 
 @dataclass(frozen=True)
@@ -85,7 +93,7 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
     assert run is not None
     sizes = run.unit_sizes[a:b]
     rows = run.unit_rows[a:b]
-    piece = UnitRun(
+    piece = FileChunk(
         unit_ids=run.unit_ids[a:b],
         num_rows=sum(rows),
         size_bytes=sum(sizes),
@@ -93,7 +101,7 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
         unit_sizes=sizes if b - a > 1 else (),
         unit_rows=rows if b - a > 1 else (),
     )
-    return BinItem(path=item.path, size_bytes=piece.size_bytes, run=piece)
+    return BinItem(file=item.file, run=piece)
 
 
 def _subitem(item: BinItem, num_units: int, start: int, end: int) -> BinItem:
@@ -257,7 +265,7 @@ class _SingleFileBinPool(_BinPool):
 def _bin_items(manifest: FileManifest) -> List[BinItem]:
     """Read a listing manifest as bin items, one per row.
 
-    A row carrying a :class:`UnitRun` becomes a run with exact stats. A row
+    A row carrying a :class:`FileChunk` becomes a run with exact stats. A row
     with no chunk metadata -- the plain whole-file listing path -- becomes a
     single indivisible item sized by the file itself, which is what lets this
     partitioner sit behind any indexer rather than only one that knows the
@@ -267,18 +275,18 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
     for path, file_size, md in zip(
         manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas
     ):
+        file = FileInfo(path=str(path), size=int(file_size))
         if md is None or "unit_ids" not in md:
-            items.append(BinItem(path=str(path), size_bytes=int(file_size)))
+            items.append(BinItem(file=file))
         else:
-            run = UnitRun.from_metadata(md)
-            items.append(BinItem(path=str(path), size_bytes=run.size_bytes, run=run))
+            items.append(BinItem(file=file, run=FileChunk.from_metadata(md)))
     return items
 
 
 class OnlineBinPacker(FilePartitioner):
     """Streaming coloured bin packer over listing rows.
 
-    Works for any format: a row is either a whole file or a :class:`UnitRun`
+    Works for any format: a row is either a whole file or a :class:`FileChunk`
     of the file's read units, and the packer only sums ``size_bytes`` against
     its budget. Feed manifests via :meth:`add_input`; drain sealed bins via
     :meth:`has_partition` / :meth:`next_partition` as they become available;
@@ -333,8 +341,8 @@ class OnlineBinPacker(FilePartitioner):
 
     def _place(self, item: BinItem) -> None:
         item_bytes = item.size_bytes
-        seen_bytes = self._seen_bytes_by_path.get(item.path, 0)
-        self._seen_bytes_by_path[item.path] = seen_bytes + item_bytes
+        seen_bytes = self._seen_bytes_by_path.get(item.file.path, 0)
+        self._seen_bytes_by_path[item.file.path] = seen_bytes + item_bytes
 
         if item_bytes > self._cap and len(self._units(item)) == 1:
             # Relaxation: an indivisible chunk bigger than a whole bin gets its own
@@ -354,7 +362,7 @@ class OnlineBinPacker(FilePartitioner):
             # subsequent chunks to the heavy pool. This preserves per-file
             # isolation for large files while still allowing their first
             # splittable coalesced run to fill residual shared-bin capacity.
-            self._heavy.switch_to(item.path)
+            self._heavy.switch_to(item.file.path)
             self._pack(item, self._heavy)
 
     def _pack(self, item: BinItem, pool: _BinPool) -> None:
@@ -381,7 +389,9 @@ class OnlineBinPacker(FilePartitioner):
             "Emitting bin with %d bytes: %s",
             bin_.total_bytes,
             [
-                item.path if item.run is None else (item.path, item.run.unit_ids)
+                item.file.path
+                if item.run is None
+                else (item.file.path, item.run.unit_ids)
                 for item in bin_.items
             ],
         )
@@ -397,29 +407,33 @@ class OnlineBinPacker(FilePartitioner):
     def _bin_to_manifest(bin_: Bin) -> FileManifest:
         # A whole-file item is one manifest row with no chunk metadata, as it
         # came in. A file's runs cover disjoint unit ranges, so union them into
-        # one row per distinct file.
-        paths: List[str] = []
-        sizes: List[int] = []
+        # one row per distinct file. Every row keeps the on-disk file size the
+        # listing gave it; a run's bytes live in its chunk metadata.
+        files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
-        runs_by_path: defaultdict = defaultdict(list)
+        runs_by_file: Dict[FileInfo, List[FileChunk]] = defaultdict(list)
         for item in bin_.items:
             if item.run is None:
-                paths.append(item.path)
-                sizes.append(item.size_bytes)
+                files.append(item.file)
                 chunk_metadatas.append(None)
             else:
-                runs_by_path[item.path].append(item.run)
+                runs_by_file[item.file].append(item.run)
 
-        for path, runs in runs_by_path.items():
-            merged = UnitRun(
+        for file, runs in runs_by_file.items():
+            merged = FileChunk(
                 unit_ids=tuple(sorted(i for run in runs for i in run.unit_ids)),
                 num_rows=sum(run.num_rows for run in runs),
                 size_bytes=sum(run.size_bytes for run in runs),
                 fully_matched=all(run.fully_matched for run in runs),
             )
-            paths.append(path)
-            sizes.append(merged.size_bytes)
+            files.append(file)
             chunk_metadatas.append(merged.to_metadata())
+        sizes: List[int] = []
+        for file in files:
+            assert file.size is not None
+            sizes.append(file.size)
         return FileManifest.construct_manifest(
-            paths=paths, sizes=sizes, chunk_metadatas=chunk_metadatas
+            paths=[file.path for file in files],
+            sizes=sizes,
+            chunk_metadatas=chunk_metadatas,
         )

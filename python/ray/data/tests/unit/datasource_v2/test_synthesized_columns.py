@@ -22,8 +22,8 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
     FileManifest,
-    UnitRun,
 )
 
 ROW_GROUP_SIZE = 25
@@ -42,7 +42,7 @@ def _write_file(path, num_rows=NUM_ROWS, extra_columns=None):
 def _row_group_chunk(row_group_ids, *, aligned=False):
     row_group_ids = tuple(row_group_ids)
     per_group = (ROW_GROUP_SIZE,) * len(row_group_ids) if aligned else ()
-    return UnitRun(
+    return FileChunk(
         unit_ids=row_group_ids,
         num_rows=ROW_GROUP_SIZE * len(row_group_ids),
         size_bytes=ROW_GROUP_SIZE * 8 * len(row_group_ids),

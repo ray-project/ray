@@ -10,12 +10,12 @@ from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
 
 # The per-row chunk metadata a ``FileManifest`` carries: ``None`` for a whole
-# file, else the dict form of a ``UnitRun`` (see ``UnitRun.to_metadata``).
+# file, else the dict form of a ``FileChunk`` (see ``FileChunk.to_metadata``).
 ChunkMetadata = Dict[str, Any]
 
 
 @dataclass(frozen=True)
-class UnitRun:
+class FileChunk:
     """A run of one file's read units: what an indexer lists, a partitioner
     packs and a reader scans.
 
@@ -53,7 +53,7 @@ class UnitRun:
         return asdict(self)
 
     @classmethod
-    def from_metadata(cls, metadata: Mapping[str, Any]) -> "UnitRun":
+    def from_metadata(cls, metadata: Mapping[str, Any]) -> "FileChunk":
         # Values come back from the manifest block as lists and numpy scalars.
         return cls(
             unit_ids=tuple(metadata["unit_ids"]),

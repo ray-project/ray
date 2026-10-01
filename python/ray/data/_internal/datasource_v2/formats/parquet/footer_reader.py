@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -13,16 +14,14 @@ import ray
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
-    FileChunks,
-)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_row_group_coalescing import (
     coalesce_row_groups,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     _row_group_uncompressed_size,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import UnitRun
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -34,6 +33,14 @@ if TYPE_CHECKING:
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ChunkedFile:
+    """The footer-derived runs of row groups for a single file."""
+
+    file: FileInfo  # path and on-disk size, from the file listing
+    row_groups: Tuple[FileChunk, ...]
 
 
 def _get_prefix_matches(path: str, names: set[str]) -> set[str]:
@@ -87,7 +94,7 @@ class FooterReader:
 
     Run as a pool of Ray actors (see :data:`FooterReaderActor`) to spread footer
     IO across the cluster instead of bottlenecking on the driver. ``read_footers``
-    is a streaming generator that yields ``FileChunks`` in small batches as their
+    is a streaming generator that yields ``ChunkedFile`` in small batches as their
     footers land, so the driver does far fewer object-store fetches than one per
     file.
     """
@@ -114,7 +121,7 @@ class FooterReader:
         # fewer items. 0 disables coalescing (one chunk per physical row group).
         self.coalesce_bytes = coalesce_bytes
         # Read unit ids a checkpoint already finished (``"<path>#rg<N>"`` for a
-        # row group). Those row groups are left out of every ``FileChunks``.
+        # row group). Those row groups are left out of every ``ChunkedFile``.
         self.excluded_read_unit_ids: AbstractSet[str] = (
             excluded_read_unit_ids or frozenset()
         )
@@ -174,7 +181,7 @@ class FooterReader:
         rg_idx: int,
         leaf_indices: list[int] | None,
         fully_matched: bool = False,
-    ) -> UnitRun:
+    ) -> FileChunk:
         # Sum per-column sizes on both paths -- with a projection, only the
         # leaves the reader decodes, so bin packing reflects the bytes it will
         # actually pull. Deliberately not ``row_group.total_byte_size``, which
@@ -183,7 +190,7 @@ class FooterReader:
         # tasks, which is the failure this whole path exists to avoid. Shares
         # the V1 helper so the three call sites cannot drift.
         uncompressed = _row_group_uncompressed_size(row_group, leaf_indices)
-        return UnitRun(
+        return FileChunk(
             unit_ids=(rg_idx,),
             num_rows=row_group.num_rows,
             size_bytes=uncompressed,
@@ -274,7 +281,8 @@ class FooterReader:
             )
             return None
 
-    def _read_and_chunk(self, path: str, size: int) -> FileChunks:
+    def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
+        path = file.path
         fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
         # ``make_fragment`` is lazy, so this property is the footer read itself
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
@@ -369,19 +377,19 @@ class FooterReader:
         # coalesce_bytes == 0) so only a handful of descriptors per file reach the
         # driver's bin-packer instead of one per physical row group.
         row_groups = coalesce_row_groups(per_rg, self.coalesce_bytes)
-        return FileChunks(path=path, size=size, row_groups=row_groups)
+        return ChunkedFile(file=file, row_groups=row_groups)
 
     @ray.method(num_returns="streaming")
     def read_footers(
         self,
-        files: list[tuple[str, int]],
+        files: list[FileInfo],
         *,
         result_batch_size: int = 1,
         preserve_order: bool = False,
-    ) -> Iterator[list[FileChunks]]:
-        """Read the footers of ``files`` concurrently, yielding ``FileChunks``.
+    ) -> Iterator[list[ChunkedFile]]:
+        """Read the footers of ``files`` concurrently, yielding ``ChunkedFile``.
 
-        Yields lists of ``FileChunks`` (not single results): each list the driver
+        Yields lists of ``ChunkedFile`` (not single results): each list the driver
         receives costs one object-store fetch, so batching cuts driver-side
         deserialization overhead ~``result_batch_size``-fold. At the default of
         ``1`` a directory of N files costs N fetches on the single listing task;
@@ -393,17 +401,15 @@ class FooterReader:
         The reads are all submitted up front either way, so this delays only the
         yield of a footer that landed behind a slower one, never the read itself.
         """
-        futures = [
-            self.pool.submit(self._read_and_chunk, path, size) for path, size in files
-        ]
+        futures = [self.pool.submit(self._read_and_chunk, file) for file in files]
         # Completion order depends on IO timing, which decides how the driver's
         # bin packer groups row groups into read tasks and -- under a pushed-down
         # limit -- which files it reads before stopping. Walking ``futures``
         # directly makes both a function of the listing order instead.
-        ordered: Iterable[Future[FileChunks]] = (
+        ordered: Iterable[Future[ChunkedFile]] = (
             futures if preserve_order else as_completed(futures)
         )
-        buffer: list[FileChunks] = []
+        buffer: list[ChunkedFile] = []
         total_row_groups = 0
         for finished in ordered:
             chunk = finished.result()

@@ -3,11 +3,11 @@ import pytest
 from ray.data._internal.datasource_v2.formats.parquet.parquet_row_group_coalescing import (
     coalesce_row_groups,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import UnitRun
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 
 
-def _rg(idx: int, size: int, rows: int = 10, fully_matched: bool = True) -> UnitRun:
-    return UnitRun(
+def _rg(idx: int, size: int, rows: int = 10, fully_matched: bool = True) -> FileChunk:
+    return FileChunk(
         unit_ids=(idx,), size_bytes=size, num_rows=rows, fully_matched=fully_matched
     )
 
@@ -49,7 +49,7 @@ def _rg(idx: int, size: int, rows: int = 10, fully_matched: bool = True) -> Unit
     ],
 )
 def test_coalesce(
-    per_rg: list[UnitRun],
+    per_rg: list[FileChunk],
     target: int,
     expected: list[tuple[int, int, int, int]],
 ) -> None:

@@ -5,8 +5,8 @@ import pytest
 from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     ChunkMetadata,
+    FileChunk,
     FileManifest,
-    UnitRun,
 )
 
 
@@ -18,7 +18,7 @@ def _run(
     unit_sizes: tuple[int, ...] = (),
     unit_rows: tuple[int, ...] = (),
 ) -> ChunkMetadata:
-    return UnitRun(
+    return FileChunk(
         unit_ids=ids,
         num_rows=rows,
         size_bytes=size,
@@ -203,6 +203,18 @@ def test_whole_file_rows_pack_by_file_size() -> None:
         {"a": None, "b": None},
     ]
     assert dict(zip(bins[1].paths, bins[1].file_sizes)) == {"a": 60, "b": 30}
+
+
+def test_packed_run_rows_keep_on_disk_file_size() -> None:
+    # A packed row's ``__file_size`` is still the on-disk size the listing gave
+    # it; the run's bytes live in its chunk metadata.
+    packer = OnlineBinPacker(max_bin_bytes=100)
+    packer.add_input(_file("f", 1000, [_run((0,), 60), _run((1,), 30)]))
+    packer.finalize()
+    manifest = packer.next_partition()
+
+    assert list(manifest.file_sizes) == [1000]
+    assert manifest.file_chunk_metadatas[0]["size_bytes"] == 90
 
 
 if __name__ == "__main__":

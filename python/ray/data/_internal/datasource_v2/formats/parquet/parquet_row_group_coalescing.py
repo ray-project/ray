@@ -2,14 +2,14 @@
 from dataclasses import replace
 from typing import List, Optional, Tuple
 
-from ray.data._internal.datasource_v2.interfaces.file_manifest import UnitRun
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 
 __all__ = [
     "coalesce_row_groups",
 ]
 
 
-def coalesce_row_groups(per_rg: List[UnitRun], target: int) -> Tuple[UnitRun, ...]:
+def coalesce_row_groups(per_rg: List[FileChunk], target: int) -> Tuple[FileChunk, ...]:
     """Merge runs of consecutive row groups into ~``target``-byte runs.
 
     A run breaks on: a change in ``fully_matched`` (never merge across the
@@ -30,8 +30,8 @@ def coalesce_row_groups(per_rg: List[UnitRun], target: int) -> Tuple[UnitRun, ..
     """
     if not target:
         return tuple(per_rg)
-    out: List[UnitRun] = []
-    cur: Optional[UnitRun] = None
+    out: List[FileChunk] = []
+    cur: Optional[FileChunk] = None
     cur_sizes: List[int] = []
     cur_rows: List[int] = []
 
