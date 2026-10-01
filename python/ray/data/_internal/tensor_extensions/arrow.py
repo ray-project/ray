@@ -298,7 +298,11 @@ def convert_to_pyarrow_array(
         # we have to make sure that we handle this case utilizing `ArrowTensorArray`
         # extension type
         # Empty multidimensional arrays still carry tensor shape and dtype.
-        if (hasattr(column_values, "ndim") and column_values.ndim > 1) or (
+        if (
+            len(column_values) == 0
+            and hasattr(column_values, "ndim")
+            and column_values.ndim > 1
+        ) or (
             len(column_values) > 0
             and _should_convert_to_tensor(column_values, column_name)
         ):
