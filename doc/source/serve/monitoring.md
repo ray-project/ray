@@ -740,12 +740,7 @@ These metrics track replica health, restarts, and lifecycle timing.
 These lifecycle **histograms** use `deployment` and `application` labels only—no `replica` label—so Prometheus cardinality stays manageable at scale.
 :::
 
-By default, controller-emitted replica lifecycle metrics include source
-identifiers such as `replica` where applicable. For large deployments, set
-`RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those
-source-level high-cardinality tags while retaining `deployment` and `application`.
-This setting doesn't affect replica-emitted metrics such as
-`ray_serve_deployment_replica_starts_total`.
+By default, controller-emitted replica lifecycle metrics include source identifiers such as `replica` where applicable. For large deployments, set `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those source-level high-cardinality tags while retaining `deployment` and `application`. This setting doesn't affect replica-emitted metrics such as `ray_serve_deployment_replica_starts_total`.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
@@ -762,11 +757,7 @@ This setting doesn't affect replica-emitted metrics such as
 
 These metrics provide visibility into autoscaling behavior and help debug scaling issues.
 
-The autoscaling delay metrics `ray_serve_autoscaling_replica_metrics_delay_ms`
-and `ray_serve_autoscaling_handle_metrics_delay_ms` are **histograms** labeled
-only by `deployment` and `application`. Prometheus aggregates the per-replica
-and per-handle observations server-side, so no source-level tag is emitted and
-cardinality stays bounded at scale.
+The autoscaling delay metrics `ray_serve_autoscaling_replica_metrics_delay_ms` and `ray_serve_autoscaling_handle_metrics_delay_ms` are **histograms** labeled only by `deployment` and `application`. Prometheus aggregates the per-replica and per-handle observations server-side, so no source-level tag is emitted and cardinality stays bounded at scale.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|

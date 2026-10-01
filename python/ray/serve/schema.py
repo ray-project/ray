@@ -1041,8 +1041,11 @@ class HTTPOptionsSchema(BaseModel):
     root_path: str = Field(
         default="",
         description=(
-            'Root path to mount the serve application (for example, "/serve"). All '
-            'deployment routes will be prefixed with this path. Defaults to "".'
+            "ASGI root path that the serve application is mounted at (for "
+            'example, "/serve"), for when Serve runs behind a proxy that strips '
+            "this prefix before forwarding. Requests reach Serve without the "
+            "prefix, and applications see it in the ASGI scope's root_path and "
+            'path. Defaults to "".'
         ),
     )
     request_timeout_s: Optional[float] = Field(

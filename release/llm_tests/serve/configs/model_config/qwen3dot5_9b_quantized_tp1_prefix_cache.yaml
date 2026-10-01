@@ -1,10 +1,14 @@
 model_loading_config:
-  model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+  model_id: RedHatAI/Qwen3.5-9B-quantized.w4a16
 
 accelerator_type: A10G
 
 engine_kwargs:
   max_model_len: 8192
+  language_model_only: true
+  # Qwen3.5 thinks by default; disable so probes get direct answers.
+  default_chat_template_kwargs:
+    enable_thinking: false
   tensor_parallel_size: 1
   # NOTE: This is used for perf testing as well, so cuda graph must be enabled.
   enforce_eager: false
