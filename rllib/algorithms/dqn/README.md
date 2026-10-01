@@ -36,7 +36,7 @@ training and is uniformly sampled from to generate gradient updates for the Q-va
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
-    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/simple_q.py)**
+    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py)**
 
 2) Double DQN.
 
@@ -59,8 +59,6 @@ training and is uniformly sampled from to generate gradient updates for the Q-va
 4) APEX DQN
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
-
-    **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py)**
 
 5) Rainbow DQN
 

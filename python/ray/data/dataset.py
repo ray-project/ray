@@ -628,7 +628,15 @@ class Dataset:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
         """
-        return f"{self._dataset_name or 'dataset'}_{self._uuid}_{self._run_index}"
+        return self._get_dataset_id_for_run(self._run_index)
+
+    def _get_dataset_id_for_run(self, run_index: int) -> str:
+        """Helper to return the dataset id for the given run index."""
+        return f"{self._dataset_name or 'dataset'}_{self._uuid}_{run_index}"
+
+    def _get_dataset_id_for_next_run(self) -> str:
+        """Helper to return the dataset id for the next run index."""
+        return self._get_dataset_id_for_run(self._run_index + 1)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
