@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import hashlib
 import json
 import logging
 import os
@@ -1110,7 +1111,11 @@ def _create_replica_server(port: int, replica_id_header: str):
                 res.headers[f"echo-{name}"] = value
         res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
-        return {"replica": replica_id_header, "body_length": len(body)}
+        return {
+            "replica": replica_id_header,
+            "body_length": len(body),
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+        }
 
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
@@ -3352,7 +3357,10 @@ async def test_ingress_router_fallback(
                     },
                 )
                 assert response.status_code == 200, response.text
-                assert response.json()["echo"] == body
+                assert (
+                    response.json()["body_sha256"]
+                    == hashlib.sha256(body.encode()).hexdigest()
+                )
                 assert response.headers["x-received-request-id"] == request_id
                 assert "echo-x-serve-router-kv-token-key" not in response.headers
                 assert response.headers["x-replica-id"] in {"a", "b"}
