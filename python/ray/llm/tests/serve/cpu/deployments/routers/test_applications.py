@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Dict, List, Optional
@@ -49,6 +50,10 @@ class FakeHandle:
 
     def _init(self):
         self.initialized = True
+
+    @property
+    def is_initialized(self):
+        return self.initialized
 
     def options(self, *, session_id):
         configured = FakeHandle(self.app_name)
@@ -202,6 +207,64 @@ class TestChatDecision:
             patcher.stop()
 
     @pytest.mark.asyncio
+    async def test_concurrent_requests_share_application_handle_lookup(self):
+        lookup_count = 0
+
+        def get_app_handle(app_name):
+            nonlocal lookup_count
+            lookup_count += 1
+            return FakeHandle(app_name)
+
+        async def to_thread(func, *args):
+            await asyncio.sleep(0.05)
+            return func(*args)
+
+        with patch.object(
+            applications_module.asyncio, "to_thread", to_thread
+        ), patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+            router = _new(RouterApplication, MODEL_APPS)
+            decisions = await asyncio.gather(
+                _chat(router, {"model": "model-a"}),
+                _chat(router, {"model": "model-a"}),
+            )
+
+        assert lookup_count == 1
+        assert decisions[0]["replica_id"] == decisions[1]["replica_id"]
+
+    @pytest.mark.asyncio
+    async def test_handle_lookup_does_not_block_control_requests(self):
+        lookup_started = threading.Event()
+        release_lookup = threading.Event()
+
+        def get_app_handle(app_name):
+            lookup_started.set()
+            assert release_lookup.wait(timeout=5)
+            return FakeHandle(app_name)
+
+        with patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+            router = _new(RouterApplication, MODEL_APPS)
+            chat_task = asyncio.create_task(_chat(router, {"model": "model-a"}))
+            assert await asyncio.to_thread(lookup_started.wait, 1)
+
+            response = await asyncio.wait_for(router.models(), timeout=0.1)
+            assert response.status_code == 200
+
+            release_lookup.set()
+            await chat_task
+
+    @pytest.mark.asyncio
+    async def test_handle_lookup_is_included_in_decision_timeout(self, monkeypatch):
+        monkeypatch.setattr(applications_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.05)
+
+        async def blocked_to_thread(func, *args):
+            await asyncio.sleep(10)
+
+        with patch.object(applications_module.asyncio, "to_thread", blocked_to_thread):
+            router = _new(RouterApplication, MODEL_APPS)
+            response = await _chat(router, {"model": "model-a"})
+            assert response.status_code == 503
+
+    @pytest.mark.asyncio
     async def test_body_without_routing_field_load_balances(self):
         router, handles, patcher = _new_router()
         try:
@@ -338,7 +401,16 @@ class TestChatDecision:
 
 def test_deployment_options_keep_router_available():
     options = RouterApplication.get_deployment_options()
-    assert options["autoscaling_config"].get("min_replicas", 1) == 1
+    assert options == {
+        "max_ongoing_requests": applications_module.DEFAULT_MAX_ONGOING_REQUESTS,
+        "ray_actor_options": {"num_cpus": 1},
+        "autoscaling_config": {
+            "min_replicas": 1,
+            "initial_replicas": 2,
+            "max_replicas": 10,
+            "target_ongoing_requests": 100,
+        },
+    }
 
 
 if __name__ == "__main__":
