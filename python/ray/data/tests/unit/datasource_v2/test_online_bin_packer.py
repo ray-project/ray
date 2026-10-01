@@ -304,6 +304,35 @@ def test_oversize_coalesced_run_fills_shared_bin() -> None:
     assert bins == [{"light": [0], "big": [0]}, {"big": [1]}]
 
 
+@pytest.mark.parametrize(
+    "isolate_heavy_files, expected_num_bins",
+    [
+        # Once each file turns heavy, the heavy pool seals its bin on every file
+        # switch, so the interleaved tail becomes half-full single-file bins.
+        pytest.param(True, 6, id="isolated-heavy-files-shred-interleaved-input"),
+        # Row-group shuffle mode: everything packs into full, mixed-file bins.
+        pytest.param(False, 4, id="shared-pool-keeps-interleaved-input-mixed"),
+    ],
+)
+def test_interleaved_heavy_files(
+    isolate_heavy_files: bool, expected_num_bins: int
+) -> None:
+    # Row-group runs of two heavy files arriving interleaved, as a row-group
+    # shuffle emits them: a0, b0, a1, b1, ...
+    files = [
+        FileChunks(path=path, size=200, row_groups=(_rg(idx=i, size=50),))
+        for i in range(4)
+        for path in ("a", "b")
+    ]
+
+    bins = _pack(files, max_bin_bytes=100, isolate_heavy_files=isolate_heavy_files)
+
+    assert len(bins) == expected_num_bins
+    assert _pairs(bins) == [(p, i) for p in ("a", "b") for i in range(4)]
+    if not isolate_heavy_files:
+        assert all(set(b) == {"a", "b"} for b in bins)
+
+
 if __name__ == "__main__":
     import sys
 
