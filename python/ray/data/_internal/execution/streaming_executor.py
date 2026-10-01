@@ -661,21 +661,21 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _maybe_warn_output_splitter_memory_constrained(self) -> None:
         """Let a terminal OutputSplitter (from `Dataset.streaming_split`) warn if
-        consumer-side buffering can hold a large share of its producer's object
-        store memory."""
+        the blocks training workers need to have prefetched can take up a large
+        share of an operator's share of the object store."""
         output_op, _ = self._output_node
         if not isinstance(output_op, OutputSplitter):
             return
-        producer = _nearest_upstream_eligible_op(output_op, self._resource_manager)
-        if producer is None:
-            return
-        allocation = self._resource_manager.get_allocation(producer)
-        if allocation is None or math.isinf(allocation.object_store_memory):
+        limit = self._resource_manager.get_global_limits().object_store_memory
+        num_eligible_ops = sum(
+            self._resource_manager.is_op_eligible(op) for op in self._topology
+        )
+        # A limit of 0 means it isn't known yet (e.g., the cluster autoscaler
+        # hasn't reserved resources yet).
+        if not num_eligible_ops or math.isinf(limit) or limit <= 0:
             return
         output_op.maybe_warn_memory_constrained(
-            producer_name=producer.name,
-            producer_object_store_memory=allocation.object_store_memory,
-            consumer_bytes=self._resource_manager.get_external_consumer_bytes(),
+            object_store_memory_share_per_op=limit / num_eligible_ops,
         )
 
     def _report_current_usage(self) -> None:
@@ -762,19 +762,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._get_state_dict(state=state),
             )
             self._metrics_last_updated = now
-
-
-def _nearest_upstream_eligible_op(
-    op: PhysicalOperator, resource_manager: ResourceManager
-) -> Optional[PhysicalOperator]:
-    """Return the nearest upstream operator eligible for resource allocation,
-    skipping ineligible ones like `MixOperator`. For operators with multiple
-    inputs, follows the first input."""
-    while op.input_dependencies:
-        op = op.input_dependencies[0]
-        if resource_manager.is_op_eligible(op):
-            return op
-    return None
 
 
 def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) -> None:

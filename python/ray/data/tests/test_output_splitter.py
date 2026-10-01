@@ -281,8 +281,9 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
 
 
 def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
-    """Warns once when the locality buffer plus consumer prefetch can hold at
-    least half of the producer's object store memory."""
+    """Warns once when the blocks training workers need prefetched (the locality
+    buffer plus one bundle per worker) reach half of an operator's share of the
+    object store."""
     num_splits = 4  # Locality buffer holds up to 2 * 4 = 8 bundles.
     bundles = make_ref_bundles([[i] for i in range(2)])
     bundle_bytes = bundles[0].size_bytes()
@@ -297,28 +298,26 @@ def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
     op._get_locations = lambda bundle: ["elsewhere"]
     op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
 
-    def maybe_warn(producer_bundles: int) -> None:
-        # Buffering is 8 bundles (locality buffer) + 2 bundles (prefetch).
+    def maybe_warn(share_per_op_bundles: int) -> None:
+        # Required: 8 bundles (locality buffer) + 4 bundles (one per worker).
         op.maybe_warn_memory_constrained(
-            producer_name="Map",
-            producer_object_store_memory=producer_bundles * bundle_bytes,
-            consumer_bytes=2 * bundle_bytes,
+            object_store_memory_share_per_op=share_per_op_bundles * bundle_bytes,
         )
 
     reset_log_once("output_splitter_memory_constrained")
     with patch.object(output_splitter.logger, "warning") as mock_warning:
         # The bundle size isn't known before the first input.
-        maybe_warn(producer_bundles=1)
+        maybe_warn(share_per_op_bundles=1)
         assert not mock_warning.called
 
         op.add_input(input_op.get_next(), 0)
-        # 10 bundles buffered < half of 30.
-        maybe_warn(producer_bundles=30)
+        # 12 bundles required < half of 30.
+        maybe_warn(share_per_op_bundles=30)
         assert not mock_warning.called
 
-        # 10 bundles buffered >= half of 20, warned only once.
-        maybe_warn(producer_bundles=20)
-        maybe_warn(producer_bundles=20)
+        # 12 bundles required >= half of 20, warned only once.
+        maybe_warn(share_per_op_bundles=20)
+        maybe_warn(share_per_op_bundles=20)
         assert mock_warning.call_count == 1
     reset_log_once("output_splitter_memory_constrained")
 

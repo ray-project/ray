@@ -46,14 +46,11 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.ranker import DefaultRanker
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
-    _nearest_upstream_eligible_op,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
@@ -144,35 +141,6 @@ def test_build_streaming_topology(verbose_progress, ray_start_regular_shared):
     assert topo[o1].output_queue == topo[o2].input_queues[0], topo
     assert topo[o2].output_queue == topo[o3].input_queues[0], topo
     assert list(topo) == [o1, o2, o3]
-
-
-def test_nearest_upstream_eligible_op():
-    """Walks upstream past ineligible operators, following the first input of
-    operators with multiple inputs."""
-    ctx = DataContext.get_current()
-    o1 = InputDataBuffer(ctx, [])
-    map_a = MapOperator.create(make_map_transformer(lambda block: block), o1, ctx)
-    map_b = MapOperator.create(make_map_transformer(lambda block: block), o1, ctx)
-    union = UnionOperator(ctx, map_a, map_b)
-    limit = LimitOperator(1, union, ctx)
-    split = OutputSplitter(limit, 2, equal=False, data_context=ctx)
-
-    finished = set()
-    resource_manager = MagicMock()
-    resource_manager.is_op_eligible.side_effect = lambda op: (
-        op not in finished
-        and not op.throttling_disabled()
-        and not op.has_execution_finished()
-    )
-
-    # Limit and Union disable throttling, so the walk continues to Union's first
-    # input.
-    assert _nearest_upstream_eligible_op(split, resource_manager) is map_a
-
-    # Finished operators aren't eligible either. The input buffer has no inputs,
-    # so it's finished too, and nothing eligible is left upstream.
-    finished.add(map_a)
-    assert _nearest_upstream_eligible_op(split, resource_manager) is None
 
 
 def test_disallow_non_unique_operators(ray_start_regular_shared):

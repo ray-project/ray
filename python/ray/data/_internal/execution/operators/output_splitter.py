@@ -39,9 +39,10 @@ DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
     "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
 )
 
-# Warn when consumer-side buffering (the locality buffer plus consumer prefetch)
-# can hold at least this fraction of the object store memory allocated to the
-# upstream operator producing this operator's input.
+# Warn when the blocks training workers need can take up at least this fraction
+# of an operator's even share of the object store.
+# Note that this warning threshold is based on the ReservationOpResourceAllocator
+# and roughly matches the part of that share guaranteed to the operator for outputs.
 MEMORY_CONSTRAINED_WARNING_FRACTION = 0.5
 
 
@@ -148,54 +149,55 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def maybe_warn_memory_constrained(
         self,
         *,
-        producer_name: str,
-        producer_object_store_memory: float,
-        consumer_bytes: int,
+        object_store_memory_share_per_op: float,
     ) -> None:
-        """Warn once if consumer-side buffering can hold a large share of the
-        upstream producer's object store memory.
+        """Warn once if the blocks training workers need to have prefetched can
+        take up a large share of an operator's share of the object store.
 
         Blocks buffered here and in consumers' prefetch stay charged to the
-        upstream operator that produced them. If they can take up most of its
-        allocation, that operator can't produce more, and ingestion slows down
-        or stalls (for example, while the locality buffer waits to fill up).
+        upstream operators that produced them. If they can take up most of
+        what those operators get, the operators can't produce more, and
+        ingestion slows down or stalls (for example, while the locality buffer
+        waits to fill up).
 
         Args:
-            producer_name: Name of the upstream operator producing this
-                operator's input.
-            producer_object_store_memory: That operator's object store memory
-                allocation, in bytes.
-            consumer_bytes: Bytes currently prefetched by consumers.
+            object_store_memory_share_per_op: The global object store limit
+                split evenly across operators eligible for resource allocation,
+                in bytes.
         """
         num_inputs = self._metrics.num_inputs_received
         if not num_inputs:
             # The bundle size isn't known yet.
             return
         avg_bundle_bytes = self._metrics.bytes_inputs_received / num_inputs
-        locality_buffer_bytes = self._max_buffer_size * avg_bundle_bytes
-        buffered_bytes = locality_buffer_bytes + consumer_bytes
-        if buffered_bytes < (
-            MEMORY_CONSTRAINED_WARNING_FRACTION * producer_object_store_memory
+        # The locality buffer, plus at least one prefetched bundle per consumer
+        # (the floor at prefetch_batches=1).
+        required_bytes = (
+            self._max_buffer_size + self.num_output_splits()
+        ) * avg_bundle_bytes
+        if required_bytes < (
+            MEMORY_CONSTRAINED_WARNING_FRACTION * object_store_memory_share_per_op
         ):
             return
         if not log_once("output_splitter_memory_constrained"):
             return
         logger.warning(
-            "Training ingest may be memory-constrained: consumer prefetch "
-            f"({memory_string(consumer_bytes)}) and the shard locality buffer "
-            f"({memory_string(locality_buffer_bytes)}) can hold up to "
-            f"{memory_string(buffered_bytes)} of object store memory, while "
-            f"{producer_name}, which produces that data, has "
-            f"{memory_string(producer_object_store_memory)}. Blocks held by "
-            "consumers stay charged to the operator that produced them, so "
-            "ingestion can slow down or stall. To fix this, either:\n"
-            "  - Increase object store memory: add nodes or use larger ones, or "
-            "raise RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION (default 0.3) when "
-            "starting the Ray cluster.\n"
-            "  - Reduce training-side buffering: lower prefetch_batches, use "
-            "smaller blocks, or disable the shard locality buffer with "
-            "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR=0 or "
-            "DataConfig(enable_shard_locality=False)."
+            "Training ingest object store memory requirements may exceed the "
+            "amount allotted by Ray Data: at least "
+            f"{memory_string(required_bytes)} of blocks need to be generated and "
+            "held in the object store for training workers to prefetch, while the "
+            "last operator producing data only gets about "
+            f"{memory_string(object_store_memory_share_per_op)} of object store "
+            "memory budget. This large memory requirement may trigger Ray Data "
+            "budget backpressure, causing training ingestion to slow down or "
+            "stall. To fix this, either:\n"
+            "  - Increase the available object store memory: add nodes or use "
+            "larger ones, or increase the "
+            "`RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION` environment variable "
+            "when starting the Ray cluster.\n"
+            "  - Reduce training-side buffering: lower `prefetch_batches` in your "
+            "`iter_batches` call and/or disable shard locality by setting "
+            "`DataConfig(enable_shard_locality=False)`."
         )
 
     def throttling_disabled(self) -> bool:
