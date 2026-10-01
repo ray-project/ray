@@ -2160,6 +2160,24 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Execution components
+# rllib/execution/
+#
+# Tag: execution
+# --------------------------------------------------------------------
+
+py_test(
+    name = "execution/tests/test_rollout_ops",
+    size = "small",
+    srcs = ["execution/tests/test_rollout_ops.py"],
+    tags = [
+        "execution",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+# --------------------------------------------------------------------
 # Evaluation components
 # rllib/evaluation/
 #
