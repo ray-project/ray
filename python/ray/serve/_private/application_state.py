@@ -465,21 +465,26 @@ class ApplicationState:
             build=build,
         )
 
-        if (
-            ingress_request_router_deployment_name is not None
-            and ingress_request_router_deployment_name
-            != self._ingress_request_router_deployment_name
-        ):
-            logger.info(
-                f"Application '{self._name}' has ingress request router "
-                f"deployment '{ingress_request_router_deployment_name}' configured."
-            )
+        if deployment_infos is not None:
+            if (
+                ingress_request_router_deployment_name is not None
+                and ingress_request_router_deployment_name
+                != self._ingress_request_router_deployment_name
+            ):
+                logger.info(
+                    f"Application '{self._name}' has ingress request router "
+                    f"deployment '{ingress_request_router_deployment_name}' configured."
+                )
 
-        self._ingress_deployment_name = ingress_deployment_name
-        self._ingress_request_router_deployment_name = (
-            ingress_request_router_deployment_name
-        )
-        self._is_router_application = is_router_application
+            # A declarative redeploy temporarily sets deployment_infos=None while
+            # the replacement application is building, but the previous
+            # deployments continue serving. Keep describing that live application
+            # until a completed build (or deletion, represented by {}) replaces it.
+            self._ingress_deployment_name = ingress_deployment_name
+            self._ingress_request_router_deployment_name = (
+                ingress_request_router_deployment_name
+            )
+            self._is_router_application = is_router_application
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
