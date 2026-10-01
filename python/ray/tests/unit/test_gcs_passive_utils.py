@@ -1,5 +1,4 @@
 # Unit tests for ray._private.gcs_passive_utils.
-import logging
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,40 +14,20 @@ from ray._private.gcs_passive_utils import (
     put_kv_passive_safe,
     wait_until_gcs_leader,
 )
-from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
 from ray.exceptions import GcsPassiveError, RpcError
+from ray.tests.unit.passive_test_utils import (
+    count_logged as _count_logged,
+    passive_gcs_rejection as _passive_error,
+)
+
+pytestmark = pytest.mark.usefixtures("leader_election_on")
 
 TEST_LOGGER_NAME = "ray.test.gcs_passive_utils"
 
 
-def _passive_error():
-    return GcsPassiveError(
-        "GCS server is in passive (read-only) mode.",
-        rpc_code=GRPC_STATUS_CODE_UNAVAILABLE,
-    )
-
-
-def _capture(caplog, logger_name):
-    logger = logging.getLogger(logger_name)
-    logger.addHandler(caplog.handler)
-    caplog.set_level(logging.INFO, logger=logger_name)
-    return logger
-
-
-def _count_logged(caplog, needle):
-    return sum(needle in record.getMessage() for record in caplog.records)
-
-
-@pytest.fixture(autouse=True)
-def leader_election_on(monkeypatch):
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", True)
-
-
 @pytest.fixture
-def test_logger(caplog):
-    logger = _capture(caplog, TEST_LOGGER_NAME)
-    yield logger
-    logger.removeHandler(caplog.handler)
+def test_logger(capture_logger):
+    return capture_logger(TEST_LOGGER_NAME)
 
 
 # ==============================================================================
@@ -391,7 +370,7 @@ async def test_kv_passive_safe_errors_and_flag_off(monkeypatch):
         put_kv_passive_safe(client, b"k", b"v")
 
 
-def test_put_kv_passive_safe_client_resolution(monkeypatch):
+def test_put_kv_passive_safe_client_resolution():
     import ray.experimental.internal_kv as internal_kv
 
     # Fallback to internal_kv global client

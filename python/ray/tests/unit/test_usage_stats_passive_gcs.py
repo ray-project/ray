@@ -6,23 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import ray._common.usage.usage_lib as ray_usage_lib
-import ray._private.ray_constants as ray_constants
-import ray.experimental.internal_kv as internal_kv
 from ray.dashboard.modules.usage_stats.usage_stats_head import UsageStatsHead
-from ray.dashboard.utils import DashboardHeadModuleConfig
+from ray.tests.unit.passive_test_utils import make_dummy_head_config
 
-
-@pytest.fixture(autouse=True)
-def leader_election_on(monkeypatch):
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", True)
-
-
-@pytest.fixture(autouse=True)
-def reset_internal_kv():
-    ray_usage_lib.reset_global_state()
-    yield
-    internal_kv._internal_kv_reset()
-    ray_usage_lib.reset_global_state()
+pytestmark = pytest.mark.usefixtures("leader_election_on")
 
 
 @pytest.fixture
@@ -34,19 +21,7 @@ def make_usage_head(tmp_path):
             ray_usage_lib, "usage_stats_enabled", return_value=usage_stats_enabled
         ):
             return UsageStatsHead(
-                DashboardHeadModuleConfig(
-                    minimal=True,
-                    cluster_id_hex="f" * 56,
-                    session_name="session",
-                    gcs_address="127.0.0.1:6379",
-                    log_dir=str(tmp_path),
-                    temp_dir=str(tmp_path),
-                    session_dir=str(tmp_path),
-                    ip="1.2.3.4",
-                    http_host="1.2.3.4",
-                    http_port=8265,
-                    gcs_client=gcs_client,
-                )
+                make_dummy_head_config(tmp_path, gcs_client=gcs_client)
             )
 
     return factory

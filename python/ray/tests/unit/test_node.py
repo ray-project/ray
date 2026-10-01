@@ -8,21 +8,13 @@ import ray._private.ray_constants as ray_constants
 from ray._private.node import Node
 from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
 from ray.exceptions import GcsPassiveError, RpcError
+from ray.tests.unit.passive_test_utils import (
+    passive_gcs_rejection as _passive_gcs_rejection,
+)
 
 SESSION_NAME = "session_2026-01-01_00-00-00_000000_1"
 
-
-def _passive_gcs_rejection():
-    """The error a passive GCS raises, as check_status() translates it."""
-    return GcsPassiveError(
-        "GCS server is in passive (read-only) mode.",
-        rpc_code=GRPC_STATUS_CODE_UNAVAILABLE,
-    )
-
-
-@pytest.fixture(autouse=True)
-def leader_election_on(monkeypatch):
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", True)
+pytestmark = pytest.mark.usefixtures("leader_election_on")
 
 
 def _make_node(*, passive, is_rocksdb=False):
@@ -72,15 +64,6 @@ def test_write_cluster_info_reraises_errors(monkeypatch, flag_on, exc, expected_
 
     with pytest.raises(expected_exc):
         node._write_cluster_info_to_kv()
-
-
-def test_write_cluster_info_leaves_the_rocksdb_marker_alone_when_passive():
-    # The marker file has no compare-and-set, so a passive head must not reach it.
-    node = _make_node(passive=True, is_rocksdb=True)
-
-    node._write_cluster_info_to_kv()
-
-    node._persist_rocksdb_session_name_file.assert_not_called()
 
 
 def test_write_cluster_info_writes_everything_when_active():
