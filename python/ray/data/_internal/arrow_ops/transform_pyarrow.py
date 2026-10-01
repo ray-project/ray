@@ -477,18 +477,15 @@ def _reconcile_diverging_fields(
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     reconciled_fields = {}
-    field_types = defaultdict(list)  # field_name -> list of types seen so far
+    field_types = defaultdict(list)  # field_name -> list of unique types
     field_flags = defaultdict(
         lambda: defaultdict(bool)
     )  # field_name -> dict of boolean flags
 
-    # Process schemas and reconcile on-the-fly
+    # Collect all field types before reconciling. A field may appear
+    # reconcilable until a later schema introduces an incompatible type.
     for schema in unique_schemas:
         for field_name in schema.names:
-            if field_name in reconciled_fields:
-                # If the field has already been reconciled, skip it.
-                continue
-
             field_type = schema.field(field_name).type
             if field_type not in field_types[field_name]:
                 field_types[field_name].append(field_type)
@@ -503,20 +500,22 @@ def _reconcile_diverging_fields(
             flags["has_null"] |= pyarrow.types.is_null(field_type)
             flags["has_struct"] |= pyarrow.types.is_struct(field_type)
 
-            # Check for object-tensor conflict
+            # Check for object-tensor conflict after every type is collected.
             if flags["has_object"] and flags["has_tensor"]:
                 raise ValueError(
                     f"Found columns with both objects and tensors: {field_name}"
                 )
 
-            # Reconcile immediately if it's a special type and if it's divergent.
-            if any(flags.values()) and len(field_types[field_name]) > 1:
-                reconciled_value = _reconcile_field(
-                    field_types=field_types[field_name],
-                    promote_types=promote_types,
-                )
-                if reconciled_value is not None:
-                    reconciled_fields[field_name] = reconciled_value
+    # Reconcile only after all schemas have been inspected. This prevents a
+    # null arm or an intermediate special type from masking later types.
+    for field_name, types in field_types.items():
+        if any(field_flags[field_name].values()) and len(types) > 1:
+            reconciled_value = _reconcile_field(
+                field_types=types,
+                promote_types=promote_types,
+            )
+            if reconciled_value is not None:
+                reconciled_fields[field_name] = reconciled_value
 
     return reconciled_fields
 
@@ -542,6 +541,10 @@ def _reconcile_field(
 
     if not non_null_types:
         return None
+
+    # A single concrete type is already the complete reconciliation result.
+    if len(non_null_types) == 1:
+        return non_null_types[0]
 
     # Handle special cases in priority order
 
@@ -922,17 +925,9 @@ def _align_struct_fields(
             if column_name in block_schema_field_names:
                 column = block[column_name]
 
-                if pa.types.is_null(column.type):
-                    aligned_column = pa.nulls(block_length, type=unified_struct_type)
-                    block = block.set_column(
-                        block.schema.get_field_index(column_name),
-                        column_name,
-                        aligned_column,
-                    )
-                elif (
-                    isinstance(column.type, pa.StructType)
-                    and column.type != unified_struct_type
-                ):
+                # _backfill_missing_fields handles all-null columns, aligns
+                # struct fields recursively, and validates other mismatches.
+                if column.type != unified_struct_type:
                     aligned_column = _backfill_missing_fields(
                         column, unified_struct_type, block_length
                     )
