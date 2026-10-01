@@ -1,0 +1,64 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-core-docs-style'
+level: warning
+ignorecase: false
+# Ray Core terminology. Ray Core defines the object vocabulary the rest of the docs
+# reference, so these forms are the ones other libraries inherit. General prose rules
+# live in the shared Ray/ style package, and "Ray Task", "Ray Actor", and similar
+# capitalized generic nouns are already caught by Ray/Capitalization.yml.
+#
+# `vocab: false` because `[Rr]aylet(s)?` is in config/vocabularies/Core/accept.txt, and
+# an accept entry otherwise shadows the raylet swaps silently. See
+# .vale/styles/KubeRay/Terms.yml.
+#
+# Terms whose only wrong form is a casing variant, such as `asyncio`, `Gloo`, and
+# `CuPy`, live in the accept list instead of here. The accept list drives `Vale.Terms`,
+# which already flags `AsyncIO` and `GLOO`, so a swap would alert twice.
+vocab: false
+swap:
+  # Lowercase "raylet", the per-node process. The source code uses the lowercase form
+  # throughout. The swaps carry a preceding word so a sentence that opens with
+  # "Raylet" doesn't alert. A lookbehind key doesn't work here: Vale 3.12 reports it
+  # at the wrong position and misses the mid-sentence match.
+  'the Raylet': the raylet
+  'The Raylet': The raylet
+  'a Raylet': a raylet
+  'each Raylet': each raylet
+  'Each Raylet': Each raylet
+  'every Raylet': every raylet
+  'local Raylet': local raylet
+  'remote Raylet': remote raylet
+  # Vale's word boundary stops 'Raylet' matching inside 'Raylets', so the plural is
+  # its own entry. A sentence rarely opens with the plural.
+  'Raylets': raylets
+  # Plasma is the name of the object store implementation, so it keeps its capital.
+  # "store" is a generic noun.
+  'plasma store': Plasma store
+  'Plasma Store': Plasma store
+  # "object ref" in prose, `ObjectRef` in code style for the type.
+  'Object Refs': object refs
+  'Object Ref': object ref
+  # Spell out the abbreviation in prose. `runtime_env` keeps code style.
+  'runtime env': runtime environment
+  'runtime envs': runtime environments
+  # Generic Ray Core nouns written in title case, mostly in headings, which are
+  # sentence case. A sentence-initial "Placement groups" doesn't match, because the
+  # swaps are case-sensitive.
+  'Object Store': object store
+  'Placement Groups': placement groups
+  'Placement Group': placement group
+  'Head Node': head node
+  'Worker Nodes': worker nodes
+  'Worker Node': worker node
+  'Worker Processes': worker processes
+  'Worker Process': worker process
+  'Fault Tolerance': fault tolerance
+  'Remote Functions': remote functions
+  'Remote Function': remote function
+  'Actor Handles': actor handles
+  'Actor Handle': actor handle
+  'Named Actors': named actors
+  'Named Actor': named actor
+  'Concurrency Groups': concurrency groups
+  'Concurrency Group': concurrency group
