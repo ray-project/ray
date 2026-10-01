@@ -5513,25 +5513,22 @@ class DeploymentState:
 
     def record_pushed_health(
         self,
-        replica_unique_id: str,
+        replica_id: ReplicaID,
         checked_at: float,
         received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
-    ) -> bool:
+    ) -> None:
         """Hand a pushed self-health result to the replica it describes.
 
-        Returns whether this deployment owns that replica, so the caller can stop
-        looking. A push for a replica this controller does not track is dropped:
-        the pull probe covers it once the replica exists.
+        A push for a replica this controller does not track is dropped: the pull
+        probe covers it once the replica exists.
         """
-        replica = self._replicas.get_by_id(ReplicaID(replica_unique_id, self._id))
-        if replica is None:
-            return False
-        replica.record_pushed_health(
-            checked_at, received_at, healthy, consecutive_failures
-        )
-        return True
+        replica = self._replicas.get_by_id(replica_id)
+        if replica is not None:
+            replica.record_pushed_health(
+                checked_at, received_at, healthy, consecutive_failures
+            )
 
     def check_and_update_replicas(self):
         """
@@ -6579,7 +6576,7 @@ class DeploymentStateManager:
 
     def record_replica_health(
         self,
-        replica_unique_id: str,
+        replica_id: ReplicaID,
         checked_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
@@ -6589,16 +6586,14 @@ class DeploymentStateManager:
         received_at is stamped here, on the controller clock, so freshness does
         not depend on the replica's.
         """
-        received_at = time.time()
-        for deployment_state in self._deployment_states.values():
-            if deployment_state.record_pushed_health(
-                replica_unique_id,
-                checked_at,
-                received_at,
-                healthy,
-                consecutive_failures,
-            ):
-                return
+        deployment_state = self._deployment_states.get(replica_id.deployment_id)
+        if deployment_state is None:
+            # A deployment this controller no longer tracks; the push has nowhere
+            # to land and the replica is on its way out.
+            return
+        deployment_state.record_pushed_health(
+            replica_id, checked_at, time.time(), healthy, consecutive_failures
+        )
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]

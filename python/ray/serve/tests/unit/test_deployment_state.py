@@ -12411,9 +12411,7 @@ class TestPushedHealthEndToEnd:
         replica = self._running_replica(dsm, ds)
         replica._actor.health_check_called = False
 
-        dsm.record_replica_health(
-            replica.replica_id.unique_id, timer.time(), healthy=True
-        )
+        dsm.record_replica_health(replica.replica_id, timer.time(), healthy=True)
         dsm.update()
         assert not replica._actor.health_check_called  # no probe was needed
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
@@ -12427,18 +12425,18 @@ class TestPushedHealthEndToEnd:
         assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
         ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
         replica = self._running_replica(dsm, ds)
-        unique_id = replica.replica_id.unique_id
+        replica_id = replica.replica_id
 
         for failures in range(1, REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD):
             dsm.record_replica_health(
-                unique_id, timer.time(), healthy=False, consecutive_failures=failures
+                replica_id, timer.time(), healthy=False, consecutive_failures=failures
             )
             dsm.update()
             check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
             timer.advance(1)
 
         dsm.record_replica_health(
-            unique_id,
+            replica_id,
             timer.time(),
             healthy=False,
             consecutive_failures=REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -12464,7 +12462,26 @@ class TestPushedHealthEndToEnd:
         assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
         ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
         self._running_replica(dsm, ds)
-        dsm.record_replica_health("not-a-replica", timer.time(), healthy=False)
+        dsm.record_replica_health(
+            ReplicaID("not-a-replica", TEST_DEPLOYMENT_ID), timer.time(), healthy=False
+        )
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    def test_a_push_for_an_unknown_deployment_is_dropped(
+        self, mock_deployment_state_manager
+    ):
+        """Routing by the id it carries means an unknown deployment is its own case."""
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=1, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        replica = self._running_replica(dsm, ds)
+        gone = DeploymentID(name="deleted", app_name="app")
+        dsm.record_replica_health(
+            ReplicaID(replica.replica_id.unique_id, gone), timer.time(), healthy=False
+        )
         dsm.update()
         check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
 
