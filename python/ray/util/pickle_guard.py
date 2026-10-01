@@ -20,7 +20,7 @@ import os
 import sys
 import threading
 from contextlib import contextmanager
-from typing import Callable, Iterable, Iterator, TypeVar
+from typing import Callable, Generator, Iterable, TypeVar
 
 from ray.util.annotations import DeveloperAPI
 
@@ -35,12 +35,12 @@ _hook_lock = threading.Lock()
 T = TypeVar("T")
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class UntrustedUnpicklingError(ValueError):
     """Bytes from an untrusted source would have been unpickled."""
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 def is_unpickling_forbidden() -> bool:
     """Whether the current thread is inside ``forbid_untrusted_unpickling()``."""
     return bool(_forbid_flag.get())
@@ -76,7 +76,7 @@ if hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=lambda: _forbid_flag.set(""))
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 @contextmanager
 def forbid_untrusted_unpickling(hint: str = ""):
     """Refuse unpickling on this thread until the block exits.
@@ -91,7 +91,7 @@ def forbid_untrusted_unpickling(hint: str = ""):
         _forbid_flag.reset(token)
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 @contextmanager
 def allow_unsafe_unpickling():
     """Lift ``forbid_untrusted_unpickling()`` for a call the caller vouches for."""
@@ -102,10 +102,10 @@ def allow_unsafe_unpickling():
         _forbid_flag.reset(token)
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 def guard_iterator(
     get_iterable: Callable[[], Iterable[T]], hint: str = ""
-) -> Iterator[T]:
+) -> Generator[T, None, None]:
     """Run ``get_iterable()`` and each ``next()`` on it under the forbid flag.
 
     A context variable set inside a generator stays set for its consumer between
