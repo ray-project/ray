@@ -41,6 +41,7 @@ from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
+from ray.serve.request_router import RequestRouter
 from ray.serve.schema import (
     ProxyStatus,
     ServeDeploySchema,
@@ -67,6 +68,28 @@ class _DelayedMultiplexedMetadataRouter(RoundRobinRouter):
         # Hold the location index empty to deterministically exercise requests
         # arriving before multiplexed model metadata propagates.
         pass
+
+
+class _AlternatingRouter(RequestRouter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_routed_replica_id = None
+
+    async def choose_replicas(self, candidate_replicas, pending_request=None):
+        # Rank the replica from the last on_request_routed call last. If the
+        # callback never runs, every request goes to the same replica.
+        return [
+            sorted(
+                candidate_replicas,
+                key=lambda r: (
+                    r.replica_id == self._last_routed_replica_id,
+                    r.replica_id.unique_id,
+                ),
+            )
+        ]
+
+    def on_request_routed(self, pending_request, replica_id, result):
+        self._last_routed_replica_id = replica_id
 
 
 @pytest.fixture(autouse=True)
@@ -1241,6 +1264,61 @@ def test_multiplexed_routing_retry(shutdown_ray):
             response = client.post("http://localhost:8000/")
             assert response.status_code == 200, response.text
             assert response.text == "model"
+
+
+def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
+    """Report pick-only selections to the policy through an ingress router."""
+    ray.init(num_cpus=4)
+    serve.start(http_options={"host": "0.0.0.0"})
+
+    @serve.deployment(
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=_AlternatingRouter,
+        ),
+    )
+    class Server:
+        async def __call__(self, request: Request):
+            if request.url.path == "/ready":
+                return request.headers.get("x-routed", "")
+            return serve.get_replica_context().replica_id.unique_id
+
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class IngressRouter:
+        def __init__(self, server):
+            self.server = server
+
+        @app.post("/internal/route")
+        async def route(self):
+            async with self.server.choose_replica(_reserve=False) as selection:
+                replica = selection._replica
+                host, port = replica.backend_http_endpoint
+                return {
+                    "host": host,
+                    "port": port,
+                    "replica_id": replica.replica_id.to_full_id_str(),
+                    "request_headers": {"x-routed": "ready"},
+                }
+
+    server = Server.bind()
+    serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
+    wait_for_condition(
+        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
+        timeout=30,
+    )
+
+    with httpx.Client(timeout=30) as client:
+        replica_ids = []
+        for _ in range(4):
+            response = client.post("http://localhost:8000/")
+            assert response.status_code == 200, response.text
+            replica_ids.append(response.text)
+    # The policy alternates only if pick-only selections reach
+    # on_request_routed.
+    assert len(set(replica_ids)) == 2, replica_ids
 
 
 def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
