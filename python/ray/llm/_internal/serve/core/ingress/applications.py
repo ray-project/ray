@@ -15,10 +15,7 @@ from fastapi import FastAPI, Request, status
 from starlette.responses import JSONResponse
 
 from ray import serve
-from ray.llm._internal.serve.constants import (
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
-)
+from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.ingress.router import (
     _BODY_TRUNCATED_HEADER,
     _get_routing_payload_from_body,
@@ -39,12 +36,18 @@ CHOOSE_REPLICA_TIMEOUT_S = 0.8 * RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOU
 # Pick-only waits silently with no replicas; then reserve, which registers demand.
 PICK_ONLY_TIMEOUT_S = 0.5
 
-# Same defaults as the OpenAI ingress. The router owns global control routes, so
-# it remains available even when every model application has scaled to zero.
+# The router is an independent, lightweight Serve deployment on the request path
+# for every model application. These are starting points that should be tuned
+# separately from model deployments based on aggregate request volume and routing
+# latency.
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+    "ray_actor_options": {"num_cpus": 1},
     "autoscaling_config": {
-        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+        "min_replicas": 1,
+        "initial_replicas": 2,
+        "max_replicas": 10,
+        "target_ongoing_requests": 100,
     },
 }
 
@@ -101,6 +104,7 @@ class RouterApplication:
     def __init__(self, model_applications: Mapping[str, str]):
         self._model_applications = dict(model_applications)
         self._handles: Dict[str, DeploymentHandle] = {}
+        self._handle_locks: Dict[str, asyncio.Lock] = {}
 
     async def check_health(self):
         pass
@@ -179,14 +183,28 @@ class RouterApplication:
             )
         return await self._decide(model_id, _get_routing_payload_from_body(data), request)
 
-    def _get_handle(self, model_id: str) -> DeploymentHandle:
+    async def _get_handle(self, model_id: str) -> DeploymentHandle:
         handle = self._handles.get(model_id)
-        if handle is None:
-            handle = serve.get_app_handle(self._model_applications[model_id])
+        if handle is not None:
+            return handle
+
+        lock = self._handle_locks.setdefault(model_id, asyncio.Lock())
+        async with lock:
+            # Another request may have completed the lookup while this one waited.
+            handle = self._handles.get(model_id)
+            if handle is not None:
+                return handle
+
+            handle = await asyncio.to_thread(
+                serve.get_app_handle, self._model_applications[model_id]
+            )
             # Start tracking replicas now rather than inside choose_replica.
-            handle._init()
+            # Initialize on the replica's event loop after the blocking controller
+            # lookup returns.
+            if not handle.is_initialized:
+                handle._init()
             self._handles[model_id] = handle
-        return handle
+            return handle
 
     async def _decide(
         self,
@@ -196,13 +214,16 @@ class RouterApplication:
     ):
         application_name = self._model_applications[model_id]
         try:
-            handle = self._get_handle(model_id)
-            session_id = session_id_from_headers(request.headers)
-            if session_id:
-                handle = handle.options(session_id=session_id)
+
+            async def resolve_and_choose() -> str:
+                handle = await self._get_handle(model_id)
+                session_id = session_id_from_headers(request.headers)
+                if session_id:
+                    handle = handle.options(session_id=session_id)
+                return await self._choose_replica(handle, routing_payload)
+
             replica_id = await asyncio.wait_for(
-                self._choose_replica(handle, routing_payload),
-                timeout=CHOOSE_REPLICA_TIMEOUT_S,
+                resolve_and_choose(), timeout=CHOOSE_REPLICA_TIMEOUT_S
             )
         except (
             asyncio.TimeoutError,
