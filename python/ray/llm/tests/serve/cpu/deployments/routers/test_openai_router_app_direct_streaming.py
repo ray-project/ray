@@ -83,7 +83,7 @@ def _deploy(model_configs: Dict[str, LLMConfig]) -> None:
                 route_prefix=f"/models/{model_id.replace('/', '--')}",
             )
     serve.run(
-        build_openai_router_app(MODEL_APPLICATIONS),
+        build_openai_router_app({"model_applications": MODEL_APPLICATIONS}),
         name="llm",
         route_prefix="/",
     )
@@ -248,7 +248,11 @@ def test_scale_from_zero(applications):
             name=model_apps[model_id],
             route_prefix="/models/zero-model",
         )
-    serve.run(build_openai_router_app(model_apps), name="llm", route_prefix="/")
+    serve.run(
+        build_openai_router_app({"model_applications": model_apps}),
+        name="llm",
+        route_prefix="/",
+    )
 
     # Listing models is static and must not be coupled to model availability.
     assert httpx.get(f"{BASE_URL}/v1/models").json()["data"][0]["id"] == model_id

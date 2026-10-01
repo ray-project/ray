@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Mapping, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type
 
 from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
@@ -252,7 +252,7 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
 
 @PublicAPI(stability="alpha")
 def build_openai_router_app(
-    model_applications: Mapping[str, str],
+    router_args: dict,
 ) -> "Application":
     """Build an OpenAI router for independently deployed model applications.
 
@@ -280,8 +280,10 @@ def build_openai_router_app(
             serve.run(
                 build_openai_router_app(
                     {
-                        "qwen-0.5b": "llm-model-qwen",
-                        "llama-8b": "llm-model-llama",
+                        "model_applications": {
+                            "qwen-0.5b": "llm-model-qwen",
+                            "llama-8b": "llm-model-llama",
+                        }
                     }
                 ),
                 name="main",
@@ -295,11 +297,10 @@ def build_openai_router_app(
                 route_prefix: /models/qwen-0.5b
                 import_path: ray.serve.llm:build_openai_app
                 args:
-                  llm_serving_args:
-                    llm_configs:
-                      - model_loading_config:
-                          model_id: qwen-0.5b
-                          model_source: Qwen/Qwen2.5-0.5B-Instruct
+                  llm_configs:
+                    - model_loading_config:
+                        model_id: qwen-0.5b
+                        model_source: Qwen/Qwen2.5-0.5B-Instruct
 
               - name: main
                 route_prefix: /
@@ -309,10 +310,11 @@ def build_openai_router_app(
                     qwen-0.5b: llm-model-qwen
 
     Args:
-        model_applications: Mapping from OpenAI model IDs to the names of the
-            Serve applications that serve them. Each target application must
-            contain exactly one model and use direct streaming. KV-aware routing
-            and LoRA are not supported yet.
+        router_args: Router configuration containing ``model_applications``, a
+            mapping from OpenAI model IDs to the names of the Serve applications
+            that serve them. Each target application must contain exactly one
+            model and use direct streaming. KV-aware routing and LoRA are not
+            supported yet.
 
     Returns:
         A router application to deploy at the shared OpenAI route prefix.
@@ -321,7 +323,7 @@ def build_openai_router_app(
         build_openai_router_app,
     )
 
-    return build_openai_router_app(model_applications)
+    return build_openai_router_app(router_args)
 
 
 @PublicAPI(stability="stable")

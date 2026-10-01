@@ -52,6 +52,89 @@ serve run config.yaml
 
 The deployed application is OpenAI-compatible and exposes the engine's native routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`.
 
+### Serve multiple models at one OpenAI endpoint
+
+To select among multiple models through the request's `model` field, deploy each
+model as an independent, single-model application and deploy one router application
+at the shared route prefix. Repeated `serve.run` calls with distinct application
+names update those applications independently; they don't replace applications with
+other names.
+
+```python
+from ray import serve
+from ray.serve.llm import build_openai_app, build_openai_router_app
+
+# qwen_config.model_id must be "qwen-0.5b".
+serve.run(
+    build_openai_app({"llm_configs": [qwen_config]}),
+    name="llm-model-qwen",
+    route_prefix="/models/qwen-0.5b",
+)
+
+# llama_config.model_id must be "llama-8b".
+serve.run(
+    build_openai_app({"llm_configs": [llama_config]}),
+    name="llm-model-llama",
+    route_prefix="/models/llama-8b",
+)
+
+serve.run(
+    build_openai_router_app(
+        {
+            "model_applications": {
+                "qwen-0.5b": "llm-model-qwen",
+                "llama-8b": "llm-model-llama",
+            }
+        }
+    ),
+    name="main",
+    route_prefix="/",
+)
+```
+
+The equivalent declarative configuration represents every member as an
+independent application:
+
+```yaml
+applications:
+  - name: llm-model-qwen
+    route_prefix: /models/qwen-0.5b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: qwen-0.5b
+            model_source: Qwen/Qwen2.5-0.5B-Instruct
+
+  - name: llm-model-llama
+    route_prefix: /models/llama-8b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: llama-8b
+            model_source: meta-llama/Llama-3.1-8B-Instruct
+
+  - name: main
+    route_prefix: /
+    import_path: ray.serve.llm:build_openai_router_app
+    args:
+      model_applications:
+        qwen-0.5b: llm-model-qwen
+        llama-8b: llm-model-llama
+```
+
+The router routes `POST /v1/chat/completions` and directly serves `GET
+/v1/models` and `GET /v1/models/{model}`. It always receives the request body;
+`RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY` is not required for this
+application-level routing path.
+
+The router is a separate, lightweight Serve deployment that autoscaling manages
+independently from the model deployments. Its defaults are starting points. Tune
+its replica counts and target ongoing requests separately based on aggregate request
+volume and router-decision latency. In a Serve config, use a deployment override for
+the `RouterApplication` deployment when the defaults aren't appropriate.
+
 To confirm direct streaming is active, check that the application runs two deployments: your model deployment (`LLMServer:<model_id>`) and an `LLMRouter` deployment. `LLMRouter` is the ingress request router. It replaces the standalone `OpenAiIngress` deployment that fronts a non-direct-streaming app.
 
 Run `serve status`:
@@ -157,7 +240,10 @@ The header name defaults to `x-session-id` and is configurable with `RAY_SERVE_S
 (direct-streaming-limitations)=
 ## Limitations
 
-- **Single model per application.** `build_openai_app` raises if you pass more than one `LLMConfig` while direct streaming is enabled. To serve multiple models, deploy each as its own single-model direct streaming application on a distinct route prefix. Clients then target the per-model endpoint directly instead of selecting the model by the `model` field on one shared endpoint.
+- **Single model per model application.** `build_openai_app` raises if you pass more than one `LLMConfig` while direct streaming is enabled. Use `build_openai_router_app` to put multiple independent model applications behind one shared endpoint.
+- **Chat completions only through the shared router.** The initial application router routes `POST /v1/chat/completions`. Other native model endpoints remain available through each model application's own route prefix.
+- **Static, independently managed topology.** The router's model mapping changes only when its deployment is updated. Serve doesn't atomically update or validate consistency across the router and model applications.
+- **No cross-application KV-aware routing.** The application router doesn't yet propagate the routing tokens required for KV-aware selection across applications.
 - **No LoRA- or multiplex-aware routing.** The ingress request router doesn't forward the requested model or adapter id to the routing policy, so requests aren't steered to replicas that already have a given LoRA adapter loaded. The default `RoundRobinRouter` is multiplex-unaware. A single base model with adapters still serves, but without adapter affinity. If you need adapter-affinity routing, use the default ingress instead, which routes multiplex-aware. See [Multi-LoRA deployment](multi-lora.md). LoRA- and multiplex-aware routing for direct streaming is planned for a future release.
 
 ## See also
