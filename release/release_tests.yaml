@@ -5246,7 +5246,7 @@
         UCX_NET_DEVICES: all
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xl4.yaml
+    cluster_compute: llm_1x_4xh100.yaml
 
   run:
     timeout: 3600
