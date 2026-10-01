@@ -42,7 +42,7 @@ DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
 # Warn when the blocks training workers need can take up at least this fraction
 # of an operator's even share of the object store.
 # Note that this warning threshold is based on the ReservationOpResourceAllocator
-# and roughly matches the part of that share guaranteed to the operator for outputs.
+# and roughly matches the part of that share guaranteed to the operator.
 MEMORY_CONSTRAINED_WARNING_FRACTION = 0.5
 
 
