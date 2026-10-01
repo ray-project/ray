@@ -3923,47 +3923,77 @@ def read_hive(
 ) -> Dataset:
     """Read a HiveServer2 table or trusted SQL query into a Dataset.
 
-    This initial binary HS2 reader executes one data statement in one Ray task
-    per Dataset execution. Rows are fetched in bounded batches. It does not
-    retry a failed read, so a partial result cannot be silently replayed.
+    Install the optional ``impyla`` package on the driver and Ray workers.
+    ``GSSAPI`` also requires ``impyla[kerberos]`` and Kerberos credentials on
+    those nodes. TLS certificates are verified when ``use_ssl=True``.
 
-    Install the optional ``impyla`` package on the driver for table metadata
-    lookup and on Ray workers for reading. ``GSSAPI`` also requires
-    ``impyla[kerberos]`` and Kerberos credentials on those nodes. Query reads
-    require an explicit :class:`pyarrow.Schema`; table reads obtain the schema
-    through HS2 metadata.
+    .. note::
+
+        Each Dataset execution runs one HiveServer2 data query in one Ray task.
+        Failed reads aren't retried. ``override_num_blocks`` repartitions the
+        result in Ray and doesn't parallelize the HiveServer2 query.
+
+    Examples:
+
+        Read a table or a query result:
+
+        .. testcode::
+            :skipif: True
+
+            import pyarrow as pa
+            import ray
+
+            connection = {"host": "hive.example.com", "auth_mechanism": "NOSASL"}
+            table_ds = ray.data.read_hive("analytics.events", **connection)
+            query_ds = ray.data.read_hive(
+                query="SELECT event_id FROM analytics.events",
+                schema=pa.schema([("event_id", pa.int64())]),
+                **connection,
+            )
 
     Args:
-        table: Hive table name, optionally qualified as ``database.table``.
-        host: HiveServer2 hostname.
-        query: Trusted, row-producing SQL query to execute instead of reading a
-            table. It must return a result set. HiveServer2 receives it as given.
-        schema: Required Arrow schema for a query read. Column names
-            (case-insensitively) and order must match the result; table reads
-            infer their schema.
-        port: Binary HiveServer2 port.
-        auth_mechanism: Required HS2 authentication profile: ``NOSASL``,
-            ``PLAIN``, or ``GSSAPI``.
-        user: HS2 user or proxy user.
-        password: Password for ``PLAIN`` authentication.
-        kerberos_service_name: Kerberos service principal name.
-        use_ssl: Connect using TLS with certificate verification.
-        ca_cert: Optional CA certificate path accessible on the driver and
-            worker. Requires ``use_ssl=True``.
-        timeout: HS2 transport I/O timeout in seconds, not a query deadline.
-        limit: Maximum rows for a table read. ``0`` performs no data query.
-        num_cpus: CPUs reserved for the read task.
-        memory: Heap memory in bytes reserved for the read task.
-        resources: Custom resources reserved for the read task.
-        label_selector: Labels required on the read task's node.
-        fallback_strategy: Alternative label requirements.
-        runtime_env: Runtime environment of the read task.
-        override_num_blocks: Repartition the output into this many blocks
-            after the single HS2 read. This can incur data movement and does
-            not increase the number of HS2 queries.
+        table: The Hive table to read, optionally qualified as
+            ``database.table``. Specify exactly one of ``table`` and ``query``.
+        host: The HiveServer2 hostname.
+        query: A trusted, row-producing SQL query. Specify exactly one of
+            ``table`` and ``query``. The query is sent to HiveServer2 as given
+            and must return a result set.
+        schema: The Arrow schema for a query read. Column names must match the
+            result case-insensitively and in order. Table reads infer their
+            schema from HiveServer2 metadata; ``schema`` is only supported for
+            query reads. Field types must use a supported Arrow mapping.
+        port: The HiveServer2 binary protocol port.
+        auth_mechanism: The HiveServer2 authentication profile: ``NOSASL``,
+            ``PLAIN``, or ``GSSAPI``. Choose the profile configured on the
+            server. HiveServer2 mode ``NONE`` uses ``PLAIN`` SASL.
+        user: The HiveServer2 user or proxy user. Required for ``PLAIN``
+            authentication.
+        password: The password for ``PLAIN`` authentication. ``PLAIN`` does
+            not encrypt the password unless TLS is enabled.
+        kerberos_service_name: The Kerberos service principal name. Defaults
+            to ``"hive"``.
+        use_ssl: Whether to use TLS. The server certificate is verified when
+            TLS is enabled.
+        ca_cert: The path to a CA certificate file. It must be accessible on
+            the driver and read worker, and requires ``use_ssl=True``.
+        timeout: The HiveServer2 transport I/O timeout in seconds. It is not a
+            query deadline.
+        limit: The maximum number of rows to read from a table. ``0`` skips
+            the data query. This argument isn't supported for query reads.
+        num_cpus: The number of CPUs to reserve for the read task.
+        memory: The heap memory in bytes to reserve for the read task.
+        resources: Custom resources to reserve for the read task, expressed as
+            a mapping from resource name to quantity.
+        label_selector: Labels required on the node where the read task runs.
+        fallback_strategy: Alternative label requirements that Ray tries in
+            order if ``label_selector`` can't be satisfied.
+        runtime_env: The runtime environment to use for the read task.
+        override_num_blocks: Override the number of output blocks. The single
+            HiveServer2 query runs in one Ray task; Ray repartitions its result
+            into the requested number of blocks.
 
     Returns:
-        A Dataset backed by a single HiveServer2 read task.
+        A :class:`Dataset` containing the HiveServer2 read result.
     """
     if override_num_blocks is not None and (
         isinstance(override_num_blocks, bool)
