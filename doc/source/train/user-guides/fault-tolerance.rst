@@ -170,7 +170,7 @@ Call :func:`~ray.train.get_preemption_info` in your training loop. When it retur
     :language: python
     :start-after: __preemption_jit_checkpoint_start__
     :end-before: __preemption_jit_checkpoint_end__
-    :emphasize-lines: 30, 34-41, 52-56
+    :emphasize-lines: 30, 34-41, 53-55
 
 Follow these rules when you call :func:`~ray.train.get_preemption_info`:
 
