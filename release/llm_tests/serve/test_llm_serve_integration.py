@@ -12,13 +12,7 @@ import ray
 import ray.cloudpickle
 from ray import serve
 from ray.serve.config import RequestRouterConfig
-from ray.serve.llm import (
-    LLMConfig,
-    LLMServer,
-    ModelLoadingConfig,
-    build_openai_app,
-    build_pd_openai_app,
-)
+from ray.serve.llm import LLMConfig, LLMServer, build_openai_app, build_pd_openai_app
 from ray.serve.llm.request_router import PrefixCacheAffinityRouter
 from vllm import AsyncEngineArgs
 
@@ -665,32 +659,9 @@ def test_chat_completion_with_default_chat_template_kwargs():
     time.sleep(1)
 
 
-MODEL_ID = "qwen3-0.6b"
-MODEL_SOURCE = "Qwen/Qwen3-0.6B"
-NUM_REPLICAS = 4
-
-# HAProxy's frontend.
-CHAT_URL = "http://localhost:8000/v1/chat/completions"
-REPLICA_ID_HEADER = "x-test-replica-id"
-
-NUM_UNIQUE_PROMPTS = 60
-# The bug's signature was 100% of requests on one replica. A cap well below
-# that still fails hard on a regression while tolerating normal
-# length-driven skew in the smallest-tenant tie-break.
-MAX_SHARE_PER_REPLICA = 0.5
-
-NUM_PREFIX_GROUPS = 4
-REPEATS_PER_GROUP = 5
-
-# The concurrent spread test uses the production incident's concurrency
-# (16 requests in flight), scaled down from its 1,000 requests.
-NUM_CONCURRENT_PROMPTS = 200
-CONCURRENCY = 16
-
-
 class ReplicaIdLLMServer(LLMServer):
-    """(Test only) LLMServer that names the serving replica in a response
-    header, since a vLLM response carries no replica identity."""
+    """vLLM responses carry no replica identity, so stamp the serving
+    replica's id on responses."""
 
     async def __serve_build_asgi_app__(self):
         app = await super().__serve_build_asgi_app__()
@@ -699,41 +670,36 @@ class ReplicaIdLLMServer(LLMServer):
         @app.middleware("http")
         async def add_replica_id_header(request, call_next):
             response = await call_next(request)
-            response.headers[REPLICA_ID_HEADER] = replica_id
+            response.headers["x-test-replica-id"] = replica_id
             return response
 
         return app
 
 
-def post_chat(text: str) -> str:
-    """Send one chat request through HAProxy and return the replica that
-    served it. ``max_tokens=1`` keeps GPU time per request negligible."""
+def _post_chat(text: str) -> str:
+    """Send one chat request through HAProxy and return the serving replica's id."""
     response = requests.post(
-        CHAT_URL,
+        "http://localhost:8000/v1/chat/completions",
         json={
-            "model": MODEL_ID,
+            "model": "qwen3-0.6b",
             "messages": [{"role": "user", "content": text}],
+            # Routing is what these tests exercise; generate barely anything.
             "max_tokens": 1,
         },
         timeout=60,
     )
     assert response.status_code == 200, response.text
-    return response.headers[REPLICA_ID_HEADER]
+    return response.headers["x-test-replica-id"]
 
 
-def unique_prompt() -> str:
-    """A prompt that shares no prefix with any other prompt in this test.
-
-    A fresh uuid at position 0 keeps the match rate against every other
-    prompt at ~0, so routing must use the smallest-tenant tie-break, not a
-    prefix match.
-    """
+def _unique_prompt() -> str:
+    """A prompt that shares no prefix with others, so routing must use the
+    smallest-tenant tie-break instead of a prefix match."""
     return f"{uuid.uuid4().hex} unrelated request body."
 
 
-def prefix_group_text(group_id: str) -> str:
-    """One fixed string per group. Every repeat in a group sends this exact
-    text, so a repeat's match rate against its own group is 1.0."""
+def _prefix_group_text(group_id: str) -> str:
+    """Fixed text per group, so a repeat matches its own group with rate 1.0."""
     return (
         f"{group_id} shares this long common preamble across every repeat "
         "in its conversation, establishing context. "
@@ -742,33 +708,22 @@ def prefix_group_text(group_id: str) -> str:
 
 @direct_streaming_only
 class TestPrefixAffinityDirectStreaming:
-    """Regression tests for the pick-only routing path under direct streaming
-    (https://github.com/ray-project/ray/pull/66489).
-
-    LLMRouter's ``/internal/route`` handler picks a replica via
-    ``handle.choose_replica(_reserve=False)``. Before the fix, that path never
-    called the request router's ``on_request_routed`` hook, so
-    PrefixCacheAffinityRouter's prefix tree stayed empty and every request fell
-    back to ``get_smallest_tenants()``, which returns every replica tied at 0
-    characters in the same order every time -- so 100% of requests went to one
-    replica. The tests send chat requests to HAProxy, so each one takes that
-    production path, and read the serving replica from the response header that
-    ReplicaIdLLMServer stamps.
-    """
+    """Regression tests for https://github.com/ray-project/ray/pull/66489: on
+    the pick-only path, ``on_request_routed`` never ran, so the
+    PrefixCacheAffinityRouter prefix tree stayed empty and all traffic went
+    to one replica."""
 
     @pytest.fixture(scope="class", autouse=True)
     def serve_app(self):
-        """Deploy direct-streaming LLMServer replicas routed by
-        PrefixCacheAffinityRouter, one dedicated GPU each."""
+        """One deployment for all three prefix-affinity tests: four
+        direct-streaming replicas routed by PrefixCacheAffinityRouter."""
         llm_config = LLMConfig(
-            model_loading_config=ModelLoadingConfig(
-                model_id=MODEL_ID,
-                model_source=MODEL_SOURCE,
+            model_loading_config=dict(
+                model_id="qwen3-0.6b",
+                model_source="Qwen/Qwen3-0.6B",
             ),
             deployment_config=dict(
-                autoscaling_config=dict(
-                    min_replicas=NUM_REPLICAS, max_replicas=NUM_REPLICAS
-                ),
+                autoscaling_config=dict(min_replicas=4, max_replicas=4),
                 request_router_config=RequestRouterConfig(
                     request_router_class=PrefixCacheAffinityRouter
                 ),
@@ -798,66 +753,60 @@ class TestPrefixAffinityDirectStreaming:
         https://github.com/ray-project/ray/pull/66489, ``on_request_routed``
         never ran on the pick-only path, so the prefix tree stayed empty forever
         always produced the same replica ordering."""
-        counts = Counter(post_chat(unique_prompt()) for _ in range(NUM_UNIQUE_PROMPTS))
-        assert len(counts) == NUM_REPLICAS, (
-            f"Expected all {NUM_REPLICAS} replicas to receive at least one "
-            f"of {NUM_UNIQUE_PROMPTS} unrelated prompts, got {dict(counts)}"
+        num_prompts = 60
+        counts = Counter(_post_chat(_unique_prompt()) for _ in range(num_prompts))
+        assert len(counts) == 4, (
+            f"Expected all 4 replicas to receive at least one of "
+            f"{num_prompts} unrelated prompts, got {dict(counts)}"
         )
         busiest, busiest_count = counts.most_common(1)[0]
-        assert busiest_count <= NUM_UNIQUE_PROMPTS * MAX_SHARE_PER_REPLICA, (
-            f"Replica {busiest} got {busiest_count}/{NUM_UNIQUE_PROMPTS} "
-            f"requests -- looks like the all-to-one-replica regression: {dict(counts)}"
+        # The bug's signature was 100% of requests on one replica.
+        assert busiest_count <= num_prompts * 0.5, (
+            f"Replica {busiest} got {busiest_count}/{num_prompts} requests, "
+            f"the all-to-one-replica regression: {dict(counts)}"
         )
 
     def test_new_prompts_spread_under_load(self):
         """The sequential spread test lets each pick see the previous pick's
         tree insert. With concurrent requests in flight, picks race those
         inserts, and spreading must still hold."""
-        with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+        # The production incident saw 100% of requests on one replica at 16
+        # concurrent requests; this is its 1,000 requests scaled down.
+        num_prompts, concurrency = 200, 16
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
             served = list(
-                pool.map(
-                    lambda _: post_chat(unique_prompt()),
-                    range(NUM_CONCURRENT_PROMPTS),
-                )
+                pool.map(lambda _: _post_chat(_unique_prompt()), range(num_prompts))
             )
 
         counts = Counter(served)
-        assert len(counts) == NUM_REPLICAS, (
-            f"Expected all {NUM_REPLICAS} replicas to serve under load, "
-            f"got {dict(counts)}"
-        )
+        assert len(counts) == 4, f"Replicas serving under load: {dict(counts)}"
         busiest, busiest_count = counts.most_common(1)[0]
-        assert busiest_count <= NUM_CONCURRENT_PROMPTS * MAX_SHARE_PER_REPLICA, (
-            f"Replica {busiest} got {busiest_count}/{NUM_CONCURRENT_PROMPTS} "
-            f"requests under load: {dict(counts)}"
+        assert busiest_count <= num_prompts * 0.5, (
+            f"Replica {busiest} got {busiest_count}/{num_prompts} requests "
+            f"under load: {dict(counts)}"
         )
 
     def test_repeated_prompt_pins_to_one_replica(self):
-        """Repeats of the same prompt must land on the same replica every
-        time. This only works if the first pick's ``on_request_routed`` call
-        inserted the prompt into the prefix tree, so the repeat's prefix
-        match rate (1.0) beats ``match_rate_threshold`` and the router
-        returns the matched tenant instead of falling back.
-
-        This also guards the spread tests. If the router never saw the prompt
-        (HAProxy not forwarding the body, or ``_parse_routing_payload``
-        deriving no routing key), it would fall back to power-of-two picks:
-        requests would still spread, but repeats would not pin.
-        """
-        groups = [f"group-{uuid.uuid4().hex}" for _ in range(NUM_PREFIX_GROUPS)]
+        """Repeats of a prompt must pin to one replica. Without the pick-only
+        ``on_request_routed`` call the tree stays empty and the router falls
+        back to power-of-two picks, which spread but never pin."""
+        num_groups, repeats = 4, 5
+        groups = [f"group-{uuid.uuid4().hex}" for _ in range(num_groups)]
         group_replicas = {g: [] for g in groups}
 
         # Interleave groups (round-robin) rather than finishing one group
         # before starting the next, so affinity is proven against
         # concurrent unrelated inserts from sibling groups, not just a
         # quiet tree.
-        for _ in range(REPEATS_PER_GROUP):
+        for _ in range(repeats):
             for group_id in groups:
-                group_replicas[group_id].append(post_chat(prefix_group_text(group_id)))
+                group_replicas[group_id].append(
+                    _post_chat(_prefix_group_text(group_id))
+                )
 
         for group_id, replicas in group_replicas.items():
             assert len(set(replicas)) == 1, (
-                f"{group_id}'s {REPEATS_PER_GROUP} repeats landed on "
+                f"{group_id}'s {repeats} repeats landed on "
                 f"{len(set(replicas))} different replicas, not one: {replicas}"
             )
 

@@ -1267,7 +1267,8 @@ def test_multiplexed_routing_retry(shutdown_ray):
 
 
 def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
-    """Report pick-only selections to the policy through an ingress router."""
+    """Pick-only selections must reach on_request_routed, or a stateful policy
+    sends every request to the same replica."""
     ray.init(num_cpus=4)
     serve.start(http_options={"host": "0.0.0.0"})
 
@@ -1316,8 +1317,6 @@ def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
             response = client.post("http://localhost:8000/")
             assert response.status_code == 200, response.text
             replica_ids.append(response.text)
-    # The policy alternates only if pick-only selections reach
-    # on_request_routed.
     assert len(set(replica_ids)) == 2, replica_ids
 
 

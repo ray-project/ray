@@ -2178,10 +2178,9 @@ class TestChooseReplica:
     async def test_choose_replica_no_reserve_calls_on_request_routed(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        """``_reserve=False`` callers send the request themselves, so the pick is
-        the routing decision. The policy must still get ``on_request_routed``
-        for it, with the request args and no ``ReplicaResult``, so stateful
-        policies (e.g. prefix-aware routing) can record the pick."""
+        """The pick is the routing decision for ``_reserve=False`` callers,
+        so the policy must get ``on_request_routed``; stateful policies keep
+        state there."""
         router, fake_request_router = setup_router
 
         r1_id = ReplicaID(
