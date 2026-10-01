@@ -1090,7 +1090,7 @@ class ActorMethod:
         enable_task_events=None,
         tensor_transport: Optional[str] = None,
         _labels: Optional[Dict[str, str]] = None,
-        consume_once: bool = False,
+        _consume_once: bool = False,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -1116,24 +1116,26 @@ class ActorMethod:
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
-        if not isinstance(consume_once, bool):
+        # `_consume_once` is a private, experimental option right now.
+        # It is not part of the public API and may change or be removed.
+        if not isinstance(_consume_once, bool):
             raise TypeError(
-                f"consume_once must be a bool, got {type(consume_once).__name__}."
+                f"_consume_once must be a bool, got {type(_consume_once).__name__}."
             )
-        if consume_once:
+        if _consume_once:
             # TODO(karticam): Support streaming generators in a follow-up PR.
             if num_returns == "streaming":
                 raise ValueError(
-                    "consume_once=True is not supported yet for streaming generator "
+                    "_consume_once=True is not supported yet for streaming generator "
                     "actor methods. Support will be added in a future release."
                 )
             if num_returns == "dynamic":
                 raise ValueError(
-                    "consume_once=True is not supported with num_returns='dynamic'."
+                    "_consume_once=True is not supported with num_returns='dynamic'."
                 )
             if tensor_transport is not None:
                 raise ValueError(
-                    "consume_once=True is not supported together with "
+                    "_consume_once=True is not supported together with "
                     "tensor_transport."
                 )
 
@@ -1191,7 +1193,7 @@ class ActorMethod:
                 enable_task_events=enable_task_events,
                 tensor_transport=tensor_transport,
                 labels=_labels,
-                consume_once=consume_once,
+                consume_once=_consume_once,
             )
 
         # Apply the decorator if there is one.
@@ -2548,8 +2550,9 @@ class ActorHandle(Generic[T]):
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
             labels: Optional key-value labels to attach to this actor method task.
-            consume_once: If True, each return value can be passed to exactly one
-                actor method call and can't be borrowed.
+            consume_once: Private. If True, each return value can be passed to exactly one
+                actor method call and can't be borrowed. The object will be moved(deleted) from producer
+                upon consumption.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -2560,7 +2563,7 @@ class ActorHandle(Generic[T]):
         args = args or []
         kwargs = kwargs or {}
         if consume_once and self._ray_is_cross_language:
-            raise ValueError("consume_once=True is only supported for Python actors.")
+            raise ValueError("_consume_once=True is only supported for Python actors.")
         if self._ray_is_cross_language:
             list_args = cross_language._format_args(worker, args, kwargs)
             function_descriptor = cross_language._get_function_descriptor_for_actor_method(  # noqa: E501

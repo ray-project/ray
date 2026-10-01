@@ -47,7 +47,7 @@ def test_consume_once_ref_can_be_read_and_passed_to_actor_task(
     producer = Producer.remote()
     consumer = Consumer.remote()
 
-    ref = producer.produce.options(consume_once=True).remote(1)
+    ref = producer.produce.options(_consume_once=True).remote(1)
     assert ray.get(ref) == 1
     assert ray.get(consumer.consume.remote(ref)) == 1
 
@@ -56,8 +56,8 @@ def test_actor_task_accepts_mixed_args(ray_start_regular_shared):
     producer = Producer.remote()
     consumer = Consumer.remote()
 
-    movable_1 = producer.produce.options(consume_once=True).remote(1)
-    movable_2 = producer.produce.options(consume_once=True).remote(2)
+    movable_1 = producer.produce.options(_consume_once=True).remote(1)
+    movable_2 = producer.produce.options(_consume_once=True).remote(2)
     plain = producer.produce.remote(3)
     result = consumer.consume_all.remote(movable_1, plain, 4, extra=movable_2)
     assert ray.get(result) == [1, 3, 4, 2]
@@ -66,7 +66,7 @@ def test_actor_task_accepts_mixed_args(ray_start_regular_shared):
 def test_normal_task_rejects_mixed_args(ray_start_regular_shared):
     producer = Producer.remote()
 
-    movable = producer.produce.options(consume_once=True).remote(1)
+    movable = producer.produce.options(_consume_once=True).remote(1)
     plain = producer.produce.remote(2)
     with pytest.raises(ValueError, match="argument to a task"):
         normal_task.remote(plain, movable)
@@ -79,7 +79,7 @@ def test_normal_task_rejects_mixed_args(ray_start_regular_shared):
 def test_actor_constructor_rejects_mixed_args(ray_start_regular_shared):
     producer = Producer.remote()
 
-    movable = producer.produce.options(consume_once=True).remote(1)
+    movable = producer.produce.options(_consume_once=True).remote(1)
     plain = producer.produce.remote(2)
     with pytest.raises(ValueError, match="argument to an actor constructor"):
         Holder.remote(plain, movable)
@@ -90,7 +90,7 @@ def test_actor_constructor_rejects_mixed_args(ray_start_regular_shared):
 def test_normal_task_rejects_consume_once_arg(ray_start_regular_shared):
     producer = Producer.remote()
 
-    ref = producer.produce.options(consume_once=True).remote(1)
+    ref = producer.produce.options(_consume_once=True).remote(1)
     with pytest.raises(ValueError, match="argument to a task"):
         normal_task.remote(ref)
     with pytest.raises(ValueError, match="argument to a task"):
@@ -102,7 +102,7 @@ def test_normal_task_rejects_consume_once_arg(ray_start_regular_shared):
 def test_actor_constructor_rejects_consume_once_arg(ray_start_regular_shared):
     producer = Producer.remote()
 
-    ref = producer.produce.options(consume_once=True).remote(1)
+    ref = producer.produce.options(_consume_once=True).remote(1)
     with pytest.raises(ValueError, match="argument to an actor constructor"):
         Holder.remote(ref)
 
@@ -110,7 +110,7 @@ def test_actor_constructor_rejects_consume_once_arg(ray_start_regular_shared):
 def test_all_returns_are_consume_once(ray_start_regular_shared):
     producer = Producer.remote()
 
-    refs = producer.produce_pair.options(num_returns=2, consume_once=True).remote()
+    refs = producer.produce_pair.options(num_returns=2, _consume_once=True).remote()
     assert ray.get(refs) == [1, 2]
     for ref in refs:
         with pytest.raises(ValueError, match="argument to a task"):
@@ -126,7 +126,7 @@ def test_consume_once_rejected_for_streaming_generator_methods(
     options = {} if num_returns is None else {"num_returns": num_returns}
 
     with pytest.raises(ValueError, match="streaming generator"):
-        producer.generate.options(consume_once=True, **options).remote()
+        producer.generate.options(_consume_once=True, **options).remote()
 
 
 def test_consume_once_rejected_for_dynamic_generator_methods(
@@ -135,45 +135,45 @@ def test_consume_once_rejected_for_dynamic_generator_methods(
     producer = Producer.remote()
 
     with pytest.raises(ValueError, match="num_returns='dynamic'"):
-        producer.generate.options(num_returns="dynamic", consume_once=True).remote()
+        producer.generate.options(num_returns="dynamic", _consume_once=True).remote()
     with pytest.raises(ValueError, match="num_returns='dynamic'"):
-        producer.generate_dynamic.options(consume_once=True).remote()
+        producer.generate_dynamic.options(_consume_once=True).remote()
 
 
 def test_consume_once_rejected_with_tensor_transport(ray_start_regular_shared):
     producer = Producer.remote()
 
     with pytest.raises(ValueError, match="tensor_transport"):
-        producer.produce._remote(args=[1], consume_once=True, tensor_transport="NCCL")
+        producer.produce._remote(args=[1], _consume_once=True, tensor_transport="NCCL")
 
 
 def test_consume_once_must_be_bool(ray_start_regular_shared):
     producer = Producer.remote()
 
-    with pytest.raises(TypeError, match="consume_once must be a bool"):
-        producer.produce.options(consume_once=1).remote(1)
+    with pytest.raises(TypeError, match="_consume_once must be a bool"):
+        producer.produce.options(_consume_once=1).remote(1)
 
 
 def test_consume_once_only_accepted_on_actor_method_options(
     ray_start_regular_shared,
 ):
-    with pytest.raises(ValueError, match="Invalid option keyword consume_once"):
-        normal_task.options(consume_once=True)
+    with pytest.raises(ValueError, match="Invalid option keyword _consume_once"):
+        normal_task.options(_consume_once=True)
 
-    with pytest.raises(ValueError, match="Invalid option keyword consume_once"):
+    with pytest.raises(ValueError, match="Invalid option keyword _consume_once"):
 
-        @ray.remote(consume_once=True)
+        @ray.remote(_consume_once=True)
         def f():
             pass
 
-    with pytest.raises(ValueError, match="Invalid option keyword consume_once"):
-        Producer.options(consume_once=True)
+    with pytest.raises(ValueError, match="Invalid option keyword _consume_once"):
+        Producer.options(_consume_once=True)
 
-    with pytest.raises(AssertionError, match="consume_once"):
+    with pytest.raises(AssertionError, match="_consume_once"):
 
         @ray.remote
         class A:
-            @ray.method(consume_once=True)
+            @ray.method(_consume_once=True)
             def m(self):
                 pass
 
