@@ -121,8 +121,12 @@ class FileReader(Reader[FileManifest]):
 
     @cached_property
     def _file_dataset_schema(self) -> Optional[pa.Schema]:
-        """Schema passed to ``pds.dataset`` — partition keys and synthesized
-        columns stripped out since those are appended post-read.
+        """Schema passed to ``pds.dataset`` — known partition keys and
+        synthesized columns stripped out since those are appended post-read.
+
+        Hive partition keys may not be known until their paths are parsed. If
+        ``field_names`` is unset, a partition field can remain in this schema
+        as a placeholder; the path-derived value replaces it after the read.
 
         Pinning the caller-supplied schema at the pyarrow layer is how
         we cover the "first file has an all-null column, later files
@@ -221,20 +225,19 @@ class FileReader(Reader[FileManifest]):
             ignore_prefixes=self._ignore_prefixes,
         )
 
-        # Split the requested columns into ones the on-disk file has
-        # (pyarrow reads these) and ones we need to synthesize post-read
-        # (hive partition keys, ``path``, ``row_hash``). ``self._columns
-        # is None`` means "no projection" — read every file column and
-        # synthesize every available partition/synthesized column.
+        # ``columns is None`` means "no projection" — read every file column
+        # and synthesize every available partition/synthesized column.
         on_disk_column_names = set(dataset.schema.names)
         if self._columns is None:
             columns_to_read_from_file: Optional[List[str]] = None
             columns_to_synthesize: Optional[Set[str]] = None
+            projected_column_names: Optional[Set[str]] = None
         else:
+            projected_column_names = set(self._columns)
             columns_to_read_from_file = [
                 c for c in self._columns if c in on_disk_column_names
             ]
-            columns_to_synthesize = set(self._columns) - on_disk_column_names
+            columns_to_synthesize = projected_column_names - on_disk_column_names
 
         scanner_kwargs = {
             "columns": columns_to_read_from_file,
@@ -265,9 +268,11 @@ class FileReader(Reader[FileManifest]):
                 )
 
             for name, value in derived_items:
+                # A Hive partition field can remain in ``dataset.schema`` when
+                # ``field_names`` is unset, but the path is still authoritative.
                 if (
-                    columns_to_synthesize is not None
-                    and name not in columns_to_synthesize
+                    projected_column_names is not None
+                    and name not in projected_column_names
                 ):
                     continue
                 if name in table.column_names:

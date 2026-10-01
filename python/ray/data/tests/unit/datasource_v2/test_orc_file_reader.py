@@ -116,11 +116,14 @@ def test_orc_reader_empty_projection_preserves_rows(tmp_path):
     )
 
 
-def test_orc_reader_synthesizes_partition_and_path(tmp_path):
+@pytest.mark.parametrize(
+    "columns", [None, ["year", "id"]], ids=["no_projection", "projection"]
+)
+def test_orc_reader_synthesizes_partition_and_path(tmp_path, columns):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     path = partition_dir / "data.orc"
-    _write_orc(path, pa.table({"id": [1, 2]}))
+    _write_orc(path, pa.table({"id": [1, 2], "year": ["file", "file"]}))
     # The datasource passes the final schema, including synthesized columns.
     schema = pa.schema(
         [("id", pa.int64()), ("path", pa.string()), ("year", pa.string())]
@@ -128,19 +131,25 @@ def test_orc_reader_synthesizes_partition_and_path(tmp_path):
 
     scanner = OrcScanner(
         schema=schema,
-        partitioning=Partitioning(
-            PartitionStyle.HIVE, base_dir=str(tmp_path), field_names=["year"]
-        ),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
         synthesized_columns=(PathColumn(),),
     )
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
     result = pa.concat_tables(list(scanner.create_reader().read(_manifest(path))))
 
-    assert scanner.read_schema().names == schema.names
-    assert result.schema.names == schema.names
-    assert result.to_pylist() == [
-        {"id": 1, "year": "2024", "path": str(path)},
-        {"id": 2, "year": "2024", "path": str(path)},
-    ]
+    assert result.schema.names == scanner.read_schema().names
+    assert result.column("year").to_pylist() == ["2024", "2024"]
+    if columns is None:
+        assert result.to_pylist() == [
+            {"id": 1, "year": "2024", "path": str(path)},
+            {"id": 2, "year": "2024", "path": str(path)},
+        ]
+    else:
+        assert result.to_pylist() == [
+            {"year": "2024", "id": 1},
+            {"year": "2024", "id": 2},
+        ]
 
 
 def test_orc_reader_reports_corrupt_file_path(tmp_path):
