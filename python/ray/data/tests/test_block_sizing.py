@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
@@ -112,6 +112,11 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     mem_size = 800_000
 
     shuffle_fn, kwargs, fusion_supported = shuffle_op
+    if shuffle_fn is Dataset.sort:
+        # The intermediate-block accounting below describes the legacy
+        # all-to-all sort; shuffle v2's map/reduce shards are covered in
+        # test_sort_shuffle_v2.py.
+        ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 
     ctx.target_max_block_size = 10_000 * 8
     num_blocks_expected = mem_size // ctx.target_max_block_size

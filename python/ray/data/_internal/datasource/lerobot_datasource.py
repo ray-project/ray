@@ -1869,3 +1869,234 @@ class LeRobotDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+
+def _read_lerobot_datasets(
+    chunk: List[Tuple[int, str]],
+    episodes: Optional[List[int]],
+    filesystem: Optional["pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"],
+    storage_options: Dict[str, Any],
+    frame_tolerance_s: Optional[float],
+    max_block_bytes: int,
+    delta_timestamps: Optional[Dict[str, List[float]]] = None,
+    delta_tolerance_s: float = 1e-4,
+) -> Iterator[pa.Table]:
+    """Resolve and read this task's chunk of whole datasets on a worker.
+
+    Each element of ``chunk`` is a ``(dataset_index, root)`` pair, where
+    ``dataset_index`` is the root's position in the original ``root`` list --
+    emitted verbatim as the ``dataset_index`` output column so rows can be
+    attributed to their source dataset.
+
+    For each root this resolves the metadata on the worker
+    (:func:`_resolve_root`), coalesces episodes into file-group row ranges (the
+    same base partitioning the ``"file"`` granularity uses within a dataset),
+    and streams decoded Arrow batches by reusing :func:`_read_lerobot_segment`.
+    """
+    for dataset_index, root in chunk:
+        built_root, built_episodes, _meta = _resolve_root(
+            root,
+            filesystem,
+            storage_options,
+            frame_tolerance_s,
+            delta_timestamps=delta_timestamps,
+            delta_tolerance_s=delta_tolerance_s,
+        )
+
+        # ``episodes`` is a per-root read-time pushdown. Unlike the "file" and
+        # "episode" granularities we can't raise on an episode absent from
+        # *every* root (we never resolve every root on the driver), so a root
+        # with no matching episodes simply contributes nothing.
+        if episodes is not None:
+            idx_col = built_episodes.column("episode_index")
+            requested = pa.array(sorted({int(e) for e in episodes}), type=idx_col.type)
+            built_episodes = built_episodes.filter(
+                pc.is_in(idx_col, value_set=requested)
+            )
+            # Now built_episodes contains only the requested episodes.
+            if built_episodes.num_rows == 0:
+                continue
+
+        # Coalesce adjacent episodes sharing a physical file into one range so
+        # each file is opened once.
+        ranges = LeRobotDatasource._slices_by_file_group(
+            built_episodes, built_root.video_keys
+        )
+        for start, end in sorted(ranges):
+            pos0, pos1 = _episodes_for_row_range(built_episodes, start, end)
+            # combine_chunks() so only this slice travels, not a view over the
+            # whole table's buffers.
+            ep_slice = built_episodes.slice(pos0, pos1 - pos0).combine_chunks()
+            parquet_segs, _video_segs = _resolve_paths(built_root, ep_slice)
+            yield from _read_lerobot_segment(
+                built_root,
+                start,
+                end,
+                dataset_index,
+                parquet_segs,
+                ep_slice,
+                max_block_bytes,
+            )
+
+
+@PublicAPI(stability="alpha")
+class LeRobotPerDatasetDatasource(Datasource):
+    """Datasource backing ``ray.data.read_lerobot(..., read_granularity="dataset")``.
+
+    Scales to a very large number of LeRobot datasets by deferring all
+    per-dataset metadata resolution to the read tasks: only the first root is
+    resolved on the driver, purely for a representative output schema. Every
+    root must be homogeneous with the first (same ``video_keys`` /
+    ``image_keys`` / ``fps`` / non-camera features); unlike the ``"file"`` and
+    ``"episode"`` granularities this is *not* pre-checked on the driver -- a
+    divergent dataset surfaces as a schema-inconsistent block at read time.
+    """
+
+    def __init__(
+        self,
+        root: Union[str, Path, List[Union[str, Path]]],
+        *,
+        episodes: Optional[List[int]] = None,
+        filesystem: Optional[
+            "pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"
+        ] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
+        frame_tolerance_s: Optional[float] = None,
+        delta_timestamps: Optional[Dict[str, List[float]]] = None,
+        delta_tolerance_s: float = 1e-4,
+    ):
+        super().__init__()
+
+        _check_import(self, module="fsspec", package="fsspec")
+        _check_import(
+            self, module="lerobot.datasets.dataset_metadata", package="lerobot[dataset]"
+        )
+
+        if frame_tolerance_s is not None and frame_tolerance_s <= 0:
+            raise ValueError(
+                f"frame_tolerance_s must be a positive number of seconds, "
+                f"got {frame_tolerance_s!r}."
+            )
+
+        # An empty list would otherwise filter every root down to no episodes
+        # and silently produce an empty dataset.
+        if episodes is not None and len(episodes) == 0:
+            raise ValueError(
+                "episodes must be a non-empty list of episode_index values, or "
+                "None to read every episode."
+            )
+
+        self._roots: List[str] = [
+            str(r) for r in ([root] if isinstance(root, (str, Path)) else list(root))
+        ]
+        if not self._roots:
+            raise ValueError("root must be a non-empty path/URI or list of paths/URIs.")
+
+        self._episodes = episodes
+        self._filesystem = filesystem
+        self._storage_options: Dict[str, Any] = dict(storage_options or {})
+        self._frame_tolerance_s = frame_tolerance_s
+        self._delta_timestamps = delta_timestamps
+        self._delta_tolerance_s = delta_tolerance_s
+        self._supports_distributed_reads = not _is_local_scheme(self._roots)
+
+        # Resolve ONLY the first root, purely for a representative output schema
+        # (all roots are contractually homogeneous). No per-root bundles, no
+        # O(N) homogeneity check, no ray.put fan-out -- that is the whole point.
+        first_root, _first_episodes, _meta = _resolve_root(
+            self._roots[0],
+            filesystem,
+            self._storage_options,
+            self._frame_tolerance_s,
+            delta_timestamps=self._delta_timestamps,
+            delta_tolerance_s=self._delta_tolerance_s,
+        )
+        self._schema: pa.Schema = first_root.schema
+
+        # Import checks driven by the first root's camera kinds. All roots are
+        # assumed to have the same requirements.
+        if first_root.video_keys:
+            _check_import(self, module="torchcodec", package="torchcodec")
+            _check_import(self, module="av", package="av")
+        if first_root.image_keys:
+            _check_import(self, module="PIL", package="pillow")
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        # Unknown without resolving every root -- and returning the true
+        # (petabyte-scale) size would blow up ``min_safe_parallelism`` in
+        # ``_autodetect_parallelism`` to one task per dataset. ``None`` pins
+        # parallelism to ``max(read_op_min_num_blocks, 2 * avail_cpus)``.
+        return None
+
+    @property
+    def num_datasets(self) -> int:
+        """Number of dataset roots -- the maximum number of read tasks this mode
+        can produce (one per dataset; a dataset is never split across tasks)."""
+        return len(self._roots)
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional[DataContext] = None,
+    ) -> List[ReadTask]:
+        ctx = data_context or DataContext.get_current()
+        max_block_bytes = ctx.target_max_block_size
+
+        # ``parallelism`` here is normally Ray's autodetected floor
+        # (``read_op_min_num_blocks``, ~200), not a user request, so it routinely
+        # exceeds the dataset count -- cap it at one task per dataset. An
+        # *explicit* over-request (``override_num_blocks`` > ``num_datasets``) is
+        # rejected up front in ``read_lerobot`` rather than silently capped here.
+        num_roots = len(self._roots)
+        n_tasks = max(1, min(parallelism, num_roots))
+
+        tasks: List[ReadTask] = []
+        # n_tasks <= num_roots, so base >= 1 and every task gets >= 1 dataset.
+        base, remainder = divmod(num_roots, n_tasks)
+        start = 0
+        for g in range(n_tasks):
+            end = start + base + (1 if g < remainder else 0)
+            # The chunk rides in the closure: Ray Data ``ray.put``s each ReadTask
+            # regardless, so this ships the same bytes as an explicit per-chunk
+            # ``ray.put`` would, without the extra object per task or the
+            # O(n_tasks) synchronous puts at planning time. Crucially each task
+            # still carries only its own roots -- never the whole list, which
+            # would cost every worker hundreds of MB to GBs of heap.
+            chunk = [(i, self._roots[i]) for i in range(start, end)]
+            read_fn = functools.partial(
+                _read_lerobot_datasets,
+                chunk,
+                self._episodes,
+                self._filesystem,
+                self._storage_options,
+                self._frame_tolerance_s,
+                max_block_bytes,
+                self._delta_timestamps,
+                self._delta_tolerance_s,
+            )
+            start = end
+            # num_rows / size_bytes are unknown before the roots are resolved on
+            # the worker; leaving them None is safe for planning.
+            metadata = BlockMetadata(
+                num_rows=None,
+                size_bytes=None,
+                input_files=None,
+                exec_stats=None,
+            )
+            tasks.append(
+                ReadTask(
+                    read_fn,
+                    metadata,
+                    schema=self._schema,
+                    per_task_row_limit=per_task_row_limit,
+                )
+            )
+        return tasks
+
+    def get_name(self) -> str:
+        return "LeRobot"
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return self._supports_distributed_reads

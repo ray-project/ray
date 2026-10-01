@@ -20,6 +20,7 @@ from ray._common.utils import reset_ray_address
 from ray._private.test_utils import request_with_auth_token
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
+    SERVE_INSTANCE_SIGNAL_ACTOR_NAME,
     TELEMETRY_ROUTE_PREFIX,
     TEST_METRICS_EXPORT_PORT,
     check_ray_started,
@@ -202,7 +203,7 @@ def serve_instance(_shared_serve_instance):
 def serve_instance_with_signal(serve_instance):
     client = serve_instance
 
-    signal = SignalActor.options(name="signal123").remote()
+    signal = SignalActor.options(name=SERVE_INSTANCE_SIGNAL_ACTOR_NAME).remote()
     yield client, signal
 
     # Delete signal actor so there is no conflict between tests

@@ -24,7 +24,7 @@ import logging
 from functools import partial
 from typing import Iterable, List
 
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -60,7 +60,7 @@ def plan_read_files_op(
 
     def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         reader = scanner.create_reader()
-        # ``prune_input_split`` is an identity by default; ``ArrowFileScanner``
+        # ``prune_input_split`` is an identity by default; ``FileScanner``
         # overrides it to drop files failing a pushed-down partition predicate.
         for block in blocks:
             manifest = scanner.prune_input_split(FileManifest(block))

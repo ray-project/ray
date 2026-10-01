@@ -378,8 +378,7 @@ gs://${GCS_BUCKET}/
                     └── <session_name>/                   # Same node layout as above
 ```
 
-For `RayJob` and `RayService`, the paths carry an extra `<owner_name>` segment, and the
-`cluster-metadata` directory name joins the owner name into the underscore-separated key. In this guide, `<owner_name>` is `rayjob-historyserver-gcs`, and `<cluster_name>` is the RayCluster name KubeRay generated for the job.
+For `RayJob` and `RayService`, the paths carry an extra `<owner_name>` segment, and the `cluster-metadata` directory name joins the owner name into the underscore-separated key. In this guide, `<owner_name>` is `rayjob-historyserver-gcs`, and `<cluster_name>` is the RayCluster name KubeRay generated for the job.
 
 
 To list the objects in storage, run the following command:

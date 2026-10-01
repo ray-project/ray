@@ -51,7 +51,10 @@ from ray.data._internal.datasource.kafka_datasource import (
     PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
+from ray.data._internal.datasource.lerobot_datasource import (
+    LeRobotDatasource,
+    LeRobotPerDatasetDatasource,
+)
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -144,7 +147,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
+    from ray.data._internal.datasource_v2.interfaces.datasource_v2 import DataSourceV2
     from ray.data.catalog import Catalog
 
 T = TypeVar("T")
@@ -532,13 +535,16 @@ def _read_datasource_v2(
     """
     import time
 
-    from ray.data._internal.datasource_v2.datasource_v2 import (
+    from ray.data._internal.datasource_v2.common.listing_utils import (
+        _build_pruners,
+        sample_files,
+    )
+    from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
         DataSourceWithMetadata,
         FileDataSourceV2,
     )
-    from ray.data._internal.datasource_v2.listing.listing_utils import (
-        _build_pruners,
-        sample_files,
+    from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
+        PartitionHints,
     )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
@@ -628,13 +634,9 @@ def _read_datasource_v2(
         partitioning=resolved_partitioning,
     )
 
-    # Size-balanced bucketing for the listing output. The partitioner is
-    # captured in a pickled closure and runs inside worker tasks, so its
-    # estimator must be I/O-free and pickle-safe — use the datasource's
-    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
-    # encoding-ratio multiplier). ``num_buckets`` is a hint;
-    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
-    # first, so the actual bucket count scales with total data size.
+    # Sizing hints for the datasource's partitioner. ``num_buckets`` is a
+    # hint; ``RoundRobinPartitioner`` honors the ``[min, max]`` block-size
+    # limits first, so the actual bucket count scales with total data size.
     # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
     # back to sentinel bounds so the partitioner just rolls every file
     # into a single bucket.
@@ -650,14 +652,14 @@ def _read_datasource_v2(
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    # The datasource chooses how listing rows are grouped into read units. The
-    # default is the size-estimate ``RoundRobinPartitioner``; a datasource whose
-    # listing carries richer metadata can supply a partitioner that uses it.
+    # The datasource chooses how listing rows are grouped into read units and
+    # which size estimator, if any, its partitioner uses.
     partitioner = datasource.get_file_partitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
-        min_bucket_size=min_bucket_size,
-        max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
+        hints=PartitionHints(
+            min_bucket_size=min_bucket_size,
+            max_bucket_size=max_bucket_size,
+            num_buckets=num_buckets,
+        )
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
@@ -1930,7 +1932,7 @@ def read_parquet(
                 "Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
             )
 
-        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
             ParquetDatasourceV2,
         )
 
@@ -3420,7 +3422,7 @@ def read_lerobot(
     root: Union[str, List[str]],
     *,
     episodes: Optional[List[int]] = None,
-    read_granularity: Literal["file", "episode"] = "file",
+    read_granularity: Literal["file", "episode", "dataset"] = "file",
     filesystem: Optional[
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
@@ -3518,6 +3520,18 @@ def read_lerobot(
             per file group, so each file is opened once; ``"episode"`` emits one
             task per episode. Use ``override_num_blocks`` to tune the final
             number of output blocks.
+
+            ``"dataset"`` reads at the granularity of entire LeRobot datasets
+            and is intended for reading a very large number of them. It defers
+            all per-dataset metadata resolution to the read tasks -- only the
+            first root is resolved on the driver, for a representative schema --
+            so planning stays cheap as the root count grows. A dataset is the
+            atomic read unit and is never split across tasks, so this mode emits
+            at most one task per dataset and ``override_num_blocks`` may not
+            exceed the number of datasets. All roots must be homogeneous with
+            the first (same ``video_keys`` / ``image_keys`` / ``fps`` /
+            non-camera features); unlike the other granularities this is not
+            pre-checked on the driver.
         filesystem: Filesystem for reading metadata and parquet. A pyarrow
             ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
             fsspec ``AbstractFileSystem``. By default it is selected from the URI
@@ -3602,23 +3616,65 @@ def read_lerobot(
         A :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
         camera, task, and metadata columns.
     """
-    datasource = LeRobotDatasource(
-        root=root,
-        episodes=episodes,
-        read_granularity=read_granularity,
-        filesystem=filesystem,
-        storage_options=storage_options,
-        frame_tolerance_s=frame_tolerance_s,
-        delta_timestamps=delta_timestamps,
-        delta_tolerance_s=delta_tolerance_s,
-    )
-    if override_num_blocks is None:
-        # Default to one read task per video-file group. Ray's generic
-        # block-count floor would over-split a video read, where each split
-        # re-opens a file and re-inits a torchcodec decoder -- a cost a small
-        # dataset can't amortize. An explicit override_num_blocks still
-        # splits/merges from this base (e.g. to parallelize a monolithic mp4).
-        override_num_blocks = datasource.default_num_blocks()
+    # Validated here rather than only in ``LeRobotDatasource`` so the message
+    # lists every granularity this API accepts -- the datasource proper never
+    # sees ``"dataset"``, and keeps its own (narrower) check for direct use.
+    valid_granularities = ("file", "episode", "dataset")
+    if read_granularity not in valid_granularities:
+        raise ValueError(
+            f"read_granularity must be one of {list(valid_granularities)}, got "
+            f"{read_granularity!r}."
+        )
+
+    if read_granularity == "dataset":
+        # A dataset is the atomic read unit here and is never split across
+        # tasks, so per-dataset metadata resolution is deferred to the read
+        # tasks and at most ``num_datasets`` tasks are produced.
+        datasource = LeRobotPerDatasetDatasource(
+            root,
+            episodes=episodes,
+            filesystem=filesystem,
+            storage_options=storage_options,
+            frame_tolerance_s=frame_tolerance_s,
+            delta_timestamps=delta_timestamps,
+            delta_tolerance_s=delta_tolerance_s,
+        )
+        if (
+            override_num_blocks is not None
+            and override_num_blocks > datasource.num_datasets
+        ):
+            # Fail loudly rather than silently delivering fewer blocks than
+            # requested.
+            raise ValueError(
+                f"override_num_blocks={override_num_blocks} is greater than the "
+                f"number of datasets ({datasource.num_datasets}). "
+                f"read_granularity='dataset' produces at most one read task per "
+                f"dataset, so it cannot deliver {override_num_blocks} blocks. Set "
+                f"override_num_blocks <= {datasource.num_datasets}, or use "
+                f"read_granularity='episode' or 'file' to split within a dataset."
+            )
+        # Do NOT default override_num_blocks to a per-dataset count here: with a
+        # very large number of datasets that would create as many blocks.
+        # Leaving it None lets Ray pick a bounded parallelism (the datasource
+        # reports a None size estimate; see estimate_inmemory_data_size).
+    else:
+        datasource = LeRobotDatasource(
+            root=root,
+            episodes=episodes,
+            read_granularity=read_granularity,
+            filesystem=filesystem,
+            storage_options=storage_options,
+            frame_tolerance_s=frame_tolerance_s,
+            delta_timestamps=delta_timestamps,
+            delta_tolerance_s=delta_tolerance_s,
+        )
+        if override_num_blocks is None:
+            # Default to one read task per video-file group. Ray's generic
+            # block-count floor would over-split a video read, where each split
+            # re-opens a file and re-inits a torchcodec decoder -- a cost a small
+            # dataset can't amortize. An explicit override_num_blocks still
+            # splits/merges from this base (e.g. to parallelize a monolithic mp4).
+            override_num_blocks = datasource.default_num_blocks()
     return read_datasource(
         datasource,
         num_cpus=num_cpus,
