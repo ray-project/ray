@@ -123,24 +123,6 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
-    def _validate_lora_configs(self):
-        """Ensure P/D can resolve the same requested adapter on both legs."""
-        prefill_lora = self.prefill_config.lora_config
-        decode_lora = self.decode_config.lora_config
-        if (prefill_lora is None) != (decode_lora is None):
-            raise ValueError("P/D LoRA must be configured on both prefill and decode")
-        if (
-            prefill_lora is not None
-            and decode_lora is not None
-            and prefill_lora.dynamic_lora_loading_path
-            != decode_lora.dynamic_lora_loading_path
-        ):
-            raise ValueError(
-                "P/D prefill and decode LoRA loading paths must be the same"
-            )
-        return self
-
-    @model_validator(mode="after")
     def _validate_same_engine(self):
         """Prefill and decode must use the same ``llm_engine``.
 
@@ -181,11 +163,13 @@ class PDServingArgs(BaseModelExtended):
     def _reject_sglang_data_parallel(self):
         """SGLang P/D with data_parallel_size>1 is not supported yet.
 
-        DP P/D uses DPPD{Prefill,Decode}Server, whose gang scheduling comes from
-        DPServer.get_deployment_options / __init__ — both read engine-config
-        fields (accelerator, placement_bundles) the minimal SGLangEngineConfig
-        does not carry. Rather than silently drop gang scheduling, fail fast.
-        Tracked as a follow-up (TODO: link a ticket here).
+        DP P/D routes through DPPD{Prefill,Decode}Server, whose DPServer.__init__
+        reads ``engine_config.placement_bundles`` to pin each DP rank to its
+        bundles and exports the result as VLLM_RAY_BUNDLE_INDICES. SGLangEngineConfig
+        carries neither field, and the env var is vLLM-only, so DP ranks would get
+        no bundle pinning. Fail fast rather than silently scatter TP ranks.
+
+        See https://github.com/ray-project/ray/issues/66634
         """
         for label, config in (
             ("prefill_config", self.prefill_config),
