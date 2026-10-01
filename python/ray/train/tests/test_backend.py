@@ -4,7 +4,7 @@ import sys
 import tempfile
 import time
 from typing import Set
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -33,6 +33,7 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
 from ray.train.torch import TorchConfig
+from ray.train.torch.config import _TorchBackend
 from ray.train.v2.jax.config import JaxConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -357,6 +358,62 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
             torch.distributed.is_initialized()
             and torch.distributed.get_world_size() == 2
         )
+
+    _start_training(e, check_process_group)
+    assert all(e.finish_training())
+
+    e._backend.on_shutdown(e.worker_group, e._backend_config)
+
+    _start_training(e, check_process_group)
+    assert not any(e.finish_training())
+
+
+@pytest.mark.parametrize(
+    "num_workers, num_gpus_per_worker, expected_bind_device",
+    [
+        # Full GPUs per worker: Ray assigns a distinct GPU to each worker.
+        (2, 1, True),
+        # Fractional GPUs: multiple workers can be assigned to the same physical GPU,
+        # in which case eager NCCL initialization fails with "Duplicate GPU detected".
+        (4, 0.5, False),
+        # A single rank can never collide with another rank.
+        (1, 0.5, True),
+        # No GPUs at all: there is no device to bind (and the gloo backend ignores
+        # the flag anyway).
+        (2, 0, False),
+    ],
+)
+def test_torch_process_group_device_binding(
+    num_workers, num_gpus_per_worker, expected_bind_device
+):
+    """Only bind a device to the process group if each rank owns a distinct GPU."""
+    worker_group = MagicMock()
+    worker_group.__len__.return_value = num_workers
+    worker_group.get_resources_per_worker.return_value = {"GPU": num_gpus_per_worker}
+    worker_group.execute_single.return_value = ("127.0.0.1", 1234)
+
+    with patch("ray.get"):
+        _TorchBackend().on_start(worker_group, TorchConfig())
+
+    assert worker_group.execute_single_async.call_count == num_workers
+    for call in worker_group.execute_single_async.call_args_list:
+        assert call.kwargs["bind_device"] is expected_bind_device
+
+
+def test_torch_start_shutdown_single_worker(ray_start_2_cpus):
+    """A single-worker process group must be destroyed on shutdown as well.
+
+    `on_start` initializes one regardless of the world size, and torch warns about
+    leaked resources if it is still alive when the worker process exits.
+    """
+    torch_config = TorchConfig(backend="gloo")
+    e = BackendExecutor(torch_config, num_workers=1)
+    e.start()
+
+    def check_process_group():
+        import torch
+
+        return torch.distributed.is_initialized()
 
     _start_training(e, check_process_group)
     assert all(e.finish_training())
