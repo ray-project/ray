@@ -11,25 +11,20 @@ from ray.experimental import internal_kv
 DASHBOARD_URL = "127.0.0.1:8265"
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def dashboard_process(monkeypatch):
     """Stub out the dashboard subprocess and the GCS client services.py builds."""
     process_info = MagicMock()
     process_info.process.poll.return_value = None
-    process_info.command = None
 
-    def fake_start_ray_process(command, *args, **kwargs):
-        process_info.command = command
-        return process_info
-
-    monkeypatch.setattr(services, "start_ray_process", fake_start_ray_process)
+    monkeypatch.setattr(
+        services, "start_ray_process", MagicMock(return_value=process_info)
+    )
     monkeypatch.setattr(services, "GcsClient", MagicMock())
     monkeypatch.setattr(
         ray._private.utils, "get_dashboard_dependency_error", lambda: None
     )
-    yield process_info
-    # _initialize_internal_kv() leaks the stub client into a module global.
-    internal_kv._internal_kv_reset()
+    return process_info
 
 
 def _start_api_server(
@@ -61,6 +56,7 @@ def _start_api_server(
 def test_start_api_server_address_resolution(
     dashboard_process, gcs_is_passive, expected_url
 ):
+    """Verifies start_api_server skips 60s address polling on passive GCS and returns None immediately."""
     gcs_client = services.GcsClient.return_value
     gcs_client.internal_kv_get.return_value = (
         DASHBOARD_URL.encode() if expected_url else None
@@ -78,12 +74,10 @@ def test_start_api_server_address_resolution(
 @pytest.mark.parametrize(
     "hook, expected", [("my.module:hook", "my.module:hook"), (None, "")]
 )
-def test_start_api_server_passes_the_tracing_startup_hook(
-    dashboard_process, hook, expected
-):
+def test_start_api_server_passes_the_tracing_startup_hook(hook, expected):
     _start_api_server(gcs_is_passive=True, tracing_startup_hook=hook)
-
-    assert f"--tracing-startup-hook={expected}" in dashboard_process.command
+    command = services.start_ray_process.call_args.args[0]
+    assert f"--tracing-startup-hook={expected}" in command
 
 
 def test_start_api_server_still_fails_on_a_dead_dashboard(dashboard_process):

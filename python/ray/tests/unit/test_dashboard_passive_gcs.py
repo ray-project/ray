@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 import sys
-from unittest.mock import ANY, AsyncMock, MagicMock
+from unittest.mock import ANY
 
 import pytest
 
@@ -18,6 +18,12 @@ from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
 from ray.dashboard.agent import DashboardAgent
 from ray.dashboard.head import DashboardHead
 from ray.exceptions import GcsPassiveError, RpcError
+from ray.tests.unit.passive_test_utils import (
+    count_logged as _count_logged,
+    make_mock_gcs_client,
+    passive_gcs_rejection as _passive_gcs_rejection,
+    set_mock_leader as _set_leader,
+)
 
 HEAD_LOGGER = "ray.dashboard.head"
 AGENT_LOGGER = "ray.dashboard.agent"
@@ -29,30 +35,6 @@ SESSION_NAME = "session_2026-01-01_00-00-00_000000_1"
 METRICS_ADDRESS = f"{NODE_IP}:{head_module.DASHBOARD_METRIC_PORT}"
 DASHBOARD_ADDRESS = f"{NODE_IP}:{HTTP_PORT}"
 TRACING_HOOK = "my.module:setup_tracing"
-
-
-def _passive_gcs_rejection():
-    """The error a passive GCS raises, as check_status() translates it."""
-    return GcsPassiveError(
-        "GCS server is in passive (read-only) mode.",
-        rpc_code=GRPC_STATUS_CODE_UNAVAILABLE,
-    )
-
-
-def _capture(caplog, logger_name):
-    """Attach caplog to a module logger.
-
-    The "ray" logger does not propagate to the root logger caplog listens on, so
-    caplog.at_level() alone records nothing.
-    """
-    logger = logging.getLogger(logger_name)
-    logger.addHandler(caplog.handler)
-    caplog.set_level(logging.INFO, logger=logger_name)
-    return logger
-
-
-def _count_logged(caplog, needle):
-    return sum(needle in record.getMessage() for record in caplog.records)
 
 
 def _puts(gcs_client):
@@ -71,51 +53,19 @@ def _put_args(gcs_client, key):
     return None
 
 
-@pytest.fixture(autouse=True)
-def leader_election_on(monkeypatch):
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", True)
-
-
-@pytest.fixture(autouse=True)
-def fast_registration_poll(monkeypatch):
-    monkeypatch.setattr(dashboard_consts, "GCS_REGISTER_RETRY_INTERVAL_S", 0.01)
-
-
-@pytest.fixture(autouse=True)
-def reset_internal_kv():
-    yield
-    internal_kv._internal_kv_reset()
+pytestmark = pytest.mark.usefixtures("enable_passive_gcs")
 
 
 @pytest.fixture
-def head_logs(caplog):
-    logger = _capture(caplog, HEAD_LOGGER)
-    yield caplog
-    logger.removeHandler(caplog.handler)
+def head_logs(caplog, capture_logger):
+    capture_logger(HEAD_LOGGER)
+    return caplog
 
 
 @pytest.fixture
-def agent_logs(caplog):
-    logger = _capture(caplog, AGENT_LOGGER)
-    yield caplog
-    logger.removeHandler(caplog.handler)
-
-
-def _gcs_client(*, leader):
-    gcs_client = MagicMock()
-    gcs_client.is_gcs_leader_local.return_value = leader
-    gcs_client.async_check_alive = AsyncMock(return_value=[])
-    gcs_client.async_internal_kv_put = AsyncMock(
-        side_effect=None if leader else _passive_gcs_rejection()
-    )
-    return gcs_client
-
-
-def _set_leader(gcs_client, leader):
-    gcs_client.is_gcs_leader_local.return_value = leader
-    gcs_client.async_internal_kv_put.side_effect = (
-        None if leader else _passive_gcs_rejection()
-    )
+def agent_logs(caplog, capture_logger):
+    capture_logger(AGENT_LOGGER)
+    return caplog
 
 
 @pytest.fixture
@@ -146,7 +96,7 @@ def make_head(monkeypatch, tmp_path):
             tracing_startup_hook=tracing_startup_hook,
         )
         # Assigned by run(), which these tests do not go through.
-        head.gcs_client = _gcs_client(leader=leader)
+        head.gcs_client = make_mock_gcs_client(leader=leader)
         internal_kv._initialize_internal_kv(head.gcs_client)
         return head
 
@@ -157,7 +107,7 @@ def make_head(monkeypatch, tmp_path):
 def make_agent(monkeypatch):
     def factory(*, leader):
         monkeypatch.setenv("RAY_NODE_ID", NODE_ID)
-        gcs_client = _gcs_client(leader=leader)
+        gcs_client = make_mock_gcs_client(leader=leader)
         monkeypatch.setattr(agent_module, "GcsClient", lambda **kwargs: gcs_client)
         # Writes a real ports file next to the session dir otherwise.
         monkeypatch.setattr(agent_module, "persist_port", lambda *args: None)
@@ -203,6 +153,7 @@ async def _registration_keeps_waiting(head):
 
 
 async def test_head_registers_both_addresses_when_active(make_head, head_logs):
+    """Verifies active Dashboard Head registers metrics and HTTP dashboard addresses immediately."""
     head = make_head(leader=True)
 
     await head._setup_metrics()
@@ -218,6 +169,7 @@ async def test_head_registers_both_addresses_when_active(make_head, head_logs):
 
 
 async def test_head_survives_a_passive_rejection(make_head, head_logs):
+    """Verifies Dashboard Head catches passive write refusals without crashing."""
     head = make_head(leader=False)
 
     # Neither write may take the dashboard process down.
@@ -252,6 +204,7 @@ async def test_head_reraises_errors(monkeypatch, make_head, flag_on, exc, expect
 
 
 async def test_head_replays_every_address_on_promotion(make_head, head_logs):
+    """Verifies a Dashboard Head replays both metrics and HTTP dashboard addresses on promotion to leader."""
     head = make_head(leader=False)
     await head._setup_metrics()
     head._dashboard_address = DASHBOARD_ADDRESS
@@ -375,30 +328,25 @@ async def test_head_stops_polling_once_registered(make_head):
     assert _puts(head.gcs_client) == []
 
 
-async def test_head_keeps_waiting_when_the_replay_is_refused(make_head, head_logs):
-    """Another head can win the race between the cache read and the writes."""
-    head = make_head(leader=False)
-    head._dashboard_address = DASHBOARD_ADDRESS
-    await _register_dashboard_address(head)
-    head.gcs_client.is_gcs_leader_local.return_value = True
-
-    await _registration_keeps_waiting(head)
-
-    assert head._dashboard_passive_latch.waiting_for_promotion
-    # The retries are silent; the window was already reported once.
-    assert _count_logged(head_logs, "GCS is in passive mode") == 1
-
-
-async def test_head_does_not_replay_while_still_passive(make_head):
+async def test_head_keeps_waiting_while_passive_or_replay_refused(make_head, head_logs):
+    """Loop stays waiting when passive, and continues waiting silently if replay writes fail."""
     head = make_head(leader=False)
     head._dashboard_address = DASHBOARD_ADDRESS
     await _register_dashboard_address(head)
     head.gcs_client.async_internal_kv_put.reset_mock()
 
+    # 1. While still passive: no replay writes are attempted.
     await _registration_keeps_waiting(head)
-
     assert _puts(head.gcs_client) == []
     assert head._dashboard_passive_latch.waiting_for_promotion
+
+    # 2. Local cache flips to leader, but writes are refused (race condition):
+    # attempts replay, stays waiting, and does not spam logs.
+    head.gcs_client.is_gcs_leader_local.return_value = True
+    await _registration_keeps_waiting(head)
+    assert len(_puts(head.gcs_client)) > 0
+    assert head._dashboard_passive_latch.waiting_for_promotion
+    assert _count_logged(head_logs, "GCS is in passive mode") == 1
 
 
 async def test_head_does_not_poll_when_flag_off(monkeypatch, make_head):
