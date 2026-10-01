@@ -6,10 +6,19 @@ from ray.train.health.decision import (
     Reattempt,
 )
 from ray.train.health.policy import Evaluator, HealthConfig, HealthPolicy
-from ray.train.health.probe import NodeProbe, Probe, ProbeResult, WorkerProbe
+from ray.train.health.probe import (
+    ControllerProbe,
+    ControllerProbeContext,
+    NodeProbe,
+    Probe,
+    ProbeResult,
+    WorkerProbe,
+)
 from ray.train.health.state import HealthState
 
 __all__ = [
+    "ControllerProbe",
+    "ControllerProbeContext",
     "Diagnose",
     "Evaluator",
     "Evict",

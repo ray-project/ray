@@ -3,6 +3,8 @@ import sys
 import pytest
 
 from ray.train.health import (
+    ControllerProbe,
+    ControllerProbeContext,
     Diagnose,
     Evaluator,
     Evict,
@@ -33,6 +35,15 @@ class Named(NodeProbe):
 class Loss(WorkerProbe):
     def poll(self):
         return ProbeResult(metrics={"loss": 1.0})
+
+
+class CommProgress(ControllerProbe):
+    def __init__(self):
+        self.polls = 0
+
+    def poll(self, ctx):
+        self.polls += 1
+        return {"comm0": ProbeResult(metrics={"ranks": float(len(ctx.rank_to_node))})}
 
 
 class Healthy(Evaluator):
@@ -74,6 +85,28 @@ def test_results_are_read_by_probe_class():
     assert sorted(state.results(Loss)) == [0, 1]
     assert state.results(HostTemp) == {"nB": ProbeResult(metrics={"gpu0_temp_c": 71.0})}
     assert state.results(Named) == {}
+
+
+def test_a_controller_probe_reports_its_own_keys_and_keeps_state():
+    probe = CommProgress()
+    ctx = ControllerProbeContext(rank_to_node={0: "nA", 1: "nB"})
+    assert probe.poll(ctx) == {"comm0": ProbeResult(metrics={"ranks": 2.0})}
+    probe.poll(ctx)
+    assert probe.polls == 2
+    assert ControllerProbeContext().rank_to_node == {}
+
+
+def test_results_of_a_controller_probe_are_keyed_by_its_keys():
+    state = HealthState(probe_results={"CommProgress": {"comm0": ProbeResult()}})
+    assert state.results(CommProgress) == {"comm0": ProbeResult()}
+
+
+def test_a_controller_probe_must_implement_poll():
+    class NoPoll(ControllerProbe):
+        pass
+
+    with pytest.raises(TypeError):
+        NoPoll()
 
 
 def test_an_evaluator_returns_one_decision():
