@@ -30,6 +30,7 @@ from ray.serve._private.common import (
     DeploymentID,
     HandleMetricReport,
     NodeId,
+    ReplicaID,
     ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
@@ -409,14 +410,14 @@ class ServeController:
 
     def record_replica_health(
         self,
-        replica_unique_id: str,
+        replica_id: ReplicaID,
         checked_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ):
         """Self-health heartbeat from a replica, standing in for a pull probe."""
         self.deployment_state_manager.record_replica_health(
-            replica_unique_id, checked_at, healthy, consecutive_failures
+            replica_id, checked_at, healthy, consecutive_failures
         )
 
     def record_autoscaling_metrics_from_replica(
