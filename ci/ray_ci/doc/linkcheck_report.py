@@ -78,7 +78,8 @@ def load_broken(path: str) -> list:
 
     Returns:
         The records whose status is ``broken`` or ``timeout`` and whose URI is
-        external.
+        external, or None when the file doesn't exist because linkcheck didn't
+        produce a result.
     """
     broken = []
     try:
@@ -95,6 +96,7 @@ def load_broken(path: str) -> list:
                     broken.append(record)
     except FileNotFoundError:
         print(f"::warning:: {path} not found; skipping report.")
+        return None
     return broken
 
 
@@ -171,6 +173,10 @@ def main(path: str) -> int:
         Always 0. The report is the signal; this never fails the build.
     """
     broken = load_broken(path)
+    if broken is None:
+        # No report at all, not an all-clear one, so a consumer can tell a run
+        # that never produced output apart from a clean run.
+        return 0
     if not broken:
         print("linkcheck: no broken external links reported.")
         write_report([], [])

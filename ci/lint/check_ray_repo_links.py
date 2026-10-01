@@ -36,12 +36,13 @@ LINK = re.compile(
     r"/(?:refs/heads/)?master/"
     # A path runs until whitespace or a character that ends a URL in Markdown,
     # rST, HTML, Python strings, or JSON-encoded notebook text.
-    r"([^\s\"'`()<>\[\]{}|\\^]+)"
+    r"([^\s\"'`()<>\[\]|\\^]+)"
 )
 
 # Characters that mark a templated path, such as an f-string or a placeholder,
-# rather than a literal one.
-TEMPLATE_CHARS = set("$*")
+# rather than a literal one. The path pattern above captures braces so that a
+# templated path is skipped whole instead of being cut off at the brace.
+TEMPLATE_CHARS = set("$*{}")
 
 
 def tracked_paths() -> tuple:
@@ -77,8 +78,12 @@ def candidate_lines() -> list:
         sys.stderr.write(result.stderr.decode())
         sys.exit(2)
     lines = []
-    for record in result.stdout.decode("utf-8", "replace").splitlines():
-        # With -z, the separators after the file name and line number are NULs.
+    # With -z, the separators after the file name and line number are NULs and
+    # each record still ends in a newline. Split on "\n" only: splitlines() also
+    # breaks on form feeds and Unicode line separators inside a matched line.
+    for record in result.stdout.decode("utf-8", "replace").split("\n"):
+        if not record:
+            continue
         path, lineno, text = record.split("\0", 2)
         lines.append((path, int(lineno), text))
     return lines
