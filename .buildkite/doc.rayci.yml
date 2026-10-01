@@ -123,13 +123,12 @@ steps:
     commands:
       # `|| true` so a broken link doesn't stop the report step below. The step
       # stays soft_fail, and the report script owns turning the output into a
-      # Slack alert. linkcheck_all writes _build/linkcheck/output.json.
+      # report. linkcheck_all writes _build/linkcheck/output.json.
       - make -C doc/ linkcheck_all || true
-      # Re-checks reported-broken external links and posts the confirmed ones to
-      # Slack. It reads the webhook from DOCS_LINKCHECK_SLACK_WEBHOOK and, when
-      # that env var is unset, prints the confirmed list and skips the alert, so
-      # this is safe to land before the secret is provisioned. Wiring the secret
-      # (via ci/env/setup_credentials.py) is the remaining follow-up.
+      # Re-checks reported-broken external links, prints the confirmed ones, and
+      # writes them to the linkcheck-report.json artifact. The step needs no
+      # credentials: a docs-team job reads the artifact through the Buildkite
+      # API and posts the Slack digest.
       - python ci/ray_ci/doc/linkcheck_report.py doc/_build/linkcheck/output.json
     depends_on: docbuild
     job_env: docbuild-py3.11
