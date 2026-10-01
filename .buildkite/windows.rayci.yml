@@ -1,6 +1,19 @@
 group: windows tests
 sort_key: "~windows"
 steps:
+  # repro-ci: windows step, see .buildkite/core.rayci.yml
+  - label: ":ray: repro-ci auto: :windows: //python/ray/tests/unit:test_runtime_env_image_uri //python/ray/tests:test_token_auth_integration (x3)"
+    key: repro-ci-windows
+    tags:
+      - core_python
+    job_env: WINDOWS
+    instance_type: windows
+    parallelism: 3
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/unit:test_runtime_env_image_uri //python/ray/tests:test_token_auth_integration core --build-name windowsbuild --operating-system windows --test-env=CI="1" --test-env=RAY_CI_POST_WHEEL_TESTS="1" --test-env=USERPROFILE
+    depends_on: windowsbuild
+
   - name: windowsbuild
     wanda: ci/docker/windows.build.wanda.yaml
     instance_type: builder-windows

@@ -68,6 +68,8 @@ steps:
       - corebuild-multipy(python=3.10)
 
   # tests
+
+  # repro-ci: auto repro of windows://python/ray/tests/unit:test_runtime_env_image_uri windows://python/ray/tests:test_token_auth_integration (one per spike branch; delete branch to reset)
   - label: ":ray: core: python tests"
     tags:
       - core_python
