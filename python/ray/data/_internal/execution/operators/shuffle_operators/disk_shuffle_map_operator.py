@@ -350,7 +350,7 @@ class DiskHashShuffleMapOp(
         input_meta = BlockMetadata(
             num_rows=input_rows,
             size_bytes=input_bytes,
-            exec_stats=None,
+            exec_stats=handle.get("exec_stats"),
             input_files=None,
         )
         self._map_blocks_stats.append(input_meta.to_stats())
