@@ -41,6 +41,7 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
+import asyncio
 import json
 import logging
 import os
@@ -371,8 +372,13 @@ async def async_put_recorded_extra_usage_tags(
     """
     with _recorded_extra_usage_tags_lock:
         recorded = list(_recorded_extra_usage_tags.items())
-    for key, value in recorded:
-        await _async_put_extra_usage_tag(key, value, gcs_client)
+    if recorded:
+        await asyncio.gather(
+            *[
+                _async_put_extra_usage_tag(key, value, gcs_client)
+                for key, value in recorded
+            ]
+        )
 
 
 def put_pre_init_usage_stats():
@@ -1000,7 +1006,7 @@ def generate_report_data(
 
     gcs_client = ray._raylet.GcsClient(address=gcs_address, cluster_id=cluster_id)
 
-    cluster_metadata = get_cluster_metadata(gcs_client)
+    cluster_metadata = get_cluster_metadata(gcs_client) or {}
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
 
     data = UsageStatsToReport(
@@ -1013,12 +1019,12 @@ def generate_report_data(
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
-        ray_version=cluster_metadata["ray_version"],
-        python_version=cluster_metadata["python_version"],
+        ray_version=cluster_metadata.get("ray_version"),
+        python_version=cluster_metadata.get("python_version"),
         session_id=cluster_id,
-        git_commit=cluster_metadata["git_commit"],
-        os=cluster_metadata["os"],
-        session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
+        git_commit=cluster_metadata.get("git_commit"),
+        os=cluster_metadata.get("os"),
+        session_start_timestamp_ms=cluster_metadata.get("session_start_timestamp_ms"),
         cloud_provider=cluster_config_to_report.cloud_provider,
         min_workers=cluster_config_to_report.min_workers,
         max_workers=cluster_config_to_report.max_workers,

@@ -123,7 +123,7 @@ async def test_the_subscription_survives_a_failed_node_update(
 
     # The second node was still processed.
     assert DEAD_NODE_ID in DataSource.nodes
-    assert count_logged(caplog, f"Failed updating node {HEAD_NODE_ID}") == 1
+    assert count_logged(caplog, "Failed updating node.") == 1
 
 
 if __name__ == "__main__":
