@@ -77,7 +77,12 @@ def recorded_resource_requests(monkeypatch):
     original_send = RateBasedClusterAutoscaler._send_resource_request
 
     def _record(self, resource_request):
-        requests.append([dict(bundle) for bundle in resource_request])
+        # `None` is a keep-alive that renews the registration without demand.
+        requests.append(
+            None
+            if resource_request is None
+            else [dict(bundle) for bundle in resource_request]
+        )
         return original_send(self, resource_request)
 
     monkeypatch.setattr(RateBasedClusterAutoscaler, "_send_resource_request", _record)
