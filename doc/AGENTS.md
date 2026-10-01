@@ -1,8 +1,5 @@
----
-description: Ray documentation style guide for technical content
-alwaysApply: true
-path: doc/**/*
----
+<!-- Prose style for Ray documentation, shared by every agent that works under doc/. -->
+<!-- Claude Code loads this file through the import in doc/.claude/CLAUDE.md. Cursor and other agents read AGENTS.md directly. -->
 
 # Ray documentation style
 
@@ -18,7 +15,7 @@ The rules below are the highest-frequency corrections. The full guide covers wor
 
 ## Word choice
 
-- Use contractions (don't, isn't, can't), except in warnings and error messages.
+- Always use contractions (don't, isn't, can't).
 - "such as," not "like," for examples.
 - Cut filler: simply, just, basically, actually, really, very.
 - Plain words: "use" (not utilize or leverage), "to" (not in order to), "through" (not via), "before" (not prior to).
