@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, Mapping, Optional, Type
 
 from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
@@ -250,6 +250,80 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     return build_openai_app(builder_config=llm_serving_args)
 
 
+@PublicAPI(stability="alpha")
+def build_openai_router_app(
+    model_applications: Mapping[str, str],
+) -> "Application":
+    """Build an OpenAI router for independently deployed model applications.
+
+    The returned application routes ``/v1/chat/completions`` according to the
+    request's model ID and directly serves ``/v1/models``. Deploy each model
+    first using :func:`build_openai_app`, then deploy this application at the
+    shared OpenAI route prefix. HAProxy and direct streaming must be enabled.
+
+    Example:
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import build_openai_app, build_openai_router_app
+
+            serve.run(
+                build_openai_app({"llm_configs": [qwen_config]}),
+                name="llm-model-qwen",
+                route_prefix="/models/qwen-0.5b",
+            )
+            serve.run(
+                build_openai_app({"llm_configs": [llama_config]}),
+                name="llm-model-llama",
+                route_prefix="/models/llama-8b",
+            )
+            serve.run(
+                build_openai_router_app(
+                    {
+                        "qwen-0.5b": "llm-model-qwen",
+                        "llama-8b": "llm-model-llama",
+                    }
+                ),
+                name="main",
+                route_prefix="/",
+            )
+
+        .. code-block:: yaml
+
+            applications:
+              - name: llm-model-qwen
+                route_prefix: /models/qwen-0.5b
+                import_path: ray.serve.llm:build_openai_app
+                args:
+                  llm_serving_args:
+                    llm_configs:
+                      - model_loading_config:
+                          model_id: qwen-0.5b
+                          model_source: Qwen/Qwen2.5-0.5B-Instruct
+
+              - name: main
+                route_prefix: /
+                import_path: ray.serve.llm:build_openai_router_app
+                args:
+                  model_applications:
+                    qwen-0.5b: llm-model-qwen
+
+    Args:
+        model_applications: Mapping from OpenAI model IDs to the names of the
+            Serve applications that serve them. Each target application must
+            contain exactly one model and use direct streaming. KV-aware routing
+            and LoRA are not supported yet.
+
+    Returns:
+        A router application to deploy at the shared OpenAI route prefix.
+    """
+    from ray.llm._internal.serve.core.ingress.builder import (
+        build_openai_router_app,
+    )
+
+    return build_openai_router_app(model_applications)
+
+
 @PublicAPI(stability="stable")
 def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     """Build a deployable application utilizing P/D disaggregation.
@@ -402,6 +476,7 @@ __all__ = [
     "LoraConfig",
     "build_llm_deployment",
     "build_openai_app",
+    "build_openai_router_app",
     "build_pd_openai_app",
     "build_dp_deployment",
     "build_dp_openai_app",

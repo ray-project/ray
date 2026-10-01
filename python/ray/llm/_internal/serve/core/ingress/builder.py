@@ -1,6 +1,6 @@
 import os
 import pprint
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Mapping, Optional, Type, Union
 
 from pydantic import Field, field_validator, model_validator
 
@@ -28,7 +28,10 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
-from ray.serve._private.constants import RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
+)
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -310,4 +313,53 @@ def build_openai_app(builder_config: dict) -> Application:
         model_cards=model_cards,
         lora_paths=lora_paths,
         **ingress_cls_config.ingress_extra_kwargs,
+    )
+
+
+def _validate_model_applications(
+    model_applications: Mapping[str, str],
+) -> Dict[str, str]:
+    if not isinstance(model_applications, Mapping):
+        raise TypeError(
+            "model_applications must be a mapping of model IDs to app names."
+        )
+
+    result = dict(model_applications)
+    if not result:
+        raise ValueError("model_applications must contain at least one model.")
+    for model_id, application_name in result.items():
+        if not isinstance(model_id, str) or not model_id:
+            raise ValueError("Model IDs must be nonempty strings.")
+        if not isinstance(application_name, str) or not application_name:
+            raise ValueError("Application names must be nonempty strings.")
+    if len(set(result.values())) != len(result):
+        raise ValueError("Each model must reference a different Serve application.")
+    return result
+
+
+def build_openai_router_app(
+    model_applications: Mapping[str, str],
+) -> Application:
+    """Build a router for independently deployed OpenAI model applications."""
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        raise ValueError(
+            "build_openai_router_app requires HAProxy. Set "
+            "RAY_SERVE_ENABLE_HA_PROXY=1 on the Ray cluster."
+        )
+    if not RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        raise ValueError(
+            "build_openai_router_app requires direct streaming. Set "
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 on the Ray cluster."
+        )
+
+    from ray.llm._internal.serve.core.ingress.applications import RouterApplication
+
+    models = _validate_model_applications(model_applications)
+    return (
+        serve.deployment(
+            RouterApplication,
+            **RouterApplication.get_deployment_options(),
+        )
+        .bind(model_applications=models)
+        ._as_router_application()
     )
