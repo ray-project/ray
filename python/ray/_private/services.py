@@ -1370,6 +1370,9 @@ def start_api_server(
             f"--tracing-startup-hook={tracing_startup_hook or ''}",
         ]
 
+        if gcs_is_passive:
+            command.append("--gcs-is-passive")
+
         if stdout_filepath:
             command.append(f"--stdout-filepath={stdout_filepath}")
         if stderr_filepath:

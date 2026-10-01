@@ -205,6 +205,9 @@ class NodeHead(SubprocessModule):
             poll_interval_s=GCS_REGISTER_RETRY_INTERVAL_S,
             latch=self._node_updates_latch,
         )
+        if ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+            # reset the start time after promotion to leader
+            self._module_start_time = time.time()
 
         subscriber = GcsAioNodeInfoSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
@@ -333,7 +336,7 @@ class NodeHead(SubprocessModule):
             except Exception:
                 # This loop is the only writer of DataSource.nodes, so one bad
                 # update must not end the subscription.
-                logger.exception("Failed updating node %s.", node.get("nodeId"))
+                logger.exception("Failed updating node.")
             if not self._head_node_registration_time_s:
                 # head node is not registered yet
                 if (

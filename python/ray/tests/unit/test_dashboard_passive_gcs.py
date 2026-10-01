@@ -70,7 +70,9 @@ def agent_logs(caplog, capture_logger):
 
 @pytest.fixture
 def make_head(monkeypatch, tmp_path):
-    def factory(*, leader, minimal=False, tracing_startup_hook=None):
+    def factory(
+        *, leader, minimal=False, tracing_startup_hook=None, gcs_is_passive=False
+    ):
         # Otherwise _setup_metrics binds a real metrics HTTP server.
         monkeypatch.setattr(head_module, "prometheus_client", None)
         # DashboardHead derives session_name from the session directory name.
@@ -94,6 +96,7 @@ def make_head(monkeypatch, tmp_path):
             minimal=minimal,
             serve_frontend=False,
             tracing_startup_hook=tracing_startup_hook,
+            gcs_is_passive=gcs_is_passive,
         )
         # Assigned by run(), which these tests do not go through.
         head.gcs_client = make_mock_gcs_client(leader=leader)
@@ -310,6 +313,31 @@ async def test_head_replays_all_named_replay_keys_on_promotion(make_head):
     }
     expected = set(dashboard_consts.HEAD_PROMOTION_REPLAY_KEYS)
     assert replayed == expected
+
+
+async def test_head_replays_keys_when_started_passive_even_if_promoted_before_registration(
+    make_head,
+):
+    """If Node started passive, DashboardHead must replay keys even if GCS promoted during boot."""
+    head = make_head(
+        leader=True, tracing_startup_hook=TRACING_HOOK, gcs_is_passive=True
+    )
+    assert head._dashboard_passive_latch.waiting_for_promotion
+
+    await head._setup_metrics()
+    head._dashboard_address = DASHBOARD_ADDRESS
+    await _register_dashboard_address(head)
+    head.gcs_client.async_internal_kv_put.reset_mock()
+
+    await _await_registration(head)
+
+    replayed = {
+        (call.args[0], call.kwargs.get("namespace"))
+        for call in head.gcs_client.async_internal_kv_put.call_args_list
+    }
+    expected = set(dashboard_consts.HEAD_PROMOTION_REPLAY_KEYS)
+    assert replayed == expected
+    assert not head._dashboard_passive_latch.waiting_for_promotion
 
 
 async def test_head_stops_polling_once_registered(make_head):

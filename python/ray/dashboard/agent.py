@@ -21,7 +21,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.gcs_passive_utils import (
     PassiveLatch,
-    is_refused_by_passive_gcs,
+    async_put_kv_passive_safe,
 )
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
@@ -235,25 +235,19 @@ class DashboardAgent:
         write is attempted rather than predicted with is_gcs_leader(): it has to
         happen anyway, so its answer is a leadership probe that costs nothing.
         """
-        put_by_node_id = self.gcs_client.async_internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-            json.dumps([self.ip, http_port, grpc_port]).encode(),
-            True,
+        return await async_put_kv_passive_safe(
+            self.gcs_client,
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}",
+            json.dumps([self.ip, http_port, grpc_port]),
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        ) and await async_put_kv_passive_safe(
+            self.gcs_client,
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}",
+            json.dumps([self.node_id, http_port, grpc_port]),
+            overwrite=True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
-        put_by_ip = self.gcs_client.async_internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-            json.dumps([self.node_id, http_port, grpc_port]).encode(),
-            True,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        )
-        try:
-            await asyncio.gather(put_by_node_id, put_by_ip)
-        except Exception as e:
-            if not is_refused_by_passive_gcs(e):
-                raise
-            return False
-        return True
 
     async def _register_agent_address(
         self, http_port: int, grpc_port: int

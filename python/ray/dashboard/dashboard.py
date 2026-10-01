@@ -61,6 +61,8 @@ class Dashboard:
             Ex: proxy_server_url=http://historyserver:8080
         tracing_startup_hook: The `module:function` tracing hook this node was
             started with, republished after a promotion.
+        gcs_is_passive: Whether GCS was in passive mode when the head node
+            started.
     """
 
     def __init__(
@@ -84,6 +86,7 @@ class Dashboard:
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
         tracing_startup_hook: Optional[str] = None,
+        gcs_is_passive: bool = False,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
@@ -105,6 +108,7 @@ class Dashboard:
             modules_to_load=modules_to_load,
             proxy_server_url=proxy_server_url,
             tracing_startup_hook=tracing_startup_hook,
+            gcs_is_passive=gcs_is_passive,
         )
 
     async def run(self):
@@ -255,6 +259,12 @@ if __name__ == "__main__":
         help="The module:function tracing hook this node was started with, "
         "republished to the KV store after a promotion.",
     )
+    parser.add_argument(
+        "--gcs-is-passive",
+        action="store_true",
+        default=False,
+        help="Whether GCS was in passive mode when the head node started.",
+    )
 
     args = parser.parse_args()
 
@@ -310,6 +320,7 @@ if __name__ == "__main__":
             modules_to_load=modules_to_load,
             proxy_server_url=args.proxy_server_url,
             tracing_startup_hook=args.tracing_startup_hook,
+            gcs_is_passive=args.gcs_is_passive,
         )
 
         def sigterm_handler():
