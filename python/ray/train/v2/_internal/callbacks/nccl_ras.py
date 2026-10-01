@@ -29,7 +29,7 @@ import tempfile
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     Any,
@@ -88,6 +88,10 @@ _UNSAFE_FILENAME_CHARS = re.compile(r"[^0-9A-Za-z._-]")
 # User-facing escalation milestones
 _FIRST_SUSPICION_AFTER_S: float = 60.0
 _PERIODIC_WARN_EVERY_S: float = 120.0
+
+# Ranks named per side of a communicator's skew in a log line; the rest are
+# summarised as a count so a 1000-rank job doesn't log 1000 ranks per poll.
+_MAX_RANKS_LOGGED: int = 8
 
 
 def parse_ras_addr(addr: str) -> Tuple[str, int]:
@@ -215,12 +219,18 @@ class RASReport:
         comm_rank_status: Maps each communicator and their ranks with their
             status. A hang requires that the rank to be RUNNING.
         raw_json: The ``ncclras`` output this report was parsed from
+        comm_rank_processes: Maps each communicator and their ranks to the
+            ``(host, pid)`` of the process running that rank, used to find the
+            Ray Train worker behind a communicator rank.
     """
 
     timestamp: str
     comm_op_counts: Dict[str, Dict[int, Dict[str, int]]]
     comm_rank_status: Dict[str, Dict[int, str]]
     raw_json: str = ""
+    comm_rank_processes: Dict[str, Dict[int, Tuple[str, int]]] = field(
+        default_factory=dict
+    )
 
     @property
     def comm_op_skews(self) -> Dict[str, Dict[str, int]]:
@@ -252,6 +262,29 @@ class RASReport:
                 for rank_status in self.comm_rank_status[comm_id].values()
             )
         }
+
+    def widest_skew(self, comm_id: str) -> Tuple[str, List[int], List[int]]:
+        """Split a communicator's ranks on its most skewed collective.
+
+        Args:
+            comm_id: A communicator in this report.
+
+        Returns:
+            ``(op_name, behind_ranks, ahead_ranks)``: the collective with the
+            widest launch-count spread, the ranks at that collective's lowest
+            count, and every other rank, each sorted by communicator rank.
+        """
+        op_skews = self.comm_op_skews[comm_id]
+        # Ties broken by op name so the choice is stable across polls.
+        op = max(op_skews, key=lambda name: (op_skews[name], name))
+        counts = {
+            rank: op_counts.get(op, 0)
+            for rank, op_counts in self.comm_op_counts[comm_id].items()
+        }
+        lowest = min(counts.values())
+        behind = sorted(rank for rank, count in counts.items() if count == lowest)
+        ahead = sorted(rank for rank, count in counts.items() if count != lowest)
+        return op, behind, ahead
 
     @property
     def healthy(self) -> bool:
@@ -351,7 +384,7 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
             return None
 
     try:
-        comm_op_counts, comm_rank_status = {}, {}
+        comm_op_counts, comm_rank_status, comm_rank_processes = {}, {}, {}
         for comm in data["communicators"]:
             comm_op_counts[comm["hash"]] = {
                 rank["rank"]: {
@@ -363,8 +396,18 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
                 rank["rank"]: RASReport.rank_status(rank["status"])
                 for rank in comm["ranks"]
             }
+            comm_rank_processes[comm["hash"]] = {
+                rank["rank"]: (rank.get("host", ""), int(rank.get("pid", -1)))
+                for rank in comm["ranks"]
+            }
 
-        return RASReport(data["timestamp"], comm_op_counts, comm_rank_status, ras_json)
+        return RASReport(
+            data["timestamp"],
+            comm_op_counts,
+            comm_rank_status,
+            ras_json,
+            comm_rank_processes,
+        )
     except (KeyError, TypeError, ValueError) as e:
         logger.info(
             "NCCL RAS JSON did not match the expected schema: %s",
@@ -803,6 +846,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             "The possible reasons for this is: a rank hit a divergent code "
             "path, exited early, a GPU or network hardware failure, or a "
             "collective was launched with a mismatched shape, dtype, or call order.\n"
+            f"{self.describe_stalled_comms(report, confirmed_comm_hangs)}\n"
+            "The ranks behind are the usual culprits (they never reached the "
+            "collective), unless the ranks ahead are a minority that launched "
+            "an extra collective.\n"
             "To debug:\n"
             "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
         )
@@ -817,7 +864,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 f"counts drifted over the polls before the hang ({ras_history_dir})\n"
             )
         if self._action == NCCL_RAS_ACTION_FAIL:
-            raise NCCLHangError(message, worker_failures={})
+            raise NCCLHangError(
+                message,
+                worker_failures=self.stalled_worker_failures(
+                    report, confirmed_comm_hangs
+                ),
+            )
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
             logger.warning(message)
 
@@ -842,13 +894,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             logger.warning(
                 "Possible NCCL hang detected! %d of %d communicators (%s) have "
                 "made no progress over %.0f seconds (%d consecutive polls). "
-                "Continuing to monitor, this might be a transient stall. %s",
+                "Continuing to monitor, this might be a transient stall. %s\n%s",
                 len(new_suspicions),
                 total_comms,
                 ", ".join(new_suspicions),
                 self._suspicion_polls * self._poll_interval_s,
                 self._suspicion_polls,
                 escalation,
+                self.describe_stalled_comms(report, new_suspicions),
             )
 
         # Periodically log every still-frozen communicator in a single
@@ -873,15 +926,152 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 )
             logger.warning(
                 "NCCL hang still suspected! %d of %d communicators (%s) have made "
-                "no progress. %s",
+                "no progress. %s\n%s",
                 len(self.comm_deadlock_count),
                 total_comms,
                 stalled_comms,
                 periodic_escalation,
+                self.describe_stalled_comms(report, list(self.comm_deadlock_count)),
             )
             ras_human_output = self.fetch_ras_human_report()
             if ras_human_output:
                 logger.info("%s", ras_human_output)
+
+    def index_train_workers(self) -> Dict[Tuple[str, int], Worker]:
+        """Index the worker group by the process each worker runs in.
+
+        RAS identifies a rank by the host and pid of its NCCL process, which for
+        Ray Train is the worker actor's process, so ``(node_ip, pid)`` joins a
+        RAS rank to its worker. A pid is only unique per node, hence the pair.
+
+        Returns:
+            ``{(node_ip, pid): worker}``, empty when there is no worker group.
+        """
+        if self._worker_group is None:
+            return {}
+        return {
+            (worker.metadata.node_ip, worker.metadata.pid): worker
+            for worker in self._worker_group.get_workers()
+        }
+
+    @staticmethod
+    def find_train_worker(
+        workers: Dict[Tuple[str, int], Worker], host: str, pid: int
+    ) -> Optional[Worker]:
+        """Find the Ray Train worker running a RAS rank's process.
+
+        Falls back to the pid alone, when exactly one worker has it, because RAS
+        can report the address of a different interface than Ray's node IP on
+        multi-NIC nodes.
+
+        Args:
+            workers: The index from :meth:`index_train_workers`.
+            host: The rank's host, as reported by RAS.
+            pid: The rank's process id, as reported by RAS.
+
+        Returns:
+            The matching worker, or ``None`` if there isn't exactly one.
+        """
+        if (host, pid) in workers:
+            return workers[(host, pid)]
+        same_pid = [worker for (_, wpid), worker in workers.items() if wpid == pid]
+        return same_pid[0] if len(same_pid) == 1 else None
+
+    def describe_stalled_comms(self, report: RASReport, comm_ids: List[str]) -> str:
+        """One line per communicator naming the ranks on each side of its skew.
+
+        Each rank is named by its communicator rank, Ray Train world rank and
+        node IP, e.g. ``comm rank 3 (train rank 11, node 10.0.0.5)``.
+
+        Never raises: a failure here only loses log detail, so it must not
+        reach the poll hook and disable detection.
+
+        Args:
+            report: The current poll's report.
+            comm_ids: The stalled communicators to describe.
+
+        Returns:
+            One line per communicator, or ``""`` if they couldn't be built.
+        """
+        try:
+            workers = self.index_train_workers()
+
+            def describe(comm_id: str, ranks: List[int]) -> str:
+                described = []
+                for rank in ranks[:_MAX_RANKS_LOGGED]:
+                    host, pid = report.comm_rank_processes.get(comm_id, {}).get(
+                        rank, ("", -1)
+                    )
+                    worker = self.find_train_worker(workers, host, pid)
+                    if worker is not None and worker.distributed_context is not None:
+                        described.append(
+                            f"comm rank {rank} (train rank "
+                            f"{worker.distributed_context.world_rank}, "
+                            f"node {worker.metadata.node_ip})"
+                        )
+                    else:
+                        described.append(
+                            f"comm rank {rank} (train rank unknown, "
+                            f"node {host or 'unknown'}, pid {pid})"
+                        )
+                if len(ranks) > _MAX_RANKS_LOGGED:
+                    described.append(f"and {len(ranks) - _MAX_RANKS_LOGGED} more")
+                return ", ".join(described)
+
+            lines = []
+            for comm_id in comm_ids:
+                op, behind, ahead = report.widest_skew(comm_id)
+                counts = report.comm_op_counts[comm_id]
+                lines.append(
+                    f"  - Communicator {comm_id} on {op}: "
+                    f"{len(behind)} rank(s) behind at "
+                    f"{counts[behind[0]].get(op, 0)} launches: "
+                    f"{describe(comm_id, behind)}; "
+                    f"{len(ahead)} rank(s) ahead at up to "
+                    f"{max(counts[rank].get(op, 0) for rank in ahead)} launches: "
+                    f"{describe(comm_id, ahead)}"
+                )
+            return "\n".join(lines)
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not describe the stalled ranks.", exc_info=True)
+            return ""
+
+    def stalled_worker_failures(
+        self, report: RASReport, comm_ids: List[str]
+    ) -> Dict[int, Exception]:
+        """The ``worker_failures`` for a :class:`NCCLHangError`.
+
+        Args:
+            report: The current poll's report.
+            comm_ids: The communicators confirmed hung.
+
+        Returns:
+            ``{world_rank: error}`` for each Ray Train worker behind on a
+            confirmed communicator; ranks with no matching worker are left out.
+        """
+        failures: Dict[int, Exception] = {}
+        try:
+            workers = self.index_train_workers()
+            for comm_id in comm_ids:
+                op, behind, _ = report.widest_skew(comm_id)
+                for rank in behind:
+                    host, pid = report.comm_rank_processes.get(comm_id, {}).get(
+                        rank, ("", -1)
+                    )
+                    worker = self.find_train_worker(workers, host, pid)
+                    if worker is None or worker.distributed_context is None:
+                        continue
+                    failures.setdefault(
+                        worker.distributed_context.world_rank,
+                        RuntimeError(
+                            f"Stalled behind the other ranks of NCCL communicator "
+                            f"{comm_id} on {op} as comm rank {rank} on node "
+                            f"{worker.metadata.node_ip}."
+                        ),
+                    )
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not identify the stalled workers.", exc_info=True)
+        return failures
 
     def fetch_ras_human_report(self) -> Optional[str]:
         """Synchronously fetch ``ncclras -f text`` for the logs.
