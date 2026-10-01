@@ -6,6 +6,7 @@ import threading
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
@@ -13,6 +14,7 @@ import grpc
 import pytest
 
 import ray
+import ray.serve.context
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import (
@@ -58,11 +60,13 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.context import _RequestContext
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     ReplicaUnavailableError,
 )
+from ray.serve.handle import DeploymentResponse
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -3452,6 +3456,153 @@ class TestCustomRequestRouterAPIs:
         )
         # Should complete without error.
         await r._backoff(0)
+
+
+def _response(future) -> DeploymentResponse:
+    return DeploymentResponse(
+        future,
+        RequestMetadata(request_id="r", internal_request_id="i"),
+        _is_router_running_in_separate_loop=False,
+        _pending_call=("handle", ("arg",), {"k": 1}),
+    )
+
+
+def test_claim_takes_over_a_call_before_routing_starts():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        assert response._claim_pending_call() == ("handle", ("arg",), {"k": 1})
+        await asyncio.sleep(0)
+        assert task.cancelled()
+        assert response._claim_pending_call() is None
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_call_that_is_already_routing():
+    async def run():
+        task = asyncio.ensure_future(asyncio.sleep(10))
+        response = _response(task)
+        response._request_metadata._routing_started = True
+        assert response._claim_pending_call() is None
+        assert not task.cancelled()
+        task.cancel()
+
+    asyncio.run(run())
+
+
+def test_claim_refuses_a_call_whose_future_will_not_cancel():
+    future = concurrent.futures.Future()
+    future.set_running_or_notify_cancel()
+    assert _response(future)._claim_pending_call() is None
+    assert not future.cancelled()
+
+
+def test_claim_takes_over_a_cross_thread_call_before_its_hand_off():
+    future = concurrent.futures.Future()
+    response = _response(future)
+    assert response._claim_pending_call() == ("handle", ("arg",), {"k": 1})
+    assert future.cancelled()
+
+
+def _thread_router():
+    # Only the router loop matters here; the rest of the router is never used.
+    router = SingletonThreadRouter.__new__(SingletonThreadRouter)
+    router._asyncio_loop = asyncio.new_event_loop()
+    threading.Thread(target=router._asyncio_loop.run_forever, daemon=True).start()
+    return router
+
+
+async def _routed(ran):
+    ran.append(True)
+    return "result"
+
+
+def test_default_mode_hands_off_on_the_callers_next_turn():
+    router = _thread_router()
+
+    async def run():
+        meta, ran = RequestMetadata(request_id="r", internal_request_id="i"), []
+        future = router._wrap_asyncio_call_in_future(
+            _routed(ran), request_meta=meta, defer_on=asyncio.get_running_loop()
+        )
+        # A handler returning now still finds the call unrouted.
+        assert not meta._routing_started
+        await asyncio.sleep(0)
+        assert meta._routing_started
+        assert await asyncio.wrap_future(future) == "result" and ran
+
+    asyncio.run(run())
+    router._asyncio_loop.call_soon_threadsafe(router._asyncio_loop.stop)
+
+
+def test_claimed_call_never_reaches_the_router_thread():
+    router = _thread_router()
+
+    async def run():
+        meta, ran = RequestMetadata(request_id="r", internal_request_id="i"), []
+        future = router._wrap_asyncio_call_in_future(
+            _routed(ran), request_meta=meta, defer_on=asyncio.get_running_loop()
+        )
+        future.cancel()
+        await asyncio.sleep(0.05)
+        assert not meta._routing_started and not ran
+
+    asyncio.run(run())
+    router._asyncio_loop.call_soon_threadsafe(router._asyncio_loop.stop)
+
+
+async def _fails():
+    raise ValueError("boom")
+
+
+def test_blocking_wait_hands_off_without_the_callers_loop():
+    router = _thread_router()
+
+    async def run():
+        loop = asyncio.get_running_loop()
+        # Each sync wait blocks this loop, so neither may wait for the loop to turn.
+        future = router._wrap_asyncio_call_in_future(_routed([]), defer_on=loop)
+        assert future.result(timeout=5) == "result"
+        failing = router._wrap_asyncio_call_in_future(_fails(), defer_on=loop)
+        assert isinstance(failing.exception(timeout=5), ValueError)
+
+    asyncio.run(run())
+    router._asyncio_loop.call_soon_threadsafe(router._asyncio_loop.stop)
+
+
+def test_assign_request_defers_only_in_a_replica_request(monkeypatch):
+    router = _thread_router()
+    router._asyncio_router = SimpleNamespace(assign_request=lambda meta: _routed([]))
+    replica = {"context": None}
+    monkeypatch.setattr(
+        ray.serve.context, "_get_internal_replica_context", lambda: replica["context"]
+    )
+
+    async def run():
+        # The proxy has a request but is no replica; a replica's own setup has no
+        # request. Neither can forward, so their calls route at once.
+        for context, request_id in ((None, "parent"), (object(), "")):
+            replica["context"] = context
+            ray.serve.context._serve_request_context.set(
+                _RequestContext(request_id=request_id)
+            )
+            meta = RequestMetadata(request_id="o", internal_request_id="o")
+            future = router.assign_request(meta)
+            assert meta._routing_started
+            assert await asyncio.wrap_future(future) == "result"
+        replica["context"] = object()
+        ray.serve.context._serve_request_context.set(
+            _RequestContext(request_id="parent")
+        )
+        inside = RequestMetadata(request_id="i", internal_request_id="i")
+        future = router.assign_request(inside)
+        assert not inside._routing_started
+        assert await asyncio.wrap_future(future) == "result"
+        assert inside._routing_started
+
+    asyncio.run(run())
+    router._asyncio_loop.call_soon_threadsafe(router._asyncio_loop.stop)
 
 
 if __name__ == "__main__":

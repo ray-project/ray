@@ -838,6 +838,8 @@ class RequestMetadata:
 
     # Token for a replica-side slot reserved by choose_replica().
     _reserved_slot_token: Optional[str] = None
+    # Set once routing starts; until then a parent can still forward the call.
+    _routing_started: bool = False
 
     @property
     def is_http_request(self) -> bool:
