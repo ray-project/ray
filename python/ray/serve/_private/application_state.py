@@ -15,6 +15,7 @@ from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import (
     CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR,
     BuiltApplication,
     build_app,
 )
@@ -289,6 +290,7 @@ class ApplicationState:
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
         self._ingress_request_router_deployment_name: Optional[str] = None
+        self._is_router_application = False
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -366,6 +368,10 @@ class ApplicationState:
         return self._ingress_request_router_deployment_name
 
     @property
+    def is_router_application(self) -> bool:
+        return self._is_router_application
+
+    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -436,11 +442,13 @@ class ApplicationState:
 
         ingress_deployment_name = None
         ingress_request_router_deployment_name = None
+        is_router_application = False
 
         if deployment_infos is not None:
             for name, info in deployment_infos.items():
                 if info.ingress:
                     ingress_deployment_name = name
+                    is_router_application = info.router_application
                 if info.ingress_request_router:
                     ingress_request_router_deployment_name = name
 
@@ -471,6 +479,7 @@ class ApplicationState:
         self._ingress_request_router_deployment_name = (
             ingress_request_router_deployment_name
         )
+        self._is_router_application = is_router_application
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -1502,6 +1511,12 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_request_router_deployment
 
+    def is_router_application(self, name: str) -> bool:
+        if name not in self._application_states:
+            return False
+
+        return self._application_states[name].is_router_application
+
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
@@ -1806,6 +1821,7 @@ def build_serve_application(
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    router_application=is_ingress and built_app.is_router_application,
                 )
             )
 
@@ -2070,6 +2086,12 @@ def override_deployment_info(
             app_route_prefix is not DEFAULT.VALUE
             and deployment.route_prefix is not None
         ):
+            if deployment.router_application and app_route_prefix is None:
+                raise RayServeException(
+                    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR.format(
+                        name=override_config.name
+                    )
+                )
             deployment.route_prefix = app_route_prefix
 
     # build_app cannot see config overrides, so re-check the post-override
