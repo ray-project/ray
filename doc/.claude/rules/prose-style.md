@@ -10,7 +10,7 @@ paths:
 - Read `doc/source/ray-contribute/writing-style.md` before writing or editing docs prose. It's the source of truth and supersedes prior style guidance.
 - Active voice with a named actor. Present tense. Second person ("you"). Imperative for instructions.
 - No first-person plural. Rewrite to remove "we" and "our"; use "The Ray project" only when a subject is unavoidable.
-- Use contractions (don't, isn't, can't), except in warnings and error messages.
+- Always use contractions (don't, isn't, can't).
 - "such as," not "like," for examples. "ID," not "id," in prose. Plain words: "use" (not utilize/leverage), "through" (not via), "before" (not prior to).
 - Cut filler: simply, just, basically, actually, really, very. Cut time-relative words: currently, now, recently, new.
 - Sentence-case headings; imperative for tasks, questions for concepts.
