@@ -19,6 +19,7 @@ from ray.data._internal.execution.bundle_queue import ExactMultipleSize
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
     Executor,
     OutputIterator,
     PhysicalOperator,
@@ -109,7 +110,7 @@ def _log_ray_data_env_vars() -> None:
 
 
 def _disable_data_reconstruction_if_unsupported(
-    dag: PhysicalOperator, dataset_id: str
+    dag: PhysicalOperator, options: ExecutionOptions, dataset_id: str
 ) -> bool:
     """Whether Ray Data lineage reconstruction must be disabled for this plan.
 
@@ -122,13 +123,29 @@ def _disable_data_reconstruction_if_unsupported(
     lineage graph records whole-block dependencies, so reconstructing any of
     those tasks would drop or duplicate rows.
 
+    ``preserve_order`` is not supported either. A reconstruction attempt is
+    submitted under a fresh task index, so the ordered output queue would emit
+    the re-produced rows after every task submitted before it.
+
     Args:
         dag: The physical plan's output operator.
+        options: The execution options of the dataset being executed.
         dataset_id: The ID of the dataset being executed.
 
     Returns:
-        True if the plan contains an operator reconstruction does not support.
+        True if the plan contains an operator reconstruction does not support,
+        or requires ordered output.
     """
+    if options.preserve_order:
+        if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
+            logger.warning(
+                f"Ray Data lineage reconstruction is disabled for dataset "
+                f"{dataset_id}: it runs with preserve_order=True, which "
+                "reconstruction doesn't support. Ray Core lineage reconstruction "
+                "is also disabled for this job, so a lost object will fail the "
+                "dataset."
+            )
+        return True
     for op in dag.post_order_iter():
         if isinstance(op, InputDataBuffer):
             continue
@@ -276,7 +293,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._lineage_tracker = None
         if (
             self._data_context.enable_ray_data_reconstruction
-            and not _disable_data_reconstruction_if_unsupported(dag, self._dataset_id)
+            and not _disable_data_reconstruction_if_unsupported(
+                dag, self._options, self._dataset_id
+            )
         ):
             self._lineage_tracker = LineageTracker()
         self._block_ref_counter = BlockRefCounter()

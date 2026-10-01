@@ -196,8 +196,23 @@ def test_unsupported_plan_disables_reconstruction(
     ray_start_regular_shared, trackers, run_plan, expected  # noqa: F405
 ):
     """A plan with a non-map operator, or a map operator whose bundler slices blocks
-    (strict streaming repartition), runs without the lineage machinery."""
+    (strict streaming repartition), runs with lineage reconstruction disabled."""
     assert run_plan() == expected
+    assert trackers == []
+
+
+@reconstruction_enabled
+def test_preserve_order_disables_reconstruction(
+    ray_start_regular_shared, restore_data_context, trackers  # noqa: F405
+):
+    """A plan of map operators runs with lineage reconstruction disabled under
+    ``preserve_order``: a re-execution gets a fresh task index, so the ordered
+    output queue would emit the re-produced rows out of order."""
+    restore_data_context.execution_options.preserve_order = True
+
+    rows = ray.data.range(3).map(lambda row: row).take_all()
+
+    assert [row["id"] for row in rows] == list(range(3))
     assert trackers == []
 
 
