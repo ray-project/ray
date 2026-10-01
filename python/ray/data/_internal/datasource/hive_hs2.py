@@ -68,8 +68,8 @@ def _connect(options: HiveConnectionOptions):
             timeout=options.timeout,
             retries=1,
         )
-    except Exception:
-        raise RuntimeError("HiveServer2 connection failed") from None
+    except Exception as exc:
+        raise RuntimeError("HiveServer2 connection failed") from exc
 
 
 def _metadata_pattern(identifier: str) -> str:
@@ -109,8 +109,8 @@ def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
                 )
                 for name, type_name in columns
             ]
-    except Exception:
-        raise RuntimeError("HiveServer2 table schema lookup failed") from None
+    except Exception as exc:
+        raise RuntimeError("HiveServer2 table schema lookup failed") from exc
     finally:
         if cursor is not None:
             with suppress(Exception):
@@ -157,8 +157,8 @@ def _result_arrow_type(column) -> pa.DataType:
                 raise ValueError
             type_name = f"DECIMAL({precision},{scale})"
         return _arrow_type(type_name)
-    except Exception:
-        raise ValueError("HiveServer2 result has an unsupported column type") from None
+    except Exception as exc:
+        raise ValueError("HiveServer2 result has an unsupported column type") from exc
 
 
 def _check_result_schema(
@@ -193,20 +193,20 @@ def _to_arrow(rows, schema: pa.Schema) -> pa.Table:
             pa.array([row[index] for row in rows], type=field.type)
             for index, field in enumerate(schema)
         ]
-    except Exception:
+    except Exception as exc:
         raise ValueError(
             "HiveServer2 rows could not be converted to the read schema"
-        ) from None
+        ) from exc
     if any(
         not field.nullable and array.null_count for field, array in zip(schema, arrays)
     ):
         raise ValueError("HiveServer2 rows violate a non-nullable schema field")
     try:
         return pa.Table.from_arrays(arrays, schema=schema)
-    except Exception:
+    except Exception as exc:
         raise ValueError(
             "HiveServer2 rows could not be converted to the read schema"
-        ) from None
+        ) from exc
 
 
 def read_hs2_batches(spec: HiveReadSpec, schema: pa.Schema) -> Iterator[pa.Table]:
@@ -222,16 +222,16 @@ def read_hs2_batches(spec: HiveReadSpec, schema: pa.Schema) -> Iterator[pa.Table
             cursor = connection.cursor(user=spec.connection.user)
             cursor.execute(_statement(spec))
             description = cursor.description
-        except Exception:
-            raise RuntimeError("HiveServer2 read failed") from None
+        except Exception as exc:
+            raise RuntimeError("HiveServer2 read failed") from exc
         _check_result_schema(
             description, schema, spec.table_identifier[1] if spec.table else None
         )
         while True:
             try:
                 rows = cursor.fetchmany(_FETCH_ROWS)
-            except Exception:
-                raise RuntimeError("HiveServer2 read failed") from None
+            except Exception as exc:
+                raise RuntimeError("HiveServer2 read failed") from exc
             if not rows:
                 break
             yield _to_arrow(rows, schema)

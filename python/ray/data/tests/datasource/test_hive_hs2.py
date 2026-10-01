@@ -383,11 +383,11 @@ def test_result_type_mismatch_fails_before_fetch(monkeypatch):
     assert cursor.closed and connection.closed
 
 
-def test_conversion_error_does_not_expose_row_value():
+def test_conversion_error_preserves_underlying_arrow_error():
     schema = pa.schema([("id", pa.int64())])
     with pytest.raises(ValueError, match="could not be converted") as exc:
         hive_hs2._to_arrow([("private-row-value",)], schema)
-    assert "private-row-value" not in str(exc.value)
+    assert "private-row-value" in str(exc.value.__cause__)
 
 
 def test_non_nullable_query_field_rejects_null_rows():
@@ -397,7 +397,7 @@ def test_non_nullable_query_field_rejects_null_rows():
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, ValueError])
-def test_fetch_error_does_not_expose_query_or_secret(monkeypatch, error_type):
+def test_fetch_error_preserves_original_exception(monkeypatch, error_type):
     class FailingCursor(_Cursor):
         def fetchmany(self, size):
             raise error_type("private-query private-password")
@@ -408,7 +408,9 @@ def test_fetch_error_does_not_expose_query_or_secret(monkeypatch, error_type):
     spec = _query_spec()
     with pytest.raises(RuntimeError, match="HiveServer2 read failed") as exc:
         list(hive_hs2.read_hs2_batches(spec, spec.schema))
-    assert "private-query" not in str(exc.value)
+    assert isinstance(exc.value.__cause__, error_type)
+    assert "private-query" in str(exc.value.__cause__)
+    assert "private-password" in str(exc.value.__cause__)
     assert cursor.closed and connection.closed
 
 
