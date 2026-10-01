@@ -303,10 +303,10 @@ def _shuffle_reduce_task(
 
     def _yield_with_stats(block: Block):
         """Yield a block then its pickled metadata (streaming-gen protocol)."""
+        exec_stats_builder.finish()
 
         def build_metadata(block_ser_time_s):
             nonlocal exec_stats_builder
-            exec_stats_builder.finish()
             meta = BlockMetadataWithSchema.from_block(
                 block,
                 block_exec_stats=exec_stats_builder.build(
