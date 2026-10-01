@@ -210,7 +210,7 @@ trainer.fit()
 
 ### Loading data
 
-Ray Datasets can be created from many different data sources and formats. For more details, see {ref}`Loading Data <loading_data>`.
+Ray Datasets can be created from many different data sources and formats. For more details, see {ref}`Loading data <loading_data>`.
 
 (train-datasets-preprocess)=
 
@@ -220,7 +220,7 @@ Ray Data supports a wide range of preprocessing operations that you can use to t
 
 - For general preprocessing, see {ref}`Transforming Data <transforming_data>`.
 - For tabular data, see {ref}`Preprocessing Structured Data <preprocessing_structured_data>`.
-- For PyTorch tensors, see {ref}`Transformations with torch tensors <transform_pytorch>`.
+- For PyTorch tensors, see {ref}`Return Torch tensors from transformations <transform_pytorch>`.
 - For optimizing expensive preprocessing operations, see {ref}`Caching the preprocessed dataset <dataset_cache_performance>`.
 
 (train-datasets-input)=
@@ -293,7 +293,7 @@ For more details, see the following sections for each framework:
 3. Inside your `train_loop_per_worker`, you can access the dataset via {meth}`ray.train.get_dataset_shard`.
 4. Create a dataset iterable via {meth}`ray.data.DataIterator.iter_torch_batches`.
 
-For more details, see the {ref}`Migrating from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
+For more details, see {ref}`Migrate from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
 
 **Option 2 (without Ray Data):**
 
@@ -453,7 +453,7 @@ In general, you can use {class}`DataConfig <ray.train.DataConfig>` for any share
 ## Random shuffling
 Randomly shuffling data for each epoch can be important for model quality depending on what model you are training.
 
-Ray Data provides multiple options for random shuffling, see {ref}`Shuffling Data <shuffling_data>` for more details.
+Ray Data provides multiple options for random shuffling, see {ref}`Shuffling data <shuffling_data>` for more details.
 
 ## Enabling reproducibility
 When developing or hyperparameter tuning models, reproducibility is important during data ingest so that data ingest does not affect model quality. Follow these three steps to enable reproducibility:
@@ -487,7 +487,7 @@ ds = ray.data.read_text(
 ## Preprocessing structured data
 
 :::{note}
-This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use Ray Data operations such as `map_batches`. See the {ref}`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
+This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use Ray Data operations such as `map_batches`. See the {ref}`Ray Data Working with PyTorch guide <working_with_pytorch>` for more details.
 :::
 
 For tabular data, use Ray Data {ref}`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations. You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
@@ -828,5 +828,5 @@ See {ref}`data_performance_tips` for more info on how to tune Ray Data.
 
 ## More data ingest guides
 
-- {ref}`Weighted Dataset Mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
-- {ref}`Scaling Collation Functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.
+- {ref}`Weighted dataset mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
+- {ref}`Scaling out expensive collate functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.

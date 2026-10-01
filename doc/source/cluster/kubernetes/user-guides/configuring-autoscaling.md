@@ -301,9 +301,7 @@ The `autoscalerOptions` field also provides options for configuring the Autoscal
 
 * **`env`** and **`envFrom`**: These fields specify Autoscaler container environment variables. These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#EnvVar) for container environment variables.
 
-* **`command`** and **`args`** (KubeRay >= v1.7.0):
-These fields independently override the autoscaler container's `command` and `args`.
-KubeRay also injects the environment variable `KUBERAY_GEN_AUTOSCALER_START_CMD` into the autoscaler container, so you can reference the generated command in your custom `args`:
+* **`command`** and **`args`** (KubeRay >= v1.7.0): These fields independently override the autoscaler container's `command` and `args`. KubeRay also injects the environment variable `KUBERAY_GEN_AUTOSCALER_START_CMD` into the autoscaler container, so you can reference the generated command in your custom `args`:
   ```sh
   # Example value of KUBERAY_GEN_AUTOSCALER_START_CMD inside the autoscaler container:
   ray kuberay-autoscaler --cluster-name $(RAY_CLUSTER_NAME) --cluster-namespace $(RAY_CLUSTER_NAMESPACE)

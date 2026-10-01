@@ -1,6 +1,7 @@
 import abc
 import base64
 import collections
+import json
 import logging
 import pickle
 import warnings
@@ -20,6 +21,97 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _drop_stale_pandas_metadata(
+    input_schema: "pyarrow.Schema", table: "pyarrow.Table"
+) -> "pyarrow.Table":
+    """Drop the pandas metadata of the columns a transform added or retyped.
+
+    `pa.Table.from_pandas` records each column's pandas dtype, and `to_pandas`
+    rebuilds that dtype even after the column's type has changed.
+    """
+    metadata = table.schema.metadata or {}
+    if b"pandas" not in metadata:
+        return table
+    stale = {
+        field.name
+        for field in table.schema
+        if field.name not in input_schema.names
+        or input_schema.field(field.name).type != field.type
+    }
+    if not stale:
+        return table
+    pandas_metadata = json.loads(metadata[b"pandas"])
+    pandas_metadata["columns"] = [
+        column
+        for column in pandas_metadata["columns"]
+        if column["field_name"] not in stale
+    ]
+    return table.replace_schema_metadata(
+        {**metadata, b"pandas": json.dumps(pandas_metadata).encode()}
+    )
+
+
+def _nullable_pandas_dtype(
+    arrow_type: "pyarrow.DataType",
+) -> Optional["pd.api.extensions.ExtensionDtype"]:
+    """The pandas nullable dtype (`Int64`, `Float64`, ...) for `arrow_type`, if any."""
+    import pandas as pd
+    import pyarrow
+
+    if pyarrow.types.is_integer(arrow_type):
+        prefix = "UInt" if pyarrow.types.is_unsigned_integer(arrow_type) else "Int"
+        return pd.api.types.pandas_dtype(f"{prefix}{arrow_type.bit_width}")
+    if pyarrow.types.is_float32(arrow_type) or pyarrow.types.is_float64(arrow_type):
+        return pd.api.types.pandas_dtype(f"Float{arrow_type.bit_width}")
+    if pyarrow.types.is_boolean(arrow_type):
+        return pd.BooleanDtype()
+    if pyarrow.types.is_string(arrow_type) or pyarrow.types.is_large_string(arrow_type):
+        return pd.StringDtype()
+    return None
+
+
+def _to_pandas_like(
+    column: "pyarrow.ChunkedArray",
+    like: Optional["pd.api.extensions.ExtensionDtype"],
+    *,
+    same_type: bool,
+    frame_is_arrow_backed: bool,
+) -> "pd.api.extensions.ExtensionArray":
+    """Convert a column `_transform_arrow` wrote, backed like the dtype `like`.
+
+    `like` is the dtype of the input column the values were computed from, or
+    None if there is none, in which case the column follows the rest of the
+    frame. A pandas column is backed by NumPy, by a nullable dtype (`Int64`,
+    `string`, ... with `pd.NA`) or by Arrow (`pd.ArrowDtype`).
+    """
+    import pandas as pd
+    import pyarrow
+
+    from ray.data._internal.arrow_block import _arrow_backed_pandas_dtype
+    from ray.data.block import BlockAccessor
+
+    if same_type and hasattr(like, "__from_arrow__"):
+        return like.__from_arrow__(column)
+    if like is None:
+        as_arrow, as_nullable = frame_is_arrow_backed, False
+    else:
+        as_arrow = isinstance(like, pd.ArrowDtype)
+        as_nullable = not as_arrow and getattr(like, "na_value", None) is pd.NA
+    if as_arrow:
+        arrow_dtype = _arrow_backed_pandas_dtype(column.type)
+        if arrow_dtype is not None:
+            # Arrow-backed stays Arrow-backed: the conversion flag governs
+            # Ray's own blocks, not the caller's columns.
+            return arrow_dtype.__from_arrow__(column)
+        # A type Ray never maps to Arrow-backed; convert it as Ray does.
+        block = pyarrow.table({"column": column})
+        return BlockAccessor.for_block(block).to_pandas()["column"].array
+    nullable_dtype = _nullable_pandas_dtype(column.type) if as_nullable else None
+    if nullable_dtype is not None:
+        return nullable_dtype.__from_arrow__(column)
+    return column.to_pandas().array
 
 
 @PublicAPI(stability="beta")
@@ -329,7 +421,7 @@ class Preprocessor(abc.ABC):
             )
         elif transform_type == BatchFormat.ARROW:
             return ds.map_batches(
-                self._transform_arrow,
+                self._transform_arrow_without_stale_metadata,
                 batch_format="pyarrow",
                 zero_copy_batch=True,
                 **kwargs,
@@ -373,22 +465,61 @@ class Preprocessor(abc.ABC):
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
         elif transform_type == BatchFormat.ARROW:
-            # Convert input to Arrow table and use Arrow transform
-            input_was_pandas = isinstance(data, pd.DataFrame)
-            if isinstance(data, pyarrow.Table):
-                arrow_table = data
-            elif input_was_pandas:
-                arrow_table = pyarrow.Table.from_pandas(data)
-            else:
-                # Convert to pandas first, then to Arrow
-                arrow_table = pyarrow.Table.from_pandas(
-                    _convert_batch_type_to_pandas(data)
-                )
-            result = self._transform_arrow(arrow_table)
-            # Convert back to pandas if input was pandas
-            if input_was_pandas and isinstance(result, pyarrow.Table):
-                return result.to_pandas()
-            return result
+            if isinstance(data, pd.DataFrame):
+                return self._transform_pandas_with_arrow(data)
+            if not isinstance(data, pyarrow.Table):
+                data = pyarrow.Table.from_pandas(
+                    _convert_batch_type_to_pandas(data), preserve_index=False
+                ).replace_schema_metadata(None)
+            return self._transform_arrow_without_stale_metadata(data)
+
+    def _transform_arrow_without_stale_metadata(
+        self, table: "pyarrow.Table"
+    ) -> "pyarrow.Table":
+        """Run `_transform_arrow`, dropping the pandas metadata it made stale."""
+        return _drop_stale_pandas_metadata(table.schema, self._transform_arrow(table))
+
+    def _transform_pandas_with_arrow(self, df: "pd.DataFrame") -> "pd.DataFrame":
+        """Run `_transform_arrow` on a pandas batch.
+
+        Only the columns the preprocessor reads cross into Arrow, and only the
+        ones it writes cross back. The rest of the result is the caller's frame:
+        untouched columns, the index and the axis names never leave pandas.
+        """
+        import pandas as pd
+        import pyarrow
+
+        inputs = self.get_input_columns() or list(df.columns)
+        outputs = self.get_output_columns()
+        # Each output column is computed from the input column at its position.
+        sources = dict(zip(outputs, inputs)) if len(outputs) == len(inputs) else {}
+        table = pyarrow.Table.from_pandas(
+            df[inputs], preserve_index=False
+        ).replace_schema_metadata(None)
+        result = self._transform_arrow(table)
+        if result.num_rows != len(df):
+            raise ValueError(
+                f"{type(self).__name__}._transform_arrow returned {result.num_rows} "
+                f"rows for a batch of {len(df)}; it must return one row per input "
+                "row, in the same order."
+            )
+        frame_is_arrow_backed = any(
+            isinstance(dtype, pd.ArrowDtype) for dtype in df.dtypes
+        )
+        out = df.copy(deep=False)
+        for name in outputs or result.column_names:
+            column = result.column(name)
+            source = sources.get(name, name)
+            like = df[source].dtype if source in table.column_names else None
+            out[name] = _to_pandas_like(
+                column,
+                like,
+                same_type=(
+                    like is not None and column.type == table.schema.field(source).type
+                ),
+                frame_is_arrow_backed=frame_is_arrow_backed,
+            )
+        return out
 
     @classmethod
     def _derive_and_validate_output_columns(
@@ -422,7 +553,12 @@ class Preprocessor(abc.ABC):
 
     @DeveloperAPI
     def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
-        """Run the transformation on a data batch in a PyArrow Table format."""
+        """Run the transformation on a data batch in a PyArrow Table format.
+
+        For a pandas batch, `table` holds only the `get_input_columns()` columns
+        (all columns if none are declared). Return the same rows in the same
+        order: the output columns are aligned with the caller's frame by row.
+        """
         raise NotImplementedError()
 
     @DeveloperAPI

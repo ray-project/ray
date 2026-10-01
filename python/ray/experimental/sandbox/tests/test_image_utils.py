@@ -936,5 +936,18 @@ def test_an_unrecognized_digest_algorithm_is_not_a_mismatch():
     image_utils._verify_digest("sha512:abcd", "ffff", "img", "layer")
 
 
+def test_dir_size_counts_hard_links_once(tmp_path):
+    """Hard links share one file, so it counts once, the way busybox's
+    hundreds of applet names share one binary."""
+    tree = tmp_path / "tree"
+    bin_dir = tree / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "busybox").write_bytes(b"x" * 1000)
+    for name in ("sh", "ls", "cat"):
+        os.link(bin_dir / "busybox", bin_dir / name)
+    (tree / "other").write_bytes(b"y" * 10)
+    assert image_utils._dir_size_bytes(str(tree)) == 1010
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
