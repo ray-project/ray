@@ -3,7 +3,7 @@
 
 # Ray Documentation
 
-Prose style rules for docs: @../AGENTS.md
+Prose style: @../AGENTS.md
 
 Sphinx documentation built by Read the Docs and served at `docs.ray.io`. Build pipeline: `.buildkite/doc.rayci.yml`.
 
