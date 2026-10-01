@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 from typing_extensions import override
 
@@ -131,13 +132,14 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         self,
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
             self._locality_hints = None
             self._max_buffer_size = 0
 
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
 
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.

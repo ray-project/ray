@@ -6,12 +6,12 @@ from typing import Collection, List, Tuple
 import pytest
 
 from ray.data._internal.execution.lineage_tracker import (
-    DataTaskId,
+    LineageTaskId,
     LineageTracker,
     ObjectReuseStatus,
     OutputIndex,
     ParentBlockOutput,
-    PlanId,
+    ReconstructionPlanId,
 )
 
 #: The single seed output block that every child consumes in
@@ -34,8 +34,8 @@ def _child_output_indices(
 
 def _register_fan_out(
     tracker: LineageTracker,
-    seed_task_id: DataTaskId,
-    child_task_ids: List[DataTaskId],
+    seed_task_id: LineageTaskId,
+    child_task_ids: List[LineageTaskId],
     num_inputs_per_child: int = 1,
 ) -> None:
     """Register and complete a seed task, then fan out children over its outputs.
@@ -52,7 +52,7 @@ def _register_fan_out(
             child_task_id,
             dependencies=[
                 ParentBlockOutput(
-                    parent_data_task_id=seed_task_id, output_index=output_index
+                    parent_lineage_task_id=seed_task_id, output_index=output_index
                 )
                 for output_index in _child_output_indices(
                     child_position, num_inputs_per_child
@@ -63,8 +63,8 @@ def _register_fan_out(
 
 def _register_shared_output_fan_out(
     tracker: LineageTracker,
-    seed_task_id: DataTaskId,
-    child_task_ids: List[DataTaskId],
+    seed_task_id: LineageTaskId,
+    child_task_ids: List[LineageTaskId],
     shared_output_index: OutputIndex = _SHARED_OUTPUT_INDEX,
 ) -> None:
     """Register and complete a seed task, then fan out children over one output.
@@ -81,7 +81,8 @@ def _register_shared_output_fan_out(
             child_task_id,
             dependencies=[
                 ParentBlockOutput(
-                    parent_data_task_id=seed_task_id, output_index=shared_output_index
+                    parent_lineage_task_id=seed_task_id,
+                    output_index=shared_output_index,
                 )
             ],
         )
@@ -89,9 +90,9 @@ def _register_shared_output_fan_out(
 
 def _register_downstream_chain(
     tracker: LineageTracker,
-    parent_task_id: DataTaskId,
+    parent_task_id: LineageTaskId,
     parent_output_index: OutputIndex,
-    chain_task_ids: List[DataTaskId],
+    chain_task_ids: List[LineageTaskId],
     complete_leaf: bool = True,
 ) -> None:
     """Hang a linear chain off ``parent_task_id``'s output ``parent_output_index``.
@@ -105,7 +106,7 @@ def _register_downstream_chain(
         chain_task_ids[0],
         dependencies=[
             ParentBlockOutput(
-                parent_data_task_id=parent_task_id, output_index=parent_output_index
+                parent_lineage_task_id=parent_task_id, output_index=parent_output_index
             )
         ],
     )
@@ -114,7 +115,9 @@ def _register_downstream_chain(
         tracker.register_task_submission(
             downstream_task_id,
             dependencies=[
-                ParentBlockOutput(parent_data_task_id=upstream_task_id, output_index=0)
+                ParentBlockOutput(
+                    parent_lineage_task_id=upstream_task_id, output_index=0
+                )
             ],
         )
     if complete_leaf:
@@ -123,13 +126,13 @@ def _register_downstream_chain(
 
 def _assert_reuse_statuses(
     tracker: LineageTracker,
-    data_task_id: DataTaskId,
+    lineage_task_id: LineageTaskId,
     reused_output_indices: Collection[OutputIndex],
     all_output_indices: Collection[OutputIndex],
-    plan_id: PlanId,
+    reconstruction_plan_id: ReconstructionPlanId,
     task_is_unrelated: bool = False,
 ) -> None:
-    """Assert which of ``data_task_id``'s outputs ``plan_id`` still needs.
+    """Assert which of ``lineage_task_id``'s outputs ``reconstruction_plan_id`` still needs.
 
     Outputs in ``reused_output_indices`` must be OBJECT_REUSED (a child pending
     that plan's reconstruction still claims them); every other output in
@@ -147,7 +150,9 @@ def _assert_reuse_statuses(
             )
         assert (
             tracker.get_object_reuse_status(
-                data_task_id, output_index=output_index, plan_id=plan_id
+                lineage_task_id,
+                output_index=output_index,
+                reconstruction_plan_id=reconstruction_plan_id,
             )
             == expected_status
         )
@@ -208,7 +213,7 @@ class FanOutCase:
     num_inputs_per_child: int = 1
 
     @property
-    def child_task_ids(self) -> List[DataTaskId]:
+    def child_task_ids(self) -> List[LineageTaskId]:
         return [f"child_{i}" for i in range(self.num_children)]
 
     @property
@@ -227,32 +232,34 @@ class FanOutCase:
 
 def _fail_child_and_open_plan(
     tracker: LineageTracker,
-    seed_task_id: DataTaskId,
-    child_task_id: DataTaskId,
-    existing_plan_ids: Collection[PlanId],
-) -> PlanId:
+    seed_task_id: LineageTaskId,
+    child_task_id: LineageTaskId,
+    existing_reconstruction_plan_ids: Collection[ReconstructionPlanId],
+) -> ReconstructionPlanId:
     """Fail ``child_task_id`` and assert it opens a fresh plan rooted at the seed.
 
     Every failure in a fan-out traces back through its own branch to the seed,
     which is the only retry root no matter how many siblings failed or are still
-    running, and a fresh failure always opens a plan id of its own.
+    running, and a fresh failure always opens a reconstruction plan id of its own.
     """
-    seed_tasks_to_retry, plan_id = tracker.register_task_failed(child_task_id)
+    seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
+        child_task_id
+    )
     assert seed_tasks_to_retry == [seed_task_id]
-    assert plan_id is not None
-    assert plan_id not in existing_plan_ids
-    return plan_id
+    assert reconstruction_plan_id is not None
+    assert reconstruction_plan_id not in existing_reconstruction_plan_ids
+    return reconstruction_plan_id
 
 
 def _assert_plan_claims_only_child(
     tracker: LineageTracker,
-    seed_task_id: DataTaskId,
-    child_task_id: DataTaskId,
+    seed_task_id: LineageTaskId,
+    child_task_id: LineageTaskId,
     child_output_indices: Collection[OutputIndex],
     seed_output_indices: Collection[OutputIndex],
-    plan_id: PlanId,
+    reconstruction_plan_id: ReconstructionPlanId,
 ) -> None:
-    """Assert ``plan_id`` claims exactly ``child_task_id`` and the outputs it needs.
+    """Assert ``reconstruction_plan_id`` claims exactly ``child_task_id`` and the outputs it needs.
 
     Plans never merge: the seed's pending children under this plan are exactly
     ``{child_task_id}``, and only the outputs that child consumes are
@@ -260,68 +267,82 @@ def _assert_plan_claims_only_child(
     consumer is doing -- completed, still in flight, mid-reconstruction under
     another plan, or claimed by a sibling plan.
     """
-    assert tracker.get_pending_children(seed_task_id, plan_id=plan_id) == {
-        child_task_id: {seed_task_id: list(child_output_indices)}
-    }
+    assert tracker.get_pending_children(
+        seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+    ) == {child_task_id: {seed_task_id: list(child_output_indices)}}
     _assert_reuse_statuses(
         tracker,
         seed_task_id,
         child_output_indices,
         seed_output_indices,
-        plan_id=plan_id,
+        reconstruction_plan_id=reconstruction_plan_id,
     )
 
 
 def _assert_seed_discharged(
     tracker: LineageTracker,
-    seed_task_id: DataTaskId,
+    seed_task_id: LineageTaskId,
     seed_output_indices: Collection[OutputIndex],
-    plan_id: PlanId,
+    reconstruction_plan_id: ReconstructionPlanId,
 ) -> None:
-    """Assert ``plan_id`` no longer claims the seed at all."""
-    assert tracker.get_pending_children(seed_task_id, plan_id=plan_id) == {}
+    """Assert ``reconstruction_plan_id`` no longer claims the seed at all."""
+    assert (
+        tracker.get_pending_children(
+            seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
+        == {}
+    )
     _assert_reuse_statuses(
         tracker,
         seed_task_id,
         [],
         seed_output_indices,
-        plan_id=plan_id,
+        reconstruction_plan_id=reconstruction_plan_id,
         task_is_unrelated=True,
     )
 
 
 def _assert_child_is_plan_target(
-    tracker: LineageTracker, child_task_id: DataTaskId, plan_id: PlanId
+    tracker: LineageTracker,
+    child_task_id: LineageTaskId,
+    reconstruction_plan_id: ReconstructionPlanId,
 ) -> None:
-    """Assert ``child_task_id`` is the leaf target of ``plan_id``.
+    """Assert ``child_task_id`` is the leaf target of ``reconstruction_plan_id``.
 
     Nothing consumes a leaf child's outputs, so its plan has no pending children
     below it and the outputs it re-produces are OBJECT_NEW.
     """
-    assert tracker.get_pending_children(child_task_id, plan_id=plan_id) == {}
     assert (
-        tracker.get_object_reuse_status(child_task_id, output_index=0, plan_id=plan_id)
+        tracker.get_pending_children(
+            child_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
+        == {}
+    )
+    assert (
+        tracker.get_object_reuse_status(
+            child_task_id, output_index=0, reconstruction_plan_id=reconstruction_plan_id
+        )
         == ObjectReuseStatus.OBJECT_NEW
     )
 
 
 def _resubmit_child_retry(
     tracker: LineageTracker,
-    seed_task_id: DataTaskId,
-    child_task_id: DataTaskId,
+    seed_task_id: LineageTaskId,
+    child_task_id: LineageTaskId,
     child_output_indices: Collection[OutputIndex],
-    plan_id: PlanId,
+    reconstruction_plan_id: ReconstructionPlanId,
 ) -> None:
     """Resubmit ``child_task_id`` against the recovered seed's fresh outputs."""
     tracker.register_task_submission(
         child_task_id,
         dependencies=[
             ParentBlockOutput(
-                parent_data_task_id=seed_task_id, output_index=output_index
+                parent_lineage_task_id=seed_task_id, output_index=output_index
             )
             for output_index in child_output_indices
         ],
-        plan_id=plan_id,
+        reconstruction_plan_id=reconstruction_plan_id,
     )
 
 
@@ -510,7 +531,7 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
 
     Across all of them, verifies that:
       - Every failure returns the seed -- the chain root -- as the only task to
-        retry, under a plan id of its own. Sibling children never add extra retry
+        retry, under a reconstruction plan id of its own. Sibling children never add extra retry
         roots, and a fresh failure never joins an existing plan, so the seed
         recovers once per failed child.
       - Plans stay scoped to their own branch: the seed's pending children under
@@ -553,19 +574,26 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
     if case.failure_mode is FailureMode.TOGETHER:
         # Every child fails before any recovery begins, so each failure opens a
         # plan of its own and all of them are live on the seed at once.
-        plan_ids = []
+        reconstruction_plan_ids = []
         for child_position in case.failed_child_positions:
-            plan_ids.append(
+            reconstruction_plan_ids.append(
                 _fail_child_and_open_plan(
-                    tracker, seed_task_id, child_task_ids[child_position], plan_ids
+                    tracker,
+                    seed_task_id,
+                    child_task_ids[child_position],
+                    reconstruction_plan_ids,
                 )
             )
 
         # Recovery resubmits the seed once per reconstruction, and each plan
         # claims just its own child and the outputs that child needs.
-        for child_position, plan_id in zip(case.failed_child_positions, plan_ids):
+        for child_position, reconstruction_plan_id in zip(
+            case.failed_child_positions, reconstruction_plan_ids
+        ):
             tracker.register_task_submission(
-                seed_task_id, dependencies=[], plan_id=plan_id
+                seed_task_id,
+                dependencies=[],
+                reconstruction_plan_id=reconstruction_plan_id,
             )
             _assert_plan_claims_only_child(
                 tracker,
@@ -573,31 +601,37 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
                 child_task_ids[child_position],
                 case.output_indices_for(child_position),
                 seed_output_indices,
-                plan_id,
+                reconstruction_plan_id,
             )
 
         # Discharge the plans one at a time: completing the seed for one plan and
         # resubmitting its child must leave every other plan untouched.
-        for plan_position, (child_position, plan_id) in enumerate(
-            zip(case.failed_child_positions, plan_ids)
+        for plan_position, (child_position, reconstruction_plan_id) in enumerate(
+            zip(case.failed_child_positions, reconstruction_plan_ids)
         ):
             child_task_id = child_task_ids[child_position]
 
-            tracker.register_task_complete(seed_task_id, plan_id=plan_id)
+            tracker.register_task_complete(
+                seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+            )
             _resubmit_child_retry(
                 tracker,
                 seed_task_id,
                 child_task_id,
                 case.output_indices_for(child_position),
-                plan_id,
+                reconstruction_plan_id,
             )
 
-            _assert_seed_discharged(tracker, seed_task_id, seed_output_indices, plan_id)
-            _assert_child_is_plan_target(tracker, child_task_id, plan_id)
+            _assert_seed_discharged(
+                tracker, seed_task_id, seed_output_indices, reconstruction_plan_id
+            )
+            _assert_child_is_plan_target(tracker, child_task_id, reconstruction_plan_id)
 
             # The plans that have not been discharged yet still claim their own
             # child and outputs.
-            for other_plan_position in range(plan_position + 1, len(plan_ids)):
+            for other_plan_position in range(
+                plan_position + 1, len(reconstruction_plan_ids)
+            ):
                 other_position = case.failed_child_positions[other_plan_position]
                 _assert_plan_claims_only_child(
                     tracker,
@@ -605,72 +639,96 @@ def test_fan_out_child_failure_recovery(case: FanOutCase):
                     child_task_ids[other_position],
                     case.output_indices_for(other_position),
                     seed_output_indices,
-                    plan_ids[other_plan_position],
+                    reconstruction_plan_ids[other_plan_position],
                 )
 
             # This plan's retry completes, closing it out.
-            tracker.register_task_complete(child_task_id, plan_id=plan_id)
+            tracker.register_task_complete(
+                child_task_id, reconstruction_plan_id=reconstruction_plan_id
+            )
         return
 
     # Sequential failures: each child fails in a round of its own, after the
     # previous round has already recovered the seed.
-    plan_ids = []
+    reconstruction_plan_ids = []
     for child_position in case.failed_child_positions:
         child_task_id = child_task_ids[child_position]
         child_output_indices = case.output_indices_for(child_position)
 
         # This round's failure is fresh, so it opens a new plan rooted at the
         # seed no matter what the earlier rounds left behind.
-        plan_id = _fail_child_and_open_plan(
-            tracker, seed_task_id, child_task_id, plan_ids
+        reconstruction_plan_id = _fail_child_and_open_plan(
+            tracker, seed_task_id, child_task_id, reconstruction_plan_ids
         )
 
         # Resubmit the seed to emulate this round's recovery.
-        tracker.register_task_submission(seed_task_id, dependencies=[], plan_id=plan_id)
+        tracker.register_task_submission(
+            seed_task_id, dependencies=[], reconstruction_plan_id=reconstruction_plan_id
+        )
         _assert_plan_claims_only_child(
             tracker,
             seed_task_id,
             child_task_id,
             child_output_indices,
             seed_output_indices,
-            plan_id,
+            reconstruction_plan_id,
         )
 
         # Every earlier round's plan was already discharged on the seed when the
         # seed completed for it, whether or not its child has finished.
-        for earlier_plan_id in plan_ids:
+        for earlier_reconstruction_plan_id in reconstruction_plan_ids:
             _assert_seed_discharged(
-                tracker, seed_task_id, seed_output_indices, earlier_plan_id
+                tracker,
+                seed_task_id,
+                seed_output_indices,
+                earlier_reconstruction_plan_id,
             )
-        plan_ids.append(plan_id)
+        reconstruction_plan_ids.append(reconstruction_plan_id)
 
         # The seed's re-execution completes for this plan and this round's retry
         # is resubmitted against the recovered outputs.
-        tracker.register_task_complete(seed_task_id, plan_id=plan_id)
+        tracker.register_task_complete(
+            seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
         _resubmit_child_retry(
-            tracker, seed_task_id, child_task_id, child_output_indices, plan_id
+            tracker,
+            seed_task_id,
+            child_task_id,
+            child_output_indices,
+            reconstruction_plan_id,
         )
 
-        _assert_seed_discharged(tracker, seed_task_id, seed_output_indices, plan_id)
-        _assert_child_is_plan_target(tracker, child_task_id, plan_id)
+        _assert_seed_discharged(
+            tracker, seed_task_id, seed_output_indices, reconstruction_plan_id
+        )
+        _assert_child_is_plan_target(tracker, child_task_id, reconstruction_plan_id)
 
         if case.failure_mode is FailureMode.SEQUENTIAL_RECOVERED:
             # The retry completes, closing out the round before the next failure.
-            tracker.register_task_complete(child_task_id, plan_id=plan_id)
+            tracker.register_task_complete(
+                child_task_id, reconstruction_plan_id=reconstruction_plan_id
+            )
 
     if case.failure_mode is FailureMode.SEQUENTIAL_IN_RECOVERY:
         # Every retry is still in flight. The seed is discharged for all of the
         # plans, and each retry is still the leaf target of its own plan.
-        for child_position, plan_id in zip(case.failed_child_positions, plan_ids):
-            _assert_seed_discharged(tracker, seed_task_id, seed_output_indices, plan_id)
+        for child_position, reconstruction_plan_id in zip(
+            case.failed_child_positions, reconstruction_plan_ids
+        ):
+            _assert_seed_discharged(
+                tracker, seed_task_id, seed_output_indices, reconstruction_plan_id
+            )
             _assert_child_is_plan_target(
-                tracker, child_task_ids[child_position], plan_id
+                tracker, child_task_ids[child_position], reconstruction_plan_id
             )
 
         # The in-flight retries finally complete, closing out every plan.
-        for child_position, plan_id in zip(case.failed_child_positions, plan_ids):
+        for child_position, reconstruction_plan_id in zip(
+            case.failed_child_positions, reconstruction_plan_ids
+        ):
             tracker.register_task_complete(
-                child_task_ids[child_position], plan_id=plan_id
+                child_task_ids[child_position],
+                reconstruction_plan_id=reconstruction_plan_id,
             )
 
 
@@ -687,7 +745,7 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
     fan-out is only half-built when it happens: ``child_0`` is in flight against
     output 0 and output 1 has no consumer yet. Verifies that:
       - Failing the seed returns the seed itself as the retry root, along with the
-        plan id keying the recovery.
+        reconstruction plan id keying the recovery.
       - After the seed is resubmitted, ``child_0`` is *not* a pending child: it
         never failed and is still executing, so it must not be re-submitted.
       - Output 0 is OBJECT_PRUNED (already claimed by the in-flight ``child_0``)
@@ -707,31 +765,42 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
     tracker.register_task_submission(
         child_task_ids[0],
         dependencies=[
-            ParentBlockOutput(parent_data_task_id=seed_task_id, output_index=0)
+            ParentBlockOutput(parent_lineage_task_id=seed_task_id, output_index=0)
         ],
     )
 
     # The seed fails before output 1 is ever produced. It has no parents, so it is
     # its own retry root and the target of the reconstruction plan.
-    seed_tasks_to_retry, plan_id = tracker.register_task_failed(seed_task_id)
+    seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
+        seed_task_id
+    )
     assert seed_tasks_to_retry == [seed_task_id]
-    assert plan_id is not None
+    assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate recovery.
     tracker.register_task_submission(seed_task_id, dependencies=[])
 
     # child_0 is still executing against the original output 0 and never failed,
     # so it is not pending reconstruction and must not be resubmitted.
-    assert tracker.get_pending_children(seed_task_id, plan_id=plan_id) == {}
+    assert (
+        tracker.get_pending_children(
+            seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
+        == {}
+    )
 
     # Output 0 was already consumed by the in-flight child_0 -> pruned. Output 1
     # has no consumer at all, so the recovered seed produces it fresh -> new.
     assert (
-        tracker.get_object_reuse_status(seed_task_id, output_index=0, plan_id=plan_id)
+        tracker.get_object_reuse_status(
+            seed_task_id, output_index=0, reconstruction_plan_id=reconstruction_plan_id
+        )
         == ObjectReuseStatus.OBJECT_PRUNED
     )
     assert (
-        tracker.get_object_reuse_status(seed_task_id, output_index=1, plan_id=plan_id)
+        tracker.get_object_reuse_status(
+            seed_task_id, output_index=1, reconstruction_plan_id=reconstruction_plan_id
+        )
         == ObjectReuseStatus.OBJECT_NEW
     )
 
@@ -739,40 +808,69 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
     tracker.register_task_submission(
         child_task_ids[1],
         dependencies=[
-            ParentBlockOutput(parent_data_task_id=seed_task_id, output_index=1)
+            ParentBlockOutput(parent_lineage_task_id=seed_task_id, output_index=1)
         ],
     )
     assert (
-        tracker.get_object_reuse_status(seed_task_id, output_index=1, plan_id=plan_id)
+        tracker.get_object_reuse_status(
+            seed_task_id, output_index=1, reconstruction_plan_id=reconstruction_plan_id
+        )
         == ObjectReuseStatus.OBJECT_PRUNED
     )
 
     # The seed has no pending children and both outputs are now claimed.
-    assert tracker.get_pending_children(seed_task_id, plan_id=plan_id) == {}
+    assert (
+        tracker.get_pending_children(
+            seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
+        == {}
+    )
     _assert_reuse_statuses(
-        tracker, seed_task_id, [], seed_output_indices, plan_id=plan_id
+        tracker,
+        seed_task_id,
+        [],
+        seed_output_indices,
+        reconstruction_plan_id=reconstruction_plan_id,
     )
 
     # Each child has no pending children or outputs related to the reconstruction.
     for child_task_id in child_task_ids:
-        assert tracker.get_pending_children(child_task_id, plan_id=plan_id) == {}
+        assert (
+            tracker.get_pending_children(
+                child_task_id, reconstruction_plan_id=reconstruction_plan_id
+            )
+            == {}
+        )
         assert (
             tracker.get_object_reuse_status(
-                child_task_id, output_index=0, plan_id=plan_id
+                child_task_id,
+                output_index=0,
+                reconstruction_plan_id=reconstruction_plan_id,
             )
             == ObjectReuseStatus.OBJECT_UNRELATED
         )
 
     # The seed's re-execution closes out the plan, then both children finish:
     # child_0 (which survived the seed failure) first.
-    tracker.register_task_complete(seed_task_id, plan_id=plan_id)
+    tracker.register_task_complete(
+        seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+    )
     tracker.register_task_complete(child_task_ids[0])
     tracker.register_task_complete(child_task_ids[1])
 
     # The seed still has no pending children and both outputs remain pruned.
-    assert tracker.get_pending_children(seed_task_id, plan_id=plan_id) == {}
+    assert (
+        tracker.get_pending_children(
+            seed_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
+        == {}
+    )
     _assert_reuse_statuses(
-        tracker, seed_task_id, [], seed_output_indices, plan_id=plan_id
+        tracker,
+        seed_task_id,
+        [],
+        seed_output_indices,
+        reconstruction_plan_id=reconstruction_plan_id,
     )
 
 
@@ -792,7 +890,7 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     3-deep chain of its own. Verifies that:
       - Failing ``branch_0_task_2`` traces up through its own branch, through the
         fan-out and the linear prefix, all the way to the seed as the single
-        retry root, and yields the plan id the whole recovery is keyed by.
+        retry root, and yields the reconstruction plan id the whole recovery is keyed by.
       - Before anything completes for the plan, the whole failed path --
         seed -> prefix -> fan-out -> branch_0_task_0 -> branch_0_task_1 ->
         branch_0_task_2 -- is pending reconstruction, each parent reporting
@@ -822,14 +920,14 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     tracker.register_task_submission(
         prefix_task_id,
         dependencies=[
-            ParentBlockOutput(parent_data_task_id=seed_task_id, output_index=0)
+            ParentBlockOutput(parent_lineage_task_id=seed_task_id, output_index=0)
         ],
     )
     tracker.register_task_complete(prefix_task_id)
     tracker.register_task_submission(
         fan_out_task_id,
         dependencies=[
-            ParentBlockOutput(parent_data_task_id=prefix_task_id, output_index=0)
+            ParentBlockOutput(parent_lineage_task_id=prefix_task_id, output_index=0)
         ],
     )
     tracker.register_task_complete(fan_out_task_id)
@@ -853,12 +951,16 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
 
     # Fail branch_0's leaf; reconstruction traces up its branch, through the
     # fan-out and the prefix, to the seed as the one retry root.
-    seed_tasks_to_retry, plan_id = tracker.register_task_failed(failed_leaf_task_id)
+    seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
+        failed_leaf_task_id
+    )
     assert seed_tasks_to_retry == [seed_task_id]
-    assert plan_id is not None
+    assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate recovery of the graph root.
-    tracker.register_task_submission(seed_task_id, dependencies=[], plan_id=plan_id)
+    tracker.register_task_submission(
+        seed_task_id, dependencies=[], reconstruction_plan_id=reconstruction_plan_id
+    )
 
     # Every task on the failed path is pending reconstruction. Each edge carries
     # output 0 -- including fan_out -> branch_0_task_0 -- so each parent reports
@@ -871,21 +973,30 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     for parent_task_id, child_task_id in zip(
         recovered_path_task_ids, recovered_path_task_ids[1:]
     ):
-        assert tracker.get_pending_children(parent_task_id, plan_id=plan_id) == {
-            child_task_id: {parent_task_id: [0]}
-        }
+        assert tracker.get_pending_children(
+            parent_task_id, reconstruction_plan_id=reconstruction_plan_id
+        ) == {child_task_id: {parent_task_id: [0]}}
         assert (
             tracker.get_object_reuse_status(
-                parent_task_id, output_index=0, plan_id=plan_id
+                parent_task_id,
+                output_index=0,
+                reconstruction_plan_id=reconstruction_plan_id,
             )
             == ObjectReuseStatus.OBJECT_REUSED
         )
 
     # The failed leaf is the plan's target and has no children of its own.
-    assert tracker.get_pending_children(failed_leaf_task_id, plan_id=plan_id) == {}
+    assert (
+        tracker.get_pending_children(
+            failed_leaf_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
+        == {}
+    )
     assert (
         tracker.get_object_reuse_status(
-            failed_leaf_task_id, output_index=0, plan_id=plan_id
+            failed_leaf_task_id,
+            output_index=0,
+            reconstruction_plan_id=reconstruction_plan_id,
         )
         == ObjectReuseStatus.OBJECT_NEW
     )
@@ -894,7 +1005,9 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     # the plan, and no task along that branch is pending reconstruction.
     assert (
         tracker.get_object_reuse_status(
-            fan_out_task_id, output_index=1, plan_id=plan_id
+            fan_out_task_id,
+            output_index=1,
+            reconstruction_plan_id=reconstruction_plan_id,
         )
         == ObjectReuseStatus.OBJECT_PRUNED
     )
@@ -905,42 +1018,57 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     for parent_task_id, child_task_id in zip(
         recovered_path_task_ids, recovered_path_task_ids[1:]
     ):
-        assert tracker.get_pending_children(parent_task_id, plan_id=plan_id) == {
-            child_task_id: {parent_task_id: [0]}
-        }
+        assert tracker.get_pending_children(
+            parent_task_id, reconstruction_plan_id=reconstruction_plan_id
+        ) == {child_task_id: {parent_task_id: [0]}}
         assert (
             tracker.get_object_reuse_status(
-                parent_task_id, output_index=0, plan_id=plan_id
+                parent_task_id,
+                output_index=0,
+                reconstruction_plan_id=reconstruction_plan_id,
             )
             == ObjectReuseStatus.OBJECT_REUSED
         )
 
-        tracker.register_task_complete(parent_task_id, plan_id=plan_id)
+        tracker.register_task_complete(
+            parent_task_id, reconstruction_plan_id=reconstruction_plan_id
+        )
         tracker.register_task_submission(
             child_task_id,
             dependencies=[
-                ParentBlockOutput(parent_data_task_id=parent_task_id, output_index=0)
+                ParentBlockOutput(parent_lineage_task_id=parent_task_id, output_index=0)
             ],
-            plan_id=plan_id,
+            reconstruction_plan_id=reconstruction_plan_id,
         )
 
-        assert tracker.get_pending_children(parent_task_id, plan_id=plan_id) == {}
+        assert (
+            tracker.get_pending_children(
+                parent_task_id, reconstruction_plan_id=reconstruction_plan_id
+            )
+            == {}
+        )
         assert (
             tracker.get_object_reuse_status(
-                parent_task_id, output_index=0, plan_id=plan_id
+                parent_task_id,
+                output_index=0,
+                reconstruction_plan_id=reconstruction_plan_id,
             )
             == ObjectReuseStatus.OBJECT_UNRELATED
         )
 
     assert (
         tracker.get_object_reuse_status(
-            failed_leaf_task_id, output_index=0, plan_id=plan_id
+            failed_leaf_task_id,
+            output_index=0,
+            reconstruction_plan_id=reconstruction_plan_id,
         )
         == ObjectReuseStatus.OBJECT_NEW
     )
 
     # The leaf's own re-execution closes out the plan.
-    tracker.register_task_complete(failed_leaf_task_id, plan_id=plan_id)
+    tracker.register_task_complete(
+        failed_leaf_task_id, reconstruction_plan_id=reconstruction_plan_id
+    )
 
 
 if __name__ == "__main__":
