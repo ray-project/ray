@@ -1485,14 +1485,13 @@ class TestSelfHealthPush:
         from ray.serve._private.replica import ReplicaMetricsManager
 
         m = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
-        m._self_healthy = None
         m._self_health_checked_at = None
-        m._self_health_period_s = 10.0
+        m._health_check_period_s = 10.0
         m._self_consecutive_failures = 0
-        m._last_counted_failure_s = 0.0
+        m._last_counted_failure_at = 0.0
         m._pending_health_push_ref = None
-        m._pending_health_push_started_s = 0.0
-        m._pending_push_healthy = True
+        m._pending_health_push_started_at = 0.0
+        m._pending_health_push_healthy = True
         m._metrics_push_lock = threading.Lock()
         m._controller_handle = Mock()
         m._replica_id = ReplicaID("r1", DeploymentID(name="d", app_name="app"))
@@ -1507,7 +1506,6 @@ class TestSelfHealthPush:
 
         m._eval_self_health_fn = ok
         await m._eval_and_push_self_health()
-        assert m._self_healthy is True
         args = m._controller_handle.record_replica_health.remote.call_args.args
         assert args[0] == m._replica_id and args[2] is True
 
@@ -1520,7 +1518,6 @@ class TestSelfHealthPush:
 
         m._eval_self_health_fn = bad
         await m._eval_and_push_self_health()
-        assert m._self_healthy is False
         assert (
             m._controller_handle.record_replica_health.remote.call_args.args[2] is False
         )
@@ -1542,7 +1539,7 @@ class TestSelfHealthPush:
         assert m._self_consecutive_failures == 1
         await m._eval_and_push_self_health()  # same period, must not count again
         assert m._self_consecutive_failures == 1
-        m._last_counted_failure_s -= m._self_health_period_s  # a period on
+        m._last_counted_failure_at -= m._health_check_period_s  # a period on
         await m._eval_and_push_self_health()
         assert m._self_consecutive_failures == 2
 
@@ -1563,9 +1560,11 @@ class TestSelfHealthPush:
 
         m._eval_self_health_fn = bad
         for _ in range(REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 2):
-            m._last_counted_failure_s -= m._self_health_period_s
+            m._last_counted_failure_at -= m._health_check_period_s
             await m._eval_and_push_self_health()
-        assert m._self_healthy is False
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
         # The user check stops running at the threshold; the pushes continue.
         assert len(evals) == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 
@@ -1576,7 +1575,7 @@ class TestSelfHealthPush:
         m = self._manager()
         # A healthy heartbeat the controller has not accepted yet.
         m._pending_health_push_ref = "in_flight"
-        m._pending_health_push_started_s = time.time()
+        m._pending_health_push_started_at = time.time()
         monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
 
         async def bad():
@@ -1593,8 +1592,10 @@ class TestSelfHealthPush:
 
         m = self._manager()
         m._pending_health_push_ref = "in_flight"
-        m._pending_health_push_started_s = time.time()
-        m._pending_push_healthy = False  # an unhealthy heartbeat already in flight
+        m._pending_health_push_started_at = time.time()
+        m._pending_health_push_healthy = (
+            False  # an unhealthy heartbeat already in flight
+        )
         monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
 
         async def bad():
@@ -1616,7 +1617,6 @@ class TestSelfHealthPush:
 
         m._eval_self_health_fn = cancelled
         await m._eval_and_push_self_health()
-        assert m._self_healthy is False
         assert (
             m._controller_handle.record_replica_health.remote.call_args.args[2] is False
         )
@@ -1643,7 +1643,7 @@ class TestSelfHealthPush:
         m = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
         m._metrics_pusher = Mock()
         ReplicaMetricsManager.start_self_health_pusher(m, *args)
-        assert m._self_health_period_s == 10.0
+        assert m._health_check_period_s == 10.0
         # The check itself still runs twice per period.
         assert m._metrics_pusher.register_or_update_task.call_args.args[2] == 5.0
 
@@ -1662,8 +1662,7 @@ class TestReplicaHealthVerdict:
             health_check_period_s=10.0, health_check_timeout_s=30.0
         )
         r._self_health_active = active
-        r._self_health_evaluated = False
-        r._self_health_evaluated_at = 0.0
+        r._self_health_evaluated_at = None
         r._last_self_health_error = None
         r._healthy = False
         r._health_check_lock = asyncio.Lock()
@@ -1674,7 +1673,7 @@ class TestReplicaHealthVerdict:
     @pytest.mark.asyncio
     async def test_a_fresh_healthy_verdict_skips_the_user_check(self):
         r = self._replica()
-        r._self_health_evaluated, r._healthy = True, True
+        r._healthy = True
         r._self_health_evaluated_at = time.time()
         await r.check_health()
         r._user_callable_wrapper.call_user_health_check.assert_not_called()
@@ -1682,7 +1681,7 @@ class TestReplicaHealthVerdict:
     @pytest.mark.asyncio
     async def test_a_stale_healthy_verdict_falls_back_to_the_user_check(self):
         r = self._replica()
-        r._self_health_evaluated, r._healthy = True, True
+        r._healthy = True
         r._self_health_evaluated_at = time.time() - 11.0  # past the period
         await r.check_health()
         r._user_callable_wrapper.call_user_health_check.assert_called_once()
@@ -1690,7 +1689,7 @@ class TestReplicaHealthVerdict:
     @pytest.mark.asyncio
     async def test_an_unhealthy_verdict_raises_without_expiring(self):
         r = self._replica()
-        r._self_health_evaluated, r._healthy = True, False
+        r._healthy = False
         r._self_health_evaluated_at = time.time() - 600.0
         r._last_self_health_error = "boom"
         with pytest.raises(RuntimeError, match="boom"):
@@ -1736,7 +1735,7 @@ class TestReplicaHealthVerdict:
         with pytest.raises(asyncio.CancelledError):
             await r.check_health()
         assert r._healthy is True
-        assert r._self_health_evaluated is False
+        assert r._self_health_evaluated_at is None
 
 
 class TestBoundedPushGuard:
