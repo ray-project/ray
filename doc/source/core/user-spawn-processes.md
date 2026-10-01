@@ -4,31 +4,33 @@ myst:
     description: "Lifetime of processes your code spawns inside Ray workers, including killing them on worker exit and zombie reaping behavior."
 ---
 
-# Lifetimes of a User-Spawn Process
+# Lifetimes of user-spawned processes
 
-When you spawn child processes from Ray workers, you are responsible for managing the lifetime of child processes. However, it is not always possible, especially when worker crashes and child processes are spawned from libraries (torch dataloader).
+When you spawn child processes from Ray workers, you're responsible for managing the lifetime of those child processes. That isn't always possible, especially when a worker crashes or when a library, such as the PyTorch data loader, spawns the child processes.
 
-To avoid leaking user-spawned processes, Ray provides mechanisms to kill all user-spawned processes when a worker that starts it exits. This feature prevents GPU memory leaks from child processes (e.g., torch).
+To avoid leaking user-spawned processes, Ray provides mechanisms to kill all user-spawned processes when the worker that started them exits. This feature prevents GPU memory leaks from child processes, such as the ones PyTorch spawns.
 
-Ray provides following mechanisms to handle subprocess killing on worker exit:
+Ray provides the following three mechanisms to kill child processes on worker exit:
 
-- `RAY_kill_child_processes_on_worker_exit` (default `true`): Only works on Linux. If true, the worker kills all *direct* child processes on exit. This won't work if the worker crashed. This is NOT recursive, in that grandchild processes are not killed by this mechanism.
+- `RAY_kill_child_processes_on_worker_exit`: Defaults to `true` and works only on Linux. When `true`, the worker kills all of its *direct* child processes on exit. This mechanism doesn't work if the worker crashes. It isn't recursive, so it doesn't kill grandchild processes.
 
-- `RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper` (default `false`): Only works on Linux greater than or equal to 3.4. If true, Raylet *recursively* kills any child processes and grandchild processes that were spawned by the worker after the worker exits. This works even if the worker crashed. The killing happens within 10 seconds after the worker death.
+- `RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper`: Defaults to `false` and works only on Linux 3.4 and later. When `true`, the raylet *recursively* kills any child and grandchild processes that the worker spawned, after the worker exits. This mechanism works even if the worker crashes. The raylet kills these processes within 10 seconds of the worker's death.
 
-- `RAY_process_group_cleanup_enabled` (default `true`): If true (POSIX), Ray isolates each worker into its own process group at spawn and cleans up the worker’s process group on worker exit via `killpg`. Processes that intentionally call `setsid()` will detach and not be killed by this cleanup. This is the preferred mechanism and supersedes the deprecated subreaper-based cleanup.
+- `RAY_process_group_cleanup_enabled`: Defaults to `true` and works on POSIX platforms. When `true`, Ray isolates each worker in its own process group at spawn and cleans up the worker's process group through `killpg` when the worker exits. Processes that intentionally call `setsid()` detach from the group, so this cleanup doesn't kill them. This is the preferred mechanism, and it supersedes the deprecated subreaper-based cleanup.
 
-On non-Linux platforms, subreaper is not available. Per‑worker process groups are supported on POSIX platforms; on Windows, neither subreaper nor PGs apply. Users should manage child processes explicitly on platforms without support.
+The subreaper isn't available on non-Linux platforms. Per-worker process groups work on POSIX platforms. On Windows, neither the subreaper nor process groups apply. On platforms without support, manage child processes explicitly.
 
-Note: The feature is meant to be a last resort to kill orphaned processes. It is not a replacement for proper process management. Users should still manage the lifetime of their processes and clean up properly.
+:::{note}
+The feature is a last resort to kill orphaned processes, not a replacement for proper process management. Manage the lifetime of your processes and clean them up properly.
+:::
 
 ```{contents}
 :local:
 ```
 
-## User-Spawned Process Killed on Worker Exit
+## User-spawned process killed on worker exit
 
-The following example uses a Ray Actor to spawn a user process. The user process is a sleep process.
+The following example enables the raylet subreaper and uses a Ray actor to spawn a user process that runs `sleep`.
 
 ```{testcode}
 import ray
@@ -65,24 +67,24 @@ assert not psutil.pid_exists(pid)
 ```
 
 
-## Enabling the feature
+## Enable the subreaper feature
 
-To enable the subreaper feature (deprecated), set via `_system_config` or equivalent cluster configuration at start. You must restart the cluster to apply the change. Prefer enabling `process_group_cleanup_enabled` instead.
+The subreaper feature is deprecated. Enable `process_group_cleanup_enabled` instead. To enable the subreaper feature anyway, set it when you start the cluster, through `_system_config` or the equivalent cluster configuration. You must restart the cluster to apply the change. For example, set the environment variable when you start the head node:
 
 ```bash
 RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper=true ray start --head
 ```
 
-Another way is to enable it during `ray.init()` by adding a `_system_config` like this:
+Alternatively, pass a `_system_config` to `ray.init()`:
 
 ```
 ray.init(_system_config={"kill_child_processes_on_worker_exit_with_raylet_subreaper":True})
 ```
 
 
-## ⚠️ Caution: Core worker now reaps zombies, toggle back if you wait to `waitpid`
+## Caution: The core worker reaps zombie processes
 
-When subreaper is enabled, the worker process also becomes a subreaper (Linux), meaning some grandchildren processes can be reparented to the worker process. The worker sets `SIGCHLD` to `SIG_IGN`. If you need to wait for a child process to exit, reset `SIGCHLD` to `SIG_DFL` first.
+When you enable the subreaper, the worker process also becomes a subreaper on Linux, which means some grandchild processes can be reparented to the worker process. The worker sets `SIGCHLD` to `SIG_IGN`. To wait for a child process to exit, for example with `waitpid`, reset `SIGCHLD` to `SIG_DFL` first:
 
 ```
 import signal
@@ -90,20 +92,20 @@ signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 ```
 
 
-## Under the hood
+## How does the subreaper work?
 
-This feature is implemented by setting the `prctl(PR_SET_CHILD_SUBREAPER, 1)` flag on the Raylet process which spawns all Ray workers. See [prctl(2)](https://man7.org/linux/man-pages/man2/prctl.2.html). This flag makes the Raylet process a "subreaper" which means that if a descendant child process dies, the dead child's children processes reparent to the Raylet process. Subreaper is deprecated in favor of per‑worker process groups.
+Ray sets the `prctl(PR_SET_CHILD_SUBREAPER, 1)` flag on the raylet process, which spawns all Ray workers. See [prctl(2)](https://man7.org/linux/man-pages/man2/prctl.2.html). This flag makes the raylet process a "subreaper." If a descendant process dies, the dead process's children reparent to the raylet process. The subreaper is deprecated in favor of per-worker process groups.
 
-Raylet maintains a list of "known" direct children pid it spawns, and when the Raylet process receives the SIGCHLD signal, it knows that one of its child processes (e.g. the workers) has died, and maybe there are reparented orphan processes. Raylet lists all children pids (with ppid = raylet pid), and if a child pid is not "known" (i.e. not in the list of direct children pids), Raylet thinks it is an orphan process and kills it via `SIGKILL`.
+The raylet keeps a list of the "known" direct child PIDs that it spawns. When the raylet process receives a `SIGCHLD` signal, it knows that one of its child processes, such as a worker, has died, and that reparented orphan processes might exist. The raylet then lists all of its child processes, the ones whose parent process ID (PPID) is the raylet PID. If a child PID isn't in the list of known direct children, the raylet treats that process as an orphan and kills it with `SIGKILL`.
 
-For a deep chain of process creations, Raylet would do the killing step by step. For example, in a chain like this:
+For a deep chain of processes, the raylet kills them one step at a time. Consider the following chain:
 
 ```
 raylet -> the worker -> user process A -> user process B -> user process C
 ```
 
-When the `the worker` dies, `Raylet` kills the `user process A`, because it's not on the "known" children list. When `user process A` dies, `Raylet` kills `user process B`, and so on.
+When the worker dies, the raylet kills `user process A`, because it isn't on the "known" children list. When `user process A` dies, the raylet kills `user process B`, and so on.
 
-An edge case is, if the `the worker` is still alive but the `user process A` is dead, then `user process B` gets reparented and risks being killed. To mitigate, `Ray` also sets the `the worker` as a subreaper, so it can adopt the reparented processes. `Core worker` does not kill unknown children processes, so a user "daemon" process e.g. `user process B` that outlives `user process A` can live along. However if the `the worker` dies, the user daemon process gets reparented to `raylet` and gets killed.
+In one edge case, the worker is still alive but `user process A` is dead, so `user process B` gets reparented and risks being killed. To mitigate this, Ray also sets the worker as a subreaper, so it can adopt the reparented processes. The core worker doesn't kill unknown child processes, so a user "daemon" process such as `user process B` that outlives `user process A` can keep running. However, if the worker dies, the user daemon process gets reparented to the raylet, which kills it.
 
 Related PR: [Use subreaper to kill unowned subprocesses in raylet. (#42992)](https://github.com/ray-project/ray/pull/42992)
