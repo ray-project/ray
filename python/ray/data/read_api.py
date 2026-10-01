@@ -4258,7 +4258,7 @@ def read_databricks_tables(
     .. note::
 
         This function is built on the
-        `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
+        `Databricks statement execution API <https://docs.databricks.com/api/statement-execution/v1/execute-statement>`_.
 
     Examples:
 
