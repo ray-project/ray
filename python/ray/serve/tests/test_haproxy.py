@@ -38,8 +38,7 @@ from ray.serve._private.test_utils import (
     get_application_url,
 )
 from ray.serve.config import HTTPOptions, RequestRouterConfig
-from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
+from ray.serve.context import _get_global_client, _get_internal_replica_context
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.schema import (
     ProxyStatus,
@@ -1243,22 +1242,27 @@ def test_multiplexed_routing_retry(shutdown_ray):
             assert response.text == "model"
 
 
-def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
-    """serve.run rejects a custom router on the ingress under HAProxy."""
+def test_serve_run_supports_custom_ingress_request_router(ray_shutdown):
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
 
     @serve.deployment(
-        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=RoundRobinRouter
+        ),
     )
     class Ingress:
-        async def __call__(self):
-            return "hi"
+        def __init__(self):
+            self.replica_id = _get_internal_replica_context().replica_id
 
-    with pytest.raises(
-        RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
-    ):
-        serve.run(Ingress.bind())
+        async def __call__(self):
+            return self.replica_id.to_full_id_str()
+
+    serve.run(Ingress.bind())
+    replica_ids = [requests.get("http://localhost:8003").text for _ in range(3)]
+    assert replica_ids[0] != replica_ids[1]
+    assert replica_ids[0] == replica_ids[2]
 
 
 def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
