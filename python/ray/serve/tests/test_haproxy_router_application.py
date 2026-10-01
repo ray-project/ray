@@ -20,7 +20,10 @@ from fastapi import FastAPI, Request, Response
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.common import RequestProtocol
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+)
 from ray.serve._private.haproxy import (
     BackendConfig,
     HAProxyApi,
@@ -300,6 +303,7 @@ class FakeRouter:
     def __init__(self, port: int):
         self.calls: List[Dict] = []
         self.response: Tuple[int, str] = (500, "unset")
+        self.response_headers: Dict[str, str] = {}
         self.delay_s = 0.0
         app = FastAPI()
 
@@ -320,7 +324,12 @@ class FakeRouter:
             )
             await asyncio.sleep(self.delay_s)
             status, body = self.response
-            return Response(body, status_code=status, media_type="application/json")
+            return Response(
+                body,
+                status_code=status,
+                media_type="application/json",
+                headers=self.response_headers,
+            )
 
         self.server = _serve(app, port)
 
@@ -494,6 +503,23 @@ async def test_returns_router_error_to_client(router_cluster, status):
     assert resp.status_code == status
     assert resp.headers["content-type"] == "application/json"
     assert resp.json() == error
+
+
+@pytest.mark.asyncio
+async def test_returns_marked_success_response_directly(router_cluster):
+    url, router, _ = router_cluster
+    body = {"object": "list", "data": [{"id": "model-a"}]}
+    router.response = (200, json.dumps(body))
+    router.response_headers = {
+        SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER: "1",
+    }
+
+    resp = requests.get(f"{url}/v1/models", timeout=10)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/json"
+    assert SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER not in resp.headers
+    assert resp.json() == body
 
 
 @pytest.mark.asyncio
