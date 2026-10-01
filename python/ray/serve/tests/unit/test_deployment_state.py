@@ -61,6 +61,7 @@ from ray.serve._private.deployment_state import (
     DeploymentStateManager,
     DeploymentTargetState,
     DeploymentVersion,
+    PushedHealth,
     ReplicaHealthPushRegistry,
     ReplicaStartupStatus,
     ReplicaStateContainer,
@@ -12484,7 +12485,7 @@ def test_apply_pushed_health_hands_off_to_wrapper():
     DeploymentState._apply_pushed_health(ds, rep)
     # Pin the tuple order, not just the call: the splat makes a swap of the two
     # floats silent, and it would feed replica-clock in as received_at.
-    received_at = ds._health_push_registry.get("r1")[1]
+    received_at = ds._health_push_registry.get("r1").received_at
     rep.record_pushed_health.assert_called_once_with(123.0, received_at, True, None)
 
     absent = Mock()
@@ -12512,10 +12513,14 @@ class TestPushedHealthRegressions:
         r = ReplicaHealthPushRegistry()
         r._PRUNE_THRESHOLD = 2
         now = time.time()
-        r._state = {f"old{i}": (1.0, now - 1e4, True, None) for i in range(3)}
+        r._state = {
+            f"old{i}": PushedHealth(1.0, now - 1e4, True, None) for i in range(3)
+        }
         r.record("fresh1", now, True)
         assert "old0" not in r._state  # over threshold -> pruned
-        r._state.update({f"old{i}": (1.0, now - 1e4, True, None) for i in range(3)})
+        r._state.update(
+            {f"old{i}": PushedHealth(1.0, now - 1e4, True, None) for i in range(3)}
+        )
         r.record("fresh2", now + 1.0, True)
         # Within _PRUNE_MIN_INTERVAL_S the O(N) prune must not re-run.
         assert "old0" in r._state
