@@ -278,7 +278,7 @@ if setup_spec.type == SetupType.RAY:
             "memray; sys_platform != 'win32'",
         ],
         "serve": [
-            "uvicorn[standard]",
+            "uvicorn[standard] >= 0.26.0",  # >= 0.26.0 includes root_path in the ASGI path.
             "requests",
             "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
             "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
@@ -288,6 +288,7 @@ if setup_spec.type == SetupType.RAY:
             numpy_dep,
             # Used by the HAProxy ingress controller to render its config.
             "jinja2",
+            "grpcio-reflection",
             "ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
@@ -386,9 +387,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.27.0",
-                "nixl==1.3.1",
-                "nixl-cu13==1.3.1",
+                "vllm[audio]==0.30.0",
+                "nixl==1.4.1",
+                "nixl-cu13==1.4.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
