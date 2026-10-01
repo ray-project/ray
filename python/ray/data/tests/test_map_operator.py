@@ -11,6 +11,7 @@ from ray._common.test_utils import wait_for_condition
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
+    ResourceRequest,
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -794,6 +795,99 @@ def test_map_operator_default_num_cpus(
     assert op._ray_remote_args.get("num_cpus", 0) == expected_num_cpus
     for key, value in ray_remote_args.items():
         assert op._ray_remote_args[key] == value
+
+
+def test_map_operator_resource_requests_track_inflight_tasks(
+    ray_start_regular_shared,
+):
+    """Exact requests are reported while a task is in flight and released after."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[np.ones(1024)]])
+    )
+    transformer = create_map_transformer_from_block_fn(_mul2_transform)
+
+    op = MapOperator.create(
+        transformer,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestResourceRequests",
+        compute_strategy=TaskPoolStrategy(),
+        # Schedule on the first bundle so the task is in flight right away.
+        min_rows_per_bundle=1,
+        ray_remote_args={"num_cpus": 1},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    # Adding input submits the task immediately.
+    op.add_input(input_op.get_next(), 0)
+    requests = op.get_resource_requests()
+    assert len(requests) == 1
+    assert requests[0].resources == {"CPU": 1}
+
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+    while op.has_next():
+        op.get_next()
+
+    # No leak: the request is dropped once the task completes.
+    assert op.get_resource_requests() == []
+    assert op.has_completed()
+
+
+@pytest.mark.usefixtures("ray_start_regular_shared")
+def test_task_pool_reconstruction_demand_keeps_task_shape():
+    """Reconstructed tasks are demand of their own shape, not extra GPUs.
+
+    Folding their resources into the in-flight requests would report a 1-GPU
+    task as 2 GPUs, so the autoscaler would ask for nodes the workload cannot
+    use -- and in a 1-GPU cluster, for nodes that do not exist.
+
+    """
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(4)])
+    )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestReconstruction",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_gpus": 1},
+    )
+    op._resource_requests[0] = ResourceRequest(resources={"CPU": 1, "GPU": 1})
+    op._num_lineage_reconstruction_tasks = MagicMock(return_value=1)
+
+    # Two 1-GPU tasks, never a single request for 2 GPUs.
+    assert [request.resources for request in op.get_resource_requests()] == [
+        {"CPU": 1, "GPU": 1},
+        {"CPU": 1, "GPU": 1},
+    ]
+
+
+@pytest.mark.usefixtures("ray_start_regular_shared")
+def test_actor_pool_reconstruction_demand_keeps_actor_shape():
+    """Reconstructed actors carry the pool's actor shape."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(4)])
+    )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestReconstruction",
+        compute_strategy=ActorPoolStrategy(),
+        ray_remote_args={"num_gpus": 1},
+    )
+    op._actor_pool = MagicMock()
+    op._actor_pool.get_resource_requests.return_value = [
+        ResourceRequest(resources={"CPU": 1, "GPU": 1})
+    ]
+    op._num_lineage_reconstructed_actors = MagicMock(return_value=2)
+
+    # One running actor plus two reconstructed ones, all the same shape.
+    assert [request.resources for request in op.get_resource_requests()] == [
+        {"CPU": 1, "GPU": 1}
+    ] * 3
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import math
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from .base_autoscaling_coordinator import (
@@ -11,12 +11,14 @@ from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
     LabelSelector,
     LabelValue,
+    NodeResources,
     ResourceDict,
 )
 from .default_autoscaling_coordinator import (
     DEFAULT_SUBCLUSTER,
     SUBCLUSTER_LABEL_KEY,
     DefaultAutoscalingCoordinator,
+    _bundle_can_fit_on_node,
 )
 from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
@@ -25,12 +27,14 @@ from .resource_utilization_gauge import (
 from .util import cap_resource_request_to_limits, is_autoscaling_enabled
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
+from ray.data._internal.execution.interfaces import ResourceRequest
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,8 @@ logger = logging.getLogger(__name__)
 # (e.g. 14.87 GiB vs 14.93 GiB) because of non-deterministic memory
 # availability at Ray init time.
 _MEMORY_QUANTIZATION_BYTES = GiB
+
+ResourceShape = Tuple[Tuple[str, float], ...]
 
 
 @dataclass(frozen=True)
@@ -172,6 +178,67 @@ def _get_node_resource_spec_and_count(
     return nodes_resource_spec_count
 
 
+def _get_resource_requests_from_topology(
+    topology: "Topology",
+) -> List[ResourceRequest]:
+    """Collect active resource requests from every operator."""
+    active_requests: List[ResourceRequest] = []
+    for op in topology:
+        active_requests.extend(op.get_resource_requests())
+    return active_requests
+
+
+def _get_extra_resource_usage(topology: "Topology") -> Optional[ResourceRequest]:
+    """Collect node-level usage that is not attached to any task shape.
+
+    Object store memory is pooled per node, so it is reported as a bundle of
+    its own. Folding it into task shapes would corrupt those shapes and let a
+    node-level shortage make every shape look unhostable, which would scale up
+    node types that are not short at all.
+
+    Args:
+        topology: The execution topology to collect usage from.
+
+    Returns:
+        Optional[ResourceRequest]: The aggregated usage, or None when there is
+            none to report.
+    """
+    total = ExecutionResources.zero()
+    for op in topology:
+        total = total.add(op.get_extra_resource_usage())
+    resources = {
+        name: amount for name, amount in total.to_resource_dict().items() if amount > 0
+    }
+    return ResourceRequest(resources=resources) if resources else None
+
+
+def _cap_resource_requests(
+    active_requests: List[ResourceRequest],
+    scale_up_requests: List[ResourceRequest],
+    resource_limits: ExecutionResources,
+) -> List[ResourceRequest]:
+    """Cap scale-up requests while always preserving active requests.
+
+    Reuses the legacy bundle capping policy; custom resources are preserved even
+    though they are not limitable dimensions.
+    """
+    capped_bundles = cap_resource_request_to_limits(
+        [request.resources for request in active_requests],
+        [request.resources for request in scale_up_requests],
+        resource_limits,
+    )
+    return [ResourceRequest(resources=bundle) for bundle in capped_bundles]
+
+
+def _resource_requests_from_groups(
+    groups: Dict[ResourceShape, int],
+) -> List[ResourceRequest]:
+    requests = []
+    for shape, count in groups.items():
+        requests.extend(ResourceRequest(resources=dict(shape)) for _ in range(count))
+    return requests
+
+
 class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     """Ray Data's second cluster autoscaler implementation.
 
@@ -185,6 +252,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         to directly scale up nodes.
       * Cluster scaling down isn't handled here. It depends on the idle node
         termination.
+
+    When a ``topology`` is supplied, the *exact* path is used instead: operators
+    report the exact resource requests of their in-flight tasks/actors (see
+    ``PhysicalOperator.get_resource_requests``) and scaling decisions are made per
+    exact shape. Per-shape utilization is therefore not comparable to the legacy
+    cluster-wide ratio, and the ``data_cluster_*_utilization`` gauges are unused.
     """
 
     # Default cluster utilization threshold to trigger scaling up.
@@ -239,22 +312,15 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         get_node_counts: Optional[Callable[[], Dict[_NodeResourceSpec, int]]] = None,
         get_time: Callable[[], float] = time.time,
         label_selector: Optional[LabelSelector] = None,
+        topology: Optional["Topology"] = None,
     ):
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
         assert min_gap_between_autoscaling_requests_s >= 0
         assert low_util_request_release_delay_s >= 0
 
-        if resource_utilization_calculator is None:
-            resource_utilization_calculator = RollingLogicalUtilizationGauge(
-                resource_manager,
-                cluster_util_avg_window_s=cluster_util_avg_window_s,
-                execution_id=execution_id,
-            )
-
         self._resource_limits = resource_limits
         self._label_selector = label_selector or {}
-        self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
         self._cluster_scaling_up_delta = int(math.ceil(cluster_scaling_up_delta))
@@ -292,6 +358,19 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._get_time = get_time
         self._autoscaling_enabled = is_autoscaling_enabled()
 
+        self._topology = topology
+        if topology is None:
+            if resource_utilization_calculator is None:
+                resource_utilization_calculator = RollingLogicalUtilizationGauge(
+                    resource_manager,
+                    cluster_util_avg_window_s=cluster_util_avg_window_s,
+                    execution_id=execution_id,
+                )
+            self._resource_utilization_calculator = resource_utilization_calculator
+        else:
+            self._resource_utilization_calculator = None
+        self._request_remaining = list(STANDARD_RESOURCE_TYPES)
+
         # Register with the coordinator immediately so the actor knows about this
         # requester before the first ``get_reserved_resources`` call. The cached value
         # returned by ``get_reserved_resources`` (and thus ``get_total_resources``) will
@@ -299,6 +378,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._send_resource_request([])
 
     def try_trigger_scaling(self):
+        if self._topology is not None:
+            self._try_trigger_resource_shape_scaling()
+            return
+
         # Note, should call this method before checking `_last_request_time`,
         # in order to update the average cluster utilization.
         self._resource_utilization_calculator.observe()
@@ -392,9 +475,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     def _send_resource_request(
         self,
         resource_request: Optional[List[ResourceDict]],
+        update_non_empty_request_state: bool = True,
     ):
         now = self._get_time()
-        update_non_empty_request_state = True
         if resource_request is None:
             if self._should_keep_non_empty_request(now):
                 resource_request = self._last_non_empty_resource_request
@@ -408,7 +491,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._autoscaling_coordinator.request_resources(
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
-            request_remaining=STANDARD_RESOURCE_TYPES,
+            request_remaining=self._request_remaining,
         )
         if resource_request and update_non_empty_request_state:
             self._last_non_empty_resource_request = [
@@ -419,6 +502,17 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             self._last_non_empty_resource_request = []
             self._last_non_empty_request_time = None
         self._last_request_time = now
+
+    def _update_request_remaining(
+        self, resource_requests: List[ResourceRequest]
+    ) -> None:
+        for request in resource_requests:
+            for resource_name in request.resources:
+                if (
+                    resource_name not in self._request_remaining
+                    and not resource_name.startswith("node:")
+                ):
+                    self._request_remaining.append(resource_name)
 
     def on_executor_shutdown(self):
         # Cancel the resource request when the executor is shutting down.
@@ -442,3 +536,165 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         for res in resources.values():
             total = total.add(ExecutionResources.from_resource_dict(res))
         return total
+
+    def _try_trigger_resource_shape_scaling(self) -> None:
+        """Scale active resource shapes whose utilization needs expansion.
+
+        Active requests are always retained; when a shape exceeds the threshold,
+        scale-up copies of that same shape are added.
+        """
+        now = self._get_time()
+        if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
+            return
+
+        assert self._topology is not None
+        active_requests = _get_resource_requests_from_topology(self._topology)
+        active_requests = [request for request in active_requests if request.resources]
+        selected_shapes: List[ResourceShape] = []
+        if active_requests:
+            reserved_resources = self._autoscaling_coordinator.get_reserved_resources()
+            # An empty view means "unknown" (the first async RPC hasn't landed
+            # yet), not "no capacity", so no decision is made on this tick.
+            if reserved_resources:
+                selected_shapes = _ResourceRequestUtilizationCalculator(
+                    reserved_resources
+                ).select_resource_shapes_to_scale(
+                    active_requests,
+                    self._cluster_scaling_up_util_threshold,
+                )
+
+        scale_up_requests = _resource_requests_from_groups(
+            {shape: self._cluster_scaling_up_delta for shape in selected_shapes}
+        )
+        # Active demand is re-sent on every tick while its tasks are in flight,
+        # so it always goes out unchanged. The release delay only holds on to
+        # the scale-up copies, and those are *added* to the current demand
+        # rather than replacing it: a shape that first appears inside the
+        # window still reaches the coordinator, and finished tasks stop being
+        # requested right away instead of for the rest of the window.
+        requests = active_requests
+        if selected_shapes:
+            requests = _cap_resource_requests(
+                active_requests, scale_up_requests, self._resource_limits
+            )
+            # ``_cap_resource_requests`` keeps active bundles first, so the tail
+            # is exactly the scale-up copies that were sent.
+            self._last_non_empty_resource_request = [
+                request.resources.copy() for request in requests[len(active_requests) :]
+            ]
+            self._last_non_empty_request_time = now
+        elif self._should_keep_non_empty_request(now):
+            requests = requests + [
+                ResourceRequest(resources=resource)
+                for resource in self._last_non_empty_resource_request
+            ]
+        requests = [request for request in requests if request.resources]
+
+        # Node-level usage is demand too, but it is not a task shape: report it
+        # as its own bundle so it never takes part in the decisions above, and
+        # is never held by the release delay.
+        extra_usage_request = _get_extra_resource_usage(self._topology)
+        if extra_usage_request is not None:
+            requests.append(extra_usage_request)
+
+        resources = [request.resources.copy() for request in requests]
+        self._update_request_remaining(requests)
+        self._log_exact_resource_request(active_requests, selected_shapes, resources)
+        self._send_resource_request(
+            resources,
+            # The exact path maintains its own keep-alive state above; recording
+            # the sent request here would also capture the active demand, which
+            # must not outlive the tasks that produced it.
+            update_non_empty_request_state=False,
+        )
+
+    def _log_exact_resource_request(
+        self,
+        active_requests: List[ResourceRequest],
+        selected_shapes: List[ResourceShape],
+        resource_request: List[ResourceDict],
+    ) -> None:
+        """Log the exact resource request sent to the coordinator."""
+        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING or not self._autoscaling_enabled:
+            level = logging.DEBUG
+        else:
+            level = logging.INFO
+
+        logger.log(
+            level,
+            "Ray Data exact autoscaling: %d active request(s), scaling up %s "
+            "worker(s) for shape(s) %s, requesting %d bundle(s).",
+            len(active_requests),
+            self._cluster_scaling_up_delta,
+            [dict(shape) for shape in selected_shapes],
+            len(resource_request),
+        )
+
+
+class _ResourceRequestUtilizationCalculator:
+    """Calculate utilization independently for each exact resource shape."""
+
+    def __init__(self, node_resources: NodeResources):
+        self._node_resources = node_resources
+
+    def select_resource_shapes_to_scale(
+        self,
+        active_requests: List[ResourceRequest],
+        threshold: float,
+    ) -> List[ResourceShape]:
+        """Return active resource shapes whose utilization exceeds the threshold."""
+        return [
+            shape
+            for shape, active_count in self._group_resource_requests(
+                active_requests
+            ).items()
+            if self._request_group_exceeds_threshold(shape, active_count, threshold)
+        ]
+
+    @staticmethod
+    def _group_resource_requests(
+        requests: List[ResourceRequest],
+    ) -> Dict[ResourceShape, int]:
+        return Counter(
+            tuple(sorted(request.resources.items()))
+            for request in requests
+            if request.resources
+        )
+
+    def _get_matching_worker_capacity(
+        self,
+        resources: ResourceDict,
+    ) -> Dict[str, float]:
+        """Return free capacity for every resource in the request shape.
+
+        Only nodes that can host the *whole* shape contribute.
+        """
+        capacity: Dict[str, float] = defaultdict(float)
+        for node in self._node_resources.values():
+            if not _bundle_can_fit_on_node(resources, node):
+                continue
+            for name in resources:
+                capacity[name] += node.get(name, 0)
+        return capacity
+
+    def _request_group_exceeds_threshold(
+        self,
+        shape: ResourceShape,
+        active_count: int,
+        threshold: float,
+    ) -> bool:
+        """Return whether this shape's active demand exceeds ``threshold``.
+
+        If no node can host the shape at all the request can never be satisfied,
+        so it is treated as exceeding the threshold and scaled up.
+        """
+        resources = dict(shape)
+        demand = {name: amount * active_count for name, amount in resources.items()}
+        capacity = self._get_matching_worker_capacity(resources)
+        if not capacity:
+            return True
+        return any(
+            resource_demand / capacity.get(name, 0) >= threshold
+            for name, resource_demand in demand.items()
+            if resource_demand > 0 and capacity.get(name, 0) > 0
+        )

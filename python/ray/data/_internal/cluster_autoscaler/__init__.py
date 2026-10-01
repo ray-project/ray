@@ -82,6 +82,7 @@ def create_cluster_autoscaler(
             execution_id=execution_id,
             resource_limits=resource_limits,
             label_selector=label_selector,
+            topology=topology,
         )
 
     else:

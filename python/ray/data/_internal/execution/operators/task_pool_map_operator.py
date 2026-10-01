@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     ReportsExtraResourceUsage,
+    ResourceRequest,
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
@@ -192,6 +193,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
+        resource_request = ResourceRequest.from_task_options(dynamic_ray_remote_args)
 
         if (
             "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
@@ -220,7 +222,12 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 logical_usage
             )
 
-        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
+        self._submit_data_task(
+            gen,
+            bundle,
+            task_done_callback=task_done_callback,
+            task_resource_request=resource_request,
+        )
 
     def progress_str(self) -> str:
         return ""
@@ -259,6 +266,25 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         return self.incremental_resource_usage().scale(
             self._num_lineage_reconstruction_tasks()
         )
+
+    def _lineage_reconstruction_requests(self) -> List[ResourceRequest]:
+        """Tasks Ray Core re-runs on this operator's behalf.
+
+        They replay this operator's tasks, so they carry the same shape and are
+        reported as extra requests to keep the demand exact.
+
+        Returns:
+            List[ResourceRequest]: One request per in-flight reconstruction
+                task, empty when accounting is disabled or nothing is
+                reconstructing.
+        """
+        if not self.data_context.enable_lineage_reconstruction_resource_accounting:
+            return []
+        num_tasks = self._num_lineage_reconstruction_tasks()
+        if num_tasks <= 0:
+            return []
+        request = ResourceRequest.from_task_options(self._get_dynamic_ray_remote_args())
+        return [request] * num_tasks
 
     def _num_lineage_reconstruction_tasks(self) -> int:
         # Reconstruction tasks inherit the labels of the task they replay, so

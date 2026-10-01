@@ -15,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ResourceRequest,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
@@ -251,6 +252,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 self._handle_map_done, cur_task_idx, partition_refs, input_bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(resources),
+            task_resource_request=ResourceRequest.from_task_options(resources),
         )
         self._shuffle_map_tasks[cur_task_idx] = task
         requested = task.get_requested_resource_bundle()

@@ -33,6 +33,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
+    ResourceRequest,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -145,11 +146,17 @@ class TestActorPool(unittest.TestCase):
         self,
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
-        actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources, ResourceRequest]:
+        actor_options = {"num_cpus": 1, "_labels": labels}
+        actor = PoolWorker.options(**actor_options).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
-        return actor, ready_ref, ExecutionResources(cpu=1)
+        return (
+            actor,
+            ready_ref,
+            ExecutionResources(cpu=1),
+            ResourceRequest.from_actor_options(actor_options),
+        )
 
     def _create_actor_pool(
         self,
@@ -217,6 +224,17 @@ class TestActorPool(unittest.TestCase):
         assert pool.max_size() == 4
         assert pool.current_size() == 0
         assert pool.max_tasks_in_flight_per_actor() == 4
+
+    def test_resource_requests_track_pending_actors(self):
+        pool = self._create_actor_pool()
+
+        self._add_pending_actor(pool)
+
+        assert pool.get_resource_requests() == [ResourceRequest(resources={"CPU": 1})]
+
+        pool._try_remove_pending_actor()
+
+        assert pool.get_resource_requests() == []
 
     def test_can_scale_down(self):
         pool = self._create_actor_pool(min_size=1, max_size=4)
@@ -915,9 +933,15 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
     def create_actor_fn(
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
-        actor = PoolWorker.options(_labels=labels).remote("node1")
-        return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources, ResourceRequest]:
+        actor_options = {"num_cpus": 1, "_labels": labels}
+        actor = PoolWorker.options(**actor_options).remote("node1")
+        return (
+            actor,
+            actor.get_location.remote(),
+            ExecutionResources(cpu=1),
+            ResourceRequest.from_actor_options(actor_options),
+        )
 
     config = AutoscalingActorConfig(
         min_size=1,

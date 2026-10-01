@@ -96,6 +96,21 @@ class JoinTestCase:
     total_memory: int = 32 * GiB
 
 
+def _make_input_op_mock(size_bytes: int, num_blocks: int) -> MagicMock:
+    """Build a mocked input operator reporting the given size/output estimates."""
+    logical_op_mock = MagicMock(LogicalOperator)
+    logical_op_mock.infer_metadata.return_value = BlockMetadata(
+        num_rows=None, size_bytes=size_bytes, exec_stats=None, input_files=None
+    )
+    logical_op_mock.estimated_num_outputs.return_value = num_blocks
+
+    op_mock = MagicMock(PhysicalOperator)
+    op_mock._output_dependencies = []
+    op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
+    return op_mock
+
+
 @pytest.mark.parametrize(
     "tc",
     [
@@ -1260,6 +1275,44 @@ def test_partial_aggregate_preserves_sort_after_builder_compaction(
     )
 
     assert partial.column("A").to_pylist() == [1, 2, 3, 4]
+
+
+def test_join_operator_reports_aggregator_demand(ray_start_regular_shared):
+    """Aggregator demand is reported per aggregator, before actors start.
+
+    Reporting demand before ``AggregatorPool.start()`` lets a capacity-starved
+    shuffle trigger scale-up.
+    """
+    left_op_mock = _make_input_op_mock(2 * GiB, 10)
+    right_op_mock = _make_input_op_mock(2 * GiB, 10)
+
+    with patch(
+        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        return_value={"CPU": 8, "memory": 16 * GiB},
+    ):
+        op = JoinOperator(
+            left_input_op=left_op_mock,
+            right_input_op=right_op_mock,
+            data_context=DataContext.get_current(),
+            left_key_columns=("id",),
+            right_key_columns=("id",),
+            join_type=JoinType.INNER,
+            num_partitions=2,
+        )
+
+    # Not started, so stub the object-store usage hook (needs a ref counter).
+    op.estimate_object_store_usage = MagicMock(return_value=0)
+
+    # No pool yet, and no tasks in flight: nothing to request.
+    assert op.get_resource_requests() == []
+
+    pool = _create_aggregator_pool_for_test(op, estimated_dataset_bytes=4 * GiB)
+    requests = op.get_resource_requests()
+
+    assert len(requests) == pool.num_aggregators
+    assert all(request == pool.get_resource_request() for request in requests)
+    # Aggregators request CPU, which must survive into the reported demand.
+    assert requests[0].resources["CPU"] > 0
 
 
 if __name__ == "__main__":
