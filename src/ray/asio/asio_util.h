@@ -56,12 +56,16 @@ class InstrumentedIOContextWithThread {
    * @param thread_name The name of the thread.
    * @param enable_lag_probe If true, enables the lag probe. It posts tasks to the
    * io_context so that a run() will never return.
+   * @param used_for_health_check Whether this io_context's health should count
+   * toward the owning component's health check.
    */
   explicit InstrumentedIOContextWithThread(const std::string &thread_name,
-                                           bool enable_lag_probe = false)
+                                           bool enable_lag_probe = false,
+                                           bool used_for_health_check = true)
       : io_service_(enable_lag_probe, /*running_on_single_thread=*/true, thread_name),
         work_(io_service_.get_executor()),
-        thread_name_(thread_name) {
+        thread_name_(thread_name),
+        used_for_health_check_(used_for_health_check) {
     io_thread_ = std::thread([this] {
       SetThreadName(this->thread_name_);
       io_service_.run();
@@ -79,6 +83,7 @@ class InstrumentedIOContextWithThread {
 
   instrumented_io_context &GetIoService() { return io_service_; }
   const std::string &GetName() const { return thread_name_; }
+  bool UsedForHealthCheck() const { return used_for_health_check_; }
 
   // Idempotent. Once it's stopped you can't restart it.
   void Stop() {
@@ -95,6 +100,7 @@ class InstrumentedIOContextWithThread {
       work_;  // to keep io_service_ running
   std::thread io_thread_;
   std::string thread_name_;
+  bool used_for_health_check_;
 };
 
 /// `IOContextProvider` uses a specified `Policy` to determine whether a type `T`
@@ -110,9 +116,10 @@ class InstrumentedIOContextWithThread {
 /// ```
 /// struct YourPolicy {
 ///     // Metadata for all dedicated IO contexts. We will create 1 thread + 1
-///     // instrumented_io_context for each. Each element must expose at least a
-///     // `name` (unique, non-empty std::string_view) and an `enable_lag_probe`
-///     // (bool) member. Policies may add extra members for their own use.
+///     // instrumented_io_context for each. Each element must expose a `name`
+///     // (unique, non-empty std::string_view), an `enable_lag_probe` (bool), and a
+///     // `used_for_health_check` (bool) member. Policies may add extra members for
+///     // their own use.
 ///     constexpr static std::array<SomeMetadataStruct, N> kAllDedicatedIOContexts;
 ///
 ///     // For a given T, returns an index into kAllDedicatedIOContexts, or -1 for the
@@ -137,7 +144,9 @@ class IOContextProvider {
     for (size_t i = 0; i < Policy::kAllDedicatedIOContexts.size(); i++) {
       const auto &metadata = Policy::kAllDedicatedIOContexts[i];
       dedicated_io_contexts_[i] = std::make_unique<InstrumentedIOContextWithThread>(
-          std::string(metadata.name), metadata.enable_lag_probe);
+          std::string(metadata.name),
+          metadata.enable_lag_probe,
+          metadata.used_for_health_check);
     }
   }
 

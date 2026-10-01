@@ -19,6 +19,7 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_serve_deployment_grafana_dashboard,
     generate_serve_grafana_dashboard,
     generate_serve_llm_grafana_dashboard,
+    generate_serve_llm_sglang_grafana_dashboard,
     generate_train_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.templates import (
@@ -41,7 +42,17 @@ DEFAULT_PROMETHEUS_HEADERS = "{}"
 PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
 DEFAULT_PROMETHEUS_NAME = "Prometheus"
 PROMETHEUS_NAME_ENV_VAR = "RAY_PROMETHEUS_NAME"
-PROMETHEUS_HEALTHCHECK_PATH = "-/healthy"
+# Use a cheap query against the standard query API as the Prometheus liveness
+# probe. Every Prometheus-compatible service must support `api/v1/query`, and
+# some managed Prometheus services (e.g. Tencent Cloud TMP) disable the
+# open-source `/-/healthy` and `/-/ready` endpoints, so relying on the query
+# API gives us the broadest compatibility while also verifying that the query
+# engine is actually serving requests.
+PROMETHEUS_HEALTHCHECK_PATH = "api/v1/query?query=vector(1)"
+# Timeout (in seconds) for the Prometheus healthcheck HTTP requests. Without an
+# explicit timeout, `aiohttp` defaults to 5 minutes, which would cause the
+# dashboard API to hang when the Prometheus host is unreachable or slow.
+PROMETHEUS_HEALTHCHECK_TIMEOUT_S = 5
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
@@ -77,8 +88,7 @@ def parse_prom_headers(prometheus_headers):
 class PrometheusQueryError(Exception):
     def __init__(self, status, message):
         self.message = (
-            "Error fetching data from prometheus. "
-            f"status: {status}, message: {message}"
+            f"Error fetching data from prometheus. status: {status}, message: {message}"
         )
         super().__init__(self.message)
 
@@ -185,11 +195,17 @@ class MetricsHead(SubprocessModule):
 
     @routes.get("/api/prometheus_health")
     async def prometheus_health(self, req):
+        # A successful response from `api/v1/query` indicates the Prometheus
+        # service is reachable and its query engine is serving requests. We
+        # prefer this over `/-/healthy` because it is universally supported by
+        # all Prometheus-compatible backends, including managed services that
+        # disable the `/-/healthy` and `/-/ready` endpoints.
+        path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
         try:
-            path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
-
             async with self.http_session.get(
-                path, headers=self.prometheus_headers
+                path,
+                headers=self.prometheus_headers,
+                timeout=aiohttp.ClientTimeout(total=PROMETHEUS_HEALTHCHECK_TIMEOUT_S),
             ) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
@@ -197,7 +213,16 @@ class MetricsHead(SubprocessModule):
                         message="prometheus healthcheck failed.",
                         status=resp.status,
                     )
-
+                try:
+                    body = await resp.json(content_type=None)
+                except Exception:
+                    body = None
+                if not isinstance(body, dict) or body.get("status") != "success":
+                    return dashboard_optional_utils.rest_response(
+                        status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                        message="prometheus healthcheck failed.",
+                        status=resp.status,
+                    )
                 return dashboard_optional_utils.rest_response(
                     status_code=dashboard_utils.HTTPStatusCode.OK,
                     message="prometheus running",
@@ -299,11 +324,11 @@ class MetricsHead(SubprocessModule):
                     prometheus_host=prometheus_host,
                     prometheus_name=self._prometheus_name,
                     jsonData={
-                        f"httpHeaderName{i+1}": header
+                        f"httpHeaderName{i + 1}": header
                         for i, (header, _) in enumerate(prometheus_header_pairs)
                     },
                     secureJsonData={
-                        f"httpHeaderValue{i+1}": value
+                        f"httpHeaderValue{i + 1}": value
                         for i, (_, value) in enumerate(prometheus_header_pairs)
                     },
                 )
@@ -352,6 +377,18 @@ class MetricsHead(SubprocessModule):
                 content,
                 self._dashboard_uids["serve_llm"],
             ) = generate_serve_llm_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "serve_llm_sglang_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["serve_llm_sglang"],
+            ) = generate_serve_llm_sglang_grafana_dashboard()
             f.write(content)
         with open(
             os.path.join(
@@ -410,7 +447,7 @@ class MetricsHead(SubprocessModule):
         # Other than the root path, the config file generated here is identical to that
         # hardcoded config file.
         prom_discovery_file_path = os.path.join(
-            self.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.session_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
         with open(prometheus_config_output_path, "w") as f:
             f.write(

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Inspect the Result object returned by trainer.fit: reported metrics, a dataframe of all metrics, saved checkpoints, and the storage location.
+
 .. _train-inspect-results:
 
 Inspecting Training Results
@@ -70,7 +73,7 @@ object.
 to restore the training state. This usually includes the trained model.
 
 You can use checkpoints for common downstream tasks such as
-:doc:`offline batch inference with Ray Data </data/data>` or
+:doc:`offline batch inference with Ray Data </data/index>` or
 :doc:`online model serving with Ray Serve </serve/index>`.
 
 The checkpoints retrieved from the :class:`~ray.train.Result` object

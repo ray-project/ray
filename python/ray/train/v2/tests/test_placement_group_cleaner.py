@@ -1,6 +1,6 @@
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -324,6 +324,36 @@ def test_pg_cleaner_race_condition_new_pg_not_orphaned():
         remove_placement_group(old_pg)
     except Exception:
         pass
+
+
+def test_cleaner_pinned_to_head_node_and_escapes_placement_group():
+    """The detached cleaner is launched pinned to the head node with DEFAULT scheduling.
+
+    - Head-node pinning keeps this lightweight, zero-CPU actor off arbitrary
+      worker nodes, so it cannot keep an otherwise-idle worker node alive and
+      block autoscaler scale-down (see issue #64703).
+    - DEFAULT scheduling escapes the training placement group, which the cleaner
+      is itself responsible for removing; otherwise removing the placement group
+      could tear down the cleaner mid-cleanup.
+    - It must remain detached so it survives controller death.
+    """
+    from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+    from ray.train.v2._internal.callbacks.placement_group_callback import (
+        PlacementGroupCleanerCallback,
+    )
+
+    callback = PlacementGroupCleanerCallback(check_interval_s=0.1)
+
+    # Intercept the actor launch so no real cleaner is created; capture the
+    # options passed to ray.remote(...)(PlacementGroupCleaner).options(**kwargs).
+    with patch.object(ray, "remote") as mock_remote:
+        callback.after_controller_start(train_run_context=MagicMock())
+
+    options_kwargs = mock_remote.return_value.return_value.options.call_args.kwargs
+
+    assert options_kwargs["resources"] == {HEAD_NODE_RESOURCE_NAME: 0.001}
+    assert options_kwargs["scheduling_strategy"] == "DEFAULT"
+    assert options_kwargs["lifetime"] == "detached"
 
 
 if __name__ == "__main__":

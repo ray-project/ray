@@ -47,6 +47,13 @@ class FakeMetric : public MetricInterface {
     return tag_to_value_;
   }
 
+  /// Reset the recorded tag-to-value map. Useful in tests that need to verify
+  /// re-emission after a Record() call by clearing prior observations.
+  void Clear() {
+    absl::MutexLock lock(&mutex_);
+    tag_to_value_.clear();
+  }
+
  protected:
   absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double> tag_to_value_
       ABSL_GUARDED_BY(mutex_);

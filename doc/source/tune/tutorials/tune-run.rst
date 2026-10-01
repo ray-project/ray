@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run basic Tune experiments with independent trials in parallel, and how Tune compares to writing the same sweep with Ray Core tasks.
+
 .. _tune-parallel-experiments-guide:
 
 Running Basic Tune Experiments

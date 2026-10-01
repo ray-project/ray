@@ -249,6 +249,25 @@ message DeploymentConfig {
   // rolling upgrade) is distinguishable from an explicit value. When unset,
   // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
   optional double rolling_update_percentage = 23;
+
+  // Configuration of the HTTP response returned when a request is rejected
+  // due to backpressure (`max_queued_requests` exceeded). Unset (e.g. from an
+  // older controller during a rolling upgrade) falls back to the Python-side
+  // defaults.
+  BackpressureConfig backpressure_config = 24;
+}
+
+// Configuration of the HTTP response returned when a request is rejected due
+// to backpressure (`max_queued_requests` exceeded).
+message BackpressureConfig {
+  // HTTP status code for backpressure rejections. Only 503 (default) and 429
+  // are allowed. Declared `optional` so that unset is distinguishable from an
+  // explicit value; the Python side falls back to 503 when unset.
+  optional int32 status_code = 1;
+
+  // Value of the `Retry-After` header (in seconds) attached to rejected HTTP
+  // responses. Unset means no header is attached.
+  optional double retry_after_s = 2;
 }
 
 // Deployment language.
@@ -514,6 +533,7 @@ message DeploymentArgs {
   bool ingress = 6;
   optional string docs_path = 7;
   bool ingress_request_router = 8;
+  bool uses_multiplexing = 9;
 }
 
 message ApplicationArgs {

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run Ray jobs on a recurring schedule with the RayCronJob custom resource, including configuration and a worked example."
+---
+
 (kuberay-raycronjob-quickstart)=
 
 # RayCronJob Quickstart
@@ -23,6 +29,7 @@ The `RayCronJob` CRD acts as an automated scheduler specifically designed to cre
 * `schedule` - The cron schedule string defining when a new Ray job should be created and run (e.g., `* * * * *` for every minute).
 * `jobTemplate` - Wraps a standard **RayJob** spec that the controller will use for each scheduled run. It supports the same fields as a RayJob spec. See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.
 * `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
+* `timeZone` (Optional): The time zone for the `schedule`, in [IANA Time Zone Database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) format (e.g., `America/Los_Angeles`). If omitted, the schedule uses the local time zone of the KubeRay operator. Do not set `TZ` or `CRON_TZ` in the `schedule` string, use this field instead.
 
 ## How to Configure a RayCronJob
 
@@ -37,6 +44,7 @@ metadata:
   name: example-raycronjob
 spec:
   schedule: "*/5 * * * *" # Run every 5 minutes
+  timeZone: "America/Los_Angeles" # Optional, defaults to the operator's local time zone
   jobTemplate:
     # Everything below here is a standard RayJob spec
     entrypoint: python /home/ray/samples/sample_code.py
@@ -60,9 +68,9 @@ Install the KubeRay operator, following [these instructions](https://docs.ray.io
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install KubeRay operator v1.6.0 with the RayCronJob feature gate enabled
+# Install KubeRay operator v1.7.0 with the RayCronJob feature gate enabled
 helm install kuberay-operator kuberay/kuberay-operator \
-  --version 1.6.0 \
+  --version 1.7.0 \
   --set "featureGates[0].name=RayCronJob" \
   --set "featureGates[0].enabled=true"
 ```
@@ -70,7 +78,7 @@ helm install kuberay-operator kuberay/kuberay-operator \
 ### Step 3: Install a RayCronJob
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cronjob.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 ```
 
 ### Step 4: Monitor the RayCronJob
@@ -128,7 +136,7 @@ To stop the recurring jobs and delete the resource, run:
 
 ```bash
 # Step 6.1: Delete the RayCronJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cronjob.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 
 # Step 6.2: Delete the KubeRay operator
 helm uninstall kuberay-operator

@@ -127,6 +127,50 @@ def test_add_rule_with_cycle_raises_error():
         ruleset.add(B)
 
 
+def test_edge_declared_from_both_ends_is_deduped():
+    # A must precede B, declared redundantly from both ends. The edge should be
+    # recorded once, not double-counted.
+    class A(Rule):
+        @classmethod
+        def dependents(cls) -> List[Type[Rule]]:
+            return [B]
+
+    class B(Rule):
+        @classmethod
+        def dependencies(cls) -> List[Type[Rule]]:
+            return [A]
+
+    ruleset = Ruleset([A, B])
+
+    nodes, indegree = ruleset._build_graph()
+    node_a = next(n for n in nodes if n.rule is A)
+    node_b = next(n for n in nodes if n.rule is B)
+    assert indegree[id(node_b)] == 1  # not 2
+    assert [n.rule for n in node_a.dependents] == [B]  # not [B, B]
+    assert list(ruleset) == [A, B]
+
+
+def test_disjoint_cycle_with_independent_root_raises_error():
+    # An acyclic root (A) alongside a disjoint cycle (B <-> C) must still be
+    # detected as a cycle -- the presence of a root must not mask it.
+    class A(Rule):
+        pass
+
+    class B(Rule):
+        @classmethod
+        def dependencies(cls) -> List[Type[Rule]]:
+            return [C]
+
+    class C(Rule):
+        @classmethod
+        def dependencies(cls) -> List[Type[Rule]]:
+            return [B]
+
+    ruleset = Ruleset([A, B])
+    with pytest.raises(ValueError):
+        ruleset.add(C)
+
+
 def test_remove_rule():
     class A(Rule):
         pass

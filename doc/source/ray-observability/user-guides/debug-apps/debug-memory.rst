@@ -1,3 +1,6 @@
+.. meta::
+   :description: Debug Ray out-of-memory errors: detect OOM, attribute memory to individual tasks and actors, reduce parallelism, and profile per-worker usage.
+
 .. _ray-core-mem-profiling:
 
 Debugging Memory Issues
@@ -40,7 +43,7 @@ which continually monitors the memory usage of the host and kills the Ray Worker
 Detecting Out-of-Memory errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can monitor out-of-memory errors on the Ray Dashboard's :ref:`metrics page <dash-metrics-view>` via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
+You can monitor out-of-memory errors on the Ray dashboard's :ref:`metrics page <dash-metrics-view>` via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
 The Ray OOM Kills panel shows the number of workers killed by the Ray OOM killer.
 The Unexpected System Level Worker Failures panel shows the number of workers that failed unexpectedly. These failures are typically
 caused by the Linux out-of-memory killer; correlate with memory usage metrics to confirm.
@@ -72,9 +75,19 @@ You can also use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%2
 
 As mentioned above, having the Linux OOM killer trigger before the Ray OOM killer is undesirable.
 In Ray 2.56 and above, enable resource isolation mode by passing ``--enable-resource-isolation`` when starting Ray
-to ensure that the Ray OOM killer triggers before the Linux OOM killer. If resource isolation is already enabled but Linux OOM kills still occur,
-the system overhead is likely consuming the memory allocated for user processes. In that case, increase the
-memory reserved for system processes by setting a higher value for the ``--system-reserved-memory`` option when starting Ray in resource isolation mode.
+to ensure that the Ray OOM killer triggers before the Linux OOM killer.
+
+It's still possible for Linux OOM kills to occur if the system overhead consumes more memory than
+what's reserved for it (the default is 10%, with a minimum of 500 MB and a maximum of 10 GB).
+Ray logs something similar to the following example if it detects this scenario.
+
+.. code-block:: bash
+
+  System slice memory usage 10869600256 bytes has exceeded the reserved system memory of 10737418240 bytes. This can prevent Ray from being able to provide the proper protection to critical system processes and can lead to node deaths and significant loss of progress. Please consider passing a system reserved memory value that is higher than the current system slice memory usage via the --system-reserved-memory flag when starting the raylet.
+
+When you see a kernel OOM or this log message with resource isolation enabled, try increasing the memory reserved for system processes
+by setting a higher value than the reported system slice memory usage for the ``--system-reserved-memory`` flag when starting Ray. 
+Try to allocate at least a GiB (depending on host size) of buffer space between the reported/expected system slice memory usage and the system reserved memory.
 
 .. note::
 
@@ -147,7 +160,7 @@ Ray memory monitor also periodically prints the aggregated out-of-memory killer 
   (raylet) 
   (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
-Ray Dashboard's :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
+Ray dashboard's :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
 
 .. image:: ../../images/oom-events.png
     :align: center
@@ -211,7 +224,7 @@ First, check the head node memory usage from the metrics page. Find the head nod
 .. image:: ../../images/head-node-addr.png
     :align: center
 
-Then check the memory usage from the head node from the node memory usage view inside the Dashboard :ref:`metrics view <dash-metrics-view>`.
+Then check the memory usage from the head node from the node memory usage view inside the dashboard :ref:`metrics view <dash-metrics-view>`.
 
 .. image:: ../../images/metrics-node-view.png
     :align: center

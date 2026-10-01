@@ -1,0 +1,14 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 1 warning.
+
+Findings (1):
+  Tier 3 — warnings:
+    [T3] unknown-document  doc/source/serve/llm/examples.md:17
+          msg:    unknown document: '/_collections/serve/tutorials/deployment-serve-llm/npu-ascend/README'
+          fix:    Repoint to the correct document: a path relative to the referencing page, or an absolute path from doc/source with a leading slash. Remove the reference if the target is gone. Grep the bare stem across doc/ to find every caller.
+          safety: judgment (needs your call)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: apply the fixes above, then rebuild and re-run to confirm clean.

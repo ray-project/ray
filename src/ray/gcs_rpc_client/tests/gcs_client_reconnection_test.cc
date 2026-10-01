@@ -65,10 +65,17 @@ class GcsClientReconnectionTest : public ::testing::Test {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
+        /*redis_request_payload_bytes_sum=*/redis_request_payload_bytes_sum_,
+        /*redis_response_payload_bytes_sum=*/redis_response_payload_bytes_sum_,
+        /*redis_command_count_counter=*/redis_command_count_counter_,
         /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
         fake_health_check_rpc_latency_ms_histogram_,
+        /*io_context_monitor_latency_ms_gauge=*/
+        fake_io_context_monitor_latency_ms_gauge_,
+        /*io_context_monitor_unhealthy_counter=*/
+        fake_io_context_monitor_unhealthy_counter_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -201,10 +208,15 @@ class GcsClientReconnectionTest : public ::testing::Test {
   observability::FakeGauge task_events_stored_gauge_;
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
+  observability::FakeCounter redis_request_payload_bytes_sum_;
+  observability::FakeCounter redis_response_payload_bytes_sum_;
+  observability::FakeCounter redis_command_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram scheduler_placement_time_ms_histogram_;
   observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
+  observability::FakeGauge fake_io_context_monitor_latency_ms_gauge_;
+  observability::FakeCounter fake_io_context_monitor_unhealthy_counter_;
 
   // GCS client.
   std::unique_ptr<std::thread> client_io_service_thread_;

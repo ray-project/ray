@@ -4,7 +4,7 @@ import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -61,6 +61,10 @@ class AutoscalingContext:
     Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
     You can pass callables that will be evaluated only when accessed, with results
     cached for subsequent accesses.
+
+    Note: total_num_requests and total_queued_requests are both aggregated over
+    `look_back_period_s` using the deployment's `aggregation_function`, so under `min`
+    or `max` they report the window trough or peak rather than the current value.
     """
 
     def __init__(
@@ -92,7 +96,6 @@ class AutoscalingContext:
         last_scale_down_time: Optional[float],
         current_time: Optional[float],
         config: Optional[Any],
-        total_pending_async_requests: int,
     ):
         # Deployment information
         self.deployment_id = deployment_id  #: Unique identifier for the deployment.
@@ -112,10 +115,10 @@ class AutoscalingContext:
 
         # Built-in metrics
         self._total_num_requests_value = (
-            total_num_requests  #: Total number of requests across all replicas.
+            total_num_requests  #: Ongoing (running + queued) requests.
         )
         self._total_queued_requests_value = (
-            total_queued_requests  #: Number of requests currently queued.
+            total_queued_requests  #: Requests queued at handles.
         )
 
         # Custom metrics - store potentially lazy callables privately
@@ -143,9 +146,6 @@ class AutoscalingContext:
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
 
-        # Async inference task queue length (from QueueMonitor)
-        self._total_pending_async_requests = total_pending_async_requests
-
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
         if callable(self._aggregated_metrics_value):
@@ -172,14 +172,9 @@ class AutoscalingContext:
 
     @property
     def total_running_requests(self) -> float:
-        # NOTE: for non-additive aggregation functions, total_running_requests is not
-        # accurate, consider this is an approximation.
-        return self.total_num_requests - self.total_queued_requests
-
-    @property
-    def total_pending_async_requests(self) -> int:
-        """Broker task queue length for async inference autoscaling."""
-        return self._total_pending_async_requests
+        # Approximate: the two operands are reduced over independently derived windows,
+        # so their difference can even go negative. Clamped until they share one window.
+        return max(0.0, self.total_num_requests - self.total_queued_requests)
 
 
 @PublicAPI(stability="alpha")
@@ -242,10 +237,10 @@ class RequestRouterConfig(BaseModel):
     request_routing_stats_period_s: PositiveFloat = Field(
         default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
         description=(
-            "Duration between record scheduling stats calls for the replica. "
-            "Defaults to 10s. The health check is by default a no-op Actor call "
-            "to the replica, but you can define your own request scheduling stats "
-            "using the 'record_scheduling_stats' method in your deployment."
+            "Duration between record routing stats calls for the replica. "
+            "Defaults to 10s. Recording routing stats is by default a no-op Actor "
+            "call to the replica, but you can define your own routing stats "
+            "using the 'record_routing_stats' method in your deployment."
         ),
     )
 
@@ -394,6 +389,10 @@ class RequestRouterConfig(BaseModel):
 
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
+
+    def is_default_request_router(self) -> bool:
+        """Whether the configured request router is Serve's default."""
+        return self.request_router_class == DEFAULT_REQUEST_ROUTER_PATH
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
@@ -546,6 +545,49 @@ class AutoscalingPolicy(BaseModel):
             ) from e
         self._cached_policy = policy
         return policy
+
+
+@PublicAPI(stability="alpha")
+class BackpressureConfig(BaseModel):
+    """Config for the HTTP response returned on backpressure rejections.
+
+    When a deployment's ``max_queued_requests`` limit is reached, additional
+    requests are rejected. This class configures the HTTP response for those
+    rejections; requests rejected because the deployment is unavailable
+    (e.g., it failed to deploy) always return 503. The gRPC path is
+    unaffected: backpressure rejections always map to ``RESOURCE_EXHAUSTED``.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import BackpressureConfig
+
+            @serve.deployment(
+                max_queued_requests=64,
+                backpressure_config=BackpressureConfig(
+                    status_code=429,
+                    retry_after_s=5,
+                ),
+            )
+            class Deployment:
+                ...
+
+    Args:
+        status_code: HTTP status code returned for requests rejected due to
+            backpressure. Must be 503 (default) or 429.
+        retry_after_s: If set, rejected HTTP responses include a
+            `Retry-After` header with this value (rounded up to an integer
+            number of seconds). Defaults to None (no header).
+    """
+
+    # Reject unknown keys so typos (e.g. `retry_after` instead of
+    # `retry_after_s`) fail at config parse time instead of being dropped.
+    model_config = ConfigDict(extra="forbid")
+
+    status_code: Literal[503, 429] = 503
+    retry_after_s: Optional[NonNegativeFloat] = Field(default=None, allow_inf_nan=False)
 
 
 @PublicAPI(stability="stable")
@@ -795,9 +837,11 @@ class HTTPOptions(BaseModel):
       localhost. To expose Serve publicly, you probably want to set
       this to "0.0.0.0" for IPv4 or "::" for IPv6.
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
-    - root_path: An optional root path to mount the serve application
-      (for example, "/prefix"). All deployment routes are prefixed
-      with this path.
+    - root_path: An optional ASGI root path that the serve application is
+      mounted at (for example, "/prefix"), for when Serve runs behind a
+      proxy that strips this prefix before forwarding. Requests reach Serve
+      without the prefix, and applications see it in the ASGI scope's
+      "root_path" and "path".
     - request_timeout_s: End-to-end timeout for HTTP requests.
     - keep_alive_timeout_s: Duration to keep idle connections alive when no
       requests are ongoing.
@@ -809,23 +853,30 @@ class HTTPOptions(BaseModel):
     - ssl_ca_certs: Optional path to CA certificate file for client certificate
       verification.
 
+    - middlewares: [DEPRECATED] A list of Starlette middlewares to apply to the
+      HTTP proxy. Passing a non-empty list raises an error. Use Serve's FastAPI
+      integration to configure middlewares on ingress deployments instead.
     - location: [DEPRECATED: use `proxy_location` field instead] The deployment
       location of HTTP servers:
 
         - "HeadOnly": start one HTTP server on the head node. Serve
           assumes the head node is the node you executed serve.start
-          on. This is the default.
+          on.
         - "EveryNode": start one HTTP server per node.
         - "Disabled": disable HTTP server.
 
+      This field defaults to None; Serve uses `proxy_location` when location
+      is unset. If `host` is None, Serve disables proxy startup.
+
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
-      internal Serve HTTP proxy actor.
+      internal Serve HTTP proxy actor. Passing a non-zero value raises an
+      error.
     """
 
     host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[ProxyLocation] = ProxyLocation.HeadOnly
+    location: Optional[ProxyLocation] = None
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""
@@ -841,11 +892,23 @@ class HTTPOptions(BaseModel):
     @field_validator("location", mode="before")
     @classmethod
     def normalize_location(cls, v):
+        # Only warn when a real (non-None) location is set. location=None is a
+        # no-op that also arrives via internal model_dump() roundtrips (e.g.
+        # direct-ingress replicas rebuilding HTTPOptions), which must stay quiet.
+        if v is not None:
+            warnings.warn(
+                "`location` in HTTPOptions is deprecated and will be removed in a "
+                "future version. Use the `proxy_location` argument to `serve.start` "
+                "or the top-level `proxy_location` field in the Serve config "
+                "instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         return ProxyLocation._normalize(v)
 
     @model_validator(mode="after")
     def location_backfill_no_server(self):
-        if self.host is None or self.location is None:
+        if self.host is None:
             # Use object.__setattr__ since the model may have frozen=True behavior
             object.__setattr__(self, "location", ProxyLocation.Disabled)
         return self
@@ -859,23 +922,24 @@ class HTTPOptions(BaseModel):
 
     @field_validator("middlewares")
     @classmethod
-    def warn_for_middlewares(cls, v):
+    def raise_for_middlewares_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `middlewares` to HTTPOptions is deprecated and will be "
-                "removed in a future version. Consider using the FastAPI integration "
-                "to configure middlewares on your deployments: "
-                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
+            raise ValueError(
+                "`middlewares` in HTTPOptions has been removed. Use Serve's "
+                "FastAPI integration to configure middlewares on ingress "
+                "deployments instead: "
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"
             )
         return v
 
     @field_validator("num_cpus")
     @classmethod
-    def warn_for_num_cpus(cls, v):
+    def raise_for_num_cpus_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
-                "removed in a future version."
+            raise ValueError(
+                "`num_cpus` in HTTPOptions has been removed. Serve no longer "
+                "supports configuring CPU reservations for HTTP proxy actors "
+                "via HTTPOptions."
             )
         return v
 
@@ -895,11 +959,16 @@ class gRPCOptions(BaseModel):
             be added and no gRPC server will be started. The servicer functions need to
             be importable from the context of where Serve is running.
         request_timeout_s: End-to-end timeout for gRPC requests.
+        enable_reflection (bool):
+            Enable the gRPC server reflection protocol on Serve's gRPC proxy so
+            tools such as grpcurl and grpcui can discover and call the registered
+            gRPC services. Default to True.
     """
 
     port: int = DEFAULT_GRPC_PORT
     grpc_servicer_functions: List[str] = []
     request_timeout_s: Optional[float] = None
+    enable_reflection: bool = True
 
     @property
     def grpc_servicer_func_callable(self) -> List[Callable]:

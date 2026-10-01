@@ -16,7 +16,6 @@
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -57,14 +56,15 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
-  // domain assignment so a new domain can be selected. If only some bundles are
-  // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
+  // For topology strategy PGs: if ALL bundles are unplaced (total failure), clear
+  // the topology assignments so new values can be selected. If only some bundles
+  // are unplaced (partial failure), we attempt to reschedule onto the same
+  // assignments.
   if (placement_group->AllUnplacedBundles() &&
-      placement_group->GetLabelDomainKey().has_value()) {
-    placement_group->ClearLabelDomainAssignments();
+      placement_group->GetTopologyStrategyKeys().has_value()) {
+    placement_group->ClearTopologyAssignments();
     RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
-                  << " are unplaced, rescheduling on a new label domain";
+                  << " are unplaced, rescheduling on a new topology assignment";
   }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
@@ -104,13 +104,13 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
-  if (scheduling_result.selected_label_domain.has_value()) {
-    const auto &[label_domain_key, label_domain_value] =
-        *scheduling_result.selected_label_domain;
-    placement_group->SetLabelDomainAssignment(label_domain_key, label_domain_value);
+  if (scheduling_result.selected_topology_assignment.has_value()) {
+    const auto &[topology_label_key, topology_label_value] =
+        *scheduling_result.selected_topology_assignment;
+    placement_group->SetTopologyAssignment(topology_label_key, topology_label_value);
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
-                  << " assigned to label domain " << label_domain_key << ": "
-                  << label_domain_value;
+                  << " assigned to topology label " << topology_label_key << ": "
+                  << topology_label_value;
   }
 
   // Covert to a map of bundle to node.
@@ -376,17 +376,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
                                       node_id,
                                       schedule_failure_handler,
                                       schedule_success_handler](const Status &status) {
-      auto commited_bundle_locations = std::make_shared<BundleLocations>();
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
-        (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
-      }
-
-      if (status.ok()) {
-        // Commit the bundle resources on the remote node to the cluster resources.
-        // On Commit failure we leave the optimistic state alone; the next
-        // ray-syncer broadcast from the raylet will reconcile it.
-        CommitBundleResources(commited_bundle_locations);
       }
 
       if (lease_status_tracker->AllCommitRequestReturned()) {
@@ -517,15 +508,18 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
-  std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
-  std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
-  if (label_domain.has_value()) {
-    const std::string &label_domain_key = label_domain.value();
-    std::optional<std::string> label_value =
-        placement_group.GetLabelDomainAssignment(label_domain_key);
-    // If the label domain value is already selected for this pg, it means
-    // the bundles are being rescheduled and must be on the same domain.
-    target_label_domain = {label_domain_key, label_value};
+  std::optional<std::pair<std::string, std::optional<std::string>>>
+      target_topology_assignment;
+  std::optional<std::vector<std::string>> topology_keys =
+      placement_group.GetTopologyStrategyKeys();
+  if (topology_keys.has_value()) {
+    // Currently supports one topology label.
+    const std::string &topology_label_key = topology_keys->front();
+    std::optional<std::string> topology_label_value =
+        placement_group.GetTopologyAssignment(topology_label_key);
+    // If a topology value has already been selected for this PG, the bundles
+    // are being rescheduled and must land on the same selection.
+    target_topology_assignment = {topology_label_key, topology_label_value};
   }
 
   NodeID soft_target_node_id = placement_group.GetSoftTargetNodeID();
@@ -533,17 +527,18 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
 
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack(std::move(target_label_domain));
+    return SchedulingOptions::BundlePack(std::move(target_topology_assignment));
   case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread(std::move(target_label_domain));
+    return SchedulingOptions::BundleSpread(std::move(target_topology_assignment));
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack(
         soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
                                     : scheduling::NodeID(soft_target_node_id.Binary()),
-        std::move(target_label_domain));
+        std::move(target_topology_assignment));
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
-        CreateSchedulingContext(placement_group_id), std::move(target_label_domain));
+        CreateSchedulingContext(placement_group_id),
+        std::move(target_topology_assignment));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);
@@ -725,62 +720,6 @@ void GcsPlacementGroupScheduler::AcquireBundleResources(
   }
 }
 
-absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMap(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  absl::flat_hash_map<scheduling::NodeID, ResourceRequest> node_bundle_resources_map;
-  for (const auto &bundle : *bundle_locations) {
-    auto node_id = scheduling::NodeID(bundle.second.first.Binary());
-    const auto &bundle_spec = *bundle.second.second;
-    auto bundle_resource_request = ResourceMapToResourceRequest(
-        bundle_spec.GetFormattedResources(), /*requires_object_store_memory=*/false);
-    node_bundle_resources_map[node_id] += bundle_resource_request;
-  }
-  return node_bundle_resources_map;
-}
-
-bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
-    const std::string &resource_name) {
-  std::string_view resource_name_view(resource_name);
-  std::string_view pattern("_group_");
-
-  // The length of {placement_group_id} is fixed, so we just need to check that if the
-  // length and the pos of `_group_` match.
-  if (resource_name_view.size() < pattern.size() + 2 * PlacementGroupID::Size()) {
-    return false;
-  }
-
-  auto idx = resource_name_view.size() - (pattern.size() + 2 * PlacementGroupID::Size());
-  return resource_name_view.substr(idx, pattern.size()) == pattern;
-}
-
-void GcsPlacementGroupScheduler::CommitBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  // Acquire bundle resources from gcs resources manager.
-  auto &cluster_resource_manager =
-      cluster_resource_scheduler_.GetClusterResourceManager();
-  auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
-  for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
-    for (const auto &resource_id : node_bundle_resources.ResourceIds()) {
-      // A placement group's wildcard resource has to be the sum of all related bundles.
-      // Even though `ToNodeBundleResourcesMap` has already considered this,
-      // it misses the scenario in which single (or subset of) bundle is rescheduled.
-      // When commiting this single bundle, its wildcard resource would wrongly overwrite
-      // the existing value, unless using the following additive operation.
-      auto capacity = node_bundle_resources.Get(resource_id);
-      if (IsPlacementGroupWildcardResource(resource_id.Binary())) {
-        auto new_capacity =
-            capacity +
-            cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, resource_id, new_capacity.Double());
-      } else {
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, resource_id, capacity.Double());
-      }
-    }
-  }
-}
-
 LeaseStatusTracker::LeaseStatusTracker(
     std::shared_ptr<GcsPlacementGroup> placement_group,
     const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles,
@@ -788,7 +727,6 @@ LeaseStatusTracker::LeaseStatusTracker(
     : placement_group_(placement_group), bundles_to_schedule_(unplaced_bundles) {
   preparing_bundle_locations_ = std::make_shared<BundleLocations>();
   uncommitted_bundle_locations_ = std::make_shared<BundleLocations>();
-  committed_bundle_locations_ = std::make_shared<BundleLocations>();
   bundle_locations_ = std::make_shared<BundleLocations>();
   for (const auto &bundle : unplaced_bundles) {
     const auto &iter = schedule_map.find(bundle->BundleId());
@@ -873,8 +811,6 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
   const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
     uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
-  } else {
-    committed_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
   }
 }
 
@@ -902,11 +838,6 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
 const std::shared_ptr<BundleLocations>
     &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
-}
-
-const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetCommittedBundleLocations()
-    const {
-  return committed_bundle_locations_;
 }
 
 const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations() const {

@@ -19,7 +19,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/asio:instrumented_io_context",
-        "//src/ray/asio:periodical_runner",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common:constants",
         "//src/ray/common:id",
         "//src/ray/protobuf:ray_syncer_cc_grpc",

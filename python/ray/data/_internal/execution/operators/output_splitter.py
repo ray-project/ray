@@ -2,7 +2,10 @@ import logging
 import math
 import time
 from dataclasses import replace
-from typing import Any, Collection, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 
 from typing_extensions import override
 
@@ -124,13 +127,17 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # The total number of rows is the same as the number of input rows.
         return self.input_dependencies[0].num_output_rows_total()
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+    ) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
             self._locality_hints = None
             self._max_buffer_size = 0
 
-        super().start(options)
+        super().start(options, block_ref_counter)
 
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.
@@ -323,7 +330,17 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 output.append(b)
                 acc += b.num_rows()
             else:
+                input_refs = {entry.ref for entry in b.blocks}
                 left, right = _split(b, nrow - acc, label_selector)
+                # Only register genuinely new blocks created by _split_block.
+                for part in (left, right):
+                    for entry in part.blocks:
+                        if entry.ref not in input_refs:
+                            self._block_ref_counter.on_block_produced(
+                                entry.ref,
+                                entry.metadata.size_bytes or 0,
+                                self.id,
+                            )
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)

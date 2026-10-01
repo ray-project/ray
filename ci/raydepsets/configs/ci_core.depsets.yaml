@@ -12,9 +12,9 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/ml/py313/core-requirements.txt
-      - python/requirements/py313/test-requirements.txt
-      - python/requirements/ml/py313/dl-cpu-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/test-requirements.txt
+      - python/requirements/ml/dl-cpu-requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/core-build-ci_depset_py${PYTHON_VERSION}.lock
@@ -35,9 +35,9 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/ml/py313/core-requirements.txt
-      - python/requirements/py313/test-requirements.txt
-      - python/requirements/ml/py313/dl-gpu-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/test-requirements.txt
+      - python/requirements/ml/dl-gpu-requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/core-gpubuild-ci_depset_py${PYTHON_VERSION}.lock
@@ -56,9 +56,9 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/ml/py313/core-requirements.txt
-      - python/requirements/py313/test-requirements.txt
-      - python/requirements/ml/py313/dl-gpu-requirements.txt
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/test-requirements.txt
+      - python/requirements/ml/dl-gpu-requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/core-gpu-cu130-build-ci_depset_py${PYTHON_VERSION}.lock

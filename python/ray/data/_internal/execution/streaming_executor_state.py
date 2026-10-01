@@ -9,11 +9,12 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
@@ -42,11 +43,14 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
+from ray.exceptions import UserCodeException
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
+
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -132,14 +136,59 @@ class OutputBackpressureGuard:
     scheduling-loop iterations.
     """
 
-    def __init__(self, topology: Topology, resource_manager: ResourceManager):
+    def __init__(
+        self,
+        topology: Topology,
+        resource_manager: ResourceManager,
+        release_interval_s: Optional[float] = None,
+    ):
         self._topology = topology
         self._resource_manager = resource_manager
         self._idle_detector = IdleDetector()
+        # Per-op minimum interval between releases. ``None`` or non-positive
+        # disables it and preserves the legacy behavior of releasing whenever
+        # the raw evaluation says so. Wall clock (``time.time()``) matches the
+        # idiom already used by ``IdleDetector``.
+        if release_interval_s is None or release_interval_s <= 0:
+            self._release_interval_s = 0.0
+        else:
+            self._release_interval_s = float(release_interval_s)
+        # Per-op timestamp of the last release that actually produced output.
+        # A missing entry reads as 0, which falls outside the interval so the
+        # first release for each op is not throttled.
+        self._last_release_time: Dict[PhysicalOperator, float] = {}
+
+    def notify_release_emitted(self, op: PhysicalOperator) -> None:
+        """Record that a release granted to ``op`` actually yielded output.
+
+        Callers must invoke this only once task output was really read, so the
+        interval throttles the rate at which upstream tasks are unblocked to
+        produce more output rather than the rate at which releases are merely
+        offered. A release that turns out to be a no-op leaves the interval
+        untouched and stays available for the next iteration."""
+        self._last_release_time[op] = time.time()
 
     def should_unblock(self, op: PhysicalOperator) -> bool:
         """Return True if output backpressure should be relaxed for ``op``
-        to preserve pipeline liveness."""
+        to preserve pipeline liveness.
+
+        With a positive ``release_interval_s``, releases that produced output
+        are rate-limited to at most one per interval per op. This is a pure
+        query: the caller is responsible for calling ``notify_release_emitted``
+        once the granted release actually yields output."""
+        # Evaluate first, unconditionally so the idle-detection state advances
+        # (and its idle warning keeps firing) regardless of the throttle. The
+        # unblock it may authorize is still gated by the interval below; only the
+        # idle bookkeeping itself is not.
+        if not self._evaluate_unblock_raw(op):
+            return False
+        if self._release_interval_s <= 0:
+            return True
+        last_release_time = self._last_release_time.get(op, 0)
+        return time.time() - last_release_time >= self._release_interval_s
+
+    def _evaluate_unblock_raw(self, op: PhysicalOperator) -> bool:
+        """Underlying liveness check without interval throttling."""
         downstream_eligible_ops = list(
             self._resource_manager.get_downstream_eligible_ops(op)
         )
@@ -543,7 +592,9 @@ class OpState:
 
 
 def build_streaming_topology(
-    dag: PhysicalOperator, options: ExecutionOptions
+    dag: PhysicalOperator,
+    options: ExecutionOptions,
+    block_ref_counter: BlockRefCounter,
 ) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
@@ -554,6 +605,8 @@ def build_streaming_topology(
     Args:
         dag: The operator DAG to instantiate.
         options: The execution options to use to start operators.
+        block_ref_counter: The executor-wide shared counter for tracking
+            object-store memory.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -575,7 +628,7 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options)
+        op.start(options, block_ref_counter)
         return op_state
 
     setup_state(dag)
@@ -587,6 +640,7 @@ def process_completed_tasks(
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
     output_backpressure_guard: OutputBackpressureGuard,
+    metadata_fetcher: "MetadataFetcher",
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -599,10 +653,13 @@ def process_completed_tasks(
         output_backpressure_guard: Escape hatch for streaming output
             backpressure. Bumps a fully-throttled output limit (0 bytes) to
             1 byte when the guard signals a stall.
+        metadata_fetcher: Resolves pulled (block_ref, meta_ref) pairs into
+            emitted RefBundles. The threaded fetcher defers metadata fetches to
+            a background thread (emitting in per-op order as they become ready);
+            the inline fetcher emits synchronously.
     Returns:
         The number of errored blocks.
     """
-
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
     for op, state in topology.items():
@@ -610,6 +667,10 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     remaining_output_budget: Dict[OpState, int] = {}
+    # Ops the guard unblocked this iteration. The release only counts against
+    # the guard's interval once output is actually read below, so a release that
+    # finds nothing to read doesn't consume the op's window.
+    guard_released_ops: Set[PhysicalOperator] = set()
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
@@ -634,6 +695,8 @@ def process_completed_tasks(
         # fires regardless of which policy drove the limit to 0.
         if max_bytes_to_read == 0 and output_backpressure_guard.should_unblock(op):
             max_bytes_to_read = 1
+            # Confirmed further down, once this op's output is really read.
+            guard_released_ops.add(op)
 
         # When the guard bumped the limit above 0, clear the policy attribution too
         in_backpressure = max_bytes_to_read == 0
@@ -646,6 +709,44 @@ def process_completed_tasks(
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+
+    def _record_errored_block(e: BaseException, op_name: str) -> None:
+        """Apply ``max_errored_blocks`` accounting to a block-level error from
+        either ``on_data_ready`` or a deferred metadata fetch. Raises to abort
+        once the budget is exhausted."""
+        nonlocal num_errored_blocks
+        num_errored_blocks += 1
+        should_ignore = (
+            max_errored_blocks < 0 or max_errored_blocks >= num_errored_blocks
+        )
+        error_message = f'An exception was raised from a task of operator "{op_name}".'
+        if should_ignore:
+            remaining = (
+                max_errored_blocks - num_errored_blocks
+                if max_errored_blocks >= 0
+                else "unlimited"
+            )
+            error_message += (
+                f" Ignoring this exception with remaining"
+                f" max_errored_blocks={remaining}."
+            )
+            logger.error(error_message, exc_info=e)
+        else:
+            error_message += (
+                " Dataset execution will now abort."
+                " To ignore this exception and continue, set"
+                " DataContext.max_errored_blocks."
+            )
+            # For a user-code error the traceback is re-logged (cleaned) when the
+            # exception propagates to the top-level handler, so don't dump it here
+            # too. Genuine internal / system errors keep the full traceback in
+            # place for diagnostics.
+            if isinstance(e, UserCodeException):
+                logger.error(error_message)
+            else:
+                logger.error(error_message, exc_info=e)
+            raise e from None
+
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
@@ -664,52 +765,66 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
+        # Per-op task processing. ``metadata_fetcher`` decides how each pulled
+        # (block_ref, meta_ref) pair becomes an emitted RefBundle:
+        # - inline mode: ``on_data_ready`` fetches + emits each pair inline and
+        #   fires the task's done-callback at end-of-stream (``submit`` is a
+        #   no-op).
+        # - threaded mode: every pulled pair is deferred (budget arithmetic uses
+        #   the block's local ``object_size``, no per-ref ``ray.get``) and handed
+        #   to the background fetcher by ``submit``; emission and the postponed
+        #   done-callback happen in ``emit_ready_and_fire_done_callbacks``, preserving the per-op,
+        #   per-task, per-pair emission order.
         for state, ready_tasks in ready_tasks_by_op.items():
             # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
-            for task in ready_tasks:
-                if isinstance(task, DataOpTask):
-                    try:
-                        bytes_read = task.on_data_ready(
-                            remaining_output_budget.get(state, None)
-                        )
-                        if state in remaining_output_budget:
-                            # Clamp remaining output budget at 0
-                            remaining_output_budget[state] = max(
-                                remaining_output_budget[state] - bytes_read, 0
+            op_data_tasks: List[DataOpTask] = []
+            try:
+                for task in ready_tasks:
+                    if isinstance(task, DataOpTask):
+                        try:
+                            bytes_read = task.on_data_ready(
+                                remaining_output_budget.get(state, None),
+                                metadata_fetcher,
                             )
-                    except Exception as e:
-                        num_errored_blocks += 1
-                        should_ignore = (
-                            max_errored_blocks < 0
-                            or max_errored_blocks >= num_errored_blocks
-                        )
-                        error_message = (
-                            "An exception was raised from a task of "
-                            f'operator "{state.op.name}".'
-                        )
-                        if should_ignore:
-                            remaining = (
-                                max_errored_blocks - num_errored_blocks
-                                if max_errored_blocks >= 0
-                                else "unlimited"
-                            )
-                            error_message += (
-                                " Ignoring this exception with remaining"
-                                f" max_errored_blocks={remaining}."
-                            )
-                            logger.error(error_message, exc_info=e)
-                        else:
-                            error_message += (
-                                " Dataset execution will now abort."
-                                " To ignore this exception and continue, set"
-                                " DataContext.max_errored_blocks."
-                            )
-                            logger.exception(error_message)
-                            raise e from None
-                else:
-                    assert isinstance(task, MetadataOpTask)
-                    task.on_task_finished()
+                            op_data_tasks.append(task)
+                            if bytes_read > 0 and state.op in guard_released_ops:
+                                # The guard's release produced real output, so
+                                # start this op's interval from here.
+                                guard_released_ops.discard(state.op)
+                                output_backpressure_guard.notify_release_emitted(
+                                    state.op
+                                )
+                            if state in remaining_output_budget:
+                                # Clamp remaining output budget at 0
+                                remaining_output_budget[state] = max(
+                                    remaining_output_budget[state] - bytes_read, 0
+                                )
+                        except Exception as e:
+                            _record_errored_block(e, state.op.name)
+                    else:
+                        assert isinstance(task, MetadataOpTask)
+                        task.on_task_finished()
+            finally:
+                # Hand this op's just-deferred pairs to the fetcher, and register
+                # any end-of-stream tasks for a postponed done-callback (a no-op
+                # in inline mode, where the pairs already emitted above). In a
+                # ``finally`` so a thrown error can't strand pairs already
+                # deferred into the fetcher this iteration.
+                metadata_fetcher.submit(state, op_data_tasks)
+
+    # Emit whatever's ready, in per-op order, then fire any postponed done
+    # callbacks — UNCONDITIONALLY, even when there are no active tasks this
+    # iteration. Pairs deferred in earlier iterations (their tasks may already
+    # be gone) can still have metadata land later; gating this on `active_tasks`
+    # would strand them and stall output forever. Deferred metadata-fetch
+    # failures go through the same `max_errored_blocks` accounting as inline
+    # `on_data_ready` errors. (Inline mode returns nothing here.)
+    for (
+        failed_op_name,
+        fetch_exc,
+    ) in metadata_fetcher.emit_ready_and_fire_done_callbacks():
+        _record_errored_block(fetch_exc, failed_op_name)
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():

@@ -1,0 +1,11 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 1 warning.
+
+Findings (0):
+  (none)
+
+Unclassified (1) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+  doc/source/api/foo.md:1: WARNING: some unrecognized problem here [app.unknown_thing]
+
+Suppressed (0) — known-benign, not actionable:
+
+No rule matched the warning(s) above — resolve with the user and extend rules.yaml.

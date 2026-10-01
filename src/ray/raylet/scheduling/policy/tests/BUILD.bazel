@@ -8,6 +8,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/raylet/scheduling:composite_scheduling_policy",
     ],
 )

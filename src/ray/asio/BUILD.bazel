@@ -39,7 +39,9 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":instrumented_io_context",
+        "//src/ray/common:ray_config",
         "//src/ray/observability:metric_interface",
+        "//src/ray/observability:windowed_max",
         "//src/ray/util:clock",
         "//src/ray/util:logging",
         "//src/ray/util:thread_utils",

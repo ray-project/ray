@@ -1,6 +1,6 @@
 import functools
 import math
-from dataclasses import InitVar, dataclass, field, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 
 from ray.data._internal.compute import ComputeStrategy
@@ -24,11 +24,12 @@ if TYPE_CHECKING:
     import pyarrow as pa
     from pyarrow.fs import FileSystem
 
-    from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
-    from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+    from ray.data._internal.datasource_v2.interfaces.file_indexer import FileIndexer
+    from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         FilePartitioner,
     )
-    from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+    from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+    from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import PathPartitionFilter
 
@@ -51,7 +52,7 @@ class Read(
     datasource: Datasource
     datasource_or_legacy_reader: Union[Datasource, Reader]
     parallelism: int
-    num_outputs: InitVar[Optional[int]] = None
+    num_outputs: Optional[int] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     compute: Optional[ComputeStrategy] = None
     detected_parallelism: Optional[int] = None
@@ -60,9 +61,8 @@ class Read(
     ray_remote_args_fn: None = field(init=False, default=None)
     per_block_limit: Optional[int] = None
     _input_dependencies: list = field(init=False, repr=False, default_factory=list)
-    _num_outputs: Optional[int] = field(init=False, repr=False)
 
-    def __post_init__(self, num_outputs: Optional[int]):
+    def __post_init__(self):
         if self.compute is None:
             from ray.data._internal.compute import TaskPoolStrategy
 
@@ -71,7 +71,6 @@ class Read(
             object.__setattr__(self, "ray_remote_args", {})
         object.__setattr__(self, "_name", f"Read{self.datasource.get_name()}")
         object.__setattr__(self, "_input_dependencies", [])
-        object.__setattr__(self, "_num_outputs", num_outputs)
 
     def output_data(self):
         return None
@@ -91,7 +90,7 @@ class Read(
         return self.detected_parallelism
 
     def estimated_num_outputs(self) -> Optional[int]:
-        return self._num_outputs or self._estimate_num_outputs()
+        return self.num_outputs or self._estimate_num_outputs()
 
     def infer_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
@@ -209,7 +208,7 @@ class Read(
             self,
             datasource=projected_datasource,
             datasource_or_legacy_reader=projected_datasource,
-            num_outputs=self._num_outputs,
+            num_outputs=self.num_outputs,
         )
 
     def supports_predicate_pushdown(self) -> bool:
@@ -232,7 +231,7 @@ class Read(
             self,
             datasource=predicated_datasource,
             datasource_or_legacy_reader=predicated_datasource,
-            num_outputs=self._num_outputs,
+            num_outputs=self.num_outputs,
         )
 
 
@@ -278,8 +277,8 @@ class ReadFiles(
     # limit pushdown is applied via ``scanner.push_limit`` (see
     # ``LimitPushdownRule._apply_per_block_limit_if_supported``), not this field.
     per_block_limit: Optional[int] = field(init=False, default=None)
+    num_outputs: Optional[int] = None
     _name: str = field(init=False, repr=False)
-    _num_outputs: Optional[int] = field(init=False, repr=False, default=None)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -293,7 +292,6 @@ class ReadFiles(
         if self.ray_remote_args is None:
             object.__setattr__(self, "ray_remote_args", {})
         object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
-        object.__setattr__(self, "_num_outputs", None)
 
     def infer_schema(self) -> "pa.Schema":
         # Scanner schema reflects any applied projection pushdown
@@ -327,7 +325,7 @@ class ReadFiles(
         return BlockMetadata(None, None, None, None)
 
     def supports_projection_pushdown(self) -> bool:
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsColumnPruning,
         )
 
@@ -351,7 +349,7 @@ class ReadFiles(
     ) -> "ReadFiles":
         if projection_map is None:
             return self
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsColumnPruning,
         )
 
@@ -366,27 +364,33 @@ class ReadFiles(
         return replace(self, scanner=new_scanner)
 
     def supports_predicate_pushdown(self) -> bool:
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsFilterPushdown,
+            SupportsPartitionPruning,
         )
 
-        return isinstance(self.scanner, SupportsFilterPushdown)
+        # Either mixin is enough: a scanner that only prunes partitions still
+        # takes the partition-column conjuncts, and ``apply_predicate`` keeps
+        # the rest in a ``Filter``.
+        return isinstance(
+            self.scanner, (SupportsFilterPushdown, SupportsPartitionPruning)
+        )
 
     def get_current_predicate(self) -> Optional[Expr]:
         return getattr(self.scanner, "predicate", None)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
-        from ray.data._internal.datasource.parquet_datasource import (
+        from ray.data._internal.datasource_v2.common.pushdown_utils import (
             _split_predicate_by_columns,
+            combine_predicates,
         )
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
         )
         from ray.data._internal.logical.operators.map_operator import Filter
 
-        assert isinstance(self.scanner, SupportsFilterPushdown)
-
+        pushes_filters = isinstance(self.scanner, SupportsFilterPushdown)
         partition_cols: Set[str] = (
             self.scanner.partition_columns
             if isinstance(self.scanner, SupportsPartitionPruning)
@@ -394,9 +398,22 @@ class ReadFiles(
         )
 
         if not partition_cols:
-            new_scanner, _residual = self.scanner.push_filters(predicate_expr)
-            return replace(self, scanner=new_scanner)
+            if not pushes_filters:
+                # Prunes partitions but has no partition columns to prune on
+                # (no ``Partitioning`` spec): nothing to push. Returning
+                # ``self`` keeps the ``Filter`` above us.
+                return self
+            new_scanner, residual_unpushed = self.scanner.push_filters(predicate_expr)
+            new_op = replace(self, scanner=new_scanner)
+            if residual_unpushed is None:
+                return new_op
+            # Our caller replaces the whole ``Filter`` -> ``ReadFiles`` subtree
+            # with what we return, so the leftover needs a ``Filter`` of its own
+            # or it never runs.
+            return Filter(predicate_expr=residual_unpushed, input_dependencies=[new_op])
 
+        # Cuts the top-level ``AND`` chain into three buckets by referenced
+        # columns: partition-only, data-only, and mixed (bindable by neither).
         split = _split_predicate_by_columns(predicate_expr, partition_cols)
 
         if split.data_predicate is None and split.partition_predicate is None:
@@ -406,14 +423,31 @@ class ReadFiles(
             return self
 
         new_scanner = self.scanner
+        # Only an ``AND`` chain is splittable: each conjunct must hold on its
+        # own, so where each one is applied doesn't change the result.
+        residual_unpushed = split.residual_predicate
         if split.partition_predicate is not None:
             new_scanner = new_scanner.prune_partitions(split.partition_predicate)
         if split.data_predicate is not None:
-            new_scanner, _residual = new_scanner.push_filters(split.data_predicate)
+            if pushes_filters:
+                # ``push_filters`` may decline part of what it was offered; that
+                # leftover is another conjunct of the same chain, so it goes back
+                # into the residual.
+                new_scanner, declined = new_scanner.push_filters(split.data_predicate)
+            else:
+                # No filter pushdown: the data-column conjuncts stay in a ``Filter``
+                # above the read, and only the partition ones move.
+                declined = split.data_predicate
+            residual_unpushed = combine_predicates(residual_unpushed, declined)
+
+        if new_scanner is self.scanner:
+            # Nothing was pushed (e.g. a data-only predicate on a scanner that
+            # only prunes partitions); keep the original ``Filter``.
+            return self
 
         new_op = replace(self, scanner=new_scanner)
 
-        if split.residual_predicate is None:
+        if residual_unpushed is None:
             return new_op
 
         # Residual conjuncts can't be pushed through either ``push_filters``
@@ -422,24 +456,23 @@ class ReadFiles(
         # ``Filter`` above the new ``ReadFiles``. Without this, we'd keep
         # the splittable parts and silently drop the residual — letting
         # rows through that the original predicate would have rejected.
-        return Filter(
-            predicate_expr=split.residual_predicate, input_dependencies=[new_op]
-        )
+        return Filter(predicate_expr=residual_unpushed, input_dependencies=[new_op])
 
 
 @dataclass(frozen=True, repr=False, eq=False)
 class ListFiles(LogicalOperator, SourceOperator):
     """Logical source op that lists files and yields ``FileManifest`` blocks.
 
-    Extracted from the prior monolithic ``ReadFiles`` so listing, shuffling,
-    and size-balanced bucketing live in one place (see
+    Extracted from the prior monolithic ``ReadFiles`` so listing, file shuffle
+    (applied by the ``FileIndexer`` after path discovery and before metadata
+    fetch), and size-balanced bucketing live in one place (see
     :func:`ray.data._internal.planner.plan_list_files_op.plan_list_files_op`).
     Downstream, ``ReadFiles`` consumes the manifest blocks produced here.
     """
 
     paths: List[str]
     file_indexer: "FileIndexer"
-    filesystem: "FileSystem"
+    filesystem: Optional["FileSystem"]
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]
@@ -451,11 +484,23 @@ class ListFiles(LogicalOperator, SourceOperator):
     shuffle_config_factory: Callable[[], Optional["FileShuffleConfig"]] = field(
         default=lambda: None
     )
+    # Pushed-down read constraints, populated by the optimizer rules
+    # (``predicate_pushdown`` / ``projection_pushdown`` / ``limit_pushdown``).
+    # A metadata-aware indexer (the Parquet ``FooterFileIndexer``) uses them to
+    # prune row groups, size only projected columns, and stop listing early;
+    # the per-file listing path ignores them. Whether footer reads happen is
+    # decided by the indexer type, not a flag here -- this op stays
+    # format-agnostic.
+    predicate: Optional[Expr] = None
+    projected_columns: Optional[List[str]] = None
+    limit: Optional[int] = None
+    # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
+    # blind to partition columns), this is what makes ``limit`` safe here.
+    partition_pruner: Optional["FilePruner"] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
     )
-    _num_outputs: Optional[int] = field(init=False, repr=False, default=None)
 
     def __post_init__(self):
         object.__setattr__(self, "_name", self.__class__.__name__)
@@ -463,15 +508,11 @@ class ListFiles(LogicalOperator, SourceOperator):
     def output_data(self) -> Optional[list]:
         return None
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return None
-
     def infer_schema(self) -> "pa.Schema":
         # ``FileManifest`` columns are fixed: __path, __file_size.
         import pyarrow as pa
 
-        from ray.data._internal.datasource_v2.listing.file_manifest import (
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
             FILE_SIZE_COLUMN_NAME,
             PATH_COLUMN_NAME,
         )

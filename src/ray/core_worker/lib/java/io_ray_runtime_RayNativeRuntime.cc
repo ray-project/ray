@@ -143,6 +143,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_streaming_generator,
          bool should_retry_exceptions,
          int64_t generator_backpressure_num_objects,
+         int64_t num_objects_per_yield,
          const std::optional<std::string> &tensor_transport) {
         // These 3 parameters are used for Python only, and Java worker
         // will not use them.

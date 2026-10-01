@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_publisher.h"
@@ -27,7 +28,8 @@ namespace ray {
 namespace gcs {
 
 static instrumented_io_context __mock_io_context_;
-static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
+static ClusterResourceManager __mock_cluster_resource_manager_(
+    PeriodicalRunner::Create(__mock_io_context_));
 static observability::FakeRayEventRecorder __mock_ray_event_recorder_;
 static Clock __mock_clock_;
 static pubsub::ObservabilityPublisher *__mock_observability_publisher() {

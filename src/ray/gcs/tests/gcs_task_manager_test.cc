@@ -24,6 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/status.h"
@@ -47,10 +48,12 @@ class GcsTaskManagerTest : public ::testing::Test {
 
   virtual void SetUp() {
     io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsTaskManagerTest");
-    task_manager = std::make_unique<GcsTaskManager>(io_context_->GetIoService(),
-                                                    fake_task_events_reported_gauge_,
-                                                    fake_task_events_dropped_gauge_,
-                                                    fake_task_events_stored_gauge_);
+    task_manager = std::make_unique<GcsTaskManager>(
+        io_context_->GetIoService(),
+        PeriodicalRunner::Create(io_context_->GetIoService()),
+        fake_task_events_reported_gauge_,
+        fake_task_events_dropped_gauge_,
+        fake_task_events_stored_gauge_);
   }
 
   virtual void TearDown() {

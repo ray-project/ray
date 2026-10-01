@@ -27,6 +27,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import get_localhost_ip, is_localhost
 from ray._common.utils import (
+    get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
 )
 from ray._private import utils
@@ -34,6 +35,7 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_ENABLE_OPEN_TELEMETRY,
+    env_bool,
     env_integer,
 )
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -66,6 +68,7 @@ from ray.dashboard.modules.reporter.gpu_providers import (
     GpuUtilizationInfo,
     TpuUtilizationInfo,
 )
+from ray.dashboard.modules.reporter.jax_profile_manager import JaxProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -177,6 +180,24 @@ METRICS_GAUGES = {
         "node_mem_total_host",
         "Total host memory on a ray node",
         "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_used": Gauge(
+        "node_swap_used",
+        "Swap usage on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_total": Gauge(
+        "node_swap_total",
+        "Total swap on a ray node (cgroup-aware when in a container)",
+        "bytes",
+        NODE_TAG_KEYS,
+    ),
+    "node_swap_utilization": Gauge(
+        "node_swap_utilization",
+        "Swap utilization on a ray node",
+        "percentage",
         NODE_TAG_KEYS,
     ),
     "node_cgroup_mem_used": Gauge(
@@ -359,8 +380,8 @@ METRICS_GAUGES = {
         "percentage",
         COMPONENT_METRICS_TAG_KEYS,
     ),
-    "component_mem_shared_bytes": Gauge(
-        "component_mem_shared_bytes",
+    "component_shared_bytes": Gauge(
+        "component_shared_bytes",
         "SHM usage of all components of the node. "
         "It is equivalent to the top command's SHR column.",
         "bytes",
@@ -372,10 +393,22 @@ METRICS_GAUGES = {
         "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
+    "component_rss_bytes": Gauge(
+        "component_rss_bytes",
+        "RSS usage of all components on the node.",
+        "bytes",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
     "component_uss_mb": Gauge(
         "component_uss_mb",
         "USS usage of all components on the node.",
         "MB",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
+    "component_uss_bytes": Gauge(
+        "component_uss_bytes",
+        "USS usage of all components on the node.",
+        "bytes",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_num_fds": Gauge(
@@ -491,6 +524,7 @@ class ReporterAgent(
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
         self._open_telemetry_metric_recorder = None
+        self._export_failure_warned = set()
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             stats_exporter = prometheus_exporter.new_stats_exporter(
@@ -532,6 +566,11 @@ class ReporterAgent(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
         )
+        # One worker preserves OTLP report order without blocking the event loop.
+        self._otlp_ingest_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reporter_agent_otlp_ingest",
+        )
         self._gcs_pid = None
         self._gcs_proc = None
 
@@ -539,6 +578,10 @@ class ReporterAgent(
             profile_dir_path=self._log_dir, ip_address=self._ip
         )
         self._gpu_profiling_manager.start_monitoring_daemon()
+
+        self._jax_profiling_manager = JaxProfilingManager(
+            profile_dir_path=self._log_dir
+        )
 
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
@@ -585,6 +628,15 @@ class ReporterAgent(
             pid=pid, num_iterations=num_iterations
         )
         return reporter_pb2.GpuProfilingReply(success=success, output=output)
+
+    async def JaxProfiling(self, request, context):
+        pid = request.pid
+        port = request.port
+        duration = request.duration if request.HasField("duration") else 5
+        success, output = await self._jax_profiling_manager.jax_profile(
+            pid=pid, port=port, duration_s=duration
+        )
+        return reporter_pb2.JaxProfilingReply(success=success, output=output)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
@@ -728,6 +780,31 @@ class ReporterAgent(
                 data_point.as_double,
             )
 
+    def _ingest_exported_metrics(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+    ) -> None:
+        for resource_metrics in request.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    # Isolate failures per metric: one bad metric must not discard
+                    # the reporting component's remaining metrics.
+                    try:
+                        if metric.WhichOneof("data") == "histogram":
+                            self._export_histogram_data(metric)
+                        else:
+                            self._export_number_data(metric)
+                    except Exception as e:
+                        # A failing metric usually keeps failing every interval, so
+                        # warn once per name rather than on every export.
+                        if metric.name not in self._export_failure_warned:
+                            self._export_failure_warned.add(metric.name)
+                            logger.warning(
+                                "Failed to export metric %s, skipping it: %r",
+                                metric.name,
+                                e,
+                            )
+
     async def Export(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
@@ -739,13 +816,11 @@ class ReporterAgent(
         implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.
         """
-        for resource_metrics in request.resource_metrics:
-            for scope_metrics in resource_metrics.scope_metrics:
-                for metric in scope_metrics.metrics:
-                    if metric.WhichOneof("data") == "histogram":
-                        self._export_histogram_data(metric)
-                    else:
-                        self._export_number_data(metric)
+        await get_or_create_event_loop().run_in_executor(
+            self._otlp_ingest_executor,
+            self._ingest_exported_metrics,
+            request,
+        )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
@@ -783,10 +858,20 @@ class ReporterAgent(
             return []
 
         tpu_utilizations = []
-        # Sample should look like:
-        # Name: tensorcore_utilization_node Labels: {'accelerator_id': '4804690994094478883-0', 'make': 'cloud-tpu', 'model': 'tpu-v6e-slice', 'tpu_topology': '2x4'} Value: 0.0
+        # TPU metrics have a quirk where tensor core and memory bandwidth
+        # metrics are host metrics and indexed by chip 0 to N-1, while the
+        # other metrics are runtime metrics and are indexed globally in the
+        # slice.
+        # To make these useful in the dashboard, we want to re-canonicalize the
+        # global indices onto the local host indices.
+        # We partition the metrics into two groups to perform this re-indexing.
+        tpu_utilizations_host = []
+        tpu_utilizations_other = []
+
         # See https://cloud.google.com/monitoring/api/metrics_gcp#gcp-tpu for
         # schema.
+        # Sample should look like:
+        # Name: tensorcore_utilization_node Labels: {'accelerator_id': '4804690994094478883-0', 'make': 'cloud-tpu', 'model': 'tpu-v6e-slice', 'tpu_topology': '2x4'} Value: 0.0
         try:
             for family in text_string_to_metric_families(metrics):
                 for sample in family.samples:
@@ -797,80 +882,64 @@ class ReporterAgent(
                         continue
                     labels = sample.labels
                     accelerator_id = labels["accelerator_id"]
-                    index = accelerator_id.split("-")[1]
+                    index = int(accelerator_id.split("-")[1])
 
-                    if sample.name == "memory_bandwidth_utilization":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=sample.value,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
+                    info = TpuUtilizationInfo(
+                        index=index,
+                        name=accelerator_id,
+                        tpu_type=labels["model"],
+                        tpu_topology=labels["tpu_topology"],
+                        tensorcore_utilization=0.0,
+                        hbm_utilization=0.0,
+                        duty_cycle=0.0,
+                        memory_used=0,
+                        memory_total=0,
+                    )
 
-                    if sample.name == "tensorcore_utilization":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=sample.value,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
+                    known = True
+                    is_host_metric = False
+                    match sample.name:
+                        case "memory_bandwidth_utilization":
+                            info["hbm_utilization"] = sample.value
+                            is_host_metric = True
+                        case "tensorcore_utilization":
+                            info["tensorcore_utilization"] = sample.value
+                            is_host_metric = True
+                        case "duty_cycle":
+                            info["duty_cycle"] = sample.value
+                        case "memory_used":
+                            info["memory_used"] = sample.value
+                        case "memory_total":
+                            info["memory_total"] = sample.value
+                        case _:
+                            known = False
 
-                    if sample.name == "duty_cycle":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=sample.value,
-                            memory_used=0,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
-
-                    if sample.name == "memory_used":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=sample.value,
-                            memory_total=0,
-                        )
-                        tpu_utilizations.append(info)
-
-                    if sample.name == "memory_total":
-                        info = TpuUtilizationInfo(
-                            index=index,
-                            name=accelerator_id,
-                            tpu_type=labels["model"],
-                            tpu_topology=labels["tpu_topology"],
-                            tensorcore_utilization=0.0,
-                            hbm_utilization=0.0,
-                            duty_cycle=0.0,
-                            memory_used=0,
-                            memory_total=sample.value,
-                        )
-                        tpu_utilizations.append(info)
+                    if known:
+                        if is_host_metric:
+                            tpu_utilizations_host.append(info)
+                        else:
+                            tpu_utilizations_other.append(info)
         except Exception as e:
             logger.debug(f"Failed to parse metrics from device plugin: {metrics} {e}")
             return []
+
+        desired_indices = sorted({i["index"] for i in tpu_utilizations_host})
+        rewrite_indices = sorted({i["index"] for i in tpu_utilizations_other})
+
+        # Some TPU types do not have runtime metrics reported from the device
+        # plugin and the rewrite_indices list will be empty.
+        if len(rewrite_indices) > 0:
+            if len(rewrite_indices) != len(desired_indices):
+                logger.warning(
+                    f"Failed to parse metrics from device plugin: two sets of metrics for different chip counts, {len(desired_indices)} vs {len(rewrite_indices)}"
+                )
+                return []
+
+            index_map = dict(zip(rewrite_indices, desired_indices))
+            for info in tpu_utilizations_other:
+                info["index"] = index_map[info["index"]]
+
+        tpu_utilizations = tpu_utilizations_host + tpu_utilizations_other
 
         # Each collected sample records only one metric (e.g. duty cycle) during
         # the metric interval for one TPU. So here we need to aggregate the
@@ -927,12 +996,47 @@ class ReporterAgent(
         return sent, recv
 
     @staticmethod
-    def _get_mem_usage():
+    def _get_mem_usage() -> Tuple[int, int, float, int]:
+        """Return (total, available, percent, used) RAM bytes for the node.
+
+        RAM-only by design: swap (when RAY_count_swap_in_memory_monitor=1) is
+        reported separately via _get_swap_usage so swap activity, which signals
+        performance degradation, stays visible instead of being folded into the
+        Node Memory graph.
+        """
         total = get_system_memory()
         used = utils.get_used_memory()
+        used = max(0, min(used, total))
         available = total - used
-        percent = round(used / total, 3) * 100
+        percent = round(used / total, 3) * 100 if total > 0 else 0.0
         return total, available, percent, used
+
+    @staticmethod
+    def _get_swap_usage() -> Optional[Tuple[int, int, float]]:
+        """Return (swap_total_bytes, swap_used_bytes, swap_percent), or None.
+
+        Returns None when RAY_count_swap_in_memory_monitor is off or swap can't
+        be read — there is no swap information to report. The OOM killer and
+        scheduler `memory` resource still account for swap when the flag is on;
+        only the dashboard graph is split out so swap activity (which signals
+        perf degradation) is visible distinctly from RAM pressure.
+        """
+        if not env_bool("RAY_count_swap_in_memory_monitor", False):
+            return None
+        try:
+            swap_total, swap_used = get_cgroup_aware_swap_memory()
+        except Exception as e:
+            # Periodic loop, not startup — log and continue rather than take
+            # down the metrics path.
+            logger.warning(
+                "Failed to retrieve swap memory info for dashboard: %s",
+                e,
+                exc_info=True,
+            )
+            return None
+        swap_used = max(0, min(swap_used, swap_total))
+        percent = round(swap_used / swap_total, 3) * 100 if swap_total > 0 else 0.0
+        return swap_total, swap_used, percent
 
     @staticmethod
     def _get_host_mem_usage():
@@ -1188,6 +1292,7 @@ class ReporterAgent(
             "cpu": self._get_cpu_percent(IN_KUBERNETES_POD),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
+            "swap": self._get_swap_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
             "host_mem": self._get_host_mem_usage(),
@@ -1233,7 +1338,7 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
+                gauge=METRICS_GAUGES["component_shared_bytes"],
                 value=0.0,
                 tags=tags,
             )
@@ -1247,7 +1352,21 @@ class ReporterAgent(
         )
         records.append(
             Record(
+                gauge=METRICS_GAUGES["component_rss_bytes"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
                 gauge=METRICS_GAUGES["component_uss_mb"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_uss_bytes"],
                 value=0.0,
                 tags=tags,
             )
@@ -1280,9 +1399,9 @@ class ReporterAgent(
         total_cpu_percentage = 0.0
         total_gpu_percentage = 0.0
         total_gpu_memory = 0.0
-        total_rss = 0.0
-        total_uss = 0.0
-        total_shm = 0.0
+        total_rss_bytes = 0.0
+        total_uss_bytes = 0.0
+        total_shm_bytes = 0.0
         total_num_fds = 0
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
@@ -1293,21 +1412,21 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                total_rss += float(memory_info.rss) / 1.0e6
+                total_rss_bytes += float(memory_info.rss)
                 if hasattr(memory_info, "shared"):
-                    total_shm += float(memory_info.shared)
+                    total_shm_bytes += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 # For Mac OS X, directly get USS metric from memory_full_info
-                total_uss += float(mem_full_info.uss) / 1.0e6
+                total_uss_bytes += float(mem_full_info.uss)
             elif memory_info is not None:
                 # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
                 if hasattr(memory_info, "shared"):
                     # Linux: USS ≈ RSS - shared
-                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                    total_uss_bytes += float(memory_info.rss - memory_info.shared)
                 elif hasattr(memory_info, "private"):
                     # Windows: private IS USS
-                    total_uss += float(memory_info.private) / 1.0e6
+                    total_uss_bytes += float(memory_info.private)
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
@@ -1324,23 +1443,37 @@ class ReporterAgent(
         )
         records.append(
             Record(
-                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
-                value=total_shm,
+                gauge=METRICS_GAUGES["component_shared_bytes"],
+                value=total_shm_bytes,
                 tags=tags,
             )
         )
         records.append(
             Record(
                 gauge=METRICS_GAUGES["component_rss_mb"],
-                value=total_rss,
+                value=total_rss_bytes / 1.0e6,
                 tags=tags,
             )
         )
-        if total_uss > 0.0:
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_rss_bytes"],
+                value=total_rss_bytes,
+                tags=tags,
+            )
+        )
+        if total_uss_bytes > 0.0:
             records.append(
                 Record(
                     gauge=METRICS_GAUGES["component_uss_mb"],
-                    value=total_uss,
+                    value=total_uss_bytes / 1.0e6,
+                    tags=tags,
+                )
+            )
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES["component_uss_bytes"],
+                    value=total_uss_bytes,
                     tags=tags,
                 )
             )
@@ -1583,6 +1716,32 @@ class ReporterAgent(
             ]
         )
 
+        # Emit swap gauges only when there's swap to report (flag on and swap
+        # configured) — otherwise they'd be constant zeros and add noise to
+        # dashboards / Prometheus storage.
+        swap = stats["swap"]
+        if swap is not None and swap[0] > 0:
+            swap_total, swap_used, swap_percent = swap
+            records_reported.extend(
+                [
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_used"],
+                        value=swap_used,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_total"],
+                        value=swap_total,
+                        tags=node_tags,
+                    ),
+                    Record(
+                        gauge=METRICS_GAUGES["node_swap_utilization"],
+                        value=swap_percent,
+                        tags=node_tags,
+                    ),
+                ]
+            )
+
         cgroup_stats = stats["cgroup_mem"]
         if cgroup_stats is not None:
             cgroup_used, cgroup_total = cgroup_stats
@@ -1624,6 +1783,7 @@ class ReporterAgent(
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
+                gpu_uuid = gpu.get("uuid")
                 gpu_power_mw = gpu.get("power_mw")
                 gpu_temperature_c = gpu.get("temperature_c")
 
@@ -1633,6 +1793,8 @@ class ReporterAgent(
                     gpu_tags = {**node_tags, "GpuIndex": str(gpu_index)}
                     if gpu_name:
                         gpu_tags["GpuDeviceName"] = gpu_name
+                    if gpu_uuid:
+                        gpu_tags["GpuUuid"] = gpu_uuid
 
                     # There's only 1 GPU per each index, so we record 1 here.
                     gpus_available_record = Record(

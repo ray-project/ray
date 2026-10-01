@@ -62,7 +62,9 @@ from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
+    enable_token_auth_by_default,
     ensure_token_if_auth_enabled,
+    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -852,8 +854,9 @@ class Worker:
             )
             if not is_one_sided_transport(tensor_transport):
                 raise ValueError(
-                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}. "
-                    f"Either pass a one-sided transport, or return the value from an actor task and use the @ray.method(tensor_transport={tensor_transport}) decorator instead."
+                    f"ray.put() is not supported for two-sided RDT transport {tensor_transport!r}. "
+                    "Use a one-sided transport such as NIXL, or return the value from an actor task "
+                    f"and use the @ray.method(tensor_transport={tensor_transport!r}) decorator instead."
                 )
         try:
             if tensor_transport is not None:
@@ -1149,10 +1152,15 @@ class Worker:
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
         # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # should be returned.
+        # should be returned. When set via a worker's runtime_env, original_ids
+        # may be narrower than the node raylet's resource pool, so raylet slot
+        # indices in assigned_ids can exceed len(original_ids).
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
-            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            if all(i < len(original_ids) for i in assigned_ids):
+                assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            else:
+                assigned_ids = {str(x) for x in original_ids}
         return list(assigned_ids)
 
     def shutdown_rdt_manager(self):
@@ -1862,6 +1870,8 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
+        enable_token_auth_by_default()
+
         # Setup and verify authentication for new cluster
         ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
 
@@ -1960,6 +1970,10 @@ def init(
             )
 
         # Setup and verify authentication for connecting to existing cluster
+        # Only a local cluster found automatically auto-enables auth; an explicit
+        # address (argument or RAY_ADDRESS) never does.
+        if address in (None, "auto"):
+            maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
         ensure_token_if_auth_enabled(_system_config, create_token_if_missing=False)
 
         # In this case, we only need to connect the node.
@@ -2175,6 +2189,18 @@ def custom_excepthook(type, value, tb):
 
 
 sys.excepthook = custom_excepthook
+
+
+def _should_ignore_worker_log_prefix(worker) -> bool:
+    """Whether to skip the "(name pid=...)" prefix on worker logs forwarded
+    to the driver: either the job's LoggingConfig implies it (structured
+    output would otherwise be broken by the prefix), or the user explicitly
+    opted out via RAY_DISABLE_WORKER_LOG_PREFIX.
+    """
+    return (
+        worker.job_logging_config is not None
+        or ray_constants.RAY_DISABLE_WORKER_LOG_PREFIX
+    )
 
 
 def print_to_stdstream(data, ignore_prefix: bool):
@@ -2671,7 +2697,19 @@ def connect(
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
-            if script_directory in sys.path:
+            #
+            # Also skip when the job already specifies a runtime_env
+            # working_dir: in that case the driver was launched from inside
+            # the working_dir package (e.g. via `ray job submit
+            # --working-dir .`) and `script_directory` points at the
+            # uploaded package's local extraction path. Propagating it to
+            # workers via `py_driver_sys_path` would shadow any actor that
+            # later overrides `runtime_env.working_dir` and force it to
+            # import stale code from the driver's working_dir instead.
+            if (
+                script_directory in sys.path
+                and not job_config._runtime_env_has_working_dir()
+            ):
                 code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
@@ -2739,9 +2777,7 @@ def connect(
         )
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
-        # If the job's logging config is set, don't add the prefix
-        # (task/actor's name and its PID) to the logs.
-        ignore_prefix = global_worker.job_logging_config is not None
+        ignore_prefix = _should_ignore_worker_log_prefix(global_worker)
 
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
@@ -2791,8 +2827,7 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
-        # Ignore the prefix if the logging config is set.
-        ignore_prefix = worker.job_logging_config is not None
+        ignore_prefix = _should_ignore_worker_log_prefix(worker)
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout, ignore_prefix)
         for leftover in stderr_deduplicator.flush():
@@ -3206,6 +3241,197 @@ def wait(
             fetch_local,
         )
         return ready_ids, remaining_ids
+
+
+@client_mode_hook
+def _wait_generators_bulk(
+    ray_generators: List[Tuple[ObjectRefGenerator, List[bool]]],
+    *,
+    num_return: int = 1,
+    timeout: Optional[float] = None,
+) -> List[Tuple[ObjectRefGenerator, List[ObjectRef]]]:
+    """Private API: wait for batches of next refs from streaming generators.
+
+    Each input element is ``(generator, fetch_local_per_ref)``. For each
+    generator, this waits for the last requested ref without fetching it
+    locally. The requested refs are deterministic stream positions, so once the
+    last ref is ready, the whole batch can be returned and consumed. It then
+    fetches only the refs whose corresponding ``fetch_local`` flag is true
+    before returning the batch.
+
+    Args:
+        ray_generators: A list of ``(generator, fetch_local_per_ref)`` tuples.
+            ``generator`` is an ``ObjectRefGenerator`` and
+            ``fetch_local_per_ref`` is a non-empty ``list[bool]`` whose length
+            is the number of next refs to request from that generator. The
+            i-th bool indicates whether the i-th requested ref should be
+            fetched to the local node before the batch is returned. All
+            generators must be unique.
+        num_return: The maximum number of generator batches to return. Must be
+            positive and no greater than ``len(ray_generators)``. Defaults to 1.
+        timeout: The maximum number of seconds to wait before returning. If
+            ``None`` (default), waits indefinitely. Must be nonnegative.
+
+    Returns:
+        A list of at most ``num_return`` ``(generator, refs)`` tuples, one per
+        ready generator batch. ``refs`` is the full list of requested refs for
+        that generator (length equal to its ``fetch_local_per_ref``). Returns
+        an empty list if no batch became ready within the timeout.
+
+    Raises:
+        TypeError: If ``ray_generators`` or any element has the wrong type.
+        ValueError: If a ``fetch_local_per_ref`` is empty, generators are not
+            unique, ``timeout`` is negative, or ``num_return`` is out of range.
+
+    Example:
+        >>> ready = _wait_generators_bulk(  # doctest: +SKIP
+        ...     [
+        ...         (gen1, [True, False]),
+        ...         (gen2, [False, True]),
+        ...     ],
+        ...     num_return=1,
+        ...     timeout=2,
+        ... )
+        >>> assert ready == [(gen1, [ref1, ref2])]  # doctest: +SKIP
+    """
+    worker = global_worker
+    worker.check_connected()
+
+    if (
+        hasattr(worker, "core_worker")
+        and worker.core_worker.current_actor_is_asyncio()
+        and timeout != 0
+    ):
+        global blocking_wait_inside_async_warned
+        if not blocking_wait_inside_async_warned:
+            logger.debug(
+                "Using blocking ray._private.worker._wait_generators_bulk inside "
+                "async method. This blocks the event loop. Please use `await` "
+                "on object ref with asyncio.wait. "
+            )
+            blocking_wait_inside_async_warned = True
+
+    if not isinstance(ray_generators, list):
+        raise TypeError(
+            "_wait_generators_bulk() expected a list of "
+            "(ray.ObjectRefGenerator, list[bool]) tuples, "
+            f"got {type(ray_generators)}"
+        )
+
+    if timeout is not None and timeout < 0:
+        raise ValueError(
+            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
+        )
+
+    for i, pair in enumerate(ray_generators):
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise TypeError(
+                "_wait_generators_bulk() expected each element to be a "
+                "(generator, fetch_local_per_ref) tuple; "
+                f"got {type(pair)} at index {i}"
+            )
+        generator, fetch_locals = pair
+        if not isinstance(generator, ObjectRefGenerator):
+            raise TypeError(
+                "_wait_generators_bulk() tuple first element must be "
+                "ray.ObjectRefGenerator, "
+                f"got {type(generator)} at index {i}"
+            )
+        if not isinstance(fetch_locals, list):
+            raise TypeError(
+                "_wait_generators_bulk() tuple second element must be list[bool], "
+                f"got {type(fetch_locals)} at index {i}"
+            )
+        if len(fetch_locals) == 0:
+            raise ValueError(
+                "_wait_generators_bulk() fetch_local_per_ref must be non-empty "
+                f"at index {i}"
+            )
+        for j, fetch_local in enumerate(fetch_locals):
+            if not isinstance(fetch_local, bool):
+                raise TypeError(
+                    "_wait_generators_bulk() fetch_local_per_ref entries must be "
+                    f"bool, got {type(fetch_local)} at index {i}, ref {j}"
+                )
+
+    with profiling.profile("ray._wait_generators_bulk"):
+        if len(ray_generators) == 0:
+            return []
+
+        if len(ray_generators) != len({pair[0] for pair in ray_generators}):
+            raise ValueError(
+                "_wait_generators_bulk requires a list of unique generators."
+            )
+
+        if num_return <= 0:
+            raise ValueError("Invalid number of generators to return %d." % num_return)
+        if num_return > len(ray_generators):
+            raise ValueError(
+                "num_return cannot be greater than the number "
+                "of generators provided to _wait_generators_bulk."
+            )
+
+        generator_refs: List[List[ObjectRef]] = []
+        last_refs: List[ObjectRef] = []
+        last_ref_to_gen_index = {}
+        last_refs_fetch_local = True
+        for gen_index, (generator, fetch_locals) in enumerate(ray_generators):
+            refs = generator._get_next_ref_n(len(fetch_locals))
+            generator_refs.append(refs)
+            last_refs.append(refs[-1])
+            last_ref_to_gen_index[refs[-1]] = gen_index
+            last_refs_fetch_local = last_refs_fetch_local and fetch_locals[-1]
+
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        def timeout_remaining() -> Optional[float]:
+            if deadline is None:
+                return None
+            return max(0, deadline - time.monotonic())
+
+        ready_last_refs, _ = wait(
+            last_refs,
+            num_returns=num_return,
+            timeout=timeout_remaining(),
+            fetch_local=last_refs_fetch_local,
+        )
+        ready_last_indices = [
+            last_ref_to_gen_index[last_ref] for last_ref in ready_last_refs
+        ]
+
+        ready_local_ref_set = set(ready_last_refs) if last_refs_fetch_local else set()
+        ready_batch_infos = []
+        refs_to_fetch_local = []
+        for gen_index in ready_last_indices:
+            refs = generator_refs[gen_index]
+            fetch_locals = ray_generators[gen_index][1]
+            required_local_refs = []
+            for ref, fetch_local in zip(refs, fetch_locals):
+                if not fetch_local:
+                    continue
+                required_local_refs.append(ref)
+                if ref not in ready_local_ref_set:
+                    refs_to_fetch_local.append(ref)
+            ready_batch_infos.append((gen_index, refs, required_local_refs))
+
+        if refs_to_fetch_local:
+            ready_refs, _ = wait(
+                refs_to_fetch_local,
+                num_returns=len(refs_to_fetch_local),
+                timeout=timeout_remaining(),
+                fetch_local=True,
+            )
+            ready_local_ref_set.update(ready_refs)
+
+        result = []
+        for gen_index, refs, required_local_refs in ready_batch_infos:
+            if len(result) >= num_return:
+                break
+            generator = ray_generators[gen_index][0]
+            if all(ref in ready_local_ref_set for ref in required_local_refs):
+                generator._consume_next_ref_n(len(refs))
+                result.append((generator, refs))
+        return result
 
 
 @PublicAPI
@@ -3697,9 +3923,10 @@ def remote(
 
             - ``num_returns``: *remote functions only*. Number of object refs
               returned by the remote function invocation. The default is 1.
-              Pass ``"dynamic"`` to allow the task to decide at runtime;
-              callers receive an ``ObjectRef[DynamicObjectRefGenerator]``.
-              See :ref:`dynamic generators <dynamic-generators>` for details.
+              Pass ``"streaming"`` for a generator task that yields object refs
+              lazily. See :ref:`generators <generators>` for details.
+              ``"dynamic"`` is deprecated; prefer ``"streaming"``. See
+              :ref:`dynamic generators <dynamic-generators>` for the legacy API.
             - ``num_cpus``: CPU resources to reserve for the task or actor.
               By default, tasks use 1 CPU resource and actors use 1 CPU for
               scheduling and 0 CPU for running. See

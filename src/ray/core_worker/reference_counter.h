@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <string>
@@ -56,11 +57,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
-        lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
         free_object_on_nodes_async_(std::move(free_object_on_nodes_async)),
+        lineage_pinning_enabled_(lineage_pinning_enabled),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
@@ -175,7 +176,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   size_t NumActorsOwnedByUs() const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void RecordMetrics() override;
+  void RecordOwnerMetrics() override;
 
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -259,6 +260,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences() override;
 
   std::optional<std::string> GetTensorTransport(const ObjectID &object_id) const override;
+
+  void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
+    lineage_pinning_enabled_.store(lineage_pinning_enabled);
+  }
 
  private:
   /// Contains information related to nested object refs only.
@@ -433,6 +438,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// Set once a raylet subscribes to this object's locations. This acts like a
+    /// prefilter. Inline objects would never have a subscription, so those objects
+    /// that never had one could skip all subscriber related operations and
+    /// acquiring the related lock to speed up the object owner.
+    bool has_ever_had_location_subscriber = false;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -728,12 +738,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// object's owner.
   rpc::Address rpc_address_;
 
-  /// Feature flag for lineage pinning. If this is false, then we will keep the
-  /// lineage ref count, but this will not be used to decide when the object's
-  /// Reference can be deleted. The object's lineage ref count is the number of
-  /// tasks that depend on that object that may be retried in the future.
-  const bool lineage_pinning_enabled_;
-
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
@@ -798,6 +802,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
 
+  /// Feature flag for lineage pinning. If this is false, then we will keep the
+  /// lineage ref count, but this will not be used to decide when the object's
+  /// Reference can be deleted. The object's lineage ref count is the number of
+  /// tasks that depend on that object that may be retried in the future.
+  std::atomic<bool> lineage_pinning_enabled_;
+
+  /// Sticky: set to true the first time this worker becomes the owner of
+  /// any non-actor object. Never reset. Gates owner-side metric emission
+  /// so non-owners do not pollute per-worker metric cardinality.
+  std::atomic<bool> has_ever_owned_objects_{false};
   /// Track counts of owned objects by state.
   /// These are atomic to allow lock-free reads via public getters.
   std::atomic<size_t> owned_objects_pending_creation_{0};

@@ -32,6 +32,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
+    SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import (
@@ -41,6 +44,7 @@ from ray.serve._private.test_utils import (
     get_application_url,
     get_application_urls,
     ping_grpc_list_applications,
+    ping_grpc_model_multiplexing,
     send_signal_on_cancellation,
 )
 from ray.serve.autoscaling_policy import default_autoscaling_policy
@@ -56,6 +60,16 @@ from ray.serve.schema import (
     ServeInstanceDetails,
 )
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
+from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
+
+# A replica only appears in target_groups once it is running and its
+# direct-ingress port is allocated, which lags the app reporting RUNNING.
+# Measured just over 10s under CI-like contention.
+TARGET_GROUP_CONVERGENCE_TIMEOUT_S = 60
+
+# Driving an app to the terminal DEPLOY_FAILED state means exhausting replica
+# retries, which measures up to ~21s under CI-like contention.
+DEPLOY_FAILED_TIMEOUT_S = 60
 
 
 @ray.remote
@@ -407,12 +421,39 @@ def test_http_request_id(_skip_if_ff_not_enabled, serve_instance, use_fastapi: b
     assert r.text == "TEST-HEADER" and r.text == r.headers["x-request-id"]
 
 
-def test_grpc_request_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: duplicate HTTP tests for gRPC")
+@pytest.mark.parametrize(
+    "header_name",
+    [SERVE_MULTIPLEXED_MODEL_ID, SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-")],
+)
+def test_multiplexed_model_id(
+    _skip_if_ff_not_enabled, serve_instance, header_name: str
+):
+    @serve.deployment
+    class MultiplexedIngress:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+        async def __call__(self, request: Request) -> str:
+            return await self.load_model(serve.get_multiplexed_model_id())
+
+    serve.run(MultiplexedIngress.bind())
+    response = httpx.get(
+        get_application_url("HTTP", from_proxy_manager=True),
+        headers={header_name: "adapter"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.text == "adapter"
 
 
-def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
+def test_grpc_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
+    serve.run(multiplexed_g)
+    for grpc_url in get_application_urls("gRPC", from_proxy_manager=True):
+        channel = grpc.insecure_channel(grpc_url)
+        try:
+            ping_grpc_model_multiplexing(channel, SERVE_DEFAULT_APP_NAME)
+        finally:
+            channel.close()
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
@@ -516,13 +557,45 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
             lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
         )
 
-        # Initiate graceful shutdown and verify that health checks fail.
-        serve.delete("default", _blocking=False)
+        # Initiate graceful shutdown while a request is in flight: the drain
+        # waits for it, and during the entire draining phase the direct
+        # ingress servers must keep answering health checks with 503/DRAINING
+        # so load balancers can deregister the replica.
+        with ThreadPoolExecutor() as executor:
+            in_flight = executor.submit(
+                httpx.get, f"http://localhost:{http_port}/", timeout=60
+            )
+            wait_for_condition(
+                lambda: ray.get(wait_signal.cur_num_waiters.remote()) == 1
+            )
+
+            serve.delete("default", _blocking=False)
+            wait_for_condition(
+                lambda: _verify_health_check(passing=False, message="DRAINING"),
+            )
+            for _ in range(10):
+                assert _verify_health_check(passing=False, message="DRAINING")
+
+            # Unblock the in-flight request so the drain can complete.
+            ray.get(wait_signal.send.remote())
+            assert in_flight.result(timeout=30).status_code == 200
+
+        # Once the drain completes, the replica quiesces: the direct ingress
+        # servers are shut down gracefully BEFORE the replica reports
+        # shutdown complete, so by the time the destructor runs (blocked on
+        # `shutdown_signal` below) the health endpoints must be unreachable
+        # rather than still serving 503s.
         wait_for_condition(
             lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
         )
         for _ in range(10):
-            assert _verify_health_check(passing=False, message="DRAINING")
+            with pytest.raises(
+                (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError)
+            ):
+                http_client.get(f"http://localhost:{http_port}/-/healthz")
+
+            code, _ = _do_grpc_hc()
+            assert code == grpc.StatusCode.UNAVAILABLE
 
         ray.get(shutdown_signal.send.remote())
         wait_for_condition(
@@ -632,7 +705,7 @@ def test_replica_gives_up_after_max_port_retries_for_http(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -666,7 +739,7 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -705,7 +778,7 @@ def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
         )
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_instance):
@@ -1252,7 +1325,7 @@ def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
         assert set(grpc_ports) == expected_grpc_ports
         return True
 
-    wait_for_condition(_func, timeout=10)
+    wait_for_condition(_func, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S)
 
     # check status of the deployment
     serve_details = ServeInstanceDetails(
@@ -1289,9 +1362,14 @@ def test_port_recovery_on_controller_restart(_skip_if_ff_not_enabled, serve_inst
     wait_for_condition(validate_port_recovery)
 
 
+# These tests deliberately queue up to 1000 requests behind `max_ongoing_requests`,
+# so a request's deadline must cover the whole queue drain, not one request's service.
+BACKPRESSURE_REQUEST_TIMEOUT_S = 60
+
+
 class TestDirectIngressBackpressure:
     def _do_http_request(self, url: str) -> bool:
-        r = httpx.get(url, timeout=10)
+        r = httpx.get(url, timeout=BACKPRESSURE_REQUEST_TIMEOUT_S)
         if r.status_code == 200:
             return True
         elif r.status_code == 503:
@@ -1303,7 +1381,10 @@ class TestDirectIngressBackpressure:
         channel = grpc.insecure_channel(url)
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         try:
-            stub.Method1(serve_pb2.UserDefinedMessage(), timeout=20)
+            stub.Method1(
+                serve_pb2.UserDefinedMessage(),
+                timeout=BACKPRESSURE_REQUEST_TIMEOUT_S,
+            )
             return True
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
@@ -2076,6 +2157,71 @@ def test_disconnect(_skip_if_ff_not_enabled, serve_instance):
     ray.get(cancelled_signal.send.remote(clear=True))
 
 
+def _get_replica_actor_handle(deployment_name: str, app_name: str) -> ActorHandle:
+    """Return the actor handle for the (single) replica of a deployment."""
+    for actor in ray.util.list_named_actors(all_namespaces=True):
+        if actor["namespace"] != SERVE_NAMESPACE:
+            continue
+        if f"{app_name}#{deployment_name}#" in actor["name"]:
+            return ray.get_actor(actor["name"], namespace=SERVE_NAMESPACE)
+    raise AssertionError(
+        f"No replica actor found for deployment '{deployment_name}' in app "
+        f"'{app_name}'."
+    )
+
+
+def test_tasks_cancelled_on_timeout(_skip_if_ff_not_enabled, serve_instance):
+    """Test that the async tasks are cancelled and cleaned up on timeout.
+
+    Beyond the 408 status code, this asserts that the per-request asyncio tasks
+    created by ``_direct_ingress_asgi`` (the request task and the disconnect-watcher
+    receive task) are actually cancelled and removed from the replica's event loop
+    after the timeout, rather than leaking (e.g. a receive task left parked on the
+    async queue).
+    """
+    name = "tasks-cancelled-on-timeout-deployment"
+
+    @serve.deployment(name=name)
+    class TasksCancelledOnTimeoutTest:
+        async def __call__(self):
+            await asyncio.sleep(10)
+            return "ok"
+
+    serve.run(TasksCancelledOnTimeoutTest.bind(), name=name)
+    http_url = get_application_url("HTTP", app_name=name)
+    headers = {SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER: "1"}
+
+    replica = _get_replica_actor_handle(name, name)
+
+    def inflight_counts():
+        return ray.get(
+            replica._get_inflight_direct_ingress_task_counts_for_testing.remote()
+        )
+
+    # No direct-ingress request/receive tasks before we send anything.
+    assert inflight_counts() == {"request_tasks": 0, "receive_tasks": 0}
+
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(httpx.get, http_url, headers=headers)
+
+        # While the (slow) request is in flight, both the request task and the
+        # disconnect-watcher receive task should be present on the event loop.
+        wait_for_condition(
+            lambda: inflight_counts() == {"request_tasks": 1, "receive_tasks": 1},
+            timeout=10,
+        )
+
+        response = future.result()
+        assert response.status_code == 408
+
+    # After the timeout, both tasks must be cancelled and removed from the loop
+    # (not left pending / parked on the async queue).
+    wait_for_condition(
+        lambda: inflight_counts() == {"request_tasks": 0, "receive_tasks": 0},
+        timeout=10,
+    )
+
+
 def test_context_propagation(_skip_if_ff_not_enabled, serve_instance):
     """Test that the context is propagated to the deployment"""
 
@@ -2341,7 +2487,7 @@ def test_deploy_app_custom_exception(_skip_if_ff_not_enabled, serve_instance):
         assert "custom exception info" in status.message
         return True
 
-    wait_for_condition(check_custom_exception, timeout=10)
+    wait_for_condition(check_custom_exception, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 # Copied from test_controller.py
@@ -2363,12 +2509,29 @@ def test_get_serve_instance_details_json_serializable(
     if policy_name is None:
         autoscaling_config.pop("_policy")
 
-    @serve.deployment(autoscaling_config=autoscaling_config)
+    # Pin graceful_shutdown_timeout_s above any direct-ingress shutdown floor
+    # (MIN_DRAINING_PERIOD_S + buffer) so the asserted value is deterministic
+    # regardless of the MIN_DRAINING setting in this lane.
+    @serve.deployment(
+        autoscaling_config=autoscaling_config, graceful_shutdown_timeout_s=60
+    )
     def autoscaling_app():
         return "1"
 
     serve.run(autoscaling_app.bind())
-    details = ray.get(controller.get_serve_instance_details.remote())
+
+    details = None
+
+    def snapshot_has_all_target_groups() -> bool:
+        nonlocal details
+        details = ray.get(controller.get_serve_instance_details.remote())
+        assert len(details["target_groups"]) == 2
+        return True
+
+    wait_for_condition(
+        snapshot_has_all_target_groups, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S
+    )
+
     details_json = json.dumps(details)
     controller_details = ray.get(controller.get_actor_details.remote())
     node_id = controller_details.node_id
@@ -2432,6 +2595,10 @@ def test_get_serve_instance_details_json_serializable(
                                 "name": "autoscaling_app",
                                 "max_ongoing_requests": 5,
                                 "max_queued_requests": -1,
+                                "backpressure_config": {
+                                    "status_code": 503,
+                                    "retry_after_s": None,
+                                },
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,
@@ -2455,7 +2622,8 @@ def test_get_serve_instance_details_json_serializable(
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
-                                "graceful_shutdown_timeout_s": 20.0,
+                                # Set to 60 above (max(60, floor) == 60).
+                                "graceful_shutdown_timeout_s": 60.0,
                                 "health_check_period_s": 10.0,
                                 "health_check_timeout_s": 30.0,
                                 "ray_actor_options": {
@@ -2508,6 +2676,9 @@ def test_get_serve_instance_details_json_serializable(
                 }
             },
             "target_capacity": None,
+            # Set by the controller: this version restores a deployment option
+            # that a re-applied config stops setting.
+            "restores_unset_config_options": True,
             "target_groups": [
                 {
                     "targets": [
@@ -2524,6 +2695,9 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "ingress_deployment_name": ""
+                    if RAY_SERVE_ENABLE_HA_PROXY
+                    else "autoscaling_app",
                 },
                 {
                     "targets": [
@@ -2540,6 +2714,9 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "gRPC",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "ingress_deployment_name": ""
+                    if RAY_SERVE_ENABLE_HA_PROXY
+                    else "autoscaling_app",
                 },
             ],
         }
@@ -2628,11 +2805,14 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
         serve.delete("stuck-requests-deployment", _blocking=False)
 
         # Verify the application is eventually deleted (replica was force-killed).
-        # In direct ingress mode, graceful_shutdown_timeout_s is bumped to at least
-        # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S (default 30s).
+        # For an ingress deployment in direct ingress mode, graceful_shutdown_timeout_s
+        # is floored to RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S +
+        # RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S (about 35s by default), so the
+        # controller force-kills after that floor rather than the configured 1s. Wait
+        # well past it.
         wait_for_condition(
             lambda: "stuck-requests-deployment" not in serve.status().applications,
-            timeout=10,
+            timeout=60,
         )
 
         # The stuck requests should fail (connection closed or similar)

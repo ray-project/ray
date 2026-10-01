@@ -15,15 +15,17 @@ import timeit
 import traceback
 import uuid
 from collections.abc import Hashable
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from unittest.mock import patch
 from urllib.parse import quote, urlparse
 
 import requests
 import yaml
 
 import ray
+import ray._private.accelerators
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
@@ -31,8 +33,11 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import (
+    DEFAULT_DRIVER_TIMEOUT_SECONDS,
+    KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS,
     MetricSamplePattern,
     PrometheusTimeseries,
+    _detach_process,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
     wait_for_condition,
@@ -65,6 +70,72 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 
+def _auth_token_header():
+    from ray._raylet import AuthenticationTokenLoader
+
+    return AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
+
+
+def request_with_auth_token(method, url, **kwargs):
+    """Like ``requests.request`` but attaches the cluster's auth token."""
+    kwargs["headers"] = {**_auth_token_header(), **(kwargs.get("headers") or {})}
+    return requests.request(method, url, **kwargs)
+
+
+def auth_token_grpc_metadata():
+    """gRPC metadata carrying the cluster's auth token, empty when there is none."""
+    return tuple(_auth_token_header().items())
+
+
+def get_gpu_visible_devices_env_var() -> Optional[str]:
+    """Name of the visible devices env var for this node's GPU family, or None.
+
+    The name differs per family (CUDA_VISIBLE_DEVICES on NVIDIA, HIP_VISIBLE_DEVICES
+    on AMD), and Apple Silicon has none at all, so callers must handle None.
+    """
+    return ray._private.accelerators.get_accelerator_manager_for_resource(
+        "GPU"
+    ).get_visible_accelerator_ids_env_var()
+
+
+@contextmanager
+def mock_accelerator_detection(manager, num_accelerators: Optional[int] = None):
+    resource_name = manager.get_resource_name()
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_all_accelerator_resource_names",
+                return_value=[resource_name],
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_accelerator_manager_for_resource",
+                side_effect=lambda name: manager if name == resource_name else None,
+            )
+        )
+        if num_accelerators is not None:
+            stack.enter_context(
+                patch.object(
+                    manager,
+                    "get_current_node_num_accelerators",
+                    return_value=num_accelerators,
+                )
+            )
+        yield
+
+
+@contextmanager
+def mock_no_accelerators():
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        yield
+
+
 def make_global_state_accessor(ray_context):
     gcs_options = GcsClientOptions.create(
         ray_context.address_info["gcs_address"],
@@ -79,6 +150,28 @@ def make_global_state_accessor(ray_context):
 
 def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
+
+
+def rocksdb_gcs_test_enabled():
+    """True when the test suite should run against the RocksDB GCS backend
+    (REP-64). Set by the buildkite ":ray: core: rocksdb tests" job.
+    """
+    return os.environ.get("TEST_GCS_ROCKSDB") == "1"
+
+
+def sandbox_test_enabled():
+    """True when the test suite should run the sandboxing tests.
+    Set by the buildkite ":ray: core: sandbox tests" job.
+    """
+    return os.environ.get("TEST_SANDBOX") == "1"
+
+
+def persistent_gcs_test_enabled():
+    """True when the GCS backend under test persists state across restart
+    (external Redis or RocksDB). Use this — not external_redis_test_enabled —
+    to branch test assertions on "is GCS state durable across restart?".
+    """
+    return external_redis_test_enabled() or rocksdb_gcs_test_enabled()
 
 
 def redis_replicas():
@@ -527,7 +620,10 @@ def kill_processes(process_infos: List[ProcessInfo]):
 
 
 def run_string_as_driver_stdout_stderr(
-    driver_script: str, env: Dict = None, encode: str = "utf-8"
+    driver_script: str,
+    env: Dict = None,
+    encode: str = "utf-8",
+    timeout: Optional[float] = DEFAULT_DRIVER_TIMEOUT_SECONDS,
 ) -> Tuple[str, str]:
     """Run a driver as a separate process.
 
@@ -536,9 +632,14 @@ def run_string_as_driver_stdout_stderr(
         env: The environment variables for the driver.
         encode: Text encoding used to send the script to the subprocess and
             decode its stdout/stderr.
+        timeout: Seconds to wait for the driver to exit before killing it and
+            raising. Pass None to wait forever.
 
     Returns:
         The script's stdout and stderr.
+
+    Raises:
+        subprocess.TimeoutExpired: If the driver did not exit within ``timeout``.
     """
     proc = subprocess.Popen(
         [sys.executable, "-"],
@@ -548,7 +649,27 @@ def run_string_as_driver_stdout_stderr(
         env=env,
     )
     with proc:
-        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        try:
+            outputs_bytes = proc.communicate(
+                driver_script.encode(encoding=encode), timeout=timeout
+            )
+        except subprocess.TimeoutExpired as e:
+            proc.kill()
+            try:
+                outputs_bytes = proc.communicate(
+                    timeout=KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS
+                )
+            except subprocess.TimeoutExpired:
+                # The driver did not die on SIGKILL either, so take whatever
+                # was captured before the first timeout and stop waiting on it.
+                outputs_bytes = (e.stdout or b"", e.stderr or b"")
+                _detach_process(proc)
+            logger.error(
+                "Driver did not exit within %ss; killed it. Output so far:\n%s",
+                timeout,
+                outputs_bytes,
+            )
+            raise
         out_str, err_str = [
             ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
@@ -1502,7 +1623,8 @@ class RayletKiller(NodeKillerBase):
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
             stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+                metadata=auth_token_grpc_metadata(),
             )
         except _InactiveRpcError:
             assert not graceful
@@ -1870,7 +1992,10 @@ def kill_raylet(raylet, graceful=False):
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:
-        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+        stub.ShutdownRaylet(
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+            metadata=auth_token_grpc_metadata(),
+        )
     except _InactiveRpcError:
         assert not graceful
 

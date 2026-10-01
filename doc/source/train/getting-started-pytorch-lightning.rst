@@ -1,3 +1,6 @@
+.. meta::
+   :description: Convert a PyTorch Lightning script to distributed training with Ray Train: the Lightning integration, checkpointing, and ScalingConfig.
+
 .. _train-pytorch-lightning:
 
 Get Started with Distributed Training using PyTorch Lightning

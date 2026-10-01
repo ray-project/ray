@@ -11,7 +11,6 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
-import requests
 import yaml
 
 import ray
@@ -24,6 +23,7 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
@@ -46,7 +46,7 @@ DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_s
 
 @pytest.fixture(scope="module")
 def headers():
-    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+    return {"Connection": "keep-alive"}
 
 
 @pytest.fixture(scope="module")
@@ -201,6 +201,9 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
         "local_working_dir_zip",
+        "local_working_dir_tar_gz",
+        "local_working_dir_tgz",
+        "local_working_dir_tar_xz",
         "pip_txt",
         "conda_yaml",
         "local_py_modules",
@@ -226,6 +229,9 @@ ray.get(f.remote())
     elif request.param in {
         "local_working_dir",
         "local_working_dir_zip",
+        "local_working_dir_tar_gz",
+        "local_working_dir_tgz",
+        "local_working_dir_tar_xz",
         "local_py_modules",
         "working_dir_and_local_py_modules_whl",
     }:
@@ -264,6 +270,31 @@ ray.get(f.remote())
                     "entrypoint": "python test.py",
                     "expected_logs": "Hello from test_module!\n",
                 }
+            elif request.param in {
+                "local_working_dir_tar_gz",
+                "local_working_dir_tgz",
+                "local_working_dir_tar_xz",
+            }:
+                archive_format = (
+                    "xztar" if request.param == "local_working_dir_tar_xz" else "gztar"
+                )
+                with tempfile.TemporaryDirectory() as archive_dir:
+                    archive = Path(
+                        shutil.make_archive(
+                            os.path.join(archive_dir, "test"),
+                            archive_format,
+                            tmp_dir,
+                        )
+                    )
+                    if request.param == "local_working_dir_tgz":
+                        tgz_archive = archive.with_name("test.tgz")
+                        archive.rename(tgz_archive)
+                        archive = tgz_archive
+                    yield {
+                        "runtime_env": {"working_dir": str(archive)},
+                        "entrypoint": "python test.py",
+                        "expected_logs": "Hello from test_module!\n",
+                    }
             elif request.param == "local_py_modules":
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
@@ -430,7 +461,7 @@ def test_http_bad_request(job_sdk_client):
 
 def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
-    with pytest.raises(ValueError, match="Only .zip, .tar.gz, and .tgz files"):
+    with pytest.raises(ValueError, match="supported for working_dir URIs"):
         client.submit_job(
             entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
         )
@@ -638,7 +669,11 @@ def test_version_endpoint(job_sdk_client):
 
 
 def test_request_headers(job_sdk_client):
+    from ray._private.test_utils import _auth_token_header
+
     client = job_sdk_client
+    expected_headers = {"Connection": "keep-alive"}
+    expected_headers.update(_auth_token_header())
     with patch("requests.request") as mock_request:
         _ = client._do_request(
             "POST",
@@ -651,7 +686,7 @@ def test_request_headers(job_sdk_client):
             cookies=None,
             data=None,
             json={"entrypoint": "ls"},
-            headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
+            headers=expected_headers,
             verify=True,
         )
 
@@ -757,16 +792,21 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     package_file = tmp_path / package_name
     create_package(str(pkg_dir), package_file, include_gitignore=True)
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = request_with_auth_token(
+        "GET", url.format(protocol=protocol, package_name=package_name)
+    )
     assert resp.status_code == 404
 
-    resp = requests.put(
+    resp = request_with_auth_token(
+        "PUT",
         url.format(protocol=protocol, package_name=package_name),
         data=package_file.read_bytes(),
     )
     assert resp.status_code == 200
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = request_with_auth_token(
+        "GET", url.format(protocol=protocol, package_name=package_name)
+    )
     assert resp.status_code == 200
 
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)

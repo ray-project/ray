@@ -10,3 +10,4 @@ paths:
 - Use absl::Mutex and absl::MutexLock, not std::mutex/std::lock_guard
 - Use absl::StrCat, absl::StrJoin, absl::StrFormat for string operations, not std::string +/+=
 - Formatting enforced via clang-format (run ./ci/lint/check-format.sh --fix)
+- Document functions and classes with Doxygen `/** ... */` block comments using `@` tags (`@brief`, and `@param`/`@return` where applicable)

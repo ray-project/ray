@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -52,7 +53,7 @@ class ClusterResourceScheduler {
   /// with the local node.
   /// \param is_node_available_fn: Function to determine whether a node is available.
   /// \param is_local_node_with_raylet: Whether there is a raylet on the local node.
-  ClusterResourceScheduler(instrumented_io_context &io_service,
+  ClusterResourceScheduler(std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                            scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
@@ -61,7 +62,7 @@ class ClusterResourceScheduler {
                            bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
-      instrumented_io_context &io_service,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
       scheduling::NodeID local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
@@ -142,7 +143,7 @@ class ClusterResourceScheduler {
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
  private:
-  void Init(instrumented_io_context &io_service,
+  void Init(std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
             const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity,

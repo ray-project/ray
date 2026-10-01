@@ -1,3 +1,6 @@
+.. meta::
+   :description: Distribute JAX training across GPUs and TPUs with JaxTrainer: SPMD execution, ScalingConfig topology for TPU PodSlices, and CUDA setup.
+
 .. _train-jax:
 
 Get Started with Distributed Training using JAX

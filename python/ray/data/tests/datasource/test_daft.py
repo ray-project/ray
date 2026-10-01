@@ -1,8 +1,6 @@
-from unittest.mock import patch
-
-import pyarrow as pa
+import numpy as np
+import pandas as pd
 import pytest
-from packaging.version import parse as parse_version
 
 
 @pytest.fixture(scope="module")
@@ -18,29 +16,8 @@ def ray_start(request):
         ray.shutdown()
 
 
-def test_from_daft_raises_error_on_pyarrow_14(ray_start):
-    # This test assumes that `from_daft` calls `get_pyarrow_version` to get the
-    # PyArrow version. We can't mock `__version__` on the module directly because
-    # `get_pyarrow_version` caches the version.
-    with patch(
-        "ray.data.read_api.get_pyarrow_version", return_value=parse_version("14.0.0")
-    ):
-        import daft
-
-        import ray
-
-        with pytest.raises(RuntimeError):
-            ray.data.from_daft(daft.from_pydict({"col": [0]}))
-
-
-@pytest.mark.skipif(
-    parse_version(pa.__version__) >= parse_version("14.0.0"),
-    reason="https://github.com/ray-project/ray/issues/53278",
-)
 def test_daft_round_trip(ray_start):
     import daft
-    import numpy as np
-    import pandas as pd
 
     import ray
 
@@ -52,7 +29,11 @@ def test_daft_round_trip(ray_start):
     }
     df = daft.from_pydict(data)
     ds = ray.data.from_daft(df)
-    pd.testing.assert_frame_equal(ds.to_pandas(), df.to_pandas())
+
+    # Ray stores data in Arrow format, so to_pandas() returns Arrow-backed
+    # dtypes (e.g. int64[pyarrow]) while Daft may return numpy dtypes.
+    # Compare values only, not dtypes.
+    pd.testing.assert_frame_equal(ds.to_pandas(), df.to_pandas(), check_dtype=False)
 
     df2 = ds.to_daft()
     df_pandas = df.to_pandas()
@@ -65,9 +46,9 @@ def test_daft_round_trip(ray_start):
         # Hence the Pandas representation of `df1` is "just" an object column, but
         # `df2` knows that this is actually a numpy fixed shaped tensor column
         if c == "tensor_col":
-            np.testing.assert_equal(
-                np.array(list(df_pandas[c])), df2_pandas[c].to_numpy()
-            )
+            original = np.array(list(df_pandas[c]))
+            roundtripped = np.array(list(df2_pandas[c]))
+            np.testing.assert_array_equal(original, roundtripped)
         else:
             pd.testing.assert_series_equal(df_pandas[c], df2_pandas[c])
 

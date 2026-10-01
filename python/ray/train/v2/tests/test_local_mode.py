@@ -396,7 +396,7 @@ def test_e2e_hf_local_mode(ray_start_4_cpus, use_ray_data):
         # HF Transformers Trainer
         training_args = TrainingArguments(
             f"{HF_MODEL_NAME}-wikitext2",
-            evaluation_strategy=config["evaluation_strategy"],
+            eval_strategy=config["evaluation_strategy"],
             logging_strategy=config["logging_strategy"],
             save_strategy=config["save_strategy"],
             eval_steps=config["eval_steps"],
@@ -409,7 +409,7 @@ def test_e2e_hf_local_mode(ray_start_4_cpus, use_ray_data):
             per_device_eval_batch_size=HF_BATCH_SIZE_PER_WORKER,
             weight_decay=0.01,
             disable_tqdm=True,
-            no_cuda=config["no_cuda"],
+            use_cpu=config["no_cuda"],
             report_to="none",
         )
         trainer = Trainer(

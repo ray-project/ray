@@ -57,6 +57,7 @@ def get_basic_ray_cr() -> dict:
     tpu_group["maxReplicas"] = 4
     tpu_group["numOfHosts"] = 2
     config["spec"]["workerGroupSpecs"].append(tpu_group)
+    config["metadata"]["resourceVersion"] = "123456"
     return config
 
 
@@ -354,6 +355,19 @@ def _get_autoscaling_config_with_options() -> dict:
     return config
 
 
+def _get_ray_cr_with_worker_group_priority() -> dict:
+    """CR with a `priority` field set on a worker group."""
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][1]["priority"] = 10
+    return cr
+
+
+def _get_autoscaling_config_with_worker_group_priority() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["gpu-group"]["priority"] = 10
+    return config
+
+
 def _get_tpu_group_with_no_node_selectors() -> dict[str, Any]:
     cr = get_basic_ray_cr()
     tpu_group = cr["spec"]["workerGroupSpecs"][2]
@@ -489,6 +503,14 @@ TEST_DATA = (
             id="autoscaler-options",
         ),
         pytest.param(
+            _get_ray_cr_with_worker_group_priority(),
+            _get_autoscaling_config_with_worker_group_priority(),
+            None,
+            None,
+            None,
+            id="worker-group-priority",
+        ),
+        pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),
             _get_basic_autoscaling_config(),
             None,
@@ -517,7 +539,7 @@ TEST_DATA = (
             _get_basic_autoscaling_config(),
             None,
             None,
-            "Ignoring labels: ray.io/accelerator-type=TPU-V4 set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
+            "Ignoring labels: ray.io/accelerator-type=TPU-V4 set in rayStartParams for group 'tpu-group'. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
             id="groups-with-raystartparam-labels",
         ),
         pytest.param(
@@ -525,7 +547,7 @@ TEST_DATA = (
             _get_autoscaling_config_with_top_level_labels(),
             None,
             None,
-            "Ignoring labels: instance-type=n2 set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
+            "Ignoring labels: instance-type=n2 set in rayStartParams for group 'small-group'. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
             id="groups-with-top-level-labels",
         ),
         pytest.param(
@@ -566,6 +588,10 @@ def test_autoscaling_config(
     expected_log_warning: Optional[str],
 ):
     ray_cr_in["metadata"]["namespace"] = "default"
+    # Reset log_once state to ensure each test case is independent.
+    from ray.util.debug import _logged
+
+    _logged.clear()
     with mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):

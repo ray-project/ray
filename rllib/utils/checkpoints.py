@@ -11,6 +11,7 @@ from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import pyarrow.fs
 from packaging import version
+from typing_extensions import Self
 
 import ray
 import ray.cloudpickle as pickle
@@ -429,7 +430,7 @@ class Checkpointable(abc.ABC):
         path: Union[str, pathlib.Path],
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         **kwargs,
-    ) -> "Checkpointable":
+    ) -> Self:
         """Creates a new Checkpointable instance from the given location and returns it.
 
         Args:
@@ -483,9 +484,14 @@ class Checkpointable(abc.ABC):
                     else:
                         ctor_kwargs[param_name] = val
 
-        # If the pickle file is from another python version, use provided
-        # args instead.
-        except Exception:
+        # If the pickle file is from another python version, use provided args instead.
+        except (ValueError, AttributeError, ImportError, TypeError):
+            logger.warning(
+                "Could not restore original class from checkpoint at '%s' "
+                "(possible version mismatch), falling back to %s.",
+                path,
+                cls.__name__,
+            )
             # Use class that this method was called on.
             ctor = cls
             # Use only user provided **kwargs.

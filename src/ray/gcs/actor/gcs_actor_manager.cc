@@ -135,6 +135,18 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(
   return death_cause;
 }
 
+const ray::rpc::ActorDeathCause GenActorNotLoadableAtInitCause(
+    const ray::rpc::ActorTableData *actor_data) {
+  ray::rpc::ActorDeathCause death_cause;
+  auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
+  actor_died_error_ctx->set_reason(ray::rpc::ActorDiedErrorContext::UNSPECIFIED);
+  AddActorInfo(actor_data, actor_died_error_ctx);
+  actor_died_error_ctx->set_error_message(
+      "The actor is dead because GCS could not load it during initialization (for "
+      "example, its owner is dead) and is removing its task spec.");
+  return death_cause;
+}
+
 // Returns true if an actor should be loaded to registered_actors_.
 // `false` Cases:
 // 0. state is DEAD, and is not restartable
@@ -155,7 +167,16 @@ bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
     return false;
   }
 
-  const auto &actor_task_spec = ray::map_find_or_die(actor_task_specs, actor_id);
+  // A loadable actor must have a task spec to be reconstructed. A prior
+  // `Initialize` can de-select an actor (for example, its owner is dead) and
+  // BatchDelete its task spec; if that row was left non-DEAD, it reappears here
+  // as a non-DEAD actor with no spec. Return false so `Initialize` isolates it
+  // instead of aborting the whole GCS with a fatal lookup.
+  const auto actor_task_spec_it = actor_task_specs.find(actor_id);
+  if (actor_task_spec_it == actor_task_specs.end()) {
+    return false;
+  }
+  const auto &actor_task_spec = actor_task_spec_it->second;
   ray::ActorID root_detached_actor_id =
       ray::TaskSpecification(actor_task_spec).RootDetachedActorId();
   if (root_detached_actor_id.IsNil()) {
@@ -259,15 +280,14 @@ GcsActorManager::GcsActorManager(
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
   actor_state_counter_ = std::make_shared<
       CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
+  // On change, only retract keys that dropped to zero (emit their final 0). Live
+  // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
+  // emitting them here too would double-record. Keeps each key recorded once/tick.
   actor_state_counter_->SetOnChangeCallback(
-      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
-        int64_t num_actors = actor_state_counter_->Get(key);
-        actor_by_state_gauge_.Record(
-            num_actors,
-            {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
-             {"Name", key.second},
-             {"Source", "gcs"},
-             {"JobId", ""}});
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key) mutable {
+        if (actor_state_counter_->Get(key) == 0) {
+          RecordActorState(key, /*value=*/0);
+        }
       });
 }
 
@@ -1533,6 +1553,33 @@ void GcsActorManager::RestartActor(
 
     actor->UpdateState(rpc::ActorTableData::RESTARTING);
     actor->GetMutableTaskSpec()->set_attempt_number(new_num_restarts);
+    // Retain the departing (worker_id, node_id) so dashboard log lookups
+    // can surface logs from prior incarnations even after the actor is
+    // rescheduled onto a different node (log files stay on the node where
+    // they were written). Bounded by
+    // `maximum_actor_previous_incarnations` (FIFO eviction); a value of 0
+    // disables history tracking.
+    //
+    // This append is idempotent across repeated restart attempts for the
+    // same incarnation: `worker_id` is read from the actor's address, and
+    // the address is cleared just below. A duplicate or retried restart
+    // for an actor that has not yet been rescheduled therefore sees a nil
+    // `worker_id` and skips the append, so a lost/retried death
+    // notification cannot record the same incarnation twice. Keep the nil
+    // check and the address reset in this order.
+    if (!worker_id.IsNil()) {
+      const uint32_t limit = RayConfig::instance().maximum_actor_previous_incarnations();
+      if (limit > 0) {
+        auto *previous_incarnations =
+            mutable_actor_table_data->mutable_previous_incarnations();
+        auto *entry = previous_incarnations->Add();
+        entry->set_worker_id(worker_id.Binary());
+        entry->set_node_id(node_id.Binary());
+        while (static_cast<uint32_t>(previous_incarnations->size()) > limit) {
+          previous_incarnations->erase(previous_incarnations->begin());
+        }
+      }
+    }
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
@@ -1793,13 +1840,56 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
       }
     } else {
-      dead_actors.push_back(actor_id);
-      // Populate the observability cache from persisted actors. Bump the state counter.
-      destroyed_actor_observability_data_.emplace(actor_id, actor_table_data);
+      // This actor should not be loaded (for example, its owning job or root
+      // detached actor is dead). If it is not already permanently dead, mark it
+      // DEAD and persist that row, then delete its task spec inside the Put
+      // completion callback. Ordering the spec delete after the DEAD row is
+      // durable means a crash in between can only leave a DEAD row (survivable),
+      // never a non-DEAD row without a task spec, which is the state that aborts
+      // GCS in map_find_or_die on the next restart. Publishing the death also
+      // unblocks any client still waiting on it (its owner may still be alive
+      // after a GCS failover). Actors that are already permanently dead keep the
+      // existing behavior: their (expected absent) spec is cleaned up by the
+      // batch delete below.
+      rpc::ActorTableData observability_data = actor_table_data;
+      const bool actor_is_dead_and_not_restartable =
+          actor_table_data.state() == ray::rpc::ActorTableData::DEAD &&
+          !IsActorRestartable(actor_table_data);
+      if (!actor_is_dead_and_not_restartable) {
+        RAY_LOG(WARNING).WithField(actor_id)
+            << "Actor is not loadable during GCS initialization (for example, its "
+               "owner is dead); marking it dead and removing its task spec so the "
+               "actor table stays consistent.";
+        observability_data.set_state(rpc::ActorTableData::DEAD);
+        const auto time = clock_.NowUnixMillis();
+        observability_data.set_end_time(time);
+        observability_data.set_timestamp(time);
+        observability_data.mutable_death_cause()->CopyFrom(
+            GenActorNotLoadableAtInitCause(&actor_table_data));
+        gcs_table_storage_->ActorTable().Put(
+            actor_id,
+            observability_data,
+            {[this, actor_id = actor_id, observability_data = observability_data](
+                 Status status) {
+               gcs_publisher_->PublishActor(
+                   actor_id, GenActorDataOnlyWithStates(observability_data));
+               // Delete the task spec only after the DEAD row is persisted, so a
+               // crash in between cannot resurrect the missing-spec landmine.
+               gcs_table_storage_->ActorTaskSpecTable().Delete(
+                   actor_id, {[](auto) {}, io_context_});
+             },
+             io_context_});
+      } else {
+        // Already permanently dead; its spec is expected absent. Clean up any
+        // residual spec with the other permanently-dead actors below.
+        dead_actors.push_back(actor_id);
+      }
+      // Populate the observability cache and bump the state counter.
+      destroyed_actor_observability_data_.emplace(actor_id, observability_data);
       actor_state_counter_->Increment(
-          {actor_table_data.state(), actor_table_data.class_name()});
+          {observability_data.state(), observability_data.class_name()});
       sorted_destroyed_actor_observability_list_.emplace_back(
-          actor_id, static_cast<int64_t>(actor_table_data.timestamp()));
+          actor_id, static_cast<int64_t>(observability_data.timestamp()));
     }
   }
   if (!dead_actors.empty()) {
@@ -2098,7 +2188,26 @@ void GcsActorManager::RecordMetrics() const {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
                                                  lifetime_num_created_actors_);
   }
+  // Re-assert every live actor state each tick, not just transitions: the metrics
+  // backend clears gauge observations after each export (#56405), so these gauge
+  // values would otherwise drop out between transitions. FlushOnChangeCallbacks
+  // still emits the final 0 for keys that just dropped to zero (erased from the
+  // counter, so ForEachEntry won't visit them).
   actor_state_counter_->FlushOnChangeCallbacks();
+  actor_state_counter_->ForEachEntry(
+      [this](const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
+             int64_t value) { RecordActorState(key, value); });
+}
+
+void GcsActorManager::RecordActorState(
+    const std::pair<rpc::ActorTableData::ActorState, std::string> &key,
+    int64_t value) const {
+  actor_by_state_gauge_.Record(
+      value,
+      {{"State", rpc::ActorTableData::ActorState_Name(key.first)},
+       {"Name", key.second},
+       {"Source", "gcs"},
+       {"JobId", ""}});
 }
 
 }  // namespace gcs

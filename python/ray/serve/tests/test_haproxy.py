@@ -10,6 +10,8 @@ from tempfile import NamedTemporaryFile
 import httpx
 import pytest
 import requests
+from fastapi import FastAPI
+from starlette.requests import Request
 
 import ray
 from ray import serve
@@ -20,6 +22,7 @@ from ray._common.test_utils import (
 )
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
+from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
@@ -29,9 +32,15 @@ from ray.serve._private.constants import (
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
-from ray.serve._private.test_utils import get_application_url
-from ray.serve.config import HTTPOptions
+from ray.serve._private.test_utils import (
+    alive_actor_counts,
+    expected_proxy_actors,
+    get_application_url,
+)
+from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.schema import (
     ProxyStatus,
     ServeDeploySchema,
@@ -51,6 +60,13 @@ pytestmark = pytest.mark.skipif(
     not RAY_SERVE_ENABLE_HA_PROXY,
     reason="RAY_SERVE_ENABLE_HA_PROXY not set.",
 )
+
+
+class _DelayedMultiplexedMetadataRouter(RoundRobinRouter):
+    def _update_multiplexed_model_ids_with_replicas(self, replicas):
+        # Hold the location index empty to deterministically exercise requests
+        # arriving before multiplexed model metadata propagates.
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -120,8 +136,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -162,8 +177,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -264,7 +278,7 @@ class TestTimeoutKeepAliveConfig:
         ],
         indirect=True,
     )
-    def test_set_keep_alive_timeout_in_env(self, ray_instance, ray_shutdown):
+    def test_set_keep_alive_timeout_in_env(self, ray_instance):
         """Test when keep_alive_timeout_s is in env.
 
         When the keep_alive_timeout_s is set in env, the uvicorn keep alive
@@ -283,9 +297,7 @@ class TestTimeoutKeepAliveConfig:
         ],
         indirect=True,
     )
-    def test_set_timeout_keep_alive_in_both_config_and_env(
-        self, ray_instance, ray_shutdown
-    ):
+    def test_set_timeout_keep_alive_in_both_config_and_env(self, ray_instance):
         """Test when keep_alive_timeout_s is in both http configs and env.
 
         When the keep_alive_timeout_s is set in env, the uvicorn keep alive
@@ -307,12 +319,29 @@ async def test_drain_and_undrain_haproxy_manager(
     HEALTHY, DRAINING and DRAINED
     """
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
 
+    # No SO_REUSEPORT. Each node's HAProxy binds its own port. The head keeps the
+    # default 8000. Each worker gets a distinct HTTP port via
+    # RAY_SERVE_WORKER_PROXY_HTTP_PORT and distinct stats/metrics ports so the
+    # three co-located HAProxies don't collide.
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8001",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8405",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9102",
+        },
+    )
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8002",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8406",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9103",
+        },
+    )
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
@@ -327,8 +356,13 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
-    wait_for_condition(lambda: len(list_actors()) == 8)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=3),
+        "ServeReplica:default:HelloModel": 2,
+        "SignalActor": 1,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -339,14 +373,14 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
-    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
-    # very likely each shard has served at least one request and converged.
+    # Each HAProxy binds its own port (head 8000, workers 8001/8002); wait until
+    # all three answer health checks.
     def all_haproxies_ready():
         try:
             return all(
-                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                httpx.get(f"http://localhost:{port}/-/healthz", timeout=2).status_code
                 == 200
-                for _ in range(20)
+                for port in (8000, 8001, 8002)
             )
         except Exception:
             return False
@@ -977,6 +1011,11 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     r = httpx.get("http://localhost:8000/test")
     assert r.status_code == 404
 
+    # Healthz stays 200 with no app backends instead of hitting the 404 default backend.
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200
+    )
+
     serve.shutdown()
 
 
@@ -1135,6 +1174,128 @@ def test_default_host_is_all_interfaces(ray_shutdown):
             f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
             f"expected {expected!r}"
         )
+
+
+def test_multiplexed_routing_retry(shutdown_ray):
+    """Retry a model selection while HAProxy routes through an ingress router."""
+    ray.init(num_cpus=4)
+    serve.start(http_options={"host": "0.0.0.0"})
+
+    @serve.deployment(
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=_DelayedMultiplexedMetadataRouter,
+        ),
+    )
+    class ModelServer:
+        async def __call__(self, request: Request):
+            if request.url.path == "/ready":
+                return request.headers.get("x-routed", "")
+            return request.headers["x-model-id"]
+
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class IngressRouter:
+        def __init__(self, server):
+            self.server = server
+            self.model_id = ""
+
+        def enable_multiplexing(self):
+            self.model_id = "model"
+
+        @app.post("/internal/route")
+        async def route(self):
+            handle = self.server.options(multiplexed_model_id=self.model_id)
+            async with handle.choose_replica(_reserve=False) as selection:
+                replica = selection._replica
+                host, port = replica.backend_http_endpoint
+                return {
+                    "host": host,
+                    "port": port,
+                    "replica_id": replica.replica_id.to_full_id_str(),
+                    "request_headers": {
+                        "x-model-id": self.model_id,
+                        "x-routed": "ready",
+                    },
+                }
+
+    server = ModelServer.bind()
+    serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
+    # Wait for HAProxy to install the ingress router before exercising model
+    # selection. Readiness requests do not touch multiplexed routing state.
+    wait_for_condition(
+        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
+        timeout=30,
+    )
+    serve.get_deployment_handle(
+        "IngressRouter", app_name="default"
+    ).enable_multiplexing.remote().result()
+
+    with httpx.Client(timeout=30) as client:
+        # The first request records a cold-model fallback. With the location
+        # index still empty, the next request initially gets no candidates.
+        # Selection must retry internally; neither HTTP request may fail.
+        for _ in range(2):
+            response = client.post("http://localhost:8000/")
+            assert response.status_code == 200, response.text
+            assert response.text == "model"
+
+
+def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
+    """serve.run rejects a custom router on the ingress under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        async def __call__(self):
+            return "hi"
+
+    with pytest.raises(
+        RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+    ):
+        serve.run(Ingress.bind())
+
+
+def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
+    """A config override that sets a custom router on the ingress fails to deploy
+    under HAProxy."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+    client = _get_global_client()
+
+    module = "ray.serve.tests.test_config_files.use_custom_request_router"
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app",
+                    "import_path": f"{module}.app",
+                    "deployments": [
+                        {
+                            "name": "UniformRequestRouterApp",
+                            "request_router_config": {
+                                "request_router_class": f"{module}.UniformRequestRouter"
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    client.deploy_apps(config)
+
+    def deploy_failed():
+        status = serve.status().applications["app"]
+        assert status.status == "DEPLOY_FAILED"
+        assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in status.message
+        return True
+
+    wait_for_condition(deploy_failed)
 
 
 if __name__ == "__main__":

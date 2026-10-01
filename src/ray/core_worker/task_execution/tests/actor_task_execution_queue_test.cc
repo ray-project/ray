@@ -13,6 +13,7 @@
 // limitations under the License.
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -20,12 +21,14 @@
 
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/ordered_actor_task_execution_queue.h"
 #include "ray/core_worker/task_execution/unordered_actor_task_execution_queue.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 
 // using namespace std::chrono_literals;
 using std::chrono_literals::operator""s;
@@ -37,16 +40,50 @@ class MockWaiter : public ActorTaskExecutionArgWaiterInterface {
  public:
   MockWaiter() {}
 
-  void AsyncWait(const std::vector<rpc::ObjectReference> &dependencies,
-                 std::function<void()> on_dependencies_available) override {
-    callbacks_.push_back([on_dependencies_available]() { on_dependencies_available(); });
+  // Record the (task_id, attempt_number) of each fetch in call order so tests
+  // can refer to a fetch by its 0-based call index via Complete().
+  void BeginArgsFetch(const std::vector<rpc::ObjectReference> &dependencies,
+                      const TaskAttempt &task_attempt) override {
+    fetch_order_.push_back(task_attempt);
   }
 
-  void Complete(int index) { callbacks_[index](); }
+  void OnArgsReady(const TaskAttempt &task_attempt,
+                   std::function<void()> on_args_ready) override {
+    callbacks_.emplace(task_attempt, std::move(on_args_ready));
+  }
+
+  // Test helper. Simulates MarkReady for the index-th args-fetch (0-based, in
+  // BeginArgsFetch call order).
+  void Complete(size_t index) {
+    ASSERT_LT(index, fetch_order_.size())
+        << "Complete() called for unknown index " << index;
+    auto it = callbacks_.find(fetch_order_[index]);
+    ASSERT_NE(it, callbacks_.end())
+        << "Complete() called before OnArgsReady for index " << index;
+    auto cb = std::move(it->second);
+    callbacks_.erase(it);
+    cb();
+  }
 
  private:
-  std::vector<std::function<void()>> callbacks_;
+  std::vector<TaskAttempt> fetch_order_;
+  absl::flat_hash_map<TaskAttempt, std::function<void()>> callbacks_;
 };
+
+// Helper that mirrors what CoreWorker::HandlePushTask does on the gRPC thread:
+// fires the args-fetch for tasks with deps, then enqueues.
+void EnqueueWithFetch(ActorTaskExecutionQueueInterface &queue,
+                      MockWaiter &waiter,
+                      int64_t seq_no,
+                      int64_t client_processed_up_to,
+                      TaskToExecute task) {
+  auto deps = task.TaskSpec().GetDependencies();
+  if (!deps.empty()) {
+    waiter.BeginArgsFetch(deps,
+                          TaskAttempt{task.TaskID(), task.TaskSpec().AttemptNumber()});
+  }
+  queue.EnqueueTask(seq_no, client_processed_up_to, std::move(task));
+}
 
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
@@ -92,26 +129,51 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 
   NodeID GetNodeID() const override { return NodeID::Nil(); }
+  int64_t GetCurrentTimestampNanos() const override { return 0; }
 };
+
+namespace {
+
+// Construct a TaskToExecute container for tests. The reply and
+// send_reply_callback are dummy implementations
+// that are never inspected by the tests' queue-level callbacks.
+TaskToExecute MakeTaskToExecute(const TaskSpecification &task_spec) {
+  static rpc::PushTaskReply dummy_reply;
+  return TaskToExecute(
+      task_spec,
+      /*resource_ids=*/std::nullopt,
+      &dummy_reply,
+      [](const Status &, std::function<void()>, std::function<void()>) {});
+}
+
+}  // namespace
 
 TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   // Test task events are recorded.
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
-  int n_ok = 0;
-  int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
+  int n_executed = 0;
+  int n_canceled = 0;
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   JobID job_id = JobID::FromInt(1);
   TaskID task_id_1 = TaskID::FromRandom(job_id);
   TaskSpecification task_spec_without_dependency;
@@ -120,7 +182,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_without_dependency.GetMutableMessage().set_enable_task_events(true);
 
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
   ASSERT_EQ(task_event_buffer.task_events.size(), 1UL);
   rpc::TaskEvents rpc_task_events;
   task_event_buffer.task_events[0]->ToRpcTaskEvents(&rpc_task_events);
@@ -140,7 +202,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(ObjectID::FromRandom().Binary());
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_with_dependency));
   waiter.Complete(0);
   ASSERT_EQ(task_event_buffer.task_events.size(), 3UL);
   task_event_buffer.task_events[1]->ToRpcTaskEvents(&rpc_task_events);
@@ -160,43 +222,108 @@ TEST(OrderedActorTaskExecutionQueueTest, TestTaskEvents) {
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
-  ASSERT_EQ(n_ok, 2);
-  ASSERT_EQ(n_rej, 0);
+  ASSERT_EQ(n_executed, 2);
+  ASSERT_EQ(n_canceled, 0);
 
   queue.Stop();
 }
 
-TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
+// With both recorder flags on, enqueuing a task records status events to the
+// RayEventRecorder (one lifecycle event per status transition); with them off, it
+// records nothing.
+class OrderedActorTaskExecutionQueueRecorderTest : public ::testing::TestWithParam<bool> {
+};
+
+TEST_P(OrderedActorTaskExecutionQueueRecorderTest, RecordsToRecorderWhenEnabled) {
+  const bool recorder_enabled = GetParam();
+  RayConfig::instance().initialize(
+      recorder_enabled
+          ? R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})"
+          : R"({"enable_ray_event": false, "enable_ray_task_event_recorder": false})");
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
-  int n_ok = 0;
-  int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
+  auto execute_task = [](TaskToExecute &task) {};
+  auto cancel_task = [](const TaskToExecute &task, const Status &status) {};
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec.GetMutableMessage().set_enable_task_events(true);
+
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
+
+  auto recorded = ray_task_event_recorder.FlushBuffer();
+  if (recorder_enabled) {
+    ASSERT_EQ(recorded.size(), 1UL);
+    EXPECT_EQ(recorded[0]->GetEventType(), rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
+  } else {
+    EXPECT_TRUE(recorded.empty());
+  }
+
+  io_service.run();
+  pool_manager->GetDefaultExecutor()->Join();
+  queue.Stop();
+}
+
+INSTANTIATE_TEST_SUITE_P(RecorderEnabledAndDisabled,
+                         OrderedActorTaskExecutionQueueRecorderTest,
+                         ::testing::Values(true, false));
+
+TEST(OrderedActorTaskExecutionQueueTest, TestInOrder) {
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  int n_executed = 0;
+  int n_canceled = 0;
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec));
   io_service.run();
 
   // Wait for all tasks to finish.
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
-  ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 0);
+  ASSERT_EQ(n_executed, 4);
+  ASSERT_EQ(n_canceled, 0);
 
   queue.Stop();
 }
@@ -205,40 +332,47 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
-  // One running task that blocks until we signal.
+  // One running task that blocks until we signal. The queued task (with a dependency)
+  // stays queued and is cancelled by Stop().
   std::promise<void> running_started;
   std::promise<void> allow_finish;
-  auto fn_ok_blocking = [&running_started,
-                         &allow_finish](const TaskSpecification &task_spec) {
+  std::atomic<int> n_rejected{0};
+  auto execute_task_blocking = [&running_started, &allow_finish](TaskToExecute &task) {
     running_started.set_value();
     allow_finish.get_future().wait();
   };
-  auto fn_rej = [](const TaskSpecification &task_spec, const Status &status) {};
-  TaskSpecification ts;
-  ts.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  // Enqueue a running task and a queued task.
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok_blocking, fn_rej, ts));
-  std::atomic<int> n_rejected{0};
-  auto fn_rej_count = [&n_rejected](const TaskSpecification &, const Status &status) {
+  auto cancel_task_count = [&n_rejected](const TaskToExecute &task,
+                                         const Status &status) {
     if (status.IsSchedulingCancelled()) {
       n_rejected.fetch_add(1);
     }
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task_blocking,
+                                       cancel_task_count);
+  TaskSpecification ts;
+  ts.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  // Enqueue a running task and a queued task.
+  queue.EnqueueTask(0, -1, MakeTaskToExecute(ts));
   // Make the queued task have a dependency so it stays queued and will be cancelled by
   // Stop().
   TaskSpecification ts_dep;
   ts_dep.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   ts_dep.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       ObjectID::FromRandom().Binary());
-  queue.EnqueueTask(
-      1, -1, TaskToExecute([](const TaskSpecification &) {}, fn_rej_count, ts_dep));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(ts_dep));
   io_service.poll();
   running_started.get_future().wait();
 
@@ -255,20 +389,27 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
-  std::atomic<int> n_ok(0);
-  std::atomic<int> n_rej(0);
-
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec_without_dependency;
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   TaskSpecification task_spec_with_dependency;
@@ -277,18 +418,26 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(obj.Binary());
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
-  queue.EnqueueTask(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
-  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
+  // change task_id since <task_id, task_attempt> should be unique
+  // across all PushTask for actor life
+  task_spec_with_dependency.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_with_dependency));
+  task_spec_with_dependency.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec_with_dependency));
+  task_spec_with_dependency.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec_with_dependency));
 
-  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
 
   waiter.Complete(0);
-  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 2; }, 1000));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 2; }, 1000));
 
   waiter.Complete(2);
-  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 2; }, 1000));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 2; }, 1000));
 
   waiter.Complete(1);
 
@@ -296,7 +445,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
-  ASSERT_EQ(n_ok, 4);
+  ASSERT_EQ(n_executed, 4);
 
   queue.Stop();
 }
@@ -306,20 +455,27 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
-  std::atomic<int> n_ok(0);
-  std::atomic<int> n_rej(0);
-
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec_without_dependency;
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   TaskSpecification task_spec_with_dependency;
@@ -328,19 +484,19 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjectsNotSubjectToSeqTimeou
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(obj.Binary());
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_with_dependency));
 
-  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
   io_service.run();
-  ASSERT_EQ(n_rej, 0);
+  ASSERT_EQ(n_canceled, 0);
   waiter.Complete(0);
 
   // Wait for all tasks to finish.
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
-  ASSERT_EQ(n_ok, 2);
+  ASSERT_EQ(n_executed, 2);
 
   queue.Stop();
 }
@@ -349,39 +505,46 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
-  std::atomic<int> n_ok(0);
-  std::atomic<int> n_rej(0);
-
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.EnqueueTask(2, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
-  ASSERT_EQ(n_rej, 0);
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
+  ASSERT_EQ(n_canceled, 0);
   io_service.run();
-  ASSERT_TRUE(WaitForCondition([&n_ok]() { return n_ok == 1; }, 1000));
-  ASSERT_TRUE(WaitForCondition([&n_rej]() { return n_rej == 2; }, 1000));
-  queue.EnqueueTask(4, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(5, -1, TaskToExecute(fn_ok, fn_rej, task_spec));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
+  ASSERT_TRUE(WaitForCondition([&n_canceled]() { return n_canceled == 2; }, 1000));
+  EnqueueWithFetch(queue, waiter, 4, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 5, -1, MakeTaskToExecute(task_spec));
 
   // Wait for all tasks to finish.
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
-  ASSERT_EQ(n_ok, 3);
-  ASSERT_EQ(n_rej, 2);
+  ASSERT_EQ(n_executed, 3);
+  ASSERT_EQ(n_canceled, 2);
 
   queue.Stop();
 }
@@ -390,32 +553,40 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 1);
-  std::atomic<int> n_ok(0);
-  std::atomic<int> n_rej(0);
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       1,
+                                       execute_task,
+                                       cancel_task);
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  queue.EnqueueTask(2, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(3, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
-  queue.EnqueueTask(1, 2, TaskToExecute(fn_ok, fn_rej, task_spec));
+  EnqueueWithFetch(queue, waiter, 2, 2, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 3, 2, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 1, 2, MakeTaskToExecute(task_spec));
   io_service.run();
 
   // Wait for all tasks to finish.
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
-  ASSERT_EQ(n_ok, 1);
-  ASSERT_EQ(n_rej, 2);
+  ASSERT_EQ(n_executed, 1);
+  ASSERT_EQ(n_canceled, 2);
 
   queue.Stop();
 }
@@ -445,23 +616,30 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 2);
   std::vector<int64_t> accept_seq_nos;
   std::vector<int64_t> reject_seq_nos;
   std::atomic<int> n_accept = 0;
-  auto fn_ok = [&accept_seq_nos, &n_accept](const TaskSpecification &task_spec) {
-    accept_seq_nos.push_back(task_spec.ConcurrencyGroupSequenceNumber());
+  auto execute_task = [&accept_seq_nos, &n_accept](TaskToExecute &task) {
+    accept_seq_nos.push_back(task.TaskSpec().ConcurrencyGroupSequenceNumber());
     n_accept++;
   };
-  auto fn_rej = [&reject_seq_nos](const TaskSpecification &task_spec,
-                                  const Status &status) {
-    reject_seq_nos.push_back(task_spec.ConcurrencyGroupSequenceNumber());
+  auto cancel_task = [&reject_seq_nos](const TaskToExecute &task, const Status &status) {
+    reject_seq_nos.push_back(task.TaskSpec().ConcurrencyGroupSequenceNumber());
   };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       2,
+                                       execute_task,
+                                       cancel_task);
 
   // Submitting 0 with dep, 1, 3 (retry of 2), and 4 (with client_processed_up_to = 2 bc 2
   // failed to send), 6 (retry of 5) with dep.
@@ -469,15 +647,15 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   // 3 (retry of 2) should get executed. Then, 4 should be executed. Then 6 (retry of 5)
   // once the dependency is fetched.
   auto task_spec_0 = CreateActorTaskSpec(0, /*is_retry=*/false, /*dependency=*/true);
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_0));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_0));
   auto task_spec_1 = CreateActorTaskSpec(1);
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_1));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_1));
   auto task_spec_2_retry = CreateActorTaskSpec(3, /*is_retry=*/true);
-  queue.EnqueueTask(3, -1, TaskToExecute(fn_ok, fn_rej, task_spec_2_retry));
+  EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec_2_retry));
   auto task_spec_4 = CreateActorTaskSpec(4);
-  queue.EnqueueTask(4, 2, TaskToExecute(fn_ok, fn_rej, task_spec_4));
+  EnqueueWithFetch(queue, waiter, 4, 2, MakeTaskToExecute(task_spec_4));
   auto task_spec_5_retry = CreateActorTaskSpec(6, /*is_retry=*/true, /*dependency=*/true);
-  queue.EnqueueTask(6, -1, TaskToExecute(fn_ok, fn_rej, task_spec_5_retry));
+  EnqueueWithFetch(queue, waiter, 6, -1, MakeTaskToExecute(task_spec_5_retry));
 
   io_service.run();
 
@@ -501,23 +679,30 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"a", 1, {}},
                                                    ConcurrencyGroup{"b", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
-  OrderedActorTaskExecutionQueue queue(
-      io_service, waiter, task_event_buffer, pool_manager, 2);
-
   // Track accepted tasks as (group_name, seq_no) pairs.
   std::vector<std::pair<std::string, int64_t>> accepted;
   std::atomic<int> n_accept = 0;
-  auto fn_ok = [&accepted, &n_accept](const TaskSpecification &task_spec) {
-    accepted.emplace_back(task_spec.ConcurrencyGroupName(),
-                          task_spec.ConcurrencyGroupSequenceNumber());
+  auto execute_task = [&accepted, &n_accept](TaskToExecute &task) {
+    accepted.emplace_back(task.TaskSpec().ConcurrencyGroupName(),
+                          task.TaskSpec().ConcurrencyGroupSequenceNumber());
     n_accept++;
   };
-  auto fn_rej = [](TaskSpecification, Status) { FAIL(); };
+  auto cancel_task = [](const TaskToExecute &, const Status &) { FAIL(); };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       2,
+                                       execute_task,
+                                       cancel_task);
 
   auto make_task = [](const std::string &group, int64_t seq_no) {
     auto spec = CreateActorTaskSpec(seq_no);
@@ -532,9 +717,9 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
 
   // Sequence no 0 missing from group a, so that should block until 1 arrives.
   // Concurrency group b should be ready to go though.
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_a1));
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_b0));
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_b1));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_a1));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_b0));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_b1));
 
   io_service.run_one();
   io_service.run_one();
@@ -542,7 +727,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   ASSERT_EQ(n_accept, 2);
 
   // Now enqueue group "a" seq 0, which unblocks group "a".
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_a0));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_a0));
   io_service.run_one();
   io_service.run_one();
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 4; }, 1000));
@@ -563,25 +748,30 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
 
   std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
   auto pool_manager =
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
 
+  int n_executed = 0;
+  int n_canceled = 0;
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
+  };
+
   UnorderedActorTaskExecutionQueue queue(io_service,
                                          waiter,
                                          task_event_buffer,
+                                         ray_task_event_recorder,
                                          pool_manager,
                                          /*fiber_state_manager=*/nullptr,
                                          /*is_asyncio=*/false,
                                          /*fiber_max_concurrency=*/1,
-                                         /*concurrency_groups=*/{});
-  int n_ok = 0;
-  int n_rej = 0;
-  auto fn_ok = [&n_ok](const TaskSpecification &task_spec) { n_ok++; };
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
-  };
+                                         /*concurrency_groups=*/{},
+                                         execute_task,
+                                         cancel_task);
   JobID job_id = JobID::FromInt(1);
   TaskID task_id_1 = TaskID::FromRandom(job_id);
   TaskSpecification task_spec_without_dependency;
@@ -590,7 +780,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_without_dependency.GetMutableMessage().set_enable_task_events(true);
 
-  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
   ASSERT_EQ(task_event_buffer.task_events.size(), 1UL);
   rpc::TaskEvents rpc_task_events;
   task_event_buffer.task_events[0]->ToRpcTaskEvents(&rpc_task_events);
@@ -610,7 +800,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
       .add_args()
       ->mutable_object_ref()
       ->set_object_id(ObjectID::FromRandom().Binary());
-  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_spec_with_dependency));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_with_dependency));
   waiter.Complete(0);
   ASSERT_EQ(task_event_buffer.task_events.size(), 3UL);
   task_event_buffer.task_events[1]->ToRpcTaskEvents(&rpc_task_events);
@@ -630,8 +820,8 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestTaskEvents) {
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
-  ASSERT_EQ(n_ok, 2);
-  ASSERT_EQ(n_rej, 0);
+  ASSERT_EQ(n_executed, 2);
+  ASSERT_EQ(n_canceled, 0);
 
   queue.Stop();
 }
@@ -642,46 +832,55 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+
+  std::promise<void> attempt_1_start_promise;
+  std::promise<void> attempt_1_finish_promise;
+  std::promise<void> attempt_2_start_promise;
+  int n_canceled = 0;
+  // The per-attempt behavior is dispatched on the task's attempt number.
+  auto execute_task = [&attempt_1_start_promise,
+                       &attempt_1_finish_promise,
+                       &attempt_2_start_promise](TaskToExecute &task) {
+    if (task.TaskSpec().AttemptNumber() == 1) {
+      attempt_1_start_promise.set_value();
+      attempt_1_finish_promise.get_future().wait();
+    } else {
+      attempt_2_start_promise.set_value();
+    }
+  };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
+  };
+
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
       task_event_buffer,
+      ray_task_event_recorder,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
       /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
       /*fiber_max_concurrency=*/1,
-      /*concurrency_groups=*/{});
+      /*concurrency_groups=*/{},
+      execute_task,
+      cancel_task);
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::FromRandom(job_id);
 
-  std::promise<void> attempt_1_start_promise;
-  std::promise<void> attempt_1_finish_promise;
-  auto fn_ok_1 = [&attempt_1_start_promise,
-                  &attempt_1_finish_promise](const TaskSpecification &task_spec) {
-    attempt_1_start_promise.set_value();
-    attempt_1_finish_promise.get_future().wait();
-  };
-  std::promise<void> attempt_2_start_promise;
-  auto fn_ok_2 = [&attempt_2_start_promise](const TaskSpecification &task_spec) {
-    attempt_2_start_promise.set_value();
-  };
-  int n_rej = 0;
-  auto fn_rej = [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-    n_rej++;
-  };
   TaskSpecification task_spec_1;
   task_spec_1.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_1.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_1.GetMutableMessage().set_attempt_number(1);
-  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_1, fn_rej, task_spec_1));
+  EnqueueWithFetch(queue, waiter, -1, -1, MakeTaskToExecute(task_spec_1));
   attempt_1_start_promise.get_future().wait();
   TaskSpecification task_spec_2;
   task_spec_2.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_2.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_2.GetMutableMessage().set_attempt_number(2);
-  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_2, fn_rej, task_spec_2));
+  EnqueueWithFetch(queue, waiter, -1, -1, MakeTaskToExecute(task_spec_2));
   io_service.poll();
   // Attempt 2 should only start after attempt 1 finishes.
   auto attempt_2_start_future = attempt_2_start_promise.get_future();
@@ -694,7 +893,7 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts) {
     io_service.poll();
   }
 
-  ASSERT_EQ(n_rej, 0);
+  ASSERT_EQ(n_canceled, 0);
   auto no_leak = [&queue] {
     absl::MutexLock lock(&queue.mu_);
     return queue.queued_actor_tasks_.empty() &&
@@ -709,79 +908,87 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
+
+  std::promise<void> attempt_1_start_promise;
+  std::promise<void> attempt_1_finish_promise;
+  std::atomic<bool> attempt_2_cancelled = false;
+  std::atomic<bool> attempt_3_cancelled = false;
+  std::atomic<bool> attempt_4_cancelled = false;
+  // Only attempt 1 ever executes; all other attempts are expected to be cancelled. The
+  // per-attempt behavior is dispatched on the task's attempt number.
+  auto execute_task = [&attempt_1_start_promise,
+                       &attempt_1_finish_promise](TaskToExecute &task) {
+    if (task.TaskSpec().AttemptNumber() == 1) {
+      attempt_1_start_promise.set_value();
+      attempt_1_finish_promise.get_future().wait();
+    } else {
+      FAIL() << "Unexpected execution of attempt " << task.TaskSpec().AttemptNumber();
+    }
+  };
+  auto cancel_task = [&attempt_2_cancelled, &attempt_3_cancelled, &attempt_4_cancelled](
+                         const TaskToExecute &task, const Status &status) {
+    ASSERT_TRUE(status.IsSchedulingCancelled());
+    switch (task.TaskSpec().AttemptNumber()) {
+    case 2:
+      attempt_2_cancelled.store(true);
+      break;
+    case 3:
+      attempt_3_cancelled.store(true);
+      break;
+    case 4:
+      attempt_4_cancelled.store(true);
+      break;
+    default:
+      FAIL() << "Unexpected cancellation of attempt " << task.TaskSpec().AttemptNumber();
+    }
+  };
+
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
   UnorderedActorTaskExecutionQueue queue(
       io_service,
       waiter,
       task_event_buffer,
+      ray_task_event_recorder,
       std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
           std::vector<ConcurrencyGroup>(),
           /*max_concurrency_for_default_concurrency_group=*/100),
       /*fiber_state_manager=*/nullptr,
       /*is_asyncio=*/false,
       /*fiber_max_concurrency=*/1,
-      /*concurrency_groups=*/{});
+      /*concurrency_groups=*/{},
+      execute_task,
+      cancel_task);
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::FromRandom(job_id);
 
-  std::promise<void> attempt_1_start_promise;
-  std::promise<void> attempt_1_finish_promise;
-  auto fn_ok_1 = [&attempt_1_start_promise,
-                  &attempt_1_finish_promise](const TaskSpecification &task_spec) {
-    attempt_1_start_promise.set_value();
-    attempt_1_finish_promise.get_future().wait();
-  };
-  auto fn_rej_1 = [](const TaskSpecification &task_spec, const Status &status) {
-    ASSERT_FALSE(true);
-  };
   TaskSpecification task_spec_1;
   task_spec_1.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_1.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_1.GetMutableMessage().set_attempt_number(1);
-  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_1, fn_rej_1, task_spec_1));
+  EnqueueWithFetch(queue, waiter, -1, -1, MakeTaskToExecute(task_spec_1));
   attempt_1_start_promise.get_future().wait();
 
-  auto fn_ok_2 = [](const TaskSpecification &task_spec) { ASSERT_FALSE(true); };
-  std::atomic<bool> attempt_2_cancelled = false;
-  auto fn_rej_2 = [&attempt_2_cancelled](const TaskSpecification &task_spec,
-                                         const Status &status) {
-    ASSERT_TRUE(status.IsSchedulingCancelled());
-    attempt_2_cancelled.store(true);
-  };
   TaskSpecification task_spec_2;
   task_spec_2.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_2.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_2.GetMutableMessage().set_attempt_number(2);
-  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_2, fn_rej_2, task_spec_2));
+  EnqueueWithFetch(queue, waiter, -1, -1, MakeTaskToExecute(task_spec_2));
 
-  auto fn_ok_4 = [](const TaskSpecification &task_spec) { ASSERT_FALSE(true); };
-  std::atomic<bool> attempt_4_cancelled = false;
-  auto fn_rej_4 = [&attempt_4_cancelled](const TaskSpecification &task_spec,
-                                         const Status &status) {
-    ASSERT_TRUE(status.IsSchedulingCancelled());
-    attempt_4_cancelled.store(true);
-  };
   // Adding attempt 4 should cancel the old attempt 2
   TaskSpecification task_spec_4;
   task_spec_4.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_4.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_4.GetMutableMessage().set_attempt_number(4);
-  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_4, fn_rej_4, task_spec_4));
+  EnqueueWithFetch(queue, waiter, -1, -1, MakeTaskToExecute(task_spec_4));
   ASSERT_TRUE(attempt_2_cancelled.load());
 
-  auto fn_ok_3 = [](const TaskSpecification &task_spec) { ASSERT_FALSE(true); };
-  std::atomic<bool> attempt_3_cancelled = false;
-  auto fn_rej_3 = [&attempt_3_cancelled](const TaskSpecification &task_spec,
-                                         const Status &status) {
-    ASSERT_TRUE(status.IsSchedulingCancelled());
-    attempt_3_cancelled.store(true);
-  };
   // Attempt 3 should be cancelled immediately since there is attempt 4
   // in the queue.
   TaskSpecification task_spec_3;
   task_spec_3.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_3.GetMutableMessage().set_task_id(task_id.Binary());
   task_spec_3.GetMutableMessage().set_attempt_number(3);
-  queue.EnqueueTask(-1, -1, TaskToExecute(fn_ok_3, fn_rej_3, task_spec_3));
+  EnqueueWithFetch(queue, waiter, -1, -1, MakeTaskToExecute(task_spec_3));
   ASSERT_TRUE(attempt_3_cancelled.load());
 
   // Attempt 4 should be cancelled.

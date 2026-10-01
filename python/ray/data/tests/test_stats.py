@@ -1,16 +1,18 @@
 import gc
 import logging
+import pickle
 import platform
 import re
 import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import ray
@@ -18,6 +20,7 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
+from ray.data import ActorPoolStrategy
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
@@ -27,23 +30,47 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
+)
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.map_operator import _map_task
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    CustomOpStatsReporter,
+    MapTransformer,
+    TransformClock,
+)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
     DatasetStatsSummary,
+    IterationStage,
     NodeMetrics,
     OperatorStatsSummary,
     StatsSummary,
     Timer,
+    TimeSpan,
+    _create_prometheus_metric,
+    _maybe_time,
+    _record_prometheus_metric,
     _StatsActor,
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
-from ray.data.block import BlockExecStats, BlockStats
+from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
+from ray.data.datasource import Datasink
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+@dataclass(frozen=True)
+class _ReadTaskStats(CustomOpStats):
+    num_rows: int
+    num_columns: int
 
 
 def get_operator(
@@ -179,6 +206,137 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         assert profiler.estimate_max_uss() > array_nbytes
 
 
+def test_map_transformer_custom_op_stats():
+    expected = _ReadTaskStats(num_rows=4, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+
+    reporter = CustomOpStatsReporter()
+    # Nothing reported until a task runs.
+    assert reporter.get_stats() == []
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    block = pa.table({"id": list(range(expected.num_rows))})
+    # apply_transform takes the report callback, not the reporter object.
+    list(
+        transformer.apply_transform(
+            [block], ctx, reporter.report, clock=TransformClock()
+        )
+    )
+    assert reporter.get_stats() == [expected]
+
+
+def _drive_map_task_metadata(transformer, ctx, block):
+    """Run ``_map_task`` to completion and return the per-block metadata.
+
+    ``_map_task`` yields each block, then (after a ``send``) the pickled
+    ``BlockMetadataWithSchema`` for that block.
+    """
+    gen = _map_task(transformer, DataContext.get_current(), ctx, block)
+    metas = []
+    try:
+        next(gen)  # first block
+        while True:
+            metas.append(pickle.loads(gen.send(None)))  # that block's metadata
+            next(gen)  # next block; StopIteration when exhausted
+    except StopIteration:
+        pass
+    return metas
+
+
+def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
+    """End-to-end wiring: a reporting transform's stats reach the per-block
+    TaskExecWorkerStats that ``_map_task`` emits back to the driver.
+
+    Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
+    so a future edit there can't silently drop the field.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
+def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
+    """A reporting transform's stats survive operator fusion.
+
+    Because ``_map_task`` owns the reporter (rather than the transformer), a
+    reporting upstream transform fused with a downstream transform still carries
+    its stats back: both run under the fused operator's single reporter. This is
+    a regression guard — when stats lived on the transformer, fusion built a new
+    transformer and the closure-captured original was orphaned, silently
+    dropping the stats.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def report_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    def passthrough(blocks, ctx):
+        yield from blocks
+
+    upstream = MapTransformer(
+        [
+            BlockMapTransformFn(
+                report_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+    downstream = MapTransformer(
+        [BlockMapTransformFn(passthrough, disable_block_shaping=True)]
+    )
+    fused = upstream.fuse(downstream)
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
@@ -206,9 +364,8 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
-            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -245,6 +402,12 @@ def gen_expected_metrics(
             f"'num_tasks_task_locality_miss': {'Z' if task_locality_hit else 'N'}",
             "'block_generation_time': N",
             "'block_serialization_time_s': N",
+            # The block transform time breakdown, exported per operator alongside the
+            # existing task metrics.
+            "'block_transform_time_s': A",
+            "'input_prep_time_s': A",
+            "'function_body_time_s': A",
+            "'output_build_time_s': A",
             (
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
@@ -276,6 +439,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     else:
         metrics = [
@@ -296,9 +460,8 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
-            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -366,6 +529,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     if extra_metrics:
         metrics.extend(extra_metrics)
@@ -374,6 +538,22 @@ def gen_expected_metrics(
 
 def gen_extra_metrics_str(metrics: str, verbose: bool):
     return f"* Extra metrics: {metrics}" + "\n" if verbose else ""
+
+
+def gen_block_transform_time_breakdown_str(verbose: bool) -> str:
+    """The phase breakdown under "Block transform time", which is verbose-only.
+
+    Batch-based operators are decomposed; row-based ones report only a
+    total unless `DataContext.accurate_map_phase_timing` is set, so they
+    print nothing here even when verbose.
+    """
+    if not verbose:
+        return ""
+    return (
+        "    * Input prep: T min, T max, T mean, T total\n"
+        "    * Function body: T min, T max, T mean, T total\n"
+        "    * Output block build: T min, T max, T mean, T total\n"
+    )
 
 
 def gen_runtime_metrics_str(op_names: List[str], verbose: bool) -> str:
@@ -449,7 +629,9 @@ def canonicalize(
     filter_global_stats: bool = True,
 ) -> str:
     # Dataset UUID expression.
-    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub(r"(dataset_uuid=)[^,\n]+", r"\g<1>N", stats)
+    # Other UUID expressions.
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", canonicalized_stats)
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
@@ -460,6 +642,19 @@ def canonicalize(
     )
     canonicalized_stats = re.sub(
         r"\(samples: \d+, avg: \d+\.\d+\)", "(samples: N, avg: N)", canonicalized_stats
+    )
+    # The block transform time breakdown measures sub-microsecond work for a
+    # trivial UDF, so each figure rounds to zero or not depending on the run.
+    # `None` is in the alternation because a row transform reports no phases
+    # unless `accurate_map_phase_timing` is set. Replace both with A to avoid
+    # flakiness; `test_row_transform_phases_are_opt_in` and
+    # `test_op_runtime_metrics.py::test_phase_metrics_stay_none_when_unmeasured`
+    # assert the measured-vs-not distinction directly instead.
+    canonicalized_stats = re.sub(
+        r"('?(?:block_transform_time_s|input_prep_time_s|function_body_time_s"
+        r"|output_build_time_s)'?: )(?:\d+(?:\.\d+)?(?:[eE][-+]?\d+)?|None)",
+        r"\g<1>A",
+        canonicalized_stats,
     )
     # For obj_store_mem_used, the value can be zero or positive, depending on the run.
     # Replace with A to avoid test flakiness.
@@ -488,11 +683,6 @@ def canonicalize(
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
 
-    canonicalized_stats = re.sub(
-        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
-        r"\g<1> H",
-        canonicalized_stats,
-    )
     # Percentile values in DistributionTracker dicts can be None (when datasketches
     # is not installed) or a number (canonicalized to N). Normalize to P.
     canonicalized_stats = re.sub(
@@ -553,20 +743,53 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
-    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE  # .replace(
-    #     "'obj_store_mem_used': A", "'obj_store_mem_used': Z"
-    # )
     extra_metrics_2 = gen_expected_metrics(
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
+    # The task_output_backpressure_time* metrics are wall-clock timers for output
+    # backpressure on the running MapBatches operator. Whether (and for how long)
+    # it blocks is a timing race against the single, slower streaming-split
+    # consumer, so the value is genuinely nondeterministic across runs (sometimes
+    # 0, usually positive). We therefore deliberately do NOT assert these three
+    # values: both the expected and the produced stats collapse them to a
+    # sentinel. Everything else -- including task_submission_backpressure_time --
+    # stays strictly checked. Only the running operator's (first) occurrence is
+    # collapsed; the idle split operator's timers remain strictly asserted as 0.
+    not_asserted = "<varies>"
+    backpressure_keys = (
+        "average_task_output_backpressure_time_s",
+        "task_output_backpressure_time",
+        "task_output_backpressure_time_s",
+    )
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+    for key in backpressure_keys:
+        extra_metrics_1 = extra_metrics_1.replace(
+            f"'{key}': Z", f"'{key}': {not_asserted}"
+        )
+    produced = canonicalize(stats)
+    for key in backpressure_keys:
+        # count=1 collapses only the first (running MapBatches operator)
+        # occurrence; the \b stops the "N" token from matching the "N" in an idle
+        # operator's "None".
+        produced = re.sub(
+            rf"('{key}': )(?:N|Z)\b", rf"\g<1>{not_asserted}", produced, count=1
+        )
+    # The per-stage training-thread blocked breakdown is timing-dependent
+    # (depends on whether prefetch hid the stall); strip it before comparing.
+    produced = re.sub(
+        r"\nPer-stage training-thread blocked time breakdown:\n"
+        r"(?:    \* [^\n]+\n)+",
+        "",
+        produced,
+    )
     assert (
-        canonicalize(stats)
+        produced
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
-* UDF time: T min, T max, T mean, T total
-* Output num rows per block: N min, N max, N mean, N total
+* Block transform time: T min, T max, T mean, T total
+{gen_block_transform_time_breakdown_str(True)}* Output num rows per block: N min, N max, N mean, N total
 * Output size bytes per block: N min, N max, N mean, N total
 * Output rows per task: N min, N max, N mean, N tasks used
 * Tasks per node: N min, N max, N mean; N nodes used
@@ -594,6 +817,8 @@ Dataset iterator time breakdown:
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
 Streaming split coordinator overhead time: T
+Total batches consumed: N
+Total rows consumed: N
 """
         f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'split(N, equal=False)'], True)}"  # noqa: E501
     )
@@ -622,7 +847,8 @@ def test_dataset_stats_basic(
                 f"{EXECUTION_STRING}\n"
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
-                f"* UDF time: T min, T max, T mean, T total\n"
+                f"* Block transform time: T min, T max, T mean, T total\n"
+                f"{gen_block_transform_time_breakdown_str(verbose_stats_logs)}"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -647,7 +873,7 @@ def test_dataset_stats_basic(
                 f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
                 f"* Remote wall time: T min, T max, T mean, T total\n"
                 f"* Remote cpu time: T min, T max, T mean, T total\n"
-                f"* UDF time: T min, T max, T mean, T total\n"
+                f"* Block transform time: T min, T max, T mean, T total\n"
                 f"* Output num rows per block: N min, N max, N mean, N total\n"
                 f"* Output size bytes per block: N min, N max, N mean, N total\n"
                 f"* Output rows per task: N min, N max, N mean, N tasks used\n"
@@ -748,9 +974,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -787,6 +1012,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_task_locality_miss: N,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
+        # The block transform time breakdown, exported per map operator.
+        "      block_transform_time_s: A,\n"
+        "      input_prep_time_s: A,\n"
+        "      function_body_time_s: A,\n"
+        "      output_build_time_s: A,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
@@ -812,6 +1042,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -913,9 +1144,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -952,6 +1182,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_task_locality_miss: Z,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
+        # The block transform time breakdown, exported per map operator.
+        "      block_transform_time_s: A,\n"
+        "      input_prep_time_s: A,\n"
+        "      function_body_time_s: A,\n"
+        "      output_build_time_s: A,\n"
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
@@ -977,6 +1212,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -1031,9 +1267,8 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
-        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
-        "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
@@ -1070,6 +1305,11 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_task_locality_miss: N,\n"
         "            block_generation_time: N,\n"
         "            block_serialization_time_s: N,\n"
+        # The block transform time breakdown, exported per map operator.
+        "            block_transform_time_s: A,\n"
+        "            input_prep_time_s: A,\n"
+        "            function_body_time_s: A,\n"
+        "            output_build_time_s: A,\n"
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time_s: N,\n"
@@ -1095,6 +1335,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_used: A,\n"
         "            cpu_usage: Z,\n"
         "            gpu_usage: Z,\n"
+        "            memory_usage: Z,\n"
         "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"  # noqa: E501
         "         },\n"
         "         operators_stats=[\n"
@@ -1232,10 +1473,17 @@ def test_dataset_stats_sort(ray_start_regular_shared):
     mds = ds.materialize()
 
     stats_summary = mds.get_stats_summary()
-    assert_operator_count(stats_summary, expected_count=2)
+    # Shuffle v2 plans sort as three operators: sample -> map -> reduce. The
+    # sampling op forwards blocks unchanged and reports no block stats.
+    find_stats_summary_in_parents(stats_summary, "SortSample")
+    for name in ("SortShuffleMap", "SortShuffleReduce"):
+        summary = find_stats_summary_in_parents(stats_summary, name)
+        assert_operator_count(summary, expected_count=1)
+        get_operator(summary, name_pattern=name)
 
-    get_operator(stats_summary, name_pattern="SortMap")
-    get_operator(stats_summary, name_pattern="SortReduce")
+    reduce_op = get_operator(stats_summary, name_pattern="SortShuffleReduce")
+    assert_basic_operator_metrics(reduce_op)
+    assert reduce_op.output_num_rows.sum == 1000
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):
@@ -1440,7 +1688,7 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     assert "Map" in op.operator_name
     assert op.wall_time is not None
     assert op.cpu_time is not None
-    assert op.udf_time is not None
+    assert op.block_transform_time is not None
     assert op.output_num_rows is not None
     assert op.output_size_bytes is not None
     assert op.node_count is not None
@@ -1449,6 +1697,476 @@ def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
 
     # Verify dataset iterator time breakdown exists
     assert stats_summary.iter_stats is not None
+
+
+def test_fused_block_transform_time_within_wall_time(ray_start_regular_shared):
+    """A fused operator's block transform time must not exceed its own remote wall time.
+
+    Timing each fused stage and summing counted upstream stages repeatedly,
+    reporting more block transform time than the tasks spent running.
+    """
+    sleep_s = 0.1
+    num_blocks = 4
+
+    def slow(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(slow, batch_size=None)
+        .map_batches(slow, batch_size=None)
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    # Both stages must actually have fused, otherwise this asserts nothing.
+    assert "MapBatches(slow)->MapBatches(slow)" in op.operator_name
+
+    # The headroom absorbs timing noise; double counting shows up at ~1.5x.
+    assert op.block_transform_time.sum <= op.wall_time.sum * 1.05, (
+        f"block transform time {op.block_transform_time.sum:.4f}s exceeds remote wall time "
+        f"{op.wall_time.sum:.4f}s"
+    )
+    # Both stages' sleeps are still accounted for.
+    assert op.block_transform_time.sum >= 2 * num_blocks * sleep_s * 0.9
+
+
+def test_fused_block_transform_time_survives_auto_batch_size(ray_start_regular_shared):
+    """An upstream fused stage must be timed even when a later one pulls it early.
+
+    ``_pre_process`` always runs while the chain is being built, but only
+    ``batch_size="auto"`` makes it consume: sizing batches needs a real block, so
+    it pulls one through the stages already in the chain, where a fixed
+    ``batch_size`` just builds a lazy generator and moves no data.
+    ``_peek_first_nonempty_block`` caches the block it pulled, so those stages
+    are never re-entered for it -- with one block per task, that peek is the only
+    time the first stage runs at all. A timer installed after the chain is
+    assembled sees none of it, which is the missing half measured here.
+    """
+    sleep_s = 0.1
+    num_blocks = 4
+
+    def slow_a(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    def slow_b(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(slow_a, batch_size=None)
+        .map_batches(slow_b, batch_size="auto")
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    # Both stages must actually have fused, otherwise this asserts nothing.
+    assert "MapBatches(slow_a)->MapBatches(slow_b)" in op.operator_name
+
+    real_s = 2 * num_blocks * sleep_s
+    assert op.block_transform_time.sum >= real_s * 0.9, (
+        f"block transform time {op.block_transform_time.sum:.4f}s covers only "
+        f"{op.block_transform_time.sum / real_s * 100:.0f}% of the {real_s:.2f}s spent in UDFs; "
+        "the stage that ran during the auto-batch-size peek was not timed"
+    )
+    assert op.block_transform_time.sum <= op.wall_time.sum * 1.05
+
+
+def test_block_transform_time_is_not_shared_across_concurrent_actor_tasks(
+    ray_start_regular_shared,
+):
+    """Tasks sharing an actor must not be credited with each other's block transform time.
+
+    An actor reuses one ``MapTransformer`` for every task it runs, and
+    ``max_concurrent_calls_per_actor > 1`` runs several at once. A UDF-time
+    total living on the transformer mixes those tasks together, and one task's
+    read-and-reset takes whatever the others had accumulated.
+
+    Every block here does exactly one ``sleep``, so the total and the mean stay
+    plausible even when attribution is broken -- only the per-block spread shows
+    it. A shared total reports min=0.000s and max=0.767s on this workload.
+    """
+    sleep_s = 0.25
+    num_blocks = 8
+
+    class Slow:
+        def __call__(self, batch):
+            time.sleep(sleep_s)
+            return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(
+            Slow,
+            batch_size=None,
+            compute=ActorPoolStrategy(
+                size=1,
+                max_concurrent_calls_per_actor=4,
+                enable_true_multi_threading=True,
+            ),
+        )
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    assert op.block_transform_time.count == num_blocks
+
+    # No block may be starved of the time it spent, ...
+    assert op.block_transform_time.min >= sleep_s * 0.5, (
+        f"a block reports {op.block_transform_time.min:.4f}s of block transform time for one {sleep_s}s "
+        "call; another task drained its total"
+    )
+    # ... nor credited with a sibling task's.
+    assert op.block_transform_time.max <= sleep_s * 2.0, (
+        f"a block reports {op.block_transform_time.max:.4f}s of block transform time for one {sleep_s}s "
+        "call; it absorbed another task's total"
+    )
+
+
+def _phase_components(op):
+    """The three figures that decompose an operator's block transform time."""
+    return {
+        "input_prep": op.input_prep_time,
+        "function_body": op.function_body_time,
+        "output_build": op.output_build_time,
+    }
+
+
+def test_block_transform_time_phases_sum_to_the_total(ray_start_regular_shared):
+    """The phase breakdown must account for the whole of ``block_transform_time``.
+
+    ``block_transform_time`` keeps meaning the whole map transform, so anything already
+    charting it is unaffected; the components only say where inside it the time
+    went. That is only true if they add up.
+    """
+    sleep_s = 0.1
+    num_blocks = 4
+
+    def slow(batch):
+        time.sleep(sleep_s)
+        return batch
+
+    ds = (
+        ray.data.range(num_blocks, override_num_blocks=num_blocks)
+        .map_batches(slow, batch_size=None)
+        .map_batches(slow, batch_size=None)
+        .materialize()
+    )
+
+    op = get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+    parts = _phase_components(op)
+    assert all(p is not None for p in parts.values())
+
+    component_sum = sum(p.sum for p in parts.values())
+    assert component_sum == pytest.approx(op.block_transform_time.sum, rel=1e-6), (
+        f"components {component_sum:.6f}s do not add up to block_transform_time "
+        f"{op.block_transform_time.sum:.6f}s: "
+        + ", ".join(f"{k}={v.sum:.6f}s" for k, v in parts.items())
+    )
+    # The UDF bodies are the sleeps, so they should dominate this pipeline.
+    assert op.function_body_time.sum >= 2 * num_blocks * sleep_s * 0.9
+
+
+def test_block_transform_time_phases_separate_object_serde(ray_start_regular_shared):
+    """Batch formatting and block building must be visible, not folded into the body.
+
+    The UDF here never reads the column of Python objects, so every second it is
+    charged for unpickling one is a second the old single figure attributed to
+    user code.
+    """
+    num_blocks = 2
+    rows_per_block = 200
+
+    class Payload:
+        def __init__(self, i):
+            self.blob = [{"k": "x" * 64, "v": float(i)} for _ in range(200)]
+
+    source = (
+        ray.data.range(num_blocks * rows_per_block, override_num_blocks=num_blocks)
+        .map_batches(
+            lambda b: {
+                "id": b["id"],
+                "obj": [Payload(i) for i in range(len(b["id"]))],
+            },
+            batch_size=None,
+        )
+        .materialize()
+    )
+
+    def untouched(batch):
+        # Reads only `id`; never looks at `obj`.
+        return {"n": [len(batch["id"])]}
+
+    ds = source.map_batches(untouched, batch_size=None).materialize()
+    # `name_pattern` is a regex, so match the bare function name rather than
+    # the parenthesised operator name.
+    op = get_operator(ds.get_stats_summary(), name_pattern="untouched")
+
+    assert op.input_prep_time.sum > op.function_body_time.sum, (
+        f"input prep {op.input_prep_time.sum:.4f}s should dominate the body "
+        f"{op.function_body_time.sum:.4f}s for a UDF that only counts rows"
+    )
+    parts = _phase_components(op)
+    assert sum(p.sum for p in parts.values()) == pytest.approx(
+        op.block_transform_time.sum, rel=1e-6
+    )
+
+
+def test_eagerly_consuming_stage_body_is_timed(ray_start_regular_shared):
+    """A stage that consumes its input eagerly still has its work attributed.
+
+    A write does its whole upload inside the call that builds its output
+    iterable, before any timing iterator wraps it, so timing only `__next__`
+    misses it entirely -- reporting microseconds for an upload that took
+    seconds. It belongs in `Function body`, which covers a datasink's body the
+    same way it covers a UDF's.
+    """
+    write_sleep_s = 0.3
+    num_blocks = 2
+
+    class SlowSink(Datasink):
+        def write(self, blocks, ctx):
+            written = 0
+            for _ in blocks:
+                time.sleep(write_sleep_s)
+                written += 1
+            return written
+
+    ds = ray.data.range(num_blocks, override_num_blocks=num_blocks).map_batches(
+        lambda batch: batch, batch_size=None
+    )
+    ds.write_datasink(SlowSink())
+
+    op = ds._write_ds.get_stats_summary().operators_stats[-1]
+    expected_s = write_sleep_s * num_blocks
+    assert op.function_body_time is not None, "stage body time was not collected"
+    # Generous lower bound: the point is that seconds of I/O are not reported as
+    # microseconds, not that the figure is tight.
+    assert op.function_body_time.sum > expected_s * 0.5, (
+        f"write of {expected_s}s reported {op.function_body_time.sum}s of "
+        f"function body time"
+    )
+    # And it is inside the headline total, not stranded outside it.
+    assert op.block_transform_time.sum >= op.function_body_time.sum
+
+
+def test_operator_without_a_udf_is_still_timed(
+    ray_start_regular_shared, restore_data_context
+):
+    """A chain with no user function in it is measured like any other.
+
+    A read's body is a function like a UDF's, and "block transform time" names
+    what it measures rather than who wrote it, so there is nothing to gate on.
+    Master reported zero for a standalone read.
+    """
+    ds = ray.data.range(100, override_num_blocks=2).materialize()
+    op = ds.get_stats_summary().operators_stats[-1]
+
+    assert op.block_transform_time.sum > 0.0, "read reported no block transform time"
+    # The phases are measured rather than absent, and they still add up.
+    parts = _phase_components(op)
+    assert all(s is not None for s in parts.values()), parts
+    assert sum(s.sum for s in parts.values()) == pytest.approx(
+        op.block_transform_time.sum, rel=1e-6
+    )
+    # A read's I/O is inside the timed window, so it cannot exceed the wall time.
+    assert op.block_transform_time.sum <= op.wall_time.sum * 1.05
+
+
+def test_row_transform_phases_are_opt_in(
+    ray_start_regular_shared, restore_data_context
+):
+    """Row transforms report only a total unless asked, and the total is the same.
+
+    Splitting a stage into phases costs a Python frame per item, which a row
+    transform pays per row. Flipping the flag must buy the breakdown without
+    moving the headline figure.
+    """
+    sleep_s = 0.02
+    num_rows = 40
+
+    def slow_row(row):
+        time.sleep(sleep_s)
+        return row
+
+    def run():
+        ds = (
+            ray.data.range(num_rows, override_num_blocks=4)
+            .map(slow_row)
+            .map(slow_row)
+            .materialize()
+        )
+        op = get_operator(ds.get_stats_summary(), name_pattern="Map")
+        parts = _phase_components(op).values()
+        return op, sum(p.sum for p in parts if p is not None)
+
+    DataContext.get_current().accurate_map_phase_timing = False
+    op_off, parts_off = run()
+    # Not measured at all, rather than measured as zero.
+    assert all(
+        p is None for p in _phase_components(op_off).values()
+    ), "row transforms should not be decomposed by default"
+    assert parts_off == 0.0
+    assert op_off.block_transform_time.sum >= 2 * num_rows * sleep_s * 0.9
+
+    DataContext.get_current().accurate_map_phase_timing = True
+    op_on, parts_on = run()
+    assert parts_on == pytest.approx(op_on.block_transform_time.sum, rel=1e-6)
+    # Same pipeline, same headline number; the flag only adds detail.
+    assert op_on.block_transform_time.sum == pytest.approx(
+        op_off.block_transform_time.sum, rel=0.25
+    )
+
+
+# How far a stage's measured time may sit from the time its body slept. Covers
+# that stage's own prep and block building plus scheduling noise, none of which
+# scales with the sleep.
+STAGE_TIME_TOLERANCE_S = 0.5
+
+
+def test_per_stage_timing_splits_a_fused_chain(
+    ray_start_regular_shared, restore_data_context
+):
+    """A fused operator can say which of its stages the time went to.
+
+    Fusion is what makes this necessary: two ``map_batches`` calls become one
+    operator, and one figure for both is exactly what leaves you unable to tell
+    which function to optimise. The second stage sleeps 10x longer than the
+    first here, so a correct split is unmistakable.
+    """
+    fast_s, slow_s = 0.02, 0.2
+    num_blocks = 4
+
+    def fast_stage(batch):
+        time.sleep(fast_s)
+        return batch
+
+    def slow_stage(batch):
+        time.sleep(slow_s)
+        return batch
+
+    def run():
+        ds = (
+            ray.data.range(num_blocks, override_num_blocks=num_blocks)
+            .map_batches(fast_stage, batch_size=None)
+            .map_batches(slow_stage, batch_size=None)
+            .materialize()
+        )
+        return get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+
+    DataContext.get_current().per_stage_map_timing = False
+    off = run()
+    # Not measured at all, rather than measured as zero.
+    assert off.stage_time is None, "per-stage timing should be off by default"
+
+    DataContext.get_current().per_stage_map_timing = True
+    on = run()
+    # The read fuses into the same operator, so it is stage 0.
+    assert (
+        len(on.stage_time) == 3
+    ), f"expected one entry per fused stage, got {len(on.stage_time)}"
+
+    read, fast, slow = on.stage_time
+    # Each stage should land near the time its own body slept, summed over the
+    # blocks. Both bounds are absolute on purpose: a stage's figure is its
+    # sleep plus its own prep and block building, and that overhead is roughly
+    # constant per block rather than a proportion of the sleep. A +-10% band
+    # would be 8ms wide on the fast stage and 80ms on the slow one, for the
+    # same few ms of real overhead, so it would fail on the fast stage alone.
+    for label, stage, sleep_s in (("fast", fast, fast_s), ("slow", slow, slow_s)):
+        expected_s = num_blocks * sleep_s
+        assert (
+            expected_s - STAGE_TIME_TOLERANCE_S
+            <= stage.sum
+            < expected_s + STAGE_TIME_TOLERANCE_S
+        ), f"{label} stage measured {stage.sum:.4f}s, expected ~{expected_s:.2f}s"
+    # The slow stage must also dominate. The ratio is diluted by each stage's
+    # own prep and block building, so assert a wide margin rather than the 10x
+    # the sleeps differ by.
+    assert slow.sum > fast.sum * 3, (
+        f"fast stage {fast.sum:.4f}s vs slow stage {slow.sum:.4f}s; the 10x "
+        "slower stage should dominate"
+    )
+    # Every stage gets an entry, so the split accounts for the whole total.
+    stage_sum = read.sum + fast.sum + slow.sum
+    assert stage_sum == pytest.approx(on.block_transform_time.sum, rel=1e-6)
+
+    # Turning it on must not move the headline figure.
+    assert on.block_transform_time.sum == pytest.approx(
+        off.block_transform_time.sum, rel=0.25
+    )
+
+
+def test_per_stage_timing_is_independent_of_phase_timing(
+    ray_start_regular_shared, restore_data_context
+):
+    """Row transforms can have the per-stage split without the per-phase one.
+
+    A coalesced stage is still one step carrying one stage index, so the two
+    flags buy different things and neither implies the other.
+    """
+    ctx = DataContext.get_current()
+    ctx.per_stage_map_timing = True
+    ctx.accurate_map_phase_timing = False
+
+    sleep_s = 0.01
+    num_rows = 8
+
+    def slow_row(row):
+        time.sleep(sleep_s)
+        return row
+
+    ds = (
+        ray.data.range(num_rows, override_num_blocks=2)
+        .map(lambda row: row)
+        .map(slow_row)
+        .materialize()
+    )
+    op = get_operator(ds.get_stats_summary(), name_pattern="Map")
+
+    assert all(p is None for p in _phase_components(op).values())
+    assert len(op.stage_time) == 3
+
+    # The sleeping stage is the last one, and its figure should land near the
+    # time it actually slept across every row. Absolute bounds, for the reason
+    # given in `test_per_stage_timing_splits_a_fused_chain`.
+    expected_s = num_rows * sleep_s
+    assert (
+        expected_s - STAGE_TIME_TOLERANCE_S
+        <= op.stage_time[-1].sum
+        < expected_s + STAGE_TIME_TOLERANCE_S
+    ), (
+        f"last stage measured {op.stage_time[-1].sum:.4f}s, "
+        f"expected ~{expected_s:.2f}s"
+    )
+
+    # Not a second magnitude check: this asserts the split is a partition of
+    # the total rather than an unrelated set of numbers, which is the property
+    # the whole breakdown rests on.
+    assert sum(s.sum for s in op.stage_time) == pytest.approx(
+        op.block_transform_time.sum, rel=1e-6
+    )
+
+
+def test_single_stage_chain_reports_one_entry(
+    ray_start_regular_shared, restore_data_context
+):
+    """An unfused operator reports one entry, equal to its total.
+
+    Reporting nothing would make the line appear and disappear as fusion
+    changes around an operator, which is harder to read than a figure that
+    repeats the total.
+    """
+    DataContext.get_current().per_stage_map_timing = True
+
+    ds = ray.data.range(8, override_num_blocks=2).materialize()
+    op = get_operator(ds.get_stats_summary(), name_pattern="Read")
+
+    assert len(op.stage_time) == 1
+    assert op.stage_time[0].sum == pytest.approx(op.block_transform_time.sum, rel=1e-6)
 
 
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
@@ -1739,50 +2457,6 @@ def test_individual_operator_num_rows(shutdown_only):
     assert op0_output == op1_input
 
 
-def test_sub_operator_num_rows(shutdown_only):
-    # The input num rows of sub operator:
-    # The first sub-operator: total output from all parent nodes
-    # Subsequent sub-operators: output of the previous sub-operator
-    ray.shutdown()
-    ray.init(num_cpus=2)
-
-    data1 = [{"id": i, "value1": i * 1.5, "category1": i % 5} for i in range(500)]
-    ds1 = ray.data.from_items(data1)
-    data2 = [{"id": i, "value2": i * 1.5, "category2": i % 5} for i in range(300)]
-    ds2 = ray.data.from_items(data2)
-    ds = ds1.join(ds2, join_type="left_outer", num_partitions=2)
-
-    stats_output = ds.materialize().stats()
-
-    patterns = {
-        "operator0_output": re.compile(
-            r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL
-        ),
-        "subop0_input": re.compile(
-            r"Suboperator 0.*?Total input num rows: (\d+)", re.DOTALL
-        ),
-        "subop0_output": re.compile(
-            r"Suboperator 0.*?Total output num rows: (\d+)", re.DOTALL
-        ),
-        "subop1_input": re.compile(
-            r"Suboperator 1.*?Total input num rows: (\d+)", re.DOTALL
-        ),
-    }
-
-    extracted_data = {}
-    for key, pattern in patterns.items():
-        match = pattern.search(stats_output)
-        if match:
-            extracted_data[key] = int(match.group(1))
-        else:
-            extracted_data[key] = None
-
-    assert extracted_data["operator0_output"] == 500
-    assert extracted_data["subop0_output"] == 800
-    assert extracted_data["operator0_output"] == extracted_data["subop0_input"]
-    assert extracted_data["subop0_output"] == extracted_data["subop1_input"]
-
-
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
 def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
@@ -1875,7 +2549,205 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    assert f"dataset_{ds._uuid}_0" == update_fn.call_args_list[-1].args[1]
+    assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
+    assert update_fn.call_args_list[-1].args[2] is None
+
+
+def test_create_distribution_prometheus_metric():
+    from ray.util.metrics import Gauge
+
+    metric = next(
+        metric
+        for metric in OpRuntimeMetrics.get_metrics()
+        if metric.name == "max_uss_bytes"
+    )
+
+    prom_metric = _create_prometheus_metric(metric, ("dataset", "operator"))
+
+    assert isinstance(prom_metric, dict)
+    assert all(isinstance(gauge, Gauge) for gauge in prom_metric.values())
+    assert {name: gauge.info["name"] for name, gauge in prom_metric.items()} == {
+        "mean": "data_max_uss_bytes_mean",
+        "max": "data_max_uss_bytes_max",
+    }
+    assert all(
+        gauge.info["tag_keys"] == ("dataset", "operator")
+        for gauge in prom_metric.values()
+    )
+
+
+def test_record_distribution_prometheus_metric():
+    prom_metric = {"mean": MagicMock(), "max": MagicMock()}
+    distribution = DistributionTracker()
+    tags = {"dataset": "dataset_0", "operator": "MapBatches(foo)"}
+
+    _record_prometheus_metric(prom_metric, distribution.as_dict(), tags)
+
+    prom_metric["mean"].set.assert_not_called()
+    prom_metric["max"].set.assert_not_called()
+
+    distribution.add_sample(100)
+    distribution.add_sample(300)
+    _record_prometheus_metric(prom_metric, distribution.as_dict(), tags)
+
+    prom_metric["mean"].set.assert_called_once_with(200, tags)
+    prom_metric["max"].set.assert_called_once_with(300, tags)
+
+
+@pytest.mark.parametrize(
+    "split_index_arg, expected_split_label",
+    [
+        ("3", "split_3"),
+        (None, "no_split"),
+    ],
+)
+def test_update_iteration_metrics_exports_new_iter_metrics(
+    split_index_arg, expected_split_label
+):
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_total_s.add(11.0)
+    stats.iter_blocked_production_wait_s.add(1.0)
+    stats.iter_blocked_data_transfer_s.add(1.5)
+    stats.iter_blocked_batching_s.add(2.0)
+    stats.iter_blocked_format_s.add(3.0)
+    stats.iter_blocked_collate_s.add(4.0)
+    stats.iter_blocked_finalize_s.add(5.0)
+    stats.iter_batches_total = 7
+    stats.iter_rows_total = 8
+
+    actor = _StatsActor.__ray_metadata__.modified_class.__new__(
+        _StatsActor.__ray_metadata__.modified_class
+    )
+    recorded = {}
+
+    class FakeGauge:
+        def __init__(self, name):
+            self.name = name
+
+        def set(self, value, tags):
+            recorded[self.name] = (value, tags)
+
+    for attr in [
+        "iter_initialize_s",
+        "iter_total_s",
+        "iter_get_ref_bundles_s",
+        "iter_get_s",
+        "iter_next_batch_s",
+        "iter_format_batch_s",
+        "iter_collate_batch_s",
+        "iter_finalize_batch_s",
+        "iter_blocks_local",
+        "iter_blocks_remote",
+        "iter_unknown_location",
+        "iter_prefetched_bytes",
+        "iter_block_fetching_s",
+        "iter_batch_shaping_s",
+        "iter_batch_formatting_s",
+        "iter_batch_collating_s",
+        "iter_batch_finalizing_s",
+        "time_to_first_batch_s",
+        "iter_total_blocked_s",
+        "iter_blocked_production_wait_s",
+        "iter_blocked_data_transfer_s",
+        "iter_blocked_batching_s",
+        "iter_blocked_format_s",
+        "iter_blocked_collate_s",
+        "iter_blocked_finalize_s",
+        "iter_batches_total",
+        "iter_rows_total",
+        "iter_user_s",
+    ]:
+        setattr(actor, attr, FakeGauge(attr))
+
+    actor.update_iteration_metrics(stats, "train_dataset", split_index_arg)
+
+    expected_tags = {"dataset": "train_dataset", "split": expected_split_label}
+    assert recorded["iter_total_s"] == (11.0, expected_tags)
+    assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
+    assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)
+    assert recorded["iter_blocked_batching_s"] == (2.0, expected_tags)
+    assert recorded["iter_blocked_format_s"] == (3.0, expected_tags)
+    assert recorded["iter_blocked_collate_s"] == (4.0, expected_tags)
+    assert recorded["iter_blocked_finalize_s"] == (5.0, expected_tags)
+    assert recorded["iter_batches_total"] == (7, expected_tags)
+    assert recorded["iter_rows_total"] == (8, expected_tags)
+
+
+def test_iter_stats_summary_has_new_fields():
+    """IterStatsSummary includes per-stage blocked timers and counters."""
+    stats = DatasetStats(metadata={}, parent=None)
+    summary = stats.to_summary()
+    iter_summary = summary.iter_stats
+
+    expected_fields = {
+        "blocked_production_wait_time",
+        "blocked_data_transfer_time",
+        "blocked_batching_time",
+        "blocked_format_time",
+        "blocked_collate_time",
+        "blocked_finalize_time",
+        "batches_total",
+        "rows_total",
+    }
+    actual_fields = {f.name for f in fields(iter_summary)}
+    assert expected_fields.issubset(
+        actual_fields
+    ), f"missing fields: {expected_fields - actual_fields}"
+
+
+def test_iter_stats_summary_reflects_accumulated_values():
+    """IterStatsSummary carries the accumulated timer values."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_blocked_batching_s.add(0.2)
+    stats.iter_batches_total = 10
+    stats.iter_rows_total = 320
+
+    summary = stats.to_summary().iter_stats
+    assert summary.blocked_production_wait_time.get() == pytest.approx(0.5)
+    assert summary.blocked_data_transfer_time.get() == pytest.approx(0.0)
+    assert summary.blocked_batching_time.get() == pytest.approx(0.2)
+    assert summary.batches_total == 10
+    assert summary.rows_total == 320
+
+
+def test_iter_stats_to_string_shows_stage_breakdown():
+    """to_string() renders per-stage breakdown when values are non-zero."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(1.5)
+    stats.iter_blocked_format_s.add(0.8)
+    stats.iter_batches_total = 5
+    stats.iter_rows_total = 160
+    stats.iter_total_blocked_s.add(2.3)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    assert "format" in text
+    assert "Total batches consumed: 5" in text
+    assert "Total rows consumed: 160" in text
+    assert "Per-stage training-thread blocked time breakdown" in text
+
+
+def test_iter_stats_to_string_omits_zero_stages():
+    """to_string() omits stages with zero values from the breakdown."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_total_blocked_s.add(0.5)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    # Zero stages should not appear
+    assert "batching" not in text
+    assert "collate" not in text
+
+
+def test_iter_stats_to_string_no_breakdown_when_all_zero():
+    """When all blocked_* stages are zero, no breakdown section appears."""
+    stats = DatasetStats(metadata={}, parent=None)
+    text = str(stats.to_summary().iter_stats)
+    assert "Per-stage training-thread blocked time breakdown" not in text
+    assert "Total batches consumed" not in text
+    assert "Total rows consumed" not in text
 
 
 def test_dataset_name_and_id():
@@ -1932,7 +2804,6 @@ import ray
 
 ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
 ds.set_name("train")
-ds._set_uuid("1234")
 
 split = ds.streaming_split(1)[0]
 
@@ -1943,8 +2814,15 @@ for epoch in range({num_epochs}):
     # Need to run the code as s sub process, because the executor
     # runs on the SplitCoordinator actor.
     out = run_string_as_driver(driver_script)
+    match = re.search(
+        r"Starting execution of Dataset (train_[A-Za-z0-9]+)_0",
+        out,
+    )
+    assert match is not None
+    dataset_id_prefix = match.group(1)
+
     for i in range(num_epochs):
-        dataset_id = f"train_1234_{i}"
+        dataset_id = f"{dataset_id_prefix}_{i}"
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 
@@ -2109,7 +2987,10 @@ def test_stats_manager(mock_get_or_create, shutdown_only):
     # calls will update on the first update (cold start), and on shutdown,
     # which is 2 for each thread.
     assert execution_calls == 2 * num_threads
-    assert iteration_calls == 2 * num_threads
+    # iteration_calls has 3 per thread: cold start + shutdown + the
+    # finally-block flush in DataIterator._iter_batches (added so an
+    # early ``break`` still records iter_total_s and flushes metrics).
+    assert iteration_calls == 3 * num_threads
 
 
 def test_stats_manager_stale_actor_handle(ray_start_cluster):
@@ -2496,6 +3377,106 @@ class TestTimerPercentile:
         assert t._total_count == 0.0
         assert t.min() == float("inf")
         assert t.max() == 0.0
+
+
+class TestTimeSpan:
+    """Tests for TimeSpan dataclass."""
+
+    def test_default_values(self):
+        """Default TimeSpan has start_s=0 and end_s=0."""
+        t = TimeSpan()
+        assert t.start_s == 0.0
+        assert t.end_s == 0.0
+
+    def test_duration(self):
+        """Duration is end_s - start_s."""
+        t = TimeSpan(start_s=1.0, end_s=3.5)
+        assert t.duration == pytest.approx(2.5)
+
+    def test_zero_duration(self):
+        """Default TimeSpan has zero duration."""
+        t = TimeSpan()
+        assert t.duration == 0.0
+
+
+class TestTimerSpan:
+    """Tests for Timer.timer() returning a TimeSpan and accumulating."""
+
+    def test_timer_yields_timespan(self, monkeypatch):
+        """timer() yields a fresh TimeSpan whose duration is accumulated."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with t.timer() as span:
+            perf[0] = 1.5
+        assert isinstance(span, TimeSpan)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
+        assert t.max() == 0.5
+        assert t.min() == 0.5
+
+    def test_each_call_returns_fresh_span(self, monkeypatch):
+        """Each timer() call yields a distinct TimeSpan instance."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with t.timer() as s1:
+            perf[0] = 2.0
+        perf[0] = 10.0
+        with t.timer() as s2:
+            perf[0] = 12.0
+        assert s1 is not s2
+        assert s1.duration == 1.0
+        assert s2.duration == 2.0
+        assert t.get() == 3.0
+
+    def test_maybe_time_skips_when_timer_none(self):
+        """_maybe_time(None) yields None."""
+        with _maybe_time(None) as span:
+            assert span is None
+        assert span is None
+
+    def test_maybe_time_yields_span_when_timer_given(self, monkeypatch):
+        """_maybe_time(Timer) yields a TimeSpan backed by the Timer."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with _maybe_time(t) as span:
+            perf[0] = 1.5
+        assert isinstance(span, TimeSpan)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
+
+
+@pytest.mark.parametrize(
+    "stage,attr",
+    [
+        (IterationStage.PRODUCTION_WAIT, "iter_blocked_production_wait_s"),
+        (IterationStage.DATA_TRANSFER, "iter_blocked_data_transfer_s"),
+        (IterationStage.BATCHING, "iter_blocked_batching_s"),
+        (IterationStage.FORMAT, "iter_blocked_format_s"),
+        (IterationStage.COLLATE, "iter_blocked_collate_s"),
+        (IterationStage.FINALIZE, "iter_blocked_finalize_s"),
+    ],
+)
+class TestGetBlockedTimer:
+    """Tests for DatasetStats.get_blocked_timer() stage->Timer mapping."""
+
+    def test_get_blocked_timer_returns_correct_attribute(self, stage, attr):
+        """get_blocked_timer(stage) returns the Timer matching the stage."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert stats.get_blocked_timer(stage) is getattr(stats, attr)
+
+    def test_get_blocked_timer_returns_timer_instance(self, stage, attr):
+        """get_blocked_timer returns a real Timer (not None)."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert isinstance(stats.get_blocked_timer(stage), Timer)
 
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):

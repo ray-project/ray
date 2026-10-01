@@ -1,3 +1,9 @@
+# This file is used to auto-generate the Examples Gallery page.
+# Do not edit the generated examples.rst page directly.
+# To request formatting changes to the generated page, file an issue with the Ray docs team.
+# To reference the generated page, use examples.html.
+# When adding a new example, include the skill level and framework, if applicable.
+
 text: Below are tutorials for exploring Ray Serve capabilities and learning how to integrate different modeling frameworks.
 groupby: related_technology
 examples:

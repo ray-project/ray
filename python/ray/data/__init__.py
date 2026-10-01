@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data._internal.random_config import RandomSeedConfig
+from ray.data._internal.stats_summary_actor import list_stats_summaries
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,
@@ -71,9 +72,11 @@ from ray.data.read_api import (  # noqa: F401
     read_images,
     read_json,
     read_lance,
+    read_lerobot,
     read_mcap,
     read_mongo,
     read_numpy,
+    read_orc,
     read_parquet,
     read_snowflake,
     read_sql,
@@ -82,6 +85,14 @@ from ray.data.read_api import (  # noqa: F401
     read_unity_catalog,
     read_videos,
     read_webdataset,
+    read_zarr,
+)
+from ray.data.catalog import (
+    CatalogAccessMode,
+    Catalog,
+    ReaderFormat,
+    ResolvedSource,
+    DatabricksUnityCatalog,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
@@ -149,11 +160,13 @@ __all__ = [
     "SinkMode",
     "SaveMode",
     "TaskPoolStrategy",
+    "list_stats_summaries",
     "from_daft",
     "from_dask",
     "from_items",
     "from_arrow",
     "from_arrow_refs",
+    "from_blocks",
     "from_mars",
     "from_modin",
     "from_numpy",
@@ -181,16 +194,24 @@ __all__ = [
     "read_images",
     "read_json",
     "read_lance",
+    "read_lerobot",
     "read_mcap",
     "read_numpy",
     "read_mongo",
+    "read_orc",
     "read_parquet",
     "read_snowflake",
     "read_sql",
     "read_tfrecords",
     "read_unity_catalog",
     "read_videos",
+    "read_zarr",
     "read_webdataset",
+    "CatalogAccessMode",
+    "Catalog",
+    "ReaderFormat",
+    "ResolvedSource",
+    "DatabricksUnityCatalog",
     "KafkaAuthConfig",
     "Preprocessor",
 ]

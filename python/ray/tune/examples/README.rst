@@ -41,6 +41,16 @@ PyTorch Examples
 - `mnist_pytorch_trainable <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch_trainable.py>`__: Converts the PyTorch MNIST example to use Tune with Trainable API. Also uses the HyperBandScheduler and checkpoints the model at the end.
 
 
+PyTorch Lightning Examples
+--------------------------
+
+For a full walkthrough of tuning a PyTorch Lightning model with Ray Tune, see the
+`Using PyTorch Lightning with Tune <https://docs.ray.io/en/latest/tune/examples/tune-pytorch-lightning.html>`__ tutorial.
+
+- `mnist_ptl_mini <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_ptl_mini.py>`__: A minimal example of tuning a PyTorch Lightning MNIST classifier with Ray Tune.
+- `mlflow_ptl <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mlflow_ptl.py>`__: Example for using `MLflow <https://github.com/mlflow/mlflow/>`__ and PyTorch Lightning with Ray Tune.
+
+
 XGBoost Example
 ---------------
 

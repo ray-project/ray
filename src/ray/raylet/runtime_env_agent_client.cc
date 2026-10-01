@@ -343,7 +343,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       if ((!status.IsNotFound()) && (!status.IsDisconnected())) {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
-      } else if (clock_.NowUnixMillis() > deadline_ms) {
+      } else if (clock_.SteadyNowMillis() > deadline_ms) {
         RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
                        << "ms. Status: " << status << ", address: " << this->address_
                        << ", port: " << this->port_str_ << ", exiting immediately...";
@@ -411,7 +411,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                          << serialized_runtime_env;
           callback(false, "", error_message);
         },
-        clock_.NowUnixMillis() + agent_register_timeout_ms_);
+        clock_.SteadyNowMillis() + agent_register_timeout_ms_);
   }
 
   // Does the real work of calling HTTP.
@@ -482,7 +482,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
           callback(false);
         },
-        clock_.NowUnixMillis() + agent_register_timeout_ms_);
+        clock_.SteadyNowMillis() + agent_register_timeout_ms_);
   }
 
   // Invokes `succ_callback` with server reply (which may be OK or application errors),

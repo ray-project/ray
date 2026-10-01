@@ -23,14 +23,9 @@ class Count(LogicalOperator):
     COLUMN_NAME = "__num_rows"
 
     input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
-    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
 
     def infer_schema(self) -> Optional["Schema"]:
         # Fixed output: one row per partial count with a single ``__num_rows``

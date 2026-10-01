@@ -7,7 +7,6 @@ import {
   normalizeAccelerators,
   UnifiedAcceleratorStat,
 } from "../../util/accelerator";
-import { memoryConverter } from "../../util/converter";
 
 export type NodeAcceleratorEntryProps = {
   slot: number;
@@ -18,12 +17,12 @@ const GpuTooltip = ({ gpu }: { gpu: GPUStats }) => {
   return (
     <Box>
       <Typography variant="body2">Name: {gpu.name}</Typography>
-      {gpu.temperatureC !== undefined && (
+      {gpu.temperatureC !== undefined && gpu.temperatureC !== null && (
         <Typography variant="body2">
           Temperature: {gpu.temperatureC}°C
         </Typography>
       )}
-      {gpu.powerMw !== undefined && (
+      {gpu.powerMw !== undefined && gpu.powerMw !== null && (
         <Typography variant="body2">
           Power Draw: {(gpu.powerMw / 1000).toFixed(1)} W
         </Typography>
@@ -45,14 +44,7 @@ const TpuTooltip = ({ tpu }: { tpu: TPUStats }) => {
         Tensorcore: {tensorcoreUtilization.toFixed(1)}%
       </Typography>
       <Typography variant="body2">
-        HBM Bandwidth: {hbmUtilization.toFixed(1)}%
-      </Typography>
-      <Typography variant="body2">
-        Used Memory: {memoryConverter(tpu.memoryUsed)} /{" "}
-        {memoryConverter(tpu.memoryTotal)}
-      </Typography>
-      <Typography variant="body2">
-        Free Memory: {memoryConverter(tpu.memoryTotal - tpu.memoryUsed)}
+        HBM Utilization: {hbmUtilization.toFixed(1)}%
       </Typography>
     </Box>
   );
@@ -75,7 +67,8 @@ export const NodeAcceleratorEntry: React.FC<NodeAcceleratorEntryProps> = ({
     <Tooltip title={title}>
       <Box sx={{ display: "flex", minWidth: 120 }}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
-        {accelerator.utilization !== undefined ? (
+        {accelerator.utilization !== undefined &&
+        accelerator.utilization !== null ? (
           <UsageBar
             percent={accelerator.utilization}
             text={`${accelerator.utilization.toFixed(1)}%`}

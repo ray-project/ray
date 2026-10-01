@@ -3,6 +3,7 @@
 [Aa]sync
 [Cc]odec
 [Cc]omposable
+Databricks
 [Dd]eduplicate(s)?
 [Dd]eduplication
 [Dd]etokenization
@@ -16,11 +17,12 @@
 [Pp]arallelization
 [Pp]erformant
 [Pp]rofiler
-[Rr]esample
+[Rr]esample[sd]?
 [Rr]esampling
 [Ss]pectogram(s)?
 [Ss]ubclassing
 [Tt][Ll][Ss]
+vCPUs?
 [Vv]ision LMs
 admin
 agentic
@@ -91,7 +93,7 @@ Mixtral
 MLflow
 MLOps
 MNIST
-namespace
+namespaces?
 NER
 NLP
 Nsight
@@ -99,7 +101,7 @@ NumPy
 NVIDIA
 NVLink
 NVMe
-OOM
+OOM(s)?
 open-source
 Palo
 [Pp][Aa][Cc][Kk]

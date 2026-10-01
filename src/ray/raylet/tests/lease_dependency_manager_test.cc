@@ -106,6 +106,49 @@ TEST_F(LeaseDependencyManagerTest, TestRecordMetrics) {
   ASSERT_EQ(tag_to_value.begin()->first.at("Name"), "foo");
 }
 
+// A waiting lease must stay visible on every RecordMetrics() tick (not just on
+// transitions), and be retracted to 0 once the lease is no longer waiting. The
+// metrics backend clears gauge observations after each export (#56405).
+TEST_F(LeaseDependencyManagerTest, TestRecordMetricsReEmitsAndRetracts) {
+  // Returns the gauge value recorded for the given State tag, or -2 if absent.
+  auto value_for_state = [this](const std::string &state) -> double {
+    for (const auto &[tags, value] : fake_task_by_state_counter_.GetTagToValue()) {
+      if (tags.at("State") == state) {
+        return value;
+      }
+    }
+    return -2;
+  };
+
+  // Request dependencies for a lease whose argument is not local: the lease stays
+  // waiting, so waiting_leases_counter_["foo"] is a live (non-zero) entry.
+  auto obj_id = ObjectID::FromRandom();
+  lease_dependency_manager_.RequestLeaseDependencies(
+      LeaseID::FromRandom(), ObjectIdsToRefs({obj_id}), {"foo", false});
+  ASSERT_EQ(NumWaiting("foo"), 1);
+
+  lease_dependency_manager_.RecordMetrics();
+  // PENDING_NODE_ASSIGNMENT is the negation of the owner-side count; the argument
+  // fetch is active (the mock reports 0 inactive pulls).
+  ASSERT_EQ(value_for_state("PENDING_NODE_ASSIGNMENT"), -1);
+  ASSERT_EQ(value_for_state("PENDING_ARGS_FETCH"), 1);
+
+  // With no transition, the waiting lease must still be re-asserted.
+  fake_task_by_state_counter_.Clear();
+  lease_dependency_manager_.RecordMetrics();
+  ASSERT_EQ(value_for_state("PENDING_NODE_ASSIGNMENT"), -1)
+      << "waiting lease must persist without a transition";
+  ASSERT_EQ(value_for_state("PENDING_ARGS_FETCH"), 1);
+
+  // The argument becomes local: the lease is ready and the counter drops to 0.
+  lease_dependency_manager_.HandleObjectLocal(obj_id);
+  ASSERT_EQ(NumWaiting("foo"), 0);
+  lease_dependency_manager_.RecordMetrics();
+  ASSERT_EQ(value_for_state("PENDING_NODE_ASSIGNMENT"), 0)
+      << "gauge must be retracted to 0 once the lease is ready";
+  ASSERT_EQ(value_for_state("PENDING_ARGS_FETCH"), 0);
+}
+
 /// Test requesting the dependencies for a lease. The dependency manager should
 /// return the lease ID as ready once all of its arguments are local.
 TEST_F(LeaseDependencyManagerTest, TestSimpleLease) {

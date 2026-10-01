@@ -36,8 +36,7 @@ class ServerCallFactory;
 
 #define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
   RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push) \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull) \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(FreeObjects)
+  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
@@ -57,10 +56,6 @@ class ObjectManagerServiceHandler {
   virtual void HandlePull(PullRequest request,
                           PullReply *reply,
                           SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjects(FreeObjectsRequest request,
-                                 FreeObjectsReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.
@@ -81,7 +76,8 @@ class ObjectManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      std::shared_ptr<const AuthenticationToken> auth_token) override {
+      std::shared_ptr<const AuthenticationToken> auth_token,
+      GrpcServerMetrics &server_metrics) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 

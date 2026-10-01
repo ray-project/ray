@@ -44,7 +44,6 @@ _HEAVY_MODULES = (
     "ray.llm._internal.batch.stages.vllm_engine_stage",
     "ray.llm._internal.batch.stages.sglang_engine_stage",
     "ray.llm._internal.batch.stages.prepare_multimodal_stage",
-    "ray.llm._internal.batch.stages.prepare_image_stage",
     "ray.llm._internal.batch.stages.serve_deployment_stage",
     # Processor submodules whose top-level statements import heavy deps
     # directly (e.g. ``import transformers`` in sglang_engine_proc.py).
@@ -103,7 +102,6 @@ def test_http_request_stage_only_loads_its_own_submodule():
         ("TokenizeStage", "tokenize_stage"),
         ("DetokenizeStage", "tokenize_stage"),
         ("ChatTemplateStage", "chat_template_stage"),
-        ("PrepareImageStage", "prepare_image_stage"),
         ("PrepareMultimodalStage", "prepare_multimodal_stage"),
         ("ServeDeploymentStage", "serve_deployment_stage"),
         ("SGLangEngineStage", "sglang_engine_stage"),
@@ -167,13 +165,55 @@ def test_dir_lists_lazy_attrs():
         "TokenizeStage",
         "DetokenizeStage",
         "ChatTemplateStage",
-        "PrepareImageStage",
         "PrepareMultimodalStage",
         "ServeDeploymentStage",
         "SGLangEngineStage",
         "vLLMEngineStage",
     ):
         assert name in dir(stages)
+
+
+# Stable external dependencies that the PUBLIC ``ray.data.llm`` import must NOT
+# pull in. Checked by prefix (so ``vllm.foo`` / ``starlette.routing`` also
+# count) rather than by exact keys, so the test does not couple to Ray's own
+# internal module layout.
+_PUBLIC_API_HEAVY_MODULE_PREFIXES = (
+    "vllm",
+    "transformers",
+    "starlette",
+)
+
+
+def test_import_ray_data_llm_does_not_import_heavy_deps():
+    """``import ray.data.llm`` (the public API) must stay lightweight.
+
+    Regression test for the public entry point: the module eagerly subclasses
+    every processor config, so the engine processor submodules are imported at
+    module import time. Those submodules must defer their heavy dependencies
+    (transformers, torch, ray.serve, engine stages, ...) into their builder
+    functions -- otherwise a user who only needs the lightweight HTTP
+    processor pays the full ML-stack import cost (or a hard ImportError when
+    the optional dependencies are not installed).
+    """
+    out = _run_in_subprocess(
+        f"""
+        import sys
+        import ray.data.llm  # noqa: F401
+
+        prefixes = {_PUBLIC_API_HEAVY_MODULE_PREFIXES!r}
+        loaded = sorted(
+            name
+            for name in sys.modules
+            if any(name == p or name.startswith(p + ".") for p in prefixes)
+        )
+        print(','.join(loaded))
+        """
+    )
+    loaded = [m for m in out.strip().split(",") if m]
+    assert loaded == [], (
+        "`import ray.data.llm` must not pull in heavy ML dependencies, "
+        f"but the following modules ended up loaded: {loaded}"
+    )
 
 
 if __name__ == "__main__":

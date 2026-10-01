@@ -9,6 +9,7 @@ from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
+import grpc
 import pytest
 
 import ray
@@ -20,6 +21,7 @@ from ray.exceptions import (
     RayTaskError,
     TaskCancelledError,
 )
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -34,7 +36,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
 )
 from ray.serve._private.replica import Replica as ServeReplica
-from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.replica_result import ReplicaResult, gRPCReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
     RequestRouter,
@@ -103,7 +105,7 @@ class FakeReplicaResult(ReplicaResult):
     def cancel(self):
         self.cancelled = True
 
-    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+    def to_object_ref(self) -> ray.ObjectRef:
         raise NotImplementedError
 
     async def to_object_ref_async(self) -> ray.ObjectRef:
@@ -425,6 +427,9 @@ class FakeServeReplicaForSlotReservation(ServeReplica):
         self._metrics_manager = FakeReplicaMetricsManager()
         self._reserved_slots = set()
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
+        # The real __init__ is bypassed; set the quiesce flag read by
+        # _can_accept_request (reservations are rejected once quiescing).
+        self._quiescing = False
 
 
 @pytest.mark.asyncio
@@ -736,6 +741,106 @@ class TestDeploymentBroadcastResponseLocalTesting:
         # Second call returns the same cached list.
         replica_results_2 = response._fetch_replica_results_sync()
         assert replica_results_2 is replica_results
+
+
+class FakeGrpcCallForRejection:
+    """Minimal stand-in for a grpc.aio.Call whose connection attempt fails."""
+
+    def __init__(self, error: Exception):
+        self._error = error
+
+    async def wait_for_connection(self):
+        raise self._error
+
+
+class FakeGrpcReplicaResultForRejection(gRPCReplicaResult):
+    """Bypasses the real __init__ (context bookkeeping, background tasks);
+    sets only the attributes get_rejection_response() reads."""
+
+    def __init__(self, call, *, is_streaming: bool = False):
+        self._call = call
+        self._with_rejection = True
+        self._rejection_response = None
+        self._is_streaming = is_streaming
+        # ActorUnavailableError -> ActorID(actor_id) requires a valid 16-byte
+        # binary, so use a real random ActorID rather than an arbitrary value.
+        self._actor_id = ray.ActorID.from_random()
+
+
+def _aio_rpc_error(
+    code: grpc.StatusCode, initial_metadata: Optional[grpc.aio.Metadata] = None
+) -> grpc.aio.AioRpcError:
+    return grpc.aio.AioRpcError(
+        code=code,
+        initial_metadata=initial_metadata or grpc.aio.Metadata(),
+        trailing_metadata=grpc.aio.Metadata(),
+        details=code.name,
+        debug_error_string=None,
+    )
+
+
+@pytest.mark.asyncio
+class TestGrpcRejectionResponseErrorMapping:
+    """get_rejection_response() error mapping for dispatches that provably
+    never started executing (no `accepted` initial metadata received).
+
+    CANCELLED is what a replica's gRPC server returns for streams landing in
+    its `server.stop()` window during graceful shutdown (quiesce). Like
+    UNAVAILABLE, it must surface as ActorUnavailableError so the router
+    retries the request on another replica instead of failing it.
+    """
+
+    @pytest.mark.parametrize(
+        "code", [grpc.StatusCode.CANCELLED, grpc.StatusCode.UNAVAILABLE]
+    )
+    async def test_pre_accept_errors_map_to_actor_unavailable(self, code):
+        result = FakeGrpcReplicaResultForRejection(
+            FakeGrpcCallForRejection(_aio_rpc_error(code))
+        )
+
+        with pytest.raises(ActorUnavailableError):
+            await result.get_rejection_response()
+
+    async def test_other_codes_propagate_raw(self):
+        result = FakeGrpcReplicaResultForRejection(
+            FakeGrpcCallForRejection(_aio_rpc_error(grpc.StatusCode.INTERNAL))
+        )
+
+        with pytest.raises(grpc.aio.AioRpcError):
+            await result.get_rejection_response()
+
+    async def test_accepted_metadata_on_error_is_not_retried(self):
+        # A unary call that fails mid-execution carries `accepted=1` initial
+        # metadata in the error: the request DID start executing, so it must
+        # NOT be converted into a retryable ActorUnavailableError.
+        error = _aio_rpc_error(
+            grpc.StatusCode.CANCELLED,
+            initial_metadata=grpc.aio.Metadata(
+                ("accepted", "1"), ("num_ongoing_requests", "3")
+            ),
+        )
+        result = FakeGrpcReplicaResultForRejection(FakeGrpcCallForRejection(error))
+
+        info = await result.get_rejection_response()
+        assert info.accepted is True
+        assert info.num_ongoing_requests == 3
+
+    async def test_streaming_pre_accept_cancelled_maps_to_actor_unavailable(self):
+        # For streaming calls initial metadata is sent before execution, so
+        # an error during connection establishment always means the request
+        # never started; the unary metadata-recovery branch is skipped.
+        error = _aio_rpc_error(
+            grpc.StatusCode.CANCELLED,
+            initial_metadata=grpc.aio.Metadata(
+                ("accepted", "1"), ("num_ongoing_requests", "3")
+            ),
+        )
+        result = FakeGrpcReplicaResultForRejection(
+            FakeGrpcCallForRejection(error), is_streaming=True
+        )
+
+        with pytest.raises(ActorUnavailableError):
+            await result.get_rejection_response()
 
 
 @pytest.mark.asyncio
@@ -2046,6 +2151,7 @@ class TestChooseReplica:
         )
         replica = FakeReplica(r1_id)
         fake_request_router._replicas_list = [replica]
+        fake_request_router._replicas = {r1_id: replica}
 
         async def fake_choose_replicas(candidate_replicas, pending_request=None):
             return [candidate_replicas]
@@ -2261,10 +2367,11 @@ class TestRouterMetricsManager:
         assert metrics_manager.should_send_scaled_to_zero_optimized_push(0)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("columnar", [True, False])
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
     )
-    async def test_push_autoscaling_metrics_to_controller(self):
+    async def test_push_autoscaling_metrics_to_controller(self, columnar):
         timer = MockTimer()
         start = random.randint(50, 100)
         timer.reset(start)
@@ -2310,18 +2417,32 @@ class TestRouterMetricsManager:
                 running_requests[r] += 1
                 metrics_manager.inc_num_running_requests_for_replica(r)
 
-            # Check metrics are pushed correctly (compressed)
-            metrics_manager.push_autoscaling_metrics_to_controller()
+            # Which wire format we chose to send. The kill switch is the only thing
+            # deciding it, so both of its positions are asserted here.
+            with patch(
+                "ray.serve._private.router.RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS",
+                columnar,
+            ):
+                metrics_manager.push_autoscaling_metrics_to_controller()
             mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_once()
             (
-                compressed,
+                payload,
             ) = mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
                 0
             ]
-            assert isinstance(compressed, bytes)
-            handle_metric_report = decompress_metric_report(compressed)
-            assert handle_metric_report.deployment_id == deployment_id
-            assert handle_metric_report.handle_id == handle_id
+            assert isinstance(payload, bytes)
+            assert autoscaling_metrics_codec.is_columnar(payload) is columnar
+            if columnar:
+                report = autoscaling_metrics_codec.decode_handle_flat(payload)
+                assert report["deployment_id"] == deployment_id
+                assert report["handle_id"] == handle_id
+                assert set(report["replica_keys"]) == {
+                    r.to_full_id_str() for r in running_requests
+                }
+            else:
+                report = decompress_metric_report(payload)
+                assert report.deployment_id == deployment_id
+                assert report.handle_id == handle_id
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -2544,6 +2665,7 @@ class TestSingletonThreadRouter:
             port=None,
             node_id="fake-node",
             availability_zone=None,
+            replica_metadata={},
             _replica=None,
             _deployment_id=None,
             _request_metadata=None,
@@ -2619,6 +2741,143 @@ class TestSingletonThreadRouter:
             assert reserved_slots == 0
 
     @pytest.mark.asyncio
+    async def test_no_reserve_cancel_stops_replica_wait(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+    ):
+        """Cancellation stops pick-only selection while it waits for replicas."""
+        asyncio_router, fake_request_router = setup_router
+        thread_router = setup_singleton_thread_router
+        router_loop = thread_router._get_singleton_asyncio_loop(component="unknown")
+
+        # FakeRequestRouter normally bypasses RequestRouter initialization. Use the
+        # base setup here to exercise its real no-replica wait loop.
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+
+        wait_started = threading.Event()
+        wait_finished = threading.Event()
+
+        class SignalingEvent(asyncio.Event):
+            async def wait(self):
+                wait_started.set()
+                try:
+                    return await super().wait()
+                finally:
+                    wait_finished.set()
+
+        replicas_updated_event = SignalingEvent()
+        fake_request_router._lazily_constructed_replicas_updated_event = (
+            replicas_updated_event
+        )
+
+        async def choose_available_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = choose_available_replicas
+
+        async def runner():
+            async with thread_router.choose_replica(
+                dummy_request_metadata(), _reserve=False
+            ):
+                pytest.fail("Selection should be cancelled before yielding a replica.")
+
+        task = asyncio.create_task(runner())
+        try:
+            await async_wait_for_condition(wait_started.is_set, timeout=2)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await async_wait_for_condition(wait_finished.is_set, timeout=2)
+        finally:
+            # Unblock selection before test teardown.
+            replica_id = ReplicaID(
+                unique_id="test-replica-1",
+                deployment_id=DeploymentID(name="test-deployment"),
+            )
+            replica = FakeReplica(replica_id)
+
+            def add_replica_and_unblock():
+                fake_request_router._replicas = {replica_id: replica}
+                fake_request_router._replicas_list = [replica]
+                replicas_updated_event.set()
+
+            router_loop.call_soon_threadsafe(add_replica_and_unblock)
+            await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_no_reserve_cancel_stops_empty_retries(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        setup_singleton_thread_router: SingletonThreadRouter,
+        monkeypatch,
+    ):
+        """Cancellation closes pick-only selection after it enters backoff."""
+        _, fake_request_router = setup_router
+        thread_router = setup_singleton_thread_router
+        router_loop = thread_router._get_singleton_asyncio_loop(component="unknown")
+
+        RequestRouter.__init__(
+            fake_request_router,
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+        )
+        replica_id = ReplicaID(
+            unique_id="test-replica-1",
+            deployment_id=DeploymentID(name="test-deployment"),
+        )
+        replica = FakeReplica(replica_id)
+        fake_request_router._replicas = {replica_id: replica}
+        fake_request_router._replicas_list = [replica]
+
+        backoff_started = threading.Event()
+        unblock_backoff = asyncio.Event()
+        allow_selection = threading.Event()
+
+        async def choose_replicas(candidate_replicas, pending_request=None):
+            assert pending_request is not None
+            pending_request.routing_context.should_backoff = True
+            if allow_selection.is_set():
+                return [candidate_replicas]
+            return []
+
+        async def block_backoff(attempt):
+            backoff_started.set()
+            await unblock_backoff.wait()
+
+        fake_request_router.choose_replicas = choose_replicas
+        monkeypatch.setattr(fake_request_router, "_backoff", block_backoff)
+
+        async def runner():
+            async with thread_router.choose_replica(
+                dummy_request_metadata(), _reserve=False
+            ):
+                pytest.fail("Selection should be cancelled before yielding a replica.")
+
+        task = asyncio.create_task(runner())
+        try:
+            await async_wait_for_condition(backoff_started.is_set, timeout=2)
+            assert fake_request_router.num_routing_tasks_in_backoff == 1
+
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            await async_wait_for_condition(
+                lambda: fake_request_router.num_routing_tasks_in_backoff == 0,
+                timeout=2,
+            )
+        finally:
+            # Unblock selection before test teardown.
+            allow_selection.set()
+            router_loop.call_soon_threadsafe(unblock_backoff.set)
+            await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
     async def test_finally_shields_cleanup_from_cancellation(
         self,
         setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
@@ -2639,6 +2898,7 @@ class TestSingletonThreadRouter:
             port=None,
             node_id="fake-node",
             availability_zone=None,
+            replica_metadata={},
             _replica=None,
             _deployment_id=None,
             _request_metadata=None,

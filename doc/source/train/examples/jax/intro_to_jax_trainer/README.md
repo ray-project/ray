@@ -23,28 +23,16 @@ In this tutorial, you will:
   <p><strong>Note:</strong> This tutorial is optimized for the Anyscale platform. When running on open source Ray, additional configuration is required. For example, you need to manually:</p>
 
   <ul>
-    <li><strong>Configure your Ray cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li>
-    <li><strong>Manage dependencies</strong>: Manually install and manage dependencies on each node.</li>
-    <li><strong>Set up storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
+    <li><strong>Configure your Ray cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li> <li><strong>Manage dependencies</strong>: Manually install and manage dependencies on each node.</li> <li><strong>Set up storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
   </ul>
 </div>
 
 <style>
-  div#anyscale-note > p,
-  div#anyscale-note > ul,
-  div#anyscale-note > ul li {
-    color: black;
-  }
+  div#anyscale-note > p, div#anyscale-note > ul, div#anyscale-note > ul li { color: black; }
 
-  div#anyscale-note {
-    background-color: rgb(255, 243, 205);
-  }
+  div#anyscale-note { background-color: rgb(255, 243, 205); }
 
-  div#anyscale-note {
-    border: 1px solid #ccc; 
-    border-radius: 8px;
-    padding: 15px;
-  }
+  div#anyscale-note { border: 1px solid #ccc; border-radius: 8px; padding: 15px; }
 
 </style>
 

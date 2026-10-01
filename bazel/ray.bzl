@@ -10,6 +10,9 @@ COPTS_TESTS = select({
     "@platforms//os:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
+        # Prevent Windows.h from including WinSock.h, which conflicts with
+        # WinSock2.h used by Boost.Asio.
+        "-DWIN32_LEAN_AND_MEAN",
     ],
     "//conditions:default": [
         "-Wunused-result",

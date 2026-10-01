@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import socket
@@ -16,8 +17,10 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
+from ray._private.test_utils import request_with_auth_token
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
+    SERVE_INSTANCE_SIGNAL_ACTOR_NAME,
     TELEMETRY_ROUTE_PREFIX,
     TEST_METRICS_EXPORT_PORT,
     check_ray_started,
@@ -27,10 +30,15 @@ from ray.serve._private.test_utils import (
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import (  # noqa
+    _isolate_token_auth_state,  # noqa: F401  autouse fixture
+    _restore_token_auth_env,  # noqa: F401
+    _token_auth_env_baseline,  # noqa: F401
     external_redis,
     propagate_logs,
     pytest_runtest_makereport,
 )
+
+logger = logging.getLogger(__name__)
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -43,6 +51,15 @@ TEST_GRPC_SERVICER_FUNCTIONS = [
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
+
+
+@pytest.fixture(autouse=True)
+def _clear_stale_ray_address():
+    # Serve CI runs several test targets per container sharing /tmp/ray; a target
+    # killed mid-run can leave a ray_current_cluster pointing at a dead cluster.
+    # Drop it before each test so an address-less ray.init() starts fresh.
+    reset_ray_address()
+    yield
 
 
 @pytest.fixture
@@ -144,6 +161,7 @@ def _shared_serve_instance():
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
+        address="local",
         num_cpus=36,
         namespace="default_test_namespace",
         _metrics_export_port=9999,
@@ -185,7 +203,7 @@ def serve_instance(_shared_serve_instance):
 def serve_instance_with_signal(serve_instance):
     client = serve_instance
 
-    signal = SignalActor.options(name="signal123").remote()
+    signal = SignalActor.options(name=SERVE_INSTANCE_SIGNAL_ACTOR_NAME).remote()
     yield client, signal
 
     # Delete signal actor so there is no conflict between tests
@@ -210,7 +228,10 @@ def ray_start_stop():
     )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        lambda: request_with_auth_token(
+            "GET", "http://localhost:8265/api/ray/version"
+        ).status_code
+        == 200,
         timeout=15,
     )
     ray.init("auto")
@@ -235,7 +256,10 @@ def ray_start_stop_in_specific_directory(request):
 
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        lambda: request_with_auth_token(
+            "GET", "http://localhost:8265/api/ray/version"
+        ).status_code
+        == 200,
         timeout=15,
     )
     try:
@@ -275,6 +299,7 @@ def ray_instance(
 
     os.environ.update(requested_env_vars)
     yield ray.init(
+        address="local",
         _metrics_export_port=9999,
         _system_config={
             "metrics_report_interval_ms": 1000,
@@ -345,8 +370,10 @@ def wait_for_metrics_port_free(port=TEST_METRICS_EXPORT_PORT, timeout=30):
 
 def wait_for_metrics_endpoint(session_name, port=TEST_METRICS_EXPORT_PORT, timeout=30):
     """
-    Ensures the current dashboard agent is serving the metrics endpoint. A
-    timeout indicates another agent is still running and holding the port.
+    Best-effort wait for the current dashboard agent to serve the metrics
+    endpoint. The test body's own metric assertions are authoritative, so a
+    slow-to-bind agent (e.g. the previous test's agent still tearing down) must
+    not hard-fail setup: on timeout we return instead of raising.
     """
 
     def ready():
@@ -356,7 +383,14 @@ def wait_for_metrics_endpoint(session_name, port=TEST_METRICS_EXPORT_PORT, timeo
             return False
         return resp.status_code == 200 and f'SessionName="{session_name}"' in resp.text
 
-    wait_for_condition(ready, timeout=timeout, retry_interval_ms=500)
+    try:
+        wait_for_condition(ready, timeout=timeout, retry_interval_ms=500)
+    except RuntimeError:
+        logger.warning(
+            f"Metrics endpoint on :{port} did not serve session {session_name} "
+            f"within {timeout}s; proceeding (the test's own metric waits are "
+            f"authoritative)."
+        )
 
 
 @pytest.fixture
@@ -366,6 +400,7 @@ def metrics_start_shutdown(request):
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     wait_for_metrics_port_free()
     ray.init(
+        address="local",
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
             "metrics_report_interval_ms": 100,

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
@@ -49,7 +50,8 @@ class GcsActorSchedulerTest;
 /// This class is not thread safe.
 class ClusterResourceManager {
  public:
-  explicit ClusterResourceManager(instrumented_io_context &io_service);
+  explicit ClusterResourceManager(
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner);
 
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
@@ -78,14 +80,6 @@ class ClusterResourceManager {
   void UpdateResourceCapacity(scheduling::NodeID node_id,
                               scheduling::ResourceID resource_id,
                               double resource_total);
-
-  /// Delete a given resource from a given node.
-  ///
-  /// \param node_id: Node whose resource we want to delete.
-  /// \param resource_ids: Resource id list we want to delete
-  /// \return True if the node exist, else False.
-  bool DeleteResources(scheduling::NodeID node_id,
-                       const std::vector<scheduling::ResourceID> &resource_ids);
 
   /// Return local resources in human-readable string form.
   std::string GetNodeResourceViewString(scheduling::NodeID node_id) const;
@@ -206,7 +200,7 @@ class ClusterResourceManager {
   BundleLocationIndex bundle_location_index_;
 
   /// Timer to revert local changes to the resources periodically.
-  std::shared_ptr<PeriodicalRunner> timer_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   mutable ray::stats::Gauge local_resource_view_node_count_gauge_;
 

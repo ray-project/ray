@@ -1,3 +1,4 @@
+import stat
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -12,6 +13,7 @@ from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.constants import CHECKPOINT_MANAGER_SNAPSHOT_FILENAME
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.result import Result
 
@@ -277,6 +279,55 @@ def test_result_restore(
 
     with pytest.raises(RuntimeError, match="Invalid metric name.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
+
+
+def test_result_from_path_read_only_storage(
+    ray_start_4_cpus,
+    tmp_path,
+):
+    """Reproduces https://github.com/ray-project/ray/issues/64305.
+
+    If checkpoints live on write-once / read-only storage, check that
+    ``Result.from_path`` / ``get_best_checkpoint`` are read-only operations.
+    """
+
+    def train_fn():
+        with create_dict_checkpoint({"iter": 1}) as ckpt:
+            ray.train.report({"epoch": 1}, ckpt)
+        with create_dict_checkpoint({"iter": 2}) as ckpt:
+            ray.train.report({"epoch": 2}, ckpt)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        run_config=RunConfig(
+            name="test_read_only_storage",
+            storage_path=str(tmp_path),
+        ),
+    )
+    trainer.fit()
+
+    # Strip write permissions from the experiment directory, so that any new write fails.
+    no_write_mask = ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+    experiment_dir = Path(tmp_path) / "test_read_only_storage"
+    assert experiment_dir.exists()
+    original_modes = {
+        path: stat.S_IMODE(path.stat().st_mode)
+        for path in [experiment_dir, *experiment_dir.rglob("*")]
+    }
+    for path in original_modes:
+        path.chmod(original_modes[path] & no_write_mask)
+
+    try:
+        # Reading the best checkpoint must not require write access.
+        result = Result.from_path(str(experiment_dir))
+        assert result.checkpoint
+        assert len(result.best_checkpoints) == 2
+
+        best_ckpt = result.get_best_checkpoint(metric="epoch", mode="max")
+        assert load_dict_checkpoint(best_ckpt)["iter"] == 2
+    finally:
+        for path, mode in original_modes.items():
+            path.chmod(mode)
 
 
 def test_result_from_path_validation(

@@ -155,7 +155,7 @@ def test_worker_metrics_callback(monkeypatch, mock_gauge):
         t2 - t1
     ) + (t4 - t3)
 
-    callback.before_shutdown()
+    callback.before_worker_shutdown()
     assert (
         callback._metrics[WorkerMetrics.REPORT_TOTAL_BLOCKED_TIME_S].get_value() == 0.0
     )
@@ -199,8 +199,15 @@ def test_worker_checkpoint_metrics_callback(
         pass
     assert callback._metrics[metric_name].get_value() == (t2 - t1) + (t4 - t3)
 
-    callback.before_shutdown()
+    callback.before_worker_shutdown()
     assert callback._metrics[metric_name].get_value() == 0.0
+
+
+def test_worker_metrics_callback_shutdown_without_init(mock_gauge):
+    """before_worker_shutdown should not crash when _metrics is None."""
+    callback = WorkerMetricsCallback(train_run_context=create_dummy_run_context())
+    # _metrics is None — after_init_train_context was never called
+    callback.before_worker_shutdown()  # should not raise
 
 
 def test_controller_metrics_callback(monkeypatch, mock_gauge):

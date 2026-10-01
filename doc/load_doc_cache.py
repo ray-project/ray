@@ -17,17 +17,28 @@ def _build_cache_url(commit: str):
 
 
 def find_latest_master_commit():
-    """Find latest commit that was pushed to origin/master that is also on local env."""
+    """Find the latest origin/master commit that has a build cache uploaded.
+
+    Walk origin/master, not HEAD. Read the Docs checks out PRs with a shallow
+    ``git clone --depth 1``, so HEAD's history is grafted -- a plain ``git log``
+    then sees ~1 commit and never reaches a cached master commit. post_checkout
+    in .readthedocs.yaml deepens origin/master (``git fetch --depth=500 origin
+    master``), so that ref has real history to probe. Fall back to HEAD when
+    origin/master is unavailable (e.g. a local checkout without that
+    remote-tracking ref).
+    """
+    has_origin_master = (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "origin/master"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+    ref = "origin/master" if has_origin_master else "HEAD"
+
     latest_commits = (
-        subprocess.check_output(
-            [
-                "git",
-                "log",
-                "-n",
-                "100",
-                "--format=%H",
-            ]
-        )
+        subprocess.check_output(["git", "log", "-n", "100", "--format=%H", ref])
         .strip()
         .decode("utf-8")
         .split("\n")

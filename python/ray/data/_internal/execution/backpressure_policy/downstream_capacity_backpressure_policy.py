@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 from .backpressure_policy import BackpressurePolicy
 from ray._common.utils import env_float
 from ray.data._internal.execution.resource_manager import (
+    _BLOCKING_MATERIALIZING_OPERATORS,
     ResourceManager,
 )
 from ray.data.context import DataContext
@@ -109,21 +110,9 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
 
         if self._backpressure_capacity_ratio is not None:
             logger.debug(
-                "DownstreamCapacityBackpressurePolicy enabled with backpressure "
-                f"capacity ratio: {self._backpressure_capacity_ratio}"
+                "DownstreamCapacityBackpressurePolicy enabled with "
+                f"ratio threshold: {self._backpressure_capacity_ratio}"
             )
-
-    def _get_queue_size_bytes(self, op: "PhysicalOperator") -> int:
-        """Get the output current queue size
-        (this operator + ineligible downstream operators) in bytes for the given operator.
-        """
-        op_outputs_usage = self._topology[op].output_queue_bytes()
-        # Also account the downstream ineligible operators' memory usage.
-        op_outputs_usage += sum(
-            self._resource_manager.get_op_usage(next_op).object_store_memory
-            for next_op in self._resource_manager._get_downstream_ineligible_ops(op)
-        )
-        return op_outputs_usage
 
     def _get_downstream_capacity_size_bytes(self, op: "PhysicalOperator") -> int:
         """Get the downstream capacity size for the given operator.
@@ -166,19 +155,45 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             return True
 
         if self._resource_manager._is_blocking_materializing_op(op):
-            # Operator is materializing, so no need to perform backpressure.
+            # The operator or one of its ineligible downstream operators is a
+            # blocking materializer, so no need to perform backpressure.
+            return True
+
+        if any(
+            isinstance(downstream_op, _BLOCKING_MATERIALIZING_OPERATORS)
+            for downstream_op in self._resource_manager.get_downstream_eligible_ops(op)
+        ):
+            # Downstream capacity is materializing, so don't backpressure against it.
             return True
 
         return False
 
-    def _get_queue_ratio(self, op: "PhysicalOperator") -> float:
-        """Get queue/capacity ratio for the operator."""
-        queue_size_bytes = self._get_queue_size_bytes(op)
+    def _get_output_pressure(self, op: "PhysicalOperator") -> float:
+        """Calculate the output pressure of the current operator on the
+        downstream operator.
+
+        We estimate this with: `op_output_bytes / downstream_bytes_in_flight`
+
+        If output_pressure == 0, the consumer may be starving for inputs.
+        If output_pressure == 1, we have exactly one "batch" of prefetched
+        outputs, and the pipeline should be flowing smoothly.
+        If output_pressure > THRESHOLD, the producer is outpacing the consumer
+        significantly. Apply backpressure.
+        """
         downstream_capacity_size_bytes = self._get_downstream_capacity_size_bytes(op)
         if downstream_capacity_size_bytes == 0:
             # No downstream capacity to backpressure against, so no backpressure.
             return 0
-        return queue_size_bytes / downstream_capacity_size_bytes
+
+        output_size_bytes = self._resource_manager.get_mem_op_outputs(
+            op, include_ineligible_downstream=True
+        )
+        # output_size_bytes includes both buffered outputs and downstream
+        # in-flight inputs. Subtract 1 to isolate the buffered portion:
+        #   output_pressure = op_outqueue_bytes / downstream_in_flight_bytes
+        #   output_size_bytes = op_outqueue_bytes + downstream_in_flight_bytes
+        #   output_pressure = output_size_bytes / downstream_in_flight_bytes - 1
+        return (output_size_bytes / downstream_capacity_size_bytes) - 1
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
         """Check if backpressure should be applied for the operator.
@@ -191,7 +206,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
-        queue_ratio = self._get_queue_ratio(op)
+        output_pressure = self._get_output_pressure(op)
+
         if (
             utilized_budget_fraction is not None
             and utilized_budget_fraction <= self.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
@@ -199,16 +215,18 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # Utilized budget fraction is below threshold, so should skip backpressure.
             result = False
         else:
-            # Apply backpressure if queue ratio exceeds the threshold.
-            result = queue_ratio > self._backpressure_capacity_ratio
+            # Apply backpressure if output pressure exceeds the threshold.
+            result = output_pressure > self._backpressure_capacity_ratio
 
         prev = self._prev_should_backpressure.get(op)
         if prev != result:
-            queue_size_bytes = self._get_queue_size_bytes(op)
             downstream_capacity_bytes = self._get_downstream_capacity_size_bytes(op)
+            output_size_bytes = self._resource_manager.get_mem_op_outputs(
+                op, include_ineligible_downstream=True
+            )
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
-                f"(queue_ratio={queue_ratio:.2f}, {queue_size_bytes=}, "
+                f"({output_pressure=}, {output_size_bytes=}, "
                 f"{downstream_capacity_bytes=}, {utilized_budget_fraction=})"
             )
             self._prev_should_backpressure[op] = result

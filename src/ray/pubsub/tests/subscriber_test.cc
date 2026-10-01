@@ -142,7 +142,7 @@ class SubscriberTest : public ::testing::Test {
           std::shared_ptr<SubscriberClientInterface> t = owner_client;
           return owner_client;
         }),
-        channel(rpc::ChannelType::WORKER_OBJECT_EVICTION) {}
+        channel(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {}
   ~SubscriberTest() {}
 
   void SetUp() {
@@ -151,8 +151,7 @@ class SubscriberTest : public ::testing::Test {
     subscriber_ = std::make_shared<Subscriber>(
         self_node_id_,
         /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*max_command_batch_size*/ 3,
         client_pool,
@@ -174,8 +173,8 @@ class SubscriberTest : public ::testing::Test {
 
   std::unique_ptr<rpc::SubMessage> GenerateSubMessage(const ObjectID &object_id) {
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    auto *object_eviction_msg = sub_message->mutable_worker_object_eviction_message();
-    object_eviction_msg->set_object_id(object_id.Binary());
+    auto *object_locations_msg = sub_message->mutable_worker_object_locations_message();
+    object_locations_msg->set_object_id(object_id.Binary());
     return sub_message;
   }
 
@@ -675,7 +674,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchSingleEntry) {
   for (const auto &command : commands) {
     ASSERT_EQ(command.channel_type(), channel);
     ASSERT_EQ(command.key_id(), object_id.Binary());
-    ASSERT_EQ(command.subscribe_message().worker_object_eviction_message().object_id(),
+    ASSERT_EQ(command.subscribe_message().worker_object_locations_message().object_id(),
               object_id.Binary());
   }
   // No more request.
@@ -751,14 +750,14 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
   ASSERT_EQ(commands[1].channel_type(), channel);
   ASSERT_EQ(commands[1].key_id(), object_id.Binary());
   ASSERT_TRUE(commands[1].has_subscribe_message());
-  ASSERT_EQ(commands[1].subscribe_message().worker_object_eviction_message().object_id(),
+  ASSERT_EQ(commands[1].subscribe_message().worker_object_locations_message().object_id(),
             object_id.Binary());
 
   // Third entry subscribe object 2.
   ASSERT_EQ(commands[2].channel_type(), channel);
   ASSERT_EQ(commands[2].key_id(), object_id_2.Binary());
   ASSERT_TRUE(commands[2].has_subscribe_message());
-  ASSERT_EQ(commands[2].subscribe_message().worker_object_eviction_message().object_id(),
+  ASSERT_EQ(commands[2].subscribe_message().worker_object_locations_message().object_id(),
             object_id_2.Binary());
 
   // No more request after that.
@@ -818,7 +817,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiBatch) {
   ASSERT_EQ(commands[0].channel_type(), channel);
   ASSERT_EQ(commands[0].key_id(), object_id_2.Binary());
   ASSERT_TRUE(commands[0].has_subscribe_message());
-  ASSERT_EQ(commands[0].subscribe_message().worker_object_eviction_message().object_id(),
+  ASSERT_EQ(commands[0].subscribe_message().worker_object_locations_message().object_id(),
             object_id_2.Binary());
 
   // No more request after that.

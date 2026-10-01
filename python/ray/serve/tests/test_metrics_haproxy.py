@@ -38,7 +38,12 @@ from ray._common.test_utils import (
 from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    extract_tags,
+    get_application_url,
+    get_metric_dictionaries,
+)
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.tests.conftest import (
     TEST_METRICS_EXPORT_PORT,
@@ -74,24 +79,6 @@ def metrics_start_shutdown(request):
         serve.shutdown()
         ray.shutdown()
         reset_ray_address()
-
-
-def extract_tags(line: str) -> Dict[str, str]:
-    """Extracts any tags from the metrics line."""
-
-    try:
-        tags_string = line.replace("{", "}").split("}")[1]
-    except IndexError:
-        # No tags were found in this line.
-        return {}
-
-    detected_tags = {}
-    for tag_pair in tags_string.split(","):
-        sanitized_pair = tag_pair.replace('"', "")
-        tag, value = sanitized_pair.split("=")
-        detected_tags[tag] = value
-
-    return detected_tags
 
 
 def contains_tags(line: str, expected_tags: Optional[Dict[str, str]] = None) -> bool:
@@ -955,7 +942,18 @@ def test_multiplexed_metrics(metrics_start_shutdown):
             await self.get_model(model_id)
             return
 
-    handle = serve.run(Model.bind(), name="app", route_prefix="/app")
+    # Multiplexing is not supported on the ingress deployment when direct ingress /
+    # HAProxy is enabled, so keep the multiplexed deployment downstream of a plain
+    # ingress.
+    @serve.deployment
+    class Ingress:
+        def __init__(self, model):
+            self._model = model
+
+        async def __call__(self, model_id: str):
+            await self._model.remote(model_id)
+
+    handle = serve.run(Ingress.bind(Model.bind()), name="app", route_prefix="/app")
     handle.remote("model1")
     handle.remote("model2")
     # Trigger model eviction.
@@ -1051,7 +1049,7 @@ def test_actor_summary(serve_instance):
     actors = list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HAProxyManager", "ServeReplica:app:f"}
+        {"ServeController", *expected_proxy_actors(), "ServeReplica:app:f"}
     )
 
 

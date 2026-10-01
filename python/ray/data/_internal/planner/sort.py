@@ -21,7 +21,6 @@ from ray.data.context import DataContext, ShuffleStrategy
 
 def generate_sort_fn(
     sort_key: SortKey,
-    batch_format: str,
     data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
@@ -65,9 +64,7 @@ def generate_sort_fn(
             if sort_key.get_descending()[0]:
                 boundaries = boundaries[::-1]
             num_outputs = len(boundaries) + 1
-        sort_spec = SortTaskSpec(
-            boundaries=boundaries, sort_key=sort_key, batch_format=batch_format
-        )
+        sort_spec = SortTaskSpec(boundaries=boundaries, sort_key=sort_key)
 
         if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             scheduler = PushBasedShuffleTaskScheduler(sort_spec)

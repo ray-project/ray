@@ -38,6 +38,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
@@ -66,6 +67,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/actor:gcs_actor",

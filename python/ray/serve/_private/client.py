@@ -4,7 +4,7 @@ import random
 import time
 from collections.abc import Sequence
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 
 import ray
 from ray.actor import ActorHandle
@@ -24,10 +24,9 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.utils import _callable_uses_multiplexing, get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -63,14 +62,16 @@ class ServeControllerClient:
         self,
         controller: ActorHandle,
     ):
-        self._controller: ServeController = controller
+        self._controller: Any = controller
         self._shutdown = False
-        self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
-        self._root_url = ray.get(controller.get_root_url.remote())
+        self._http_config: HTTPOptions = ray.get(
+            self._controller.get_http_config.remote()
+        )
+        self._root_url = cast(str, ray.get(self._controller.get_root_url.remote()))
 
         # Each handle has the overhead of long poll client, therefore cached.
-        self.handle_cache = dict()
-        self._evicted_handle_keys = set()
+        self.handle_cache: Dict[Tuple[str, str, bool], DeploymentHandle] = dict()
+        self._evicted_handle_keys: Set[Tuple[str, str, bool]] = set()
 
     @property
     def root_url(self):
@@ -298,7 +299,9 @@ class ServeControllerClient:
         self, wait_for_applications_running: bool = True
     ) -> None:
         """Wait for the proxies to be ready to serve requests."""
-        proxy_handles = ray.get(self._controller.get_proxies.remote())
+        proxy_handles = cast(
+            Dict[str, Any], ray.get(self._controller.get_proxies.remote())
+        )
 
         if not proxy_handles:
             return
@@ -363,6 +366,9 @@ class ServeControllerClient:
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
                     route_prefix=app.route_prefix if is_ingress else None,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -384,6 +390,9 @@ class ServeControllerClient:
                 deployment_args_proto.ingress_request_router = deployment_args[
                     "ingress_request_router"
                 ]
+                deployment_args_proto.uses_multiplexing = deployment_args[
+                    "uses_multiplexing"
+                ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
@@ -395,7 +404,7 @@ class ServeControllerClient:
                 app.name
             ] = application_args_proto.SerializeToString()
 
-        # Validate applications before sending to controller
+        # Validate applications before sending to controller.
         self._check_ingress_deployments(built_apps)
 
         ray.get(
@@ -405,6 +414,7 @@ class ServeControllerClient:
         )
 
         handles = []
+        ready_apps = []
         for app in built_apps:
             # The deployment state is not guaranteed to be created after
             # deploy_application returns; the application state manager will
@@ -414,17 +424,27 @@ class ServeControllerClient:
 
             if wait_for_applications_running:
                 self._wait_for_application_running(app.name)
-                if app.route_prefix is not None:
-                    url_part = " at " + self._root_url + app.route_prefix
-                else:
-                    url_part = ""
-                logger.info(f"Application '{app.name}' is ready{url_part}.")
+                ready_apps.append(app)
 
             handles.append(
                 self.get_handle(
                     app.ingress_deployment_name, app.name, check_exists=False
                 )
             )
+
+        # Wait for the proxies to be serving before declaring the applications
+        # ready, so the "is ready" log line only prints once requests can
+        # actually be routed to the applications.
+        self.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
+
+        for app in ready_apps:
+            if app.route_prefix is not None:
+                url_part = " at " + self._root_url + app.route_prefix
+            else:
+                url_part = ""
+            logger.info(f"Application '{app.name}' is ready{url_part}.")
 
         return handles
 
@@ -529,7 +549,7 @@ class ServeControllerClient:
     @_ensure_connected
     def get_deployment_info(
         self, name: str, app_name: str
-    ) -> Tuple[DeploymentInfo, str]:
+    ) -> Tuple[DeploymentInfo, Optional[str]]:
         deployment_route = DeploymentRoute.FromString(
             ray.get(self._controller.get_deployment_info.remote(name, app_name))
         )
@@ -565,13 +585,13 @@ class ServeControllerClient:
 
     @_ensure_connected
     def get_serve_details(self) -> Dict:
-        return ray.get(self._controller.get_serve_instance_details.remote())
+        return cast(Dict, ray.get(self._controller.get_serve_instance_details.remote()))
 
     @_ensure_connected
     def get_handle(
         self,
         deployment_name: str,
-        app_name: Optional[str] = SERVE_DEFAULT_APP_NAME,
+        app_name: str = SERVE_DEFAULT_APP_NAME,
         check_exists: bool = True,
     ) -> DeploymentHandle:
         """Construct a handle for the specified deployment.
@@ -595,7 +615,7 @@ class ServeControllerClient:
             if deployment_id not in all_deployments:
                 raise KeyError(f"{deployment_id} does not exist.")
 
-        handle = DeploymentHandle(deployment_name, app_name)
+        handle: DeploymentHandle = DeploymentHandle(deployment_name, app_name)
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:
             logger.warning(

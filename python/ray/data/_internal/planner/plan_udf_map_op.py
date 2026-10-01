@@ -135,10 +135,11 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    # Extract op.exprs before defining the closure to prevent cloudpickle from
+    # Extract expressions before defining the closure to prevent cloudpickle from
     # serializing the entire op object (which may contain references to non-serializable
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
+    common_sub_exprs = op.get_common_sub_exprs()
 
     compute = get_compute(op.compute)
 
@@ -147,7 +148,7 @@ def plan_project_op(
         _create_callable_class_udf_init_fn,
     )
 
-    init_fn = _create_callable_class_udf_init_fn(projection_exprs)
+    init_fn = _create_callable_class_udf_init_fn(op.get_all_exprs())
 
     def _project_block(block: Block) -> Block:
         try:
@@ -155,7 +156,11 @@ def plan_project_op(
                 eval_projection,
             )
 
-            return eval_projection(projection_exprs, block)
+            return eval_projection(
+                projection_exprs,
+                block,
+                common_sub_exprs=common_sub_exprs,
+            )
         except Exception as e:
             _try_wrap_udf_exception(e)
 
@@ -241,7 +246,6 @@ def plan_filter_op(
         init_fn = None
         transform_fn = BlockMapTransformFn(
             filter_block_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
     else:
@@ -257,7 +261,6 @@ def plan_filter_op(
 
         transform_fn = RowMapTransformFn(
             _generate_transform_fn_for_filter(filter_fn),
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -308,7 +311,6 @@ def plan_udf_map_op(
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -322,7 +324,6 @@ def plan_udf_map_op(
 
         transform_fn = RowMapTransformFn(
             udf_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 

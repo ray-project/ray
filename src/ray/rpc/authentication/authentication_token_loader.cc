@@ -28,14 +28,10 @@
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
-#ifndef _WINDOWS_
-#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
-                             // headers you need manually.
-                             // (https://stackoverflow.com/a/8294669)
-#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
-#endif
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
-#endif
+#else
+#include <pwd.h>
+#include <unistd.h>
 #endif
 
 namespace ray {
@@ -273,8 +269,19 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
 #else
   const char *path_separator = "/";
   const char *home = std::getenv("HOME");
-  if (home != nullptr) {
+  if (home != nullptr && home[0] != '\0') {
     home_dir = home;
+  } else {
+    // Match Python's Path.home(): when HOME is unset (e.g. CI running as root
+    // without HOME), fall back to the passwd database so the C++ and Python
+    // sides resolve the same ~/.ray/auth_token path.
+    struct passwd pwd;
+    struct passwd *result = nullptr;
+    char buf[4096];  // A home-dir path fits comfortably; no ERANGE retry needed.
+    if (getpwuid_r(getuid(), &pwd, buf, sizeof(buf), &result) == 0 && result != nullptr &&
+        result->pw_dir != nullptr) {
+      home_dir = result->pw_dir;
+    }
   }
 #endif
 
@@ -282,8 +289,10 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
       std::string(path_separator) + ".ray" + std::string(path_separator) + "auth_token";
 
   if (home_dir.empty()) {
+    // No resolvable home: return an empty path rather than an invalid relative
+    // "./.ray/auth_token". ReadTokenFromFile("") simply finds no token.
     RAY_LOG(WARNING) << "Cannot determine home directory for token storage";
-    return "." + token_subpath;
+    return "";
   }
 
   return home_dir + token_subpath;

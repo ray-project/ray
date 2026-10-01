@@ -40,9 +40,9 @@
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor_factory.h"
-#include "ray/common/memory_monitor_interface.h"
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_factory.h"
+#include "ray/common/monitors/memory_monitor_interface.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -104,6 +104,9 @@ std::vector<ObjectID> FlatbufferToObjectIds(
 }
 
 #if !defined(_WIN32)
+// Interval between polls for a gracefully-exiting worker process to exit.
+constexpr int kGracefulPgCleanupPollMs = 100;
+
 // Send a signal to the worker's saved process group with safety guards and logging.
 void CleanupProcessGroupSend(pid_t saved_pgid,
                              const WorkerID &wid,
@@ -128,6 +131,39 @@ void CleanupProcessGroupSend(pid_t saved_pgid,
         << " to process group " << saved_pgid << ": " << err->message()
         << ", errno=" << err->value();
   }
+}
+
+// Poll for a gracefully-exiting worker process to exit, then SIGKILL its process
+// group to reap any orphaned descendants. Reschedules itself on `timer` until the
+// worker exits, so per-worker process-group cleanup does not interrupt the
+// worker's own shutdown sequence (atexit / __ray_shutdown__ handlers).
+void SchedulePostExitProcessGroupCleanup(
+    std::shared_ptr<boost::asio::deadline_timer> timer,
+    pid_t worker_pid,
+    pid_t pgid,
+    WorkerID wid) {
+  // If the worker process has exited, sweep its (now leaderless) process group
+  // to reap any orphaned descendants it left behind, then stop.
+  if (kill(worker_pid, 0) == -1 && errno == ESRCH) {
+    auto probe = KillProcessGroup(pgid, 0);
+    const bool group_absent = (probe && probe->value() == ESRCH);
+    if (!group_absent) {
+      CleanupProcessGroupSend(pgid, wid, "SchedulePostExitProcessGroupCleanup", SIGKILL);
+    }
+    return;
+  }
+
+  // The worker is still running its own shutdown. We must not SIGKILL the group
+  // while it is alive (that would kill the worker mid-shutdown), so keep polling
+  // until it exits on its own. A worker that never exits is itself a bug; the
+  // 100ms poll is negligible overhead in that case (and stops when the raylet's
+  // io_context shuts down and cancels the timer).
+  timer->expires_from_now(boost::posix_time::milliseconds(kGracefulPgCleanupPollMs));
+  timer->async_wait([timer, worker_pid, pgid, wid](const boost::system::error_code &ec) {
+    if (!ec) {
+      SchedulePostExitProcessGroupCleanup(timer, worker_pid, pgid, wid);
+    }
+  });
 }
 #endif
 
@@ -162,6 +198,7 @@ const std::vector<std::string> node_manager_message_enum =
 
 NodeManager::NodeManager(
     instrumented_io_context &io_service,
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
     const NodeID &self_node_id,
     std::string self_node_name,
     const NodeManagerConfig &config,
@@ -207,7 +244,7 @@ NodeManager::NodeManager(
       object_manager_(object_manager),
       store_client_(std::move(store_client)),
       mutable_object_provider_(std::move(mutable_object_provider)),
-      periodical_runner_(PeriodicalRunner::Create(io_service)),
+      periodical_runner_(periodical_runner),
       report_resources_period_ms_(config.report_resources_period_ms),
       initial_config_(config),
       lease_dependency_manager_(lease_dependency_manager),
@@ -222,6 +259,7 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
+      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            IsLocalhost(config.node_manager_address)),
@@ -241,7 +279,6 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
@@ -269,9 +306,11 @@ NodeManager::NodeManager(
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(
       std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
-  // Pass auth token from the RPC server to the syncer service
-  node_manager_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
-      ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
+  // Pass auth token from the RPC server to the syncer service.
+  ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(
+      ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken());
+  node_manager_server_.RegisterService(
+      std::make_unique<syncer::RaySyncerGrpcService>(*ray_syncer_service_));
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
@@ -302,6 +341,10 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
+  periodical_runner_->RunFnPeriodically(
+      [this]() { GCCancelledLeaseTombstones(); },
+      RayConfig::instance().cancelled_lease_tombstone_ttl_ms(),
+      "NodeManager.GCCancelledLeaseTombstones");
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
@@ -532,12 +575,17 @@ void NodeManager::HandleAccept(const boost::system::error_code &error) {
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
-                                bool force) {
+                                bool force,
+                                std::optional<int64_t> memory_used_bytes_at_death) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(
-      worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
+  DisconnectClient(worker->Connection(),
+                   /*graceful=*/false,
+                   disconnect_type,
+                   disconnect_detail,
+                   /*creation_task_exception=*/nullptr,
+                   memory_used_bytes_at_death);
   worker->KillAsync(io_service_, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
     number_workers_killed_++;
@@ -1015,6 +1063,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
     ids.insert(id);
   }
+  RAY_LOG(DEBUG) << "Freeing local objects on worker failure. Objects to be freed: "
+                 << debug_string(ids);
   FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
@@ -1040,35 +1090,6 @@ bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
         createUpdatedResources.Get(resource_id).Double());
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  return true;
-}
-
-bool NodeManager::ResourceDeleted(const NodeID &node_id,
-                                  const std::vector<std::string> &resource_names) {
-  if (RAY_LOG_ENABLED(DEBUG)) {
-    std::ostringstream oss;
-    for (auto &resource_name : resource_names) {
-      oss << resource_name << ", ";
-    }
-    RAY_LOG(DEBUG).WithField(node_id)
-        << "[ResourceDeleted] received callback from node with deleted resources: "
-        << oss.str() << ". Updating resource map. skip=" << (node_id == self_node_id_);
-  }
-
-  // Skip updating local node since local node always has the latest information.
-  // Updating local node could result in a inconsistence view in cluster resource
-  // scheduler which could make task hang.
-  if (node_id == self_node_id_) {
-    return false;
-  }
-
-  std::vector<scheduling::ResourceID> resource_ids;
-  resource_ids.reserve(resource_names.size());
-  for (const auto &resource_label : resource_names) {
-    resource_ids.emplace_back(resource_label);
-  }
-  cluster_resource_scheduler_.GetClusterResourceManager().DeleteResources(
-      scheduling::NodeID(node_id.Binary()), resource_ids);
   return true;
 }
 
@@ -1205,7 +1226,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     auto object_ids = FlatbufferToObjectIds(*message->object_ids());
     // Clean up objects from the object store.
-    object_manager_.FreeObjects(object_ids, message->local_only());
+    object_manager_.FreeObjects(object_ids);
   } break;
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
@@ -1447,7 +1468,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    bool graceful,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
-                                   const rpc::RayException *creation_task_exception) {
+                                   const rpc::RayException *creation_task_exception,
+                                   std::optional<int64_t> memory_used_bytes_at_death) {
   bool is_worker = false, is_driver = false;
   std::shared_ptr<WorkerInterface> worker;
   if ((worker = worker_pool_.GetRegisteredWorker(client))) {
@@ -1488,11 +1510,15 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       gcs::CreateWorkerFailureData(worker->WorkerId(),
                                    self_node_id_,
                                    initial_config_.node_manager_address,
-                                   time(nullptr),
+                                   absl::ToUnixSeconds(clock_.Now()),
                                    disconnect_type,
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
-                                   creation_task_exception);
+                                   creation_task_exception,
+                                   memory_used_bytes_at_death);
+  if (!worker->GetAssignedJobId().IsNil()) {
+    worker_failure_data_ptr->set_job_id(worker->GetAssignedJobId().Binary());
+  }
   gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr);
 
   if (is_worker) {
@@ -1555,7 +1581,18 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       }
     }
 
-    // Attempt per-worker process-group cleanup before removing the worker.
+    // Attempt per-worker process-group cleanup before removing the worker. The
+    // worker is its own process-group leader, so killpg also targets the worker
+    // process itself. The timing therefore differs by disconnect type:
+    //   - Non-graceful (e.g. the worker crashed): the worker is already gone, so
+    //     signal the group now (SIGTERM, then SIGKILL shortly after) to reap any
+    //     orphaned descendants it left behind.
+    //   - Graceful: the worker is still running its own shutdown sequence (e.g.
+    //     atexit / __ray_shutdown__ handlers). Signaling the group now would kill
+    //     it mid-shutdown, so wait until the worker process has exited on its own
+    //     and only then SIGKILL the group to reap any orphaned descendants. The
+    //     process group outlives the dead leader as long as members remain, so
+    //     the pgid stays valid for this post-exit sweep.
 #if !defined(_WIN32)
     const bool pg_enabled = RayConfig::instance().process_group_cleanup_enabled();
     const bool subreaper_enabled =
@@ -1563,29 +1600,36 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if (pg_enabled && subreaper_enabled) {
       RAY_LOG_EVERY_MS(WARNING, 60000)
           << "Both per-worker process groups and subreaper are enabled; "
-          << "using PGs for worker cleanup. "
+          << "using process groups for worker cleanup. "
           << "Subreaper is deprecated and will be removed in a future release.";
     }
     if (pg_enabled) {
       auto saved = worker->GetSavedProcessGroupId();
       if (saved.has_value()) {
-        // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
-        CleanupProcessGroupSend(*saved, worker->WorkerId(), "DisconnectClient", SIGTERM);
-        auto timer = std::make_shared<boost::asio::deadline_timer>(
-            io_service_, boost::posix_time::milliseconds(200));
-        auto wid = worker->WorkerId();
-        auto pgid = *saved;
-        timer->async_wait(
-            [timer, wid, pgid](const boost::system::error_code &ec) mutable {
-              if (!ec) {
-                // Probe with signal 0; if group plausibly exists, send SIGKILL.
-                auto probe = KillProcessGroup(pgid, 0);
-                const bool group_absent = (probe && probe->value() == ESRCH);
-                if (!group_absent) {
-                  CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+        const auto wid = worker->WorkerId();
+        const pid_t pgid = *saved;
+        if (!graceful) {
+          // Send SIGTERM first, then schedule a short async escalation to SIGKILL.
+          CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGTERM);
+          auto timer = std::make_shared<boost::asio::deadline_timer>(
+              io_service_, boost::posix_time::milliseconds(200));
+          timer->async_wait(
+              [timer, wid, pgid](const boost::system::error_code &ec) mutable {
+                if (!ec) {
+                  // Probe with signal 0; if group plausibly exists, send SIGKILL.
+                  auto probe = KillProcessGroup(pgid, 0);
+                  const bool group_absent = (probe && probe->value() == ESRCH);
+                  if (!group_absent) {
+                    CleanupProcessGroupSend(pgid, wid, "DisconnectClient", SIGKILL);
+                  }
                 }
-              }
-            });
+              });
+        } else {
+          // Poll for the worker process to exit, then sweep its process group.
+          const pid_t worker_pid = worker->GetProcess().GetId();
+          auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+          SchedulePostExitProcessGroupCleanup(std::move(timer), worker_pid, pgid, wid);
+        }
       }
     }
 #endif
@@ -1747,7 +1791,8 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   auto message =
       flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   auto object_ids = FlatbufferToObjectIds(*message->object_ids());
-  int64_t tag = message->tag();
+  const TaskID task_id = TaskID::FromBinary(message->task_id()->str());
+  const int32_t attempt_number = message->attempt_number();
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
@@ -1755,20 +1800,21 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
-  wait_manager_.Wait(object_ids,
-                     -1,
-                     object_ids.size(),
-                     [this, client, tag](const std::vector<ObjectID> &ready,
-                                         const std::vector<ObjectID> &remaining) {
-                       RAY_CHECK(remaining.empty());
-                       std::shared_ptr<WorkerInterface> worker =
-                           worker_pool_.GetRegisteredWorker(client);
-                       if (!worker) {
-                         RAY_LOG(ERROR) << "Lost worker for wait request " << client;
-                       } else {
-                         worker->ActorCallArgWaitComplete(tag);
-                       }
-                     });
+  wait_manager_.Wait(
+      object_ids,
+      -1,
+      object_ids.size(),
+      [this, client, task_id, attempt_number](const std::vector<ObjectID> &ready,
+                                              const std::vector<ObjectID> &remaining) {
+        RAY_CHECK(remaining.empty());
+        std::shared_ptr<WorkerInterface> worker =
+            worker_pool_.GetRegisteredWorker(client);
+        if (!worker) {
+          RAY_LOG(ERROR) << "Lost worker for wait request " << client;
+        } else {
+          worker->ActorCallArgWaitComplete(task_id, attempt_number);
+        }
+      });
 }
 
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
@@ -1845,6 +1891,16 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     reply->mutable_worker_address()->set_port(worker->Port());
     reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
     reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+  // Reject leases that were already cancelled (e.g. CancelWorkerLease arrived
+  // before this RequestWorkerLease due to message reordering).
+  if (cancelled_lease_tombstones_.contains(lease_id)) {
+    reply->set_canceled(true);
+    reply->set_failure_type(rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+    reply->set_scheduling_failure_message(
+        "Cancelled leasing because the lease was already cancelled.");
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
@@ -2200,7 +2256,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
-        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdle();
+        cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeIdleForDrain();
     if (is_idle) {
       cluster_resource_scheduler_.GetLocalResourceManager().SetLocalNodeDraining(request);
       reply->set_is_accepted(true);
@@ -2296,12 +2352,10 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
-  bool canceled = cluster_lease_manager_.CancelLease(lease_id);
-  // The lease cancellation failed if we did not have the lease queued, since
-  // this means that we may not have received the lease request yet. It is
-  // successful if we did have the lease queued, since we have now replied to
-  // the client that requested the lease.
-  reply->set_success(canceled);
+  // The tombstone makes the cancellation stick even if the lease request has not
+  // reached us yet, so the caller never has to retry.
+  AddCancelledLeaseTombstone(lease_id);
+  cluster_lease_manager_.CancelLease(lease_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3102,20 +3156,23 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           MemoryUsageSnapshot memory_usage_snapshot =
               MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                  MemoryMonitorInterface::kDefaultCgroupPath);
+                  MemoryMonitorInterface::kDefaultCgroupPath,
+                  /*include_swap=*/true);
           if (initial_config_.enable_resource_isolation) {
-            StatusSetOr<MemoryUsageSnapshot, StatusT::NotFound>
-                user_slice_memory_snapshot_or =
-                    MemoryMonitorUtils::TakeUserSliceMemoryUsageSnapshot(
+            StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
+                        StatusT::NotFound>
+                user_and_system_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot = user_slice_memory_snapshot_or.value();
+            if (user_and_system_slice_memory_snapshot_or.has_value()) {
+              memory_usage_snapshot =
+                  user_and_system_slice_memory_snapshot_or.value().first;
             } else {
               RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Failed to take user and system slice memory snapshot due to: %s. "
                   "Falling back to host system memory snapshot.",
-                  user_slice_memory_snapshot_or.message());
+                  user_and_system_slice_memory_snapshot_or.message());
             }
           }
 
@@ -3167,10 +3224,18 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                                      should_retry);
             }
 
+            std::optional<int64_t> memory_used_bytes_at_death;
+            auto memory_used_or = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+                process_memory_snapshot, worker_to_kill->GetProcess().GetId());
+            if (memory_used_or.has_value()) {
+              memory_used_bytes_at_death = memory_used_or.value();
+            }
+
             DestroyWorker(worker_to_kill,
                           rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
                           worker_exit_message,
-                          true /* force */);
+                          true /* force */,
+                          memory_used_bytes_at_death);
 
             if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
               // TODO(sang): Add the job entrypoint to the name.
@@ -3299,8 +3364,11 @@ std::string NodeManager::CreateOomKillMessageDetails(
     }
   }
 
+  // Note: with count_swap_in_memory_monitor=true the second figure is the
+  // memory limit the OOM killer enforces (RAM + cgroup swap.max), not
+  // physical RAM. With the flag off it equals physical RAM.
   return absl::StrFormat(
-      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f)\n"
+      "Memory on the node (IP: %s, ID: %s) was %sGB used / %sGB limit (%f)\n"
       "OOM kill reason: %s\n"
       "Object store memory usage: [%s]\n"
       "Ray killed %d worker(s) based on the killing policy\n"
@@ -3411,6 +3479,36 @@ void NodeManager::GCWorkerFailureReason() {
           << "Removing worker failure reason since it expired";
       worker_failure_reasons_.erase(entry.first);
     }
+  }
+}
+
+void NodeManager::AddCancelledLeaseTombstone(const LeaseID &lease_id) {
+  if (!cancelled_lease_tombstones_.insert(lease_id).second) {
+    return;
+  }
+  cancelled_lease_tombstone_queue_.emplace_back(lease_id, clock_.SteadyNow());
+  const auto max_tombstones = RayConfig::instance().max_cancelled_lease_tombstones();
+  if (cancelled_lease_tombstones_.size() > max_tombstones) {
+    const auto &oldest = cancelled_lease_tombstone_queue_.front();
+    cancelled_lease_tombstones_.erase(oldest.first);
+    cancelled_lease_tombstone_queue_.pop_front();
+  }
+}
+
+void NodeManager::GCCancelledLeaseTombstones() {
+  const auto ttl_ms =
+      static_cast<int64_t>(RayConfig::instance().cancelled_lease_tombstone_ttl_ms());
+  const auto now = clock_.SteadyNow();
+  while (!cancelled_lease_tombstone_queue_.empty()) {
+    const auto &oldest = cancelled_lease_tombstone_queue_.front();
+    auto age_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - oldest.second)
+            .count();
+    if (age_ms <= ttl_ms) {
+      break;
+    }
+    cancelled_lease_tombstones_.erase(oldest.first);
+    cancelled_lease_tombstone_queue_.pop_front();
   }
 }
 
@@ -3699,6 +3797,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       });
 }
 
+// Idempotent because ObjectIDs are never reused: re-freeing an id is a no-op.
 void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
                                          rpc::FreeLocalObjectsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {

@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer.h"
@@ -94,7 +95,8 @@ class RaySyncerTest : public ::testing::Test {
     }
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
-    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary(), 1, 0);
+    syncer_ = std::make_unique<RaySyncer>(
+        io_context_, PeriodicalRunner::Create(io_context_), local_id_.Binary(), 1, 0);
   }
 
   MockReporterInterface *GetReporter(MessageType cid) {
@@ -306,15 +308,20 @@ struct SyncerServerTest {
       v = 0;
     }
     // Setup syncer and grpc server
-    syncer = std::make_unique<RaySyncer>(
-        io_context, node_id.Binary(), 1, 0, std::move(ray_sync_observer));
+    syncer = std::make_unique<RaySyncer>(io_context,
+                                         PeriodicalRunner::Create(io_context),
+                                         node_id.Binary(),
+                                         1,
+                                         0,
+                                         std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = BuildAddress("0.0.0.0", port);
     grpc::ServerBuilder builder;
     service = std::make_unique<RaySyncerService>(*syncer);
+    grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
+    builder.RegisterService(grpc_service.get());
     server = builder.BuildAndStart();
 
     for (size_t cid = 0; cid < reporters.size(); ++cid) {
@@ -453,6 +460,7 @@ struct SyncerServerTest {
     return iter->second;
   }
   std::unique_ptr<RaySyncerService> service;
+  std::unique_ptr<RaySyncerGrpcService> grpc_service;
   std::unique_ptr<RaySyncer> syncer;
   std::unique_ptr<grpc::Server> server;
   std::unique_ptr<std::thread> thread;
@@ -1098,13 +1106,17 @@ class SyncerAuthenticationTest : public ::testing::Test {
     std::unique_ptr<std::thread> thread;
     std::unique_ptr<RaySyncer> syncer;
     std::unique_ptr<RaySyncerService> service;
+    std::unique_ptr<RaySyncerGrpcService> grpc_service;
     std::unique_ptr<grpc::Server> server;
 
     AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
         : server_port(port), work_guard(io_context.get_executor()) {
       // Setup syncer and grpc server
-      syncer =
-          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
+      syncer = std::make_unique<RaySyncer>(io_context,
+                                           PeriodicalRunner::Create(io_context),
+                                           NodeID::FromRandom().Binary(),
+                                           1,
+                                           0);
       thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
       // Create service with authentication token
@@ -1112,11 +1124,12 @@ class SyncerAuthenticationTest : public ::testing::Test {
           *syncer,
           token.empty() ? nullptr
                         : std::make_shared<const ray::rpc::AuthenticationToken>(token));
+      grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
 
       auto server_address = BuildAddress("0.0.0.0", port);
       grpc::ServerBuilder builder;
       builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-      builder.RegisterService(service.get());
+      builder.RegisterService(grpc_service.get());
       server = builder.BuildAndStart();
     }
 
@@ -1145,8 +1158,11 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ClientSyncer()
         : work_guard(boost::asio::make_work_guard(io_context.get_executor())),
           thread([this]() { io_context.run(); }) {
-      syncer =
-          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
+      syncer = std::make_unique<RaySyncer>(io_context,
+                                           PeriodicalRunner::Create(io_context),
+                                           NodeID::FromRandom().Binary(),
+                                           1,
+                                           0);
       remote_node_id = NodeID::FromRandom().Binary();
     }
 

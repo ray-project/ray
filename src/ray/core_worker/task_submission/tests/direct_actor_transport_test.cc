@@ -28,6 +28,7 @@
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -50,7 +51,7 @@ class DirectTaskTransportTest : public ::testing::Test {
           return nullptr;
         });
     memory_store =
-        std::make_unique<CoreWorkerMemoryStore>(store_io_context.GetIoService());
+        std::make_unique<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock);
     publisher = std::make_unique<pubsub::FakePublisher>();
     subscriber = std::make_unique<pubsub::FakeSubscriber>();
     reference_counter = std::make_shared<ReferenceCounter>(
@@ -73,7 +74,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         [](const ObjectID &object_id) { return std::nullopt; },
         nullptr,
         io_context,
-        reference_counter);
+        reference_counter,
+        clock);
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {
@@ -105,6 +107,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   InstrumentedIOContextWithThread store_io_context;
+  Clock clock;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;

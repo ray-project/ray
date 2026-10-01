@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _new-api-offline-reference-docs:
 
 Offline RL API
@@ -72,7 +70,6 @@ Constructing an OfflinePreLearner
     :toctree: doc/
 
     OfflinePreLearner
-    OfflinePreLearner.__init__
 
 Transforming Data with an OfflinePreLearner
 -------------------------------------------
@@ -84,5 +81,3 @@ Transforming Data with an OfflinePreLearner
     SCHEMA
     OfflinePreLearner.__call__
     OfflinePreLearner._map_to_episodes
-    OfflinePreLearner._map_sample_batch_to_episode
-    OfflinePreLearner._should_module_be_updated

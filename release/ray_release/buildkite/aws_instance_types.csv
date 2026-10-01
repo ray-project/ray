@@ -155,6 +155,14 @@ g5g.4xlarge,16,1
 g5g.8xlarge,32,1
 g5g.metal,64,2
 g5g.xlarge,4,1
+g6.12xlarge,48,4
+g6.16xlarge,64,1
+g6.24xlarge,96,4
+g6.2xlarge,8,1
+g6.48xlarge,192,8
+g6.4xlarge,16,1
+g6.8xlarge,32,1
+g6.xlarge,4,1
 h1.16xlarge,64,0
 h1.2xlarge,8,0
 h1.4xlarge,16,0

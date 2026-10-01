@@ -1,5 +1,7 @@
 ---
-description: "Learn about using labels to control how Ray schedules tasks, actors, and placement groups to nodes in your Kubernetes cluster."
+myst:
+  html_meta:
+    description: "Learn about using labels to control how Ray schedules tasks, actors, and placement groups to nodes in your Kubernetes cluster."
 ---
 
 (labels)=

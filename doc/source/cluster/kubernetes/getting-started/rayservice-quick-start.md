@@ -1,9 +1,15 @@
+---
+myst:
+  html_meta:
+    description: "Serve Ray Serve applications on Kubernetes with the RayService custom resource, deploying two applications as an example."
+---
+
 (kuberay-rayservice-quickstart)=
 # RayService Quickstart
 
 ## Prerequisites
 
-This guide mainly focuses on the behavior of KubeRay v1.6.0 and Ray 2.46.0.
+This guide mainly focuses on the behavior of KubeRay v1.7.0 and Ray 2.46.0.
 
 ## What's a RayService?
 
@@ -29,13 +35,12 @@ kind create cluster --image=kindest/node:v1.26.0
 
 ## Step 2: Install the KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-Note that the YAML file in this example uses `serveConfigV2` to specify a multi-application Serve configuration, available starting from KubeRay v0.6.0.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. Note that the YAML file in this example uses `serveConfigV2` to specify a multi-application Serve configuration, available starting from KubeRay v0.6.0.
 
 ## Step 3: Install a RayService
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -55,7 +60,7 @@ kubectl get raycluster
 # NAME                      DESIRED WORKERS   AVAILABLE WORKERS   CPUS    MEMORY   GPUS   STATUS   AGE
 # rayservice-sample-cxm7t   1                 1                   2500m   4Gi      0      ready    79s
 
-# Step 4.3: List all Ray Pods in the `default` namespace.
+# Step 4.3: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -90,7 +95,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 > **What do these services do?**
 
 - **`rayservice-sample-head-svc`**  
-  This service points to the **head pod** of the active RayCluster and is typically used to view the **Ray Dashboard** (port `8265`).
+  This service points to the **head pod** of the active RayCluster and is typically used to view the **Ray dashboard** (port `8265`).
 
 - **`rayservice-sample-serve-svc`**  
   This service exposes the **HTTP interface** of Ray Serve, typically on port `8000`.  
@@ -105,9 +110,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 kubectl port-forward svc/rayservice-sample-head-svc 8265:8265
 ```
 
-* Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
-Below is a screenshot example of the Serve page in the Ray dashboard.
-  ![Ray Serve Dashboard](../images/dashboard_serve.png)
+* Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability. Below is a screenshot example of the Serve page in the Ray dashboard. ![Ray Serve Dashboard](../images/dashboard_serve.png)
 
 ## Step 6: Send requests to the Serve applications by the Kubernetes serve service
 
@@ -129,7 +132,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 ```sh
 # Delete the RayService.
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-service.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-service.sample.yaml
 
 # Uninstall the KubeRay operator.
 helm uninstall kuberay-operator
@@ -142,5 +145,4 @@ kubectl delete pod curl
 
 * See [RayService](kuberay-rayservice) document for the full list of RayService features, including in-place update, zero downtime upgrade, and high-availability.
 * See [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
-* See [Examples](kuberay-examples) for more RayService examples.
-The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.
+* See [Examples](kuberay-examples) for more RayService examples. The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.

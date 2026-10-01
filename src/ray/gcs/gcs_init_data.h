@@ -65,6 +65,15 @@ class GcsInitData {
     return placement_group_table_data_;
   }
 
+  /**
+   * @brief Get the worker metadata loaded from the worker table.
+   *
+   * @return Map from worker id to its worker table entry.
+   */
+  const absl::flat_hash_map<WorkerID, rpc::WorkerTableData> &Workers() const {
+    return worker_table_data_;
+  }
+
  private:
   /// Load job metadata from the store into memory asynchronously.
   ///
@@ -88,6 +97,13 @@ class GcsInitData {
 
   void AsyncLoadActorTaskSpecTableData(Postable<void()> on_done);
 
+  /**
+   * @brief Load worker metadata from the store into memory asynchronously.
+   *
+   * @param on_done The callback invoked when worker metadata is loaded successfully.
+   */
+  void AsyncLoadWorkerTableData(Postable<void()> on_done);
+
  protected:
   /// The gcs table storage.
   gcs::GcsTableStorage &gcs_table_storage_;
@@ -106,6 +122,9 @@ class GcsInitData {
   absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_table_data_;
 
   absl::flat_hash_map<ActorID, rpc::TaskSpec> actor_task_spec_table_data_;
+
+  /// Worker metadata.
+  absl::flat_hash_map<WorkerID, rpc::WorkerTableData> worker_table_data_;
 };
 
 }  // namespace gcs

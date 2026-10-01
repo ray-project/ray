@@ -11,7 +11,7 @@ MultiAgentBatch has unequal per-policy data. This test verifies:
 
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import NUM_MODULE_STEPS_TRAINED
+from ray.rllib.utils.metrics import LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
 
 NUM_AGENTS = 5
 
@@ -39,11 +39,32 @@ def _build_config(*, minibatch_size=None, num_epochs=1):
     return config
 
 
+def _train_until_learner_results(algo, *, max_iters=20):
+    """Return the per-policy learner results of a training iteration.
+
+    APPO trains asynchronously, so the first ``train()`` call can return before the
+    first learner update has been reported back to the algorithm. Reading
+    ``result["learners"]`` right away is therefore racy (the key or a policy can be
+    missing), which made these tests flaky. Keep training until both policies have
+    reported learner metrics.
+    """
+    for _ in range(max_iters):
+        learners = algo.train().get(LEARNER_RESULTS, {})
+        if all(
+            NUM_MODULE_STEPS_TRAINED in learners.get(pid, {})
+            for pid in ("policy_a", "policy_b")
+        ):
+            return learners
+    raise AssertionError(
+        f"No learner results for both policies after {max_iters} training iterations."
+    )
+
+
 def test_default_appo_unequal_data():
     """Without minibatch_size, policy_a trains on more data than policy_b."""
     algo = _build_config().build()
 
-    learners = algo.train()["learners"]
+    learners = _train_until_learner_results(algo)
     steps_a = learners["policy_a"][NUM_MODULE_STEPS_TRAINED]
     steps_b = learners["policy_b"][NUM_MODULE_STEPS_TRAINED]
     # steps_a should be 4x more data than steps_b
@@ -57,7 +78,7 @@ def test_minibatch_equalizes_data():
     """With minibatch_size, both policies train on equal amounts of data."""
     algo = _build_config(minibatch_size=50, num_epochs=4).build()
 
-    learners = algo.train()["learners"]
+    learners = _train_until_learner_results(algo)
     steps_a = learners["policy_a"][NUM_MODULE_STEPS_TRAINED]
     steps_b = learners["policy_b"][NUM_MODULE_STEPS_TRAINED]
     assert steps_a == steps_b, (
