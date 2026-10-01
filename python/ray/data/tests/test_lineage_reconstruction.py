@@ -86,7 +86,7 @@ def lose_output(monkeypatch):
 
 
 def _nodes(tracker):
-    return tracker._data_task_id_to_task_node
+    return tracker._lineage_task_id_to_task_node
 
 
 def _assert_every_row_once(ids, expected):
@@ -265,7 +265,9 @@ def test_reconstruction_stamp_survives_schema_divergence():
     )
     from ray.data.block import BlockMetadata
 
-    stamp = ReconstructionStamp(data_task_id="child:0", plan_id="plan_a")
+    stamp = ReconstructionStamp(
+        lineage_task_id="child:0", reconstruction_plan_id="plan_a"
+    )
     meta = BlockMetadata(num_rows=2, size_bytes=16, exec_stats=None, input_files=None)
     # The same column comes back all nulls on the re-run, so it is inferred as null.
     bundle = RefBundle(
@@ -319,7 +321,7 @@ def test_reconstruction_input_bypasses_the_bundler(
     stamped = replace(
         make_ref_bundles([[2]])[0],
         reconstruction_stamp=ReconstructionStamp(
-            data_task_id="child:0", plan_id="plan_a"
+            lineage_task_id="child:0", reconstruction_plan_id="plan_a"
         ),
     )
     op._add_input_inner(stamped, 0)
@@ -339,7 +341,7 @@ def _abortable_task(task_done_callback):
         MagicMock(),  # block_ref_counter
         "test_op",
         task_done_callback=task_done_callback,
-        data_task_id="seed:0",
+        lineage_task_id="seed:0",
     )
 
 
@@ -382,9 +384,11 @@ def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
     assert task not in fetcher._drained_tasks
 
 
-@pytest.mark.parametrize("data_task_id", [None, "seed:0"], ids=["untracked", "tracked"])
+@pytest.mark.parametrize(
+    "lineage_task_id", [None, "seed:0"], ids=["untracked", "tracked"]
+)
 def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
-    monkeypatch, data_task_id
+    monkeypatch, lineage_task_id
 ):
     """A task's stream failing with ``ObjectLostError`` drains the task like any other
     task error when it is not lineage tracked, so pairs already in flight in the metadata
@@ -408,9 +412,9 @@ def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
         MagicMock(),  # block_ref_counter
         "test_op",
         task_done_callback=lambda exc, worker_stats, driver_stats: calls.append(exc),
-        data_task_id=data_task_id,
+        lineage_task_id=lineage_task_id,
     )
-    assert task.is_lineage_tracked is (data_task_id is not None)
+    assert task.is_lineage_tracked is (lineage_task_id is not None)
     metadata_fetcher = MagicMock()
 
     if task.is_lineage_tracked:

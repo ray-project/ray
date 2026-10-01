@@ -484,7 +484,9 @@ def test_ref_bundle_eq_and_hash():
 
     diff_bundle_5 = replace(
         bundle,
-        reconstruction_stamp=ReconstructionStamp(data_task_id="task:0", plan_id="plan"),
+        reconstruction_stamp=ReconstructionStamp(
+            lineage_task_id="task:0", reconstruction_plan_id="plan"
+        ),
     )
     assert bundle != diff_bundle_5 and hash(bundle) != hash(diff_bundle_5)
 

@@ -713,13 +713,13 @@ def _reconstruct_lost_object(
     # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
     # plans do not interfere.
     try:
-        traced_seed_ids, plan_id = lineage_tracker.register_task_failed(
-            task.data_task_id, task.plan_id
+        traced_seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
+            task.lineage_task_id, task.reconstruction_plan_id
         )
     except ValueError as err:
         raise LineageReconstructionError(
             lost_error,
-            f"task {task.data_task_id} on operator {state.op.name!r} is not "
+            f"task {task.lineage_task_id} on operator {state.op.name!r} is not "
             f"registered with the lineage graph ({err}).",
         ) from lost_error
 
@@ -757,7 +757,7 @@ def _reconstruct_lost_object(
         seed_input = dataclasses.replace(
             seed_input,
             reconstruction_stamp=ReconstructionStamp(
-                data_task_id=seed_id, plan_id=plan_id
+                lineage_task_id=seed_id, reconstruction_plan_id=reconstruction_plan_id
             ),
         )
         source_op = seed_op.input_dependencies[0]
@@ -768,13 +768,13 @@ def _reconstruct_lost_object(
             seed_id,
             seed_op.name,
             seed_input.size_bytes(),
-            plan_id,
+            reconstruction_plan_id,
         )
 
     logger.warning(
         "Reconstructing lost object for task %s via plan %s from seed task(s) %s.",
-        task.data_task_id,
-        plan_id,
+        task.lineage_task_id,
+        reconstruction_plan_id,
         ", ".join(seed_task_ids),
     )
 

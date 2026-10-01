@@ -171,8 +171,8 @@ class DataOpTask(OpTask):
         ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
-        data_task_id: Optional[str] = None,
-        plan_id: Optional[str] = None,
+        lineage_task_id: Optional[str] = None,
+        reconstruction_plan_id: Optional[str] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -195,9 +195,9 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
-            data_task_id: Logical Ray Data ID of this task, stable across lineage
+            lineage_task_id: Logical Ray Data ID of this task, stable across lineage
                 reconstruction attempts.
-            plan_id: The reconstruction plan this attempt serves; ``None`` for a
+            reconstruction_plan_id: The reconstruction plan this attempt serves; ``None`` for a
                 fresh attempt. Carried here because the output and completion
                 callbacks need it after submission.
         """
@@ -215,8 +215,8 @@ class DataOpTask(OpTask):
         self._operator_name = operator_name
         self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
-        self._data_task_id = data_task_id
-        self._plan_id: Optional[str] = plan_id
+        self._lineage_task_id = lineage_task_id
+        self._reconstruction_plan_id: Optional[str] = reconstruction_plan_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -421,28 +421,27 @@ class DataOpTask(OpTask):
             self._start_output_backpressure_s = None
 
     @property
-    def data_task_id(self) -> Optional[str]:
+    def lineage_task_id(self) -> Optional[str]:
         """Logical lineage id, stable across reconstruction attempts.
 
         None if untracked. Branch on ``is_lineage_tracked`` rather than on this.
         """
-        return self._data_task_id
+        return self._lineage_task_id
 
     @property
     def is_lineage_tracked(self) -> bool:
         """Whether the operator that owns this task registered this task with the lineage tracker.
 
         Only then can a lost output be reconstructed from lineage. An operator
-        mints a ``data_task_id`` exactly when it registers the task, so this is
+        mints a ``lineage_task_id`` exactly when it registers the task, so this is
         derived from the id rather than stored separately.
-        TODO(ayushkum): Rename data task ID to lineage_task_ID to prevent premature generalizing
         """
-        return self._data_task_id is not None
+        return self._lineage_task_id is not None
 
     @property
-    def plan_id(self) -> Optional[str]:
+    def reconstruction_plan_id(self) -> Optional[str]:
         """The reconstruction plan this attempt serves; ``None`` if fresh."""
-        return self._plan_id
+        return self._reconstruction_plan_id
 
     @property
     def has_finished(self) -> bool:
@@ -676,10 +675,10 @@ class PhysicalOperator(Operator):
         """Return a unique identifier for this operator."""
         return self._id
 
-    def owns_data_task(self, data_task_id: str) -> bool:
-        """Whether this operator minted ``data_task_id`` for one of its tasks.
+    def owns_data_task(self, lineage_task_id: str) -> bool:
+        """Whether this operator minted ``lineage_task_id`` for one of its tasks.
 
-        Only map operators mint lineage ids (``MapOperator._data_task_id_for``);
+        Only map operators mint lineage ids (``MapOperator._lineage_task_id_for``);
         every other operator answers False.
         """
         return False

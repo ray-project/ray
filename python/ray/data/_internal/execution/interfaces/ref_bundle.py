@@ -17,22 +17,22 @@ from ray.types import ObjectRef
 
 
 class ReconstructionStamp(NamedTuple):
-    """A tuple of (data_task_id, plan_id) which is used to identify what lineage reconstruction task
+    """A tuple of (lineage_task_id, reconstruction_plan_id) which is used to identify what lineage reconstruction task
     will consume this input ref bundle. This is set to None for input bundles of fresh
     (non-reconstruction) tasks.
 
-    - We need the consuming task's data task ID, which is stable across reconstruction attempts,
+    - We need the consuming task's lineage task ID, which is stable across reconstruction attempts,
       to find what downstream tasks depend on this reconstruction task.
-    - We need the plan ID to identify which target task triggered this reconstruction plan, and
+    - We need the reconstruction plan ID to identify which target task triggered this reconstruction plan, and
       therefore which output blocks of this particular reconstruction task need to be reused
       for downstream reconstruction tasks, which blocks can be discarded/pruned,
       and which blocks can be propagated as new/fresh blocks.
     """
 
     # Logical Ray Data ID of the task being re-executed.
-    data_task_id: str
+    lineage_task_id: str
     # The reconstruction plan the re-execution serves.
-    plan_id: str
+    reconstruction_plan_id: str
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,7 @@ class RefBundle:
     output_split_idx: Optional[int] = None
 
     # Set by lineage reconstruction on the input bundle of a reconstruction task. This is
-    # a tuple of (data_task_id, plan_id) if the consuming task is a reconstruction task.
+    # a tuple of (lineage_task_id, reconstruction_plan_id) if the consuming task is a reconstruction task.
     # Otherwise, this is set to None for input bundles of fresh tasks.
     # If this bundle is stamped, the consuming operator skips its bundler and submits the task with
     # the same logical task ID (since this is a re-execution).
