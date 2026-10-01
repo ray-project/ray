@@ -53,41 +53,34 @@ trainer.fit()
 # __worker_fault_tolerance_end__
 
 # __preemption_jit_checkpoint_start__
-import os
 import tempfile
 import uuid
-
-import torch
 
 import ray.train
 import ray.train.torch
 
 
-def save_checkpoint(model: torch.nn.Module, step: int):
+def save_checkpoint(metrics: dict):
     with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
         checkpoint = None
         # Save the checkpoint from rank 0, which holds a full model replica.
         if ray.train.get_context().get_world_rank() == 0:
-            torch.save(
-                {"model": model.state_dict(), "step": step},
-                os.path.join(temp_checkpoint_dir, "checkpoint.pt"),
-            )
+            # torch.save(...)
             checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
         # Call `report` on every rank, with or without a checkpoint.
-        ray.train.report({"step": step}, checkpoint=checkpoint)
+        ray.train.report(metrics, checkpoint=checkpoint)
 
 
 def train_fn_per_worker(config: dict):
-    model = torch.nn.Linear(8, 1)
     start_step = 0
 
     # [1] Resume from the latest checkpoint, which can be a just-in-time one.
     checkpoint = ray.train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            state = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
-            model.load_state_dict(state["model"])
-            start_step = state["step"] + 1
+            # model.load_state_dict(torch.load(...))
+            # start_step = ...
+            ...
 
     saved_on_preemption = False
     for step in range(start_step, config["num_steps"]):
@@ -97,9 +90,9 @@ def train_fn_per_worker(config: dict):
         # times, because it synchronizes the answer across all workers.
         preemption_info = ray.train.get_preemption_info()
         if preemption_info is not None and not saved_on_preemption:
-            # Save one extra checkpoint before the node is preempted, then
-            # keep training until Ray Train restarts the run.
-            save_checkpoint(model, step)
+            # Save one extra checkpoint before the node is preempted. Keep
+            # the loop running, because returning ends the run.
+            save_checkpoint({"step": step})
             saved_on_preemption = True
 
 
