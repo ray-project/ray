@@ -388,6 +388,17 @@
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+        # Decommit freed mimalloc pages (Arrow's default pool). Each worker
+        # runs ~20 reduce tasks back to back, and retained-but-free pages
+        # otherwise ratchet worker RSS to ~3x a partition's decoded bytes
+        # (~2.7GB vs the ~1.6GB request), which OOM-killed reduce tasks at
+        # the tail of the run. Verified on this exact workload: 3 kills and
+        # 3005s without these, 0 kills and 2569s with them
+        # (prodjob_3mv2zlj4845tn91h2ccdg3tm6x). First two names are the
+        # mimalloc 1.x/2.0 options, the third is the 2.1+ equivalent.
+        MIMALLOC_PAGE_RESET: "1"
+        MIMALLOC_RESET_DECOMMITS: "1"
+        MIMALLOC_PURGE_DELAY: "0"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
