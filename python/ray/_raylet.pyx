@@ -713,7 +713,7 @@ def raise_sys_exit_with_custom_error_message(
 
 
 cdef CRayStatus check_no_consume_once_args(args):
-    """Return InvalidArgument if any ObjectRef arg was created with consume_once=True.
+    """Return InvalidArgument if any ObjectRef arg was created with _consume_once=True.
 
     Other args are serialized into new objects, which are never consume-once.
     """

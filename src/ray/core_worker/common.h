@@ -119,8 +119,9 @@ struct TaskOptions {
   std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   std::optional<std::string> tensor_transport;
-  /// Only applicable to actor tasks. If true, the task's returns are created MOVABLE:
-  /// each can be passed to exactly one actor task and can't be borrowed.
+  /// Private. Only applicable to actor tasks. If true, the task's returns are created
+  /// MOVABLE: each can be passed to exactly one actor task and can't be borrowed.
+  /// The object will be moved(deleted) from producer upon consumption.
   bool consume_once = false;
 };
 
