@@ -113,7 +113,7 @@ Shuffle v2 supports the following operations:
 - Key-based repartitioning through {meth}`Dataset.repartition <ray.data.Dataset.repartition>` with `keys`
 - Joins through {meth}`Dataset.join <ray.data.Dataset.join>`
 
-Shuffle v2 doesn't yet support {meth}`Dataset.sort <ray.data.Dataset.sort>` or {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, which use the {ref}`range-partitioning shuffle <range-partitioning-shuffle>`.
+Shuffle v2 doesn't support {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, which uses a separate map-reduce shuffle. That shuffle runs push-based under `ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED` and pull-based under every other strategy.
 
 (disk-based-shuffle)=
 
@@ -194,7 +194,7 @@ Hash-shuffle was the default shuffle strategy for key-based operations before {r
 
 Range-partitioning shuffle is also a classical algorithm. It splits the dataset into a target number of ranges, determined by boundaries that approximate the real ranges of the totally ordered, or sorted, dataset. It runs in three phases:
 
-1. **Sampling phase:** Ray Data randomly samples 10 rows from every input block and combines the samples into a single dataset. It then sorts that dataset and splits it into the target number of partitions, which define approximate *range boundaries*.
+1. **Sampling phase:** Ray Data randomly samples rows from every input block and combines the samples into a single dataset. It takes `num_reducers * 10 / len(blocks)` samples from each block, which is about 10 samples for each output partition in total. It then sorts that dataset and splits it into the target number of partitions, which define approximate *range boundaries*.
 1. **Partition phase:** Ray Data sorts every block and splits it into partitions based on the *range boundaries* from the previous step.
 1. **Reduce phase:** Ray Data recombines the individual partitions within the same range to produce the resulting block.
 
