@@ -82,8 +82,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_PUSH_HEALTH,
     RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
+    RAY_SERVE_MAX_PUSH_IN_FLIGHT_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
-    RAY_SERVE_METRICS_PUSH_STUCK_S,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
     RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS,
@@ -426,21 +426,19 @@ class ReplicaMetricsManager:
 
         # Tracks in-flight metrics push to controller. Skip if new one is sent.
         self._pending_metrics_push_ref: Optional[ObjectRef] = None
-        self._pending_metrics_push_started_s: float = 0.0
+        self._pending_metrics_push_started_at: float = 0.0
         self._metrics_push_lock = threading.Lock()
 
         # Latest local health-check result, pushed to the controller so it does not
         # have to probe for it.
-        self._self_healthy: Optional[bool] = None
-        self._self_health_checked_at: Optional[float] = None
         self._eval_self_health_fn: Optional[Callable] = None
-        self._self_health_period_s: float = 0.0
+        self._health_check_period_s: float = 0.0
         self._self_consecutive_failures = 0
-        self._last_counted_failure_s: float = 0.0
+        self._last_counted_failure_at: float = 0.0
         self._pending_health_push_ref: Optional[ObjectRef] = None
-        self._pending_health_push_started_s: float = 0.0
+        self._pending_health_push_started_at: float = 0.0
         # What the outstanding heartbeat carries; only meaningful while one is.
-        self._pending_push_healthy: bool = True
+        self._pending_health_push_healthy: bool = True
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -712,7 +710,7 @@ class ReplicaMetricsManager:
         """
         if ref is None or check_obj_ref_ready_nowait(ref):
             return False
-        return time.time() - started_s < RAY_SERVE_METRICS_PUSH_STUCK_S
+        return time.time() - started_s < RAY_SERVE_MAX_PUSH_IN_FLIGHT_S
 
     def start_self_health_pusher(self, eval_fn: Callable, period_s: float):
         """Periodically run the local health check and push the result.
@@ -721,7 +719,7 @@ class ReplicaMetricsManager:
         so every replica is checked well within it despite scheduling jitter.
         """
         self._eval_self_health_fn = eval_fn
-        self._self_health_period_s = period_s
+        self._health_check_period_s = period_s
         self._metrics_pusher.start()
         self._metrics_pusher.register_or_update_task(
             self.PUSH_SELF_HEALTH_TASK_NAME,
@@ -756,23 +754,22 @@ class ReplicaMetricsManager:
                 self._self_consecutive_failures = 0
             elif (
                 self._self_consecutive_failures == 0
-                or counted_at - self._last_counted_failure_s
-                >= self._self_health_period_s
+                or counted_at - self._last_counted_failure_at
+                >= self._health_check_period_s
             ):
                 # Evals run twice per period for freshness, but the controller weighs
                 # this count against a threshold calibrated to the period. Counting
                 # every eval would replace a replica in half the configured time.
                 self._self_consecutive_failures += 1
-                self._last_counted_failure_s = counted_at
-        self._self_healthy = healthy
-        self._self_health_checked_at = time.time()
+                self._last_counted_failure_at = counted_at
+        checked_at = time.time()
 
         with self._metrics_push_lock:
             in_flight = self._push_blocked(
                 self._pending_health_push_ref,
-                self._pending_health_push_started_s,
+                self._pending_health_push_started_at,
             )
-            if in_flight and (healthy or not self._pending_push_healthy):
+            if in_flight and (healthy or not self._pending_health_push_healthy):
                 # Turning unhealthy is worth jumping the queue rather than waiting out
                 # a lag episode, but only until an unhealthy heartbeat is in flight:
                 # the payload is absolute, so a second one adds nothing.
@@ -781,13 +778,13 @@ class ReplicaMetricsManager:
                 # Actor methods are resolved dynamically on the actor handle.
                 self._controller_handle.record_replica_health.remote(  # type: ignore[attr-defined]
                     self._replica_id,
-                    self._self_health_checked_at,
+                    checked_at,
                     healthy,
                     self._self_consecutive_failures,
                 )
             )
-            self._pending_health_push_started_s = time.time()
-            self._pending_push_healthy = healthy
+            self._pending_health_push_started_at = time.time()
+            self._pending_health_push_healthy = healthy
 
     def start_metrics_pusher(self):
         # Invariant: only called when an autoscaling config is set (checked at
@@ -1094,10 +1091,10 @@ class ReplicaMetricsManager:
         with self._metrics_push_lock:
             if self._push_blocked(
                 self._pending_metrics_push_ref,
-                self._pending_metrics_push_started_s,
+                self._pending_metrics_push_started_at,
             ):
                 return  # Previous push still in flight, skip and try again later
-            self._pending_metrics_push_started_s = time.time()
+            self._pending_metrics_push_started_at = time.time()
             self._pending_metrics_push_ref = (
                 # Actor methods are resolved dynamically on the actor handle.
                 self._controller_handle.record_autoscaling_metrics_from_replica.remote(  # type: ignore[attr-defined]
@@ -1237,8 +1234,7 @@ class Replica:
         # While the periodic self-health task is the active observer, remote probes
         # read its cached verdict instead of re-running the user check.
         self._self_health_active = False
-        self._self_health_evaluated = False
-        self._self_health_evaluated_at: float = 0.0
+        self._self_health_evaluated_at: Optional[float] = None
         self._health_check_lock = asyncio.Lock()
         self._last_self_health_error: Optional[str] = None
 
@@ -2417,7 +2413,7 @@ class Replica:
         # because the task latches at the threshold and would otherwise flap.
         if (
             self._self_health_active
-            and self._self_health_evaluated
+            and self._self_health_evaluated_at is not None
             and (
                 not self._healthy
                 or time.time() - self._self_health_evaluated_at
@@ -2462,7 +2458,6 @@ class Replica:
             # A cancelled check confirmed nothing, so it must neither refresh the
             # cached verdict nor pull the replica out of the data-plane rotation.
             if evaluated:
-                self._self_health_evaluated = True
                 self._self_health_evaluated_at = time.time()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
