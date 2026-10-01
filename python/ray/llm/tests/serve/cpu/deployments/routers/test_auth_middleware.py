@@ -168,12 +168,67 @@ class TestInitWiring:
         assert mw.kwargs["api_key"] == API_KEY
         assert mw.kwargs["api_key_env_var"] == ENV_VAR
 
-    def test_init_auth_runs_inside_request_id(self):
+    def test_init_auth_runs_inside_cors_metrics_and_request_id(self, monkeypatch):
+        # The HTTP metrics middleware is env-gated (ENABLE_VERBOSE_TELEMETRY);
+        # force it on so we can assert auth sits inside it too.
+        import ray.llm._internal.serve.observability.metrics.fast_api_metrics as m
+
+        monkeypatch.setattr(m, "ENABLE_VERBOSE_TELEMETRY", True, raising=False)
+
         # Starlette inserts each add_middleware at index 0, so user_middleware is
-        # outermost-first. Request-id is added last => index 0 (runs first); auth
-        # sits inside it (higher index) so a rejected request still has an id.
+        # outermost-first (higher index == more inner == runs later inbound).
+        # Auth must sit INSIDE CORS, metrics and request-id so that a 401
+        # short-circuit still passes back out through them: CORS adds its headers
+        # to the rejection, metrics records it, and the request keeps its id.
         classes = [mw.cls.__name__ for mw in self._init().user_middleware]
-        assert classes.index("AuthMiddleware") > classes.index("SetRequestIdMiddleware")
+        auth = classes.index("AuthMiddleware")
+        assert auth > classes.index("CORSMiddleware")
+        assert auth > classes.index("SetRequestIdMiddleware")
+        # Present only when telemetry is enabled (guarded in case the forced flag
+        # is not honored in a given environment).
+        if "MeasureHTTPRequestMetricsMiddleware" in classes:
+            assert auth > classes.index("MeasureHTTPRequestMetricsMiddleware")
+
+
+class TestApplyIngressApiKeyToDirectStreaming:
+    """`_apply_ingress_api_key` propagates the explicit key to the replica env so
+    vLLM's native auth enforces it on direct-streaming paths."""
+
+    def _config(self, runtime_env=None):
+        from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+
+        return LLMConfig(
+            model_loading_config=dict(model_id="m"), runtime_env=runtime_env
+        )
+
+    def _apply(self, config, api_key):
+        from ray.llm._internal.serve.core.ingress.builder import (
+            _apply_ingress_api_key,
+        )
+
+        return _apply_ingress_api_key(config, api_key)
+
+    def test_noop_without_key(self):
+        config = self._config()
+        assert self._apply(config, None) is config
+
+    def test_injects_vllm_api_key_env_var(self):
+        out = self._apply(self._config(), API_KEY)
+        assert out.runtime_env["env_vars"][ENV_VAR] == API_KEY
+
+    def test_preserves_existing_env_vars(self):
+        config = self._config(runtime_env={"env_vars": {"OTHER": "1"}})
+        env = self._apply(config, API_KEY).runtime_env["env_vars"]
+        assert env == {"OTHER": "1", ENV_VAR: API_KEY}
+
+    def test_explicit_key_overrides_existing_env(self):
+        config = self._config(runtime_env={"env_vars": {ENV_VAR: "old"}})
+        assert self._apply(config, API_KEY).runtime_env["env_vars"][ENV_VAR] == API_KEY
+
+    def test_original_config_unchanged(self):
+        config = self._config()
+        self._apply(config, API_KEY)
+        assert config.runtime_env is None
 
 
 if __name__ == "__main__":

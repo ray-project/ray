@@ -17,6 +17,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.middleware import VLLM_API_KEY_ENV_VAR
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -48,6 +49,35 @@ def _get_direct_streaming_serve_options(
     return override_serve_options
 
 
+def _apply_ingress_api_key(llm_config: LLMConfig, api_key: Optional[str]) -> LLMConfig:
+    """Propagate an explicit ingress ``api_key`` to a direct-streaming replica.
+
+    In direct-streaming mode the ingress app is vLLM's own FastAPI app, built
+    inside the replica, which enforces ``VLLM_API_KEY`` read from the replica
+    process environment. Injecting the configured key there makes the explicit
+    ``api_key`` config enforce auth on the direct-streaming paths too, so
+    authentication does not depend on which builder/mode is used. Takes
+    precedence over any pre-existing ``VLLM_API_KEY`` in the model's
+    ``runtime_env``, matching the OpenAiIngress precedence (explicit key over
+    environment).
+
+    Args:
+        llm_config: The model configuration to augment.
+        api_key: The explicit bearer key, or ``None``/empty to leave unchanged.
+
+    Returns:
+        The original config when no key is given, else a copy whose
+        ``runtime_env.env_vars`` carries ``VLLM_API_KEY``.
+    """
+    if not api_key:
+        return llm_config
+    runtime_env = dict(llm_config.runtime_env or {})
+    env_vars = dict(runtime_env.get("env_vars") or {})
+    env_vars[VLLM_API_KEY_ENV_VAR] = api_key
+    runtime_env["env_vars"] = env_vars
+    return llm_config.model_copy(update={"runtime_env": runtime_env})
+
+
 def _build_direct_streaming_llm_deployment(
     llm_config: LLMConfig,
     *,
@@ -55,6 +85,7 @@ def _build_direct_streaming_llm_deployment(
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
     deployment_cls: Optional[Type[LLMServer]] = None,
+    api_key: Optional[str] = None,
 ) -> Application:
     """Build an LLM deployment with late-bound ASGI ingress enabled.
 
@@ -67,7 +98,20 @@ def _build_direct_streaming_llm_deployment(
     Replica selection is driven by the deployment's ``request_router_config``.
     Default to ``RoundRobinRouter`` when the user hasn't set one, and otherwise
     leave their configured value untouched.
+
+    Args:
+        llm_config: The model configuration for the deployment.
+        name_prefix: Optional deployment name prefix.
+        bind_kwargs: Optional kwargs bound to the deployment.
+        override_serve_options: Optional Serve deployment option overrides.
+        deployment_cls: Optional server class to wrap as the ingress.
+        api_key: Optional explicit bearer key; propagated to the replica so
+            vLLM's native auth enforces it on this direct-streaming path.
+
+    Returns:
+        The bound ingress ``Application``.
     """
+    llm_config = _apply_ingress_api_key(llm_config, api_key)
     server_cls = deployment_cls or llm_config.server_cls or LLMServer
     return build_llm_deployment(
         llm_config,
@@ -275,7 +319,9 @@ def build_openai_app(builder_config: dict) -> Application:
             builder_config.ingress_deployment_config,
             builder_config.ingress_cls_config,
         )
-        direct_deployment = _build_direct_streaming_llm_deployment(llm_configs[0])
+        direct_deployment = _build_direct_streaming_llm_deployment(
+            llm_configs[0], api_key=builder_config.api_key
+        )
         logger.info(
             "Direct streaming enabled: "
             "LLMServer=ingress, LLMRouter=ingress_request_router"

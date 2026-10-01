@@ -155,6 +155,27 @@ def init(
     #       exceptions from the handlers, avoiding them propagating to other
     #       middleware (for ex, telemetry)
     add_exception_handling_middleware(_fastapi_router_app)
+
+    # Enforce bearer-token authentication when a key is configured.
+    #
+    # NOTE: Added right after the exception handler so it is INNER to the CORS,
+    # metrics and request-id middleware (LIFO: earlier-added runs later/inner).
+    # This is deliberate:
+    #   - inner to CORS   -> a 401 short-circuit still passes back out through
+    #     CORSMiddleware, so cross-origin clients get CORS headers on rejections;
+    #   - inner to metrics -> rejected requests are still recorded, and since the
+    #     metrics middleware reads `request.state.user_id` on the way out (after
+    #     the inner app returns), authenticated-user tagging still works;
+    #   - inner to request-id -> a rejected request still carries a request id.
+    # A no-op when no key is configured (open endpoint, preserving prior
+    # behavior).
+    add_auth_middleware(
+        _fastapi_router_app,
+        api_key=api_key,
+        api_key_env_var=VLLM_API_KEY_ENV_VAR,
+        exempt_paths=exempt_paths or (),
+    )
+
     # Configure CORS middleware
     _fastapi_router_app.add_middleware(
         CORSMiddleware,
@@ -165,20 +186,6 @@ def init(
     )
     # Add HTTP metrics middleware
     add_http_metrics_middleware(_fastapi_router_app)
-
-    # Enforce bearer-token authentication when a key is configured.
-    #
-    # NOTE: Added after metrics so it is OUTER to (and runs before) the metrics
-    # middleware -- letting it populate `request.state.user_id` before metrics
-    # reads it -- and before SetRequestIdMiddleware, which stays outermost so a
-    # rejected request still carries a request id for logging. A no-op when no
-    # key is configured (open endpoint, preserving prior behavior).
-    add_auth_middleware(
-        _fastapi_router_app,
-        api_key=api_key,
-        api_key_env_var=VLLM_API_KEY_ENV_VAR,
-        exempt_paths=exempt_paths or (),
-    )
 
     # Inject unique per-request ID
     #

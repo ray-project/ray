@@ -125,6 +125,7 @@ def build_dp_openai_app(builder_config: dict) -> Application:
         direct_deployment = _build_direct_streaming_llm_deployment(
             llm_config,
             deployment_cls=DPServer,
+            api_key=builder_config.api_key,
         )
         logger.info(
             "Direct streaming enabled for DP: "
