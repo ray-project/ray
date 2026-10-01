@@ -680,9 +680,12 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         if mean is None:
             return None
 
-        res = pac.sum(
-            pac.power(pac.subtract(self._column, mean), 2), skip_nulls=ignore_nulls
-        )
+        column = self._column
+        if pyarrow.types.is_boolean(column.type):
+            # Treat booleans as 0/1: `subtract` has no boolean kernel.
+            column = pac.cast(column, pyarrow.float64())
+
+        res = pac.sum(pac.power(pac.subtract(column, mean), 2), skip_nulls=ignore_nulls)
         return res.as_py() if as_py else res
 
     def quantile(

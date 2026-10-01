@@ -233,37 +233,6 @@ def _numerical_aggregators(column: str) -> List[AggregateFnV2]:
     ]
 
 
-def _boolean_aggregators(column: str) -> List[AggregateFnV2]:
-    """Generate default metrics for boolean columns.
-
-    This function returns a list of aggregators that compute the following metrics:
-    - count
-    - mean (the fraction of true values)
-    - min
-    - max
-    - missing_value_percentage
-    - approximate_top_k (true/false value counts)
-
-    ``Std``, ``ApproximateQuantile``, and ``ZeroPercentage`` are omitted: the
-    PyArrow kernels they rely on (e.g. ``subtract``) are not implemented for
-    boolean arrays.
-
-    Args:
-        column: The name of the boolean column to compute metrics for.
-
-    Returns:
-        A list of AggregateFnV2 instances that can be used with Dataset.aggregate()
-    """
-    return [
-        Count(on=column, ignore_nulls=False),
-        Mean(on=column, ignore_nulls=True),
-        Min(on=column, ignore_nulls=True),
-        Max(on=column, ignore_nulls=True),
-        MissingValuePercentage(on=column),
-        ApproximateTopK(on=column, k=2),
-    ]
-
-
 def _temporal_aggregators(column: str) -> List[AggregateFnV2]:
     """Generate default metrics for temporal columns.
 
@@ -341,7 +310,8 @@ def _default_dtype_aggregators() -> Dict[
         DataType.uint64(): _numerical_aggregators,
         DataType.float32(): _numerical_aggregators,
         DataType.float64(): _numerical_aggregators,
-        DataType.bool(): _boolean_aggregators,
+        # Booleans are treated as 0/1 numbers (mean = fraction of true values).
+        DataType.bool(): _numerical_aggregators,
         # String and binary types
         DataType.string(): _basic_aggregators,
         DataType.binary(): _basic_aggregators,
@@ -368,9 +338,8 @@ def _get_fallback_aggregators(column: str, dtype: "DataType") -> List[AggregateF
         # Check for null type first
         if dtype.is_arrow_type() and pa.types.is_null(dtype._physical_dtype):
             return [Count(on=column, ignore_nulls=False)]
-        elif dtype.is_boolean_type():
-            return _boolean_aggregators(column)
-        elif dtype.is_numerical_type():
+        elif dtype.is_boolean_type() or dtype.is_numerical_type():
+            # Booleans are treated as 0/1 numbers.
             return _numerical_aggregators(column)
         elif dtype.is_temporal_type():
             return _temporal_aggregators(column)

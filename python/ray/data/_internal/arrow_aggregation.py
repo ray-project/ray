@@ -160,12 +160,19 @@ def missing_pct_spec() -> ArrowAggSpec:
     )
 
 
+def _zero_indicator(column: "pa.ChunkedArray") -> "pa.ChunkedArray":
+    # `equal(bool, int)` has no kernel; treat booleans as 0/1.
+    if pa.types.is_boolean(column.type):
+        column = pc.cast(column, pa.int8())
+    return pc.cast(pc.equal(column, 0), pa.int64())
+
+
 def zero_pct_spec() -> ArrowAggSpec:
     # numerator = #zeros; denominator = #non-null (ignore_nulls) or #rows.
     return ArrowAggSpec(
         components=("numerator", "denominator"),
         prep=lambda agg_index, source_col, block: block.append_column(
-            f"__d{agg_index}_zero", pc.cast(pc.equal(block[source_col], 0), pa.int64())
+            f"__d{agg_index}_zero", _zero_indicator(block[source_col])
         ),
         raw_agg_specs=lambda agg_index, source_col, options: [
             (f"__d{agg_index}_zero", "sum", options.zero_sum_opts),

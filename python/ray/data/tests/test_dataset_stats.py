@@ -21,7 +21,6 @@ from ray.data.datatype import DataType
 from ray.data.stats import (
     DatasetSummary,
     _basic_aggregators,
-    _boolean_aggregators,
     _default_dtype_aggregators,
     _dtype_aggregators_for_dataset,
     _numerical_aggregators,
@@ -50,14 +49,14 @@ class TestDtypeAggregatorsForDataset:
                 {"num": "DataType(arrow:int64)", "str": "DataType(arrow:string)"},
                 11,  # 1 numerical * 8 + 1 string * 3
             ),
-            # Boolean uses boolean aggregators
+            # Boolean treated as numerical (0/1)
             (
                 [{"bool_col": True, "int_col": 1}],
                 {
                     "bool_col": "DataType(arrow:bool)",
                     "int_col": "DataType(arrow:int64)",
                 },
-                14,  # 1 boolean * 6 + 1 numerical * 8
+                16,  # 2 columns * 8 aggregators each
             ),
         ],
     )
@@ -195,21 +194,6 @@ class TestIndividualAggregatorFunctions:
             ZeroPercentage,
         ]
 
-    def test_boolean_aggregators(self):
-        """Test _boolean_aggregators function."""
-        aggs = _boolean_aggregators("test_col")
-
-        assert len(aggs) == 6
-        assert all(agg.get_target_column() == "test_col" for agg in aggs)
-        assert [type(agg) for agg in aggs] == [
-            Count,
-            Mean,
-            Min,
-            Max,
-            MissingValuePercentage,
-            ApproximateTopK,
-        ]
-
     def test_temporal_aggregators(self):
         """Test _temporal_aggregators function."""
         aggs = _temporal_aggregators("test_col")
@@ -276,11 +260,13 @@ class TestDefaultDtypeAggregators:
                     Mean,
                     Min,
                     Max,
+                    Std,
+                    ApproximateQuantile,
                     MissingValuePercentage,
-                    ApproximateTopK,
+                    ZeroPercentage,
                 ],
                 False,
-            ),  # Boolean
+            ),  # Boolean treated as numerical (0/1)
             (
                 DataType.string,
                 [Count, MissingValuePercentage, ApproximateTopK],
@@ -376,11 +362,14 @@ class TestDatasetSummary:
         assert rows_same(actual_subset, expected)
 
     def test_summary_boolean_column(self):
-        """Boolean columns must not crash summary() (issue #62235).
+        """Boolean columns get the full numerical statistics (issue #62235).
 
-        Std/ApproximateQuantile/ZeroPercentage rely on PyArrow kernels (e.g.
-        ``subtract``) that are not implemented for boolean arrays.
+        Booleans are treated as 0/1 numbers: Std and ZeroPercentage used to
+        crash with ArrowNotImplementedError because PyArrow has no boolean
+        kernels for ``subtract``/``equal(bool, int)``.
         """
+        import numpy as np
+
         ds = ray.data.from_items(
             [
                 {"flag": True, "age": 25},
@@ -400,6 +389,12 @@ class TestDatasetSummary:
         assert stats["min"] is False
         assert stats["max"] is True
         assert stats["missing_pct"] == pytest.approx(25.0)
+        # 0/1 semantics for the numerical-only statistics.
+        assert stats["std"] == pytest.approx(np.std([1, 0, 1], ddof=0))
+        # One of three non-null values is False (= 0).
+        assert stats["zero_pct"] == pytest.approx(100.0 / 3)
+        # Median of [1, 0, 1].
+        assert stats["approx_quantile[0]"] == pytest.approx(1.0)
 
     def test_summary_with_column_filter(self):
         """Test summary with specific columns."""
