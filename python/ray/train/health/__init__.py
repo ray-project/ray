@@ -1,5 +1,4 @@
 from ray.train.health.decision import (
-    Action,
     Diagnose,
     Evict,
     HealthDecision,
@@ -11,7 +10,6 @@ from ray.train.health.probe import NodeProbe, Probe, ProbeResult, WorkerProbe
 from ray.train.health.state import HealthState
 
 __all__ = [
-    "Action",
     "Diagnose",
     "Evaluator",
     "Evict",

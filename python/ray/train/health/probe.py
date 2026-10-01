@@ -13,8 +13,11 @@ class ProbeResult:
     """The result of polling a probe once.
 
     Attributes:
-        metrics: Readings by name, for example ``{"gpu0_temp_c": 71.0}``. Each
-            value is the reading at the time of the poll.
+        metrics: Readings by metric name, for example ``{"gpu0_temp_c": 71.0}``.
+            The probe chooses the names, and Ray Train does not interpret them.
+            Names only need to be unique within one probe, because each probe's
+            results are stored separately. Each value is the reading at the
+            time of the poll.
         timestamp_s: When Ray Train collected the result, in seconds since the
             epoch. Set by Ray Train.
     """
@@ -33,9 +36,11 @@ class Probe(abc.ABC):
     Attributes:
         name: The name results are stored under. Defaults to the class name.
             Set on the class.
+        poll_interval_s: Seconds between periodic polls.
     """
 
     name: Optional[str] = None
+    poll_interval_s: float = 10.0
 
     @classmethod
     def probe_name(cls) -> str:
@@ -46,8 +51,8 @@ class Probe(abc.ABC):
 class WorkerProbe(Probe):
     """A probe that runs in each training worker process.
 
-    When polled periodically, it is polled each time Ray Train polls the
-    workers.
+    It is polled when Ray Train polls the workers, so it is not polled more
+    often than that, even with a shorter ``poll_interval_s``.
     """
 
     @abc.abstractmethod
@@ -62,13 +67,7 @@ class WorkerProbe(Probe):
 
 @PublicAPI(stability="alpha")
 class NodeProbe(Probe):
-    """A probe that runs on each node, outside the training worker processes.
-
-    Attributes:
-        poll_interval_s: Seconds between periodic polls.
-    """
-
-    poll_interval_s: float = 10.0
+    """A probe that runs on each node, outside the training worker processes."""
 
     @abc.abstractmethod
     def poll(self) -> ProbeResult:

@@ -3,11 +3,11 @@ import sys
 import pytest
 
 from ray.train.health import (
-    Action,
     Diagnose,
     Evaluator,
     Evict,
     HealthConfig,
+    HealthDecision,
     HealthPolicy,
     HealthState,
     NodeProbe,
@@ -47,14 +47,20 @@ def test_probe_name_defaults_to_the_class_name():
 
 def test_probe_defaults():
     assert HostTemp.poll_interval_s == 10.0
+    assert Loss.poll_interval_s == 10.0
     assert ProbeResult().timestamp_s is None
 
 
-def test_decisions_carry_their_action():
-    assert Noop().action is Action.NOOP
-    assert Reattempt().action is Action.REATTEMPT
-    assert Evict(target_nodes=["n1"]).action is Action.EVICT
-    assert Diagnose(probe_creator=lambda: [Loss()]).action is Action.DIAGNOSE
+def test_health_decision_is_abstract():
+    with pytest.raises(TypeError):
+        HealthDecision(reason="x")
+
+
+def test_decisions_are_constructed_as_subclasses():
+    assert Noop().reason == ""
+    assert Reattempt(reason="hang").reason == "hang"
+    assert Evict(target_nodes=["n1"]).target_nodes == ["n1"]
+    assert Diagnose(probe_creator=lambda: [Loss()]).target_ranks == []
 
 
 def test_results_are_read_by_probe_class():
