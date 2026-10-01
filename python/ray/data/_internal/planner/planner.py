@@ -140,7 +140,7 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
-_EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
+_DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
 def _plan_join_shuffle_v2(
@@ -188,10 +188,10 @@ def _plan_join_shuffle_v2(
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
     reduce_kwargs = {}
-    if data_context.use_external_hash_shuffle:
+    if data_context.use_disk_based_hash_shuffle:
         reduce_kwargs[
             "peak_memory_multiplier"
-        ] = _EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
     return reduce_cls(
         [left_map, right_map],
         data_context,

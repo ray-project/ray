@@ -282,6 +282,17 @@ class GcsActorManagerTest : public ::testing::Test {
                                                               : nullptr;
   }
 
+  size_t DestroyedActorObservabilityCount(
+      const gcs::GcsActorManager &actor_manager) const {
+    return actor_manager.destroyed_actor_observability_data_.size();
+  }
+
+  // Mirrors what HandleGetActorInfo returns to clients.
+  const rpc::ActorTableData *GetActorInfo(const gcs::GcsActorManager &actor_manager,
+                                          const ActorID &actor_id) const {
+    return actor_manager.GetActorTableData(actor_id);
+  }
+
   /**
    * Helper function to perform the complete cycle of named actor creation.
    * 1. Register the actor
@@ -2828,6 +2839,148 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->node_id(), node_id.Binary());
   ASSERT_EQ(local_raylet_address->ip_address(), "127.0.0.1");
   ASSERT_EQ(local_raylet_address->port(), 9999);
+}
+
+TEST_F(GcsActorManagerTest, TestInitializeIsolatesActorWithMissingTaskSpec) {
+  // find() guard: a non-DEAD actor whose task spec is missing must not abort
+  // Initialize (map_find_or_die used to crash the whole GCS).
+  auto job_id = JobID::FromInt(1);
+  rpc::JobTableData job_data;
+  job_data.set_job_id(job_id.Binary());
+  job_data.set_is_dead(true);
+
+  auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  actor_table_data.set_class_name("MissingSpecActor");
+  auto *owner_address = actor_table_data.mutable_owner_address();
+  owner_address->set_node_id(NodeID::FromRandom().Binary());
+  owner_address->set_worker_id(WorkerID::FromRandom().Binary());
+
+  TestGcsInitData gcs_init_data(*gcs_table_storage_);
+
+  absl::flat_hash_map<JobID, rpc::JobTableData> job_data_map;
+  job_data_map[job_id] = job_data;
+  gcs_init_data.SetJobTableData(job_data_map);
+
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data;
+  actor_data[actor_id] = actor_table_data;
+  gcs_init_data.SetActorTableData(actor_data);
+
+  // Intentionally leave the actor task spec table empty for this actor.
+  gcs_init_data.SetActorTaskSpecTableData({});
+
+  auto test_gcs_actor_manager = CreateActorManagerForInitializeTest();
+
+  // Must not FATAL on the missing task spec.
+  test_gcs_actor_manager->Initialize(gcs_init_data);
+
+  ASSERT_EQ(RegisteredActorCount(*test_gcs_actor_manager), 0u);
+  ASSERT_EQ(GetRegisteredActor(*test_gcs_actor_manager, actor_id), nullptr);
+  ASSERT_EQ(DestroyedActorObservabilityCount(*test_gcs_actor_manager), 1u);
+  const auto *actor_info = GetActorInfo(*test_gcs_actor_manager, actor_id);
+  ASSERT_NE(actor_info, nullptr);
+  ASSERT_EQ(actor_info->state(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(actor_info->death_cause().has_actor_died_error_context());
+
+  drain_io_context();
+  std::optional<rpc::ActorTableData> reloaded_actor_data;
+  gcs_table_storage_->ActorTable().Get(
+      actor_id,
+      {[&reloaded_actor_data](Status, std::optional<rpc::ActorTableData> result) {
+         reloaded_actor_data = std::move(result);
+       },
+       io_service_});
+  drain_io_context();
+  ASSERT_TRUE(reloaded_actor_data.has_value());
+  ASSERT_EQ(reloaded_actor_data->state(), rpc::ActorTableData::DEAD);
+}
+
+TEST_F(GcsActorManagerTest, TestInitializeMarksDeadWhenOwnerJobDeadAndReloads) {
+  // Real root-cause path: an actor whose owning job is dead but whose task spec
+  // is still present. Initialize must mark it DEAD, persist the row, and delete
+  // its task spec; a later Initialize from the persisted state must reload it as
+  // DEAD without aborting.
+  auto job_id = JobID::FromInt(1);
+  rpc::JobTableData job_data;
+  job_data.set_job_id(job_id.Binary());
+  job_data.set_is_dead(true);
+
+  auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+  rpc::ActorTableData actor_table_data;
+  actor_table_data.set_actor_id(actor_id.Binary());
+  actor_table_data.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  actor_table_data.set_class_name("DeadJobActor");
+  auto *owner_address = actor_table_data.mutable_owner_address();
+  owner_address->set_node_id(NodeID::FromRandom().Binary());
+  owner_address->set_worker_id(WorkerID::FromRandom().Binary());
+
+  rpc::TaskSpec task_spec;
+  task_spec.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
+  task_spec.set_root_detached_actor_id("");
+
+  gcs_table_storage_->ActorTaskSpecTable().Put(
+      actor_id, task_spec, {[](auto) {}, io_service_});
+  drain_io_context();
+
+  TestGcsInitData gcs_init_data(*gcs_table_storage_);
+  absl::flat_hash_map<JobID, rpc::JobTableData> job_data_map;
+  job_data_map[job_id] = job_data;
+  gcs_init_data.SetJobTableData(job_data_map);
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data;
+  actor_data[actor_id] = actor_table_data;
+  gcs_init_data.SetActorTableData(actor_data);
+  absl::flat_hash_map<ActorID, rpc::TaskSpec> task_spec_data;
+  task_spec_data[actor_id] = task_spec;
+  gcs_init_data.SetActorTaskSpecTableData(task_spec_data);
+
+  auto manager = CreateActorManagerForInitializeTest();
+  manager->Initialize(gcs_init_data);
+  drain_io_context();
+
+  ASSERT_EQ(RegisteredActorCount(*manager), 0u);
+  const auto *actor_info = GetActorInfo(*manager, actor_id);
+  ASSERT_NE(actor_info, nullptr);
+  ASSERT_EQ(actor_info->state(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(actor_info->death_cause().has_actor_died_error_context());
+
+  std::optional<rpc::ActorTableData> persisted_actor;
+  gcs_table_storage_->ActorTable().Get(
+      actor_id,
+      {[&persisted_actor](Status, std::optional<rpc::ActorTableData> result) {
+         persisted_actor = std::move(result);
+       },
+       io_service_});
+  drain_io_context();
+  ASSERT_TRUE(persisted_actor.has_value());
+  ASSERT_EQ(persisted_actor->state(), rpc::ActorTableData::DEAD);
+
+  bool spec_present = true;
+  gcs_table_storage_->ActorTaskSpecTable().Get(
+      actor_id,
+      {[&spec_present](Status, std::optional<rpc::TaskSpec> result) {
+         spec_present = result.has_value();
+       },
+       io_service_});
+  drain_io_context();
+  ASSERT_FALSE(spec_present);
+
+  TestGcsInitData reload_init_data(*gcs_table_storage_);
+  reload_init_data.SetJobTableData(job_data_map);
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> reloaded_actor_map;
+  reloaded_actor_map[actor_id] = *persisted_actor;
+  reload_init_data.SetActorTableData(reloaded_actor_map);
+  reload_init_data.SetActorTaskSpecTableData({});
+
+  auto reloaded_manager = CreateActorManagerForInitializeTest();
+  reloaded_manager->Initialize(reload_init_data);
+  drain_io_context();
+
+  ASSERT_EQ(RegisteredActorCount(*reloaded_manager), 0u);
+  const auto *reloaded_info = GetActorInfo(*reloaded_manager, actor_id);
+  ASSERT_NE(reloaded_info, nullptr);
+  ASSERT_EQ(reloaded_info->state(), rpc::ActorTableData::DEAD);
 }
 
 }  // namespace gcs

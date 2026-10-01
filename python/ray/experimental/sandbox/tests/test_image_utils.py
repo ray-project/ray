@@ -1,5 +1,6 @@
 import io
 import json
+import mmap
 import os
 import sys
 import tarfile
@@ -569,7 +570,7 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
 
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     args = (bin_dir / "mkfs.args").read_text().split()
-    assert args[:3] == ["--tar=f", "-b4096", "-E^inline_data"]
+    assert args[:3] == ["--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data"]
     marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
     assert marker == expected_extract_marker()
     # The fake image *is* the flattened tar: check the owners it carries.
@@ -816,6 +817,19 @@ def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
     pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
+
+
+def test_dir_size_counts_hard_links_once(tmp_path):
+    """Hard links share one file, so it counts once, the way busybox's
+    hundreds of applet names share one binary."""
+    tree = tmp_path / "tree"
+    bin_dir = tree / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "busybox").write_bytes(b"x" * 1000)
+    for name in ("sh", "ls", "cat"):
+        os.link(bin_dir / "busybox", bin_dir / name)
+    (tree / "other").write_bytes(b"y" * 10)
+    assert image_utils._dir_size_bytes(str(tree)) == 1010
 
 
 if __name__ == "__main__":
