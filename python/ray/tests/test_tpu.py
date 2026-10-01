@@ -107,7 +107,8 @@ def test_num_tpu_chips(mock_glob):
         ("v5p-4096", "16x16x16", True),
         ("v5p-12288", "16x16x24", True),
         ("v5p-4", "24x24x24", False),
-        ("v5litepod-16", "2x8", True),
+        ("v5litepod-16", "4x4", True),
+        ("v5litepod-16", "2x8", False),
         ("v5litepod-256", "16x16", True),
         ("v5litepod-4", "2x2", True),
         ("v6e-8", "2x4", True),
@@ -201,21 +202,13 @@ def ray_single_host_tpu_cluster(ray_start_cluster):
         num_cpus=2,
         resources={"TPU": 4},
         env_vars={"TPU_NAME": "test-v7x-single-1", "TPU_ACCELERATOR_TYPE": pod_type},
-        labels={
-            "ray.io/tpu-pod-type": pod_type,
-            "ray.io/tpu-topology": topology,
-            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X",
-        },
+        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
     )
     cluster.add_node(
         num_cpus=2,
         resources={"TPU": 4},
         env_vars={"TPU_NAME": "test-v7x-single-2", "TPU_ACCELERATOR_TYPE": pod_type},
-        labels={
-            "ray.io/tpu-pod-type": pod_type,
-            "ray.io/tpu-topology": topology,
-            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X",
-        },
+        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
     )
 
     ray.init(address=cluster.address)
@@ -318,7 +311,6 @@ def ray_v6e_tpu_cluster(ray_start_cluster):
             "ray.io/tpu-worker-id": "0",
             "ray.io/tpu-pod-type": pod_type,
             "ray.io/tpu-topology": topology,
-            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V6E",
         }
         # A single-host v6e-8 has 8 chips on one node
         cluster.add_node(
@@ -454,6 +446,8 @@ def test_single_host_slice_placement_group(ray_tpu_cluster):
             {"TPU": 4, "CPU": 1.0},
             {"TPU": 4, "CPU": 1.0},
         ]
+        # Single-host bundles are not pinned to a tpu-worker-id label.
+        assert slice_placement_group.bundle_label_selector == [{}, {}]
 
 
 def test_single_host_slice_placement_group_integration(ray_single_host_tpu_cluster):
@@ -471,59 +465,6 @@ def test_single_host_slice_placement_group_integration(ray_single_host_tpu_clust
     ray.get(slice_placement_group.placement_group.ready(), timeout=10)
 
     assert slice_placement_group.placement_group.bundle_count == 2
-
-
-def test_single_host_slice_placement_group_heterogeneous_cluster(ray_start_cluster):
-    """Test that single-host SlicePlacementGroups in a heterogeneous cluster (v6e and v7x)
-    are strictly placed on nodes matching their requested accelerator version.
-    """
-    cluster = ray_start_cluster
-    # v6e single-host node (8 chips, TPU: 8)
-    cluster.add_node(
-        num_cpus=2,
-        resources={"TPU": 8},
-        labels={
-            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: "v6e-8",
-            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x4",
-            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V6E",
-        },
-    )
-    # v7x single-host node (TPU: 8)
-    cluster.add_node(
-        num_cpus=2,
-        resources={"TPU": 8},
-        labels={
-            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: "tpu7x",
-            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x2x1",
-            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X",
-        },
-    )
-
-    ray.init(address=cluster.address)
-    try:
-        for topology, version, expected_accel in [
-            ("2x4", "v6e", "TPU-V6E"),
-            ("2x2x1", "v7x", "TPU-V7X"),
-        ]:
-            handle = ray.util.tpu.slice_placement_group(
-                topology=topology,
-                accelerator_version=version,
-            )
-            ray.get(handle.placement_group.ready(), timeout=10)
-            assert handle.bundle_label_selector == [
-                {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: expected_accel}
-            ]
-
-            pg_table = ray.util.placement_group_table(handle.placement_group)
-            node_id = pg_table["bundles_to_node_id"][0]
-            node = next(n for n in ray.nodes() if n["NodeID"] == node_id)
-            assert (
-                node["Labels"][ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY]
-                == expected_accel
-            )
-            handle.shutdown()
-    finally:
-        ray.shutdown()
 
 
 @patch("ray.util.tpu.placement_group")
@@ -1250,6 +1191,24 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
 
 
 @pytest.mark.parametrize(
+    "input_endpoint, expected_host",
+    [
+        ("10.0.0.1", "10.0.0.1"),
+        ("10.0.0.1:8471", "10.0.0.1"),
+        ("node-0.cluster.local:8471", "node-0.cluster.local"),
+        ("2001:db8::1", "2001:db8::1"),
+        ("[2001:db8::1]:8471", "2001:db8::1"),
+        ("[2001:db8::1]", "2001:db8::1"),
+        ("", ""),
+        ("   ", ""),
+    ],
+)
+def test_strip_endpoint_port(input_endpoint, expected_host):
+    """Ports and IPv6 brackets are stripped; bare IPv6 addresses are unchanged."""
+    assert ray.util.tpu._strip_endpoint_port(input_endpoint) == expected_host
+
+
+@pytest.mark.parametrize(
     "worker_hostnames, worker_id, kwargs, expected_env",
     [
         (
@@ -1259,6 +1218,7 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
             {
                 "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
                 "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471,10.0.0.2:8471",
+                "TPU_PROCESS_PORT": "8471",
                 "TPU_WORKER_ID": "0",
             },
         ),
@@ -1269,11 +1229,10 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
             {
                 "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
                 "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471,10.0.0.2:8471",
+                "TPU_PROCESS_PORT": "8471",
                 "TPU_WORKER_ID": "0",
                 "TPU_PROCESS_BOUNDS": "1,2,1",
-                "TPU_HOST_BOUNDS": "1,2,1",
                 "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
-                "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
             },
         ),
         (
@@ -1283,6 +1242,7 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
             {
                 "TPU_WORKER_HOSTNAMES": "10.0.0.1",
                 "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471",
+                "TPU_PROCESS_PORT": "8471",
                 "TPU_WORKER_ID": "0",
             },
         ),
@@ -1293,15 +1253,18 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
             {
                 "TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2",
                 "TPU_PROCESS_ADDRESSES": "[2001:db8::1]:8471,[2001:db8::2]:8471",
+                "TPU_PROCESS_PORT": "8471",
                 "TPU_WORKER_ID": "0",
             },
         ),
     ],
 )
 def test_get_jax_env_vars_free_function(
-    worker_hostnames, worker_id, kwargs, expected_env
+    monkeypatch, worker_hostnames, worker_id, kwargs, expected_env
 ):
     """Test get_jax_env_vars free function parsing, port stripping, and worker ID."""
+    # The expected port is the 8471 default; do not inherit one from the host.
+    monkeypatch.delenv("TPU_PROCESS_PORT", raising=False)
     assert (
         ray.util.tpu.get_jax_env_vars(worker_hostnames, worker_id=worker_id, **kwargs)
         == expected_env
@@ -1309,20 +1272,17 @@ def test_get_jax_env_vars_free_function(
 
 
 @pytest.mark.parametrize(
-    "worker_hostnames, worker_id, error, match",
+    "worker_hostnames, worker_id, match",
     [
-        ("10.0.0.1:8471, 10.0.0.2:8471", None, ValueError, "must be specified"),
-        ("10.0.0.1,10.0.0.2", 2, ValueError, "out of bounds"),
-        ("10.0.0.1,10.0.0.2", True, TypeError, "must be an integer"),
-        (" , ", 0, ValueError, "at least one host"),
+        ("10.0.0.1:8471, 10.0.0.2:8471", None, "must be specified"),
+        ("10.0.0.1,10.0.0.2", 2, "out of bounds"),
+        (" , ", 0, "at least one host"),
     ],
 )
-def test_get_jax_env_vars_rejects_invalid_input(
-    worker_hostnames, worker_id, error, match
-):
-    """get_jax_env_vars rejects a missing, out-of-range, or non-integer worker_id
-    and an empty host list."""
-    with pytest.raises(error, match=match):
+def test_get_jax_env_vars_rejects_invalid_input(worker_hostnames, worker_id, match):
+    """get_jax_env_vars rejects a missing or out-of-range worker_id and an
+    empty host list."""
+    with pytest.raises(ValueError, match=match):
         ray.util.tpu.get_jax_env_vars(worker_hostnames, worker_id=worker_id)
 
 
@@ -1342,6 +1302,18 @@ def test_slice_placement_group_worker_id_and_jax_env_vars(ray_tpu_cluster):
 
     ray.get(spg.placement_group.ready(), timeout=10)
     assert len(spg.get_worker_addrs()) == 2
+    # Check real placement, not just the selectors: bundle i landed on the node
+    # whose tpu-worker-id label equals i // bundles_per_host.
+    node_worker_ids = {
+        n["NodeID"]: n["Labels"][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY]
+        for n in ray.nodes()
+    }
+    pg_table = ray.util.placement_group_table(spg.placement_group)
+    placed_worker_ids = [
+        node_worker_ids[pg_table["bundles_to_node_id"][i]]
+        for i in range(spg.bundles_per_slice)
+    ]
+    assert placed_worker_ids == ["0"] * 4 + ["1"] * 4
 
     env0 = spg.get_jax_env_vars(worker_id=0)
     assert env0["TPU_WORKER_ID"] == "0"
@@ -1356,6 +1328,8 @@ def test_slice_placement_group_worker_id_and_jax_env_vars(ray_tpu_cluster):
         spg.get_jax_env_vars(worker_id=2)
 
     spg.shutdown()
+    with pytest.raises(RuntimeError, match="shut down"):
+        spg.get_worker_addrs()
 
     # User-supplied tpu-worker-id selectors take precedence over default pinning.
     custom_spg = ray.util.tpu.slice_placement_group(
@@ -1992,7 +1966,9 @@ def _alive_node(topology: str) -> dict:
     return {"Alive": True, "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology}}
 
 
-def _slice_nodes(slice_name: str, topology: str, n_workers: int = 4):
+def _slice_nodes(
+    slice_name: str, topology: str, n_workers: int = 4, tpus_per_node: int = 4
+):
     """Node dicts for one slice with slice-name-prefixed NodeIDs, so multiple
     slices can coexist in a single test without NodeID collisions.
     """
@@ -2000,7 +1976,7 @@ def _slice_nodes(slice_name: str, topology: str, n_workers: int = 4):
         {
             "NodeID": f"{slice_name}-w{i}",
             "Alive": True,
-            "Resources": {"TPU": 4},
+            "Resources": {"TPU": tpus_per_node},
             "Labels": {
                 ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
                 ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
@@ -2173,11 +2149,12 @@ def test_subslice_auto_select_skips_busy_first_subslice(mock_4x4_pgs):
     # Pre-populate cache so no discovery is needed.
     ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_4X4_PHYSICAL_IDS
 
-    # Workers 0 and 2 (subslice 0) fully occupied; workers 1 and 3 idle.
+    # Workers 0 and 2 (subslice 0) fully occupied; workers 1 and 3 idle. A fully
+    # allocated node omits "TPU" from Ray's sparse available-resources map.
     avail = {
-        "node_0": {"TPU": 0},
+        "node_0": {"CPU": 8},
         "node_1": {"TPU": 4},
-        "node_2": {"TPU": 0},
+        "node_2": {"CPU": 8},
         "node_3": {"TPU": 4},
     }
 
@@ -2337,7 +2314,7 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
         sg1.shutdown()
 
         # Second call with the same topology: must hit the runtime cache and
-        # not trigger another slice reservation or libtpu discovery.
+        # not trigger another slice reservation or coordinate discovery.
         mock_reserve.reset_mock()
         sg2 = ray.util.tpu.subslice_placement_group(
             subslice_topology="2x4",
@@ -2350,8 +2327,8 @@ def test_subslice_cache_hit_after_discovery(mock_4x4_pgs):
 
 def test_discover_skips_fan_out_when_kv_already_populated(mock_4x4_pgs):
     """When the KV store already has physical worker IDs for the reserved slice,
-    _discover_and_persist_subslices returns the cached data without running the
-    libtpu fan-out.
+    _discover_and_persist_subslices returns the cached data without running
+    coordinate discovery.
 
     This covers the concurrent-caller scenario: the first caller discovers the
     slice, persists to KV, then releases the head PG. The second caller was
@@ -2398,13 +2375,14 @@ def test_discover_skips_fan_out_when_kv_already_populated(mock_4x4_pgs):
 
 def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
     """Regression: single-host v6e 2x4 (8 chips/VM, 1 bundle) discovery must
-    not raise a spurious 'incomplete' error.
+    not reject a healthy slice.
 
-    The static _VALID_TOPOLOGY_WORKER_DIMS_2D table returns (1, 2) for "2x4",
-    implying 2 expected workers. But with chips_per_vm=8 there is only 1
-    host (8 chips / 8 chips-per-VM), so the fan-out produces 1 result.
-    The completeness check must use full_slice.num_hosts (the runtime value)
-    not the static table, otherwise a healthy single-host slice always raises.
+    _get_worker_dims_for_topology returns (1, 2) for "2x4", implying 2 expected
+    workers on 4-chip hosts. But with chips_per_vm=8 there is only 1 host
+    (8 chips / 8 chips-per-VM), so the fan-out produces 1 result. The
+    completeness check must use full_slice.num_hosts (the runtime value) rather
+    than the 4-chip-per-host worker grid, otherwise a healthy single-host slice
+    always raises.
     """
     mock_head_pg, mock_worker_pg = mock_4x4_pgs
     slice_name = "test-slice-singlehost"
@@ -2439,7 +2417,7 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
         # ray.get called twice: once for .ready(), once for the 1-task fan-out.
         mock_ray_get.side_effect = [None, single_host_discovery]
 
-        # Must not raise RuntimeError("incomplete: labeled 1 of 2 expected").
+        # Must not raise RuntimeError("incomplete or returned invalid IDs") for the lone host.
         # Discovery always pins to a specific slice (as the main loop does).
         result_name, result_ids = ray.util.tpu._discover_and_persist_subslices(
             "2x4", "v6e", 8, None, target_slice_name=slice_name
@@ -2450,27 +2428,26 @@ def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
 
 
 @pytest.mark.parametrize(
-    "last_result",
+    "fourth_host_coords",
     [
-        # The 4th host has no tpu-worker-id label and is skipped (3 of 4 labeled).
-        {"node_id": "unlabeled_node", "coords": _4X4_MOCK_COORDS[3]},
-        # The 4th host reports worker 0's chips, duplicating physical rank 0.
-        {"node_id": "node_3", "coords": _4X4_MOCK_COORDS[0]},
+        pytest.param([], id="incomplete"),
+        pytest.param(_4X4_MOCK_COORDS[0], id="duplicate"),
     ],
 )
-def test_discover_raises_when_workers_incomplete(mock_4x4_pgs, last_result):
-    """If discovery does not map every host to a distinct physical rank (a
-    host lacks a tpu-worker-id label or duplicates another's coordinates), then
-    _discover_and_persist_subslices raises rather than persisting a mapping
-    that would later yield subslice placement groups with the wrong hosts.
+def test_discover_raises_when_workers_incomplete_or_duplicate(
+    mock_4x4_pgs, fourth_host_coords
+):
+    """If a worker returns no chip coordinates or reports another host's chip
+    coordinates, _discover_and_persist_subslices raises RuntimeError rather than
+    persisting an incomplete or duplicate mapping.
     """
     mock_head_pg, mock_worker_pg = mock_4x4_pgs
-    slice_name = "test-slice-incomplete"
+    slice_name = "test-slice-invalid"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
 
-    incomplete_results = [
+    invalid_results = [
         {"node_id": f"node_{i}", "coords": _4X4_MOCK_COORDS[i]} for i in range(3)
-    ] + [last_result]
+    ] + [{"node_id": "node_3", "coords": fourth_host_coords}]
 
     with (
         patch(
@@ -2482,11 +2459,11 @@ def test_discover_raises_when_workers_incomplete(mock_4x4_pgs, last_result):
         patch("ray.nodes", return_value=dummy_nodes),
         patch("ray.get") as mock_ray_get,
     ):
-        mock_ray_get.side_effect = [None, incomplete_results]
-        with pytest.raises(RuntimeError, match="incomplete"):
+        mock_ray_get.side_effect = [None, invalid_results]
+        with pytest.raises(RuntimeError, match="incomplete or returned invalid IDs"):
             ray.util.tpu._discover_and_persist_subslices("4x4", "v6e", 4, None)
 
-    # Nothing should have been persisted for the incomplete slice.
+    # Nothing should have been persisted for the invalid slice.
     assert slice_name not in ray.util.tpu._tpu_subslice_cache
 
 
@@ -2546,7 +2523,7 @@ def test_subslice_continues_scheduling_when_kv_lookup_fails():
         ),
     ],
 )
-def test_discover_bounds_worker_pg_ready_wait(
+def test_discover_bounds_ready_and_discovery_waits(
     mock_4x4_pgs, ray_get_side_effect, expected_match
 ):
     """Both the worker-PG readiness wait and the discovery task fan-out are
@@ -2994,6 +2971,7 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     head_resource = f"TPU-{pod_type}-head"
 
     nodes = _slice_nodes("slice-h", "4x4")  # workers 0..3, all chips idle
+    nodes[0]["Resources"][head_resource] = 1
     avail = {f"slice-h-w{i}": {"TPU": 4} for i in range(4)}
 
     def check(avail):
@@ -3009,7 +2987,6 @@ def test_find_undiscovered_idle_slice_skips_held_head():
 
     # Head held on worker 0 and omitted from Ray's sparse available resource map
     # while declared in worker 0's total node resources → slice skipped.
-    nodes[0]["Resources"][head_resource] = 1
     avail["slice-h-w0"] = {"TPU": 4}
     assert check(avail) is None
 
@@ -3064,13 +3041,27 @@ def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
         )
         == 1
     )
+
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "0")
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        get_tpu_worker_resources("2x2x1", "v7x")
+
+
+def test_subslice_placement_group_v7x_per_device_bundles(monkeypatch):
+    """v7x subslice placement groups with RAY_TPU_RESOURCE_PER_CHIP=2 use SPREAD
+    and size and pin both whole-host and per-device bundles in physical host order.
+    """
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
     monkeypatch.setitem(
         ray.util.tpu._tpu_subslice_cache,
         "v7x-slice",
         {"1": 0, "0": 1, "2": 2, "3": 3},
     )
     with (
-        patch("ray.nodes", return_value=_slice_nodes("v7x-slice", "2x2x4")),
+        patch(
+            "ray.nodes",
+            return_value=_slice_nodes("v7x-slice", "2x2x4", tpus_per_node=8),
+        ),
         patch(
             "ray._private.state.available_resources_per_node",
             return_value={f"v7x-slice-w{i}": {"TPU": 8} for i in range(4)},
@@ -3081,11 +3072,8 @@ def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
     ):
         sg_whole = ray.util.tpu.subslice_placement_group("2x2x2", "v7x")
         assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
-        assert sg_whole.tpu_resource_per_chip == 2
-        assert sg_whole.devices_per_host == 8
         assert sg_whole.bundle_resources == {"CPU": 1, "TPU": 8}
         assert sg_whole.num_hosts == 2
-        assert sg_whole.num_bundles == 2
         assert len(sg_whole.bundle_label_selector) == 2
 
         sg_per_device = ray.util.tpu.subslice_placement_group(
@@ -3094,15 +3082,17 @@ def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
         assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
         assert sg_per_device.bundle_resources == {"CPU": 1, "TPU": 1}
         assert sg_per_device.num_hosts == 2
-        assert sg_per_device.num_bundles == 16
         assert len(sg_per_device.bundle_label_selector) == 16
         assert [
             s["ray.io/tpu-worker-id"] for s in sg_per_device.bundle_label_selector
         ] == (["1"] * 8 + ["0"] * 8)
 
-    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "0")
-    with pytest.raises(ValueError, match="must be a positive integer"):
-        get_tpu_worker_resources("2x2x1", "v7x")
+        with pytest.raises(
+            ValueError, match="evenly divide the logical TPU devices per host"
+        ):
+            ray.util.tpu.subslice_placement_group(
+                "2x2x2", "v7x", resources_per_bundle={"TPU": 3}
+            )
 
 
 def test_physical_worker_ordering_in_subslice():
@@ -3112,15 +3102,17 @@ def test_physical_worker_ordering_in_subslice():
     slice_name = "slice-shuffled"
     dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
     # Shuffled physical positions on a 4x4 slice (2x2 host grid):
-    # tpu-worker-id "3" is at (0,0) -> physical 0 (2x4 subslice 0, host 0)
     # tpu-worker-id "0" is at (2,0) -> physical 1 (2x4 subslice 1, host 0)
     # tpu-worker-id "1" is at (0,2) -> physical 2 (2x4 subslice 0, host 1)
     # tpu-worker-id "2" is at (2,2) -> physical 3 (2x4 subslice 1, host 1)
+    # tpu-worker-id "3" is at (0,0) -> physical 0 (2x4 subslice 0, host 0)
+    # Results arrive in tpu-worker-id order, as the discovery fan-out returns
+    # them, so iterating in insertion order would rank worker "1" before "3".
     discovery_results = [
-        {"node_id": "node_3", "coords": _4X4_MOCK_COORDS[0]},
         {"node_id": "node_0", "coords": _4X4_MOCK_COORDS[1]},
         {"node_id": "node_1", "coords": _4X4_MOCK_COORDS[2]},
         {"node_id": "node_2", "coords": _4X4_MOCK_COORDS[3]},
+        {"node_id": "node_3", "coords": _4X4_MOCK_COORDS[0]},
     ]
     worker_physical_ids = ray.util.tpu._compute_worker_physical_ids_from_discovery(
         discovery_results, dummy_nodes, "4x4"
@@ -3140,7 +3132,13 @@ def test_physical_worker_ordering_in_subslice():
 
 
 def test_subslice_placement_group_jax_env_vars(monkeypatch):
-    """SubslicePlacementGroup.get_jax_env_vars populates subslice bounds and port offset."""
+    """SubslicePlacementGroup.get_jax_env_vars defaults process bounds to the
+    subslice's host grid, chip bounds to its chips on one host, and the port to
+    TPU_PROCESS_PORT, falling back to 8471 when it is unset or empty. The
+    exported TPU_PROCESS_PORT always matches TPU_PROCESS_ADDRESSES so every host
+    binds the port its peers dial. After shutdown(), get_worker_addrs() raises
+    RuntimeError.
+    """
     sg = ray.util.tpu.SubslicePlacementGroup(
         placement_group=MagicMock(id="mock_subslice_pg"),
         parent_topology="4x4",
@@ -3153,32 +3151,28 @@ def test_subslice_placement_group_jax_env_vars(monkeypatch):
     )
     expected = {
         "TPU_WORKER_HOSTNAMES": "10.0.0.10,10.0.0.11",
-        "TPU_PROCESS_ADDRESSES": "10.0.0.10:8472,10.0.0.11:8472",
-        "TPU_PROCESS_PORT": "8472",
+        "TPU_PROCESS_ADDRESSES": "10.0.0.10:8471,10.0.0.11:8471",
+        "TPU_PROCESS_PORT": "8471",
         "TPU_WORKER_ID": "1",
         "TPU_PROCESS_BOUNDS": "1,2,1",
-        "TPU_HOST_BOUNDS": "1,2,1",
         "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
-        "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
         "TPU_TOPOLOGY": "2x4",
     }
-    assert (
-        sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
-        == expected
-    )
-    # Even when kuberay-tpu-webhook sets TPU_PROCESS_PORT=8471 in os.environ,
-    # subslice_index=1 must still offset the port to 8472.
-    monkeypatch.setenv("TPU_PROCESS_PORT", "8471")
-    assert (
-        sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
-        == expected
-    )
-    # Empty TPU_PROCESS_PORT="" in os.environ falls back to DEFAULT_TPU_PROCESS_PORT.
+    hostnames = ["10.0.0.10", "10.0.0.11"]
+    monkeypatch.delenv("TPU_PROCESS_PORT", raising=False)
+    assert sg.get_jax_env_vars(worker_id=1, worker_hostnames=hostnames) == expected
     monkeypatch.setenv("TPU_PROCESS_PORT", "")
-    assert (
-        sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
-        == expected
-    )
+    assert sg.get_jax_env_vars(worker_id=1, worker_hostnames=hostnames) == expected
+    # A caller-set port is used for the addresses and exported to the workers.
+    monkeypatch.setenv("TPU_PROCESS_PORT", "9999")
+    env = sg.get_jax_env_vars(worker_id=1, worker_hostnames=hostnames)
+    assert env["TPU_PROCESS_ADDRESSES"] == "10.0.0.10:9999,10.0.0.11:9999"
+    assert env["TPU_PROCESS_PORT"] == "9999"
+
+    with patch("ray.util.tpu.remove_placement_group"):
+        sg.shutdown()
+    with pytest.raises(RuntimeError, match="shut down"):
+        sg.get_worker_addrs()
 
 
 @pytest.mark.parametrize(
@@ -3194,8 +3188,8 @@ def test_build_subslice_pg_sizes_bundles_from_subslice_chips(
 ):
     """A 2x2 subslice on an 8-chip v6e host reserves only its own 4 chips.
 
-    Regression: bundles were sized from the parent VM's 8 chips, so the default
-    bundle reserved TPU: 8 and an explicit TPU: 4 produced two bundles per host.
+    Regression: the default bundle was sized from the parent VM's 8 chips
+    (TPU: 8), so a 2x2 subslice reserved the whole host.
     """
     with patch("ray.util.tpu.placement_group", return_value=MagicMock()) as mock_pg:
         sg = ray.util.tpu._build_subslice_pg(

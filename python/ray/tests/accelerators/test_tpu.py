@@ -347,6 +347,7 @@ def test_validate_resource_request_quantity(test_config):
         (4, ["0"]),
         (4, ["0", "1"]),
         (4, ["0", "1", "2", "3"]),
+        (8, ["0", "1", "2", "3"]),
         (8, ["0", "1", "2", "3", "4", "5", "6", "7"]),
     ],
 )
@@ -357,26 +358,15 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
     with patch.dict("os.environ", {}, clear=True):
         TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
-        if len(tpu_chips) == 1:
+        if len(tpu_chips) < num_devices:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_MAP[len(tpu_chips)]
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
-        elif len(tpu_chips) == 2:
-            assert (
-                os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
-            )
-            assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
-            assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
-        elif len(tpu_chips) == 4:
+        else:
             # Check that nothing is set, let the ML framework use the defaults.
-            assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
-            assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
-            assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
-        else:  # len(tpu_chips) == 8
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
@@ -386,11 +376,11 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
     "device_ids, expected_chips, expected_bounds",
     [
         # 2 logical devices, both on physical chip 0.
-        (["0", "1"], "0", tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG),
+        (["0", "1"], "0", tpu.TPU_CHIPS_PER_HOST_BOUNDS_MAP[1]),
         # 4 logical devices spanning physical chips 0 and 1.
-        (["0", "1", "2", "3"], "0,1", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
+        (["0", "1", "2", "3"], "0,1", tpu.TPU_CHIPS_PER_HOST_BOUNDS_MAP[2]),
         # The other half of the node maps onto the other half of the chips.
-        (["4", "5", "6", "7"], "2,3", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
+        (["4", "5", "6", "7"], "2,3", tpu.TPU_CHIPS_PER_HOST_BOUNDS_MAP[2]),
         # Every device on the node: let the ML framework use the defaults.
         ([str(i) for i in range(8)], None, None),
     ],
@@ -433,7 +423,7 @@ def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0"
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_MAP[1]
             )
 
 
@@ -606,9 +596,12 @@ def test_parse_topology_dims():
 
 def test_get_worker_dims_2d():
     """Test worker dimension lookup for 2D topologies."""
+    assert tpu._get_worker_dims_for_topology("2x2") == (1, 1)
     assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
     assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
     assert tpu._get_worker_dims_for_topology("8x16") == (4, 8)
+    assert tpu._get_worker_dims_for_topology("16x32") == (8, 16)
+    assert tpu._get_worker_dims_for_topology("32x32") == (16, 16)
 
 
 def test_get_worker_dims_3d():
@@ -618,18 +611,21 @@ def test_get_worker_dims_3d():
     assert tpu._get_worker_dims_for_topology("4x4x4") == (2, 2, 4)
     assert tpu._get_worker_dims_for_topology("4x4x12") == (2, 2, 12)
     assert tpu._get_worker_dims_for_topology("16x16x24") == (8, 8, 24)
+    assert tpu._get_worker_dims_for_topology("16x24x24") == (8, 12, 24)
 
 
 @pytest.mark.parametrize(
     "topology, match",
     [
+        ("1x1", "Unknown 2D topology"),
+        ("2x8", "Unknown 2D topology"),
         ("99x99", "Unknown 2D topology"),
         ("3x3x3", "Unknown 3D topology"),
         ("2", "Unsupported topology dimensionality"),
     ],
 )
 def test_get_worker_dims_unknown(topology, match):
-    """Test that unknown topologies raise ValueError."""
+    """Unknown topologies or unsupported dimensionalities raise ValueError."""
     with pytest.raises(ValueError, match=match):
         tpu._get_worker_dims_for_topology(topology)
 
@@ -680,24 +676,6 @@ def test_get_subslice_index(
 
 
 @pytest.mark.parametrize(
-    "physical_worker_id, parent_topology, subslice_topology, match",
-    [
-        (0, "4x4", "4x4", "does not evenly partition"),
-        (0, "4x4", "8x8", "does not evenly partition"),
-        (0, "4x4", "2x2x2", "does not evenly partition"),
-        (-1, "4x4", "2x4", "out of bounds"),
-        (4, "4x4", "2x4", "out of bounds"),
-    ],
-)
-def test_get_subslice_index_invalid(
-    physical_worker_id, parent_topology, subslice_topology, match
-):
-    """Invalid subslice/parent combinations or out-of-bounds worker IDs raise ValueError."""
-    with pytest.raises(ValueError, match=match):
-        tpu._get_subslice_index(physical_worker_id, parent_topology, subslice_topology)
-
-
-@pytest.mark.parametrize(
     "coords, parent_topology, expected_worker_id",
     [
         # 4x4 v6e — 4 workers in a 2×2 mesh
@@ -715,6 +693,8 @@ def test_get_subslice_index_invalid(
         # block sizes.
         ([[0, 4], [1, 4], [0, 5], [1, 5]], "4x8", 4),
         ([[2, 6], [3, 6], [2, 7], [3, 7]], "4x8", 7),
+        # JAX reports [x, y, 0] on 2D generations; z is ignored.
+        ([[2, 2, 0], [3, 2, 0], [2, 3, 0], [3, 3, 0]], "4x4", 3),
     ],
 )
 def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
@@ -740,8 +720,8 @@ def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
         ([[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], "4x4x4", 4),
         # Worker 8: wz=2 (z=2) -> linear = wz*(dy*dx) = 2*(2*2) = 8.
         ([[0, 0, 2], [1, 0, 2], [0, 1, 2], [1, 1, 2]], "4x4x4", 8),
-        # 2D [x, y] coordinates on a 3D topology default omitted z to 0.
-        ([[2, 0], [3, 0], [2, 1], [3, 1]], "4x4x4", 1),
+        # 2x2x4 (tpu7x-16): a 1x1x4 worker grid, so worker ID equals z.
+        ([[0, 0, 2], [1, 0, 2], [0, 1, 2], [1, 1, 2]], "2x2x4", 2),
     ],
 )
 def test_get_physical_worker_id_3d(coords, parent_topology, expected_worker_id):
@@ -765,37 +745,15 @@ def test_get_physical_worker_id_3d(coords, parent_topology, expected_worker_id):
 )
 def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
     """Chip coordinates that map outside the worker grid raise ValueError in
-    both 2D and 3D, rather than silently producing an incorrect subslice label.
+    both 2D and 3D, rather than silently producing an incorrect worker ID.
     """
     with pytest.raises(ValueError, match="out of bounds"):
         tpu._get_physical_worker_id_from_coords(coords, parent_topology)
 
 
-@pytest.mark.parametrize(
-    "input_endpoint, expected_host",
-    [
-        ("10.0.0.1", "10.0.0.1"),
-        ("10.0.0.1:8471", "10.0.0.1"),
-        ("node-0.cluster.local:8471", "node-0.cluster.local"),
-        ("2001:db8::1", "2001:db8::1"),
-        ("[2001:db8::1]:8471", "2001:db8::1"),
-        ("[2001:db8::1]", "2001:db8::1"),
-        ("", ""),
-        ("   ", ""),
-        (None, ""),
-    ],
-)
-def test_strip_endpoint_port(input_endpoint, expected_host):
-    """Ports and IPv6 brackets are stripped; bare IPv6 addresses are unchanged."""
-    assert tpu._strip_endpoint_port(input_endpoint) == expected_host
-
-
-_ALL_4_HOSTNAMES = "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4"
-
-
 def test_query_local_tpu_chip_coordinates(monkeypatch):
     """Returns one coordinate list per local JAX TPU device."""
-    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", _ALL_4_HOSTNAMES)
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4")
     devices = [mock.MagicMock(coords=(2, 0, 0)), mock.MagicMock(coords=(3, 0, 0))]
     monkeypatch.setitem(
         sys.modules, "jax", mock.MagicMock(local_devices=lambda backend: devices)
@@ -815,20 +773,15 @@ def test_query_local_tpu_chip_coordinates(monkeypatch):
             mock.MagicMock(local_devices=lambda backend: []),
             "requires all worker hostnames",
         ),
-        (
-            _ALL_4_HOSTNAMES,
-            mock.MagicMock(local_devices=lambda backend: []),
-            "no local TPU devices",
-        ),
         # A None entry in sys.modules makes `import jax` raise ImportError.
-        (_ALL_4_HOSTNAMES, None, "JAX is required"),
+        ("10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4", None, "JAX is required"),
     ],
 )
 def test_query_local_tpu_chip_coordinates_raises(
     monkeypatch, hostnames, jax_module, match
 ):
-    """Coordinate discovery raises when the environment would yield partial or
-    host-local coordinates."""
+    """Coordinate discovery raises RuntimeError when peer hostnames are missing
+    or JAX is not installed."""
     monkeypatch.setenv("TPU_WORKER_HOSTNAMES", hostnames)
     monkeypatch.setitem(sys.modules, "jax", jax_module)
     with pytest.raises(RuntimeError, match=match):
