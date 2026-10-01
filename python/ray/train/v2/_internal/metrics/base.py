@@ -98,6 +98,40 @@ class TimeMetric(Metric):
         self._gauge.set(self._default, self._base_tags)
 
 
+class ValueMetric(Metric):
+    """A metric for tracking the latest value of a quantity."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        base_tags: Dict[str, str],
+    ):
+        self._current_value = 0.0
+        super().__init__(
+            name=name,
+            default=0.0,
+            description=description,
+            base_tags=base_tags,
+        )
+
+    def record(self, value: float):
+        """Set the metric to the given value.
+
+        Args:
+            value: The new value of the metric.
+        """
+        self._current_value = value
+        self._gauge.set(self._current_value, self._base_tags)
+
+    def get_value(self) -> float:
+        return self._current_value
+
+    def reset(self):
+        self._current_value = self._default
+        self._gauge.set(self._default, self._base_tags)
+
+
 class EnumMetric(Metric, Generic[E]):
     """A metric for tracking enum values."""
 
