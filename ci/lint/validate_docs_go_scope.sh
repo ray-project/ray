@@ -18,10 +18,11 @@
 # Why the Vale configuration counts as documentation content even though it
 # lives outside doc/. It defines no bazel target, so nothing the label skips can
 # be affected by it, and it holds no executable Ray code, so no doctest or
-# example changes behavior because of it. The check that consumes it,
-# "lint: documentation_style", carries the `always` tag in lint.rayci.yml, so it
-# runs on every pull request whether or not the label is present: widening the
-# guard here does not let a Vale edit through unlinted. test.rules.txt already
+# example changes behavior because of it. That alone makes it safe to fast-path.
+# The Vale prose check that would otherwise also lint it, "lint:
+# documentation_style", is temporarily disabled in lint.rayci.yml while a Ray
+# Data style pass clears the backlog, so a Vale edit currently runs unlinted;
+# re-enabling the check is a one-line revert. test.rules.txt already
 # routes these paths to `doc` alone, which reaches only the post-merge doc
 # build, so no premerge step is traded away either.
 #

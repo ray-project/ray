@@ -3,30 +3,25 @@
 Accumulates per-execution usage data (environment, workload description,
 performance) and flushes it to GCS via ``record_extra_usage_tag``.
 
-The usage payload for each execution is assembled by :class:`UsageCallback`
-this module owns the process-global buffer of recent executions and the builder functions
-collecting usage data.
+The usage payload for each execution is assembled by :class:`UsageCallback`;
+this module owns the builder functions collecting usage data and forwards each
+entry to the cluster-wide :class:`UsageCollectionActor`, which owns the buffer of
+recent executions and is the single writer of the GCS tag.
 """
 
 import hashlib
 import importlib.metadata
-import json
 import logging
 import os
-import threading
-from collections import OrderedDict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
-from ray._common.usage.usage_lib import (
-    TagKey,
-    record_extra_usage_tag,
-    usage_stats_enabled,
-)
+from ray._common.usage.usage_lib import usage_stats_enabled
 from ray._private.worker import global_worker
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
+from ray.data._internal.usage.actor import get_or_create_usage_collection_actor
 from ray.data._internal.usage.util import (
     anonymize_op_name,
     query_prometheus_counter,
@@ -83,6 +78,9 @@ class WorkloadInfo:
     plan: PlanNode
     plan_str: str
     ops: List[LogicalOp]
+    # ``plan_str`` with each node suffixed by its usage_id, so a detected
+    # issue's operator field can be located in the plan.
+    plan_str_with_ids: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -114,11 +112,16 @@ class Issue:
     operator: str
 
 
+# Globally unique per-execution id (uuid4 hex), the key for deduplicating
+# executions in the usage buffer.
+ExecutionId = str
+
+
 @dataclass
 class UsageInfo:
     """Per-execution usage payload: the entry buffered and flushed to GCS."""
 
-    id: str
+    id: ExecutionId
     started_at: float
     env: EnvInfo
     workload: WorkloadInfo
@@ -132,14 +135,6 @@ OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 # A callable that returns the anonymized name for a logical operator.
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
-
-# Bounded buffer of recent executions. OrderedDict so eviction picks the
-# oldest-inserted entry
-_MAX_EXECUTIONS_TO_TRACK = 100
-
-# Module state. Mutations are serialized through ``_lock``.
-_executions: "OrderedDict[str, UsageInfo]" = OrderedDict()
-_lock = threading.Lock()
 
 
 def usage_collection_disabled() -> bool:
@@ -219,7 +214,8 @@ def cluster_unexpected_worker_kills() -> Optional[int]:
 
 
 def record_usage_info(info: UsageInfo) -> None:
-    """Buffer ``info`` (evicting the oldest entry when full) and flush the whole
+    """Forward ``info`` to the cluster-wide ``UsageCollectionActor``, which
+    buffers it (evicting the oldest entry when full) and flushes the merged
     buffer to GCS via ``record_extra_usage_tag``.
 
     The callback calls this both before execution starts (so attempted
@@ -233,17 +229,14 @@ def record_usage_info(info: UsageInfo) -> None:
     if usage_collection_disabled():
         return
     try:
-        with _lock:
-            if (
-                info.id not in _executions
-                and len(_executions) >= _MAX_EXECUTIONS_TO_TRACK
-            ):
-                _executions.popitem(last=False)
-            _executions[info.id] = info
-            payload = _serialize_locked()
-        record_extra_usage_tag(TagKey.DATA_USAGE, payload)
+        _send_to_usage_actor(info)
     except Exception:
         logger.debug("Failed to record usage info", exc_info=True)
+
+
+def _send_to_usage_actor(info: UsageInfo) -> None:
+    """Fire-and-forget the entry to the actor; never blocks the executor."""
+    get_or_create_usage_collection_actor().record.remote(info)
 
 
 def build_usage_id_map(
@@ -317,11 +310,6 @@ def collect_issues(
     ]
 
 
-def _serialize_locked() -> str:
-    """Serialize current state to JSON. Caller must hold ``_lock``."""
-    return json.dumps({"executions": [asdict(e) for e in _executions.values()]})
-
-
 def collect_env() -> EnvInfo:
     """Process-wide environment info."""
     return EnvInfo(pyarrow=_safe_version("pyarrow"))
@@ -354,9 +342,11 @@ def collect_workload(
     dag = logical_plan.dag
     ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
     plan = _build_plan(dag, ordered_logical_ops, op_name_fn)
+    usage_id_map = {id(op): usage_id for op, usage_id in ordered_logical_ops}
     return WorkloadInfo(
         plan=plan,
         plan_str=_format_plan_str(dag, op_name_fn),
+        plan_str_with_ids=_format_plan_str(dag, op_name_fn, usage_id_map=usage_id_map),
         ops=_build_ops(ordered_logical_ops, op_config_fn, op_name_fn),
     )
 
@@ -424,27 +414,17 @@ def _format_plan_str(
     op: LogicalOperator,
     op_name_fn: OpNameFn = anonymize_op_name,
     depth: int = 0,
+    usage_id_map: Optional[Dict[int, str]] = None,
 ) -> str:
     """Render the anonymized DAG as an indented tree, using ``op_name_fn`` to
-    avoid leaking UDF / datasource details.
+    avoid leaking UDF / datasource details. When ``usage_id_map`` is given,
+    each node is suffixed with its usage_id.
     """
-    name = op_name_fn(op)
+    name = _logical_op_name_with_id(op, usage_id_map, op_name_fn)
     if depth == 0:
         line = f"{name}\n"
     else:
         line = f"{' ' * ((depth - 1) * 3)}+- {name}\n"
     for child in op.input_dependencies:
-        line += _format_plan_str(child, op_name_fn, depth + 1)
+        line += _format_plan_str(child, op_name_fn, depth + 1, usage_id_map)
     return line
-
-
-def reset_for_testing() -> None:
-    """Reset module state. Tests only."""
-    with _lock:
-        _executions.clear()
-
-
-def get_executions() -> "OrderedDict[str, UsageInfo]":
-    """Get the current executions. Tests only."""
-    with _lock:
-        return _executions.copy()

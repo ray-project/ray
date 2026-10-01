@@ -31,7 +31,6 @@ from ray_release.test import (
     TestResult,
     TestState,
     TestType,
-    _convert_env_list_to_dict,
 )
 from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, dict_hash
 
@@ -78,15 +77,6 @@ def _stub_test_result(
     )
 
 
-def test_convert_env_list_to_dict():
-    with mock.patch.dict(os.environ, {"ENV": "env"}):
-        assert _convert_env_list_to_dict(["a=b", "c=d=e", "ENV"]) == {
-            "a": "b",
-            "c": "d=e",
-            "ENV": "env",
-        }
-
-
 def test_get_python_version():
     assert _stub_test({}).get_python_version() == "3.10"
     assert _stub_test({"python": "3.11"}).get_python_version() == "3.11"
@@ -98,13 +88,19 @@ def test_get_byod_runtime_env():
             "python": "3.11",
             "cluster": {
                 "byod": {
-                    "runtime_env": ["a=b"],
+                    "runtime_env": {"a": "b"},
                 },
             },
         }
     )
     runtime_env = test.get_byod_runtime_env()
     assert runtime_env.get("a") == "b"
+
+
+def test_get_byod_runtime_env_stringifies_values():
+    """Values are stringified so YAML scalars reach the image as env vars."""
+    test = _stub_test({"cluster": {"byod": {"runtime_env": {"a": 1}}}})
+    assert test.get_byod_runtime_env() == {"a": "1"}
 
 
 def test_get_anyscale_byod_image():
@@ -579,11 +575,11 @@ def test_require_custom_byod_image():
     ).require_custom_byod_image()
     # runtime_env triggers custom build
     assert _stub_test(
-        {"cluster": {"byod": {"runtime_env": ["FOO=bar"]}}}
+        {"cluster": {"byod": {"runtime_env": {"FOO": "bar"}}}}
     ).require_custom_byod_image()
     # empty runtime_env does not trigger custom build
     assert not _stub_test(
-        {"cluster": {"byod": {"runtime_env": []}}}
+        {"cluster": {"byod": {"runtime_env": {}}}}
     ).require_custom_byod_image()
 
 
@@ -595,7 +591,7 @@ def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
             "name": "linux://test",
             "cluster": {
                 "byod": {
-                    "runtime_env": ["MY_VAR=123"],
+                    "runtime_env": {"MY_VAR": "123"},
                 },
             },
         }
@@ -616,7 +612,7 @@ def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
             "name": "linux://other_test",
             "cluster": {
                 "byod": {
-                    "runtime_env": ["MY_VAR=123"],
+                    "runtime_env": {"MY_VAR": "123"},
                 },
             },
             "run": {
@@ -636,7 +632,7 @@ def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image
             "cluster": {
                 "byod": {
                     "post_build_script": "test_script.sh",
-                    "runtime_env": ["KEY=val"],
+                    "runtime_env": {"KEY": "val"},
                 },
             },
         }

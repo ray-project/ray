@@ -46,6 +46,7 @@ if is_v2_enabled():
     from ray.train.v2.api.context import TrainContext  # noqa: F811
     from ray.train.v2.api.exceptions import (  # noqa: F811
         ControllerError,
+        NCCLHangError,
         PreemptionError,
         TrainingFailedError,
         WorkerGroupError,
@@ -117,6 +118,7 @@ if is_v2_enabled():
             "CheckpointUploadMode",
             "CheckpointConsistencyMode",
             "ControllerError",
+            "NCCLHangError",
             "LoggingConfig",
             "PreemptionError",
             "PreemptionInfo",
@@ -135,6 +137,7 @@ if is_v2_enabled():
     CheckpointUploadMode.__module__ = "ray.train"
     CheckpointConsistencyMode.__module__ = "ray.train"
     ControllerError.__module__ = "ray.train"
+    NCCLHangError.__module__ = "ray.train"
     LoggingConfig.__module__ = "ray.train"
     PreemptionError.__module__ = "ray.train"
     PreemptionInfo.__module__ = "ray.train"

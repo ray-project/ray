@@ -796,8 +796,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
   // It is possible that when ref count reaches zero, there are still subscribers.
   // See https://github.com/ray-project/ray/pull/63560 for details
-  object_info_publisher_->PublishFailure(
-      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+  if (it->second.has_ever_had_location_subscriber) {
+    object_info_publisher_->PublishFailure(
+        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+  }
 
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
   auto index_it = reconstructable_owned_objects_index_.find(it->first);
@@ -1566,11 +1568,11 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   // Decrement counter for old state
   UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
 
-  it->second.spilled = true;
   it->second.did_spill = true;
   bool spilled_location_alive =
       spilled_node_id.IsNil() || !is_node_dead_(spilled_node_id);
   if (spilled_location_alive) {
+    it->second.spilled = true;
     if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;
     }
@@ -1580,10 +1582,13 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     PushToLocationSubscribers(it);
   } else {
     RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
-        << "Object spilled to dead node ";
-    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
-    UnsetObjectPrimaryCopy(it);
-    UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
+        << "Object spilled to dead node. Unsetting spilled metadata if stale.";
+
+    // Only clear the pinned copy if the spilled node is the same as the pinned node.
+    if (it->second.pinned_at_node_id_.has_value() &&
+        it->second.pinned_at_node_id_.value() == spilled_node_id) {
+      UnsetObjectPrimaryCopy(it);
+    }
     objects_to_recover_.push_back(object_id);
   }
 
@@ -1705,6 +1710,9 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  if (!it->second.has_ever_had_location_subscriber) {
+    return;
+  }
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
   auto object_size = it->second.object_size_;
@@ -1779,6 +1787,7 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   // Always publish the location when subscribed for the first time.
   // This will ensure that the subscriber will get the first snapshot of the
   // object location.
+  it->second.has_ever_had_location_subscriber = true;
   PushToLocationSubscribers(it);
 }
 
@@ -1803,7 +1812,8 @@ std::string ReferenceCounter::Reference::DebugString() const {
      << " contained_in_borrowed: " << nested().contained_in_borrowed_ids.size()
      << " contains: " << nested().contains.size()
      << " stored_in: " << borrow().stored_in_objects.size()
-     << " lineage_ref_count: " << lineage_ref_count << "}";
+     << " lineage_ref_count: " << lineage_ref_count
+     << " has_ever_had_location_subscriber: " << has_ever_had_location_subscriber << "}";
   return ss.str();
 }
 
