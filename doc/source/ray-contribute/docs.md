@@ -189,7 +189,7 @@ The API reference is generated from your source code: autodoc imports the module
 
 **Heavy dependencies are mocked, so keep your imports safe.** The docs build installs only a light dependency set, not Ray's full runtime. Heavy or optional libraries such as `torch`, `tensorflow`, and `pandas` are replaced by mock objects, listed in `autodoc_mock_imports` in `doc/source/conf.py`, so autodoc can import your module without importing those libraries. If your module imports a heavy dependency at import time and that library isn't mocked, the API-ref build fails. Note that Sphinx's autodoc sets `typing.TYPE_CHECKING` to `True` during the build to resolve type annotations, so imports guarded by `if TYPE_CHECKING:` will still be executed and can cause failures if not mocked. A mock can also stand in for an object incorrectly and abort the whole module import, which surfaces as a confusing, unrelated error. To avoid both, import heavy dependencies lazily inside the function or method that needs them rather than at module top level. If you add a public API that puts a new heavy dependency in a signature, add that library to `autodoc_mock_imports`.
 
-**Type annotations link to external docs through intersphinx.** When a public signature is annotated with a type from an external library, such as `numpy.ndarray` or `torch.Tensor`, the build turns it into a link to that library's own documentation using the `intersphinx_mapping` in `doc/source/conf.py`. The link resolves only if the library is in that mapping. If you add a public API whose signature references a new external library and you want its types linked, add the library to `intersphinx_mapping` (and, per the point above, usually to `autodoc_mock_imports` too). Annotations that don't resolve render as plain text; they don't fail the build.
+**Type annotations link to external docs through intersphinx.** When a public signature is annotated with a type from an external library, such as `numpy.ndarray` or `torch.Tensor`, the build turns it into a link to that library's own documentation using the `intersphinx_mapping` in `doc/source/conf.py`. The link resolves only if the library is in that mapping. If you add a public API whose signature references a new external library and you want its types linked, add the library to `intersphinx_mapping` (and, per the point above, usually to `autodoc_mock_imports` too). Annotations that don't resolve render as plain text; they don't fail the build. That holds for third-party types, which resolve as `py:class` and fall under a blanket `nitpick_ignore_regex` entry. It does not hold for `None` and `typing.*` annotations, which Sphinx emits as `py:obj`. Since there is no blanket ignore rule for `py:obj`, they build cleanly only because the `python` intersphinx target resolves them.
 
 ## Adding code to an `.rST` or `.md` file
 
@@ -360,7 +360,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Install the Vale VS Code extension by following these [installation instructions](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode).
 
@@ -382,7 +382,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Run Vale in your terminal.
 
@@ -418,7 +418,7 @@ To add custom terminology, complete the following steps:
 2. If it doesn't already exist, create a text file named `accept.txt`. For example, `.vale/styles/Vocab/Data/accept.txt`.
 3. Add your term to `accept.txt`. Vale accepts Regex.
 
-For more information, see [Vocabularies](https://vale.sh/docs/topics/vocab/) in the Vale documentation.
+For more information, see [Vocabularies](https://vale.sh/docs/keys/vocab) in the Vale documentation.
 
 ### How to handle false Google.WordList errors
 

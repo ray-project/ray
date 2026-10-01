@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorPreservesSchema,
-    LogicalOperatorSupportsPredicatePassThrough,
-    PredicatePassThroughBehavior,
 )
 from ray.data.block import BlockMetadata
 
@@ -88,10 +86,13 @@ class AbstractOneToOne(LogicalOperator):
 @dataclass(frozen=True, repr=False, eq=False)
 class Limit(
     AbstractOneToOne,
-    LogicalOperatorSupportsPredicatePassThrough,
     LogicalOperatorPreservesSchema,
 ):
-    """Logical operator for limit."""
+    """Logical operator for limit.
+
+    Predicates cannot pass through: filtering before limiting changes which rows
+    are selected by the limit.
+    """
 
     limit: int
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
@@ -122,11 +123,6 @@ class Limit(
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         return self.input_dependencies[0].infer_metadata().input_files
-
-    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
-        # Pushing filter through limit is safe: Filter(Limit(data, n), pred)
-        # becomes Limit(Filter(data, pred), n), which filters earlier
-        return PredicatePassThroughBehavior.PASSTHROUGH
 
 
 @dataclass(frozen=True, repr=False, eq=False)

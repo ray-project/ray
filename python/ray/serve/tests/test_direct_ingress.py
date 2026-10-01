@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -43,12 +44,12 @@ from ray.serve._private.test_utils import (
     get_application_url,
     get_application_urls,
     ping_grpc_list_applications,
+    ping_grpc_model_multiplexing,
     send_signal_on_cancellation,
 )
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import (
@@ -59,6 +60,16 @@ from ray.serve.schema import (
     ServeInstanceDetails,
 )
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
+from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
+
+# A replica only appears in target_groups once it is running and its
+# direct-ingress port is allocated, which lags the app reporting RUNNING.
+# Measured just over 10s under CI-like contention.
+TARGET_GROUP_CONVERGENCE_TIMEOUT_S = 60
+
+# Driving an app to the terminal DEPLOY_FAILED state means exhausting replica
+# retries, which measures up to ~21s under CI-like contention.
+DEPLOY_FAILED_TIMEOUT_S = 60
 
 
 @ray.remote
@@ -410,18 +421,14 @@ def test_http_request_id(_skip_if_ff_not_enabled, serve_instance, use_fastapi: b
     assert r.text == "TEST-HEADER" and r.text == r.headers["x-request-id"]
 
 
-def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
-
-
-def test_multiplexing_on_ingress_not_supported(_skip_if_ff_not_enabled, serve_instance):
-    """Model multiplexing on the ingress deployment is unsupported with direct ingress.
-
-    The multiplexed model ID is propagated through the proxy, which direct ingress
-    bypasses, so deploying such an app is rejected at build time with a clear error.
-    """
-
-    @serve.deployment(name="multiplexed-ingress")
+@pytest.mark.parametrize(
+    "header_name",
+    [SERVE_MULTIPLEXED_MODEL_ID, SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-")],
+)
+def test_multiplexed_model_id(
+    _skip_if_ff_not_enabled, serve_instance, header_name: str
+):
+    @serve.deployment
     class MultiplexedIngress:
         @serve.multiplexed(max_num_models_per_replica=2)
         async def load_model(self, model_id: str) -> str:
@@ -430,8 +437,23 @@ def test_multiplexing_on_ingress_not_supported(_skip_if_ff_not_enabled, serve_in
         async def __call__(self, request: Request) -> str:
             return await self.load_model(serve.get_multiplexed_model_id())
 
-    with pytest.raises(RayServeException, match="model multiplexing"):
-        serve.run(MultiplexedIngress.bind())
+    serve.run(MultiplexedIngress.bind())
+    response = httpx.get(
+        get_application_url("HTTP", from_proxy_manager=True),
+        headers={header_name: "adapter"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.text == "adapter"
+
+
+def test_grpc_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
+    serve.run(multiplexed_g)
+    for grpc_url in get_application_urls("gRPC", from_proxy_manager=True):
+        channel = grpc.insecure_channel(grpc_url)
+        try:
+            ping_grpc_model_multiplexing(channel, SERVE_DEFAULT_APP_NAME)
+        finally:
+            channel.close()
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
@@ -683,7 +705,7 @@ def test_replica_gives_up_after_max_port_retries_for_http(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -717,7 +739,7 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -756,7 +778,7 @@ def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
         )
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_instance):
@@ -1303,7 +1325,7 @@ def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
         assert set(grpc_ports) == expected_grpc_ports
         return True
 
-    wait_for_condition(_func, timeout=10)
+    wait_for_condition(_func, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S)
 
     # check status of the deployment
     serve_details = ServeInstanceDetails(
@@ -2465,7 +2487,7 @@ def test_deploy_app_custom_exception(_skip_if_ff_not_enabled, serve_instance):
         assert "custom exception info" in status.message
         return True
 
-    wait_for_condition(check_custom_exception, timeout=10)
+    wait_for_condition(check_custom_exception, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 # Copied from test_controller.py
@@ -2497,7 +2519,19 @@ def test_get_serve_instance_details_json_serializable(
         return "1"
 
     serve.run(autoscaling_app.bind())
-    details = ray.get(controller.get_serve_instance_details.remote())
+
+    details = None
+
+    def snapshot_has_all_target_groups() -> bool:
+        nonlocal details
+        details = ray.get(controller.get_serve_instance_details.remote())
+        assert len(details["target_groups"]) == 2
+        return True
+
+    wait_for_condition(
+        snapshot_has_all_target_groups, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S
+    )
+
     details_json = json.dumps(details)
     controller_details = ray.get(controller.get_actor_details.remote())
     node_id = controller_details.node_id
@@ -2642,6 +2676,9 @@ def test_get_serve_instance_details_json_serializable(
                 }
             },
             "target_capacity": None,
+            # Set by the controller: this version restores a deployment option
+            # that a re-applied config stops setting.
+            "restores_unset_config_options": True,
             "target_groups": [
                 {
                     "targets": [

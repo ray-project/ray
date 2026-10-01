@@ -12,6 +12,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
+    _add_partitions_to_table,
 )
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -264,6 +265,28 @@ def test_partitioning_raises_on_mismatch(ray_start_regular_shared, tmp_path):
         execute_read_tasks(tasks)
 
 
+@pytest.mark.parametrize(
+    "column,partition_value",
+    [
+        (pyarrow.array([1], type=pyarrow.int64()), "not-an-int"),
+        (
+            pyarrow.array([[1]], type=pyarrow.list_(pyarrow.int64())),
+            "not-a-list",
+        ),
+    ],
+)
+def test_add_partitions_to_table_raises_on_cast_error(column, partition_value):
+    table = pyarrow.table({"part": column})
+
+    with pytest.raises(ValueError) as exc_info:
+        _add_partitions_to_table(table, {"part": partition_value})
+
+    assert str(exc_info.value) == (
+        f"Partition value {partition_value!r} for field 'part' cannot be cast "
+        f"to target type {column.type}."
+    )
+
+
 def test_ignore_missing_paths_true(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "file.txt")
     with open(path, "wb") as file:
@@ -290,6 +313,37 @@ def test_ignore_missing_paths_false(ray_start_regular_shared, tmp_path):
         )
         tasks = datasource.get_read_tasks(1)
         execute_read_tasks(tasks)
+
+
+def test_empty_directory_raises_no_files_found(ray_start_regular_shared, tmp_path):
+    with pytest.raises(ValueError, match="No files found under"):
+        MockFileBasedDatasource(tmp_path)
+
+
+@pytest.mark.parametrize("filename", ["_SUCCESS", ".hidden.txt"])
+def test_excluded_prefixes_only_raises_no_files_found(
+    ray_start_regular_shared, tmp_path, filename
+):
+    # Directory listing drops names starting with "_" or ".", so a directory
+    # holding only those (e.g. a Spark output directory with just its _SUCCESS
+    # marker) expands to no files at all.
+    with open(os.path.join(tmp_path, filename), "wb"):
+        pass
+
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
+        MockFileBasedDatasource(tmp_path)
+
+    # The prefix rule is the non-obvious cause, so the message has to name it.
+    assert "starting with '_' or '.'" in str(exc_info.value)
+
+
+def test_all_paths_missing_with_ignore_missing_paths(ray_start_regular_shared):
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
+        MockFileBasedDatasource(
+            ["missing1.txt", "missing2.txt"], ignore_missing_paths=True
+        )
+
+    assert "'ignore_missing_paths' is set to True" in str(exc_info.value)
 
 
 def test_local_paths(ray_start_regular_shared, tmp_path):

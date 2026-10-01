@@ -479,11 +479,13 @@ def _derive_max_shuffle_aggregators(
     # As such we establish that the max number of shuffle
     # aggregators (workers):
     #
-    #   - Should not exceed total # of CPUs (to fully utilize cluster resources
-    #   while avoiding thrashing these due to over-allocation)
+    #   - Should request at least one aggregator so a cluster with no workers
+    #     can scale up
+    #   - Otherwise should not exceed total # of CPUs (to fully utilize cluster
+    #     resources while avoiding thrashing these due to over-allocation)
     #   - Should be capped at fixed size (128 by default)
     return min(
-        math.ceil(total_cluster_resources.cpu),
+        max(1, math.ceil(total_cluster_resources.cpu)),
         data_context.max_hash_shuffle_aggregators
         or DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
     )
