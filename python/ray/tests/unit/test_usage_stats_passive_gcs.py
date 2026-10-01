@@ -153,5 +153,24 @@ async def test_async_recorded_extra_usage_tags_replay(tags):
     assert sorted(_async_tag_writes(gcs_client)) == expected
 
 
+def test_generate_report_data_handles_missing_metadata(monkeypatch):
+    """When CLUSTER_METADATA has not landed yet, generate_report_data must not crash."""
+    gcs_client = MagicMock()
+    gcs_client.internal_kv_get.return_value = None
+    gcs_client.internal_kv_keys.return_value = []
+    gcs_client.get_all_job_info.return_value = {}
+    gcs_client.get_all_node_info.return_value = MagicMock(items=lambda: [])
+    monkeypatch.setattr(
+        ray_usage_lib.ray._raylet, "GcsClient", lambda **kwargs: gcs_client
+    )
+
+    config = ray_usage_lib.ClusterConfigToReport()
+    data = ray_usage_lib.generate_report_data(
+        config, 0, 0, 0, "127.0.0.1:6379", "f" * 56
+    )
+    assert data.ray_version is None
+    assert data.session_start_timestamp_ms is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

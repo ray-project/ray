@@ -74,6 +74,7 @@ class DashboardHead:
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
         tracing_startup_hook: Optional[str] = None,
+        gcs_is_passive: bool = False,
     ):
         """
         Dashboard head
@@ -104,6 +105,8 @@ class DashboardHead:
                 Ex: proxy_server_url=http://historyserver:8080
             tracing_startup_hook: The `module:function` tracing hook this node
                 was started with, republished after a promotion.
+            gcs_is_passive: Whether GCS was in passive mode when the head node
+                was started.
         """
         self.minimal = minimal
         self.serve_frontend = serve_frontend
@@ -160,6 +163,8 @@ class DashboardHead:
             ),
             action_desc_promoted="GCS was promoted to leader. Registered the dashboard addresses.",
         )
+        if gcs_is_passive:
+            self._dashboard_passive_latch.note_passive()
         # Filled in as each server binds; None means there is nothing to publish.
         self._metrics_address: Optional[str] = None
         self._dashboard_address: Optional[str] = None
@@ -218,25 +223,24 @@ class DashboardHead:
 
     async def _resume_after_promotion(self):
         """Write the keys this head could not while it was passive."""
-        registered = [
+        if (
             await self._put_address(
                 b"DashboardMetricsAddress", self._metrics_address, None
-            ),
-            await self._put_address(
+            )
+            and await self._put_address(
                 ray_constants.DASHBOARD_ADDRESS.encode(),
                 self._dashboard_address,
                 ray_constants.KV_NAMESPACE_DASHBOARD,
-            ),
-            await self._put_address(
+            )
+            and await self._put_address(
                 b"webui:url",
                 self._dashboard_address,
                 ray_constants.KV_NAMESPACE_DASHBOARD,
-            ),
-            await self._insert_session_name(),
-            await self._put_cluster_metadata(),
-            await self._put_tracing_startup_hook(),
-        ]
-        if all(registered):
+            )
+            and await self._insert_session_name()
+            and await self._put_cluster_metadata()
+            and await self._put_tracing_startup_hook()
+        ):
             self._dashboard_passive_latch.promoted()
             # Best effort, and last: telemetry must not hold up the keys above.
             await ray_usage_lib.async_put_recorded_extra_usage_tags(self.gcs_client)

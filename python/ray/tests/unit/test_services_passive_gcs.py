@@ -80,6 +80,16 @@ def test_start_api_server_passes_the_tracing_startup_hook(hook, expected):
     assert f"--tracing-startup-hook={expected}" in command
 
 
+@pytest.mark.parametrize("gcs_is_passive", [True, False])
+def test_start_api_server_forwards_gcs_is_passive_flag(gcs_is_passive):
+    _start_api_server(gcs_is_passive=gcs_is_passive)
+    command = services.start_ray_process.call_args.args[0]
+    if gcs_is_passive:
+        assert "--gcs-is-passive" in command
+    else:
+        assert "--gcs-is-passive" not in command
+
+
 def test_start_api_server_still_fails_on_a_dead_dashboard(dashboard_process):
     gcs_client = services.GcsClient.return_value
     gcs_client.internal_kv_get.return_value = None
