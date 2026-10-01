@@ -11709,6 +11709,7 @@ class TestPushedHealth:
         w._last_consumed_push_ts = 0.0
         w._last_applied_push_received_at = 0.0
         w._last_probe_applied_time = 0.0
+        w._last_mirrored_push_failures = None
         w._version = SimpleNamespace(
             deployment_config=SimpleNamespace(
                 health_check_period_s=10.0, health_check_timeout_s=30.0
@@ -11995,6 +11996,39 @@ class TestPushedHealthRegressions:
             assert ds_mod._push_freshness_window_s(period) < period
         assert ds_mod._push_freshness_window_s(10.0) == 7.5
         assert ds_mod._push_freshness_window_s(0.5) == 1.0  # the floor still applies
+
+    def test_a_recovered_replica_can_fail_again(self):
+        """Recovery restarts the replica's own counter, so a later failure reports
+        count 1 again. A stale watermark would read that as a repeat and drop every
+        strike, and a fail-recover-fail cycle would never reach the threshold."""
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        threshold = ds_mod.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        ts = time.time()
+        for _cycle in range(threshold):
+            ts += 1e-3
+            w.record_pushed_health(ts, ts, False, 1)  # fails, its first failure
+            w.check_health()
+            assert w._consecutive_health_check_failures == 1
+            ts += 1e-3
+            w.record_pushed_health(ts, ts, True, 0)  # then recovers
+            w.check_health()
+            assert w._consecutive_health_check_failures == 0
+        assert w._healthy is True  # flapping never accrues, but strikes do land
+
+    def test_repeated_pushes_in_a_period_do_not_double_count(self):
+        """The replica counts a failure once per period but heartbeats twice, so the
+        same count arrives twice. Advancing on both would replace a replica in half the
+        configured time."""
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        threshold = ds_mod.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        ts = time.time()
+        for period in range(1, threshold + 1):
+            for _eval in range(2):  # two evals per period, one counted failure
+                ts += 1e-3
+                w.record_pushed_health(ts, ts, False, period)
+                w.check_health()
+                assert w._consecutive_health_check_failures == period
+        assert w._healthy is False  # only after a full threshold of periods
 
     def test_registry_rejects_out_of_order_reports(self):
         r = ReplicaHealthPushRegistry()

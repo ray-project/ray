@@ -869,6 +869,7 @@ class ActorReplicaWrapper:
         self._last_consumed_push_ts: float = 0.0
         self._last_applied_push_received_at: float = 0.0
         self._last_probe_applied_time: float = 0.0
+        self._last_mirrored_push_failures: Optional[int] = None
         self._initialization_latency_s: Optional[float] = None
         self._reconfigure_start_time: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
@@ -1960,12 +1961,21 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.SUCCEEDED
             else:
                 if pushed_failures is not None:
-                    # Mirroring paces the threshold: subtract the increment the chain
-                    # below adds. max() keeps a push stream that starts mid-failure-run
-                    # from lowering failures the controller already probed.
-                    self._consecutive_health_check_failures = max(
-                        self._consecutive_health_check_failures, pushed_failures - 1
-                    )
+                    if pushed_failures == self._last_mirrored_push_failures:
+                        # The replica counts a failure once per period but heartbeats
+                        # twice, so the same count arrives again. Cancel the increment
+                        # the chain below adds, or it reaches the threshold in half the
+                        # configured time.
+                        self._consecutive_health_check_failures -= 1
+                    else:
+                        # Mirroring paces the threshold: subtract the increment the
+                        # chain adds. max() keeps a push stream that starts
+                        # mid-failure-run from lowering what the controller probed.
+                        self._consecutive_health_check_failures = max(
+                            self._consecutive_health_check_failures,
+                            pushed_failures - 1,
+                        )
+                    self._last_mirrored_push_failures = pushed_failures
                 response = ReplicaHealthCheckResponse.APP_FAILURE
             # Only the probe paths set this, so the flag would go silent for the
             # path the controller now acts on most.
@@ -1982,6 +1992,11 @@ class ActorReplicaWrapper:
                     f"{self._consecutive_health_check_failures} consecutive failures."
                 )
             self._consecutive_health_check_failures = 0
+            # The replica's own counter restarts here too, so a later failure reports
+            # count 1 again. Keeping the old watermark would read that as a repeat and
+            # drop the strike, and a fail-recover-fail cycle would never reach the
+            # threshold.
+            self._last_mirrored_push_failures = None
             self._healthy = True
         elif response is ReplicaHealthCheckResponse.APP_FAILURE:
             # Health check failed. If it has failed more than N times in a row,
