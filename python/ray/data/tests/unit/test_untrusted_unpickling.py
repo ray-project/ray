@@ -229,6 +229,17 @@ def test_datasource_hooks_from_mixin_run_guarded():
     assert _MixinDatasource().get_read_tasks(1) == [True]
 
 
+def test_legacy_reader_datasource_still_detected():
+    # Wrapping must not make the base ``get_read_tasks`` stub look implemented.
+    class _LegacyDatasource(Datasource):
+        def create_reader(self, **read_args):
+            return None
+
+    ds = _LegacyDatasource()
+    assert ds.should_create_reader
+    assert _LegacyDatasource.get_read_tasks is Datasource.get_read_tasks
+
+
 def test_datasource_hooks_run_guarded():
     ds = _RecordingSubclass()
     ds.estimate_inmemory_data_size()

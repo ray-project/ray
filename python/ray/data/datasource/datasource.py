@@ -199,9 +199,12 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         super().__init_subclass__(**kwargs)
         # Driver-side datasource code runs with the forbid flag set (read tasks
         # are covered by the read operator). ``getattr`` also catches methods
-        # inherited from mixins; wrapping is idempotent.
+        # inherited from mixins; wrapping is idempotent. ``Datasource``'s own
+        # stubs stay unwrapped so ``should_create_reader`` can detect them.
         for name in ("__init__", "get_read_tasks", "estimate_inmemory_data_size"):
             fn = getattr(cls, name, None)
+            if fn is Datasource.__dict__.get(name):
+                continue
             if isinstance(fn, types.FunctionType):
                 setattr(cls, name, guard_datasource_call(fn))
 
