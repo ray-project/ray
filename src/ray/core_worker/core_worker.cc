@@ -2321,7 +2321,7 @@ Status CoreWorker::CheckNoConsumeOnceArgs(const std::vector<ObjectID> &arg_ids) 
     }
     if (*move_state != MoveState::NOT_MOVABLE) {
       return Status::InvalidArgument(absl::StrFormat(
-          "Object %s was created with consume_once=True.", object_id.Hex()));
+          "Object %s was created with _consume_once=True.", object_id.Hex()));
     }
   }
   return Status::OK();
