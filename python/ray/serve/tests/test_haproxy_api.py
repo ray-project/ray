@@ -1087,7 +1087,7 @@ def _create_replica_server(port: int, replica_id_header: str):
     async def health():
         return {"status": "OK"}
 
-    @app.post("/{path:path}")
+    @app.api_route("/{path:path}", methods=["GET", "POST"])
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
         for name, value in req.headers.items():
@@ -1107,13 +1107,15 @@ def _create_router_server(
 ):
     """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
-    captured = {"bodies": [], "request_ids": []}
+    captured = {"bodies": [], "headers": [], "request_ids": [], "model_ids": []}
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
+        captured["headers"].append(dict(req.headers))
         captured["request_ids"].append(req.headers.get("x-request-id", ""))
+        captured["model_ids"].append(req.headers.get(SERVE_MULTIPLEXED_MODEL_ID, ""))
         response = {"replica_id": replica_id_to_return}
         if extra_response:
             response.update(extra_response)
@@ -1130,7 +1132,9 @@ def _create_router_server(
     server, thread = _serve_fastapi_app(app, port, ready)
     # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
+    captured["headers"].clear()
     captured["request_ids"].clear()
+    captured["model_ids"].clear()
     return server, thread, captured
 
 
@@ -1191,9 +1195,7 @@ def _shutdown_fake_servers(servers, threads):
 
 @pytest.mark.asyncio
 async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
-    """Run actual HAProxy against a fake router + two replicas; verify a POST
-    is pinned to the replica the router selects, while a GET (which doesn't
-    trigger the router-routed path) is not."""
+    """Run HAProxy against a fake router and verify all methods are pinned."""
     monkeypatch.setattr(
         "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
         True,
@@ -1215,7 +1217,11 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             replica_b_port, replica_id_header="B"
         )
         router, router_thread, router_captured = _create_router_server(
-            router_port, replica_id_to_return=actor_name_b  # always pick B
+            router_port,
+            replica_id_to_return=actor_name_b,  # always pick B
+            extra_response={
+                "request_headers": {SERVE_MULTIPLEXED_MODEL_ID: "trusted-model"}
+            },
         )
 
         try:
@@ -1299,15 +1305,41 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert resp.json()["body_length"] == large_body_size
             assert router_captured["bodies"][-1] == large_body
 
-            # GET is not POST, so Lua routing never runs; the router should
-            # have seen exactly the four POSTs above and nothing more.
             n_router_calls_before_get = len(router_captured["bodies"])
-            requests.get(
-                f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
+            resp = requests.get(
+                f"http://127.0.0.1:{haproxy_port}/health-passthrough",
+                headers={
+                    "x-routing-tenant": "tenant-a",
+                    "connection": "x-hop-secret, close",
+                    "x-hop-secret": "must-not-forward",
+                },
+                timeout=5,
             )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert len(router_captured["bodies"]) == n_router_calls_before_get + 1
+            assert router_captured["headers"][-1]["x-routing-tenant"] == "tenant-a"
+            assert router_captured["headers"][-1]["host"] == (
+                f"127.0.0.1:{router_port}"
+            )
+            assert router_captured["headers"][-1]["connection"] == "close"
+            assert "x-hop-secret" not in router_captured["headers"][-1]
+
+            # A model-multiplexed GET does use the router. HAProxy forwards the
+            # client value to the internal router, strips it from the original
+            # request, then installs the trusted value returned by the router.
+            resp = requests.get(
+                f"http://127.0.0.1:{haproxy_port}/model",
+                headers={SERVE_MULTIPLEXED_MODEL_ID: "client-model"},
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["model_ids"][-1] == "client-model"
             assert (
-                len(router_captured["bodies"]) == n_router_calls_before_get
-            ), "GET must not invoke /internal/route"
+                resp.headers.get(f"echo-{SERVE_MULTIPLEXED_MODEL_ID}")
+                == "trusted-model"
+            )
 
         finally:
             _shutdown_fake_servers(
