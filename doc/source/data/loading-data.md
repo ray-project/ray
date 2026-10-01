@@ -1143,7 +1143,7 @@ Ray Data reads from message queues such as Kafka.
 
 (reading_kafka)=
 
-To read data from Kafka topics, call {func}`~ray.data.read_kafka` and specify the topic names and broker addresses. Ray Data performs bounded reads between a start and end offset. You can specify offsets as integers, as `"earliest"` or `"latest"` strings, or as `datetime` objects for time-based ranges.
+To read data from Kafka topics, call {func}`~ray.data.read_kafka` and specify the topic names and broker addresses. Ray Data performs bounded reads between a start and end offset. You can specify each offset as an integer, as a `datetime` object for a time-based range, or as a dictionary of per-partition offsets that maps `{topic: {partition_id: offset}}`. The start offset also accepts `"earliest"`, and the end offset also accepts `"latest"`. Partitions that a per-partition dictionary doesn't list fall back to `"earliest"` for the start offset and `"latest"` for the end offset.
 
 First, install the required dependencies:
 

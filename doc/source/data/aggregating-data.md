@@ -90,11 +90,12 @@ result = ds.groupby("group_key").aggregate(
 
 ## Create custom aggregations
 
-To create a custom aggregation, implement the {class}`~ray.data.aggregate.AggregateFnV2` interface. The interface has three key methods that you implement:
+To create a custom aggregation, implement the {class}`~ray.data.aggregate.AggregateFnV2` interface. You must implement the following two methods:
 
 1. `aggregate_block`: Processes a single block of data and returns a partial aggregation result.
 1. `combine`: Merges two partial aggregation results into a single result.
-1. `finalize`: Transforms the final accumulated result into the desired output format.
+
+You can also override `finalize`, which transforms the final accumulated result into the desired output format. By default, `finalize` returns the accumulator unchanged, which suits aggregations such as sum, count, min, and max.
 
 Ray Data runs an aggregation in the following steps:
 
