@@ -29,6 +29,10 @@ _WORKER_JOIN = (
 # Standard vLLM metric filter
 _VLLM_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}'
 
+_E2E_FILTER = (
+    'model_name=~"$vllm_model_name", engine_worker_id=~"$workerid", {global_filters}'
+)
+
 # vLLM filter scoped to a specific deployment (used for ray_serve_* metrics
 # that also carry model_name / WorkerId labels).
 _VLLM_DEPLOYMENT_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", deployment=~"$deployment", {global_filters}'
@@ -37,37 +41,49 @@ _VLLM_DEPLOYMENT_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid"
 _DEP_REPLICA = "{{deployment}}: {{replica}}"
 
 
-def _mean_with_join(metric_base: str) -> str:
+def _mean_with_join(metric_base: str, *, e2e: bool = False) -> str:
     """Mean = sum(_sum) / sum(_count) with NaN guard + WorkerId join."""
-    return (
+    worker = "engine_worker_id" if e2e else "WorkerId"
+    filters = _E2E_FILTER if e2e else _VLLM_FILTER
+    expr = (
         "(\n"
         "  (\n"
-        f"    sum by(WorkerId) (rate({metric_base}_sum{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        f"    sum by({worker}) (rate({metric_base}_sum{{{{{filters}}}}}[$interval]))\n"
         "    /\n"
-        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        f"    sum by({worker}) (rate({metric_base}_count{{{{{filters}}}}}[$interval]))\n"
         "  )\n"
-        "  and on(WorkerId)\n"
+        f"  and on({worker})\n"
         "  (\n"
-        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        f"    sum by({worker}) (rate({metric_base}_count{{{{{filters}}}}}[$interval])) > 0\n"
         "  )\n"
-        ")" + _WORKER_JOIN
+        ")"
     )
+    if e2e:
+        expr = f'label_replace({expr}, "WorkerId", "$1", "engine_worker_id", "(.+)")'
+    return expr + _WORKER_JOIN
 
 
-def _percentile_with_join(metric_base: str, quantile: float) -> str:
+def _percentile_with_join(
+    metric_base: str, quantile: float, *, e2e: bool = False
+) -> str:
     """histogram_quantile with NaN guard + WorkerId join."""
-    return (
+    worker = "engine_worker_id" if e2e else "WorkerId"
+    filters = _E2E_FILTER if e2e else _VLLM_FILTER
+    expr = (
         "(\n"
         "  histogram_quantile(\n"
         f"    {quantile},\n"
-        f"    sum by (le, WorkerId) (rate({metric_base}_bucket{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        f"    sum by (le, {worker}) (rate({metric_base}_bucket{{{{{filters}}}}}[$interval]))\n"
         "  )\n"
-        "  and on(WorkerId)\n"
+        f"  and on({worker})\n"
         "  (\n"
-        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        f"    sum by({worker}) (rate({metric_base}_count{{{{{filters}}}}}[$interval])) > 0\n"
         "  )\n"
-        ")" + _WORKER_JOIN
+        ")"
     )
+    if e2e:
+        expr = f'label_replace({expr}, "WorkerId", "$1", "engine_worker_id", "(.+)")'
+    return expr + _WORKER_JOIN
 
 
 def _gauge_with_join(metric: str) -> str:
@@ -151,6 +167,7 @@ def _histogram_panels(
     unit: str = "s",
     linewidth: int = 2,
     description: str = "",
+    e2e: bool = False,
 ) -> list:
     """Return [Mean, P50, P90] panels for a histogram metric."""
     return [
@@ -159,7 +176,9 @@ def _histogram_panels(
             title=f"{label} -- Mean",
             description=description,
             unit=unit,
-            targets=[Target(expr=_mean_with_join(metric_base), legend=_DEP_REPLICA)],
+            targets=[
+                Target(expr=_mean_with_join(metric_base, e2e=e2e), legend=_DEP_REPLICA)
+            ],
             fill=1,
             linewidth=linewidth,
             stack=False,
@@ -172,7 +191,8 @@ def _histogram_panels(
             unit=unit,
             targets=[
                 Target(
-                    expr=_percentile_with_join(metric_base, 0.5), legend=_DEP_REPLICA
+                    expr=_percentile_with_join(metric_base, 0.5, e2e=e2e),
+                    legend=_DEP_REPLICA,
                 )
             ],
             fill=1,
@@ -187,7 +207,8 @@ def _histogram_panels(
             unit=unit,
             targets=[
                 Target(
-                    expr=_percentile_with_join(metric_base, 0.9), legend=_DEP_REPLICA
+                    expr=_percentile_with_join(metric_base, 0.9, e2e=e2e),
+                    legend=_DEP_REPLICA,
                 )
             ],
             fill=1,
@@ -281,6 +302,49 @@ _latency_panels_list = [
     ),
 ]
 
+# E2E observations originate at HAProxy and carry the selected engine worker identity.
+_streaming_latency_panels = [
+    *_histogram_panels(
+        "ray_vllm_inter_token_latency_seconds",
+        "Engine ITL",
+        (61, 62, 63),
+        35,
+        description="Engine inter-token latency per output iteration, in seconds.",
+    ),
+    *_histogram_panels(
+        "ray_serve_llm_time_to_first_token_seconds",
+        "E2E TTFT",
+        (64, 65, 66),
+        43,
+        description="HAProxy request entry to the first output token at HAProxy, including routing and generation. Direct streaming only.",
+        e2e=True,
+    ),
+    *_histogram_panels(
+        "ray_serve_llm_inter_token_latency_seconds",
+        "E2E ITL",
+        (67, 68, 69),
+        51,
+        description="Time between output token chunks at HAProxy per choice, covering AsyncLLM through LLMServer to HAProxy. Direct streaming only.",
+        e2e=True,
+    ),
+    *_histogram_panels(
+        "ray_serve_llm_router_overhead_seconds",
+        "Router Overhead",
+        (70, 71, 72),
+        59,
+        description="HAProxy to the ingress router, replica decision, and return to HAProxy. Once per completed direct stream.",
+        e2e=True,
+    ),
+    *_histogram_panels(
+        "ray_serve_llm_request_duration_seconds",
+        "Request Duration",
+        (73, 74, 75),
+        67,
+        description="HAProxy request entry to response completion at HAProxy, including routing and the full generated response. Once per completed direct stream.",
+        e2e=True,
+    ),
+]
+
 # ===================================================================
 # Row 3: Cache
 # ===================================================================
@@ -299,7 +363,7 @@ _cache_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 35, 12, 8),
+        grid_pos=GridPos(0, 76, 12, 8),
     ),
     Panel(
         id=17,
@@ -322,7 +386,7 @@ _cache_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(12, 35, 12, 8),
+        grid_pos=GridPos(12, 76, 12, 8),
     ),
 ]
 
@@ -334,7 +398,7 @@ _request_length_panels = [
         "ray_vllm_request_prompt_tokens",
         "Prompt Length",
         (19, 20, 21),
-        44,
+        69,
         unit="short",
         linewidth=1,
     ),
@@ -342,7 +406,7 @@ _request_length_panels = [
         "ray_vllm_request_generation_tokens",
         "Generation Length",
         (22, 23, 24),
-        52,
+        77,
         unit="short",
         linewidth=1,
     ),
@@ -366,7 +430,7 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 61, 8, 8),
+        grid_pos=GridPos(0, 102, 8, 8),
     ),
     Panel(
         id=27,
@@ -382,7 +446,7 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 61, 8, 8),
+        grid_pos=GridPos(8, 102, 8, 8),
     ),
     Panel(
         id=28,
@@ -398,7 +462,7 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 61, 8, 8),
+        grid_pos=GridPos(16, 102, 8, 8),
     ),
     Panel(
         id=29,
@@ -417,7 +481,7 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 69, 12, 8),
+        grid_pos=GridPos(0, 110, 12, 8),
     ),
     Panel(
         id=30,
@@ -433,7 +497,7 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(12, 69, 12, 8),
+        grid_pos=GridPos(12, 110, 12, 8),
     ),
     Panel(
         id=31,
@@ -449,7 +513,7 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 77, 12, 8),
+        grid_pos=GridPos(0, 118, 12, 8),
     ),
     Panel(
         id=32,
@@ -465,7 +529,7 @@ _scheduler_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(12, 77, 12, 8),
+        grid_pos=GridPos(12, 118, 12, 8),
     ),
 ]
 
@@ -491,7 +555,7 @@ _nixl_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 86, 8, 8),
+        grid_pos=GridPos(0, 127, 8, 8),
     ),
     Panel(
         id=35,
@@ -511,7 +575,7 @@ _nixl_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 86, 8, 8),
+        grid_pos=GridPos(8, 127, 8, 8),
     ),
     Panel(
         id=36,
@@ -527,7 +591,7 @@ _nixl_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 86, 8, 8),
+        grid_pos=GridPos(16, 127, 8, 8),
     ),
     Panel(
         id=37,
@@ -547,7 +611,7 @@ _nixl_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 94, 8, 8),
+        grid_pos=GridPos(0, 135, 8, 8),
     ),
     Panel(
         id=38,
@@ -565,7 +629,7 @@ _nixl_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 94, 8, 8),
+        grid_pos=GridPos(8, 135, 8, 8),
     ),
     Panel(
         id=39,
@@ -583,7 +647,7 @@ _nixl_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 94, 8, 8),
+        grid_pos=GridPos(16, 135, 8, 8),
     ),
 ]
 
@@ -609,7 +673,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 103, 8, 8),
+        grid_pos=GridPos(0, 144, 8, 8),
     ),
     Panel(
         id=53,
@@ -629,7 +693,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 103, 8, 8),
+        grid_pos=GridPos(8, 144, 8, 8),
     ),
     Panel(
         id=54,
@@ -649,7 +713,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 103, 8, 8),
+        grid_pos=GridPos(16, 144, 8, 8),
     ),
     Panel(
         id=55,
@@ -669,7 +733,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 111, 8, 8),
+        grid_pos=GridPos(0, 152, 8, 8),
     ),
     Panel(
         id=56,
@@ -689,7 +753,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 111, 8, 8),
+        grid_pos=GridPos(8, 152, 8, 8),
     ),
     Panel(
         id=57,
@@ -713,7 +777,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 111, 8, 8),
+        grid_pos=GridPos(16, 152, 8, 8),
     ),
     Panel(
         id=58,
@@ -735,7 +799,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(0, 119, 8, 8),
+        grid_pos=GridPos(0, 160, 8, 8),
     ),
     Panel(
         id=60,
@@ -770,7 +834,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(8, 119, 8, 8),
+        grid_pos=GridPos(8, 160, 8, 8),
     ),
     Panel(
         id=59,
@@ -788,7 +852,7 @@ _kv_offload_panels = [
         fill=1,
         linewidth=1,
         stack=False,
-        grid_pos=GridPos(16, 119, 8, 8),
+        grid_pos=GridPos(16, 160, 8, 8),
     ),
 ]
 
@@ -816,7 +880,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 103, 12, 8),
+        grid_pos=GridPos(0, 144, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -837,7 +901,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 103, 12, 8),
+        grid_pos=GridPos(12, 144, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -854,7 +918,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 111, 12, 8),
+        grid_pos=GridPos(0, 152, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -871,7 +935,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 111, 12, 8),
+        grid_pos=GridPos(12, 152, 12, 8),
         template=PanelTemplate.PIE_CHART,
     ),
     Panel(
@@ -888,7 +952,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 119, 12, 8),
+        grid_pos=GridPos(0, 160, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -905,7 +969,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 119, 12, 8),
+        grid_pos=GridPos(12, 160, 12, 8),
         template=PanelTemplate.STAT,
     ),
     Panel(
@@ -926,7 +990,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 127, 12, 8),
+        grid_pos=GridPos(0, 168, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -943,7 +1007,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 127, 12, 8),
+        grid_pos=GridPos(12, 168, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -964,7 +1028,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 135, 12, 8),
+        grid_pos=GridPos(0, 176, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -985,7 +1049,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(12, 135, 12, 8),
+        grid_pos=GridPos(12, 176, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
     Panel(
@@ -1006,7 +1070,7 @@ _token_distribution_panels = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(0, 143, 12, 8),
+        grid_pos=GridPos(0, 184, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
 ]
@@ -1017,6 +1081,7 @@ _token_distribution_panels = [
 _ALL_ROWS = [
     Row(title="Throughput", id=501, panels=_throughput_panels),
     Row(title="Latency", id=502, panels=_latency_panels_list),
+    Row(title="Streaming Latency", id=509, panels=_streaming_latency_panels),
     Row(title="Cache", id=503, panels=_cache_panels),
     Row(title="Request Length", id=504, panels=_request_length_panels),
     Row(title="Scheduler", id=505, panels=_scheduler_panels),

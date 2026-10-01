@@ -62,12 +62,19 @@ HAPROXY_CONFIG_TEMPLATE = """global
     # rfc5424 metrics socket (level `debug`) when metrics are enabled -- mirroring
     # the proxy, which records their metric but not their access log.
     log {{ config.log_target }} local0 info
+    {%- if config.metrics_enabled and config.llm_streaming_metrics_enabled and has_ingress_request_router %}
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
+    {%- endif %}
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
+    {%- if config.metrics_enabled and config.llm_streaming_metrics_enabled %}
+    # The background LLM observer logs only to the metrics socket.
+    tune.lua.log.stderr off
+    {%- endif %}
     {%- endif %}
     {%- if has_ingress_request_router and ingress_request_router_forward_body %}
     tune.bufsize {{ ingress_request_router_bufsize }}
@@ -140,6 +147,11 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if has_ingress_request_router and config.metrics_enabled and config.llm_streaming_metrics_enabled %}
+    filter lua.llm_stream_metrics
+    {%- elif has_ingress_request_router %}
+    http-response del-header x-ray-llm-metric-tags
+    {%- endif %}
     {%- if has_ingress_request_router %}
     # Direct-streaming requests first pass through the ingress request router,
     # then are forwarded to a selected replica. Generate a request ID here when
@@ -149,6 +161,9 @@ frontend http_frontend
     {%- endif %}
     {%- if config.metrics_enabled %}
     log global
+    {%- if not (config.llm_streaming_metrics_enabled and has_ingress_request_router) %}
+    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
+    {%- endif %}
     # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
     # a Serve app backend, scraped into the serve_num_http_* /
     # serve_http_request_latency_ms families (the metrics the Python proxy emits
@@ -161,7 +176,6 @@ frontend http_frontend
     # Python proxy's client-disconnect convention. When ingress-request-router
     # metrics are also enabled, the router-specific fields are appended to the same
     # line.
-    log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
     log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
     {%- endif %}
 {{ healthz_rules|safe }}

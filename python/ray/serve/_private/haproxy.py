@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_ENABLE_LLM_STREAMING_METRICS,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
@@ -715,6 +716,9 @@ class HAProxyConfig:
     metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
+    # Opt-in response observation for native, direct-streaming LLM applications.
+    llm_streaming_metrics_enabled: bool = RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
+
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
     # Global retry policy for the defaults block (inherited by every backend).
@@ -1241,10 +1245,11 @@ class HAProxyApi(ProxyApi):
         if not routers:
             return None
 
-        # When metrics are enabled, render the two timing hooks and the
-        # truncation set_var; when disabled, all three substitute to empty
-        # strings to avoid any additional overhead.
-        if self.cfg.ingress_request_router_metrics_enabled:
+        # Router and LLM metrics share the routing timer. Body-truncation
+        # accounting is rendered only for the general router metrics.
+        if self.cfg.ingress_request_router_metrics_enabled or (
+            self.cfg.metrics_enabled and self.cfg.llm_streaming_metrics_enabled
+        ):
             metrics_pre = "local _metrics_t0 = core.now()"
             metrics_post = (
                 "local _metrics_t1 = core.now(); "
@@ -1252,14 +1257,14 @@ class HAProxyApi(ProxyApi):
                 "(_metrics_t1.sec - _metrics_t0.sec) * 1000000 "
                 "+ (_metrics_t1.usec - _metrics_t0.usec))"
             )
-            metrics_set_truncated = (
-                'txn:set_var("txn.ingress_request_router_truncated_full_length", '
-                "truncated)"
-            )
         else:
             metrics_pre = ""
             metrics_post = ""
-            metrics_set_truncated = ""
+        metrics_set_truncated = (
+            'txn:set_var("txn.ingress_request_router_truncated_full_length", truncated)'
+            if self.cfg.ingress_request_router_metrics_enabled
+            else ""
+        )
 
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
@@ -1274,6 +1279,12 @@ class HAProxyApi(ProxyApi):
             METRICS_POST_CALL_ROUTER=metrics_post,
             METRICS_SET_TRUNCATED=metrics_set_truncated,
         )
+
+        if self.cfg.metrics_enabled and self.cfg.llm_streaming_metrics_enabled:
+            # Opt-in and loaded with the router only; native headers identify LLMs.
+            content += (
+                "\n" + (Path(__file__).parent / "llm_stream_metrics.lua").read_text()
+            )
 
         lua_path = os.path.join(
             os.path.dirname(self.config_file_path), "ingress_request_router.lua"

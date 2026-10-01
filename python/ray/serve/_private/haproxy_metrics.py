@@ -12,12 +12,18 @@ import os
 import re
 import socket
 from dataclasses import dataclass
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 
 from ray.serve._private.common import RequestProtocol
+from ray.serve._private.constants import RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
 from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.util import metrics
+
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.observability.metrics.llm_metrics import (
+        HAProxyLLMStreamMetrics,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +127,7 @@ class HAProxyMetricsCollector:
     ) -> None:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket_path: Optional[str] = None
+        self._llm_stream_metrics: Optional[HAProxyLLMStreamMetrics] = None
 
         # Source for the node-level poll loop (process count + target mismatch).
         self._haproxy_api = haproxy_api
@@ -487,6 +494,9 @@ class HAProxyMetricsCollector:
         bound or started polling. The metric objects survive close — they
         are owned by Ray's metric registry, not this instance.
         """
+        if self._llm_stream_metrics is not None:
+            self._llm_stream_metrics.close()
+            self._llm_stream_metrics = None
         if self._node_metrics_task is not None:
             self._node_metrics_task.cancel()
             self._node_metrics_task = None
@@ -507,6 +517,24 @@ class _DatagramHandler(asyncio.DatagramProtocol):
 
     def datagram_received(self, data: bytes, addr) -> None:  # noqa: D401
         try:
+            # Core Lua logs have RFC 5424 NILVALUE structured data. Match their
+            # message prefix, never a marker embedded in an app name or URL.
+            fields = (
+                data.split(b" ", 7) if RAY_SERVE_ENABLE_LLM_STREAMING_METRICS else []
+            )
+            if (
+                len(fields) == 8
+                and fields[6] == b"-"
+                and fields[7].startswith(b"ray_llm_stream|")
+            ):
+                if self._collector._llm_stream_metrics is None:
+                    from ray.llm._internal.serve.observability.metrics.llm_metrics import (
+                        HAProxyLLMStreamMetrics,
+                    )
+
+                    self._collector._llm_stream_metrics = HAProxyLLMStreamMetrics()
+                self._collector._llm_stream_metrics.submit(fields[7])
+                return
             parsed = self._collector.parse_line(data)
             if parsed is not None:
                 self._collector.record(parsed)

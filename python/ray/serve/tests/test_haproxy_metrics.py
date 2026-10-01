@@ -605,19 +605,23 @@ def test_record_http_ingress_defaults_missing_latency_to_zero(collector) -> None
 # ---------------------------------------------------------------------------
 
 
-def test_datagram_handler_dispatches_to_record(collector) -> None:
+@pytest.mark.parametrize("app", ["llm", "ray_llm_stream|fake"])
+def test_datagram_handler_dispatches_to_record(collector, app, monkeypatch) -> None:
     """Handler should parse the bytes and call record(); a malformed line
     should not raise out of datagram_received()."""
+    from ray.serve._private import haproxy_metrics
+
+    monkeypatch.setattr(haproxy_metrics, "RAY_SERVE_ENABLE_LLM_STREAMING_METRICS", True)
     handler = _DatagramHandler(collector)
     handler.datagram_received(
         _line(
-            'app="llm" intended="X" actual="X" router_latency_us="100" '
+            f'app="{app}" intended="X" actual="X" router_latency_us="100" '
             'body_truncated_full_length="" via_router="1" failed=""'
         ),
         ("addr", 0),
     )
     assert collector.latency_histogram.calls == [
-        ("observe", {"application": "llm", "outcome": "success"}, 0.1)
+        ("observe", {"application": app, "outcome": "success"}, 0.1)
     ]
 
 
@@ -862,7 +866,9 @@ async def test_start_polls_and_binds_dgram_reader(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _render_with_metrics(enabled: bool) -> str:
+def _render_with_metrics(
+    enabled: bool, *, llm_enabled: bool = False, has_router: bool = True
+) -> str:
     """Render the HAProxy config with metrics on or off; return the text.
 
     Imports inside the function so the module-level test discovery doesn't
@@ -887,6 +893,7 @@ def _render_with_metrics(enabled: bool) -> str:
             # metrics on vs all off).
             metrics_enabled=enabled,
             ingress_request_router_metrics_enabled=enabled,
+            llm_streaming_metrics_enabled=llm_enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,
@@ -900,9 +907,11 @@ def _render_with_metrics(enabled: bool) -> str:
                     name="A", host="127.0.0.1", port=9001, replica_id="actor-A"
                 ),
             ],
-            ingress_request_router_servers=[
-                ServerConfig(name="router", host="127.0.0.1", port=9100),
-            ],
+            ingress_request_router_servers=(
+                [ServerConfig(name="router", host="127.0.0.1", port=9100)]
+                if has_router
+                else []
+            ),
         )
         api = HAProxyApi(
             cfg=cfg,
@@ -920,11 +929,55 @@ def test_rendered_config_contains_metrics_directives_when_enabled() -> None:
     assert "[serve@1" in rendered
     assert "format rfc5424" in rendered
     assert "router_latency_us" in rendered
+    assert "filter lua.llm_stream_metrics" not in rendered
+    assert "tune.lua.log.stderr off" not in rendered
+    # Without LLM opt-in, the ordinary HTTP metrics target stays on the frontend.
+    assert "format rfc5424" not in rendered.split("frontend http_frontend")[0]
+
+
+@pytest.mark.parametrize(
+    "http_metrics, has_router", [(True, True), (True, False), (False, True)]
+)
+def test_llm_observer_requires_opt_in_http_metrics_and_router(
+    http_metrics, has_router
+) -> None:
+    rendered = _render_with_metrics(
+        enabled=http_metrics, llm_enabled=True, has_router=has_router
+    )
+    active = http_metrics and has_router
+    assert ("filter lua.llm_stream_metrics" in rendered) == active
+    assert ("tune.lua.log.stderr off" in rendered) == active
+    assert rendered.count("format rfc5424") == int(http_metrics)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_llm_streaming_metrics_environment_flag(monkeypatch, enabled) -> None:
+    import subprocess
+    import sys
+
+    monkeypatch.delenv("RAY_SERVE_ENABLE_LLM_STREAMING_METRICS", raising=False)
+    monkeypatch.setenv("RAY_SERVE_HAPROXY_METRICS_ENABLED", "0")
+    monkeypatch.setenv("RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "0")
+    if enabled:
+        monkeypatch.setenv("RAY_SERVE_ENABLE_LLM_STREAMING_METRICS", "1")
+    # Fresh imports exercise environment parsing without changing other tests'
+    # already-imported constants. LLM opt-in also enables its transport socket.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from ray.serve._private.haproxy import HAProxyConfig; "
+            f"assert HAProxyConfig().llm_streaming_metrics_enabled is {enabled}; "
+            f"assert HAProxyConfig().metrics_enabled is {enabled}",
+        ],
+        check=True,
+    )
 
 
 def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
     rendered = _render_with_metrics(enabled=False)
     assert "log-format-sd" not in rendered
+    assert "filter lua.llm_stream_metrics" not in rendered
     assert "[serve@1" not in rendered
     # Match the directive, not the bare token: an explanatory comment in the
     # global block mentions "rfc5424" unconditionally; the `format rfc5424` log
@@ -932,7 +985,7 @@ def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
     assert "format rfc5424" not in rendered
 
 
-def _render_lua_with_metrics(enabled: bool) -> str:
+def _render_lua_with_metrics(enabled: bool, *, llm_enabled: bool = False) -> str:
     """Render the ingress-request-router Lua and return its text."""
 
     from ray.serve._private.haproxy import (
@@ -948,6 +1001,8 @@ def _render_lua_with_metrics(enabled: bool) -> str:
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
             ingress_request_router_metrics_enabled=enabled,
+            metrics_enabled=enabled or llm_enabled,
+            llm_streaming_metrics_enabled=llm_enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,
@@ -981,6 +1036,14 @@ def test_rendered_lua_has_timing_calls_when_metrics_enabled() -> None:
     assert "core.now()" in lua
     assert "ingress_request_router_latency_us" in lua
     assert "ingress_request_router_truncated_full_length" in lua
+    assert 'core.register_filter("llm_stream_metrics"' not in lua
+
+
+def test_llm_metrics_reuse_router_timer_without_router_metric_emission() -> None:
+    lua = _render_lua_with_metrics(enabled=False, llm_enabled=True)
+    assert "ingress_request_router_latency_us" in lua
+    assert "ingress_request_router_truncated_full_length" not in lua
+    assert 'core.register_filter("llm_stream_metrics"' in lua
 
 
 def test_rendered_lua_has_no_timing_calls_when_metrics_disabled() -> None:

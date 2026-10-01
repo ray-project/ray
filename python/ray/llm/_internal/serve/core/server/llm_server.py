@@ -40,6 +40,9 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.metrics.llm_metrics import (
+    LLMStreamMetricsMetadataMiddleware,
+)
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
@@ -51,6 +54,7 @@ from ray.llm._internal.serve.utils.server_utils import (
     get_response_for_error,
     get_serve_request_id,
 )
+from ray.serve._private.constants import RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -261,6 +265,12 @@ class LLMServer(LLMServerProtocol):
         app = await self.engine.build_asgi_app()
         # Native vLLM ASGI handlers bypass LLMServer's LoRA-resolving methods.
         _add_middleware_to_built_app(app, _ResolveLoRAMiddleware, server=self)
+        if RAY_SERVE_ENABLE_LLM_STREAMING_METRICS:
+            _add_middleware_to_built_app(
+                app,
+                LLMStreamMetricsMetadataMiddleware,
+                model_name=self._llm_config.model_id,
+            )
         _add_openai_models_retrieve_route(app, self._llm_config)
         return app
 

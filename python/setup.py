@@ -864,6 +864,7 @@ if __name__ == "__main__":
                 "includes/*.pxd",
                 "*.pxd",
                 "serve/_private/ingress_request_router.lua.tmpl",
+                "serve/_private/llm_stream_metrics.lua",
             ],
         },
         include_package_data=True,

@@ -1038,6 +1038,12 @@ RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED = get_env_bool(
     "RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "0"
 )
 
+# Opt-in TTFT/ITL, router overhead and request duration for direct-streaming LLMs.
+# Disabled by default: ordinary HAProxy applications never inspect response bodies.
+RAY_SERVE_ENABLE_LLM_STREAMING_METRICS = get_env_bool(
+    "RAY_SERVE_ENABLE_LLM_STREAMING_METRICS", "0"
+)
+
 # Unix dgram socket that HAProxy writes the structured metric log lines to.
 # Bound by the proxy actor before HAProxy is started. Only consulted when
 # RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED is true.
@@ -1138,7 +1144,10 @@ if RAY_SERVE_ENABLE_HA_PROXY:
         )
     DEFAULT_HTTP_HOST = get_all_interfaces_ip()
 
-if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
+if (
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
+    or RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
+):
     RAY_SERVE_HAPROXY_METRICS_ENABLED = True
 
 # Feature flag to include high-cardinality source tags on Serve controller metrics.
