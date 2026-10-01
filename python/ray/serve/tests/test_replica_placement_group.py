@@ -471,5 +471,27 @@ def test_coschedule_actors_and_tasks(serve_instance):
     h.run_test.remote().result()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
+def test_pg_not_leaked_on_actor_creation_failure(serve_instance):
+    """Verify that placement groups are cleaned up when actor creation fails."""
+
+    @serve.deployment(
+        ray_actor_options={
+            "runtime_env": {
+                "pip": "/definitely/missing/requirements.txt",
+            }
+        },
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="PACK",
+    )
+    class BrokenReplica:
+        pass
+
+    with pytest.raises(RuntimeError):
+        serve.run(BrokenReplica.bind(), name="pg-leak-repro")
+
+    assert len(get_all_live_placement_group_names()) == 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
