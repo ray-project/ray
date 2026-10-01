@@ -268,7 +268,8 @@ steps:
         else
           set +x
           if ! RTD_API_TOKEN="$$(aws secretsmanager get-secret-value --region us-west-2 --secret-id oss-ci/rtd-api-token --query SecretString --output text)" || [ -z "$${RTD_API_TOKEN}" ]; then
-            echo "error: couldn't read the RtD token from Secrets Manager secret oss-ci/rtd-api-token (see the AWS error above). This runner's IAM role needs secretsmanager:GetSecretValue on that secret; see the comment in .buildkite/doc.rayci.yml."
+            echo "error: couldn't read the RtD token from Secrets Manager secret oss-ci/rtd-api-token (see the AWS error above)." >&2
+            echo "This runner's IAM role needs secretsmanager:GetSecretValue on that secret; see the comment in .buildkite/doc.rayci.yml." >&2
             exit 1
           fi
           export RTD_API_TOKEN
