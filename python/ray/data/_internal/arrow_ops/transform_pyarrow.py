@@ -573,6 +573,7 @@ def _reconcile_field(
         if pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)
     ]
     if null_lists:
+        # Find first non-null list type
         for t in non_null_types:
             if not (pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)):
                 return t
@@ -773,8 +774,10 @@ def _backfill_missing_fields(
         _is_native_tensor_type,
     )
 
-    # An all-null nested field infers as ``pa.null()``; fill it with nulls
-    # of the target struct type.
+    # An all-null nested field infers as ``pa.null()``. Handle it explicitly
+    # rather than relying on PyArrow's promote mode (which does unify ``null``
+    # into a struct on pyarrow >= 17, Ray's minimum): without this branch the
+    # non-struct guard below would reject the column.
     column_type = column.type
     if pa.types.is_null(column_type):
         return pa.nulls(block_length, type=unified_struct_type)
@@ -925,12 +928,15 @@ def _align_struct_fields(
             if column_name in block_schema_field_names:
                 column = block[column_name]
 
+                # Check if the column type matches a struct type.
                 # _backfill_missing_fields handles all-null columns, aligns
                 # struct fields recursively, and validates other mismatches.
                 if column.type != unified_struct_type:
+                    # Align struct fields
                     aligned_column = _backfill_missing_fields(
                         column, unified_struct_type, block_length
                     )
+                    # Replace the column with the aligned version
                     block = block.set_column(
                         block.schema.get_field_index(column_name),
                         column_name,
