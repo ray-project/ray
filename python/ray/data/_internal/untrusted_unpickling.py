@@ -55,9 +55,12 @@ def guard_iterator(get_iterable: Callable[[], Iterable[T]]) -> Iterator[T]:
     return _guard.guard_iterator(get_iterable, OPT_IN_HINT)
 
 
+_GUARDED_ATTR = "_ray_unpickling_guarded"
+
+
 def guard_datasource_call(fn: Callable) -> Callable:
     """Wrap a datasource method so it runs with the forbid flag set. Idempotent."""
-    if getattr(fn, "_ray_unpickling_guarded", False):
+    if getattr(fn, _GUARDED_ATTR, False):
         return fn
 
     @functools.wraps(fn)
@@ -65,5 +68,5 @@ def guard_datasource_call(fn: Callable) -> Callable:
         with forbid_untrusted_unpickling():
             return fn(*args, **kwargs)
 
-    wrapper._ray_unpickling_guarded = True
+    setattr(wrapper, _GUARDED_ATTR, True)
     return wrapper

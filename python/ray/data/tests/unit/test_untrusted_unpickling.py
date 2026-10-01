@@ -21,12 +21,15 @@ from ray.data._internal.object_extensions.arrow import (
 from ray.data._internal.untrusted_unpickling import (
     UntrustedUnpicklingError,
     forbid_untrusted_unpickling,
+    guard_datasource_call,
     guard_iterator,
     is_unpickling_forbidden,
 )
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
+from ray.data.datasource.datasource import Reader
 from ray.data.tests.conftest import *  # noqa: F401, F403
+from ray.util import pickle_guard
 
 
 class _Payload:
@@ -180,7 +183,7 @@ def test_guard_iterator_closes_producer_on_early_exit():
         finally:
             closed_guarded.append(is_unpickling_forbidden())
 
-    gen = guard_iterator(producer)
+    gen = pickle_guard.guard_iterator(producer)
     assert next(gen) == 1
     gen.close()
     assert closed_guarded == [True]
@@ -232,8 +235,8 @@ def test_datasource_hooks_from_mixin_run_guarded():
 def test_legacy_reader_datasource_still_detected():
     # Wrapping must not make the base ``get_read_tasks`` stub look implemented.
     class _LegacyDatasource(Datasource):
-        def create_reader(self, **read_args):
-            return None
+        def create_reader(self, **read_args) -> Reader:
+            raise AssertionError("not called")
 
     ds = _LegacyDatasource()
     assert ds.should_create_reader
@@ -251,8 +254,8 @@ def test_datasource_hooks_run_guarded():
         "get_read_tasks": True,
     }
     # Wrapping happens once per defining class and never double-wraps.
-    assert _RecordingSubclass.__init__._ray_unpickling_guarded
-    assert _RecordingDatasource.__init__._ray_unpickling_guarded
+    for fn in (_RecordingSubclass.__init__, _RecordingDatasource.__init__):
+        assert guard_datasource_call(fn) is fn
     assert not is_unpickling_forbidden()
 
 
