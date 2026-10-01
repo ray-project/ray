@@ -156,10 +156,8 @@ class ResidentFirstBundleQueue(QueueWithRemoval):
 
             nbytes = 0
             for object_info in object_locs.values():
-                if object_info["object_size"] is not None:
-                    # An object can have copies on multiple nodes; each copy
-                    # occupies object store memory on its node.
-                    nbytes += len(object_info["node_ids"]) * object_info["object_size"]
+                if object_info["object_size"] is not None and object_info["node_ids"]:
+                    nbytes += object_info["object_size"]
 
             assert nbytes >= 0, nbytes
             self._bundle_nbytes[bundle] = nbytes
