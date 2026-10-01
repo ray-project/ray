@@ -11,6 +11,9 @@ The Ray dashboard displays these metrics in the Ray Train Grafana Dashboard. See
 The Ray Train dashboard also displays a subset of Ray Core metrics that are useful for monitoring training but are not listed in the table below.
 For more information about these metrics, see the :ref:`System Metrics documentation<system-metrics>`.
 
+The dashboard's **Data Ingestion** row builds on :ref:`Ray Data metrics <monitoring-your-workload>` to show how much time each training worker spends waiting on data, broken down by data loading stage and by rank.
+For a step-by-step workflow that uses those panels to find data loading bottlenecks and stragglers, see :ref:`train-debugging-data-loading-bottlenecks`.
+
 The following table lists the Prometheus metrics emitted by Ray Train:
 
 .. list-table:: Train Metrics

@@ -11,7 +11,10 @@ from packaging.version import parse as parse_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
+    _group_indices,
     _has_unhashable_pandas_types,
+    _has_unhashable_polars_types,
+    _hash_partition_vectorized,
     concat,
     hash_partition,
     shuffle,
@@ -216,6 +219,144 @@ def test_hash_partition_null_struct_consistent_across_blocks():
         return next(iter(null_pids))
 
     assert null_partition_id(p1) == null_partition_id(p2)
+
+
+def _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts):
+    # Exclusive prefix sums of counts.
+    assert np.array_equal(
+        offsets, np.concatenate(([0], np.cumsum(counts)[:-1]))
+    ), offsets
+    # Stable grouping: identical to NumPy's stable argsort.
+    assert np.array_equal(
+        np.asarray(grouped_indices), np.argsort(partition_mask, kind="stable")
+    ), grouped_indices
+
+
+@pytest.mark.parametrize(
+    "pa_type,expected",
+    [
+        # Union types fail pl.from_arrow
+        (pa.dense_union([pa.field("x", pa.int32())]), True),
+        (pa.sparse_union([pa.field("x", pa.int32())]), True),
+        (ArrowTensorTypeV2((2, 2), pa.int64()), False),
+        (ArrowPythonObjectType(), False),
+        (pa.struct([("a", pa.int32())]), False),
+        (pa.list_(pa.int32()), False),
+        (pa.map_(pa.string(), pa.int32()), False),
+        (pa.int64(), False),
+        (pa.string(), False),
+        (pa.dictionary(pa.int32(), pa.string()), False),
+    ],
+)
+def test_has_unhashable_polars_types(pa_type, expected):
+    schema = pa.schema([("c", pa_type)])
+    assert _has_unhashable_polars_types(schema) is expected
+
+
+def test_hash_partition_dictionary_encoding_consistent():
+    # Equal keys must partition identically whether they're dictionary-encoded
+    # or plain, at any nesting depth: Polars hashes Categorical differently
+    # from String, so dictionaries must be decoded before hashing.
+    pytest.importorskip("polars")
+    num_partitions = 8
+
+    values = pa.array(["apple", "banana", "apple"])
+    encoded = values.dictionary_encode()
+
+    # Top-level dictionary key.
+    assert np.array_equal(
+        _hash_partition_vectorized(pa.table({"k": encoded}), num_partitions),
+        _hash_partition_vectorized(pa.table({"k": values}), num_partitions),
+    )
+
+    # Dictionary nested in a struct key.
+    assert np.array_equal(
+        _hash_partition_vectorized(
+            pa.table({"k": pa.StructArray.from_arrays([encoded], names=["s"])}),
+            num_partitions,
+        ),
+        _hash_partition_vectorized(
+            pa.table({"k": pa.StructArray.from_arrays([values], names=["s"])}),
+            num_partitions,
+        ),
+    )
+
+    # Dictionary nested in a list key.
+    offsets = pa.array([0, 2, 3])
+    assert np.array_equal(
+        _hash_partition_vectorized(
+            pa.table({"k": pa.ListArray.from_arrays(offsets, encoded)}),
+            num_partitions,
+        ),
+        _hash_partition_vectorized(
+            pa.table({"k": pa.ListArray.from_arrays(offsets, values)}),
+            num_partitions,
+        ),
+    )
+
+
+def test_hash_partitioning_union_key():
+    union = pa.UnionArray.from_sparse(
+        pa.array([0, 1, 0], type=pa.int8()),
+        [pa.array([1, None, 3], type=pa.int32()), pa.array([None, "b", None])],
+    )
+    t = pa.table({"u": union, "v": [10, 20, 30]})
+
+    parts = hash_partition(t, hash_cols=["u"], num_partitions=4)
+
+    assert sum(p.num_rows for p in parts.values()) == t.num_rows
+    assert sorted(row for p in parts.values() for row in p["v"].to_pylist()) == [
+        10,
+        20,
+        30,
+    ]
+
+
+@pytest.mark.parametrize("num_partitions", [1, 2, 7, 64])
+def test_group_indices_matches_stable_argsort(num_partitions):
+    # The grouping must equal NumPy's stable argsort: contiguous per-partition
+    # ranges, original order preserved within each partition.
+    rng = np.random.RandomState(42)
+    for size in (0, 1, 5, 1000):
+        partition_mask = rng.randint(0, num_partitions, size=size).astype(np.int64)
+        counts = np.bincount(partition_mask, minlength=num_partitions).astype(np.int64)
+
+        grouped_indices, offsets = _group_indices(partition_mask, counts)
+        _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts)
+
+
+def test_hash_partition_polars_consistent_across_blocks():
+    # Rows with equal keys must land in the same partition regardless of which
+    # block they came from (the Polars path hashes each block independently).
+    pytest.importorskip("polars")
+
+    num_partitions = 16
+    keys = [str(i) for i in range(100)]
+
+    t1 = pa.Table.from_pydict({"k": keys[:70], "v": list(range(70))})
+    t2 = pa.Table.from_pydict({"k": keys[30:], "v": list(range(30, 100))})
+
+    h1 = _hash_partition_vectorized(t1.select(["k"]), num_partitions)
+    h2 = _hash_partition_vectorized(t2.select(["k"]), num_partitions)
+
+    key_to_partition = dict(zip(t1["k"].to_pylist(), h1.tolist()))
+    for key, pid in zip(t2["k"].to_pylist(), h2.tolist()):
+        assert key_to_partition.setdefault(key, pid) == pid, key
+
+
+def test_hash_partition_falls_back_when_polars_fails(monkeypatch):
+    # A PolarsError inside the fast path must not fail the partitioning.
+    pl = pytest.importorskip("polars")
+    from polars.exceptions import PolarsError
+
+    def _raise(*args, **kwargs):
+        raise PolarsError("simulated failure")
+
+    monkeypatch.setattr(pl.DataFrame, "hash_rows", _raise)
+
+    t = pa.Table.from_pydict({"k": [str(i) for i in range(30)]})
+    parts = hash_partition(t, hash_cols=["k"], num_partitions=5)
+    assert pa.concat_tables(parts.values()).sort_by("k") == t.sort_by("k")
 
 
 def test_shuffle():
@@ -1741,6 +1882,186 @@ def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_sche
         {"level2": {"level3": {"a": 3, "b": None, "c": True}}},
         {"level2": {"level3": {"a": 4, "b": None, "c": False}}},
     ]
+
+
+def test_unify_schemas_rejects_struct_primitive_mix():
+    """A struct arm mixed with a primitive arm is not a reconcilable field.
+
+    ``_reconcile_field`` used to keep only the struct arms, so the unified type
+    claimed ``inner`` was a struct while ``t2`` physically held an int64 there.
+    """
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    with pytest.raises(pa.lib.ArrowTypeError, match="incompatible types"):
+        unify_schemas([t1.schema, t2.schema])
+
+
+@pytest.mark.parametrize(
+    "field_types",
+    [
+        [pa.struct([("a", pa.int64())]), pa.null(), pa.int64()],
+        [pa.null(), pa.struct([("a", pa.int64())]), pa.int64()],
+    ],
+)
+def test_unify_schemas_rejects_late_struct_primitive_mix(field_types):
+    """A later incompatible type must not be hidden by an earlier null arm."""
+    schemas = [pa.schema([("field", field_type)]) for field_type in field_types]
+
+    with pytest.raises(pa.lib.ArrowTypeError, match="incompatible types"):
+        unify_schemas(schemas)
+
+
+def test_unify_schemas_reconciles_struct_arms_despite_null_arm():
+    """A ``null`` arm must not stop the remaining struct arms from reconciling.
+
+    ``_reconcile_field`` receives ``null`` arms too, despite the
+    ``non_null_types`` parameter name. Counting them sent a field that is null in
+    one block and a divergent struct in two others through to PyArrow, which
+    cannot merge those arms itself.
+    """
+    var_shaped = pa.struct(
+        [("t", ArrowVariableShapedTensorType(ndim=1, dtype=pa.int64()))]
+    )
+    fixed_shaped = pa.struct(
+        [("t", create_arrow_fixed_shape_tensor_type(shape=(3,), dtype=pa.int64()))]
+    )
+
+    # PyArrow cannot merge these two arms; reconciliation is what makes the
+    # three-schema call below succeed.
+    with pytest.raises(pa.lib.ArrowTypeError):
+        pa.unify_schemas(
+            [pa.schema([("outer", var_shaped)]), pa.schema([("outer", fixed_shaped)])]
+        )
+
+    unified = unify_schemas(
+        [
+            pa.schema([("outer", var_shaped)]),
+            pa.schema([("outer", fixed_shaped)]),
+            pa.schema([("outer", pa.null())]),
+        ]
+    )
+
+    assert pa.types.is_struct(unified.field("outer").type)
+    # Variable-shaped wins over fixed-shaped, so this also pins that the arms
+    # were actually reconciled rather than the call merely not raising.
+    assert isinstance(
+        unified.field("outer").type.field("t").type, ArrowVariableShapedTensorType
+    )
+
+
+def test_align_struct_fields_nested_non_struct_field():
+    """A nested field that is a struct in one block and a primitive in another."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    # ``unify_schemas`` now refuses this mix, so build the unsatisfiable schema by
+    # hand to exercise ``_align_struct_fields`` directly. That shape is still
+    # reachable with an externally supplied schema, e.g. the Parquet reader
+    # aligning a physical table to the dataset schema.
+    schema = pa.schema(
+        [("outer", pa.struct([("inner", pa.struct([("y", pa.int64())]))]))]
+    )
+
+    with pytest.raises(ValueError, match="cannot be aligned with struct type"):
+        _align_struct_fields([t1, t2], schema)
+
+
+def test_align_struct_fields_top_level_non_struct_field():
+    """A top-level primitive cannot be aligned to a struct schema."""
+    block = pa.table({"outer": pa.array([5])})
+    schema = pa.schema([("outer", pa.struct([("inner", pa.int64())]))])
+
+    with pytest.raises(ValueError, match="cannot be aligned with struct type"):
+        _align_struct_fields([block], schema)
+
+
+def test_concat_nested_non_struct_field():
+    """The mismatch is reported by schema unification, not by alignment."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    with pytest.raises(ArrowConversionError, match="Failed to unify schemas"):
+        concat([t1, t2])
+
+
+def test_concat_nested_all_null_field():
+    """An all-null nested field is filled, not treated as a conflict."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": None}, {"inner": None}])})
+
+    # ``inner`` infers as null in ``t2`` and is promoted to the struct type.
+    assert pa.types.is_null(t2.schema.field("outer").type.field("inner").type)
+
+    result = concat([t1, t2])
+
+    assert result["outer"].to_pylist() == [
+        {"inner": {"y": 1}},
+        {"inner": None},
+        {"inner": None},
+    ]
+
+
+def test_concat_top_level_all_null_struct():
+    """A top-level all-null column is promoted to the struct type from other blocks."""
+    t1 = pa.table({"s": pa.array([{"x": 1}, {"x": 2}])})
+    t2 = pa.table({"s": pa.nulls(2)})
+
+    assert pa.types.is_null(t2.schema.field("s").type)
+
+    result = concat([t1, t2])
+
+    assert result["s"].to_pylist() == [{"x": 1}, {"x": 2}, None, None]
+
+
+def test_unify_schemas_null_with_list_null_and_list_int():
+    """A null arm must not shadow the concrete list type in null-list reconciliation.
+
+    Note: on pyarrow >= 17 PyArrow unifies these three arms by itself, so this
+    single-field case never reaches ``_reconcile_field``. See
+    ``test_unify_schemas_null_list_reconciled_when_pyarrow_cannot_unify`` for
+    the case that actually exercises the reconciliation path.
+    """
+    s1 = pa.schema([("col", pa.null())])
+    s2 = pa.schema([("col", pa.list_(pa.null()))])
+    s3 = pa.schema([("col", pa.list_(pa.int64()))])
+
+    unified = unify_schemas([s1, s2, s3])
+
+    assert unified.field("col").type == pa.list_(pa.int64())
+
+
+def test_unify_schemas_null_list_reconciled_when_pyarrow_cannot_unify():
+    """Null-list reconciliation must also run when another field forces it.
+
+    ``unify_schemas`` tries PyArrow first and only reconciles when that fails.
+    On pyarrow >= 17 PyArrow happily unifies ``null`` + ``list<null>`` +
+    ``list<int64>`` on its own, so a single-field case never reaches
+    ``_reconcile_field``. Adding a field whose arms PyArrow cannot merge
+    (here, fixed-shaped vs variable-shaped tensor structs) forces the
+    reconciliation path, where a ``null`` arm used to shadow the concrete
+    list type and reconcile the column down to ``null``.
+    """
+    var_shaped = pa.struct(
+        [("t", ArrowVariableShapedTensorType(ndim=1, dtype=pa.int64()))]
+    )
+    fixed_shaped = pa.struct(
+        [("t", create_arrow_fixed_shape_tensor_type(shape=(3,), dtype=pa.int64()))]
+    )
+
+    schemas = [
+        pa.schema([("tensors", var_shaped), ("lists", pa.null())]),
+        pa.schema([("tensors", fixed_shaped), ("lists", pa.list_(pa.null()))]),
+        pa.schema([("tensors", var_shaped), ("lists", pa.list_(pa.int64()))]),
+    ]
+
+    # PyArrow cannot merge the tensor arms on its own, so reconciliation runs.
+    with pytest.raises(pa.lib.ArrowTypeError):
+        pa.unify_schemas(schemas)
+
+    unified = unify_schemas(schemas)
+
+    assert unified.field("lists").type == pa.list_(pa.int64())
 
 
 # Test fixtures for tensor-related tests

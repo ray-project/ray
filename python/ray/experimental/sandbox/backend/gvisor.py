@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import shlex
 import shutil
+import signal
 import subprocess
 import time
 import uuid
@@ -28,8 +30,62 @@ logger = logging.getLogger(__name__)
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
 
-# Directory to store sandbox states, container images and overlay filesystem.
+# Directory for sandbox bundles, cached container images, and per-sandbox
+# overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
+
+# network="public" gives each sandbox a private user+network namespace pair
+# bridged by slirp4netns user-mode networking, the rootless-container shape:
+# a holder process (`unshare --user --map-root-user --net`) pins the
+# namespaces; slirp4netns attaches to them from the pod side, so its uplink
+# is the pod's network, and runs in the foreground inside the sandbox's
+# process group; runsc runs inside via nsenter as mapped root. runsc still
+# gets --network=host, but "host" is now private to the sandbox: binds cannot
+# collide with or be reached by the pod or other sandboxes, while egress
+# leaves through slirp4netns's tap. Mount and pid namespaces stay shared, so
+# the bundle and runsc's control sockets under _RUNSC_ROOT keep working for
+# pod-side state/exec/kill/delete.
+#
+# slirp4netns NATs every flow through a fresh, kernel-assigned host port, so
+# flows from different sandboxes can never share a host socket (pasta, which
+# preserves UDP source ports with SO_REUSEADDR, delivered one sandbox's
+# replies to another when their source ports collided). It relays through
+# the pod's own sockets, so the sandbox can reach any address the pod can
+# reach: other Ray nodes (including the head node's GCS and dashboard),
+# other pods, and internal services. There is no destination filter;
+# network="none" remains the boundary for untrusted code.
+#
+# These flags are the isolation property; tests pin the exact list:
+#   --configure              bring the tap up: network + 100, gateway + 2.
+#   --cidr=198.18.0.0/24     the RFC 2544 benchmarking range: it is never
+#                            routed on the internet and, unlike the
+#                            slirp4netns default 10.0.2.0/24, does not
+#                            overlap pod or service CIDRs, which would be
+#                            on-link in the sandbox instead of NAT'd.
+#   --mtu=65520              the largest MTU slirp4netns supports.
+#   --disable-host-loopback  no path from the sandbox to the pod's loopback.
+#   --disable-dns            no built-in resolver: the sandbox sees only the
+#                            generated resolv.conf, nothing of the host's.
+#   --enable-seccomp         a syscall filter on the slirp4netns process.
+#                            (--enable-sandbox is not used: its setegid(0)
+#                            fails inside a --map-root-user namespace.)
+_SLIRP4NETNS_FLAGS = [
+    "--configure",
+    "--cidr=198.18.0.0/24",
+    "--mtu=65520",
+    "--disable-host-loopback",
+    "--disable-dns",
+    "--enable-seccomp",
+]
+
+
+def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
+    """Return the fields of the ``name`` entry in passwd- or group-style text."""
+    for line in text.splitlines():
+        fields = line.split(":")
+        if len(fields) >= 3 and fields[0] == name:
+            return fields
+    return None
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
@@ -46,6 +102,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "gVisor executable 'runsc' not found in PATH. "
                 "Please install gVisor (runsc) on the node."
             )
+        if config.network == "public":
+            missing = [b for b in ("slirp4netns", "nsenter") if not shutil.which(b)]
+            if missing:
+                raise SandboxCreationError(
+                    "network='public' isolates each sandbox in its own network "
+                    "namespace via slirp4netns, but "
+                    f"{', '.join(repr(b) for b in missing)} was not found in "
+                    "PATH. Install slirp4netns (distro package, or a static "
+                    "build from github.com/rootless-containers/slirp4netns) "
+                    "and util-linux on the node image."
+                )
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
@@ -54,8 +121,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
+            # The instance id pins the image in the cache while this sandbox
+            # lives (its EROFS image is the sandbox's root filesystem).
             self._image_manager.pull_image(
-                config.image, timeout_seconds=config.timeout_seconds
+                config.image,
+                timeout_seconds=config.timeout_seconds,
+                instance_id=sandbox_id,
             )
             # The process cwd: an explicit workdir, else the image's WORKDIR.
             container_cwd = (
@@ -81,47 +152,47 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
+            self._image_manager.release_image(config.image, sandbox_id)
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
 
         # Prepare OCI bundle config for long-running container process
-        self._image_manager.prepare_oci_bundle(
-            root_dir=root_dir,
-            workdir_path=workdir_path,
-            container_cwd=container_cwd,
-            image=config.image,
-            env_dict=config.env,
-            cpu=config.cpu,
-            memory=config.memory,
-            readonly=config.readonly,
-            capabilities=config.capabilities,
-            network=config.network,
-            dns=config.dns,
-            _oci_spec_transform_fn=config._oci_spec_transform_fn,
-        )
-        run_args = self._runsc_base_args(config)
-        if config.network:
-            # "public" = host egress + generated resolv.conf (handled in the
-            # OCI bundle); runsc itself just sees host networking.
-            runsc_network = "host" if config.network == "public" else config.network
-            run_args.extend(["--network", runsc_network])
-        overlay_dir = os.path.join(root_dir, "overlay")
-        os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-        run_args.append(f"--overlay2=root:dir={overlay_dir}")
-        run_args.extend(["run", "--bundle", root_dir, sandbox_id])
+        try:
+            self._image_manager.prepare_oci_bundle(
+                root_dir=root_dir,
+                workdir_path=workdir_path,
+                container_cwd=container_cwd,
+                image=config.image,
+                env_dict=config.env,
+                cpu=config.cpu,
+                memory=config.memory,
+                readonly=config.readonly,
+                capabilities=config.capabilities,
+                network=config.network,
+                dns=config.dns,
+                _oci_spec_transform_fn=config._oci_spec_transform_fn,
+            )
+        except Exception:
+            self._image_manager.release_image(config.image, sandbox_id)
+            raise
+        run_args = self._build_run_command(config, root_dir, sandbox_id)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
+        # start_new_session puts the namespace holder, slirp4netns, and runsc run
+        # in one process group so cleanup can kill the whole tree; they share
+        # the stderr log so startup failures (missing /dev/net/tun, no
+        # uplink) surface through the SandboxCreationError path below.
         proc = subprocess.Popen(
             run_args,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=stderr_file,
+            start_new_session=True,
         )
         start_time = time.time()
         timeout = config.timeout_seconds
-        state_args = self._runsc_base_args(config) + ["state", sandbox_id]
 
         try:
             while True:
@@ -132,6 +203,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to start: {stderr_str}"
                     )
 
+                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
                 res = subprocess.run(state_args, capture_output=True, text=True)
                 if res.returncode == 0:
                     try:
@@ -148,25 +220,26 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             raise
                         pass
 
+                # Check the deadline only after polling state, so a sandbox
+                # that reached 'running' just as the deadline passed is
+                # observed and kept rather than torn down unpolled.
                 if time.time() - start_time > timeout:
-                    proc.kill()
-                    proc.communicate()
                     raise SandboxTimeoutError(
                         f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
                     )
 
                 time.sleep(0.1)
         except Exception:
-            if proc and proc.poll() is None:
-                proc.kill()
-                try:
-                    proc.communicate(timeout=2)
-                except subprocess.TimeoutExpired:
-                    pass
+            # Delete runsc's container state, then kill the whole group:
+            # under slirp4netns, a bare proc.kill() would orphan the namespace
+            # holder and slirp4netns.
+            self._delete_container_state(config, sandbox_id)
+            self._terminate_tree(proc)
             stderr_file.close()
-            del_args = self._runsc_base_args(config) + ["delete", sandbox_id]
-            subprocess.run(del_args, capture_output=True)
             shutil.rmtree(root_dir, ignore_errors=True)
+            # The sandbox never registered, so delete_sandbox will not run
+            # for it: release the image here to keep it evictable.
+            self._image_manager.release_image(config.image, sandbox_id)
             raise
 
         self._sandbox_metadata[sandbox_id] = {
@@ -174,6 +247,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "workdir": workdir_path,
             "cwd": container_cwd,
             "config": config,
+            # The process group leader whose tree holds the sandbox and,
+            # for network="public", the namespace holder and slirp4netns.
             "proc": proc,
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
@@ -196,12 +271,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             except subprocess.TimeoutExpired:
                 pass
 
-            if proc and proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.communicate(timeout=2)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+            self._delete_container_state(config, sandbox_id)
+
+            # Always take the whole group: after `runsc run` exits, the
+            # namespace holder and slirp4netns (network="public") are still alive
+            # in it.
+            if proc:
+                self._terminate_tree(proc)
 
             if stderr_file:
                 try:
@@ -209,11 +285,64 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
-            del_args = self._runsc_base_args(config)
-            del_args.extend(["delete", sandbox_id])
-            subprocess.run(del_args, capture_output=True)
-
             shutil.rmtree(root_dir, ignore_errors=True)
+            # Only now is the cached image unused.
+            self._image_manager.release_image(config.image, sandbox_id)
+
+    def _read_account_file(self, sandbox_id: str, path: str) -> str:
+        """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
+        try:
+            return self.read_file(sandbox_id, path).decode("utf-8", errors="replace")
+        except SandboxError as err:
+            raise SandboxExecError(
+                f"cannot read {path} inside the sandbox to resolve a user name "
+                f"(pass a numeric uid instead): {err}"
+            ) from err
+
+    def _resolve_exec_user(self, sandbox_id: str, user: str) -> str:
+        """Turn ``user`` into the numeric ``uid[:gid]`` form runsc exec accepts.
+
+        Names resolve against the ``/etc/passwd`` and ``/etc/group`` inside
+        the running sandbox, read through a first exec: that covers users the
+        image ships and users added since, and needs no host copy of the root
+        filesystem. A named user with no explicit group gets its login group.
+
+        Args:
+            sandbox_id: The running sandbox.
+            user: ``uid``, ``uid:gid``, or ``name[:group]``.
+
+        Returns:
+            A ``uid`` or ``uid:gid`` string runsc accepts.
+
+        Raises:
+            SandboxExecError: When a named user or group is unknown to the
+                sandbox, or its account files cannot be read.
+        """
+        name, _, group = user.partition(":")
+        if name.isdigit() and (not group or group.isdigit()):
+            return user
+        uid, login_gid = name, None
+        if not name.isdigit():
+            passwd = self._read_account_file(sandbox_id, "/etc/passwd")
+            entry = _lookup_db_entry(passwd, name)
+            if entry is None:
+                raise SandboxExecError(
+                    f"user {name!r} not found in the sandbox's /etc/passwd; "
+                    "pass a numeric uid instead"
+                )
+            uid = entry[2]
+            login_gid = entry[3] if len(entry) > 3 else None
+        if group and not group.isdigit():
+            groups = self._read_account_file(sandbox_id, "/etc/group")
+            entry = _lookup_db_entry(groups, group)
+            if entry is None:
+                raise SandboxExecError(
+                    f"group {group!r} not found in the sandbox's /etc/group; "
+                    "pass a numeric gid instead"
+                )
+            group = entry[2]
+        gid = group or login_gid
+        return uid if gid is None else f"{uid}:{gid}"
 
     def exec_command(
         self,
@@ -223,6 +352,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
@@ -237,6 +367,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
         runsc_args.extend(["exec", "-cwd", exec_cwd])
+        if user is not None:
+            runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
         if env:
             for k, v in env.items():
                 runsc_args.extend(["-env", f"{k}={v}"])
@@ -278,9 +410,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise SandboxExecError(f"gVisor exec failed: {err}") from err
 
     def write_file(
-        self, sandbox_id: str, path: str, content: Union[str, bytes]
+        self,
+        sandbox_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
-        """Write content to a file inside the local gVisor sandbox directory."""
+        """Write (or append) content to a file inside the sandbox."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
 
@@ -294,7 +430,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 sandbox_id,
                 "/bin/sh",
                 "-c",
-                'mkdir -p "$(dirname "$1")" && cat > "$1"',
+                'mkdir -p -- "$(dirname -- "$1")" && cat >> "$1"'
+                if append
+                else 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"',
                 "--",
                 path,
             ]
@@ -356,6 +494,98 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             args.append("--ignore-cgroups")
         args.extend(["--root", _RUNSC_ROOT])
         return args
+
+    def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
+        """Best-effort ``runsc delete -force`` for teardown paths.
+
+        Bounded by a timeout: a wedged gVisor (the usual reason a create
+        timed out) must not block the process-group kill and slirp4netns reap
+        that follow, which is what actually frees the sandbox.
+        """
+        del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
+        try:
+            subprocess.run(del_args, capture_output=True, timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+
+    def _build_run_command(
+        self, config: SandboxConfig, root_dir: str, sandbox_id: str
+    ) -> List[str]:
+        """Build the full `runsc run` argv, namespace-wrapped for network="public".
+
+        Pure argv construction (no filesystem side effects) so tests can
+        assert the exact command without runsc or slirp4netns installed. The
+        rootfs and its writable overlay come from the bundle's gVisor
+        annotations (see ``ImageManager.create_oci_spec``), so runsc gets no
+        ``--overlay2`` flag.
+        """
+        args = self._runsc_base_args(config)
+        use_netns = config.network == "public"
+        if use_netns and "--rootless" in args:
+            # runsc runs as mapped root inside the holder's user namespace;
+            # --rootless would nest a second user namespace whose
+            # /proc/<pid>/root magic links the gofer cannot dereference.
+            # Rootless mode also tolerates cgroup permission failures, so
+            # keep that behavior explicitly.
+            args = [a for a in args if a != "--rootless"]
+            if "--ignore-cgroups" not in args:
+                args.insert(1, "--ignore-cgroups")
+        if config.network:
+            # "public" = host egress + generated resolv.conf (handled in the
+            # OCI bundle); runsc itself just sees host networking — of the
+            # per-sandbox namespace when wrapped, of the worker otherwise.
+            runsc_network = "host" if config.network == "public" else config.network
+            args.extend(["--network", runsc_network])
+        args.extend(["run", "--bundle", root_dir, sandbox_id])
+        if use_netns:
+            netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
+            ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
+            runsc = " ".join(shlex.quote(a) for a in args)
+            slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
+            script = (
+                # The holder pins the namespaces for the sandbox's lifetime;
+                # --kill-child ties it to this script's process group.
+                "unshare --user --map-root-user --net --fork --kill-child "
+                f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
+                "HOLDER=$!; "
+                # Stop waiting as soon as the holder dies, and refuse an
+                # empty NSPID (which would resolve to /proc//ns/net).
+                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
+                '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
+                # slirp4netns attaches from the pod side and stays in the
+                # foreground, so it lives and dies with this process group.
+                # It writes "1" to --ready-fd once the tap is configured:
+                # that is the go signal.
+                f"{slirp} --ready-fd=3 --netns-type=path "
+                "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
+                f"3>{ready_file} & "
+                "SLIRP=$!; "
+                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
+                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
+                f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
+                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+            )
+            return ["bash", "-c", script]
+        return args
+
+    def _terminate_tree(self, proc: subprocess.Popen) -> None:
+        """SIGKILL the sandbox process group and reap the Popen.
+
+        The run Popen is started with ``start_new_session=True``, so its pid
+        is the group id for the namespace holder, slirp4netns, runsc run, and the
+        sandbox process.
+        """
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            if proc.poll() is None:
+                proc.kill()
+        try:
+            proc.communicate(timeout=2)
+        except (subprocess.TimeoutExpired, ValueError):
+            pass
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")

@@ -24,6 +24,7 @@ clickhouse-connect
 confluent-kafka
 pybase64
 hudi==0.4.0
+mcap
 datasketches
 testcontainers[kafka]
 obstore
