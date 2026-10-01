@@ -18,6 +18,7 @@ from typing import (
     Iterable,
     List,
     Mapping,
+    NamedTuple,
     Optional,
     Set,
     Tuple,
@@ -748,6 +749,19 @@ def _push_freshness_window_s(health_check_period_s: float) -> float:
     return max(health_check_period_s * 0.75, 1.0)
 
 
+class PushedHealth(NamedTuple):
+    """One replica's self-health as the controller received it.
+
+    checked_at is replica-clock and only ever compared against the same replica's
+    previous value; received_at is controller-clock, so freshness is immune to skew.
+    """
+
+    checked_at: float
+    received_at: float
+    healthy: bool
+    consecutive_failures: Optional[int]
+
+
 class ReplicaHealthPushRegistry:
     """Latest self-health pushed by each replica, keyed by replica unique id.
 
@@ -760,8 +774,7 @@ class ReplicaHealthPushRegistry:
     _PRUNE_MIN_INTERVAL_S = 30.0
 
     def __init__(self):
-        # replica_unique_id -> (checked_at, received_at, healthy, consecutive_failures)
-        self._state: Dict[str, Tuple[float, float, bool, Optional[int]]] = {}
+        self._state: Dict[str, PushedHealth] = {}
         self._last_prune_time = 0.0
 
     def record(
@@ -772,7 +785,7 @@ class ReplicaHealthPushRegistry:
         consecutive_failures: Optional[int] = None,
     ):
         prev = self._state.get(replica_unique_id)
-        if prev is not None and checked_at <= prev[0]:
+        if prev is not None and checked_at <= prev.checked_at:
             return  # A delayed report must not clobber a newer observation.
         now = time.time()
         if (
@@ -783,19 +796,16 @@ class ReplicaHealthPushRegistry:
             # is a no-op, and an O(N) rebuild per record would thrash the ingest path
             # at exactly the scale it serves.
             self._last_prune_time = now
-            # Age by controller-clock arrival time (v[1]), immune to replica skew.
+            # Age by controller-clock arrival time, immune to replica skew.
             cutoff = now - self._PRUNE_MAX_AGE_S
-            self._state = {k: v for k, v in self._state.items() if v[1] >= cutoff}
-        self._state[replica_unique_id] = (
-            checked_at,
-            now,
-            healthy,
-            consecutive_failures,
+            self._state = {
+                k: v for k, v in self._state.items() if v.received_at >= cutoff
+            }
+        self._state[replica_unique_id] = PushedHealth(
+            checked_at, now, healthy, consecutive_failures
         )
 
-    def get(
-        self, replica_unique_id: str
-    ) -> Optional[Tuple[float, float, bool, Optional[int]]]:
+    def get(self, replica_unique_id: str) -> Optional[PushedHealth]:
         return self._state.get(replica_unique_id)
 
     def discard(self, replica_unique_id: str) -> None:
@@ -855,7 +865,7 @@ class ActorReplicaWrapper:
         self._last_health_check_failed: Optional[bool] = None
         # Latest self-health pushed by the replica, plus the watermarks that stop a
         # push and an in-flight probe from overwriting each other's verdict.
-        self._pushed_health: Optional[Tuple[float, float, bool, Optional[int]]] = None
+        self._pushed_health: Optional[PushedHealth] = None
         self._last_consumed_push_ts: float = 0.0
         self._last_applied_push_received_at: float = 0.0
         self._last_probe_applied_time: float = 0.0
@@ -1808,13 +1818,12 @@ class ActorReplicaWrapper:
         checked_at is replica-clock (ordering and dedupe only); received_at is
         controller-clock, used for freshness so replica skew cannot widen it.
         """
-        stashed = self._pushed_health[0] if self._pushed_health is not None else 0.0
+        stashed = (
+            self._pushed_health.checked_at if self._pushed_health is not None else 0.0
+        )
         if checked_at > max(self._last_consumed_push_ts, stashed):
-            self._pushed_health = (
-                checked_at,
-                received_at,
-                healthy,
-                consecutive_failures,
+            self._pushed_health = PushedHealth(
+                checked_at, received_at, healthy, consecutive_failures
             )
 
     def _take_fresh_pushed_health(self) -> Optional[Tuple[bool, Optional[int]]]:
@@ -1858,7 +1867,9 @@ class ActorReplicaWrapper:
         # the window.
         # A push a probe beat to this tick is still information in hand, so count it
         # too: arming against it both wastes the probe and races the verdict it holds.
-        pending = self._pushed_health[1] if self._pushed_health is not None else 0.0
+        pending = (
+            self._pushed_health.received_at if self._pushed_health is not None else 0.0
+        )
         newest = max(self._last_applied_push_received_at, pending)
         if time.time() - newest < _push_freshness_window_s(self.health_check_period_s):
             return False
