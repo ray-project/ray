@@ -8,7 +8,7 @@ import ray
 from ray._private.function_manager import FunctionActorManager
 
 
-def test_actor_import_error_is_logged(caplog):
+def test_actor_import_error_is_logged(propagate_logs, caplog):
     worker = MagicMock()
     worker.gcs_client.internal_kv_get.return_value = b"actor entry"
     manager = FunctionActorManager(worker)
