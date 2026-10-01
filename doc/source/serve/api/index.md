@@ -507,7 +507,6 @@ Content-Type: application/json
 
    serve.llm.build_llm_deployment
    serve.llm.build_openai_app
-   serve.llm.build_openai_router_app
 ```
 
 ### Configs

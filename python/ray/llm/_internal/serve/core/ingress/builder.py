@@ -337,8 +337,19 @@ def _validate_model_applications(
     return result
 
 
+class OpenAIRouterArgs(BaseModelExtended):
+    """Configuration for the multi-application OpenAI router."""
+
+    model_applications: Dict[str, str]
+
+    @field_validator("model_applications", mode="before")
+    @classmethod
+    def _validate_mapping(cls, value: Any) -> Dict[str, str]:
+        return _validate_model_applications(value)
+
+
 def build_openai_router_app(
-    model_applications: Mapping[str, str],
+    router_args: dict,
 ) -> Application:
     """Build a router for independently deployed OpenAI model applications."""
     if not RAY_SERVE_ENABLE_HA_PROXY:
@@ -354,12 +365,12 @@ def build_openai_router_app(
 
     from ray.llm._internal.serve.core.ingress.applications import RouterApplication
 
-    models = _validate_model_applications(model_applications)
+    args = OpenAIRouterArgs.model_validate(router_args)
     return (
         serve.deployment(
             RouterApplication,
             **RouterApplication.get_deployment_options(),
         )
-        .bind(model_applications=models)
+        .bind(model_applications=args.model_applications)
         ._as_router_application()
     )
