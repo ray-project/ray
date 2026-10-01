@@ -887,16 +887,13 @@ Ray Data reads from databases like MySQL, PostgreSQL, MongoDB, and BigQuery.
 ### Reading HiveServer2
 
 Install `impyla` on the driver and Ray workers, then call {func}`~ray.data.read_hive`
-with a table name. Table reads obtain their Arrow schema from HiveServer2 metadata.
+with a table name. Table reads infer their Arrow schema from HiveServer2 metadata.
 For a trusted, row-producing SQL query, pass `query` and an explicit
-`pyarrow.Schema` instead. The query must return a result set and is sent to
-HiveServer2 as given.
-Query schema columns must match the server result in count and order; names
-match case-insensitively, and types must match the supported Arrow mapping.
-Non-nullable schema fields reject null rows. Table reads map supported Hive
-scalar booleans, integers, floats, strings, binary values, dates, and decimals
-to Arrow when HS2 metadata agrees with the planned schema. Timestamp and
-complex column types raise an error.
+`pyarrow.Schema`; the query is sent to HiveServer2 as given. Result columns must
+match the schema in count and order; names match case-insensitively, and types
+must use a supported Arrow mapping. Non-nullable fields reject null rows. Table
+reads support scalar booleans, numbers, strings, binary values, dates, and
+decimals; timestamp and complex types are unsupported.
 Choose `auth_mechanism` explicitly. Use `NOSASL` only with a HiveServer2
 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN` SASL; use a
 non-sensitive placeholder password because the server doesn't check it.
@@ -924,13 +921,11 @@ query_dataset = ray.data.read_hive(
 )
 ```
 
-The initial reader uses the binary HiveServer2 protocol and executes each read
-through one HS2 data query in one Ray task. `override_num_blocks` repartitions
-the result inside Ray; it does not parallelize the database query. Failed reads
-aren't retried, and a new Dataset execution starts a new query. Query SQL is
-sent to the server as given, so pass only trusted, row-producing queries. The
-`ca_cert` path, when supplied, must be accessible on both the driver and the read
-worker.
+Reads use the binary HiveServer2 protocol. Each read runs one data query in one
+Ray task; `override_num_blocks` repartitions the result in Ray without
+parallelizing the query. Failed reads aren't retried, and each Dataset execution
+starts a new query. Pass only trusted, row-producing SQL. The `ca_cert` path
+must be accessible on the driver and read worker.
 
 (reading_sql)=
 
