@@ -560,6 +560,64 @@ def test_application_state_clears_stale_ingress_request_router(
     assert application_state.ingress_request_router_deployment is None
 
 
+def test_application_state_preserves_router_metadata_during_rebuild(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+    router_params = deployment_params("Router", "/")
+    router_params["router_application"] = True
+    router_info = deploy_args_to_deployment_info(**router_params, app_name="test_app")
+
+    application_state._set_target_state(
+        {"Router": router_info},
+        api_type=APIType.DECLARATIVE,
+        code_version="1",
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Router"
+    assert application_state.is_router_application
+
+    # The old router continues serving while the replacement build is pending.
+    application_state._set_target_state(
+        None,
+        api_type=APIType.DECLARATIVE,
+        code_version=None,
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Router"
+    assert application_state.is_router_application
+
+    # A completed non-router replacement updates the retained metadata.
+    application_state._set_target_state(
+        {"Ingress": deployment_info("Ingress", "/")},
+        api_type=APIType.DECLARATIVE,
+        code_version="2",
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Ingress"
+    assert not application_state.is_router_application
+
+
+def test_application_state_clears_router_metadata_on_delete(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+    router_params = deployment_params("Router", "/")
+    router_params["router_application"] = True
+    router_info = deploy_args_to_deployment_info(**router_params, app_name="test_app")
+    application_state._set_target_state(
+        {"Router": router_info},
+        api_type=APIType.DECLARATIVE,
+        code_version="1",
+        target_config=None,
+    )
+
+    application_state._set_target_state_deleting()
+
+    assert application_state.ingress_deployment is None
+    assert not application_state.is_router_application
+
+
 class TestApplicationStatusInfo:
     def test_application_status_required(self):
         with pytest.raises(TypeError):
