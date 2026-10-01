@@ -64,7 +64,6 @@ from ray.serve._private.default_impl import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
     DeploymentStateManager,
-    ReplicaHealthPushRegistry,
 )
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
@@ -268,7 +267,6 @@ class ServeController:
         ]
 
         self.autoscaling_state_manager = AutoscalingStateManager()
-        self._replica_health_push_registry = ReplicaHealthPushRegistry()
         self.deployment_state_manager = DeploymentStateManager(
             self.kv_store,
             self.long_poll_host,
@@ -276,7 +274,6 @@ class ServeController:
             get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
             self.autoscaling_state_manager,
-            health_push_registry=self._replica_health_push_registry,
         )
 
         # Manage all applications' state
@@ -417,7 +414,7 @@ class ServeController:
         consecutive_failures: Optional[int] = None,
     ):
         """Self-health heartbeat from a replica, standing in for a pull probe."""
-        self._replica_health_push_registry.record(
+        self.deployment_state_manager.record_replica_health(
             replica_unique_id, checked_at, healthy, consecutive_failures
         )
 

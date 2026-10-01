@@ -29,6 +29,7 @@ from typing import (
 import ray
 from ray import ObjectRef, cloudpickle
 from ray._common import ray_constants
+from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
 from ray.exceptions import (
     RayActorError,
@@ -763,60 +764,154 @@ class PushedHealth(NamedTuple):
     consecutive_failures: Optional[int]
 
 
-class ReplicaHealthPushRegistry:
-    """Latest self-health pushed by each replica, keyed by replica unique id.
+class HealthSource(Enum):
+    """Which observation a health check tick is acting on."""
 
-    Written by the controller ingest path; consumed by the reconcile sweep. A
-    fresh healthy push lets the sweep skip firing a pull probe.
+    NOTHING = 1
+    PROBE = 2
+    SUPERSEDED_PROBE = 3
+    PUSH = 4
+
+
+class ResolvedHealth(NamedTuple):
+    """The verdict a health check tick should apply.
+
+    consecutive_failures is a pre-chain override, or None to leave the count alone.
     """
 
-    _PRUNE_THRESHOLD = 65536
-    _PRUNE_MAX_AGE_S = 600.0
-    _PRUNE_MIN_INTERVAL_S = 30.0
+    source: HealthSource
+    response: ReplicaHealthCheckResponse
+    consecutive_failures: Optional[int]
 
-    def __init__(self):
-        self._state: Dict[str, PushedHealth] = {}
-        self._last_prune_time = 0.0
+
+class PushedHealthTracker:
+    """Weighs a replica's pushed self-health against its pull probe.
+
+    Holds only the arbitration state and makes no Ray calls, so it can be driven
+    directly in tests with a MockTimer.
+    """
+
+    def __init__(self, timer: TimerBase = Timer()):
+        self._timer = timer
+        self._pushed: Optional[PushedHealth] = None
+        # The newest push already consumed, so a repeat is not applied twice.
+        self._consumed_push_checked_at: float = 0.0
+        # When the newest applied push arrived, and when the probe it may have
+        # superseded started. The two settle which observation is newer.
+        self._applied_push_received_at: float = 0.0
+        self._applied_probe_started_at: float = 0.0
+        # The replica's own failure count as last mirrored, so the same count
+        # arriving twice does not advance the controller's.
+        self._mirrored_failures: Optional[int] = None
 
     def record(
         self,
-        replica_unique_id: str,
         checked_at: float,
+        received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
-    ):
-        prev = self._state.get(replica_unique_id)
-        if prev is not None and checked_at <= prev.checked_at:
-            return  # A delayed report must not clobber a newer observation.
-        now = time.time()
-        if (
-            len(self._state) > self._PRUNE_THRESHOLD
-            and now - self._last_prune_time > self._PRUNE_MIN_INTERVAL_S
-        ):
-            # Rate-limited: when everything is fresher than the age cutoff the prune
-            # is a no-op, and an O(N) rebuild per record would thrash the ingest path
-            # at exactly the scale it serves.
-            self._last_prune_time = now
-            # Age by controller-clock arrival time, immune to replica skew.
-            cutoff = now - self._PRUNE_MAX_AGE_S
-            self._state = {
-                k: v for k, v in self._state.items() if v.received_at >= cutoff
-            }
-        self._state[replica_unique_id] = PushedHealth(
-            checked_at, now, healthy, consecutive_failures
-        )
+    ) -> None:
+        """Stash the newest pushed result.
 
-    def get(self, replica_unique_id: str) -> Optional[PushedHealth]:
-        return self._state.get(replica_unique_id)
-
-    def discard(self, replica_unique_id: str) -> None:
-        """Drop a replica that has permanently stopped.
-
-        The age-based prune is only a backstop for ids that stop pushing without a
-        stop event; it is gated on size, so nothing reclaims a dead replica's entry
-        on a fleet that never crosses the threshold.
+        checked_at is replica-clock and orders pushes from one replica; received_at
+        is controller-clock, so freshness is immune to replica skew.
         """
-        self._state.pop(replica_unique_id, None)
+        stashed = self._pushed.checked_at if self._pushed is not None else 0.0
+        if checked_at > max(self._consumed_push_checked_at, stashed):
+            self._pushed = PushedHealth(
+                checked_at, received_at, healthy, consecutive_failures
+            )
+
+    def should_defer_probe(self, health_check_period_s: float) -> bool:
+        """Whether a pushed result is fresh enough to stand in for a probe.
+
+        A push a probe beat to its tick is still information in hand, so it counts
+        too: probing against it both wastes the probe and races the verdict it holds.
+        """
+        pending = self._pushed.received_at if self._pushed is not None else 0.0
+        newest = max(self._applied_push_received_at, pending)
+        window_s = _push_freshness_window_s(health_check_period_s)
+        return self._timer.time() - newest < window_s
+
+    def _take_fresh_push(self, health_check_period_s: float) -> Optional[PushedHealth]:
+        """Consume the stashed push if it is still worth acting on."""
+        if self._pushed is None:
+            return None
+        pushed = self._pushed
+        self._pushed = None
+        self._consumed_push_checked_at = pushed.checked_at
+        window_s = _push_freshness_window_s(health_check_period_s)
+        if self._timer.time() - pushed.received_at > window_s:
+            return None  # stale; the pull path stays the fallback
+        if pushed.received_at < self._applied_probe_started_at:
+            return None  # a probe already reported something newer
+        self._applied_push_received_at = pushed.received_at
+        return pushed
+
+    def _mirror_failures(self, pushed: PushedHealth, probed_failures: int) -> int:
+        """The failure count to set before the caller's chain increments it.
+
+        The replica owns the count: it advances once per health-check period even
+        though it pushes twice, so the controller mirrors rather than recomputes.
+        """
+        if pushed.consecutive_failures is None:
+            return probed_failures
+        if pushed.consecutive_failures == self._mirrored_failures:
+            # The same count arriving again, so cancel the caller's increment or the
+            # threshold is reached in half the configured time.
+            return probed_failures - 1
+        # max() keeps a push stream that starts mid-failure-run from lowering what
+        # the controller already probed.
+        return max(probed_failures, pushed.consecutive_failures - 1)
+
+    def resolve(
+        self,
+        probe_response: ReplicaHealthCheckResponse,
+        probe_started_at: float,
+        probed_failures: int,
+        health_check_period_s: float,
+    ) -> ResolvedHealth:
+        """Decide what this tick acts on: the probe, the push, or nothing."""
+        if (
+            probe_response
+            in (
+                ReplicaHealthCheckResponse.SUCCEEDED,
+                ReplicaHealthCheckResponse.APP_FAILURE,
+            )
+            and probe_started_at < self._applied_push_received_at
+        ):
+            # This probe was in flight when a newer push was applied, so it carries
+            # the older observation. ACTOR_CRASHED is exempt: a crash is
+            # authoritative and a dead replica pushes nothing.
+            return ResolvedHealth(
+                HealthSource.SUPERSEDED_PROBE, ReplicaHealthCheckResponse.NONE, None
+            )
+
+        if probe_response is not ReplicaHealthCheckResponse.NONE:
+            # Watermark by when this probe started: a push that arrived before that
+            # is strictly older information and must not overwrite the result.
+            self._applied_probe_started_at = probe_started_at
+            if probe_response is ReplicaHealthCheckResponse.SUCCEEDED:
+                self._mirrored_failures = None  # the caller's chain resets the count
+            return ResolvedHealth(HealthSource.PROBE, probe_response, None)
+
+        # No probe resolved this tick, so a fresh push is never discarded in favour
+        # of an older in-flight probe result.
+        pushed = self._take_fresh_push(health_check_period_s)
+        if pushed is None:
+            return ResolvedHealth(
+                HealthSource.NOTHING, ReplicaHealthCheckResponse.NONE, None
+            )
+        if pushed.healthy:
+            self._mirrored_failures = None
+            return ResolvedHealth(
+                HealthSource.PUSH, ReplicaHealthCheckResponse.SUCCEEDED, None
+            )
+        failures = self._mirror_failures(pushed, probed_failures)
+        self._mirrored_failures = pushed.consecutive_failures
+        return ResolvedHealth(
+            HealthSource.PUSH, ReplicaHealthCheckResponse.APP_FAILURE, failures
+        )
 
 
 class ActorReplicaWrapper:
@@ -859,18 +954,13 @@ class ActorReplicaWrapper:
         # recover() and check_ready()
         self._version: DeploymentVersion = version
         self._healthy: bool = True
-        self._health_check_ref: Optional[ObjectRef] = None
-        self._last_health_check_time: float = 0.0
+        self._probe_ref: Optional[ObjectRef] = None
+        self._probe_started_at: float = 0.0
         self._consecutive_health_check_failures = 0
         self._last_health_check_latency_ms: Optional[float] = None
         self._last_health_check_failed: Optional[bool] = None
-        # Latest self-health pushed by the replica, plus the watermarks that stop a
-        # push and an in-flight probe from overwriting each other's verdict.
-        self._pushed_health: Optional[PushedHealth] = None
-        self._last_consumed_push_ts: float = 0.0
-        self._last_applied_push_received_at: float = 0.0
-        self._last_probe_applied_time: float = 0.0
-        self._last_mirrored_push_failures: Optional[int] = None
+        # Weighs this replica's pushed self-health against its pull probe.
+        self._pushed_health_tracker = PushedHealthTracker()
         self._initialization_latency_s: Optional[float] = None
         self._reconfigure_start_time: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
@@ -962,10 +1052,7 @@ class ActorReplicaWrapper:
         fails loudly here rather than silently reporting no probe in flight -- which
         would drop the replica from the dirty-set poll set and delay re-polling it.
         """
-        return (
-            self._health_check_ref is not None
-            or self._record_routing_stats_ref is not None
-        )
+        return self._probe_ref is not None or self._record_routing_stats_ref is not None
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -1741,10 +1828,10 @@ class ActorReplicaWrapper:
             # ValueError means the placement group is already gone.
             logger.debug(f"Gang placement group {pg_name} was already removed.")
 
-    def _check_active_health_check(self) -> ReplicaHealthCheckResponse:
+    def _resolve_active_probe(self) -> ReplicaHealthCheckResponse:
         """Check the active health check (if any).
 
-        self._health_check_ref will be reset to `None` when the active health
+        self._probe_ref will be reset to `None` when the active health
         check is deemed to have succeeded or failed. This method *does not*
         start a new health check, that's up to the caller.
 
@@ -1757,22 +1844,22 @@ class ActorReplicaWrapper:
             - ACTOR_CRASHED if the underlying actor crashed.
         """
         # Reset the last health check status for this check cycle.
-        # We do this because _check_active_health_check is being called in a loop,
+        # We do this because _resolve_active_probe is being called in a loop,
         # and we want to avoid accumulating latency and failure metrics over multiple
         # check cycles.
         self._last_health_check_latency_ms = None
         self._last_health_check_failed = None
 
-        if self._health_check_ref is None:
+        if self._probe_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
-        elif check_obj_ref_ready_nowait(self._health_check_ref):  # type: ignore[arg-type]
+        elif check_obj_ref_ready_nowait(self._probe_ref):  # type: ignore[arg-type]
             # Object ref is ready, ray.get it to check for exceptions.
             try:
-                ray.get(self._health_check_ref)
+                ray.get(self._probe_ref)
                 # Calculate health check latency.
                 self._last_health_check_latency_ms = (
-                    time.time() - self._last_health_check_time
+                    time.time() - self._probe_started_at
                 ) * 1000
                 self._last_health_check_failed = False
                 # Health check succeeded without exception.
@@ -1786,7 +1873,7 @@ class ActorReplicaWrapper:
                 logger.warning(f"Health check for {self._replica_id} failed: {e}")
                 response = ReplicaHealthCheckResponse.APP_FAILURE
                 self._last_health_check_failed = True
-        elif time.time() - self._last_health_check_time > self.health_check_timeout_s:
+        elif time.time() - self._probe_started_at > self.health_check_timeout_s:
             # Health check hasn't returned and the timeout is up, consider it failed.
             logger.warning(
                 "Didn't receive health check response for replica "
@@ -1796,7 +1883,7 @@ class ActorReplicaWrapper:
             response = ReplicaHealthCheckResponse.APP_FAILURE
             # Calculate latency for timeout case.
             self._last_health_check_latency_ms = (
-                time.time() - self._last_health_check_time
+                time.time() - self._probe_started_at
             ) * 1000
             self._last_health_check_failed = True
         else:
@@ -1804,7 +1891,7 @@ class ActorReplicaWrapper:
             response = ReplicaHealthCheckResponse.NONE
 
         if response is not ReplicaHealthCheckResponse.NONE:
-            self._health_check_ref = None
+            self._probe_ref = None
 
         return response
 
@@ -1815,40 +1902,12 @@ class ActorReplicaWrapper:
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
-        """Stash the replica's latest pushed self-health observation.
-
-        checked_at is replica-clock (ordering and dedupe only); received_at is
-        controller-clock, used for freshness so replica skew cannot widen it.
-        """
-        stashed = (
-            self._pushed_health.checked_at if self._pushed_health is not None else 0.0
+        """Stash the replica's latest pushed self-health observation."""
+        self._pushed_health_tracker.record(
+            checked_at, received_at, healthy, consecutive_failures
         )
-        if checked_at > max(self._last_consumed_push_ts, stashed):
-            self._pushed_health = PushedHealth(
-                checked_at, received_at, healthy, consecutive_failures
-            )
 
-    def _take_fresh_pushed_health(self) -> Optional[Tuple[bool, Optional[int]]]:
-        """Consume the pushed self-health observation, if fresh.
-
-        A fresh observation defers the next pull probe; stale ones are dropped so
-        the pull path stays the fallback.
-        """
-        if self._pushed_health is None:
-            return None
-        checked_at, received_at, healthy, consecutive_failures = self._pushed_health
-        self._pushed_health = None
-        self._last_consumed_push_ts = checked_at
-        if time.time() - received_at > _push_freshness_window_s(
-            self.health_check_period_s
-        ):
-            return None
-        if received_at < self._last_probe_applied_time:
-            return None  # A probe already reported something newer than this.
-        self._last_applied_push_received_at = received_at
-        return healthy, consecutive_failures
-
-    def _should_start_new_health_check(self) -> bool:
+    def _should_start_new_probe(self) -> bool:
         """Determines if a new health check should be kicked off.
 
         A health check will be started if:
@@ -1857,30 +1916,23 @@ class ActorReplicaWrapper:
                previous health check was *started*.
             3) No pushed self-health observation is still fresh.
 
-        This assumes that self._health_check_ref is reset to `None` when an
+        This assumes that self._probe_ref is reset to `None` when an
         active health check succeeds or fails (due to returning or timeout).
         """
-        if self._health_check_ref is not None:
+        if self._probe_ref is not None:
             # There's already an active health check.
             return False
 
-        # Pushed health is flowing -- probe only once the newest observation we hold
-        # goes stale. Anchored to when it arrived, so a slow reconcile cannot stretch
-        # the window.
-        # A push a probe beat to this tick is still information in hand, so count it
-        # too: arming against it both wastes the probe and races the verdict it holds.
-        pending = (
-            self._pushed_health.received_at if self._pushed_health is not None else 0.0
-        )
-        newest = max(self._last_applied_push_received_at, pending)
-        if time.time() - newest < _push_freshness_window_s(self.health_check_period_s):
+        # Pushed health is flowing -- probe only once the newest result we hold goes
+        # stale. Anchored to when it arrived, so a slow reconcile cannot stretch it.
+        if self._pushed_health_tracker.should_defer_probe(self.health_check_period_s):
             return False
 
         # If there's no active health check, kick off another and reset
         # the timer if it's been long enough since the last health
         # check. Add some randomness to avoid synchronizing across all
         # replicas.
-        time_since_last = time.time() - self._last_health_check_time
+        time_since_last = time.time() - self._probe_started_at
         randomized_period = self.health_check_period_s * random.uniform(0.9, 1.1)
         return time_since_last > randomized_period
 
@@ -1929,58 +1981,26 @@ class ActorReplicaWrapper:
             3) Consuming a pushed self-health observation when no probe resolved.
             4) Kicking off a new health check if needed.
         """
-        response: ReplicaHealthCheckResponse = self._check_active_health_check()
-        if (
-            response
-            in (
-                ReplicaHealthCheckResponse.SUCCEEDED,
-                ReplicaHealthCheckResponse.APP_FAILURE,
-            )
-            and self._last_health_check_time < self._last_applied_push_received_at
-        ):
-            # This probe was in flight when a newer push was applied, so it carries
-            # the older observation. ACTOR_CRASHED is exempt: a crash is
-            # authoritative and a dead replica pushes nothing.
-            response = ReplicaHealthCheckResponse.NONE
+        probe_response: ReplicaHealthCheckResponse = self._resolve_active_probe()
+        resolved = self._pushed_health_tracker.resolve(
+            probe_response,
+            self._probe_started_at,
+            self._consecutive_health_check_failures,
+            self.health_check_period_s,
+        )
+        response = resolved.response
+        if resolved.consecutive_failures is not None:
+            self._consecutive_health_check_failures = resolved.consecutive_failures
+        if resolved.source is HealthSource.SUPERSEDED_PROBE:
             # Keep the latency sample -- the probe really did take that long -- but
             # not the failure: the counter tracks what the controller acted on.
             self._last_health_check_failed = None
-        if response is not ReplicaHealthCheckResponse.NONE:
-            # Watermark by when this probe started: a push that arrived before that
-            # is strictly older information and must not overwrite the result.
-            self._last_probe_applied_time = self._last_health_check_time
-        # Consume the pushed observation only when no pull probe resolved this tick,
-        # so a fresh push is never discarded for an older in-flight probe result.
-        pushed = (
-            self._take_fresh_pushed_health()
-            if response is ReplicaHealthCheckResponse.NONE
-            else None
-        )
-        if pushed is not None:
-            pushed_healthy, pushed_failures = pushed
-            if pushed_healthy:
-                response = ReplicaHealthCheckResponse.SUCCEEDED
-            else:
-                if pushed_failures is not None:
-                    if pushed_failures == self._last_mirrored_push_failures:
-                        # The replica counts a failure once per period but heartbeats
-                        # twice, so the same count arrives again. Cancel the increment
-                        # the chain below adds, or it reaches the threshold in half the
-                        # configured time.
-                        self._consecutive_health_check_failures -= 1
-                    else:
-                        # Mirroring paces the threshold: subtract the increment the
-                        # chain adds. max() keeps a push stream that starts
-                        # mid-failure-run from lowering what the controller probed.
-                        self._consecutive_health_check_failures = max(
-                            self._consecutive_health_check_failures,
-                            pushed_failures - 1,
-                        )
-                    self._last_mirrored_push_failures = pushed_failures
-                response = ReplicaHealthCheckResponse.APP_FAILURE
+        elif resolved.source is HealthSource.PUSH:
             # Only the probe paths set this, so the flag would go silent for the
             # path the controller now acts on most.
-            self._last_health_check_failed = not pushed_healthy
+            self._last_health_check_failed = (
+                response is ReplicaHealthCheckResponse.APP_FAILURE
+            )
         if response is ReplicaHealthCheckResponse.NONE:
             # No info; don't update replica health.
             pass
@@ -2023,11 +2043,11 @@ class ActorReplicaWrapper:
         else:
             assert False, f"Unknown response type: {response}."
 
-        if self._should_start_new_health_check():
-            self._last_health_check_time = time.time()
+        if self._should_start_new_probe():
+            self._probe_started_at = time.time()
             # Health checks only run on live replicas, so `_actor_handle` is set.
             # pyrefly: ignore[missing-attribute]
-            self._health_check_ref = self._actor_handle.check_health.remote()  # type: ignore[union-attr]
+            self._probe_ref = self._actor_handle.check_health.remote()  # type: ignore[union-attr]
 
         return self._healthy
 
@@ -3209,14 +3229,12 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
-        health_push_registry: Optional[ReplicaHealthPushRegistry] = None,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
-        self._health_push_registry = health_push_registry
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -5493,13 +5511,27 @@ class DeploymentState:
                 DEFAULT_HEALTH_CHECK_PERIOD_S, DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
             )
 
-    def _apply_pushed_health(self, replica: "DeploymentReplica") -> None:
-        """Hand the replica its latest pushed self-health before the health check."""
-        if self._health_push_registry is None:
-            return
-        pushed = self._health_push_registry.get(replica.replica_id.unique_id)
-        if pushed is not None:
-            replica.record_pushed_health(*pushed)
+    def record_pushed_health(
+        self,
+        replica_unique_id: str,
+        checked_at: float,
+        received_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
+    ) -> bool:
+        """Hand a pushed self-health result to the replica it describes.
+
+        Returns whether this deployment owns that replica, so the caller can stop
+        looking. A push for a replica this controller does not track is dropped:
+        the pull probe covers it once the replica exists.
+        """
+        replica = self._replicas.get_by_id(ReplicaID(replica_unique_id, self._id))
+        if replica is None:
+            return False
+        replica.record_pushed_health(
+            checked_at, received_at, healthy, consecutive_failures
+        )
+        return True
 
     def check_and_update_replicas(self):
         """
@@ -5518,8 +5550,6 @@ class DeploymentState:
         if not self._is_gang_deployment:
             origin: List[ReplicaState] = []
             pairs = self._dirty_set_active_pairs()
-            for replica, _ in pairs:
-                self._apply_pushed_health(replica)
             healths = [replica.check_health() for replica, _ in pairs]
             for (replica, st), is_healthy in zip(pairs, healths):
                 self._record_health_check_metrics(replica)
@@ -5549,7 +5579,6 @@ class DeploymentState:
             for replica in self._replicas.pop(
                 states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
             ):
-                self._apply_pushed_health(replica)
                 is_healthy = replica.check_health()
                 self._record_health_check_metrics(replica)
                 if is_healthy:
@@ -5834,8 +5863,6 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._clear_health_gauge_cache(replica_id)
-                if self._health_push_registry is not None:
-                    self._health_push_registry.discard(replica_id)
                 if self._rank_manager.has_replica_rank(replica_id):
                     # Only release rank if assigned. Replicas that failed allocation
                     # or never reached RUNNING state won't have ranks.
@@ -6466,7 +6493,6 @@ class DeploymentStateManager:
         autoscaling_state_manager: AutoscalingStateManager,
         head_node_id_override: Optional[str] = None,
         create_placement_group_fn_override: Optional[Callable] = None,
-        health_push_registry: Optional[ReplicaHealthPushRegistry] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
@@ -6477,7 +6503,6 @@ class DeploymentStateManager:
             create_placement_group_fn_override,
         )
         self._autoscaling_state_manager = autoscaling_state_manager
-        self._health_push_registry = health_push_registry
 
         self._shutting_down = False
 
@@ -6550,8 +6575,30 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
-            health_push_registry=self._health_push_registry,
         )
+
+    def record_replica_health(
+        self,
+        replica_unique_id: str,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
+    ) -> None:
+        """Route a replica's pushed self-health to the replica itself.
+
+        received_at is stamped here, on the controller clock, so freshness does
+        not depend on the replica's.
+        """
+        received_at = time.time()
+        for deployment_state in self._deployment_states.values():
+            if deployment_state.record_pushed_health(
+                replica_unique_id,
+                checked_at,
+                received_at,
+                healthy,
+                consecutive_failures,
+            ):
+                return
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]
