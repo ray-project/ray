@@ -29,6 +29,8 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+# Relative tolerance for float drift when checking whether a bundle fits.
+_FIT_EPSILON = 1e-6
 _RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
 _RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
 # Label key the cluster autoscaler uses to bucket nodes by subcluster.
@@ -788,7 +790,10 @@ def _sum_bundles(bundles: List[ResourceDict]) -> ResourceDict:
 
 
 def _bundle_can_fit_on_node(bundle: ResourceDict, node: ResourceDict) -> bool:
-    return not any(node.get(key, 0) < bundle[key] for key in bundle)
+    # Allow a relative epsilon so that drift does not drop the last bundle.
+    return not any(
+        node.get(key, 0) < bundle[key] * (1 - _FIT_EPSILON) for key in bundle
+    )
 
 
 def _subtract_bundle_in_place(target: ResourceDict, bundle: ResourceDict) -> None:

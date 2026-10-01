@@ -219,6 +219,34 @@ def test_elastic_resize_pins_when_the_reservation_outgrows_the_decision(monkeypa
     assert len(selectors) == 14
 
 
+@pytest.mark.parametrize(
+    "gpus_per_worker,num_workers",
+    [(0.3, 3), (0.01, 3), (1 / 3, 12), (0.1, 20)],
+)
+@pytest.mark.parametrize("placement_strategy", ["PACK", "STRICT_PACK"])
+def test_fractional_reservation_pins_every_worker(
+    gpus_per_worker, num_workers, placement_strategy, monkeypatch
+):
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0")
+
+    reserved_gpus = 0.0
+    for _ in range(num_workers):
+        reserved_gpus += gpus_per_worker
+
+    policy = _policy_with_reservation(
+        {"node-a": {"GPU": reserved_gpus}},
+        num_workers=num_workers,
+        use_gpu=True,
+        resources_per_worker={"GPU": gpus_per_worker},
+        placement_strategy=placement_strategy,
+    )
+
+    assert (
+        policy.get_reserved_bundle_label_selectors(num_workers)
+        == [{NODE_ID_KEY: "node-a"}] * num_workers
+    )
+
+
 def test_reservation_wait_polls_until_ready(monkeypatch):
     """Like pg.wait(), keep querying until reserved nodes show up."""
     policy = _policy_with_reservation(
