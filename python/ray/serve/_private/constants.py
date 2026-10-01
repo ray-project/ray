@@ -495,12 +495,12 @@ RAY_SERVE_ENABLE_PUSH_HEALTH = get_env_bool("RAY_SERVE_ENABLE_PUSH_HEALTH", "0")
 
 # A push outstanding longer than this is abandoned rather than waited on: an
 # unbounded guard lets one stuck receiver silence a replica permanently.
-RAY_SERVE_METRICS_PUSH_STUCK_S = get_env_float("RAY_SERVE_METRICS_PUSH_STUCK_S", 20.0)
+RAY_SERVE_MAX_PUSH_IN_FLIGHT_S = get_env_float("RAY_SERVE_MAX_PUSH_IN_FLIGHT_S", 20.0)
 
 # How many consecutive probe timeouts the ingest-lag gate may discard for one
 # replica before charging the strike anyway, so a permanent silence still resolves.
-RAY_SERVE_MAX_SUPPRESSED_HEALTH_TIMEOUTS = get_env_int_positive(
-    "RAY_SERVE_MAX_SUPPRESSED_HEALTH_TIMEOUTS", 3
+RAY_SERVE_MAX_SUPPRESSED_PROBE_TIMEOUTS = get_env_int_positive(
+    "RAY_SERVE_MAX_SUPPRESSED_PROBE_TIMEOUTS", 3
 )
 
 # Replica autoscaling metrics push interval.
