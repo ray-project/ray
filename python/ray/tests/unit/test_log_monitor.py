@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 from unittest.mock import MagicMock
@@ -13,7 +12,11 @@ from ray._private.log_monitor import (
     LogMonitor,
 )
 from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
-from ray.exceptions import GcsPassiveError, RpcError
+from ray.exceptions import RpcError
+from ray.tests.unit.passive_test_utils import (
+    count_logged as _count_logged,
+    passive_gcs_rejection as _passive_gcs_rejection,
+)
 
 LOG_MONITOR_LOGGER = "ray._private.log_monitor"
 
@@ -140,14 +143,6 @@ def test_reopen_same_inode_growth_keeps_size_when_last_opened(tmp_path):
     file_info.file_handle.close()
 
 
-def _passive_gcs_rejection():
-    """The error a passive GCS raises, as check_status() translates it."""
-    return GcsPassiveError(
-        "GCS server is in passive (read-only) mode.",
-        rpc_code=GRPC_STATUS_CODE_UNAVAILABLE,
-    )
-
-
 @pytest.fixture
 def make_log_monitor(tmp_path, monkeypatch):
     monitors = []
@@ -199,21 +194,9 @@ def _published_lines(monitor):
 
 
 @pytest.fixture
-def monitor_logs(caplog):
-    """Capture this module's logs.
-
-    The "ray" logger does not propagate to the root logger caplog listens on, so
-    caplog.at_level() alone records nothing.
-    """
-    logger = logging.getLogger(LOG_MONITOR_LOGGER)
-    logger.addHandler(caplog.handler)
-    with caplog.at_level(logging.INFO, logger=LOG_MONITOR_LOGGER):
-        yield caplog
-    logger.removeHandler(caplog.handler)
-
-
-def _count_logged(caplog, needle):
-    return sum(needle in record.getMessage() for record in caplog.records)
+def monitor_logs(caplog, capture_logger):
+    capture_logger(LOG_MONITOR_LOGGER)
+    return caplog
 
 
 def test_passive_head_drops_log_lines_instead_of_replaying_them_on_promotion(

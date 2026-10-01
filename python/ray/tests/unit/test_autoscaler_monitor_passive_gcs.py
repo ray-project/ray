@@ -1,11 +1,9 @@
 # Unit tests for how the autoscaler monitors (v1 and v2) react to a passive GCS.
-import logging
 import sys
 from unittest.mock import MagicMock
 
 import pytest
 
-import ray._common.usage.usage_lib as ray_usage_lib
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
 from ray.autoscaler._private import monitor as v1_monitor_module
@@ -13,45 +11,17 @@ from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.v2 import monitor as v2_monitor_module
 from ray.autoscaler.v2.monitor import AutoscalerMonitor
 from ray.exceptions import AuthenticationError, GcsPassiveError, RpcError
-from ray.experimental.internal_kv import _internal_kv_reset
+from ray.tests.unit.passive_test_utils import (
+    count_logged as _count_logged,
+    make_mock_gcs_client,
+    passive_gcs_rejection as _passive_gcs_rejection,
+    set_mock_leader,
+)
+
+pytestmark = pytest.mark.usefixtures("leader_election_on")
 
 V1_LOGGER = "ray.autoscaler._private.monitor"
 V2_LOGGER = "ray.autoscaler.v2.monitor"
-SESSION_NAME = b"session_2026-01-01_00-00-00_000000_1"
-
-
-def _passive_gcs_rejection():
-    """The error a passive GCS raises, as check_status() translates it."""
-    return GcsPassiveError(
-        "GCS server is in passive (read-only) mode.",
-        rpc_code=GRPC_STATUS_CODE_UNAVAILABLE,
-    )
-
-
-def _gcs_client(*, leader):
-    gcs_client = MagicMock()
-    gcs_client.internal_kv_get.return_value = SESSION_NAME
-    gcs_client.is_gcs_leader.return_value = leader
-    if not leader:
-        gcs_client.internal_kv_put.side_effect = _passive_gcs_rejection()
-        gcs_client.internal_kv_del.side_effect = _passive_gcs_rejection()
-    return gcs_client
-
-
-def _capture(caplog, logger_name):
-    """Attach caplog to a module logger.
-
-    The "ray" logger does not propagate to the root logger caplog listens on, so
-    caplog.at_level() alone records nothing.
-    """
-    logger = logging.getLogger(logger_name)
-    logger.addHandler(caplog.handler)
-    caplog.set_level(logging.INFO, logger=logger_name)
-    return logger
-
-
-def _count_logged(caplog, needle):
-    return sum(needle in record.getMessage() for record in caplog.records)
 
 
 def _metrics_address_writes(gcs_client):
@@ -62,37 +32,22 @@ def _metrics_address_writes(gcs_client):
     ]
 
 
-@pytest.fixture(autouse=True)
-def leader_election_on(monkeypatch):
-    monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", True)
-
-
-@pytest.fixture(autouse=True)
-def reset_internal_kv():
-    ray_usage_lib.reset_global_state()
-    yield
-    _internal_kv_reset()
-    ray_usage_lib.reset_global_state()
+@pytest.fixture
+def v1_logs(caplog, capture_logger):
+    capture_logger(V1_LOGGER)
+    return caplog
 
 
 @pytest.fixture
-def v1_logs(caplog):
-    logger = _capture(caplog, V1_LOGGER)
-    yield caplog
-    logger.removeHandler(caplog.handler)
-
-
-@pytest.fixture
-def v2_logs(caplog):
-    logger = _capture(caplog, V2_LOGGER)
-    yield caplog
-    logger.removeHandler(caplog.handler)
+def v2_logs(caplog, capture_logger):
+    capture_logger(V2_LOGGER)
+    return caplog
 
 
 @pytest.fixture
 def make_v1_monitor(monkeypatch):
     def factory(*, leader):
-        gcs_client = _gcs_client(leader=leader)
+        gcs_client = make_mock_gcs_client(leader=leader)
         monkeypatch.setattr(
             v1_monitor_module, "GcsClient", lambda *args, **kwargs: gcs_client
         )
@@ -110,10 +65,11 @@ def make_v1_monitor(monkeypatch):
 @pytest.fixture
 def make_v2_monitor(monkeypatch):
     def factory(*, leader):
-        gcs_client = _gcs_client(leader=leader)
+        gcs_client = make_mock_gcs_client(leader=leader)
         monkeypatch.setattr(
             v2_monitor_module, "GcsClient", lambda *args, **kwargs: gcs_client
         )
+
         monkeypatch.setattr(v2_monitor_module, "prometheus_client", None)
         monkeypatch.setattr(
             v2_monitor_module, "Autoscaler", lambda *args, **kwargs: MagicMock()
@@ -212,9 +168,7 @@ def test_v1_monitor_takes_over_the_active_head_keys_on_promotion(
     assert monitor._autoscaler_passive_latch.waiting_for_promotion
     refused_writes = len(_metrics_address_writes(monitor.gcs_client))
 
-    monitor.gcs_client.is_gcs_leader.return_value = True
-    monitor.gcs_client.internal_kv_put.side_effect = None
-    monitor.gcs_client.internal_kv_del.side_effect = None
+    set_mock_leader(monitor.gcs_client, True)
     monkeypatch.setattr(
         v1_monitor_module, "get_cluster_resource_state", lambda _: MagicMock()
     )
@@ -242,13 +196,8 @@ def test_v1_monitor_handles_repeated_promotions_and_demotions(
     refused_writes = len(_metrics_address_writes(monitor.gcs_client))
 
     for leader in (True, False, True):
-        monitor.gcs_client.is_gcs_leader.return_value = leader
-        if leader:
-            monitor.gcs_client.internal_kv_put.side_effect = None
-            monitor.gcs_client.internal_kv_del.side_effect = None
-        else:
-            monitor.gcs_client.internal_kv_put.side_effect = _passive_gcs_rejection()
-            monitor.gcs_client.internal_kv_del.side_effect = _passive_gcs_rejection()
+        set_mock_leader(monitor.gcs_client, leader)
+        _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
         _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
 
     assert monitor.gcs_client.internal_kv_del.call_count == 2
