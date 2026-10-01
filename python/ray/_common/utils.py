@@ -3,6 +3,7 @@ import binascii
 import errno
 import importlib
 import inspect
+import logging
 import os
 import random
 import string
@@ -14,7 +15,51 @@ from inspect import signature
 from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
+import ray
+from ray._raylet import GcsClient, NodeID
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+
 import psutil
+
+logger = logging.getLogger(__name__)
+
+
+def env_integer(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return int(value)
+        except ValueError:
+            logger.warning(
+                f"Found {key} in environment, but value must "
+                f"be an integer. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
+def env_float(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return float(value)
+        except ValueError:
+            logger.warning(
+                f"Found {key} in environment, but value must "
+                f"be a float. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
+def env_bool(key, default):
+    if key in os.environ:
+        val = os.environ[key].lower()
+        return val == "true" or val == "1"
+    return default
 
 
 def import_module_and_attr(
@@ -58,6 +103,10 @@ def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
         MyClass = import_attr("module.submodule.MyClass")
         from module.submodule import MyClass
 
+    Args:
+        full_path: The full import path to the module and attr.
+        reload_module: Whether to reload the module.
+
     Returns:
         Imported attr
     """
@@ -92,7 +141,15 @@ def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
             # No running loop, relying on the error message as for now to
             # differentiate runtime errors.
             assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+                return loop
+            except RuntimeError:
+                # Python 3.14+: get_event_loop() no longer creates a loop automatically
+                # See: https://docs.python.org/3.14/library/asyncio-eventloop.html
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                return loop
 
     return asyncio.get_event_loop()
 
@@ -216,7 +273,58 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
-def get_user_temp_dir():
+def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
+    """
+    Get the ray temp directory.
+
+    If a temp dir was specified for this node, this function will
+    retrieve the information from GCS. Otherwise, it will fallback to the
+    default ray temp directory.
+
+    Args:
+        gcs_client: The GCS client.
+        node_id: The ID of the node to fetch the temp dir for.
+                 E.g.: "1a9904d8aa3de65367830e2aef6313a5b2e9d4b0e3725e0dceeacb1b"
+                        (hex string representation of the node ID)
+
+    Returns:
+        The path to the ray temp directory.
+    """
+    # check if temp dir is available from runtime context
+    if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
+        return ray.get_runtime_context().get_temp_dir()
+
+    # Fetch temp dir as specified by --temp-dir at creation time.
+    try:
+        # Create node selector for node_id filter
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_id = NodeID.from_hex(node_id).binary()
+
+        node_infos = gcs_client.get_all_node_info(
+            node_selectors=[node_selector],
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+        ).values()
+    except Exception as e:
+        raise Exception(
+            f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
+        )
+    if not node_infos:
+        raise Exception(
+            f"No node info associated with ALIVE state found for node {node_id} in GCS"
+        )
+
+    node_info = next(iter(node_infos))
+    if node_info is not None:
+        temp_dir = getattr(node_info, "temp_dir", None)
+        if temp_dir is not None:
+            return temp_dir
+        else:
+            raise Exception(
+                "Node temp_dir was not found in NodeInfo. did the node's raylet start successfully?"
+            )
+
+
+def get_default_system_temp_dir():
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
@@ -227,16 +335,17 @@ def get_user_temp_dir():
         tempdir = os.path.join(os.sep, "tmp")
     else:
         tempdir = tempfile.gettempdir()
+
     return tempdir
 
 
-def get_ray_temp_dir():
-    return os.path.join(get_user_temp_dir(), "ray")
+def get_default_ray_temp_dir():
+    return os.path.join(get_default_system_temp_dir(), "ray")
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
-        temp_dir = get_ray_temp_dir()
+        temp_dir = get_default_ray_temp_dir()
     return os.path.join(temp_dir, "ray_current_cluster")
 
 
@@ -308,6 +417,171 @@ def get_system_memory(
         return min(docker_limit, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
+
+
+# cgroup v2 swap-only counters (same paths the C++ memory monitor reads).
+_CGROUP_V2_SWAP_MAX = "/sys/fs/cgroup/memory.swap.max"
+_CGROUP_V2_SWAP_CURRENT = "/sys/fs/cgroup/memory.swap.current"
+# cgroup v1 RAM+swap combined counters.
+_CGROUP_V1_MEMSW_LIMIT = "/sys/fs/cgroup/memory/memory.memsw.limit_in_bytes"
+_CGROUP_V1_MEMSW_USAGE = "/sys/fs/cgroup/memory/memory.memsw.usage_in_bytes"
+_CGROUP_V1_MEM_LIMIT = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+_CGROUP_V1_MEM_USAGE = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+
+# C++ uses int64 for swap.max. All-digit values that overflow this are the
+# kernel's "unlimited" sentinel; the C++ monitor adds no swap for them.
+_INT64_MAX = 2**63 - 1
+
+
+def _read_cgroup_v2_swap_current() -> int:
+    """Return memory.swap.current as int, 0 on missing file or read error."""
+    if not os.path.exists(_CGROUP_V2_SWAP_CURRENT):
+        return 0
+    try:
+        with open(_CGROUP_V2_SWAP_CURRENT) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
+    """Return (swap_total_bytes, swap_used_bytes) using cgroup-scoped limits.
+
+    Mirrors what the C++ memory monitor in src/ray/common/memory_monitor_utils.cc
+    counts as swap. When a cgroup branch is taken, *every* returned field is
+    cgroup-scoped — host-level psutil values are never mixed into a cgroup
+    result, which would otherwise let "used" exceed "total".
+
+    Note: this reads from the **root** cgroup (/sys/fs/cgroup/memory.swap.*).
+    Under --enable-resource-isolation the raylet's user-slice OOM threshold
+    reads memory.swap.max from the **same root cgroup** (see
+    GetMemoryThreshold in memory_monitor_utils.cc), so the advertised swap
+    budget and the OOM threshold agree. Per-tick usage on the OOM side still
+    comes from the user leaf's memory.swap.current, which is per-slice exact.
+
+      - cgroup v2 with numeric memory.swap.max
+            -> (swap.max, swap.current if present else 0); matches C++ which
+               does not clamp by host swap
+      - cgroup v2 with non-numeric memory.swap.max (e.g. "max") or numeric
+        value that overflows int64
+            -> host psutil swap (total, used); "unlimited" means the practical
+               cap is whatever the host actually has. C++ mirrors this.
+      - cgroup v2 with memory.swap.max == 0 (swap disabled)
+            -> (0, 0); kernel says "no swap for this cgroup", distinct from
+               "unlimited". C++ guards swap.current read on swap_max_bytes > 0.
+      - cgroup v1 memsw with RAM limit and usage readable
+            -> (memsw_limit - mem_limit, max(0, memsw_usage - mem_usage))
+      - cgroup v1 memsw without a readable RAM limit
+            -> (0, 0); swap-only cannot be derived from memsw alone
+      - Cgroup file present but read/parse fails
+            -> (0, 0); never leak host swap into a cgroup-scoped result
+      - No cgroup swap files
+            -> psutil host swap (total, used)
+    """
+    if os.path.exists(_CGROUP_V2_SWAP_MAX):
+        try:
+            with open(_CGROUP_V2_SWAP_MAX) as f:
+                val = f.read().strip()
+            # Mirror C++'s std::isdigit (ASCII 0-9) — str.isnumeric() would
+            # accept Unicode numeric characters (e.g. Arabic-Indic digits) that
+            # the C++ parser rejects, causing the two layers to disagree.
+            if not (val and val.isascii() and val.isdigit()):
+                # "max" / unparseable: cgroup imposes no swap cap, so the
+                # practical limit is host swap. Used still comes from
+                # per-cgroup memory.swap.current — host SwapTotal-SwapFree
+                # would include other workloads' swap and inflate Ray's view.
+                host_total, _ = _get_host_swap_memory()
+                return host_total, _read_cgroup_v2_swap_current()
+            cgroup_swap_max = int(val)
+            if cgroup_swap_max > _INT64_MAX:
+                # Overflows int64; kernel's "unlimited" sentinel — same as "max".
+                host_total, _ = _get_host_swap_memory()
+                return host_total, _read_cgroup_v2_swap_current()
+            if cgroup_swap_max == 0:
+                # Swap disabled. Mirror C++, which guards the swap.current
+                # read on swap_max_bytes > 0 — don't leak a stale or
+                # transitioning swap.current value into used bytes.
+                return 0, 0
+        except (OSError, ValueError):
+            # Committed to cgroup v2; do not leak host swap on read/parse error.
+            # Swap accounting was requested, so warn rather than silently
+            # advertising zero swap when the cgroup files can't be read.
+            logger.warning(
+                "Failed to read cgroup v2 swap counters (%s); reporting no swap "
+                "even though swap accounting is enabled.",
+                _CGROUP_V2_SWAP_MAX,
+                exc_info=True,
+            )
+            return 0, 0
+        # Match C++: trust the cgroup limit as-is. Clamping by host swap
+        # would silently under-report when cgroup_swap_max > host.total.
+        return cgroup_swap_max, _read_cgroup_v2_swap_current()
+
+    if os.path.exists(_CGROUP_V1_MEMSW_LIMIT) and os.path.exists(
+        _CGROUP_V1_MEMSW_USAGE
+    ):
+        try:
+            with open(_CGROUP_V1_MEMSW_LIMIT) as f:
+                memsw_limit = int(f.read().strip())
+            with open(_CGROUP_V1_MEMSW_USAGE) as f:
+                memsw_usage = int(f.read().strip())
+            ram_limit = None
+            ram_usage = None
+            if os.path.exists(_CGROUP_V1_MEM_LIMIT):
+                with open(_CGROUP_V1_MEM_LIMIT) as f:
+                    ram_limit = int(f.read().strip())
+            if os.path.exists(_CGROUP_V1_MEM_USAGE):
+                with open(_CGROUP_V1_MEM_USAGE) as f:
+                    ram_usage = int(f.read().strip())
+            # memsw is RAM+swap combined; subtract the RAM share to derive
+            # swap-only. When memory.limit_in_bytes is missing, approximate
+            # with host RAM — the scheduler's auto-computed memory uses
+            # psutil host total as the RAM portion in the same case, so
+            # (ram_capacity + swap_total) lands on memsw_limit, matching
+            # what C++ GetCGroupMemoryBytes does in this branch (it uses
+            # memsw_limit as the combined total directly).
+            host_ram_total = psutil.virtual_memory().total
+            if ram_limit is None:
+                ram_limit = host_ram_total
+            # An unset memsw limit reads as a huge near-int64 sentinel
+            # (page-rounded, so it passes the > _INT64_MAX check). Cap the
+            # combined limit with host RAM+swap — the same NullableMin the
+            # C++ monitor applies to the memsw total — so the sentinel can't
+            # inflate the scheduler memory resource and (ram + swap) stays
+            # equal to the OOM monitor's total.
+            host_swap_total, _ = _get_host_swap_memory()
+            memsw_limit = min(memsw_limit, host_ram_total + host_swap_total)
+            swap_total = max(0, memsw_limit - ram_limit)
+            swap_used = 0 if ram_usage is None else max(0, memsw_usage - ram_usage)
+            return swap_total, swap_used
+        except (OSError, ValueError):
+            # Committed to cgroup v1; do not leak host swap on read/parse error.
+            # Swap accounting was requested, so warn rather than silently
+            # advertising zero swap when the memsw files can't be read.
+            logger.warning(
+                "Failed to read cgroup v1 memsw counters (%s); reporting no swap "
+                "even though swap accounting is enabled.",
+                _CGROUP_V1_MEMSW_LIMIT,
+                exc_info=True,
+            )
+            return 0, 0
+
+    # No cgroup swap files. Fall back to host-level psutil swap.
+    return _get_host_swap_memory()
+
+
+def _get_host_swap_memory() -> Tuple[int, int]:
+    """Return (host_swap_total, host_swap_used) from psutil.
+
+    Lets psutil's native exception (RuntimeError / NotImplementedError /
+    OSError on stripped containers or unsupported kernels) propagate.
+    Callers on the startup path want this to fail loudly so a misconfigured
+    `RAY_count_swap_in_memory_monitor=1` doesn't silently degrade to
+    "no swap"; periodic callers (e.g. the dashboard reporter) should wrap
+    this with their own log-and-continue policy.
+    """
+    host = psutil.swap_memory()
+    return host.total, host.used
 
 
 def binary_to_hex(identifier):

@@ -31,11 +31,15 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
+    ENV_RUNNER_STATE_SERVER_PULL_TIMER,
     ENV_TO_MODULE_CONNECTOR,
+    EPISODE_AGENT_RETURN_MEAN,
+    EPISODE_AGENT_STEPS,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
     EPISODE_LEN_MIN,
+    EPISODE_MODULE_RETURN_MEAN,
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
@@ -56,6 +60,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 torch, _ = try_import_torch()
@@ -141,6 +146,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             EpisodeID, List[MultiAgentEpisode]
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
+        # Set by the Algorithm when `config.use_env_runner_state_server=True`.
+        self._env_runner_state_server = None
 
         # Measures the time passed between returning from `sample()`
         # and receiving the next `sample()` request from the user.
@@ -206,6 +213,33 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 value=time.perf_counter() - self._time_after_sampling,
             )
 
+        # Pull-based weight sync: if a global `EnvRunnerStateServer` is configured, ask
+        # it for the latest state, transferring it only if it is newer than ours.
+        if self._env_runner_state_server is not None:
+            try:
+                # Single round-trip: the server returns the full state only if it is
+                # newer than ours (else None). Fall back to current weights if the
+                # server is unavailable.
+                with self.metrics.log_time(ENV_RUNNER_STATE_SERVER_PULL_TIMER):
+                    _server_state = ray.get(
+                        self._env_runner_state_server.pull_if_newer.remote(
+                            self._weights_seq_no
+                        )
+                    )
+            except ray.exceptions.RayError as e:
+                _server_state = None
+                # Logged once per EnvRunner to avoid spamming this per-`sample()` path.
+                if log_once("env_runner_state_server_pull_failed"):
+                    logger.warning(
+                        "EnvRunner failed to pull state from the "
+                        f"`EnvRunnerStateServer` ({type(e).__name__}). Falling back to "
+                        "the current weights/connector states; sampling continues and "
+                        "this should self-heal once the server is reachable again. This "
+                        "warning is logged only once per EnvRunner."
+                    )
+            if _server_state is not None:
+                self.set_state(_server_state)
+
         # Log current weight seq no.
         self.metrics.log_value(
             key=WEIGHTS_SEQ_NO,
@@ -230,6 +264,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Sample "num_timesteps" timesteps.
             if num_timesteps is not None:
+                assert num_timesteps >= 0
                 samples = self._sample(
                     num_timesteps=num_timesteps,
                     explore=explore,
@@ -238,6 +273,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             # Sample "num_episodes" episodes.
             elif num_episodes is not None:
+                assert num_episodes >= 0
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
@@ -461,18 +497,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                     old_episode_id = self._ongoing_episodes[env_index].id_
                     # Create a new episode object with no data in it.
-                    # Note: If we're about to break (reached target num_episodes), skip
-                    # the `on_episode_created` callback since this episode will never be
-                    # used (it gets discarded on the next sample() call).
-                    self._new_episode(
-                        env_index,
-                        self._ongoing_episodes,
-                        call_on_episode_created=(eps != num_episodes),
-                    )
+                    self._new_episode(env_index, self._ongoing_episodes)
                     # Register the mapping of new episode ID to old episode ID.
                     self._shared_data["vector_env_episodes_map"].update(
                         {old_episode_id: self._ongoing_episodes[env_index].id_}
                     )
+
+                    # Stop processing more envs if we've collected enough episodes.
+                    if num_episodes is not None and eps >= num_episodes:
+                        break
 
             # Env-to-module connector pass (cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration).
@@ -483,6 +516,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # environment `observations` and `infos` will always be returned for the
             # `MultiAgentEpisode.add_reset_step`.
             if self.module is not None:
+                kwargs = {
+                    Columns.OBS: observations,
+                    Columns.ACTIONS: actions,
+                    Columns.REWARDS: rewards,
+                    Columns.INFOS: infos,
+                    Columns.TERMINATEDS: terminateds,
+                    Columns.TRUNCATEDS: truncateds,
+                }
                 if done_episodes_to_run_env_to_module:
                     # Run the env-to-module connector pipeline for all done episodes.
                     # Note, this is needed to postprocess last-step data, e.g. if the
@@ -497,6 +538,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         rl_module=self.module,
                         shared_data=self._shared_data,
                         metrics=None,
+                        **kwargs,
                     )
                 self._cached_to_module = self._env_to_module(
                     episodes=self._ongoing_episodes,
@@ -506,6 +548,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=self._shared_data,
                     metrics=self.metrics,
                     metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+                    **kwargs,
                 )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
@@ -583,6 +626,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
+            kwargs = {
+                Columns.OBS: observations,
+                Columns.INFOS: infos,
+            }
             self._cached_to_module = self._env_to_module(
                 rl_module=self.module,
                 episodes=episodes,
@@ -590,6 +637,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 shared_data=shared_data,
                 metrics=self.metrics,
                 metrics_key_prefix=(ENV_TO_MODULE_CONNECTOR,),
+                **kwargs,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -774,8 +822,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def make_env(self):
-        # If an env already exists, try closing it first (to allow it to properly
-        # cleanup).
         if self.env is not None:
             try:
                 self.env.close()
@@ -840,29 +886,19 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # self.num_envs = 1
         # If required, check the created MultiAgentEnv instances.
         if not self.config.disable_env_checking:
-            try:
-                for env in self.env.envs:
-                    check_multiagent_environments(env.unwrapped)
-            except Exception as e:
-                logger.exception(e.args[0])
+            for env in self.env.envs:
+                check_multiagent_environments(env.unwrapped)
         # If not required, still check the type (must be `VectorMultiAgentEnv``).
         else:
-            try:
-                assert isinstance(self.env, VectorMultiAgentEnv)
-                assert isinstance(self.env.envs[0].unwrapped, MultiAgentEnv)
-            except AssertionError:
-                logger.exception(
-                    "When using the `MultiAgentEnvRunner`, the environment must "
-                    f"inherit from `ray.rllib.env.vector.vector_multi_agent_env."
-                    f"VectorMultiAgentEnv` (but yours is {self.env}) and the individual"
-                    " envs must inherit from `MultiAgentEnv` (but yours is "
-                    f"{self.env.envs[0].unwrapped})!"
-                )
-            except TypeError:
-                logger.exception(
-                    "When using the `MultiAgentEnvRunner`, the env must "
-                    "have a subscriptable `self.envs` attribute!"
-                )
+            assert isinstance(self.env, VectorMultiAgentEnv), (
+                "When using the `MultiAgentEnvRunner`, the environment must inherit "
+                f"from `VectorMultiAgentEnv` (but yours is {self.env})."
+            )
+            assert isinstance(self.env.envs[0].unwrapped, MultiAgentEnv), (
+                "When using the `MultiAgentEnvRunner`, the individual envs must "
+                f"inherit from `MultiAgentEnv` (but yours is "
+                f"{self.env.envs[0].unwrapped})."
+            )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
@@ -913,7 +949,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         if self.env is not None:
             self.env.close()
 
-    def _new_episode(self, env_index, episodes=None, call_on_episode_created=True):
+    def _new_episode(self, env_index, episodes=None):
         episodes = episodes if episodes is not None else self._ongoing_episodes
         episodes[env_index] = MultiAgentEpisode(
             observation_space={
@@ -926,8 +962,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
-        if call_on_episode_created:
-            self._make_on_episode_callback("on_episode_created", env_index, episodes)
+        self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
         self, which: str, idx: int, episodes: List[MultiAgentEpisode]
@@ -1022,10 +1057,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 **(
                     {
                         # Per-agent returns.
-                        "agent_episode_returns_mean": agents,
+                        EPISODE_AGENT_RETURN_MEAN: agents,
+                        # Per-agent steps.
+                        EPISODE_AGENT_STEPS: agent_steps,
                         # Per-RLModule returns.
-                        "module_episode_returns_mean": modules,
-                        "agent_steps": agent_steps,
+                        EPISODE_MODULE_RETURN_MEAN: modules,
                     }
                     if agents is not None
                     else {}

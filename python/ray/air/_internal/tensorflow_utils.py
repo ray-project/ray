@@ -21,7 +21,8 @@ def convert_ndarray_to_tf_tensor(
             tensor. If you specify ``dtype``, the dtype stored in the type spec is
             ignored.
 
-    Returns: A TensorFlow Tensor.
+    Returns:
+        A TensorFlow Tensor.
     """
     if dtype is None and type_spec is not None:
         dtype = type_spec.dtype
@@ -41,12 +42,13 @@ def convert_ndarray_batch_to_tf_tensor_batch(
     """Convert a NumPy ndarray batch to a TensorFlow Tensor batch.
 
     Args:
-        ndarray: A (dict of) NumPy ndarray(s) that we wish to convert to a TensorFlow
+        ndarrays: A (dict of) NumPy ndarray(s) that we wish to convert to a TensorFlow
             Tensor.
-        dtype: A (dict of) TensorFlow dtype(s) for the created tensor; if None, the
+        dtypes: A (dict of) TensorFlow dtype(s) for the created tensor; if None, the
             dtype will be inferred from the NumPy ndarray data.
 
-    Returns: A (dict of) TensorFlow Tensor(s).
+    Returns:
+        A (dict of) TensorFlow Tensor(s).
     """
     if isinstance(ndarrays, np.ndarray):
         # Single-tensor case.

@@ -58,13 +58,26 @@ class gRPCStatusError(RayServeException):
 class BackPressureError(RayServeException):
     """Raised when max_queued_requests is exceeded on a DeploymentHandle."""
 
-    def __init__(self, num_queued_requests: int, max_queued_requests: int):
-        super().__init__(num_queued_requests, max_queued_requests)
+    def __init__(
+        self,
+        num_queued_requests: int,
+        max_queued_requests: int,
+        status_code: int = 503,
+        retry_after_s: Optional[float] = None,
+    ):
+        # All arguments must be passed to the base constructor so they're
+        # preserved in `self.args` across pickling (e.g., when this error
+        # crosses process boundaries wrapped in a `RayTaskError`).
+        super().__init__(
+            num_queued_requests, max_queued_requests, status_code, retry_after_s
+        )
         self._message = (
             f"Request dropped due to backpressure "
             f"(num_queued_requests={num_queued_requests}, "
             f"max_queued_requests={max_queued_requests})."
         )
+        self._status_code = status_code
+        self._retry_after_s = retry_after_s
 
     def __str__(self) -> str:
         return self._message
@@ -72,6 +85,16 @@ class BackPressureError(RayServeException):
     @property
     def message(self) -> str:
         return self._message
+
+    @property
+    def status_code(self) -> int:
+        """HTTP status code returned for this rejection (503 or 429)."""
+        return self._status_code
+
+    @property
+    def retry_after_s(self) -> Optional[float]:
+        """HTTP `Retry-After` header value in seconds, or None for no header."""
+        return self._retry_after_s
 
 
 @PublicAPI(stability="alpha")
@@ -101,3 +124,15 @@ class DeploymentUnavailableError(RayServeException):
     @property
     def message(self) -> str:
         return f"{self._deployment_id} is unavailable because it failed to deploy."
+
+
+@PublicAPI(stability="alpha")
+class ReplicaUnavailableError(RayServeException):
+    """Raised when the selected replica is no longer available."""
+
+    def __init__(self, replica_id: str):
+        self._replica_id = replica_id
+
+    @property
+    def message(self) -> str:
+        return f"Replica {self._replica_id} is no longer available."

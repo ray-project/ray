@@ -1,3 +1,6 @@
+.. meta::
+   :description: Index of guides for launching Ray clusters on AWS, GCP, Azure, vSphere, and on-premises hardware.
+
 .. _launching-vm-clusters:
 
 Launching Ray Clusters on AWS, GCP, Azure, vSphere, On-Prem

@@ -94,8 +94,6 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
                                     OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED) ||
              meta_str ==
                  std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED) ||
-             meta_str == std::to_string(
-                             ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE) ||
              meta_str ==
                  std::to_string(
                      ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND) ||

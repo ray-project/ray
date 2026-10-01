@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
+from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
+
 # TODO(rickyx): We should eventually remove these imports
 # when we deprecate the v1 kuberay node provider.
 from ray.autoscaler._private.kuberay.node_provider import (
@@ -21,8 +23,13 @@ from ray.autoscaler._private.kuberay.node_provider import (
     _worker_group_max_replicas,
     _worker_group_num_of_hosts,
     _worker_group_replicas,
+    finalizer_patch,
+    idle_suspend_patch,
     worker_delete_patch,
     worker_replica_patch,
+)
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
+    KubeRayIPPRProvider,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
@@ -33,9 +40,17 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeKind,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
+
+IDLE_TERMINATION_OPTIONS_KEY = "idleTerminationOptions"
+IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY = "timeoutSeconds"
+IDLE_TERMINATION_OPTIONS_POLICY_KEY = "policy"
+IDLE_TERMINATION_OPTIONS_POLICY_DELETE = "Delete"
+IDLE_TERMINATION_OPTIONS_POLICY_SUSPEND = "Suspend"
+IDLE_TERMINATION_CLEANUP_FINALIZER = "ray.io/idle-termination-cleanup-finalizer"
+IDLE_SUSPEND_KEY = "idleSuspend"
 
 
 class KubeRayProvider(ICloudInstanceProvider):
@@ -51,14 +66,18 @@ class KubeRayProvider(ICloudInstanceProvider):
         self,
         cluster_name: str,
         provider_config: Dict[str, Any],
+        gcs_client: GcsClient,
         k8s_api_client: Optional[IKubernetesHttpApiClient] = None,
     ):
         """
+        Initializes a new KubeRayProvider.
+
         Args:
             cluster_name: The name of the RayCluster resource.
-            provider_config: The namespace of the RayCluster.
-            k8s_api_client: The client to the Kubernetes API server.
-                This could be used to mock the Kubernetes API server for testing.
+            provider_config: The configuration for the RayCluster.
+            gcs_client: The client to the GCS server. Will be used for resizing raylets.
+            k8s_api_client: The client to the Kubernetes
+                API server. This can be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
@@ -66,15 +85,28 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
         )
+        self._gcs_client = gcs_client
 
         # Below are states that are cached locally.
         self._requests = set()
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
+        # Below are states for idle-cluster termination tracking.
+        # Monotonic timestamp when no driver was first observed; None resets it.
+        self._no_driver_observed_since: Optional[float] = None
+        # Latest GCS job end time seen; a newer one means a driver came and went.
+        self._last_seen_job_end_time = 0
+        # idle-termination timeout (seconds) from the CR; None disables the feature.
+        self._idle_termination_timeout_seconds: Optional[float] = None
+        self._idle_termination_policy: Optional[str] = None
+
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
+        self._ippr_provider = KubeRayIPPRProvider(
+            gcs_client=gcs_client, k8s_api_client=self._k8s_api_client
+        )
 
     @dataclass
     class ScaleRequest:
@@ -111,6 +143,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
+        self._evaluate_idle_termination()
         return copy.deepcopy(dict(self._cached_instances))
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
@@ -118,61 +151,84 @@ class KubeRayProvider(ICloudInstanceProvider):
             # This request is already processed.
             logger.warning(f"Request {request_id} is already processed for: {ids}")
             return
-        self._requests.add(request_id)
+
         logger.info("Terminating worker pods: {}".format(ids))
-
-        scale_request = self._initialize_scale_request(
-            to_launch={}, to_delete_instances=ids
-        )
-        if scale_request.worker_groups_with_pending_deletes:
-            errors_msg = (
-                "There are workers to be deleted from: "
-                f"{scale_request.worker_groups_with_pending_deletes}. "
-                "Waiting for them to be deleted before adding new workers "
-                " to be deleted"
-            )
-            logger.warning(errors_msg)
-            self._add_terminate_errors(
-                ids,
-                request_id,
-                details=errors_msg,
-            )
-            return
-
+        scale_request = None
         try:
+            scale_request = self._initialize_scale_request(
+                to_launch={}, to_delete_instances=ids
+            )
+
+            if scale_request.worker_groups_with_pending_deletes:
+                errors_msg = (
+                    "There are workers to be deleted from: "
+                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    "Waiting for them to be deleted before adding new workers "
+                    " to be deleted"
+                )
+                logger.warning(errors_msg)
+                self._add_terminate_errors(
+                    ids,
+                    request_id,
+                    details=errors_msg,
+                )
+                return
+
             self._submit_scale_request(scale_request)
+            # Only add to processed requests if successful
+            self._requests.add(request_id)
+
         except Exception as e:
-            logger.exception(f"Error terminating nodes: {scale_request}")
+            logger.exception(f"Error terminating nodes: {scale_request or 'N/A'}")
             self._add_terminate_errors(ids, request_id, details=str(e), e=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
             # This request is already processed.
             return
-        self._requests.add(request_id)
 
-        scale_request = self._initialize_scale_request(
-            to_launch=shape, to_delete_instances=[]
-        )
-
-        if scale_request.worker_groups_with_pending_deletes:
-            error_msg = (
-                "There are workers to be deleted from: "
-                f"{scale_request.worker_groups_with_pending_deletes}. "
-                "Waiting for them to be deleted before creating new workers."
-            )
-            logger.warning(error_msg)
-            self._add_launch_errors(
-                shape,
-                request_id,
-                details=error_msg,
-            )
-            return
-
+        scale_request = None
         try:
-            self._submit_scale_request(scale_request)
+            scale_request = self._initialize_scale_request(
+                to_launch=shape, to_delete_instances=[]
+            )
+
+            if scale_request.worker_groups_with_pending_deletes:
+                error_msg = (
+                    "There are workers to be deleted from: "
+                    f"{scale_request.worker_groups_with_pending_deletes}. "
+                    "Waiting for them to be deleted before creating new workers."
+                )
+                logger.warning(error_msg)
+                self._add_launch_errors(
+                    shape,
+                    request_id,
+                    details=error_msg,
+                )
+                return
+
+            rejected_nodes = self._submit_scale_request(scale_request)
+
+            # This request_id has been handled (full, partial, or no-op). Cache it
+            # so a replay does not add to_launch again. Instances that did not get
+            # a slot are failed below so they do not retry with this same id.
+            self._requests.add(request_id)
+
+            nodes_to_reject = {}
+            for node_type, rejected in rejected_nodes.items():
+                requested = shape.get(node_type, 0)
+                if requested > 0 and rejected > 0:
+                    nodes_to_reject[node_type] = min(rejected, requested)
+
+            if nodes_to_reject:
+                self._add_launch_errors(
+                    nodes_to_reject,
+                    request_id,
+                    details="Launch capped by maxReplicas limit.",
+                )
+
         except Exception as e:
-            logger.exception(f"Error launching nodes: {scale_request}")
+            logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
             self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
     def poll_errors(self) -> List[CloudInstanceProviderError]:
@@ -182,6 +238,31 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
         return errors
+
+    def get_ippr_specs(self) -> IPPRSpecs:
+        """Return the cached, validated IPPR specs for the cluster.
+
+        The IPPR specs are refreshed during the provider's periodic sync with the
+        API server by reading the RayCluster annotation and validating it against
+        the IPPR schema.
+        """
+        return self._ippr_provider.get_ippr_specs()
+
+    def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
+        """Return the latest per-pod IPPR statuses keyed by pod name.
+
+        These statuses are refreshed from the current pod list during the provider's
+        periodic sync with the API server.
+        """
+        return self._ippr_provider.get_ippr_statuses()
+
+    def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
+        """Execute IPPR resize requests via the underlying IPPR provider.
+
+        Args:
+            resizes: The list of per-pod IPPR actions produced by the scheduler.
+        """
+        self._ippr_provider.do_ippr_requests(resizes)
 
     ############################
     # Private
@@ -290,7 +371,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def _submit_scale_request(
         self, scale_request: "KubeRayProvider.ScaleRequest"
-    ) -> None:
+    ) -> Dict[NodeType, int]:
         """Submits a scale request to the Kubernetes API server.
 
         This method will convert the scale request to patches and submit the patches
@@ -298,6 +379,10 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         Args:
             scale_request: The scale request.
+
+        Returns:
+            A dictionary mapping node types to the number of nodes that were rejected
+            due to the maxReplicas cap.
 
         Raises:
             Exception: An exception is raised if the Kubernetes API server returns an
@@ -308,6 +393,8 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         raycluster = self.ray_cluster
 
+        rejected_nodes = {}
+
         # Collect patches for replica counts.
         for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
@@ -316,12 +403,18 @@ class KubeRayProvider(ICloudInstanceProvider):
             # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
             target_replicas = num_workers // group_num_of_hosts
             # Cap the replica count to maxReplicas.
+            original_target_replicas = target_replicas
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
                     "Autoscaler attempted to create "
                     + "more than maxReplicas pods of type {}.".format(node_type)
                 )
                 target_replicas = group_max_replicas
+
+                # Calculate how many nodes were rejected due to the cap
+                rejected_replicas = original_target_replicas - target_replicas
+                if rejected_replicas > 0:
+                    rejected_nodes[node_type] = rejected_replicas * group_num_of_hosts
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
@@ -351,12 +444,11 @@ class KubeRayProvider(ICloudInstanceProvider):
             patch = worker_delete_patch(group_index, [])
             patch_payload.append(patch)
 
-        if len(patch_payload) == 0:
-            # No patch required.
-            return
+        if len(patch_payload) > 0:
+            logger.info(f"Submitting a scale request: {scale_request}")
+            self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
-        logger.info(f"Submitting a scale request: {scale_request}")
-        self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
+        return rejected_nodes
 
     def _add_launch_errors(
         self,
@@ -416,7 +508,22 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
+        self._refresh_idle_termination_config()
+        self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
+        self._ippr_provider.sync_with_raylets()
+
+    def _refresh_idle_termination_config(self) -> None:
+        """Reads IdleTerminationOptions from the RayCluster CR."""
+        opts = self._ray_cluster["spec"].get(IDLE_TERMINATION_OPTIONS_KEY, {})
+        secs = opts.get(IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY)
+        self._idle_termination_timeout_seconds = (
+            float(secs) if secs is not None else None
+        )
+        policy = opts.get(
+            IDLE_TERMINATION_OPTIONS_POLICY_KEY, IDLE_TERMINATION_OPTIONS_POLICY_SUSPEND
+        )
+        self._idle_termination_policy = policy
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -434,13 +541,19 @@ class KubeRayProvider(ICloudInstanceProvider):
         Gets the worker groups that have pending deletes and the worker groups that
         have finished deletes.
 
+        Args:
+            ray_cluster_spec: The RayCluster CR spec dict.
+            node_set: The set of currently known cloud instance IDs.
+
         Returns:
-            worker_groups_with_pending_deletes: The worker groups that have pending
-                deletes.
-            worker_groups_with_finished_deletes: The worker groups that have finished
-                deletes.
-            worker_to_delete_set: A set of Pods that are included in the workersToDelete
-                field of any worker group.
+            A tuple of:
+
+            - worker_groups_with_pending_deletes: The worker groups that have pending
+              deletes.
+            - worker_groups_with_finished_deletes: The worker groups that have finished
+              deletes.
+            - worker_to_delete_set: A set of Pods that are included in the
+              workersToDelete field of any worker group.
         """
 
         worker_groups_with_pending_deletes = set()
@@ -522,6 +635,9 @@ class KubeRayProvider(ICloudInstanceProvider):
             cloud_instance = self._cloud_instance_from_pod(pod)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
+
+        self._ippr_provider.sync_ippr_status_from_pods(pod_list["items"])
+
         return cloud_instances
 
     @staticmethod
@@ -531,6 +647,10 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         Args:
             pod: The pod resource dict.
+
+        Returns:
+            The CloudInstance representing the pod, or None if the pod is not a
+            tracked Ray node (e.g. a redis-cleanup pod).
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
@@ -583,6 +703,186 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _patch(self, remote_path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
+
+    def _evaluate_idle_termination(self) -> None:
+        """Apply idleTerminationOptions.policy once no driver held for the timeout.
+
+        Detached actors do not count as a driver.
+        """
+        # Feature disabled or a driver is attached: reset the anchor.
+        if self._idle_termination_timeout_seconds is None:
+            self._no_driver_observed_since = None
+            return
+        has_active_driver, latest_job_end_time = self._driver_status()
+        if has_active_driver:
+            self._no_driver_observed_since = None
+            return
+
+        # A driver finished since the last check: it was attached during the
+        # no-driver window, so restart the timer.
+        if latest_job_end_time > self._last_seen_job_end_time:
+            self._last_seen_job_end_time = latest_job_end_time
+            self._no_driver_observed_since = None
+
+        # Anchor on the first loop with no driver, then dispatch once the
+        # no-driver window reaches the timeout.
+        now = time.monotonic()
+        if self._no_driver_observed_since is None:
+            self._no_driver_observed_since = now
+        if (
+            now - self._no_driver_observed_since
+            < self._idle_termination_timeout_seconds
+        ):
+            return
+        self._apply_idle_termination_policy()
+
+    def _driver_status(self) -> Tuple[bool, int]:
+        """Returns whether a non-internal driver is alive and the latest job end time.
+
+        Fails closed: a failed GCS query reports a driver as present.
+        """
+        try:
+            jobs = self._gcs_client.get_all_job_info(
+                skip_submission_job_info_field=True,
+                skip_is_running_tasks_field=True,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to query GCS job table; treating as drivers attached."
+            )
+            return True, self._last_seen_job_end_time
+
+        has_active_driver = False
+        latest_job_end_time = 0
+        for job in jobs.values():
+            # Ray-internal drivers (e.g. the dashboard) are not user activity.
+            if job.config.ray_namespace.startswith(RAY_INTERNAL_NAMESPACE_PREFIX):
+                continue
+            if job.is_dead:
+                latest_job_end_time = max(latest_job_end_time, job.end_time)
+            else:
+                has_active_driver = True
+        return has_active_driver, latest_job_end_time
+
+    def _apply_idle_termination_policy(self) -> None:
+        """Applies the configured idle termination policy to the RayCluster CR."""
+        if self._ray_cluster.get("metadata", {}).get("deletionTimestamp"):
+            logger.info(f"RayCluster {self._cluster_name} is already being deleted.")
+            return
+        if self._idle_termination_policy == IDLE_TERMINATION_OPTIONS_POLICY_DELETE:
+            self._delete_idle_ray_cluster()
+        elif self._idle_termination_policy == IDLE_TERMINATION_OPTIONS_POLICY_SUSPEND:
+            self._suspend_idle_ray_cluster()
+        else:
+            logger.warning(
+                f"Unknown idleTerminationOptions.policy {self._idle_termination_policy!r}; taking no action."
+            )
+
+    def _delete_idle_ray_cluster(self) -> None:
+        """Deletes an idle RayCluster by first appending IDLE_TERMINATION_CLEANUP_FINALIZER.
+        Send a DELETE request to k8s apiserver if appending the finalizer is successful.
+        """
+        path = f"rayclusters/{self._cluster_name}"
+        # Append the IDLE_TERMINATION_CLEANUP_FINALIZER finalizer
+        # using a read-modify-write to preserve existing finalizers.
+        finalizers = self._ray_cluster.get("metadata", {}).get("finalizers", [])
+        if IDLE_TERMINATION_CLEANUP_FINALIZER not in finalizers:
+            resource_version = self._ray_cluster.get("metadata", {}).get(
+                "resourceVersion"
+            )
+            if resource_version is None:
+                logger.error(
+                    f"RayCluster {self._cluster_name} has no metadata.resourceVersion; "
+                    "skipping idle termination delete."
+                )
+                return
+
+            # metadata.finalizers is an array so we use a JSON Patch add-operation to append IDLE_TERMINATION_CLEANUP_FINALIZER
+            payload = finalizer_patch(
+                IDLE_TERMINATION_CLEANUP_FINALIZER, finalizers, resource_version
+            )
+            try:
+                patched_raycluster = self._k8s_api_client.patch(
+                    path, payload, content_type="application/json-patch+json"
+                )
+
+                if not isinstance(
+                    patched_raycluster, dict
+                ) or IDLE_TERMINATION_CLEANUP_FINALIZER not in patched_raycluster.get(
+                    "metadata", {}
+                ).get(
+                    "finalizers", []
+                ):
+                    logger.error(
+                        f"Unable to persist {IDLE_TERMINATION_CLEANUP_FINALIZER} to metadata.finalizers for {self._cluster_name}"
+                    )
+                    return
+
+            except requests.HTTPError as e:
+                if e.response.status_code == 422:
+                    logger.warning(
+                        f"Patch adding {IDLE_TERMINATION_CLEANUP_FINALIZER} to RayCluster {self._cluster_name} was rejected; "
+                        f"will retry adding {IDLE_TERMINATION_CLEANUP_FINALIZER} in the next reconcile cycle."
+                    )
+                else:
+                    logger.exception(
+                        f"Failed to add {IDLE_TERMINATION_CLEANUP_FINALIZER} finalizer to {self._cluster_name}"
+                    )
+                return
+            except Exception:
+                logger.exception(
+                    f"Failed to add {IDLE_TERMINATION_CLEANUP_FINALIZER} finalizer to {self._cluster_name}"
+                )
+                return
+
+        try:
+            # DELETE the idle RayCluster.
+            self._k8s_api_client.delete(path)
+            logger.info(f"Deleted {self._cluster_name}")
+        except requests.HTTPError as e:
+            if e.response.status_code == 404:
+                # HTTP status code 404 is treated as a successful delete.
+                logger.info(f"{self._cluster_name} was already deleted.")
+            else:
+                logger.exception(f"Failed to delete {self._cluster_name}")
+        except Exception:
+            logger.exception(f"Failed to delete {self._cluster_name}")
+
+    def _suspend_idle_ray_cluster(self) -> None:
+        """
+        Merge-Patch spec.idleSuspend=true for an idle RayCluster
+        """
+        path = f"rayclusters/{self._cluster_name}"
+        spec_idle_suspend = self._ray_cluster.get("spec", {}).get(IDLE_SUSPEND_KEY)
+        if spec_idle_suspend:
+            logger.info(f"spec.idleSuspend is already true in {self._cluster_name}")
+            return
+
+        # Merge-patch spec.idleSuspend=true when the policy is Suspend.
+        payload = idle_suspend_patch(True)
+
+        try:
+            patched_raycluster = self._k8s_api_client.patch(
+                path,
+                payload,
+                content_type="application/merge-patch+json",
+            )
+            if (
+                not isinstance(patched_raycluster, dict)
+                or patched_raycluster.get("spec", {}).get(IDLE_SUSPEND_KEY) is not True
+            ):
+                logger.error(
+                    f"Unable to persist {IDLE_SUSPEND_KEY}=true for {self._cluster_name}"
+                )
+                return
+
+        except Exception:
+            logger.exception(
+                f"Failed to MERGE-PATCH {IDLE_SUSPEND_KEY}=true on RayCluster {self._cluster_name}",
+            )
+            return
+
+        logger.info(f"Set {IDLE_SUSPEND_KEY}=true on RayCluster {self._cluster_name}")
 
     def _get_head_pod_resource_version(self) -> str:
         """

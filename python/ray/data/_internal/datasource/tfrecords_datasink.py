@@ -4,6 +4,9 @@ from typing import TYPE_CHECKING, Dict, Iterable, Optional, Union
 import numpy as np
 
 from .tfrecords_datasource import _get_single_true_type
+from ray.data._internal.tensor_extensions.arrow import (
+    get_arrow_extension_tensor_types,
+)
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
@@ -56,25 +59,30 @@ def _convert_arrow_table_to_examples(
         for schema_feature in tf_schema.feature:
             schema_dict[schema_feature.name] = schema_feature.type
 
-    # Serialize each row[i] of the block to a tf.train.Example and yield it.
-    for i in range(arrow_table.num_rows):
-        # First, convert row[i] to a dictionary.
-        features: Dict[str, "tf.train.Feature"] = {}
-        for name in arrow_table.column_names:
-            if tf_schema is not None and name not in schema_dict:
+    column_names = arrow_table.column_names
+
+    # Validate schema once up-front rather than per row.
+    if tf_schema is not None:
+        for name in column_names:
+            if name not in schema_dict:
                 raise ValueError(
                     f"Found extra unexpected feature {name} "
                     f"not in specified schema: {tf_schema}"
                 )
-            schema_feature_type = schema_dict.get(name)
-            features[name] = _value_to_feature(
-                arrow_table[name][i],
-                schema_feature_type,
-            )
 
-        # Convert the dictionary to an Example proto.
+    # Hoist per-column lookups out of the row loop. Iterating columns in
+    # lockstep with zip uses ChunkedArray.__iter__ (a C-level loop) instead
+    # of per-row __getitem__ calls, which avoids Python-side method dispatch
+    # on every element.
+    columns = arrow_table.columns
+    schema_feature_types = [schema_dict.get(name) for name in column_names]
+
+    for row_values in zip(*columns):
+        features: Dict[str, "tf.train.Feature"] = {
+            name: _value_to_feature(value, sft)
+            for name, value, sft in zip(column_names, row_values, schema_feature_types)
+        }
         proto = tf.train.Example(features=tf.train.Features(feature=features))
-
         yield proto
 
 
@@ -85,11 +93,22 @@ def _value_to_feature(
     import pyarrow as pa
     import tensorflow as tf
 
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in
         # determining the output feature's data type.
         value_type = value.type.value_type
         value = value.as_py()
+    elif isinstance(value.type, get_arrow_extension_tensor_types()):
+        value_type = value.type
+        py_val = value.as_py()
+        if _is_native_tensor_type(value_type):
+            # PyArrow's native FixedShapeTensorType returns a flat list from
+            # as_py(), so use to_numpy()
+            value = value.to_numpy()
+        else:
+            value = py_val
     else:
         value_type = value.type
         value = value.as_py()
@@ -103,6 +122,7 @@ def _value_to_feature(
         "string": pa.types.is_string(value_type),
         "float": pa.types.is_floating(value_type),
         "int": pa.types.is_integer(value_type),
+        "tensor": isinstance(value_type, get_arrow_extension_tensor_types()),
     }
     assert sum(bool(value) for value in underlying_value_type.values()) <= 1
 
@@ -115,12 +135,18 @@ def _value_to_feature(
                 "the tensorflow-metadata package."
             )
         specified_feature_type = {
+            # We default anything that is not a string or tensor to be
+            # a byte array, mostly to deal with the case when we have
+            # null input, but we specify a schema.
             "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
-            and not underlying_value_type["string"],
+            and not underlying_value_type["string"]
+            and not underlying_value_type["tensor"],
             "string": schema_feature_type == schema_pb2.FeatureType.BYTES
             and underlying_value_type["string"],
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
             "int": schema_feature_type == schema_pb2.FeatureType.INT,
+            "tensor": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and underlying_value_type["tensor"],
         }
 
         und_type = _get_single_true_type(underlying_value_type)
@@ -141,6 +167,12 @@ def _value_to_feature(
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if underlying_value_type["string"]:
         value = [v.encode() for v in value]  # casting to bytes
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
+    if underlying_value_type["tensor"]:
+        if value is None:
+            value = []
+        else:
+            value = [tf.io.serialize_tensor(value).numpy()]
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(

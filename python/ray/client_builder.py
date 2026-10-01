@@ -14,6 +14,7 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.utils import get_ray_client_dependency_error, split_address
 from ray._private.worker import BaseContext, init as ray_driver_init
 from ray.job_config import JobConfig
@@ -113,21 +114,27 @@ class ClientBuilder:
         self._deprecation_warn_enabled = True
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
-        """
-        Set an environment for the session.
+        """Set an environment for the session.
+
         Args:
-            env (Dict[st, Any]): A runtime environment to use for this
+            env: A runtime environment to use for this
                 connection. See :ref:`runtime-environments` for what values are
                 accepted in this dict.
+
+        Returns:
+            This ``ClientBuilder`` instance for chaining.
         """
         self._job_config.set_runtime_env(env)
         return self
 
     def namespace(self, namespace: str) -> "ClientBuilder":
-        """
-        Sets the namespace for the session.
+        """Sets the namespace for the session.
+
         Args:
             namespace: Namespace to use.
+
+        Returns:
+            This ``ClientBuilder`` instance for chaining.
         """
         self._job_config.set_ray_namespace(namespace)
         return self
@@ -217,6 +224,20 @@ class ClientBuilder:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
 
+        # Put logging_config on JobConfig so remote workers receive it via the job config
+        if kwargs.get("logging_config") is not None:
+            lc_raw = kwargs.pop("logging_config")
+            if isinstance(lc_raw, dict):
+                lc = LoggingConfig.from_dict(lc_raw)
+            elif isinstance(lc_raw, LoggingConfig):
+                lc = lc_raw
+            else:
+                raise TypeError(
+                    "logging_config must be a dict or LoggingConfig, "
+                    f"got {type(lc_raw)}"
+                )
+            self._job_config.set_py_logging_config(lc)
+
         if kwargs.get("allow_multiple") is True:
             self._allow_multiple_connections = True
             del kwargs["allow_multiple"]
@@ -239,8 +260,7 @@ class ClientBuilder:
             self._remote_init_kwargs = kwargs
             unknown = ", ".join(kwargs)
             logger.info(
-                "Passing the following kwargs to ray.init() "
-                f"on the server: {unknown}"
+                f"Passing the following kwargs to ray.init() on the server: {unknown}"
             )
         return self
 
@@ -326,10 +346,21 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address == "local":
         return _LocalClientBuilder("local")
     if address is None:
-        # NOTE: This is not placed in `Node::get_temp_dir_path`, because
-        # this file is accessed before the `Node` object is created.
         address = ray._private.services.canonicalize_bootstrap_address(address)
         return _LocalClientBuilder(address)
+
+    # Check for HTTP/HTTPS address before attempting module import
+    if address and address.startswith(("http://", "https://")):
+        raise ValueError(
+            f"Invalid Ray address: {address!r}. "
+            f"It looks like you set RAY_ADDRESS to an HTTP address "
+            f"(e.g. the API server address). "
+            f"To fix this, either:\n"
+            f"  1. Unset RAY_ADDRESS if you are running from a Ray node, or\n"
+            f"  2. Set RAY_ADDRESS to the GCS address instead "
+            f"(e.g. <head_node_ip>:6379)."
+        )
+
     module_string, inner_address = _split_address(address)
     try:
         module = importlib.import_module(module_string)
@@ -338,9 +369,8 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             f"Module: {module_string} does not exist.\n"
             f"This module was parsed from Address: {address}"
         ) from e
-    assert "ClientBuilder" in dir(
-        module
-    ), f"Module: {module_string} does not have ClientBuilder."
+    if "ClientBuilder" not in dir(module):
+        raise RuntimeError(f"Module: {module_string} does not have ClientBuilder.")
     return module.ClientBuilder(inner_address)
 
 

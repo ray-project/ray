@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Train how-to guides: data loading, accelerators, storage, monitoring, checkpointing, fault tolerance, elastic training, and experiment tracking.
+
 .. _train-user-guides:
 
 Ray Train User Guides
@@ -7,8 +10,7 @@ Ray Train User Guides
     :maxdepth: 2
 
     user-guides/data-loading-preprocessing
-    user-guides/using-gpus
-    user-guides/local_mode
+    user-guides/using-accelerators
     user-guides/persistent-storage
     user-guides/monitoring-logging
     user-guides/checkpoints
@@ -16,7 +18,8 @@ Ray Train User Guides
     user-guides/experiment-tracking
     user-guides/results
     user-guides/fault-tolerance
+    user-guides/elastic-training
     user-guides/monitor-your-application
+    user-guides/local_mode
     user-guides/reproducibility
     Hyperparameter Optimization <user-guides/hyperparameter-optimization>
-    user-guides/scaling-collation-functions

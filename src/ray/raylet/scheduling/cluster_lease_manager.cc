@@ -32,8 +32,7 @@ ClusterLeaseManager::ClusterLeaseManager(
     ClusterResourceScheduler &cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayLease &)> announce_infeasible_lease,
-    LocalLeaseManagerInterface &local_lease_manager,
-    std::function<int64_t(void)> get_time_ms)
+    LocalLeaseManagerInterface &local_lease_manager)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(std::move(get_node_info)),
@@ -41,8 +40,7 @@ ClusterLeaseManager::ClusterLeaseManager(
       local_lease_manager_(local_lease_manager),
       scheduler_resource_reporter_(
           leases_to_schedule_, infeasible_leases_, local_lease_manager_),
-      internal_stats_(*this, local_lease_manager_),
-      get_time_ms_(std::move(get_time_ms)) {}
+      internal_stats_(*this, local_lease_manager_) {}
 
 void ClusterLeaseManager::QueueAndScheduleLease(
     RayLease lease,
@@ -155,8 +153,9 @@ bool ClusterLeaseManager::IsWorkWithResourceShape(
     const std::vector<ResourceSet> &target_resource_shapes) {
   SchedulingClass scheduling_class =
       work->lease_.GetLeaseSpecification().GetSchedulingClass();
-  ResourceSet resource_set =
-      SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class).resource_set;
+  const auto &sched_cls_desc =
+      SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
+  const auto &resource_set = sched_cls_desc->resource_set;
   for (const auto &target_resource_shape : target_resource_shapes) {
     if (resource_set == target_resource_shape) {
       return true;

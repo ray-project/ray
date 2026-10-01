@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Type, Union
+from typing import Optional, Type, Union
 
 from typing_extensions import Self
 
@@ -39,7 +39,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
     RLModuleSpecType,
 )
-from ray.tune.logger import Logger
 
 
 class MARWILConfig(AlgorithmConfig):
@@ -336,7 +335,7 @@ class MARWILConfig(AlgorithmConfig):
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
-        logger_creator: Optional[Callable[[], Logger]] = None,
+        **kwargs,
     ) -> "Algorithm":
         if not self._set_off_policy_estimation_methods:
             deprecation_warning(
@@ -347,7 +346,7 @@ class MARWILConfig(AlgorithmConfig):
                 ".evaluation(off_policy_estimation_methods=...)",
                 error=False,
             )
-        return super().build(env, logger_creator)
+        return super().build(env, **kwargs)
 
     @override(AlgorithmConfig)
     def build_learner_connector(

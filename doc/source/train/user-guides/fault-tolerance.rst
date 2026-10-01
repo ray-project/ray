@@ -1,3 +1,6 @@
+.. meta::
+   :description: Handle worker, node, and driver failures in Ray Train, including which checkpoint is restored and how node preemption is absorbed.
+
 .. _train-fault-tolerance:
 
 Handling Failures and Node Preemption

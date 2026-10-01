@@ -77,33 +77,53 @@ class ImageObjectioner:
 class DataDownloader:
     def __init__(self):
 
-        # For mutiple process scheduled in same node, torch.hub.load doesn't
-        # handle the multi process to dowloand module well. So this is to make sure
-        # there is only one replica to download the package
-        if os.path.exists("/home/ray/.cache/torch/") is False:
-            self.utils = torch.hub.load(
-                "NVIDIA/DeepLearningExamples:torchhub",
-                "nvidia_convnets_processing_utils",
-            )
-            with open("/home/ray/.cache/torch/success", "w") as _:
-                pass
+        # For multiple process scheduled on the same node, torch.hub.load doesn't
+        # handle the multi-process download well. This logic ensures only one
+        # replica downloads the package.
+        torch_cache_dir = os.path.dirname(torch.hub.get_dir())
+        lock_dir = os.path.join(torch_cache_dir, "serve_lock_dir")
+        success_file = os.path.join(lock_dir, "success")
 
-        else:
-            counter = 3
-            while counter:
-                print("waiting for torch hub NVIDIA package download...")
-                time.sleep(20)
-                if os.path.exists("/home/ray/.cache/torch/success"):
-                    self.utils = torch.hub.load(
-                        "NVIDIA/DeepLearningExamples:torchhub",
-                        "nvidia_convnets_processing_utils",
-                    )
+        os.makedirs(os.path.dirname(lock_dir), exist_ok=True)
+
+        try:
+            # Atomic operation acts as a lock.
+            os.mkdir(lock_dir)
+
+            # This replica is the first one, so it's responsible for downloading.
+            print("Downloading torch hub NVIDIA package...")
+            torch.hub.load(
+                repo_or_dir="NVIDIA/DeepLearningExamples:torchhub",
+                model="nvidia_convnets_processing_utils",
+                trust_repo=True,
+                force_reload=False,
+            )
+            with open(success_file, "w") as _:
+                pass
+            print("Download complete.")
+
+        except FileExistsError:
+            # Other replicas wait until downloaded.
+            print("Waiting for torch hub NVIDIA package download...")
+            counter = 10
+            while counter > 0:
+                if os.path.exists(success_file):
                     break
+                time.sleep(20)
                 counter -= 1
-            if counter == 0:
+
+            if not os.path.exists(success_file):
                 raise Exception(
-                    "Failed to load module nvidia_convnets_processing_utils"
+                    "Failed to load module 'nvidia_convnets_processing_utils' after waiting."
                 )
+
+        self.utils = torch.hub.load(
+            repo_or_dir="NVIDIA/DeepLearningExamples:torchhub",
+            model="nvidia_convnets_processing_utils",
+            trust_repo=True,
+            force_reload=False,
+        )
+        print("'nvidia_convnets_processing_utils' loaded")
 
     def __call__(self, uris: List[str]):
         return [self.utils.prepare_input_from_uri(uri) for uri in uris]

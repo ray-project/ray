@@ -7,12 +7,12 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
-    raw_metric_timeseries,
     run_string_as_driver,
+    wait_for_condition,
 )
+from ray._private.test_utils import raw_metric_timeseries
 from ray._private.worker import RayContext
 from ray.util.state import list_actors
 

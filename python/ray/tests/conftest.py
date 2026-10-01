@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import platform
+import secrets
 import shutil
 import socket
 import subprocess
@@ -44,6 +45,7 @@ from ray._private.test_utils import (
     redis_replicas,
     redis_sentinel_replicas,
     reset_autoscaler_v2_enabled_cache,
+    rocksdb_gcs_test_enabled,
     setup_tls,
     start_redis_instance,
     start_redis_sentinel_instance,
@@ -70,7 +72,10 @@ def pre_envs(monkeypatch):
 
 
 def wait_for_redis_to_start(
-    redis_ip_address: str, redis_port: bool, password=None, username=None
+    redis_ip_address: str,
+    redis_port: int,
+    password: Optional[str] = None,
+    username: Optional[str] = None,
 ):
     """Wait for a Redis server to be available.
 
@@ -80,8 +85,8 @@ def wait_for_redis_to_start(
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        username: The username of the Redis server.
         password: The password of the Redis server.
+        username: The username of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -291,7 +296,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
 
 
 def start_redis_with_sentinel(db_dir):
-    temp_dir = ray._common.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_default_ray_temp_dir()
 
     redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
@@ -328,7 +333,7 @@ def start_redis(db_dir):
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            temp_dir = ray._common.utils.get_ray_temp_dir()
+            temp_dir = ray._common.utils.get_default_ray_temp_dir()
             port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
                 node_id = None
@@ -390,7 +395,9 @@ def start_redis(db_dir):
                 proc.process.kill()
 
             if retry_num > 5:
-                raise RuntimeError("Failed to start redis after {retry_num} attempts.")
+                raise RuntimeError(
+                    f"Failed to start Redis on port {port} after {retry_num} attempts."
+                )
             print(
                 "Retry to start redis because the process failed to "
                 + f"listen to the port({port}), retry num:{retry_num}."
@@ -416,8 +423,6 @@ def kill_all_redis_server():
           when the python Subprocess tracking the
           underlying process is garbage collected.
     """
-    import psutil
-
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
@@ -466,10 +471,41 @@ def _setup_redis(request, with_sentinel=False):
         kill_processes(processes)
 
 
+@contextmanager
+def _setup_rocksdb_gcs(request):
+    """Configure the env so a Ray cluster started inside the fixture uses
+    the RocksDB GCS backend (REP-64). The DB lives in a tempdir scoped
+    to the fixture; nothing persists beyond the test.
+    """
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        old_storage = os.environ.get("RAY_gcs_storage")
+        old_path = os.environ.get("RAY_gcs_storage_path")
+        os.environ["RAY_gcs_storage"] = "rocksdb"
+        os.environ["RAY_gcs_storage_path"] = tmpdirname
+        try:
+            yield
+        finally:
+            if old_storage is not None:
+                os.environ["RAY_gcs_storage"] = old_storage
+            else:
+                del os.environ["RAY_gcs_storage"]
+            if old_path is not None:
+                os.environ["RAY_gcs_storage_path"] = old_path
+            else:
+                del os.environ["RAY_gcs_storage_path"]
+
+
 @pytest.fixture
 def maybe_setup_external_redis(request):
+    # Dispatches the configured GCS storage backend based on CI env
+    # vars. Despite the historical name, this fixture also handles the
+    # RocksDB GCS backend (REP-64) so existing cluster fixtures pick up
+    # rocksdb-mode behavior automatically when TEST_GCS_ROCKSDB=1.
     if external_redis_test_enabled():
         with _setup_redis(request):
+            yield
+    elif rocksdb_gcs_test_enabled():
+        with _setup_rocksdb_gcs(request):
             yield
     else:
         yield
@@ -479,6 +515,9 @@ def maybe_setup_external_redis(request):
 def maybe_setup_external_redis_shared(request):
     if external_redis_test_enabled():
         with _setup_redis(request):
+            yield
+    elif rocksdb_gcs_test_enabled():
+        with _setup_rocksdb_gcs(request):
             yield
     else:
         yield
@@ -569,6 +608,17 @@ def ray_start_with_dashboard(request, maybe_setup_external_redis):
 
 
 @pytest.fixture
+def ray_start_with_dashboard_and_proxy(request, httpserver, maybe_setup_external_redis):
+    hsurl = httpserver.url_for("/")
+
+    param = getattr(request, "param", {})
+    if param.get("num_cpus") is None:
+        param["num_cpus"] = 1
+    with _ray_start(include_dashboard=True, proxy_server_url=hsurl, **param) as info:
+        yield info
+
+
+@pytest.fixture
 def make_sure_dashboard_http_port_unused():
     """Make sure the dashboard agent http port is unused."""
     for process in psutil.process_iter():
@@ -626,13 +676,6 @@ def ray_start_regular_shared(request):
 def ray_start_regular_shared_2_cpus(request):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=2, **param) as res:
-        yield res
-
-
-@pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
-def ray_start_shared_local_modes(request):
-    param = getattr(request, "param", {})
-    with _ray_start(**param) as res:
         yield res
 
 
@@ -749,10 +792,12 @@ def ray_start_cluster_head_with_env_vars(
     request, maybe_setup_external_redis, monkeypatch
 ):
     param = getattr(request, "param", {})
-    env_vars = param.pop("env_vars", {})
+    env_vars = param.get("env_vars", {})
+    # Create a copy of param without env_vars to pass to _ray_start_cluster
+    cluster_param = {k: v for k, v in param.items() if k != "env_vars"}
     for k, v in env_vars.items():
         monkeypatch.setenv(k, v)
-    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+    with _ray_start_cluster(do_init=True, num_nodes=1, **cluster_param) as res:
         yield res
 
 
@@ -782,6 +827,17 @@ def ray_start_object_store_memory(request, maybe_setup_external_redis):
 @pytest.fixture
 def call_ray_start(request):
     with call_ray_start_context(request) as address:
+        yield address
+
+
+# This fixture will start an httpserver and use it as the proxy-server-url parameters
+@pytest.fixture
+def call_ray_start_context_with_proxy_server(httpserver):
+    hsurl = httpserver.url_for("/")
+    cmd = f"ray start --head --num-cpus=1 --proxy-server-url={hsurl} --port 0 --min-worker-port=0 --max-worker-port=0"
+    tempObject = type("Temp", (), {"param": cmd})
+
+    with call_ray_start_context(tempObject) as address:
         yield address
 
 
@@ -1134,7 +1190,9 @@ def _ray_start_chaos_cluster(request):
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed.remote())
+        killed = {
+            node_id for node_id, _, _ in ray.get(node_killer.get_killed_nodes.remote())
+        }
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
@@ -1537,11 +1595,95 @@ def cleanup_auth_token_env():
         reset_auth_token_state()
 
 
+@pytest.fixture(autouse=False)
+def clean_token_sources(cleanup_auth_token_env):
+    """Ensure authentication-related state is clean around each test."""
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    yield
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+    reset_auth_token_state()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_token_auth_state(tmp_path_factory):
+    """Isolate token-auth state across bazel targets, which share HOME.
+
+    Point the home dir at a per-session temp dir so a default-on cluster's
+    ``~/.ray/auth_token`` is unique to this target. Both Python's ``Path.home()``
+    and the C++ token loader resolve home from ``HOME`` on POSIX and
+    ``USERPROFILE`` on Windows, so redirect both to keep them in sync
+    cross-platform. Bazel runs targets in parallel under a shared home, so
+    mutating the real ``~/.ray/auth_token`` would race across targets and could
+    delete a developer's own token; redirecting the home per session sidesteps
+    that entirely.
+    """
+    isolated_home = str(tmp_path_factory.mktemp("ray_auth_home"))
+    home_vars = ("HOME", "USERPROFILE")
+    original = {var: os.environ.get(var) for var in home_vars}
+    for var in home_vars:
+        os.environ[var] = isolated_home
+    reset_auth_token_state()
+    try:
+        yield
+    finally:
+        # Turn auth off before the home changes: a still-draining Ray thread
+        # reloads the token on its next RPC and CHECK-fails if it's gone.
+        os.environ.pop("RAY_AUTH_MODE", None)
+        reset_auth_token_state()
+        for var, value in original.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
+        reset_auth_token_state()
+
+
+_TOKEN_AUTH_ENV_VARS = ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+
+
+@pytest.fixture(scope="session")
+def _token_auth_env_baseline():
+    """Snapshot the auth env vars once, so per-test restore has a clean target."""
+    return {k: os.environ.get(k) for k in _TOKEN_AUTH_ENV_VARS}
+
+
+@pytest.fixture(autouse=True)
+def _restore_token_auth_env(_token_auth_env_baseline):
+    """Restore the auth env vars to the session baseline after each test."""
+    yield
+    if ray.is_initialized():
+        return
+    for key, value in _token_auth_env_baseline.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    # Same ordering constraint as ``_isolate_token_auth_state``: auth has to be
+    # off in this process before the token file goes away.
+    reset_auth_token_state()
+
+    default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
+    if os.path.exists(default_token):
+        os.remove(default_token)
+
+
 @pytest.fixture
 def setup_cluster_with_token_auth(cleanup_auth_token_env):
     """Spin up a Ray cluster with token authentication enabled."""
 
-    test_token = "test_token_12345678901234567890123456789012"
+    test_token = secrets.token_hex(32)
     set_auth_mode("token")
     set_env_auth_token(test_token)
     reset_auth_token_state()

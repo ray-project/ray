@@ -1,3 +1,6 @@
+.. meta::
+   :description: Control Tune parallelism and resources: request GPUs per trial, run distributed training inside trials, and limit trial concurrency.
+
 .. _tune-parallelism:
 
 A Guide To Parallelism and Resources for Ray Tune
@@ -53,7 +56,7 @@ object. In either case, Ray Tune will try to start a placement group for each tr
     # Custom resource allocation via lambda functions are also supported.
     # If you want to allocate gpu resources to trials based on a setting in your config
     trainable_with_resources = tune.with_resources(trainable,
-        resources=lambda spec: {"gpu": 1} if spec.config.use_gpu else {"gpu": 0})
+        resources=lambda config: {"gpu": 1} if config["use_gpu"] else {"gpu": 0})
     tuner = tune.Tuner(
         trainable_with_resources,
         tune_config=tune.TuneConfig(num_samples=10)

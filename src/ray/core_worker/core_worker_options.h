@@ -27,7 +27,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 namespace core {
@@ -78,6 +78,8 @@ struct CoreWorkerOptions {
       // The max number of unconsumed objects where a generator
       // can run without a pause.
       int64_t generator_backpressure_num_objects,
+      // The number of ObjectRefs produced by each streaming generator yield.
+      int64_t num_objects_per_yield,
       const std::optional<std::string> &tensor_transport)>;
 
   CoreWorkerOptions()
@@ -99,7 +101,6 @@ struct CoreWorkerOptions {
         kill_main(nullptr),
         cancel_async_actor_task(nullptr),
         actor_shutdown_callback(nullptr),
-        is_local_mode(false),
         metrics_agent_port(-1),
         runtime_env_hash(0),
         cluster_id(ClusterID::Nil()),
@@ -175,8 +176,6 @@ struct CoreWorkerOptions {
   std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
   /// Callback to shutdown actor instance before shutdown.
   std::function<void()> actor_shutdown_callback;
-  /// Is local mode being used.
-  bool is_local_mode;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
   /// The port number of a metrics agent that imports metrics from core workers.

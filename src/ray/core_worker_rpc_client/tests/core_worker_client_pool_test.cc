@@ -105,12 +105,16 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
               (const NodeID &, bool),
               (const, override));
 
-  MOCK_METHOD(void,
-              AsyncGetAll,
-              (const rpc::MultiItemCallback<rpc::GcsNodeInfo> &,
-               int64_t,
-               const std::vector<NodeID> &),
-              (override));
+  MOCK_METHOD(
+      void,
+      AsyncGetAll,
+      ((const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+            &callback),
+       int64_t timeout_ms,
+       const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
+       const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
+       const std::optional<int64_t> &limit),
+      (const, override));
 
   MOCK_METHOD(void,
               AsyncGetAllNodeAddressAndLiveness,
@@ -321,8 +325,3 @@ INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,
 
 }  // namespace rpc
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

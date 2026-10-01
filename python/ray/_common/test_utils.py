@@ -7,13 +7,18 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 
 import asyncio
 import inspect
+import logging
 import os
+import subprocess
+import sys
 import threading
 import time
 import traceback
 import uuid
+from collections import defaultdict
 from collections.abc import Awaitable
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 
@@ -21,6 +26,48 @@ import ray
 import ray._common.usage.usage_lib as ray_usage_lib
 import ray._private.utils
 from ray._common.network_utils import build_address
+from ray._common.utils import decode
+
+logger = logging.getLogger(__name__)
+
+# Default upper bound on how long a driver launched by run_string_as_driver may
+# run. Without a bound, a driver that hangs on shutdown blocks the calling test
+# until the test runner's own timeout fires, which turns a single failure into a
+# whole-target timeout and burns every retry attempt.
+DEFAULT_DRIVER_TIMEOUT_SECONDS = 300
+
+# Seconds to wait for a driver's output after it has been SIGKILLed. A process
+# parked in uninterruptible sleep does not die on SIGKILL, so this wait must be
+# bounded too or the timeout path hangs exactly like the path it replaces.
+KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS = 10
+
+# Synthetic return code recorded for a process that outlived ``Popen.kill()``.
+# ``signal.SIGKILL`` is POSIX-only and these helpers also run on Windows, so
+# the numeric value is spelled out rather than derived from ``signal``.
+_UNREAPED_PROCESS_RETURNCODE = -9
+
+
+def _detach_process(proc: subprocess.Popen) -> None:
+    """Stop waiting on a process that survived ``Popen.kill()``.
+
+    ``Popen.__exit__`` and ``Popen.__del__`` both call ``wait()`` with no
+    timeout, so a process stuck in uninterruptible sleep would re-introduce the
+    unbounded wait the caller just escaped. ``Popen.wait`` short-circuits when
+    ``returncode`` is already set, so record a synthetic code and move on.
+    """
+    if proc.returncode is None:
+        proc.returncode = _UNREAPED_PROCESS_RETURNCODE
+
+
+try:
+    from prometheus_client.core import Metric
+    from prometheus_client.parser import Sample, text_string_to_metric_families
+except (ImportError, ModuleNotFoundError):
+    Metric = None
+    Sample = None
+
+    def text_string_to_metric_families(*args, **kwargs):
+        raise ModuleNotFoundError("`prometheus_client` not found")
 
 
 @ray.remote(num_cpus=0)
@@ -97,9 +144,9 @@ def wait_for_condition(
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
     """
-    start = time.time()
+    start = time.monotonic()
     last_ex = None
-    while time.time() - start <= timeout:
+    while time.monotonic() - start <= timeout:
         try:
             if condition_predictor(**kwargs):
                 return
@@ -134,9 +181,9 @@ async def async_wait_for_condition(
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
     """
-    start = time.time()
+    start = time.monotonic()
     last_ex = None
-    while time.time() - start <= timeout:
+    while time.monotonic() - start <= timeout:
         try:
             if inspect.iscoroutinefunction(condition_predictor):
                 if await condition_predictor(**kwargs):
@@ -178,10 +225,12 @@ def simulate_s3_bucket(
     s3_server = f"http://{build_address('localhost', port)}"
     server = ThreadedMotoServer(port=port)
     server.start()
-    url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
-    yield url
-    server.stop()
-    os.environ = old_env
+    try:
+        url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
+        yield url
+    finally:
+        server.stop()
+        os.environ = old_env
 
 
 class TelemetryCallsite(Enum):
@@ -351,3 +400,195 @@ def assert_tensors_equivalent(obj1, obj2):
     else:
         # Fallback for primitives: int, float, str, bool, etc.
         assert obj1 == obj2, f"Non-tensor values differ: {obj1} vs {obj2}"
+
+
+def run_string_as_driver(
+    driver_script: str,
+    env: Dict = None,
+    encode: str = "utf-8",
+    timeout: Optional[float] = DEFAULT_DRIVER_TIMEOUT_SECONDS,
+) -> str:
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
+        encode: The encoding to use for the driver script.
+        timeout: Seconds to wait for the driver to exit before killing it and
+            raising. Pass None to wait forever, but note that a driver which
+            hangs on shutdown will then consume the caller's entire test
+            budget instead of failing.
+
+    Returns:
+        The script's output.
+
+    Raises:
+        subprocess.TimeoutExpired: If the driver did not exit within ``timeout``.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
+    with proc:
+        try:
+            output = proc.communicate(
+                driver_script.encode(encoding=encode), timeout=timeout
+            )[0]
+        except subprocess.TimeoutExpired as e:
+            proc.kill()
+            try:
+                output = proc.communicate(timeout=KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS)[
+                    0
+                ]
+            except subprocess.TimeoutExpired:
+                # The driver did not die on SIGKILL either, so take whatever
+                # was captured before the first timeout and stop waiting on it.
+                output = e.stdout or b""
+                _detach_process(proc)
+            logger.error(
+                "Driver did not exit within %ss; killed it. Output so far:\n%s",
+                timeout,
+                # Decode leniently: a killed driver's output can end mid
+                # multi-byte sequence, and a UnicodeDecodeError here would
+                # mask the TimeoutExpired the caller needs to see.
+                output.decode(encode, errors="replace"),
+            )
+            raise
+        if proc.returncode:
+            print(decode(output, encode_type=encode))
+            logger.error(proc.stderr)
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args, output, proc.stderr
+            )
+        out = decode(output, encode_type=encode)
+    return out
+
+
+@dataclass
+class MetricSamplePattern:
+    name: Optional[str] = None
+    value: Optional[str] = None
+    partial_label_match: Optional[Dict[str, str]] = None
+
+    def matches(self, sample: "Sample"):
+        if self.name is not None:
+            if self.name != sample.name:
+                return False
+
+        if self.value is not None:
+            if self.value != sample.value:
+                return False
+
+        if self.partial_label_match is not None:
+            for label, value in self.partial_label_match.items():
+                if sample.labels.get(label) != value:
+                    return False
+
+        return True
+
+
+@dataclass
+class PrometheusTimeseries:
+    """A collection of timeseries from multiple addresses. Each timeseries is a
+    collection of samples with the same metric name and labels. Concretely:
+    - components_dict: a dictionary of addresses to the Component labels
+    - metric_descriptors: a dictionary of metric names to the Metric object
+    - metric_samples: the latest value of each label
+    """
+
+    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
+    metric_descriptors: Dict[str, "Metric"] = field(default_factory=dict)
+    metric_samples: Dict[frozenset, "Sample"] = field(default_factory=dict)
+
+    def flush(self):
+        self.components_dict.clear()
+        self.metric_descriptors.clear()
+        self.metric_samples.clear()
+
+
+def fetch_raw_prometheus(prom_addresses, timeout=None):
+    # Local import so minimal dependency tests can run without requests
+    import requests
+
+    for address in prom_addresses:
+        try:
+            kwargs = {} if timeout is None else {"timeout": timeout}
+            response = requests.get(f"http://{address}/metrics", **kwargs)
+            yield address, response.text
+        except requests.exceptions.ConnectionError:
+            continue
+        except requests.exceptions.Timeout:
+            continue
+
+
+def fetch_prometheus(prom_addresses, timeout=None):
+    components_dict = {}
+    metric_descriptors = {}
+    metric_samples = []
+
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+
+    for address, response in fetch_raw_prometheus(prom_addresses, timeout=timeout):
+        for metric in text_string_to_metric_families(response):
+            for sample in metric.samples:
+                metric_descriptors[sample.name] = metric
+                metric_samples.append(sample)
+                if "Component" in sample.labels:
+                    components_dict[address].add(sample.labels["Component"])
+    return components_dict, metric_descriptors, metric_samples
+
+
+def fetch_prometheus_timeseries(
+    prom_addreses: List[str],
+    result: PrometheusTimeseries,
+    timeout=None,
+) -> PrometheusTimeseries:
+    components_dict, metric_descriptors, metric_samples = fetch_prometheus(
+        prom_addreses, timeout=timeout
+    )
+    for address, components in components_dict.items():
+        if address not in result.components_dict:
+            result.components_dict[address] = set()
+        result.components_dict[address].update(components)
+    result.metric_descriptors.update(metric_descriptors)
+    for sample in metric_samples:
+        # udpate sample to the latest value
+        result.metric_samples[
+            frozenset(list(sample.labels.items()) + [("_metric_name_", sample.name)])
+        ] = sample
+    return result
+
+
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
+def fetch_prometheus_metric_timeseries(
+    prom_addresses: List[str],
+    result: PrometheusTimeseries,
+    timeout=None,
+) -> Dict[str, List[Any]]:
+    samples = fetch_prometheus_timeseries(
+        prom_addresses, result, timeout=timeout
+    ).metric_samples.values()
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name

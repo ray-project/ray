@@ -1,14 +1,16 @@
+import asyncio
 import dataclasses
 import inspect
 import json
 import logging
 from functools import wraps
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 import grpc
 from grpc.aio._call import UnaryStreamCall
 
+import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._common.network_utils import build_address
@@ -24,7 +26,6 @@ from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
-    GetAllNodeInfoReply,
     GetAllNodeInfoRequest,
     GetAllPlacementGroupReply,
     GetAllPlacementGroupRequest,
@@ -66,6 +67,11 @@ _STATE_MANAGER_GRPC_OPTIONS = [
     ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
 ]
 
+# Serve the State API's task queries from the dashboard-head store instead of GCS.
+_READ_TASK_EVENTS_FROM_DASHBOARD_HEAD = (
+    ray._config.enable_task_events_to_dashboard_head()
+)
+
 
 def handle_grpc_network_errors(func):
     """Decorator to add a network handling logic.
@@ -76,9 +82,13 @@ def handle_grpc_network_errors(func):
     assert inspect.iscoroutinefunction(func)
 
     @wraps(func)
-    async def api_with_network_error_handler(*args, **kwargs):
+    async def api_with_network_error_handler(*args: Any, **kwargs: Any):
         """Apply the network error handling logic to each APIs,
         such as retry or exception policies.
+
+        Args:
+            *args: Positional arguments forwarded to the wrapped coroutine.
+            **kwargs: Keyword arguments forwarded to the wrapped coroutine.
 
         Returns:
             If RPC succeeds, it returns what the original function returns.
@@ -123,20 +133,34 @@ class StateDataSourceClient:
     - throw a ValueError if it cannot find the source.
     """
 
-    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_client: GcsClient):
+    def __init__(
+        self,
+        gcs_channel: grpc.aio.Channel,
+        gcs_client: GcsClient,
+        dashboard_socket_dir: Optional[str] = None,
+        dashboard_session_name: Optional[str] = None,
+    ):
         self.register_gcs_client(gcs_channel)
         self._job_client = JobInfoStorageClient(gcs_client)
         self._gcs_client = gcs_client
         self._client_session = aiohttp.ClientSession()
+        self._dashboard_socket_dir = dashboard_socket_dir
+        self._dashboard_session_name = dashboard_session_name
+        if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD and (
+            dashboard_socket_dir is None or dashboard_session_name is None
+        ):
+            raise ValueError(
+                "Cannot read task events from the dashboard head: the dashboard "
+                "subprocess socket directory and session name were not provided to "
+                "StateDataSourceClient."
+            )
+        self._task_events_head_session: Optional[aiohttp.ClientSession] = None
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
         )
         self._gcs_pg_info_stub = gcs_service_pb2_grpc.PlacementGroupInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
@@ -228,7 +252,6 @@ class StateDataSourceClient:
         )
         return reply
 
-    @handle_grpc_network_errors
     async def get_all_task_info(
         self,
         timeout: int = None,
@@ -236,7 +259,17 @@ class StateDataSourceClient:
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
         exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
+        request = self._build_task_events_request(limit, filters, exclude_driver)
+        if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD:
+            return await self._get_task_events_from_dashboard_head(request, timeout)
+        return await self._get_task_events_from_gcs(request, timeout)
 
+    def _build_task_events_request(
+        self,
+        limit: int,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]],
+        exclude_driver: bool,
+    ) -> GetTaskEventsRequest:
         if filters is None:
             filters = []
 
@@ -289,9 +322,48 @@ class StateDataSourceClient:
 
         req_filters.exclude_driver = exclude_driver
 
-        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
-        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
-        return reply
+        return GetTaskEventsRequest(limit=limit, filters=req_filters)
+
+    @handle_grpc_network_errors
+    async def _get_task_events_from_gcs(
+        self, request: GetTaskEventsRequest, timeout: int = None
+    ) -> Optional[GetTaskEventsReply]:
+        return await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
+
+    async def _get_task_events_from_dashboard_head(
+        self, request: GetTaskEventsRequest, timeout: int = None
+    ) -> Optional[GetTaskEventsReply]:
+        if self._task_events_head_session is None:
+            from ray.dashboard.subprocesses.utils import get_http_session_to_module
+
+            self._task_events_head_session = get_http_session_to_module(
+                "TaskEventsHead",
+                self._dashboard_socket_dir,
+                self._dashboard_session_name,
+            )
+        client_timeout = aiohttp.ClientTimeout(total=timeout)
+        try:
+            async with self._task_events_head_session.post(
+                "http://localhost/api/task_events/query",
+                data=request.SerializeToString(),
+                timeout=client_timeout,
+            ) as resp:
+                if 200 <= resp.status < 300:
+                    reply = GetTaskEventsReply()
+                    reply.ParseFromString(await resp.read())
+                    return reply
+                raise DataSourceUnavailable(
+                    "Failed to query task events from the dashboard head. "
+                    f"Response is {resp.status}, reason {resp.reason}"
+                )
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            # An unreachable dashboard head (connection refused, socket gone, timeout)
+            # must surface as DataSourceUnavailable so list_tasks shows the normal
+            # failure warning instead of a raw error, matching the GCS gRPC path.
+            raise DataSourceUnavailable(
+                "Failed to query task events from the dashboard head; it may be down "
+                "or unreachable."
+            ) from e
 
     @handle_grpc_network_errors
     async def get_all_placement_group_info(
@@ -304,16 +376,27 @@ class StateDataSourceClient:
         )
         return reply
 
-    @handle_grpc_network_errors
     async def get_all_node_info(
         self,
         timeout: int = None,
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
-    ) -> Optional[GetAllNodeInfoReply]:
-        # TODO(ryw): move this to GcsClient.async_get_all_node_info, i.e.
-        # InnerGcsClient.async_get_all_node_info
+    ) -> Optional[Tuple[Dict[NodeID, GcsNodeInfo], int]]:
+        """Returns node info and the number of filtered nodes.
 
+        Args:
+            timeout: Timeout in seconds
+            limit: Maximum number of nodes to return
+            filters: List of (key, predicate, value) tuples. Supported keys:
+                - "node_id": Filter by node ID (hex string)
+                - "state": Filter by node state (string, e.g., "ALIVE")
+                - "node_name": Filter by node name
+
+        Returns:
+            A tuple of (node_infos, num_filtered) where:
+                - node_infos: Dict[NodeID, GcsNodeInfo] mapping node IDs to their info
+                - num_filtered: Number of nodes filtered out by the query
+        """
         if filters is None:
             filters = []
 
@@ -341,10 +424,12 @@ class StateDataSourceClient:
             else:
                 continue
 
-        request = GetAllNodeInfoRequest(
-            limit=limit, node_selectors=node_selectors, state_filter=state_filter
+        reply = await self._gcs_client.async_get_all_node_info(
+            timeout=timeout,
+            node_selectors=node_selectors,
+            state_filter=state_filter,
+            limit=limit,
         )
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors

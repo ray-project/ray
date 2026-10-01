@@ -5,21 +5,16 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
-    raw_metric_timeseries,
+    wait_for_condition,
 )
-
-METRIC_CONFIG = {
-    "_system_config": {
-        "metrics_report_interval_ms": 100,
-    }
-}
+from ray._private.test_utils import raw_metric_timeseries
 
 
-def test_unintentional_worker_failures_metric(shutdown_only):
-    context = ray.init(num_cpus=2, **METRIC_CONFIG)
+def test_unintentional_worker_failures_metric(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    context = ray.init(num_cpus=2)
 
     @ray.remote
     class Actor:

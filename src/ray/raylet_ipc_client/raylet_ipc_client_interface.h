@@ -26,7 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -192,10 +192,12 @@ class RayletIpcClientInterface {
   /// The core worker will be notified over gRPC when the wait completes.
   ///
   /// \param references The objects to wait for.
-  /// \param tag Value that will be sent to the core worker via gRPC on completion.
+  /// \param task_id, attempt_number Identify the task; sent to the core worker
+  ///   via gRPC on completion.
   /// \return Status.
   virtual Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                      int64_t tag) = 0;
+                                      const TaskID &task_id,
+                                      int32_t attempt_number) = 0;
 
   /// Push an error to the relevant driver.
   ///

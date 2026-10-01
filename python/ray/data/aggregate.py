@@ -1,10 +1,10 @@
 import abc
+import collections
 import enum
 import math
 import pickle
 import re
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -19,20 +19,30 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.compute as pc
 
+from ray.data._internal.arrow_aggregation import (
+    ArrowAggSpec,
+    count_spec,
+    distinct_spec,
+    mean_spec,
+    minmax_spec,
+    missing_pct_spec,
+    sum_spec,
+    zero_pct_spec,
+)
 from ray.data._internal.util import is_null
 from ray.data.block import (
+    AggType,
     Block,
     BlockAccessor,
     BlockColumn,
     BlockColumnAccessor,
     KeyType,
+    U,
 )
-from ray.util.annotations import Deprecated, PublicAPI
-
-if TYPE_CHECKING:
-    from ray.data.dataset import Schema
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 class _SupportsRichComparison(Protocol):
@@ -146,9 +156,28 @@ class AggregateFn:
         self.accumulate_block = accumulate_block
         self.finalize = finalize
 
-    def _validate(self, schema: Optional["Schema"]) -> None:
+    def _validate(self, schema: Optional[Union[type, "pa.Schema"]]) -> None:
         """Raise an error if this cannot be applied to the given schema."""
         pass
+
+    def _arrow_agg_spec(self) -> Optional["ArrowAggSpec"]:
+        """Return this aggregation's Arrow-vectorized plan for the shuffle-v2
+        aggregate path, or ``None`` to use the Python engine (the default).
+
+        See ``ray.data._internal.arrow_aggregation``.
+        """
+        return None
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        """Return the PyArrow ``Field`` this aggregator produces.
+
+        Returns ``None`` by default; subclasses that know their output
+        type override. Used by ``Aggregate.infer_schema()`` to compute
+        the post-aggregation schema without executing the plan. When
+        any aggregator returns ``None``, the entire ``Aggregate.infer_schema``
+        returns ``None`` (callers fall back to a ``limit(1)`` execution).
+        """
+        return None
 
 
 @PublicAPI(stability="alpha")
@@ -325,15 +354,93 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         """
         return accumulator
 
-    def _validate(self, schema: Optional["Schema"]) -> None:
+    def _validate(self, schema: Optional[Union[type, "pa.Schema"]]) -> None:
         if self._target_col_name:
             from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
             SortKey(self._target_col_name).validate_schema(schema)
 
 
+def _agg_output_field(
+    name: str,
+    input_schema: "pa.Schema",
+    target_col: Optional[str],
+    pyarrow_kernel: Callable[[pa.Array], pa.Scalar],
+) -> Optional["pa.Field"]:
+    """Compute the output field of a scalar reduction aggregator by running
+    its PyArrow compute kernel on an empty array of the target column's type.
+
+    Args:
+        name: Name of the *output* column the aggregation produces (the
+            aggregator's alias, e.g. ``"sum(a)"`` or a user-supplied
+            ``alias_name``). This becomes the name of the returned field.
+        input_schema: Schema of the aggregator's input (pre-aggregation)
+            blocks, used to look up the target column's type.
+        target_col: Name of the *input* column being aggregated (the ``on=``
+            argument). This is the column the kernel reads, not the group-by
+            key. ``None`` for aggregations that don't read a column (e.g.
+            ``Count()`` over rows), in which case the type can't be inferred.
+        pyarrow_kernel: The PyArrow compute kernel implementing the reduction
+            (e.g. ``pc.sum``), run on an empty array to derive the output type.
+
+    Returns:
+        The output ``pa.Field`` (``name`` with the inferred type), or ``None``
+        if ``target_col`` is ``None``/missing or the pyarrow_kernel rejects the
+        column's type (e.g., ``pc.sum`` on a string column).
+    """
+    if target_col is None:
+        return None
+    try:
+        in_type = input_schema.field(target_col).type
+    except (KeyError, ValueError):
+        return None
+    try:
+        result = pyarrow_kernel(pa.array([], type=in_type))
+    except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
+        # The kernel has no implementation for this column's type
+        # (e.g. ``pc.sum`` on a string/struct/list column). Fall back to
+        # an unresolved schema rather than masking a real error.
+        return None
+    out_type = result.type
+    return pa.field(name, out_type, nullable=True)
+
+
+@DeveloperAPI(stability="alpha")
+class VectorizedAggregateFnV2(AggregateFnV2[AccumulatorType, AggOutputType], abc.ABC):
+    """Base class for fully vectorized aggregations"""
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        # NOTE: Vectorized aggregations merge whole columns of partial
+        #       accumulators via ``_combine_column`` and never fold them
+        #       pairwise.
+        raise NotImplementedError(
+            "this method should not be invoked for vectorized aggregations!"
+        )
+
+    @abc.abstractmethod
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        ...
+
+
+def _fold_accumulator_column(
+    agg: "AggregateFn", accumulator_col: BlockColumn
+) -> AggType:
+    """Folds a column of partial accumulators row-wise."""
+
+    if len(accumulator_col) == 0:
+        return None
+
+    accumulators = BlockColumnAccessor.for_column(accumulator_col).to_pylist()
+
+    cur_acc = accumulators[0]
+    for v in accumulators[1:]:
+        cur_acc = agg.merge(cur_acc, v)
+
+    return cur_acc
+
+
 @PublicAPI
-class Count(AggregateFnV2[int, int]):
+class Count(VectorizedAggregateFnV2[int, int]):
     """Defines count aggregation.
 
     Example:
@@ -345,7 +452,9 @@ class Count(AggregateFnV2[int, int]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Counting all rows:
@@ -396,9 +505,20 @@ class Count(AggregateFnV2[int, int]):
     def combine(self, current_accumulator: int, new: int) -> int:
         return current_accumulator + new
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.int64(), nullable=False)
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return count_spec()  # Count() (no column) counts all rows -> count_all
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        return BlockColumnAccessor.for_column(accumulator_col).sum(
+            ignore_nulls=self._ignore_nulls
+        )
+
 
 @PublicAPI
-class AsList(AggregateFnV2[List, List]):
+class AsList(VectorizedAggregateFnV2[List, List]):
     """Listing aggregation combining all values within the group into a single
     list element.
 
@@ -415,7 +535,9 @@ class AsList(AggregateFnV2[List, List]):
 
             ds = ray.data.range(10)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Listing all elements per group:
@@ -445,23 +567,28 @@ class AsList(AggregateFnV2[List, List]):
         )
 
     def aggregate_block(self, block: Block) -> AccumulatorType:
-        column_accessor = BlockColumnAccessor.for_column(
-            block[self.get_target_column()]
-        )
+        # NOTE: We simply return target column (array) as an aggregation result
+        accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
 
         if self._ignore_nulls:
-            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+            accessor = BlockColumnAccessor.for_column(accessor.dropna())
 
-        return column_accessor.to_pylist()
+        # NOTE: We have to make sure that the column is represented in an
+        #       Arrow-compatible format (either ``pyarrow.Array`` or Python's ``list``)
+        #       to make sure it's not converted into a tensor downstream
+        return accessor._to_arrow_compatible_container()
 
     def combine(
         self, current_accumulator: AccumulatorType, new: AccumulatorType
     ) -> AccumulatorType:
         return current_accumulator + new
 
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        return BlockColumnAccessor.for_column(accumulator_col).flatten()
+
 
 @PublicAPI
-class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
+class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
     """Defines sum aggregation.
 
     Example:
@@ -473,7 +600,9 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Summing all rows per group:
@@ -511,9 +640,22 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
     ) -> Union[int, float]:
         return current_accumulator + new
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return _agg_output_field(self.name, input_schema, self._target_col_name, pc.sum)
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return sum_spec() if isinstance(self._target_col_name, str) else None
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        return BlockColumnAccessor.for_column(accumulator_col).sum(
+            ignore_nulls=self._ignore_nulls
+        )
+
 
 @PublicAPI
-class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
+class Min(
+    VectorizedAggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]
+):
     """Defines min aggregation.
 
     Example:
@@ -525,7 +667,9 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Finding the minimum value per group:
@@ -572,9 +716,22 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
     ) -> SupportsRichComparisonType:
         return min(current_accumulator, new)
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return _agg_output_field(self.name, input_schema, self._target_col_name, pc.min)
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return minmax_spec("min") if isinstance(self._target_col_name, str) else None
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        return BlockColumnAccessor.for_column(accumulator_col).min(
+            ignore_nulls=self._ignore_nulls
+        )
+
 
 @PublicAPI
-class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
+class Max(
+    VectorizedAggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]
+):
     """Defines max aggregation.
 
     Example:
@@ -586,7 +743,9 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Finding the maximum value per group:
@@ -633,6 +792,17 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
     ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return _agg_output_field(self.name, input_schema, self._target_col_name, pc.max)
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return minmax_spec("max") if isinstance(self._target_col_name, str) else None
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        return BlockColumnAccessor.for_column(accumulator_col).max(
+            ignore_nulls=self._ignore_nulls
+        )
+
 
 @PublicAPI
 class Mean(AggregateFnV2[List[Union[int, float]], float]):
@@ -647,7 +817,9 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the mean value per group:
@@ -712,6 +884,12 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
 
         return accumulator[0] / accumulator[1]
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.float64(), nullable=True)
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return mean_spec() if isinstance(self._target_col_name, str) else None
+
 
 @PublicAPI
 class Std(AggregateFnV2[List[Union[int, float]], float]):
@@ -733,7 +911,9 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the standard deviation per group:
@@ -819,9 +999,14 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
         # Standard deviation is the square root of variance (M2 / (count - ddof))
         return math.sqrt(M2 / (count - self._ddof))
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.float64(), nullable=True)
+
 
 @PublicAPI
-class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
+class AbsMax(
+    VectorizedAggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]
+):
     """Defines absolute max aggregation.
 
     Example:
@@ -833,7 +1018,9 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the absolute maximum value per group:
@@ -886,9 +1073,25 @@ class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonTyp
     ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        # AbsMax = max(abs(x)). Compose abs + max into a single kernel so the
+        # output type (and the type-support check) come from the same pyarrow
+        # kernels, returning None for types abs/max reject (e.g. strings).
+        return _agg_output_field(
+            self.name,
+            input_schema,
+            self._target_col_name,
+            lambda a: pc.max(pc.abs(a)),
+        )
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        return BlockColumnAccessor.for_column(accumulator_col).max(
+            ignore_nulls=self._ignore_nulls
+        )
+
 
 @PublicAPI
-class Quantile(AggregateFnV2[List[Any], List[Any]]):
+class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
     """Defines Quantile aggregation.
 
     Example:
@@ -900,7 +1103,9 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
 
             ds = ray.data.range(100)
             # Schema: {'id': int64}
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
             # Schema: {'id': int64, 'group_key': int64}
 
             # Calculating the 50th percentile (median) per group:
@@ -958,48 +1163,27 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
 
         return ls
 
-    def aggregate_block(self, block: Block) -> List[Any]:
-        block_acc = BlockAccessor.for_block(block)
-        ls = []
+    def aggregate_block(self, block: Block) -> AggType:
+        accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+        # Return whole column as is
+        #
+        # NOTE: We have to make sure that the column is represented in an
+        #       Arrow-compatible format (either ``pyarrow.Array`` or Python's ``list``)
+        #       to make sure it's not converted into a tensor downstream
+        return accessor._to_arrow_compatible_container()
 
-        for row in block_acc.iter_rows(public_row_format=False):
-            ls.append(row.get(self._target_col_name))
+    def finalize(self, accumulator: AggType) -> Optional[U]:
+        accessor = BlockColumnAccessor.for_column(accumulator)
 
-        return ls
+        return accessor.quantile(q=self._q, ignore_nulls=self._ignore_nulls)
 
-    def finalize(self, accumulator: List[Any]) -> Optional[Any]:
-        if self._ignore_nulls:
-            accumulator = [v for v in accumulator if not is_null(v)]
-        else:
-            nulls = [v for v in accumulator if is_null(v)]
-            if len(nulls) > 0:
-                # If nulls are present and not ignored, the quantile is undefined.
-                # Return the first null encountered to preserve column type.
-                return nulls[0]
-
-        if not accumulator:
-            # If the list is empty (e.g., all values were null and ignored, or no values),
-            # quantile is undefined.
-            return None
-
-        key = lambda x: x  # noqa: E731
-        input_values = sorted(accumulator)
-        k = (len(input_values) - 1) * self._q
-        f = math.floor(k)
-        c = math.ceil(k)
-
-        if f == c:
-            return key(input_values[int(k)])
-
-        # Interpolate between the elements at floor and ceil indices.
-        d0 = key(input_values[int(f)]) * (c - k)
-        d1 = key(input_values[int(c)]) * (k - f)
-
-        return round(d0 + d1, 5)
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        # Combine all the lists in a column into a single value (ie flatten it)
+        return BlockColumnAccessor.for_column(accumulator_col).flatten()
 
 
 @PublicAPI
-class Unique(AggregateFnV2[Set[Any], List[Any]]):
+class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
     """Defines unique aggregation.
 
     Example:
@@ -1010,7 +1194,9 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             from ray.data.aggregate import Unique
 
             ds = ray.data.range(100)
-            ds = ds.add_column("group_key", lambda x: x % 3)
+            ds = ds.add_column(
+                "group_key", lambda batch: batch["id"].astype("int64") % 3
+            )
 
             # Calculating the unique values per group:
             result = ds.groupby("group_key").aggregate(Unique(on="id")).take_all()
@@ -1065,6 +1251,17 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        # Only the plain (scalar-column, no list-encoding) form vectorizes; the
+        # single-phase `distinct` kernel returns the per-group set of values.
+        if self._list_encoding_mode is not None or not isinstance(
+            self._target_col_name, str
+        ):
+            return None
+        return distinct_spec(
+            "distinct", lambda merged, component_cols: merged[component_cols[0]]
+        )
+
     def _compute_unique(self, block: Block) -> BlockColumn:
         column = block[self._target_col_name]
         column_accessor = BlockColumnAccessor.for_column(column)
@@ -1089,9 +1286,15 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
 
         return column_accessor.unique()
 
-    def aggregate_block(self, block: Block) -> List[Any]:
+    def aggregate_block(self, block: Block) -> AggType:
         column = self._compute_unique(block)
-        return BlockColumnAccessor.for_column(column).to_pylist()
+
+        # Return column of unique values as is
+        #
+        # NOTE: We have to make sure that the column is represented in an
+        #       Arrow-compatible format (either ``pyarrow.Array`` or Python's ``list``)
+        #       to make sure it's not converted into a tensor downstream
+        return BlockColumnAccessor.for_column(column)._to_arrow_compatible_container()
 
     @staticmethod
     def _to_set(x):
@@ -1115,6 +1318,13 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         #       other. Here we canonicalize any nan instances replacing them
         #       w/ `np.nan`
         return {v if not (isinstance(v, float) and np.isnan(v)) else np.nan for v in x}
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        column_accessor = BlockColumnAccessor.for_column(accumulator_col)
+
+        # Combine all the lists in a column into a single value (ie flatten it)
+        flattened = column_accessor.flatten()
+        return BlockColumnAccessor.for_column(flattened).unique()
 
 
 @PublicAPI
@@ -1173,6 +1383,29 @@ class CountDistinct(Unique):
     def finalize(self, accumulator: Set[Any]) -> int:
         """Return the count of distinct values."""
         return len(accumulator)
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        # Same gate as Unique, but the `count_distinct` kernel returns the count.
+        if self._list_encoding_mode is not None or not isinstance(
+            self._target_col_name, str
+        ):
+            return None
+        return distinct_spec(
+            "count_distinct",
+            lambda merged, component_cols: pc.cast(
+                merged[component_cols[0]], pa.int64()
+            ),
+        )
+
+    # NOTE: `CountDistinct` stays on the row-wise accumulation path: its
+    #       accumulator has to remain a Python set so that the NaN
+    #       canonicalization in `Unique._to_set` keeps applying.
+    def aggregate_block(self, block: Block) -> List[Any]:
+        column = self._compute_unique(block)
+        return BlockColumnAccessor.for_column(column).to_pylist()
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        return _fold_accumulator_column(self, accumulator_col)
 
 
 @PublicAPI
@@ -1441,7 +1674,9 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
         total_count = column_accessor.count(ignore_nulls=False)
 
         null_count = pc.sum(
-            pc.is_null(column_accessor._as_arrow_compatible(), nan_is_null=True)
+            pc.is_null(
+                column_accessor._to_arrow_compatible_container(), nan_is_null=True
+            )
         ).as_py()
 
         # Return our accumulator
@@ -1460,6 +1695,9 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
         if accumulator[1] == 0:
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return missing_pct_spec() if isinstance(self._target_col_name, str) else None
 
 
 @PublicAPI(stability="alpha")
@@ -1538,7 +1776,7 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         if count == 0:
             return [0, 0]
 
-        arrow_compatible = column_accessor._as_arrow_compatible()
+        arrow_compatible = column_accessor._to_arrow_compatible_container()
         # Use PyArrow compute to count zeros
         # First create a boolean mask for zero values
         zero_mask = pc.equal(arrow_compatible, 0)
@@ -1558,6 +1796,9 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         if accumulator[1] == 0:
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
+
+    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
+        return zero_pct_spec() if isinstance(self._target_col_name, str) else None
 
 
 @PublicAPI(stability="alpha")
@@ -1682,6 +1923,9 @@ class ApproximateTopK(AggregateFnV2):
         Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
         https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
 
+        For an exact variant that returns a plain list of values (at the cost of
+        keeping all distinct values in the accumulator), see :class:`TopKUnique`.
+
         Guarantees:
             - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
             - Reported counts may have an error of at most ± N / (2^log_capacity).
@@ -1775,3 +2019,231 @@ class ApproximateTopK(AggregateFnV2):
             {column: pickle.loads(bytes.fromhex(item[0])), "count": int(item[1])}
             for item in frequent_items[: self.k]
         ]
+
+
+@PublicAPI
+class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
+    """Defines an exact top-k-by-frequency unique aggregation.
+
+    Counts value frequencies globally (summed across all blocks) and returns the
+    ``k`` most frequent values. The ranking is global: a value that is only
+    moderately frequent in every individual block but frequent overall is
+    correctly preferred over a value that is frequent in a single block.
+
+    Unlike :class:`ApproximateTopK`, the result is exact, no third-party
+    dependency is required, and the output is a plain list of values (like
+    :class:`Unique`) rather than value/count records. The price is that the
+    accumulator holds every distinct value with its count until the final
+    ranking, so memory grows with the number of distinct values.
+
+    Ties are broken deterministically: values with equal counts are ordered by
+    value (ascending), with nulls last.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import TopKUnique
+
+            ds = ray.data.from_items([
+                {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+                {"word": "cherry"}, {"word": "apple"}, {"word": "banana"}
+            ])
+
+            result = ds.aggregate(TopKUnique(on="word", k=2))
+            # result: {'topk_unique(word)': ['apple', 'banana']}
+
+    Args:
+        on: The name of the column to aggregate.
+        k: The number of most frequent values to return.
+        ignore_nulls: Whether to ignore null values when counting. If ``False``
+            (the default, matching :class:`Unique`), nulls are counted like any
+            other value and ``None`` can appear in the result.
+        alias_name: Optional name for the resulting column. Defaults to
+            ``"topk_unique({on})"``.
+        encode_lists: If ``True``, list-type column elements are flattened so
+            that each list element is counted individually. If ``False``, entire
+            lists are treated as single values (converted to tuples for
+            hashability). Note that this is a top-level flatten (not a recursive
+            flatten) operation.
+    """
+
+    def __init__(
+        self,
+        on: str,
+        k: int,
+        ignore_nulls: bool = False,
+        alias_name: Optional[str] = None,
+        encode_lists: bool = False,
+    ):
+        if k <= 0:
+            raise ValueError(f"`k` must be a positive integer (got {k})")
+
+        self._k = k
+        self._encode_lists = bool(encode_lists)
+
+        super().__init__(
+            alias_name if alias_name else f"topk_unique({str(on)})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: {"values": [], "counts": []},
+        )
+
+    def aggregate_block(self, block: Block) -> Dict[str, List]:
+        accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+
+        if self._encode_lists and accessor.is_composed_of_lists():
+            accessor = BlockColumnAccessor.for_column(accessor.flatten())
+
+        if accessor.is_composed_of_lists():
+            # Whole lists are treated as single values. There's no vectorized
+            # `value_counts` kernel for list types, so count in Python over
+            # tuples (mirroring how `Unique` makes whole-list values hashable).
+            #
+            # NOTE: A row in a list column is either list-like or missing, and
+            #       missing rows can be None, NaN or pd.NA depending on the block
+            #       type - none of which is iterable.
+            counter = collections.Counter(
+                tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else None
+                for value in accessor.to_pylist()
+            )
+            value_counts = {
+                "values": list(counter.keys()),
+                "counts": list(counter.values()),
+            }
+        else:
+            value_counts = accessor.value_counts() or {"values": [], "counts": []}
+
+        values: List[Any] = []
+        counts: List[int] = []
+        # Null accounting differs by block type: a pandas column drops nulls
+        # from `value_counts` entirely, while an Arrow column reports them as
+        # entries (None for nulls, NaN as a float value). Strip null-ish
+        # entries here and re-add one canonical `None` entry below, so both
+        # block types produce the same accumulator.
+        null_count_from_entries = 0
+        for value, count in zip(value_counts["values"], value_counts["counts"]):
+            if is_null(value):
+                null_count_from_entries += count
+                continue
+            # Convert lists to tuples for hashability in `combine`, mirroring
+            # how `Unique` treats whole-list values.
+            values.append(tuple(value) if isinstance(value, list) else value)
+            counts.append(count)
+
+        if not self._ignore_nulls:
+            # Whichever accounting is complete for this block type wins: the
+            # Arrow entries above cover both None and NaN, while the count
+            # delta covers everything a pandas `value_counts` dropped.
+            total = accessor.count(ignore_nulls=False) or 0
+            non_null = accessor.count(ignore_nulls=True) or 0
+            null_count = max(null_count_from_entries, total - non_null)
+            if null_count > 0:
+                values.append(None)
+                counts.append(null_count)
+
+        return {"values": values, "counts": counts}
+
+    def combine(
+        self,
+        current_accumulator: Dict[str, List],
+        new: Dict[str, List],
+    ) -> Dict[str, List]:
+        # NOTE: The engine merges whole accumulator columns through
+        #       `_combine_column`. This pairwise merge is the row-wise
+        #       equivalent, kept as a fallback for values Arrow can't group.
+        values = [self._normalize_value(v) for v in current_accumulator["values"]]
+        counts = list(current_accumulator["counts"])
+
+        value_to_index = {v: i for i, v in enumerate(values)}
+
+        for v_new, c_new in zip(new["values"], new["counts"]):
+            v_new = self._normalize_value(v_new)
+            if v_new in value_to_index:
+                counts[value_to_index[v_new]] += c_new
+            else:
+                value_to_index[v_new] = len(values)
+                values.append(v_new)
+                counts.append(c_new)
+
+        return {"values": values, "counts": counts}
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        # NOTE: The result must itself be a valid accumulator: the reduce side
+        #       repeatedly re-combines partially combined blocks before
+        #       finalizing. In particular, counts are kept and the top-k cut is
+        #       only applied in `finalize`.
+        if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
+            try:
+                # Null accumulator rows (empty groups) flatten to nothing.
+                merged = (
+                    pa.table(
+                        {
+                            "value": pc.list_flatten(
+                                pc.struct_field(accumulator_col, "values")
+                            ),
+                            "count": pc.list_flatten(
+                                pc.struct_field(accumulator_col, "counts")
+                            ),
+                        }
+                    )
+                    .group_by("value")
+                    .aggregate([("count", "sum")])
+                )
+                return {
+                    "values": merged["value"].to_pylist(),
+                    "counts": merged["count_sum"].to_pylist(),
+                }
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+                # Values Arrow can't group by (e.g. whole lists)
+                pass
+
+        merged_accumulator = self._zero_accumulator()
+        for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+            if accumulator is not None:
+                merged_accumulator = self.combine(merged_accumulator, accumulator)
+        return merged_accumulator
+
+    def finalize(self, accumulator: Dict[str, List]) -> List[Any]:
+        values, counts = accumulator["values"], accumulator["counts"]
+        if not values:
+            return []
+
+        try:
+            table = pa.table(
+                {"value": pa.array(values), "count": pa.array(counts, pa.int64())}
+            )
+            # NOTE: Arrow places nulls last, matching the fallback below.
+            ranked = pc.sort_indices(
+                table, sort_keys=[("count", "descending"), ("value", "ascending")]
+            )
+            return pc.take(table["value"], ranked[: self._k]).to_pylist()
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+            # Values Arrow can't sort (e.g. whole lists, mixed types)
+            pass
+
+        pairs = list(zip(values, counts))
+        try:
+            pairs.sort(key=lambda pair: (-pair[1], pair[0] is None, pair[0]))
+        except TypeError:
+            # Values aren't mutually comparable (mixed types) - fall back to
+            # their string representation for a deterministic tie-break.
+            pairs.sort(key=lambda pair: (-pair[1], pair[0] is None, str(pair[0])))
+        return [value for value, _ in pairs[: self._k]]
+
+    @staticmethod
+    def _zero_accumulator() -> Dict[str, List]:
+        return {"values": [], "counts": []}
+
+    @staticmethod
+    def _normalize_value(value: Any) -> Any:
+        # Partial accumulators round-trip through Arrow between combine steps,
+        # which turns tuples back into lists - re-canonicalize so lookups in
+        # `combine` stay consistent. NaN objects are likewise canonicalized
+        # since distinct float('nan') instances hash differently.
+        if isinstance(value, list):
+            return tuple(value)
+        if isinstance(value, float) and np.isnan(value):
+            return np.nan
+        return value

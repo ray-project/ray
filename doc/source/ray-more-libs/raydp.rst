@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Apache Spark on Ray via raydp.init_spark, combining PySpark data processing with PyTorch and TensorFlow training in one cluster.
+
 .. _spark-on-ray:
 
 **************************

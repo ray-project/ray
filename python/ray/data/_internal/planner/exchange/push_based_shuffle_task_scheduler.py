@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 
 import ray
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
-from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
     ExchangeTaskSpec,
@@ -651,12 +651,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         for block, meta_with_schema in zip(new_blocks, reduce_stage_metadata_schema):
             output.append(
                 RefBundle(
-                    [
-                        (
-                            block,
-                            meta_with_schema.metadata,
-                        )
-                    ],
+                    [BlockEntry(block, meta_with_schema.metadata)],
                     owns_blocks=input_owned,
                     schema=meta_with_schema.schema,
                 )
@@ -750,7 +745,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             input_files=None,
             exec_stats=stats.build(),
         )
-        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        meta_with_schema = BlockMetadataWithSchema.from_metadata(meta, schema=schema)
         yield meta_with_schema
 
     @staticmethod

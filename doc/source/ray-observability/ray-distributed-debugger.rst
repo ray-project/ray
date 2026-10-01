@@ -1,3 +1,6 @@
+.. meta::
+   :description: Debug distributed Ray apps with the Ray Distributed Debugger: set breakpoints in remote tasks, attach VS Code, and do post-mortem debugging.
+
 .. _ray-distributed-debugger:
 
 Ray Distributed Debugger

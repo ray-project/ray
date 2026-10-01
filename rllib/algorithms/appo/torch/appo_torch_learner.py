@@ -14,6 +14,8 @@ from typing import Dict
 from ray.rllib.algorithms.appo.appo import (
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
+    LEARNER_RESULTS_MEAN_IS_KEY,
+    LEARNER_RESULTS_VAR_IS_KEY,
     APPOConfig,
 )
 from ray.rllib.algorithms.appo.appo_learner import APPOLearner
@@ -126,16 +128,28 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             dim=0,
         )
 
-        # The discount factor that is used should be gamma except for timesteps where
-        # the episode is terminated. In that case, the discount factor should be 0.
+        # Discount = gamma * (1 - terminated) * loss_mask.
+        # - The (1 - terminated) factor implements the Bellman gating: no
+        #   bootstrap from t -> t+1 across a terminal step.
+        # - The loss_mask factor zeros out the discount at the appended bootstrap
+        #   timestep (loss_mask=False there). Without it, the bootstrap-ts delta
+        #   (which references `bootstrap_values` from a neighbouring trajectory)
+        #   would leak into the V-trace recursion of the last real step. The
+        #   loss_mask gating is equivalent to the legacy convention of marking
+        #   the bootstrap ts as `terminated=True`, but keeps `terminateds`
+        #   meaning only "Gymnasium terminal state reached".
         discounts_time_major = (
-            1.0
-            - make_time_major(
-                batch[Columns.TERMINATEDS],
-                trajectory_len=rollout_frag_or_episode_len,
-                recurrent_seq_len=recurrent_seq_len,
-            ).float()
-        ) * config.gamma
+            (
+                1.0
+                - make_time_major(
+                    batch[Columns.TERMINATEDS],
+                    trajectory_len=rollout_frag_or_episode_len,
+                    recurrent_seq_len=recurrent_seq_len,
+                ).float()
+            )
+            * config.gamma
+            * loss_mask_time_major
+        )
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
@@ -164,6 +178,13 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             pg_advantages * logp_ratio,
             pg_advantages
             * torch.clip(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
+        )
+
+        # IS-ratio diagnostics; restricted to valid timesteps via loss mask.
+        mean_is_ratio = torch.sum(is_ratio * loss_mask_time_major) / size_loss_mask
+        var_is_ratio = (
+            torch.sum(torch.square(is_ratio - mean_is_ratio) * loss_mask_time_major)
+            / size_loss_mask
         )
 
         if config.use_kl_loss:
@@ -206,6 +227,8 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
                 LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
                     self.curr_kl_coeffs_per_module[module_id]
                 ),
+                LEARNER_RESULTS_MEAN_IS_KEY: mean_is_ratio,
+                LEARNER_RESULTS_VAR_IS_KEY: var_is_ratio,
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).

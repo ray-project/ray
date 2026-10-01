@@ -23,3 +23,7 @@ class Plan:
     @property
     def context(self) -> "DataContext":
         return self._context
+
+    @context.setter
+    def context(self, context: "DataContext") -> None:
+        self._context = context

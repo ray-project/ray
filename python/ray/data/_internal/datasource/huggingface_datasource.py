@@ -1,6 +1,7 @@
 import sys
 from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
@@ -142,7 +143,7 @@ class HuggingFaceDatasource(Datasource):
             # HuggingFace IterableDatasets do not fully support methods like
             # `set_format`, `with_format`, and `formatted_as`, so the dataset
             # can return whatever is the default configured batch type, even if
-            # the format is manually overriden before iterating above.
+            # the format is manually overridden before iterating above.
             # Therefore, we limit support to batch formats which have native
             # block types in Ray Data (pyarrow.Table, pd.DataFrame),
             # or can easily be converted to such (dict, np.array).
@@ -154,6 +155,11 @@ class HuggingFaceDatasource(Datasource):
                     f"dict (corresponds to `None` in `dataset.with_format()`), "
                     f"pyarrow.Table, np.array, pd.DataFrame."
                 )
+            if isinstance(batch, pyarrow.Table):
+                # HF deserialized this Arrow data from its cache files. Unpickling
+                # untrusted data can execute arbitrary code. Reject object columns
+                # unless the user has explicitly opted in.
+                raise_on_pickle_object_columns(batch)
             # Ensure np.arrays are wrapped in a dict
             # (subsequently converted to a pyarrow.Table).
             if isinstance(batch, np.ndarray):

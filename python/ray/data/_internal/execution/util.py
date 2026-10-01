@@ -1,11 +1,34 @@
+import pickle
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Union
 
 import ray
-from ray.data.block import BlockAccessor, CallableClass
+from ray.data.block import Block, BlockAccessor, CallableClass
 
 if TYPE_CHECKING:
+    from ray._raylet import StreamingGeneratorStats
     from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data.block import BlockMetadataWithSchema
+
+
+def merge_label_selector(
+    ray_remote_args: Dict[str, Any],
+    ctx_label_selector: Optional[Dict[str, str]],
+) -> Dict[str, Any]:
+    """Merge a DataContext-level label_selector into ``ray_remote_args``.
+
+    Operator-level keys (already in ``ray_remote_args["label_selector"]``) win on
+    conflict so existing node-pin selectors are preserved. Returns a new dict;
+    the input is not mutated. If ``ctx_label_selector`` is falsy, returns the
+    input unchanged.
+    """
+    if not ctx_label_selector:
+        return ray_remote_args
+    op_selector = ray_remote_args.get("label_selector") or {}
+    merged = {**ctx_label_selector, **op_selector}
+    out = dict(ray_remote_args)
+    out["label_selector"] = merged
+    return out
 
 
 def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
@@ -16,7 +39,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     import pandas as pd
     import pyarrow as pa
 
-    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 
     output = []
     for block in simple_data:
@@ -24,7 +47,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
         output.append(
             RefBundle(
                 [
-                    (
+                    BlockEntry(
                         ray.put(block),
                         BlockAccessor.for_block(block).get_metadata(),
                     )
@@ -53,6 +76,26 @@ def locality_string(locality_hits: int, locality_misses) -> str:
     if not locality_misses:
         return "[all objects local]"
     return f"[{locality_hits}/{locality_hits + locality_misses} objects local]"
+
+
+def yield_block_with_stats(
+    block: Block,
+    build_metadata: "Callable[[Optional[float]], BlockMetadataWithSchema]",
+) -> Generator[Union[Block, bytes], "StreamingGeneratorStats", None]:
+    """Yield a block then its pickled metadata, per the streaming-gen protocol.
+
+    Args:
+        block: The block to emit.
+        build_metadata: Given the block serialization time in seconds (or ``None``
+            if Ray didn't report it), returns the block's metadata to pickle.
+
+    Yields:
+        Union[Block, bytes]: The block, followed by its pickled
+        ``BlockMetadataWithSchema``.
+    """
+    gen_stats: "StreamingGeneratorStats" = yield block
+    block_ser_time_s = gen_stats.object_creation_dur_s if gen_stats else None
+    yield pickle.dumps(build_metadata(block_ser_time_s))
 
 
 def make_callable_class_single_threaded(callable_cls: CallableClass) -> CallableClass:

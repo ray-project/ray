@@ -30,10 +30,11 @@
 namespace ray {
 namespace pubsub {
 
-// Mock implementation of InternalPubSubGcsService for testing authentication
-class MockInternalPubSubGcsService final : public rpc::InternalPubSubGcsService::Service {
+// Mock implementation of ObservabilityPubSubService for testing authentication
+class MockObservabilityPubSubService final
+    : public rpc::ObservabilityPubSubService::Service {
  public:
-  explicit MockInternalPubSubGcsService(bool should_accept_requests)
+  explicit MockObservabilityPubSubService(bool should_accept_requests)
       : should_accept_requests_(should_accept_requests) {}
 
   grpc::Status GcsSubscriberCommandBatch(
@@ -105,7 +106,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   // Start a GCS server with optional authentication token
   void StartServer(const std::string &server_token, bool should_accept_requests = true) {
     auto mock_service =
-        std::make_unique<MockInternalPubSubGcsService>(should_accept_requests);
+        std::make_unique<MockObservabilityPubSubService>(should_accept_requests);
     mock_service_ptr_ = mock_service.get();
 
     std::shared_ptr<rpc::AuthenticationToken> auth_token;
@@ -154,7 +155,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   }
 
   std::unique_ptr<rpc::GrpcServer> server_;
-  MockInternalPubSubGcsService *mock_service_ptr_ = nullptr;
+  MockObservabilityPubSubService *mock_service_ptr_ = nullptr;
   int server_port_ = 0;
 };
 
@@ -342,10 +343,23 @@ TEST_F(PythonGcsSubscriberAuthTest, MultipleSubscribersMatchingTokens) {
   ASSERT_TRUE(subscriber2->Close().ok());
 }
 
+TEST(PythonGcsObservabilityChannel, IsObservabilityPubSubChannel) {
+  using rpc::ChannelType;
+  EXPECT_TRUE(IsObservabilityPubSubChannel(ChannelType::RAY_ERROR_INFO_CHANNEL));
+  EXPECT_TRUE(IsObservabilityPubSubChannel(ChannelType::RAY_LOG_CHANNEL));
+  EXPECT_TRUE(IsObservabilityPubSubChannel(ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL));
+  EXPECT_FALSE(IsObservabilityPubSubChannel(ChannelType::GCS_ACTOR_CHANNEL));
+  EXPECT_FALSE(IsObservabilityPubSubChannel(ChannelType::GCS_NODE_INFO_CHANNEL));
+}
+
+TEST(PythonGcsObservabilityChannel, ConstructorDiesOnNonObservabilityChannel) {
+  EXPECT_DEATH((void)PythonGcsSubscriber("127.0.0.1",
+                                         0,
+                                         rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                                         "subscriber-id",
+                                         "worker-id"),
+               ".*");
+}
+
 }  // namespace pubsub
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import pyarrow.fs
 
@@ -37,7 +37,11 @@ class ScalingConfig(ScalingConfigV1):
             reserved by each worker can be overridden with the
             ``resources_per_worker`` argument. If the number of workers is 0,
             the training function will run in local mode, meaning the training
-            function runs in the same process.
+            function runs in the same process. To enable elasticity, provide a
+            ``(min_workers, max_workers)`` tuple of ints.
+        elastic_resize_monitor_interval_s: While the worker group is healthy,
+            consider resizing the worker group every
+            ``elastic_resize_monitor_interval_s`` seconds.
         use_gpu: If True, training will be done on GPUs (1 per worker).
             Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
@@ -46,6 +50,22 @@ class ScalingConfig(ScalingConfigV1):
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
             override the number of CPU or GPUs used by each worker.
+
+            Accepts the same resource keys that Ray uses for scheduling tasks
+            and actors (see :ref:`Resources <core-resources>`):
+
+            - ``"CPU"``: number of logical CPUs per worker.
+            - ``"GPU"``: number of logical GPUs per worker. Prefer setting
+              ``use_gpu=True`` (which reserves 1 GPU per worker) and only
+              override this key when you need a different per-worker count.
+            - ``"TPU"``: number of logical TPUs per worker, when ``use_tpu=True``.
+            - ``"memory"``: heap memory reserved per worker, in bytes
+              (for example, ``"memory": 1e9`` reserves 1 GB per worker).
+            - Any :ref:`custom resource <custom-resources>` name configured on
+              your cluster (for example, ``"special_hardware": 1``).
+
+            Keys are case-sensitive: use ``"CPU"``, ``"GPU"``, and ``"TPU"``
+            (uppercase), and ``"memory"`` (lowercase).
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -70,6 +90,7 @@ class ScalingConfig(ScalingConfigV1):
             when `use_tpu` is True and `num_workers` is greater than 1.
     """
 
+    num_workers: Union[int, Tuple[int, int]] = 1
     trainer_resources: Optional[dict] = None
     label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
@@ -77,19 +98,47 @@ class ScalingConfig(ScalingConfigV1):
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
 
+    # Elasticity specific fields.
+    elastic_resize_monitor_interval_s: float = 60.0
+
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
+
+        is_fixed = isinstance(self.num_workers, int)
+        is_elastic = (
+            isinstance(self.num_workers, tuple)
+            and len(self.num_workers) == 2
+            and all(isinstance(x, int) for x in self.num_workers)
+        )
+        if not (is_fixed or is_elastic):
+            raise ValueError(
+                "ScalingConfig(num_workers) must be an int or a tuple of two ints."
+            )
+        if self.elastic_resize_monitor_interval_s < 0:
+            raise ValueError(
+                "ScalingConfig(elastic_resize_monitor_interval_s) must be non-negative."
+            )
+        if self.min_workers < 0:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                "Number of workers cannot be negative."
+            )
+        if self.min_workers > self.max_workers:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                f"min_workers={self.min_workers} must be <= max_workers={self.max_workers}."
+            )
 
         self._validate_tpu_config()
 
         if (
             isinstance(self.label_selector, list)
-            and isinstance(self.num_workers, int)
-            and len(self.label_selector) != self.num_workers
+            and len(self.label_selector) != self.max_workers
         ):
             raise ValueError(
-                "If `label_selector` is a list, it must be the same length as `num_workers`."
+                "If `label_selector` is a list, it must be the same length as "
+                "`max_workers` (or `num_workers` when fixed)."
             )
 
         if self.num_workers == 0:
@@ -101,8 +150,60 @@ class ScalingConfig(ScalingConfigV1):
 
         super().__post_init__()
 
+    @property
+    def elasticity_enabled(self) -> bool:
+        return isinstance(self.num_workers, tuple)
+
+    @property
+    def min_workers(self) -> int:
+        return (
+            self.num_workers
+            if isinstance(self.num_workers, int)
+            else self.num_workers[0]
+        )
+
+    @property
+    def max_workers(self) -> int:
+        return (
+            self.num_workers
+            if isinstance(self.num_workers, int)
+            else self.num_workers[1]
+        )
+
+    def _label_selector_per_worker(
+        self, num_workers: int
+    ) -> Optional[List[Dict[str, str]]]:
+        """Normalize ``label_selector`` into a per-worker list of length ``num_workers``.
+
+        - ``None`` -> ``None`` (no constraint; downstream consumers — the
+          placement-group path and the autoscaling coordinator — both
+          accept ``None`` and treat it as "no label requirement").
+        - ``Dict`` -> the same dict replicated for each worker
+        - ``List`` -> the first ``num_workers`` entries (validated to be
+          ``max_workers`` long in ``__post_init__``)
+        """
+        if isinstance(self.label_selector, list):
+            return [s.copy() for s in self.label_selector[:num_workers]]
+        if isinstance(self.label_selector, dict):
+            return [self.label_selector.copy() for _ in range(num_workers)]
+        return None
+
+    @property
+    def total_resources(self):
+        """Map of total resources required for training.
+
+        For elastic configs, this returns an upper bound based on max_workers.
+        """
+        total_resource_map = dict(self._trainer_resources_not_none)
+        for k, value in self._resources_per_worker_not_none.items():
+            total_resource_map[k] = total_resource_map.get(k, 0.0) + (
+                value * self.max_workers
+            )
+        return total_resource_map
+
     def _validate_tpu_config(self):
         """Validates configuration specifically for TPU usage."""
+        max_workers = self.max_workers
 
         if self.use_gpu and self.use_tpu:
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
@@ -125,7 +226,7 @@ class ScalingConfig(ScalingConfigV1):
                 "`resources_per_worker."
             )
 
-        if self.num_workers > 1:
+        if max_workers > 1:
             if not self.topology:
                 raise ValueError(
                     "`topology` must be specified in ScalingConfig when `use_tpu=True` "
@@ -148,7 +249,7 @@ class ScalingConfig(ScalingConfigV1):
                 workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
                     accelerator_type=self.accelerator_type,
-                    resources_per_unit=self.resources_per_worker,
+                    resources_per_worker=self.resources_per_worker,
                     num_slices=1,
                 )
             except Exception as e:
@@ -158,9 +259,16 @@ class ScalingConfig(ScalingConfigV1):
                     f"topology={self.topology}. Error: {e}"
                 )
 
-            if workers_per_slice > 0 and self.num_workers % workers_per_slice != 0:
+            if workers_per_slice > 0 and max_workers % workers_per_slice != 0:
                 raise ValueError(
                     f"The configured `num_workers` ({self.num_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
+                )
+            if workers_per_slice > 0 and self.min_workers % workers_per_slice != 0:
+                raise ValueError(
+                    f"The configured `min_workers` ({self.min_workers}) must be a "
                     f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
                     "TPU workloads typically require symmetric resource distribution "
                     "across all slices to function correctly."
@@ -179,6 +287,7 @@ class ScalingConfig(ScalingConfigV1):
 
     @property
     def _trainer_resources_not_none(self):
+        # V2 controller uses num_cpus=0; trainer_resources are V1-only.
         return {}
 
     @property
@@ -259,14 +368,72 @@ class FailureConfig(FailureConfigV1):
         controller_failure_limit: [DeveloperAPI] The maximum number of controller failures to tolerate.
             Setting to -1 will lead to infinite controller retries.
             Setting to 0 will disable controller retries. Defaults to -1.
+        max_preemption_failures: The maximum number of node-preemption interruptions
+            to recover from, counted separately from ``max_failures`` (which is
+            reserved for real failures). Will recover from the latest checkpoint
+            if present. Setting to -1 leads to infinite preemption retries;
+            setting to 0 disables them. Defaults to -1.
+        relax_collectives_on_preemption: Whether Ray Train's own preemption and
+            checkpoint collectives may complete without the workers on a
+            preempted node, so healthy workers can commit a just-in-time
+            checkpoint instead of being stranded. This covers
+            ``ray.train.report()`` and ``ray.train.get_preemption_info()``,
+            which normally require every rank to finish, so if a worker is
+            killed before it finishes then the rest would be stranded. Enable it when
+            a checkpoint upload may take longer than the preemption drain
+            window; it is unnecessary when a training step plus a checkpoint
+            fits comfortably inside that window, since the preempted workers are
+            then still alive to take part in the collectives themselves. Has no
+            effect when rank 0 is among the preempted ranks, since rank 0 is the
+            sole writer of the broadcast payload. Defaults to False.
+        preemption_grace_s: How long the surviving workers may keep running past
+            the preemption deadline, in seconds. Ray Train otherwise tears them
+            down the moment the deadline passes, which cuts off whatever they
+            were doing. This is most usefully when the upload of a just-in-time
+            checkpoint takes longer than the drain window itself. Pair it with
+            ``relax_collectives_on_preemption`` so the survivors can also commit
+            without the workers that have already gone. Defaults to 0.0, which
+            restarts as soon as the preemption deadline passes.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
     controller_failure_limit: int = -1
+    max_preemption_failures: int = -1
+    relax_collectives_on_preemption: bool = False
+    preemption_grace_s: float = 0.0
 
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class LoggingConfig:
+    """Configuration for Ray Train's logging behavior.
+
+    Args:
+        log_level: The log level for Ray Train's internal ``ray.train`` logs
+            on console output and application-level log files. Accepts standard
+            Python logging level names. Defaults to ``"INFO"``.
+            System-level log files always capture all levels (DEBUG and above),
+            and the ``ray`` logger (set by ``ray.init()``) and root logger
+            are unaffected.
+    """
+
+    log_level: str = "INFO"
+
+    def __post_init__(self):
+        valid_levels = set(logging._nameToLevel)
+        if (
+            not isinstance(self.log_level, str)
+            or self.log_level.upper() not in valid_levels
+        ):
+            raise ValueError(
+                f"Invalid log_level: {self.log_level!r}. "
+                f"Must be one of: {', '.join(repr(x) for x in sorted(valid_levels))}."
+            )
+        self.log_level = self.log_level.upper()
 
 
 @dataclass
@@ -291,6 +458,8 @@ class RunConfig:
             will invoke during training.
         worker_runtime_env: [DeveloperAPI] Runtime environment configuration
             for all Ray Train worker actors.
+        logging_config: Configuration for Ray Train's logging behavior.
+            See :class:`LoggingConfig` for details.
     """
 
     name: Optional[str] = None
@@ -300,6 +469,7 @@ class RunConfig:
     checkpoint_config: Optional[CheckpointConfig] = None
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
+    logging_config: Optional[LoggingConfig] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
@@ -318,6 +488,9 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        if not self.logging_config:
+            self.logging_config = LoggingConfig()
 
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()

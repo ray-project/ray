@@ -6,9 +6,11 @@ import sys
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import run_string_as_driver
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_nodes, list_tasks, list_workers
 
@@ -373,7 +375,9 @@ def test_worker_start_end_time(shutdown_only):
     pid = ray.get(worker.ready.remote())
 
     def verify():
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )[0]
         print(workers)
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] == 0
@@ -384,7 +388,9 @@ def test_worker_start_end_time(shutdown_only):
     ray.kill(worker)
 
     def verify():
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )[0]
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] > 0
         return True
@@ -397,7 +403,9 @@ def test_worker_start_end_time(shutdown_only):
     os.kill(pid, signal.SIGKILL)
 
     def verify():
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])[0]
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )[0]
         assert workers["start_time_ms"] > 0
         assert workers["end_time_ms"] > 0
         return True

@@ -38,6 +38,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 
 using ::testing::_;
@@ -83,13 +84,16 @@ class MockEventAggregatorAddEvents
 class TaskEventBufferTest : public ::testing::Test {
  public:
   TaskEventBufferTest() {
+    // The buffer records only while one of its destinations is enabled, so name one
+    // here to exercise the ring.
     RayConfig::instance().initialize(
         R"(
 {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 100,
-  "task_events_shutdown_flush_timeout_ms": 100
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": true
 }
   )");
 
@@ -97,7 +101,8 @@ class TaskEventBufferTest : public ::testing::Test {
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
         "test_session_name",
-        NodeID::Nil());
+        NodeID::Nil(),
+        clock_);
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -278,6 +283,7 @@ class TaskEventBufferTest : public ::testing::Test {
     }
   }
 
+  Clock clock_;
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
 };
 
@@ -306,6 +312,7 @@ class TaskEventBufferTestBatchSendDifferentDestination
   "task_events_max_num_profile_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 10,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -331,6 +338,7 @@ class TaskEventBufferTestLimitBufferDifferentDestination
   "task_events_max_num_profile_events_buffer_on_worker": 5,
   "task_events_send_batch_size": 10,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -349,7 +357,8 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_profile_events_per_task": 10,
   "task_events_max_num_profile_events_buffer_on_worker": 20,
-  "task_events_shutdown_flush_timeout_ms": 100
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": true
 }
   )");
   }
@@ -363,6 +372,8 @@ class TaskEventBufferTestDifferentDestination
     const auto [to_gcs, to_aggregator] = GetParam();
     std::string to_gcs_str = to_gcs ? "true" : "false";
     std::string to_aggregator_str = to_aggregator ? "true" : "false";
+    // Keep the recorder disabled so the buffer's own aggregator send path (exercised by
+    // to_aggregator) is not taken over by RayTaskEventRecorder.
     RayConfig::instance().initialize(
         R"(
 {
@@ -370,6 +381,7 @@ class TaskEventBufferTestDifferentDestination
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 100,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -395,6 +407,7 @@ class TaskEventBufferTestDroppedAttemptsOnly
   "task_events_send_batch_size": 1,
   "task_events_dropped_task_attempt_batch_size": 1,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -450,6 +463,36 @@ TEST_F(TaskEventBufferTest, TestAddEvents) {
   // Test add profile events
   task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_1, 1));
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 2);
+}
+
+// Buffer configured with no destination live (GCS, aggregator and export all off, and the
+// recorder disabled). The buffer should short-circuit and record nothing.
+class TaskEventBufferTestNoDestination : public TaskEventBufferTest {
+ public:
+  TaskEventBufferTestNoDestination() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 100,
+  "task_events_send_batch_size": 100,
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
+  "enable_core_worker_task_event_to_gcs": false,
+  "enable_core_worker_ray_event_to_aggregator": false
+}
+  )");
+  }
+};
+
+TEST_F(TaskEventBufferTestNoDestination, TestNoRecordingWhenNoDestination) {
+  ASSERT_FALSE(task_event_buffer_->Enabled());
+
+  auto task_id = RandomTaskId();
+  task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(task_id, 0));
+  task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id, 1));
+
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
@@ -963,6 +1006,99 @@ TEST_F(TaskEventBufferTest, TestIsDebuggerPausedFlag) {
   ASSERT_TRUE(event->state_updates().is_debugger_paused());
 }
 
+TEST_F(TaskEventBufferTest, TestTaskLogInfoInLifecycleEvent) {
+  // Create task log info
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_file("/tmp/stdout.log");
+  task_log_info.set_stderr_file("/tmp/stderr.log");
+  task_log_info.set_stdout_start(0);
+  task_log_info.set_stdout_end(100);
+  task_log_info.set_stderr_start(0);
+  task_log_info.set_stderr_end(50);
+
+  // Generate the event
+  auto task_id = RandomTaskId();
+  TaskStatusEvent::TaskStateUpdate state_update(task_log_info);
+  auto task_event = GenStatusTaskEvent(task_id, 0, 1, state_update);
+
+  // Convert to RayEvents format
+  RayEventsTuple ray_events_tuple;
+  task_event->ToRpcRayEvents(ray_events_tuple);
+
+  // Verify the lifecycle event has task_log_info
+  ASSERT_TRUE(ray_events_tuple.task_lifecycle_event.has_value());
+  const auto &lifecycle_event =
+      ray_events_tuple.task_lifecycle_event->task_lifecycle_event();
+  ASSERT_TRUE(lifecycle_event.has_task_log_info());
+
+  const auto &log_info = lifecycle_event.task_log_info();
+  EXPECT_EQ(log_info.stdout_file(), "/tmp/stdout.log");
+  EXPECT_EQ(log_info.stderr_file(), "/tmp/stderr.log");
+  EXPECT_EQ(log_info.stdout_start(), 0);
+  EXPECT_EQ(log_info.stdout_end(), 100);
+  EXPECT_EQ(log_info.stderr_start(), 0);
+  EXPECT_EQ(log_info.stderr_end(), 50);
+}
+
+// Tests that TaskLifecycleEvent.node_id is only set to the executor's node ID
+// (available at SUBMITTED_TO_WORKER), never the submitter's node ID.
+TEST_F(TaskEventBufferTest, TestTaskLifecycleEventNodeId) {
+  auto task_id = RandomTaskId();
+  NodeID submitter_node_id = NodeID::FromRandom();
+  NodeID executor_node_id = NodeID::FromRandom();
+
+  // For SUBMITTED_TO_WORKER, node_id should be set to the executor's node (not the
+  // submitter's).
+  {
+    TaskStatusEvent::TaskStateUpdate submitted_state_update(executor_node_id,
+                                                            WorkerID::FromRandom());
+    auto submitted_event =
+        std::make_unique<TaskStatusEvent>(task_id,
+                                          JobID::FromInt(0),
+                                          /*attempt_number=*/0,
+                                          rpc::TaskStatus::SUBMITTED_TO_WORKER,
+                                          /*timestamp=*/1,
+                                          /*is_actor_task_event=*/false,
+                                          "test_session_name",
+                                          submitter_node_id,
+                                          nullptr,
+                                          submitted_state_update);
+
+    RayEventsTuple submitted_ray_events;
+    submitted_event->ToRpcRayEvents(submitted_ray_events);
+    ASSERT_TRUE(submitted_ray_events.task_lifecycle_event.has_value());
+    const auto &submitted_lifecycle =
+        submitted_ray_events.task_lifecycle_event->task_lifecycle_event();
+    EXPECT_EQ(submitted_lifecycle.node_id(), executor_node_id.Binary())
+        << "node_id should be the executor's node for SUBMITTED_TO_WORKER";
+    EXPECT_NE(submitted_lifecycle.node_id(), submitter_node_id.Binary())
+        << "node_id should not be the submitter's node";
+  }
+
+  // For RUNNING (no state_update node_id), node_id should NOT be set — the submitter's
+  // node must not leak into the lifecycle event's node_id field.
+  {
+    auto task_event = std::make_unique<TaskStatusEvent>(task_id,
+                                                        JobID::FromInt(0),
+                                                        /*attempt_number=*/0,
+                                                        rpc::TaskStatus::RUNNING,
+                                                        /*timestamp=*/2,
+                                                        /*is_actor_task_event=*/false,
+                                                        "test_session_name",
+                                                        submitter_node_id,
+                                                        nullptr,
+                                                        /*state_update=*/absl::nullopt);
+
+    RayEventsTuple ray_events_tuple;
+    task_event->ToRpcRayEvents(ray_events_tuple);
+    ASSERT_TRUE(ray_events_tuple.task_lifecycle_event.has_value());
+    const auto &lifecycle_event =
+        ray_events_tuple.task_lifecycle_event->task_lifecycle_event();
+    EXPECT_TRUE(lifecycle_event.node_id().empty())
+        << "node_id should not be set to the submitter's node in lifecycle event";
+  }
+}
+
 TEST_F(TaskEventBufferTest, TestGracefulDestruction) {
   delete task_event_buffer_.release();
 }
@@ -973,7 +1109,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   int32_t attempt_number = 1;
   std::string component_type = "core_worker";
   std::string component_id = "worker_123";
-  std::string node_ip = "192.168.1.1";
+  std::string node_ip = "127.0.0.1";
   std::string event_name = "test_profile_event";
   int64_t start_time = 1000;
 
@@ -1040,6 +1176,164 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   EXPECT_EQ(event_entry.extra_data(), "test_extra_data");
 }
 
+TEST_F(TaskEventBufferTest, TestTaskProfileEventDefaultExtraDataIsEmptyJson) {
+  // A profile event that is flushed without SetExtraData ever being called
+  // (e.g. task:execute events that are not populated with extra data) must
+  // still serialize a valid-JSON extra_data. An empty string is not valid JSON
+  // and makes consumers that json-parse the field (the state API) fail on the
+  // whole request. The default must be "{}".
+  auto make_event = [](const std::string &event_name) {
+    return std::make_unique<TaskProfileEvent>(RandomTaskId(),
+                                              JobID::FromInt(123),
+                                              /*attempt_number=*/1,
+                                              /*component_type=*/"core_worker",
+                                              /*component_id=*/"worker_123",
+                                              /*node_ip_address=*/"127.0.0.1",
+                                              event_name,
+                                              /*start_time=*/1000,
+                                              /*session_name=*/"test_session_name",
+                                              NodeID::Nil());
+  };
+
+  // State API path: ToRpcTaskEvents (rpc::TaskEvents consumed via GCS).
+  {
+    auto profile_event = make_event("task:execute");
+    profile_event->SetEndTime(2000);
+    // Intentionally do NOT call SetExtraData.
+
+    rpc::TaskEvents task_events;
+    profile_event->ToRpcTaskEvents(&task_events);
+
+    ASSERT_EQ(task_events.profile_events().events_size(), 1);
+    EXPECT_EQ(task_events.profile_events().events(0).extra_data(), "{}");
+  }
+
+  // RayEvents path: ToRpcRayEvents.
+  {
+    auto profile_event = make_event("task:execute");
+    profile_event->SetEndTime(2000);
+    // Intentionally do NOT call SetExtraData.
+
+    RayEventsTuple ray_events_tuple;
+    profile_event->ToRpcRayEvents(ray_events_tuple);
+
+    ASSERT_TRUE(ray_events_tuple.task_profile_event.has_value());
+    const auto &profile_events =
+        ray_events_tuple.task_profile_event->task_profile_events().profile_events();
+    ASSERT_EQ(profile_events.events_size(), 1);
+    EXPECT_EQ(profile_events.events(0).extra_data(), "{}");
+  }
+}
+
+TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEventsMultipleEvents) {
+  auto task_id = RandomTaskId();
+  auto job_id = JobID::FromInt(123);
+  int32_t attempt_number = 1;
+  std::string component_type = "core_worker";
+  std::string component_id = "worker_123";
+  std::string node_ip = "127.0.0.1";
+
+  // Create first profile event
+  auto profile_event1 = std::make_unique<TaskProfileEvent>(task_id,
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:deserialize_arguments",
+                                                           1000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
+  profile_event1->SetEndTime(2000);
+  profile_event1->SetExtraData("extra_data_1");
+
+  // Create second profile event
+  auto profile_event2 = std::make_unique<TaskProfileEvent>(task_id,
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:execute",
+                                                           2000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
+  profile_event2->SetEndTime(3000);
+  profile_event2->SetExtraData("extra_data_2");
+
+  // Create third profile event
+  auto profile_event3 = std::make_unique<TaskProfileEvent>(task_id,
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:store_outputs",
+                                                           3000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
+  profile_event3->SetEndTime(4000);
+  profile_event3->SetExtraData("extra_data_3");
+
+  // Convert all events to the same RayEventsTuple
+  RayEventsTuple ray_events_tuple;
+  profile_event1->ToRpcRayEvents(ray_events_tuple);
+  profile_event2->ToRpcRayEvents(ray_events_tuple);
+  profile_event3->ToRpcRayEvents(ray_events_tuple);
+
+  // Verify that only the profile event is populated
+  EXPECT_FALSE(ray_events_tuple.task_definition_event.has_value());
+  EXPECT_FALSE(ray_events_tuple.task_lifecycle_event.has_value());
+  ASSERT_TRUE(ray_events_tuple.task_profile_event.has_value());
+
+  const auto &ray_event = ray_events_tuple.task_profile_event.value();
+
+  // Verify base fields
+  EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::CORE_WORKER);
+  EXPECT_EQ(ray_event.event_type(), rpc::events::RayEvent::TASK_PROFILE_EVENT);
+  EXPECT_EQ(ray_event.severity(), rpc::events::RayEvent::INFO);
+  EXPECT_FALSE(ray_event.event_id().empty());
+  EXPECT_EQ(ray_event.session_name(), "test_session_name");
+
+  // Verify task profile events are populated
+  ASSERT_TRUE(ray_event.has_task_profile_events());
+  const auto &task_profile_events = ray_event.task_profile_events();
+
+  EXPECT_EQ(task_profile_events.task_id(), task_id.Binary());
+  EXPECT_EQ(task_profile_events.job_id(), job_id.Binary());
+  EXPECT_EQ(task_profile_events.attempt_number(), attempt_number);
+
+  // Verify all 3 profile events are present
+  ASSERT_TRUE(task_profile_events.has_profile_events());
+  const auto &profile_events = task_profile_events.profile_events();
+
+  EXPECT_EQ(profile_events.component_type(), component_type);
+  EXPECT_EQ(profile_events.component_id(), component_id);
+  EXPECT_EQ(profile_events.node_ip_address(), node_ip);
+
+  // Verify there are 3 events
+  ASSERT_EQ(profile_events.events_size(), 3);
+
+  // Check each event entry
+  const auto &event_entry1 = profile_events.events(0);
+  EXPECT_EQ(event_entry1.event_name(), "task:deserialize_arguments");
+  EXPECT_EQ(event_entry1.start_time(), 1000);
+  EXPECT_EQ(event_entry1.end_time(), 2000);
+  EXPECT_EQ(event_entry1.extra_data(), "extra_data_1");
+
+  const auto &event_entry2 = profile_events.events(1);
+  EXPECT_EQ(event_entry2.event_name(), "task:execute");
+  EXPECT_EQ(event_entry2.start_time(), 2000);
+  EXPECT_EQ(event_entry2.end_time(), 3000);
+  EXPECT_EQ(event_entry2.extra_data(), "extra_data_2");
+
+  const auto &event_entry3 = profile_events.events(2);
+  EXPECT_EQ(event_entry3.event_name(), "task:store_outputs");
+  EXPECT_EQ(event_entry3.start_time(), 3000);
+  EXPECT_EQ(event_entry3.end_time(), 4000);
+  EXPECT_EQ(event_entry3.extra_data(), "extra_data_3");
+}
+
 TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
   // Test that CreateRayEventsDataToSend correctly handles profile events
   // by only including the first element of RayEventsPair
@@ -1098,30 +1392,42 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   auto task_id = RandomTaskId();
   auto job_id = JobID::FromInt(789);
 
-  // Create a status event (should populate both elements of RayEventsPair)
-  auto status_event = GenStatusTaskEvent(task_id, 1, 1000);
+  auto make_profile_event = [&]() {
+    return std::make_unique<TaskProfileEvent>(task_id,
+                                              job_id,
+                                              1,
+                                              "core_worker",
+                                              "worker_789",
+                                              "192.168.1.3",
+                                              "mixed_test",
+                                              7000,
+                                              "test_session_name",
+                                              NodeID::Nil());
+  };
 
-  // Create a profile event (should populate only first element)
-  auto profile_event = std::make_unique<TaskProfileEvent>(task_id,
-                                                          job_id,
-                                                          1,
-                                                          "core_worker",
-                                                          "worker_789",
-                                                          "192.168.1.3",
-                                                          "mixed_test",
-                                                          7000,
-                                                          "test_session_name",
-                                                          NodeID::Nil());
+  // Create a status event (should populate both elements of RayEventsPair) and a
+  // profile event (should populate only the first). These are the events that get
+  // flushed to produce the actual data.
+  auto status_event = GenStatusTaskEvent(task_id, 1, 1000);
+  auto profile_event = make_profile_event();
+
+  // Build the expected data from SEPARATE, identically-constructed instances:
+  // ToRpcRayEvents/ToRpcTaskExportEvents move fields out of the event (e.g.
+  // extra_data), so serializing is destructive and must not run on the same
+  // objects that are later flushed for the actual data.
+  auto status_event_expected = GenStatusTaskEvent(task_id, 1, 1000);
+  auto profile_event_expected = make_profile_event();
+
   // Expect data flushed match. Generate the expected data
   rpc::TaskEventData expected_task_event_data;
   rpc::events::RayEventsData expected_ray_events_data;
   auto event = expected_task_event_data.add_events_by_task();
-  status_event->ToRpcTaskEvents(event);
-  profile_event->ToRpcTaskEvents(event);
+  status_event_expected->ToRpcTaskEvents(event);
+  profile_event_expected->ToRpcTaskEvents(event);
 
   RayEventsTuple ray_events_tuple;
-  status_event->ToRpcRayEvents(ray_events_tuple);
-  profile_event->ToRpcRayEvents(ray_events_tuple);
+  status_event_expected->ToRpcRayEvents(ray_events_tuple);
+  profile_event_expected->ToRpcRayEvents(ray_events_tuple);
   if (ray_events_tuple.task_definition_event) {
     auto new_event = expected_ray_events_data.add_events();
     *new_event = std::move(ray_events_tuple.task_definition_event.value());
@@ -1406,33 +1712,82 @@ TEST_P(TaskEventBufferTestDroppedAttemptsOnly,
   task_event_buffer_->FlushEvents(false);
 }
 
+// Manual-start fixture parameterized on whether the RayTaskEventRecorder is enabled. Each
+// test sets the flag combination before calling Start() so it can observe how the flag
+// flips the buffer's own aggregator send.
+class TaskEventBufferTestRecorderSwitch : public TaskEventBufferTest,
+                                          public ::testing::WithParamInterface<bool> {
+  void SetUp() override {}
+};
+
+// The recorder flag flips the buffer's legacy aggregator send: when the recorder takes
+// over (enable_ray_task_event_recorder + enable_ray_event), the buffer must NOT send to
+// the aggregator; when the recorder is off (with the buffer's own aggregator flag on),
+// the buffer DOES send.
+TEST_P(TaskEventBufferTestRecorderSwitch, TestRecorderTakesOverAggregatorSend) {
+  const bool recorder_enabled = GetParam();
+  std::string recorder_str = recorder_enabled ? "true" : "false";
+  RayConfig::instance().initialize(
+      R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 100,
+  "task_events_send_batch_size": 100,
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": false,
+  "enable_ray_event": )" +
+      recorder_str + R"(,
+  "enable_ray_task_event_recorder": )" +
+      recorder_str + R"(,
+  "enable_core_worker_ray_event_to_aggregator": true
+}
+  )");
+  RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush=*/false));
+
+  task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(RandomTaskId(), 0));
+
+  // GCS send is off in both cases; only the aggregator send is being switched.
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+  EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _)).Times(0);
+
+  auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
+      task_event_buffer_->event_aggregator_client_.get());
+  // When the recorder is active it owns the aggregator send, so the buffer's own send is
+  // suppressed; otherwise the buffer's legacy aggregator send fires.
+  EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(recorder_enabled ? 0 : 1);
+
+  task_event_buffer_->FlushEvents(false);
+}
+
+INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
+                         TaskEventBufferTestRecorderSwitch,
+                         ::testing::Values(true, false));
+
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestBatchSendDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDroppedAttemptsOnly,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestLimitBufferDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 }  // namespace worker
 

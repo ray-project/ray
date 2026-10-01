@@ -45,9 +45,8 @@
 namespace ray {
 namespace gcs {
 
-/// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
-/// the fields inside `ActorTableData`.
-/// This class is not thread-safe.
+/// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to
+/// access the fields inside `ActorTableData`. This class is not thread-safe.
 class GcsActor {
  public:
   /// Create a GcsActor by actor_table_data.
@@ -169,6 +168,12 @@ class GcsActor {
       *actor_table_data_.mutable_label_selector() =
           ray::LabelSelector(task_spec_->label_selector()).ToStringMap();
     }
+    actor_table_data_.mutable_labels()->insert(task_spec_->labels().begin(),
+                                               task_spec_->labels().end());
+    if (task_spec_->fallback_strategy().options_size() > 0) {
+      actor_table_data_.mutable_fallback_strategy()->CopyFrom(
+          task_spec_->fallback_strategy());
+    }
     lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RefreshMetrics();
   }
@@ -203,6 +208,16 @@ class GcsActor {
   void UpdateAddress(const rpc::Address &address);
   /// Get the `Address` of this actor.
   const rpc::Address &GetAddress() const;
+  /// Set the borrowed references of this actor at the time of creation.
+  void SetBorrowedRefsAtCreation(
+      const google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount> &refs) {
+    borrowed_refs_at_creation_ = refs;
+  }
+  /// Get the borrowed references of this actor at the time of creation.
+  const google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>
+      &GetBorrowedRefsAtCreation() const {
+    return borrowed_refs_at_creation_;
+  }
 
   /// Update the state of this actor and refreshes metrics. Do not update the
   /// state of the underlying proto directly via set_state(), otherwise metrics
@@ -231,7 +246,10 @@ class GcsActor {
   rpc::LeaseSpec *GetMutableLeaseSpec();
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
-  void WriteActorExportEvent(bool is_actor_registration) const;
+  void WriteActorExportEvent(
+      bool is_actor_registration,
+      std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason =
+          std::nullopt) const;
   // Verify if export events should be written for EXPORT_ACTOR source types
   bool IsExportAPIEnabledActor() const {
     return IsExportAPIEnabledSourceType(
@@ -327,6 +345,12 @@ class GcsActor {
   std::string session_name_;
   /// Address of the local raylet of the worker where this actor is running
   std::optional<rpc::Address> local_raylet_address_;
+  /// The borrowed references at the time of successful creation.
+  /// These are saved so that if the actor restarts and there is a pending
+  /// creation callback, we can correctly invoke the callback early with the
+  /// valid borrowed_refs.
+  google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>
+      borrowed_refs_at_creation_;
 };
 
 using RestartActorForLineageReconstructionCallback =

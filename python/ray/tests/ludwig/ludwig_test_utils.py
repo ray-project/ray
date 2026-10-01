@@ -26,6 +26,7 @@ import traceback
 import unittest
 import uuid
 from distutils.util import strtobool
+from typing import Any, Dict, List, Optional
 
 import cloudpickle
 import numpy as np
@@ -110,19 +111,21 @@ def slow(test_case):
 
 
 def generate_data(
-    input_features,
-    output_features,
-    filename="test_csv.csv",
-    num_examples=25,
-):
-    """
-    Helper method to generate synthetic data based on input, output feature
-    specs
-    :param num_examples: number of examples to generate
-    :param input_features: schema
-    :param output_features: schema
-    :param filename: path to the file where data is stored
-    :return:
+    input_features: List[Dict[str, Any]],
+    output_features: List[Dict[str, Any]],
+    filename: str = "test_csv.csv",
+    num_examples: int = 25,
+) -> str:
+    """Generate synthetic data based on input/output feature specs.
+
+    Args:
+        input_features: Input feature schema.
+        output_features: Output feature schema.
+        filename: Path to the file where data is stored.
+        num_examples: Number of examples to generate.
+
+    Returns:
+        The path to the file where the generated data was written.
     """
     features = input_features + output_features
     df = build_synthetic_dataset(num_examples, features)
@@ -338,21 +341,27 @@ def vector_feature(**kwargs):
 
 
 def run_experiment(
-    input_features,
-    output_features,
-    skip_save_processed_input=True,
-    config=None,
-    backend=None,
+    input_features: Optional[List[Dict[str, Any]]],
+    output_features: Optional[List[Dict[str, Any]]],
+    skip_save_processed_input: bool = True,
+    config: Optional[Dict[str, Any]] = None,
+    backend: Optional[LocalBackend] = None,
     **kwargs,
-):
-    """
-    Helper method to avoid code repetition in running an experiment. Deletes
-    the data saved to disk after running the experiment
-    :param input_features: list of input feature dictionaries
-    :param output_features: list of output feature dictionaries
-    **kwargs you may also pass extra parameters to the experiment as keyword
-    arguments
-    :return: None
+) -> None:
+    """Run an experiment and clean up artifacts saved to disk.
+
+    Args:
+        input_features: List of input feature dictionaries.
+        output_features: List of output feature dictionaries.
+        skip_save_processed_input: Whether to skip persisting processed input
+            to disk.
+        config: Optional Ludwig configuration dictionary. If unset, a default
+            config is constructed from ``input_features`` and
+            ``output_features``.
+        backend: Optional Ludwig backend to use. Defaults to
+            ``LocalTestBackend()``.
+        **kwargs: Extra keyword arguments forwarded to the underlying
+            ``experiment_cli`` call.
     """
     if input_features is not None and output_features is not None:
         # This if is necessary so that the caller can call with
@@ -455,13 +464,17 @@ def spawn(fn):
     return wrapped_fn
 
 
-def run_api_experiment(input_features, output_features, data_csv):
-    """
-    Helper method to avoid code repetition in running an experiment
-    :param input_features: input schema
-    :param output_features: output schema
-    :param data_csv: path to data
-    :return: None
+def run_api_experiment(
+    input_features: List[Dict[str, Any]],
+    output_features: List[Dict[str, Any]],
+    data_csv: str,
+) -> None:
+    """Run an experiment through Ludwig's Python API.
+
+    Args:
+        input_features: Input schema.
+        output_features: Output schema.
+        data_csv: Path to data.
     """
     config = {
         "input_features": input_features,

@@ -1,29 +1,41 @@
+import contextlib
 import copy
 import enum
+import importlib
 import logging
 import os
 import threading
 import warnings
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
-from ray._private.ray_constants import env_bool, env_float, env_integer
+from ray._common.utils import env_bool, env_float, env_integer
+from ray._private.worker import global_worker
 from ray.data._internal.logging import update_dataset_logger_for_worker
-from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
-from ray.util.annotations import DeveloperAPI
+from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
     from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
     )
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
 logger = logging.getLogger(__name__)
 
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
+
+
+# Deprecated value of ``ShuffleStrategy.SHUFFLE_V2``, still accepted when
+# constructing the enum from a string (i.e. by
+# ``RAY_DATA_DEFAULT_SHUFFLE_STRATEGY`` or when assigning
+# ``DataContext.shuffle_strategy``).
+_DEPRECATED_SHUFFLE_V2_VALUE = "hash_shuffle_v2"
 
 
 @DeveloperAPI(stability="alpha")
@@ -34,6 +46,28 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
+    SHUFFLE_V2 = "shuffle_v2"
+    GPU_SHUFFLE = "gpu_shuffle"
+
+    # Deprecated alias of ``SHUFFLE_V2`` (this strategy is no longer specific
+    # to hash-partitioning). Enum members sharing a value are aliases of each
+    # other, hence this resolves to ``SHUFFLE_V2`` itself and is excluded from
+    # iteration over the strategies.
+    HASH_SHUFFLE_V2 = "shuffle_v2"
+
+    @classmethod
+    def _missing_(cls, value):
+        if value == _DEPRECATED_SHUFFLE_V2_VALUE:
+            warnings.warn(
+                f"`{_DEPRECATED_SHUFFLE_V2_VALUE}` shuffle strategy is deprecated, "
+                f"please use `{cls.SHUFFLE_V2.value}` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+            return cls.SHUFFLE_V2
+
+        return None
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -66,7 +100,17 @@ DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
     "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", False
 )
 
+DEFAULT_ENABLE_ARROW_BACKED_PANDAS_CONVERSION = env_bool(
+    "RAY_DATA_ENABLE_ARROW_BACKED_PANDAS_CONVERSION", True
+)
+
+DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
+    "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
+
+DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
@@ -75,12 +119,52 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 )
 
 DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
-    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.HASH_SHUFFLE
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SHUFFLE_V2
 )
 
 DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
     "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
+
+
+def _deduce_default_shuffle_compression() -> str:
+    legacy_codec = os.environ.get("RAY_DATA_HASH_SHUFFLE_COMPRESSION")
+    if legacy_codec is not None:
+        logger.warning(
+            "RAY_DATA_HASH_SHUFFLE_COMPRESSION is deprecated, please use "
+            "RAY_DATA_SHUFFLE_COMPRESSION instead"
+        )
+
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+
+
+DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
+
+DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
+    "RAY_DATA_HASH_SHUFFLE_REDUCE_BATCH_SIZE", 16
+)
+
+DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
+    "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
+)
+
+DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
+    "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
+)
+
+
+def _deduce_default_enable_disk_shuffle() -> bool:
+    legacy = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+    if "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE" in os.environ:
+        logger.warning(
+            "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE is deprecated, please use "
+            "RAY_DATA_ENABLE_DISK_SHUFFLE instead"
+        )
+
+    return env_bool("RAY_DATA_ENABLE_DISK_SHUFFLE", legacy)
+
+
+DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -93,8 +177,6 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 DEFAULT_USE_POLARS = False
 
 DEFAULT_USE_POLARS_SORT = False
-
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -109,20 +191,32 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
 #       total cumulative size (due to it internally utilizing int32 offsets)
 #
 #       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
+# DEPRECATED: use_arrow_tensor_v2 is deprecated and no longer used.
+# arrow_fixed_shape_tensor_format defaults to V2.
 DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
 
+DEFAULT_ACCURATE_MAP_PHASE_TIMING = False
+
+DEFAULT_PER_STAGE_MAP_TIMING = False
+
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
-DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
-    "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
+DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
+    "RAY_DATA_LOG_INTERNAL_STACK_TRACE",
+    # Back-compat: fall back to the old env var name if the new one is unset.
+    env_bool("RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False),
 )
 
 DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
     "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
+)
+
+DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S = env_float(
+    "RAY_DATA_EXECUTION_NO_PROGRESS_TIMEOUT_S", 30 * 60
 )
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -193,6 +287,30 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "DEADLINE_EXCEEDED",
 )
 
+DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS = env_integer("RAY_DATA_DELTA_COMMIT_MAX_ATTEMPTS", 5)
+DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_DELTA_COMMIT_RETRY_MAX_BACKOFF_S", 16
+)
+# Reuses the same transient-error substring set already proven for Iceberg's
+# catalog operations -- both are HTTP/RPC calls to a metadata service, so the
+# same class of transient failures (rate limiting, connection resets) applies.
+DEFAULT_DELTA_COMMIT_RETRIED_ERRORS = DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS
+
+DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
@@ -201,12 +319,32 @@ DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
+DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS = env_integer(
+    "RAY_DATA_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS", 0
+)
+
+DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
+
+DEFAULT_MAX_MAP_RETRIES = 0
+
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
 
 DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
+)
+
+DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S = env_float(
+    "RAY_DATA_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S", None
+)
+
+DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO = env_float(
+    "RAY_DATA_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO", None
+)
+
+DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION = env_float(
+    "RAY_DATA_OBJECT_STORE_MEMORY_PRESSURE_FRACTION", None
 )
 
 DEFAULT_MAX_ERRORED_BLOCKS = 0
@@ -246,6 +384,20 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+# Retain the stats summary of each finished execution so it can be read back with
+# `ray.data.list_stats_summaries()`, disabled by default.
+DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION = env_bool(
+    "RAY_DATA_ENABLE_STATS_SUMMARY_COLLECTION", False
+)
+
+DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
+
+DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
+
+DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED = env_bool(
+    "RAY_DATA_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED", False
+)
+
 DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
     "RAY_DATA_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S", 300
 )
@@ -253,6 +405,9 @@ DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
     "RAY_DATA_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S", 30
 )
+
+# Environment variable for custom execution callbacks
+EXECUTION_CALLBACKS_ENV_VAR = "RAY_DATA_EXECUTION_CALLBACKS"
 
 
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
@@ -265,9 +420,9 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
-DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
-    1,
+    None,
 )
 
 
@@ -277,8 +432,16 @@ DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
 )
 
 
+# Charge lineage reconstruction tasks to the operator that owns them when
+# reporting resource usage. Enabled by default; set to 0 to fall back to
+# counting only the tasks Ray Data itself submitted.
+DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING: bool = env_bool(
+    "RAY_DATA_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING", True
+)
+
+
 DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
-    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
+    "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 2.0
 )
 
 
@@ -301,6 +464,10 @@ class IcebergConfig:
         catalog_retried_errors: A list of substrings of error messages that
             should trigger a retry for Iceberg catalog operations. Includes common
             HTTP error codes and connection errors.
+        read_file_tasks_sequentially: Whether each Ray read task processes files
+            one at a time. Defaults to ``True`` to limit memory use. Set to
+            ``False`` for higher throughput when a task has many small files and
+            their combined input comfortably fits in memory.
     """
 
     write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
@@ -309,6 +476,73 @@ class IcebergConfig:
     catalog_retry_max_backoff_s: int = DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
+    )
+    read_file_tasks_sequentially: bool = True
+
+
+@DeveloperAPI
+@dataclass
+class DeltaConfig:
+    """Configuration for the ``write_delta`` prototype's commit/retry behavior.
+
+    Args:
+        commit_max_attempts: Maximum number of retry attempts for the driver's
+            Delta commit operations (existence check, create table, write
+            transaction). Defaults to 5.
+        commit_retry_max_backoff_s: Maximum backoff time in seconds between
+            commit retry attempts. Uses exponential backoff with jitter.
+            Defaults to 16.
+        commit_retried_errors: A list of substrings of error messages that
+            should trigger a retry of a commit operation, in addition to
+            authentication errors (which are always retried when
+            ``credential_refresh_enabled`` is set).
+        credential_refresh_enabled: Whether an authentication error (expired
+            or invalid cloud/catalog credentials) triggers a credential
+            refresh before the next retry attempt, on both the driver and
+            workers. Defaults to ``True``.
+    """
+
+    commit_max_attempts: int = DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS
+    commit_retry_max_backoff_s: int = DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S
+    commit_retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_DELTA_COMMIT_RETRIED_ERRORS)
+    )
+    credential_refresh_enabled: bool = True
+
+
+@DeveloperAPI
+@dataclass
+class LanceConfig:
+    """Configuration for Lance datasource and datasink operations.
+
+    Args:
+        read_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance read operations.
+        read_fragments_max_attempts: Maximum number of retry attempts for Lance
+            read operations.
+        read_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance read retries.
+        write_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance write operations.
+        write_fragments_max_attempts: Maximum number of retry attempts for Lance
+            write operations.
+        write_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance write retries.
+    """
+
+    read_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    read_fragments_max_attempts: int = DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS
+    read_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S
+    )
+    write_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    write_fragments_max_attempts: int = DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS
+    write_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S
     )
 
 
@@ -333,7 +567,8 @@ class AutoscalingConfig:
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
         actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
             This limits how many actors can be added at once to prevent resource contention
-            and scheduling pressure. Defaults to 1 for conservative scaling.
+            and scheduling pressure. Defaults to ``None``, leaving the delta bounded only by
+            the operator's resource budget and the pool's ``max_size``.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -346,7 +581,9 @@ class AutoscalingConfig:
     )
 
     # Maximum number of actors to scale up in a single scaling decision
-    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
+    actor_pool_max_upscaling_delta: Optional[
+        int
+    ] = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -365,14 +602,49 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
 
         return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
     else:
-        vs = [s for s in ShuffleStrategy]  # noqa: C416
+        try:
+            # NOTE: This also resolves deprecated aliases (like `hash_shuffle_v2`)
+            #       to their current strategy
+            return ShuffleStrategy(DEFAULT_SHUFFLE_STRATEGY)
+        except ValueError:
+            vs = [s.value for s in ShuffleStrategy]
 
-        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
-            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
-            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
+            raise ValueError(
+                f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the "
+                f"[{','.join(vs)}] (got {DEFAULT_SHUFFLE_STRATEGY})"
+            ) from None
+
+
+def _default_fixed_shape_tensor_format():
+    """Factory function to avoid circular import."""
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
+
+    return FixedShapeTensorFormat.V2
+
+
+def _resolve_enable_ray_data_reconstruction() -> Optional[bool]:
+    """Read this job's core-level lineage reconstruction setting.
+
+    Reads ``disable_job_level_lineage_reconstruction`` off the core worker to
+    determine whether Ray Data's application-level fault tolerance mechanism
+    should be enabled.
+    """
+    if not global_worker.connected:
+        return None
+
+    try:
+        return bool(
+            global_worker.core_worker.get_disable_job_level_lineage_reconstruction()
         )
-
-        return DEFAULT_SHUFFLE_STRATEGY
+    except Exception:
+        logger.warning(
+            "Couldn't read `disable_job_level_lineage_reconstruction` from the "
+            "core worker. Ray Data may be running without fault tolerance "
+            "mechanism. Is the job level lineage reconstruction config correctly "
+            "propagated to the core worker?",
+            exc_info=True,
+        )
+        return False
 
 
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
@@ -416,24 +688,31 @@ class DataContext:
         autoscaling_config: Autoscaling configuration.
         use_push_based_shuffle: Whether to use push-based shuffle.
         pipeline_push_based_shuffle_reduce_tasks:
-        scheduling_strategy: The global scheduling strategy. For tasks with large args,
-            ``scheduling_strategy_large_args`` takes precedence.
-        scheduling_strategy_large_args: Scheduling strategy for tasks with large args.
-        large_args_threshold: Size in bytes after which point task arguments are
-            considered large. Choose a value so that the data transfer overhead is
-            significant in comparison to task scheduling (i.e., low tens of ms).
+        scheduling_strategy: Deprecated. Ray Data manages scheduling internally.
+        scheduling_strategy_large_args: Deprecated. Ray Data manages scheduling
+            internally.
+        large_args_threshold: Deprecated. Ray Data manages scheduling internally.
         use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
-        eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
+            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
+            driver-side first-file sampling for schema inference,
+            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True;
+            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
+            V2). Parquet is the only reader migrated to V2 so far; the others
+            read through V1 for now regardless of this flag.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
-        use_arrow_tensor_v2: Config enabling V2 version of ArrowTensorArray supporting
-            tensors > 2Gb in size (off by default)
+        arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
+            Options are FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2, and FixedShapeTensorFormat.ARROW_NATIVE.
+            Default is V2. NOTE: For ARROW_NATIVE, only numbers (integers, floats) are currently supported.
+        use_arrow_tensor_v2: [Deprecated] This setting is no longer used.
+            Use ``arrow_fixed_shape_tensor_format`` instead.
         enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
             values not suppported by Arrow natively (like user-defined custom Python
             classes for ex, etc) using `ArrowPythonObjectType` (simply serializing
@@ -442,6 +721,26 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
+        accurate_map_phase_timing: Whether to break "Block transform time" down
+            into input prep, function body, and output block build for row-based
+            transforms such as :meth:`~ray.data.Dataset.map` and
+            :meth:`~ray.data.Dataset.filter`. Those
+            run once per row, and measuring each phase separately costs enough per row
+            to slow the transform down, so by default Ray Data reports only their
+            total. Batch-based transforms such as
+            :meth:`~ray.data.Dataset.map_batches` are always broken down, since one
+            measurement there covers a whole batch. Enable this when you need the
+            breakdown for a row-based transform and can afford the overhead.
+        per_stage_map_timing: Whether to also split "Block transform time" per
+            fused stage, so you can tell which of several fused functions the
+            time went to. Ray Data fuses adjacent operators, so one operator's
+            figure can cover several of your functions, and the phase breakdown
+            says what kind of work was slow rather than which function. This
+            puts one extra number per stage on every output block's metadata,
+            so it is off by default. Each stage's figure covers its own input
+            prep, body and output block build. It is independent of
+            ``accurate_map_phase_timing``: a row-based transform can have the
+            per-stage split without the per-phase one.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
         execution_options: The
@@ -470,25 +769,85 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        actor_init_retry_on_errors: Whether to retry when actor initialization fails.
-            Default to `False` to not retry on any errors. Set to `True` to retry
-            all errors.
-        actor_init_max_retries: Maximum number of consecutive retries for actor
-            initialization failures. The counter resets when an actor successfully
-            initializes. Default is 3. Set to -1 for infinite retries.
+        actor_init_retry_on_errors: Whether to retry when the UDF constructor
+            raises during actor initialization. The retry happens in-process,
+            inside the same (still-alive) actor; contrast with
+            ``max_consecutive_actor_init_deaths``, which handles actors that
+            die during initialization. Default to `False` to not retry on any
+            errors. Set to `True` to retry all errors.
+        actor_init_max_retries: Maximum number of consecutive in-process UDF
+            constructor retries per actor (see ``actor_init_retry_on_errors``).
+            The counter resets when an actor successfully initializes. Default
+            is 3. Set to -1 for infinite retries.
+        max_consecutive_actor_init_deaths: Per-operator number of consecutive
+            actor deaths during initialization to tolerate by replacing the
+            dead actor with a fresh one (an actor dies when its process
+            crashes, e.g. OOM or segfault, or when any in-actor
+            ``actor_init_retry_on_errors`` retries are exhausted; Ray Core
+            doesn't restart actors whose creation task failed). The counter
+            resets whenever an actor of the operator initializes successfully,
+            so sporadic deaths in a progressing pipeline are tolerated while a
+            systemically broken UDF exhausts the budget. Default is 0, which
+            fails the job on the first death. Set to -1 for unlimited. When
+            the budget is exceeded, the last actor error is re-raised. Note:
+            an operator start gated by ``wait_for_min_actors_s`` still fails
+            fast on the first error.
+        retried_map_errors: Controls which user exceptions are retried in map
+            tasks. ``False`` (default) disables retries. ``True`` retries any user
+            exception. A list of patterns retries only when the exception message
+            matches one of them (checked as substring first, then as regex).
+            Bounded by ``max_map_retries``.
+        max_map_retries: Maximum number of retry attempts per map task for user
+            exceptions. Default is 0 (no retries). Retries also require
+            ``retried_map_errors`` to be ``True`` or a non-empty pattern list.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        object_store_reservation_overshoot_ratio: An operator loses its share of the
+            shared object-store memory pool once its object-store usage exceeds this
+            multiple of its total reservation. The headroom above 1x absorbs the
+            ordinary fluctuation of an operator's own output buffer under steady
+            load. Only object-store memory is withheld: the operator keeps its full
+            CPU/GPU share so it can still drain what it already holds. Has no effect
+            unless ``object_store_memory_pressure_fraction`` is also set. Defaults to
+            None, which disables the overshoot throttle.
+        object_store_memory_pressure_fraction: Once this execution's object-store
+            usage exceeds this fraction of its memory limit, an idle operator with
+            queued input may run one task despite an exhausted object-store budget
+            for task outputs. This keeps the pipeline moving without releasing more
+            upstream output. Only one such task runs at a time per operator, since
+            the allowance requires the operator to have no task in flight; CPU/GPU
+            limits are always enforced. Leaving this unset disables the allowance
+            entirely, which keeps object-store backpressure strict on the default
+            path. Set together with ``object_store_reservation_overshoot_ratio`` it
+            additionally enables the overshoot throttle. Defaults to None.
+        execution_no_progress_timeout_s: Maximum time in seconds that an execution may
+            go without any operator producing or consuming an output before it fails
+            with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
+            all-to-all operation.
+            Raise this if your workload can wait a long time for cluster capacity.
+            Set to -1 to disable.
+        output_backpressure_guard_release_interval_s: Per-operator minimum interval
+            in seconds between successive ``OutputBackpressureGuard`` releases. The
+            guard exists as a liveness escape hatch: when the resource allocator
+            clamps an op's output budget to 0, it flips the budget to 1 byte so the
+            executor emits one more block. On workloads with very large blocks this
+            per-iteration release can outpace downstream drain, so object store usage
+            grows even under "backpressure". A positive interval throttles releases
+            per op; only releases that actually yield output start the interval.
+            Defaults to None (no throttling, legacy behavior).
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
             corrupted data samples) or IO errors. Data in the failed blocks are dropped.
             This option can be useful to prevent a long-running job from failing due to
             a small number of bad blocks.
-        log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
-            Core code stack frames when logging to stdout. The full stack trace is
-            always written to the Ray Data log file.
+        log_internal_stack_trace: Whether to write the full Ray Data/Ray Core
+            internal code stack frames to the Ray Data log file when logging a
+            user-code error. These internal frames are always omitted from
+            stdout; by default they're also omitted from the log file. Set this
+            to True to include them in the log file. Off by default.
         raise_original_map_exception: Whether to raise the original exception
             encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
@@ -504,14 +863,48 @@ class DataContext:
             tasks in the queue allows us to overlap pulling of the blocks (which are
             tasks arguments) with the execution of the prior tasks maximizing
             individual Actor's utilization
-        retried_io_errors: A list of substrings of error messages that should
-            trigger a retry when reading or writing files. This is useful for handling
+        retried_io_errors: A list of patterns to match against error messages that should
+            trigger a retry when reading or writing files. Each pattern is first checked
+            as a substring, then as a regex. This is useful for handling
             transient errors when reading from remote storage systems.
+        lance_config: Configuration for Lance datasource and datasink operations
+            including retry settings for read and write operations. See
+            :class:`LanceConfig` for details.
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
+        delta_config: Configuration for the ``write_delta`` prototype's
+            commit/retry behavior, including credential-refresh-on-auth-error.
+            See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
+        shuffle_compression: Codec used to compress shuffle intermediate
+            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            alias: ``hash_shuffle_compression``.
+        hash_shuffle_reduce_batch_size: Number of shard object references each
+            hash-shuffle reduce task dereferences per ``ray.get()`` call.
+        hash_shuffle_reduce_get_timeout_s: Timeout in seconds, for the
+            ``ray.get()`` each hash-shuffle reduce task to fetch a batch of
+            its input shards. A non-positive value (``<= 0``) disables the
+            timeout, fetching each batch in a single blocking call.
+        shuffle_input_batch_bytes: Target batch size in bytes for coalescing
+            shuffle input blocks before partitioning. Applies to the
+            ``SHUFFLE_V2`` shuffle strategy (including disk-based hash shuffle).
+            Other shuffle strategies ignore it. Input blocks are buffered per
+            node and
+            processed as a batch once this size is reached; remaining
+            buffered blocks are flushed when input is exhausted. Lower values
+            increase shuffle parallelism (useful for CPU-intensive shuffles)
+            at the cost of more, smaller intermediate shard objects. Set to
+            ``0`` to disable batching, processing each input bundle
+            individually. Defaults to 1GiB.
+        use_disk_based_hash_shuffle: Whether keyed ``repartition()``,
+            aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
+            disk-based (file-transport) shuffle instead of the object
+            store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
+            environment variable (``False`` when unset). Deprecated
+            aliases: ``use_external_hash_shuffle`` and the
+            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -528,7 +921,11 @@ class DataContext:
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
+            disabled by default.
+        enable_stats_summary_collection: Retain the stats summary of each finished
+            execution so it can be read back with `ray.data.list_stats_summaries()`,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
             store memory limit. If `None`, uses Ray's default.
@@ -543,9 +940,46 @@ class DataContext:
             later. If `None`, this backpressure policy is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
             of an operator based on its and downstream operators' queue size.
+        enable_lineage_reconstruction_resource_accounting: Whether to count the
+            tasks Ray Core runs to reconstruct lost objects toward an operator's
+            reported resource usage. When disabled, those tasks occupy resources
+            that backpressure doesn't know about.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        enable_arrow_backed_pandas_conversion: Whether ``BlockAccessor.to_pandas``
+            maps standard Arrow types to pandas Arrow-backed dtypes
+            (``pd.ArrowDtype``). When ``False``, standard Arrow types convert to
+            numpy dtypes (the pre-2.56 behavior). Set to ``False`` if pandas UDFs
+            assign multi-dimensional arrays into columns or rely on numpy-only
+            operations (e.g. ``%``) that Arrow-backed columns do not implement.
+        batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
+        gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
+            to total GPUs available in the cluster.
+        gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
+            uses 90% of free device memory; ``None`` uses an expandable pool.
+        gpu_shuffle_spill_memory_limit: Device-to-host spill threshold per rank.
+            ``"auto"`` uses 80% of ``gpu_shuffle_rmm_pool_size``; ``None`` disables
+            spilling.
+        gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
+            communicator setup (actor creation + root/worker init) before raising
+            a ``TimeoutError``. Defaults to 120 seconds.
+        isolate_read_workers: If ``True``, other operators' tasks don't get scheduled on
+            the same worker processes as the read operators'. This prevents large
+            PyArrow memory allocation during reads from inflating the resident memory of
+            workers that are later reused by downstream operators. Enabling this flag
+            can reduce OOMs but also cause performance regressions. Defaults to
+            ``False``.
+        default_map_logical_memory_enabled: If ``True``, the system sets logical
+            ``memory`` for map tasks and actors even if you haven't specified a value;
+            otherwise, the system launches map tasks and actors with no logical
+            ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
+            for some APIs but not others. Defaults to ``False``.
+        enable_ray_data_reconstruction: Whether Ray Data reconstructs lost objects
+            itself rather than relying on Ray Core lineage reconstruction.
+            This parameter should only be set using the job config. Explicitly setting
+            data reconstruction for context will not propagate the configuration to the
+            ray cluster.
     """
 
     # `None` means the block size is infinite.
@@ -575,11 +1009,26 @@ class DataContext:
     # provided explicitly)
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
+    # Codec for shuffle intermediate shards ("none", "lz4", or "zstd").
+    shuffle_compression: str = DEFAULT_SHUFFLE_COMPRESSION
+
+    # Shard refs each reduce task dereferences per ray.get() call.
+    hash_shuffle_reduce_batch_size: int = DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE
+
+    # Timeout (seconds) for each reduce-task shard ray.get(); a stalled fetch is
+    # logged and fails with GetTimeoutError. <= 0 disables.
+    hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
+
+    # Target batch size (bytes) for coalescing shuffle input blocks before
+    # partitioning (currently shuffle_v2 only); blocks are buffered per
+    # node until this size is reached. 0 disables batching.
+    shuffle_input_batch_bytes: int = DEFAULT_SHUFFLE_INPUT_BATCH_BYTES
+
     # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
     #
     # When unset defaults to the smaller of
-    #   - Total # of CPUs available in the cluster * 2
+    #   - Total # of CPUs available in the cluster (at least 1)
     #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
     max_hash_shuffle_aggregators: Optional[int] = None
 
@@ -605,6 +1054,30 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
+    # hash-shuffle operations (keyed repartition, aggregations, joins).
+    # When False, use the object-store path.
+    use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
+
+    ################################################################
+    # GPU Shuffle configuration
+    ################################################################
+
+    # Number of GPU actors (ranks). Defaults to total GPUs in the cluster.
+    gpu_shuffle_num_actors: Optional[int] = None
+
+    # RMM GPU memory pool size for each rank.
+    # "auto" = 90% of free device memory; None = expandable pool (no fixed size).
+    gpu_shuffle_rmm_pool_size: Union[int, str, None] = None
+
+    # Device→host spill threshold for each rank.
+    # "auto" = 80% of rmm_pool_size; None = spilling disabled.
+    gpu_shuffle_spill_memory_limit: Union[int, str, None] = "auto"
+
+    # Maximum seconds to wait for UCXX communicator setup before raising
+    # TimeoutError.
+    gpu_shuffle_setup_timeout_s: float = 120.0
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
@@ -612,15 +1085,21 @@ class DataContext:
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
-    eager_free: bool = DEFAULT_EAGER_FREE
+    use_legacy_dataset_ids: bool = DEFAULT_USE_LEGACY_DATASET_IDS
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
+    use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
+        default_factory=_default_fixed_shape_tensor_format
+    )
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
+    accurate_map_phase_timing: bool = DEFAULT_ACCURATE_MAP_PHASE_TIMING
+    per_stage_map_timing: bool = DEFAULT_PER_STAGE_MAP_TIMING
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
     execution_options: "ExecutionOptions" = field(
         default_factory=_execution_options_factory
@@ -643,12 +1122,17 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
+    max_consecutive_actor_init_deaths: int = DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS
+    retried_map_errors: Union[bool, List[str]] = DEFAULT_RETRIED_MAP_ERRORS
+    max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+    output_backpressure_guard_release_interval_s: Optional[
+        float
+    ] = DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
-    log_internal_stack_trace_to_stdout: bool = (
-        DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
-    )
+    execution_no_progress_timeout_s: float = DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S
+    log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
@@ -664,21 +1148,20 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+    lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
+    delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
+    enable_stats_summary_collection: bool = DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
-    # This is a temporary workaround to allow actors to perform cleanup
-    # until https://github.com/ray-project/ray/issues/53169 is fixed.
-    # This hook is known to have a race condition bug in fault tolerance.
-    # I.E., after the hook is triggered and the UDF is deleted, another
-    # retry task may still be scheduled to this actor and it will fail.
-    _enable_actor_pool_on_exit_hook: bool = False
 
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
     )
+
+    isolate_read_workers: bool = DEFAULT_ISOLATE_READ_WORKERS
 
     downstream_capacity_backpressure_ratio: Optional[
         float
@@ -688,11 +1171,38 @@ class DataContext:
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
     )
 
+    enable_lineage_reconstruction_resource_accounting: bool = (
+        DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING
+    )
+
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
+    enable_arrow_backed_pandas_conversion: bool = (
+        DEFAULT_ENABLE_ARROW_BACKED_PANDAS_CONVERSION
+    )
+
+    batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
+
     _checkpoint_config: Optional[CheckpointConfig] = None
+
+    custom_execution_callback_classes: List[Type["ExecutionCallback"]] = field(
+        default_factory=list
+    )
+
+    default_map_logical_memory_enabled: bool = (
+        DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
+    )
+
+    _enable_ray_data_reconstruction: Optional[bool] = None
+
+    object_store_reservation_overshoot_ratio: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO
+    object_store_memory_pressure_fraction: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -723,13 +1233,51 @@ class DataContext:
         self._execution_idx = 0
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if (
+        if name == "scheduling_strategy" and (
+            name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY
+        ):
+            warnings.warn(
+                "`DataContext.scheduling_strategy` is deprecated and will be removed "
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif name == "scheduling_strategy_large_args" and (
+            name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+        ):
+            warnings.warn(
+                "`DataContext.scheduling_strategy_large_args` is deprecated and will "
+                "be removed after January 2027. Ray Data manages scheduling "
+                "internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif name == "large_args_threshold" and (
+            name in self.__dict__ or value != DEFAULT_LARGE_ARGS_THRESHOLD
+        ):
+            warnings.warn(
+                "`DataContext.large_args_threshold` is deprecated and will be removed "
+                "after January 2027. Ray Data manages scheduling internally.",
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
+
+        elif (
             name == "write_file_retry_on_errors"
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
             warnings.warn(
                 "`write_file_retry_on_errors` is deprecated! Configure "
                 "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+
+        elif name == "retried_io_errors" and tuple(value) != DEFAULT_RETRIED_IO_ERRORS:
+            warnings.warn(
+                "`retried_io_errors` using substring matching will be deprecated in December 2026. "
+                "Please ensure that you use valid regex patterns for `retried_io_errors`",
                 DeprecationWarning,
             )
 
@@ -754,6 +1302,40 @@ class DataContext:
                 DeprecationWarning,
             )
             self.use_polars_sort = value
+
+        elif name == "use_arrow_tensor_v2":
+            warnings.warn(
+                "`use_arrow_tensor_v2` is deprecated. "
+                "Configure `arrow_fixed_shape_tensor_format` instead. ",
+                DeprecationWarning,
+            )
+            from ray.data._internal.tensor_extensions.arrow import (
+                FixedShapeTensorFormat,
+            )
+
+            if isinstance(value, bool) and value:
+                self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
+            else:
+                self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
+
+        elif name == "log_internal_stack_trace_to_stdout":
+            warnings.warn(
+                "`log_internal_stack_trace_to_stdout` is deprecated and will be "
+                "removed in January 2027. Configure `log_internal_stack_trace` "
+                "instead. Note the behavior has also changed: internal Ray Data / "
+                "Ray Core stack frames are now always omitted from stdout, and "
+                "`log_internal_stack_trace` instead controls whether they are "
+                "written to the Ray Data log file.",
+                DeprecationWarning,
+            )
+            self.log_internal_stack_trace = value
+        elif name == "join_operator_actor_num_cpus_override" and value is not None:
+            warnings.warn(
+                "`join_operator_actor_num_cpus_override` is deprecated and ignored, "
+                "joins now run on the hash-shuffle v2 path, whose reduce tasks are "
+                "not actor-based.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 
@@ -784,6 +1366,9 @@ class DataContext:
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the
         Dataset and pass it around as arguments.
+
+        Returns:
+            The current :class:`DataContext` instance.
         """
 
         global _default_context
@@ -795,19 +1380,33 @@ class DataContext:
             return _default_context
 
     @staticmethod
-    def _set_current(context: "DataContext") -> None:
+    @contextlib.contextmanager
+    def current(context: "DataContext"):
+        prev: Optional[DataContext] = DataContext._set_current(context)
+        try:
+            yield
+        finally:
+            DataContext._set_current(prev)
+
+    @staticmethod
+    def _set_current(context: Optional["DataContext"]) -> Optional["DataContext"]:
         """Set the current context in a remote worker.
 
         This is used internally by Dataset to propagate the driver context to
         remote workers used for parallelization.
         """
         global _default_context
-        if (
+        if context and (
             not _default_context
             or _default_context.dataset_logger_id != context.dataset_logger_id
         ):
             update_dataset_logger_for_worker(context.dataset_logger_id)
+
+        prev = _default_context
+        # Update current context
         _default_context = context
+
+        return prev
 
     @property
     def shuffle_strategy(self) -> ShuffleStrategy:
@@ -822,8 +1421,130 @@ class DataContext:
         return self._shuffle_strategy
 
     @shuffle_strategy.setter
-    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
-        self._shuffle_strategy = value
+    def shuffle_strategy(self, value: Union[ShuffleStrategy, str]) -> None:
+        # NOTE: Coercing to the enum resolves deprecated aliases (like
+        #       `hash_shuffle_v2`) to their current strategy
+        self._shuffle_strategy = ShuffleStrategy(value)
+
+    # Deprecated alias of `shuffle_compression`
+    @property
+    def hash_shuffle_compression(self) -> str:
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=3)
+
+        return self.shuffle_compression
+
+    @hash_shuffle_compression.setter
+    def hash_shuffle_compression(self, value: str) -> None:
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=4)
+
+        self.shuffle_compression = value
+
+    @staticmethod
+    def _warn_hash_shuffle_compression_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
+        warnings.warn(
+            "`hash_shuffle_compression` is deprecated, please configure "
+            "`shuffle_compression` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+
+    # Deprecated alias of `use_disk_based_hash_shuffle`
+    @property
+    def use_external_hash_shuffle(self) -> bool:
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=3)
+
+        return self.use_disk_based_hash_shuffle
+
+    @use_external_hash_shuffle.setter
+    def use_external_hash_shuffle(self, value: bool) -> None:
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=4)
+
+        self.use_disk_based_hash_shuffle = value
+
+    @staticmethod
+    def _warn_use_external_hash_shuffle_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
+        warnings.warn(
+            "`use_external_hash_shuffle` is deprecated, please configure "
+            "`use_disk_based_hash_shuffle` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+
+    @property
+    def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
+        """Get the complete registry of execution callback classes.
+
+        This property gathers all callback classes that should be instantiated
+        by the execution planner. It includes:
+        1. Built-in default callbacks (e.g., ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback).
+        2. Custom callbacks registered via the RAY_DATA_EXECUTION_CALLBACKS environment variable.
+        3. Custom callbacks programmatically added to `custom_execution_callback_classes`.
+
+        Note: `LoadCheckpointCallback` and `UsageCallback` are NOT included here
+        because they require constructor arguments (a `CheckpointConfig` and a
+        `LogicalPlan`, respectively). They are added directly by the execution
+        planner.
+
+        Returns:
+            A list of ExecutionCallback class types (not instances).
+        """
+        from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
+            ExecutionIdxUpdateCallback,
+        )
+        from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+            IssueDetectionExecutionCallback,
+        )
+        from ray.data._internal.execution.callbacks.resource_allocator_prometheus_callback import (
+            ResourceAllocatorPrometheusCallback,
+        )
+        from ray.data._internal.execution.execution_callback import ExecutionCallback
+
+        classes = [
+            ExecutionIdxUpdateCallback,
+            IssueDetectionExecutionCallback,
+            ResourceAllocatorPrometheusCallback,
+        ]
+
+        # Parse environment variable for custom callbacks
+        env_callbacks = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
+
+        if env_callbacks:
+            for callback_path in env_callbacks.split(","):
+                callback_path = callback_path.strip()
+                if not callback_path:
+                    continue
+                try:
+                    module_path, class_name = callback_path.rsplit(".", 1)
+                    module = importlib.import_module(module_path)
+                    callback_cls = getattr(module, class_name)
+                except (ImportError, AttributeError, ValueError) as e:
+                    raise ValueError(
+                        f"Failed to import callback from '{callback_path}': {e}"
+                    )
+
+                if not isinstance(callback_cls, type) or not issubclass(
+                    callback_cls, ExecutionCallback
+                ):
+                    raise ValueError(
+                        f"Invalid callback class '{callback_path}' specified in "
+                        f"{EXECUTION_CALLBACKS_ENV_VAR}. Expected a subclass of "
+                        f"ExecutionCallback, but got {callback_cls}."
+                    )
+
+                classes.append(callback_cls)
+
+        # User custom classes
+        classes.extend(self.custom_execution_callback_classes)
+
+        return classes
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.
@@ -831,7 +1552,9 @@ class DataContext:
         Args:
             key: The key of the config.
             default: The default value to return if the key is not found.
-        Returns: The value for the key, or the default value if the key is not found.
+
+        Returns:
+            The value for the key, or the default value if the key is not found.
         """
         return self._kv_configs.get(key, default)
 
@@ -891,6 +1614,28 @@ class DataContext:
             raise TypeError(
                 "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
             )
+
+    @property
+    def enable_ray_data_reconstruction(self) -> bool:
+        """Whether Ray Data reconstructs lost objects itself."""
+        resolved = _resolve_enable_ray_data_reconstruction()
+        if self._enable_ray_data_reconstruction is not None:
+            if (
+                resolved is not None
+                and resolved != self._enable_ray_data_reconstruction
+            ):
+                raise ValueError(
+                    "The enable_ray_data_reconstruction value does not match "
+                    "the disable_job_level_lineage_reconstruction value in the "
+                    "cluster. When job level lineage reconstruction is disabled, "
+                    "data reconstruction must be enabled. When job level lineage "
+                    "reconstruction is enabled, data reconstruction must be "
+                    "disabled as core is configured to handle reconstruction in "
+                    "that configuration."
+                )
+            return self._enable_ray_data_reconstruction
+
+        return False if resolved is None else resolved
 
 
 # Backwards compatibility alias.

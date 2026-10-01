@@ -15,8 +15,9 @@ import boto3
 from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
-    from github import Repository
+    from ray_release.github_client import GitHubRepo
 
+from ray_release.anyscale_util import Anyscale
 from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -41,6 +42,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
+DATAPLANE_ECR_TORCH_REPO = "anyscale/ray-torch"
 
 MACOS_TEST_PREFIX = "darwin:"
 LINUX_TEST_PREFIX = "linux:"
@@ -51,18 +53,6 @@ WINDOWS_BISECT_DAILY_RATE_LIMIT = 3
 BISECT_DAILY_RATE_LIMIT = 10
 
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
-
-
-def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
-    env_dict = {}
-    for env in env_list:
-        # an env can be "a=b" or just "a"
-        eq_pos = env.find("=")
-        if eq_pos < 0:
-            env_dict[env] = os.environ.get(env, "")
-        else:
-            env_dict[env[:eq_pos]] = env[eq_pos + 1 :]
-    return env_dict
 
 
 class TestState(enum.Enum):
@@ -168,6 +158,7 @@ class Test(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.test_results = None
+        self.anyscale = Anyscale()
 
     @classmethod
     def from_bazel_event(cls, event: dict, team: str):
@@ -357,10 +348,12 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
-    def is_jailed_with_open_issue(self, ray_github: "Repository") -> bool:
+    def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
         """
         Returns whether this test is jailed with open issue.
         """
+        from ray_release.github_client import GitHubException
+
         # is jailed
         state = self.get_state()
         if state != TestState.JAILED:
@@ -370,8 +363,14 @@ class Test(dict):
         issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
         if issue_number is None:
             return False
-        issue = ray_github.get_issue(issue_number)
-        return issue.state == "open"
+        try:
+            issue = ray_github.get_issue(issue_number)
+            return issue.state == "open"
+        except GitHubException as e:
+            logger.warning(
+                f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
+            )
+            return False
 
     def is_stable(self) -> bool:
         """
@@ -394,6 +393,10 @@ class Test(dict):
     def is_azure(self) -> bool:
         """Returns whether this test is running on Azure."""
         return self.get_cloud_env() == "azure"
+
+    def uses_anyscale_sdk_2026(self) -> bool:
+        """Returns whether this test uses the 2026 Anyscale compute config schema."""
+        return self.get("cluster", {}).get("anyscale_sdk_2026", False)
 
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
@@ -433,6 +436,10 @@ class Test(dict):
         byod_type = self.get_byod_type()
         if byod_type.startswith("llm-"):
             return byod_type[len("llm-") :]
+        if byod_type.startswith("gpu-"):
+            return byod_type[len("gpu-") :]
+        if byod_type.startswith("torch-"):
+            return byod_type[len("torch-") :]
         return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
@@ -445,7 +452,8 @@ class Test(dict):
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """Returns the runtime environment variables for the BYOD cluster."""
-        return _convert_env_list_to_dict(self._get_byod_config().get("runtime_env", []))
+        runtime_env = self._get_byod_config().get("runtime_env") or {}
+        return {name: str(value) for name, value in runtime_env.items()}
 
     def get_ray_version(self) -> Optional[str]:
         """
@@ -542,6 +550,9 @@ class Test(dict):
             "post_build_script": self.get_byod_post_build_script(),
             "python_depset": self.get_byod_python_depset(),
         }
+        runtime_env = self.get_byod_runtime_env()
+        if runtime_env:
+            custom_info["runtime_env"] = runtime_env
         tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
         ray_version = self.get_ray_version()
         if ray_version:
@@ -555,12 +566,17 @@ class Test(dict):
     def use_byod_llm_image(self) -> bool:
         return self.get_byod_type().startswith("llm-")
 
+    def use_byod_torch_image(self) -> bool:
+        return self.get_byod_type().startswith("torch-")
+
     def get_byod_repo(self) -> str:
         """Returns the byod repo to use for this test."""
         if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
         if self.use_byod_llm_image():
             return DATAPLANE_ECR_LLM_REPO
+        if self.use_byod_torch_image():
+            return DATAPLANE_ECR_TORCH_REPO
         return DATAPLANE_ECR_REPO
 
     def get_byod_ecr(self) -> str:
@@ -570,14 +586,12 @@ class Test(dict):
             return global_config["byod_gcp_cr"]
         if self.is_azure():
             return global_config["byod_azure_cr"]
-        byod_ecr = global_config["byod_aws_cr"]
-        if byod_ecr:
-            return byod_ecr
         return global_config["byod_ecr"]
 
     def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
         """
-        Returns the anyscale byod image to use for this test.
+        Returns the anyscale base byod image to use for this test.
+        Base images are always pulled from AWS ECR.
         """
         ray_version = self.get_ray_version()
         if ray_version:
@@ -586,8 +600,10 @@ class Test(dict):
             if tag_suffix == "gpu":
                 tag_suffix = "cu121"
             return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
+        global_config = get_global_config()
+        base_ecr = global_config["byod_ecr"]
         return (
-            f"{self.get_byod_ecr()}/"
+            f"{base_ecr}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
         )
 
@@ -598,6 +614,7 @@ class Test(dict):
         return (
             self.get_byod_post_build_script() is not None
             or self.get_byod_python_depset() is not None
+            or bool(self.get_byod_runtime_env())
         )
 
     def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:

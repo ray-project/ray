@@ -10,7 +10,10 @@ import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.file_based_datasource import (
+    FileBasedDatasource,
+    _add_partitions_to_table,
+)
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -76,16 +79,89 @@ def test_read_single_file(ray_start_regular_shared, filesystem, dir_path, endpoi
     if write_filesystem is None:
         write_filesystem = pyarrow.fs.LocalFileSystem()
 
+    file_uri = os.path.join(dir_path, "file.txt")
+
     # PyArrow filesystems expect paths without schemes. `FileBasedDatasource` handles
     # this internally, but we need to manually strip the scheme for the test setup.
-    write_path = strip_scheme(os.path.join(dir_path, "file.txt"))
+    write_path = strip_scheme(file_uri)
     with write_filesystem.open_output_stream(write_path) as f:
         f.write(b"spam")
 
-    datasource = MockFileBasedDatasource(dir_path, filesystem=filesystem)
+    datasource = MockFileBasedDatasource(file_uri, filesystem=filesystem)
     tasks = datasource.get_read_tasks(1)
-
     rows = execute_read_tasks(tasks)
+
+    assert rows == [{"data": b"spam"}]
+
+
+def test_read_single_directory(ray_start_regular_shared, tmp_path):
+    dir_path = tmp_path / "dir"
+    dir_path.mkdir()
+
+    p1 = dir_path / "a.txt"
+    p1.write_bytes(b"a")
+
+    p2 = dir_path / "b.txt"
+    p2.write_bytes(b"b")
+
+    datasource = MockFileBasedDatasource(dir_path)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+
+    assert sorted(rows, key=lambda r: r["data"]) == [{"data": b"a"}, {"data": b"b"}]
+
+
+def test_read_dir_and_file_mixed(ray_start_regular_shared, tmp_path):
+    dir_path = tmp_path / "dir"
+    dir_path.mkdir()
+
+    p1 = dir_path / "a.txt"
+    p1.write_bytes(b"a")
+
+    p2 = tmp_path / "c.txt"
+    p2.write_bytes(b"c")
+
+    datasource = MockFileBasedDatasource([str(dir_path), str(p2)])
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+
+    assert sorted(rows, key=lambda r: r["data"]) == [{"data": b"a"}, {"data": b"c"}]
+
+
+def test_pathlib_paths(ray_start_regular_shared, tmp_path):
+    """Test that FileBasedDatasource accepts pathlib.Path objects."""
+    from pathlib import Path
+
+    path = Path(tmp_path) / "test_pathlib"
+    path.mkdir()
+
+    # Create pathlib.Path objects
+    file1 = path / "file1.txt"
+    file2 = path / "file2.txt"
+
+    file1.write_bytes(b"hello")
+    file2.write_bytes(b"world")
+
+    # Verify list of pathlib.Path works
+    datasource = MockFileBasedDatasource([file1, file2])
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+    assert sorted(rows, key=lambda r: r["data"]) == [
+        {"data": b"hello"},
+        {"data": b"world"},
+    ]
+
+    # Verify single pathlib.Path works
+    datasource = MockFileBasedDatasource(file1)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+    assert rows == [{"data": b"hello"}]
+
+
+def test_single_file_infinite_target_max_block_size(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default, tmp_path
+):
+    path = tmp_path / "file.txt"
+    path.write_bytes(b"spam")
+
+    datasource = MockFileBasedDatasource(path)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
 
     assert rows == [{"data": b"spam"}]
 
@@ -189,6 +265,28 @@ def test_partitioning_raises_on_mismatch(ray_start_regular_shared, tmp_path):
         execute_read_tasks(tasks)
 
 
+@pytest.mark.parametrize(
+    "column,partition_value",
+    [
+        (pyarrow.array([1], type=pyarrow.int64()), "not-an-int"),
+        (
+            pyarrow.array([[1]], type=pyarrow.list_(pyarrow.int64())),
+            "not-a-list",
+        ),
+    ],
+)
+def test_add_partitions_to_table_raises_on_cast_error(column, partition_value):
+    table = pyarrow.table({"part": column})
+
+    with pytest.raises(ValueError) as exc_info:
+        _add_partitions_to_table(table, {"part": partition_value})
+
+    assert str(exc_info.value) == (
+        f"Partition value {partition_value!r} for field 'part' cannot be cast "
+        f"to target type {column.type}."
+    )
+
+
 def test_ignore_missing_paths_true(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "file.txt")
     with open(path, "wb") as file:
@@ -215,6 +313,37 @@ def test_ignore_missing_paths_false(ray_start_regular_shared, tmp_path):
         )
         tasks = datasource.get_read_tasks(1)
         execute_read_tasks(tasks)
+
+
+def test_empty_directory_raises_no_files_found(ray_start_regular_shared, tmp_path):
+    with pytest.raises(ValueError, match="No files found under"):
+        MockFileBasedDatasource(tmp_path)
+
+
+@pytest.mark.parametrize("filename", ["_SUCCESS", ".hidden.txt"])
+def test_excluded_prefixes_only_raises_no_files_found(
+    ray_start_regular_shared, tmp_path, filename
+):
+    # Directory listing drops names starting with "_" or ".", so a directory
+    # holding only those (e.g. a Spark output directory with just its _SUCCESS
+    # marker) expands to no files at all.
+    with open(os.path.join(tmp_path, filename), "wb"):
+        pass
+
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
+        MockFileBasedDatasource(tmp_path)
+
+    # The prefix rule is the non-obvious cause, so the message has to name it.
+    assert "starting with '_' or '.'" in str(exc_info.value)
+
+
+def test_all_paths_missing_with_ignore_missing_paths(ray_start_regular_shared):
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
+        MockFileBasedDatasource(
+            ["missing1.txt", "missing2.txt"], ignore_missing_paths=True
+        )
+
+    assert "'ignore_missing_paths' is set to True" in str(exc_info.value)
 
 
 def test_local_paths(ray_start_regular_shared, tmp_path):
@@ -273,6 +402,17 @@ def test_file_extensions(ray_start_regular_shared, tmp_path):
     assert ds.input_files() == [csv_path]
 
 
+def test_file_extensions_no_match_raises(ray_start_regular_shared, tmp_path):
+    txt_path = tmp_path / "file.txt"
+    txt_path.write_bytes(b"ham")
+
+    with pytest.raises(
+        ValueError,
+        match="No input files found to read with the following file extensions",
+    ):
+        MockFileBasedDatasource([str(txt_path)], file_extensions=["csv"])
+
+
 def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
     """Test that flaky read tasks are retried for both the
     default set of retried errors and a custom set of retried errors."""
@@ -313,6 +453,71 @@ def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
     datasource = FlakyFileBasedDatasource([csv_path])
     ds = ray.data.read_datasource(datasource)
     assert len(ds.take()) == 1
+
+
+def test_flaky_read_stream_retry_does_not_drop_data(ray_start_regular_shared, tmp_path):
+    """A retryable error partway through a file must not drop what was read before it.
+
+    `iterate_with_retry` skips the blocks that a failed attempt already yielded, so
+    every attempt has to replay the file from the start. If the retry reuses the
+    advanced file handle, it resumes mid-file and those skips discard real data
+    instead of duplicates.
+    """
+    CHUNK_SIZE = 1024
+    NUM_CHUNKS = 8
+    FAIL_AFTER_CHUNKS = 3
+    retried_error = ray.data.context.DEFAULT_RETRIED_IO_ERRORS[0]
+
+    path = tmp_path / "file.bin"
+    expected = bytes(i % 256 for i in range(CHUNK_SIZE * NUM_CHUNKS))
+    path.write_bytes(expected)
+
+    class FlakyInputStream:
+        """Raises one retryable error, before advancing the wrapped handle."""
+
+        fired = False
+
+        def __init__(self, file):
+            self._file = file
+            self._num_reads = 0
+
+        def read(self, num_bytes=-1):
+            self._num_reads += 1
+            if not FlakyInputStream.fired and self._num_reads > FAIL_AFTER_CHUNKS:
+                FlakyInputStream.fired = True
+                raise OSError(retried_error)
+            return self._file.read(num_bytes)
+
+        def __enter__(self):
+            self._file.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._file.__exit__(*args)
+
+    class ChunkedDatasource(FileBasedDatasource):
+        """Yields one block per `CHUNK_SIZE` bytes of the file."""
+
+        def _open_input_source(self, filesystem, path, **open_args):
+            return FlakyInputStream(
+                super()._open_input_source(filesystem, path, **open_args)
+            )
+
+        def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+            while True:
+                data = f.read(CHUNK_SIZE)
+                if not data:
+                    return
+                builder = DelegatingBlockBuilder()
+                builder.add({"data": data})
+                yield builder.build()
+
+    datasource = ChunkedDatasource(path)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+
+    assert FlakyInputStream.fired, "the retry path was never exercised"
+    assert len(rows) == NUM_CHUNKS
+    assert b"".join(row["data"] for row in rows) == expected
 
 
 @pytest.mark.parametrize(
@@ -363,6 +568,57 @@ def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 @pytest.mark.parametrize("shuffle", [None, "files"])
 def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
     FileBasedDatasource("example://iris.csv", shuffle=shuffle)
+
+
+def test_shuffle_files_changes_order(ray_start_regular_shared, tmp_path):
+    NUM_FILES = 10
+    NUM_RUNS = 5
+
+    for i in range(NUM_FILES):
+        (tmp_path / f"file_{i:02d}.txt").write_bytes(f"data_{i}".encode())
+
+    datasource = MockFileBasedDatasource(
+        str(tmp_path), shuffle="files", include_paths=True
+    )
+
+    output_paths_list = []
+    # Run NUM_RUNS times to verify shuffle produces different orderings
+    for _ in range(NUM_RUNS):
+        tasks = datasource.get_read_tasks(1)
+        rows = execute_read_tasks(tasks)
+        output_filenames = [os.path.basename(row["path"]) for row in rows]
+        output_paths_list.append(output_filenames)
+
+    expected_order = [f"file_{i:02d}.txt" for i in range(NUM_FILES)]
+
+    # Verify shuffle produces non-deterministic orderings across runs
+    unique_orderings = {tuple(paths) for paths in output_paths_list}
+    assert len(unique_orderings) >= 2
+
+    # Verify all files are present in each run
+    for output_paths in output_paths_list:
+        assert sorted(output_paths) == sorted(expected_order)
+
+
+def test_read_s3_file_error(shutdown_only, s3_path):
+    from ray.data.datasource.file_meta_provider import _handle_read_os_error
+
+    dummy_path = s3_path + "_dummy"
+    error_message = "Please check that file exists and has properly configured access."
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_parquet(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_binary_files(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_csv(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        ray.data.read_json(dummy_path)
+    with pytest.raises(OSError, match=error_message):
+        error = OSError(
+            f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
+            "Error [code 15]: No response body.. Is this a 'parquet' file?"
+        )
+        _handle_read_os_error(error, dummy_path)
 
 
 if __name__ == "__main__":

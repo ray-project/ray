@@ -1,9 +1,9 @@
 import asyncio
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Protocol, Tuple, Type, Union
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
@@ -26,7 +26,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
-    DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
@@ -41,6 +40,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_deployment_response,
 )
+from ray.serve.config import ControllerOptions
 from ray.util.placement_group import PlacementGroup
 
 # NOTE: Please read carefully before changing!
@@ -76,7 +76,7 @@ def create_deployment_scheduler(
     create_placement_group_fn_override: Optional[CreatePlacementGroupFn] = None,
 ) -> DeploymentScheduler:
     head_node_id = head_node_id_override or get_head_node_id()
-    return DefaultDeploymentScheduler(
+    return DeploymentScheduler(
         cluster_node_info_cache,
         head_node_id,
         create_placement_group_fn=create_placement_group_fn_override
@@ -125,9 +125,11 @@ def get_request_metadata(init_options, handle_options):
         route=_request_context.route,
         app_name=_request_context.app_name,
         multiplexed_model_id=handle_options.multiplexed_model_id,
+        session_id=handle_options.session_id,
         is_streaming=handle_options.stream,
         _request_protocol=request_protocol,
         grpc_context=_request_context.grpc_context,
+        _client=_request_context._client,
         _by_reference=handle_options._by_reference,
         _on_separate_loop=init_options._run_router_in_separate_loop,
         request_serialization=handle_options.request_serialization,
@@ -149,8 +151,16 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
     return node_id, az
 
 
-# Interface definition for create_router.
-CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
+# Interface definition for create_router. A callback protocol (rather than a
+# bare `Callable`) so implementations can be called with keyword arguments.
+class CreateRouterCallable(Protocol):
+    def __call__(
+        self,
+        handle_id: str,
+        deployment_id: DeploymentID,
+        handle_options: InitHandleOptions,
+    ) -> Router:
+        ...
 
 
 def create_router(
@@ -164,9 +174,11 @@ def create_router(
 
     actor_id = get_current_actor_id()
     node_id, availability_zone = _get_node_id_and_az()
-    controller_handle = _get_global_client()._controller
+    # `_get_global_client()` raises rather than returning `None` by default.
+    controller_handle = _get_global_client()._controller  # type: ignore[union-attr]
     is_inside_ray_client_context = inside_ray_client_context()
 
+    router_wrapper_cls: Union[Type[SingletonThreadRouter], Type[CurrentLoopRouter]]
     if handle_options._run_router_in_separate_loop:
         router_wrapper_cls = SingletonThreadRouter
         # Determine the component for the event loop monitor
@@ -218,7 +230,8 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     from ray.serve.context import _get_global_client
 
     client = _get_global_client()
-    handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)
+    # `_get_global_client()` raises rather than returning `None` by default.
+    handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)  # type: ignore[union-attr]
 
     # NOTE(zcin): It's possible that a handle is already initialized
     # if a deployment with the same name and application name was
@@ -239,10 +252,19 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
     )
 
 
-def get_controller_impl():
+def get_controller_impl(
+    controller_options: Optional[ControllerOptions] = None,
+) -> Any:
+    """Build the Ray actor class for the Serve controller.
+
+    ``controller_options`` is the validated ``ControllerOptions`` model from
+    ``serve.start`` / ``serve.run`` / the YAML schema. Today only its
+    ``runtime_env`` field is consumed; future fields (num_cpus, resources,
+    max_concurrency overrides) slot in here.
+    """
     from ray.serve._private.controller import ServeController
 
-    controller_impl = ray.remote(
+    actor_options: Dict[str, Any] = dict(
         name=SERVE_CONTROLLER_NAME,
         namespace=SERVE_NAMESPACE,
         num_cpus=0,
@@ -252,6 +274,10 @@ def get_controller_impl():
         resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-    )(ServeController)
+    )
+    if controller_options is not None and controller_options.runtime_env:
+        # The validator on ControllerOptions guarantees this is a dict
+        # containing only the ``env_vars`` key with str->str entries.
+        actor_options["runtime_env"] = controller_options.runtime_env
 
-    return controller_impl
+    return ray.remote(**actor_options)(ServeController)

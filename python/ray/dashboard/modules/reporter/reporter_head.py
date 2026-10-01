@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -23,6 +24,18 @@ from ray._private.ray_constants import (
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
     KV_NAMESPACE_DASHBOARD,
+    MAX_PROFILING_DURATION_S,
+    MIN_PROFILING_DURATION_S,
+    RAY_DASHBOARD_ENABLE_PROFILING,
+    RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT,
+    RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
+    RAY_DASHBOARD_PROFILING_IDLE_DEFAULT,
+    RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT,
+    RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT,
+    RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT,
+    RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT,
+    RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT,
+    RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT,
     env_integer,
 )
 from ray.autoscaler._private.commands import debug_status
@@ -51,12 +64,86 @@ SVG_STYLE = """<style>
     }
 </style>\n"""
 
+# Carries WARNING_FOR_MULTI_TASK_IN_A_WORKER on profiling responses whose body
+# can't hold an HTML fragment (`raw`, `speedscope`).
+MULTI_TASK_WARNING_HEADER = "X-Ray-Profiling-Warning"
+
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
 #       GIL contention
 RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
     "RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS", 1
 )
+
+
+def _query_flag(req: aiohttp.web.Request, name: str, default: bool) -> bool:
+    """Parse a boolean profiling query flag.
+
+    Falls back to ``default`` (an operator-configurable env var default) when the
+    param is absent; an explicit ``"1"``/``"0"`` in the query always wins.
+    """
+    val = req.query.get(name)
+    return default if val is None else val == "1"
+
+
+def _query_duration(req: aiohttp.web.Request, default: int) -> int:
+    """Parse and validate the profiling ``duration`` query param (seconds).
+
+    Falls back to ``default`` when the param is absent (the configured defaults
+    are already clamped to the accepted range at load time). Raises
+    ``aiohttp.web.HTTPBadRequest`` (HTTP 400) if an explicit value is not an
+    integer or is outside ``[MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S]``.
+    """
+    val = req.query.get("duration")
+    if val is None:
+        return default
+    try:
+        duration_s = int(val)
+    except ValueError:
+        raise aiohttp.web.HTTPBadRequest(
+            text="duration query parameter must be an integer"
+        )
+    if not MIN_PROFILING_DURATION_S <= duration_s <= MAX_PROFILING_DURATION_S:
+        raise aiohttp.web.HTTPBadRequest(
+            text=(
+                f"duration must be between {MIN_PROFILING_DURATION_S} and "
+                f"{MAX_PROFILING_DURATION_S} seconds, got: {duration_s}"
+            )
+        )
+    return duration_s
+
+
+def _task_cpu_profiling_response(
+    output: str, format: str, task_ids_in_a_worker: List[str]
+) -> aiohttp.web.Response:
+    """Build the ``/task/cpu_profile`` response for a successful profile.
+
+    Only ``flamegraph`` output is an SVG a browser can render, so it's the only
+    format wrapped in HTML: ``SVG_STYLE`` sizes the image, and the multi-task
+    notice is an HTML fragment. ``raw`` is a plain stack listing and
+    ``speedscope`` is a JSON document, so prepending markup to either corrupts
+    it -- speedscope output stops parsing as JSON. Those are returned verbatim
+    as ``text/plain``, matching how ``/worker/cpu_profile`` already switches on
+    format, with the multi-task notice moved to a header so it isn't lost.
+    """
+    multi_task = len(task_ids_in_a_worker) > 1
+    warning = WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker)
+
+    if format == "flamegraph":
+        body = SVG_STYLE + output
+        if multi_task:
+            body = (
+                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                    EMOJI_WARNING, warning
+                )
+                + body
+            )
+        return aiohttp.web.Response(text=body, content_type="text/html")
+
+    response = aiohttp.web.Response(text=output, content_type="text/plain")
+    if multi_task:
+        response.headers[MULTI_TASK_WARNING_HEADER] = warning
+    return response
 
 
 class ReportHead(SubprocessModule):
@@ -68,7 +155,7 @@ class ReportHead(SubprocessModule):
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
         self.service_discovery = PrometheusServiceDiscoveryWriter(
-            self.gcs_address, self.temp_dir
+            self.gcs_address, self.temp_dir, self.session_dir
         )
         self._state_api = None
         self._executor = ThreadPoolExecutor(
@@ -81,6 +168,54 @@ class ReportHead(SubprocessModule):
         self.cluster_metadata = None
 
         self._health_checker = HealthChecker(self.gcs_client)
+
+    def _profiling_disabled_response(self) -> aiohttp.web.Response:
+        return aiohttp.web.Response(
+            status=403,
+            text=(
+                "Profiling is disabled by default for security reasons. "
+                "To enable profiling, set the environment variable "
+                "RAY_DASHBOARD_ENABLE_PROFILING=1 on the Ray head node. "
+                "See https://docs.ray.io/en/latest/ray-observability/"
+                "user-guides/profiling.html for details."
+            ),
+        )
+
+    @routes.get("/api/profiling_enabled")
+    async def profiling_enabled(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        # `profiling_defaults` lets the dashboard seed its profiling dialogs with
+        # the operator-configured defaults. Keys are google-style-cased in the
+        # response, e.g. `cpu_duration` -> `data.profilingDefaults.cpuDuration`.
+        return dashboard_optional_utils.rest_response(
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="",
+            profiling_enabled=RAY_DASHBOARD_ENABLE_PROFILING,
+            profiling_defaults={
+                "native": RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT,
+                "subprocesses": RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT,
+                "idle": RAY_DASHBOARD_PROFILING_IDLE_DEFAULT,
+                "leaks": RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT,
+                "trace_python_allocators": (
+                    RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT
+                ),
+                "cpu_duration": RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT,
+                "memory_duration": RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT,
+                # Upper bound the endpoint enforces on `duration` (operator-
+                # configurable). Exposed so the UI validates against the real cap
+                # instead of a hardcoded one. The lower bound is always 1s.
+                "max_duration": MAX_PROFILING_DURATION_S,
+                "cpu_format": RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
+                "memory_format": RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT,
+                # py-spy only appends --native on Linux (see profile_manager),
+                # so the UI warns that Native may be a silent no-op when the
+                # dashboard head is off-Linux. This is only a hint: py-spy runs
+                # on the profiled node, which need not share the head's
+                # platform, so the UI must not force the flag off on the
+                # strength of it. memray native is cross-platform, so its
+                # checkbox is unaffected.
+                "pyspy_native_supported": sys.platform == "linux",
+            },
+        )
 
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
@@ -223,10 +358,11 @@ class ReportHead(SubprocessModule):
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
 
-        Params:
-            task_id: The ID of the task.
-            attempt_number: The attempt number of the task.
-            node_id: The ID of the node.
+        Args:
+            req: A request with the following query parameters:
+                task_id: The ID of the task.
+                attempt_number: The attempt number of the task.
+                node_id: The ID of the node.
 
         Returns:
             aiohttp.web.Response: The HTTP response containing the traceback information.
@@ -237,6 +373,8 @@ class ReportHead(SubprocessModule):
             ValueError: If the worker begins working on another task during the traceback retrieval.
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the traceback retrieval.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
@@ -256,8 +394,12 @@ class ReportHead(SubprocessModule):
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
+        # `native`/`subprocesses` default to the operator-configured env var
+        # (both off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
+        )
 
         try:
             (pid, _) = await self.get_worker_details_for_running_task(
@@ -267,12 +409,14 @@ class ReportHead(SubprocessModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            "Sending stack trace request to {}:{} with native={}".format(
-                ip, pid, native
+            "Sending stack trace request to {}:{} with native={}, subprocesses={}".format(
+                ip, pid, native, subprocesses
             )
         )
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+            reporter_pb2.GetTracebackRequest(
+                pid=pid, native=native, subprocesses=subprocesses
+            )
         )
 
         """
@@ -317,17 +461,36 @@ class ReportHead(SubprocessModule):
         Note that one worker process works on one task at a time
         or one worker works on multiple async tasks.
 
+        Args:
+            req: A request with the following query parameters:
+                task_id: The ID of the task.
+                attempt_number: The attempt number of the task.
+                node_id: The ID of the node.
+                duration: Optional. Duration in seconds for profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT and must be within
+                    [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+                format: Optional. Output format, one of
+                    VALID_CPU_PROFILING_FORMATS. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT.
+                native: Optional. Whether to use native profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
+
         Returns:
-            aiohttp.web.Response: The HTTP response containing the CPU profile data.
+            aiohttp.web.Response: The HTTP response containing the CPU profile
+                data. ``flamegraph`` output is served as ``text/html`` (the SVG
+                wrapped for display); every other format is served verbatim as
+                ``text/plain``.
 
         Raises:
             ValueError: If the "task_id" parameter is missing in the request query.
             ValueError: If the "attempt_number" parameter is missing in the request query.
-            ValueError: If the maximum duration allowed is exceeded.
             ValueError: If the worker begins working on another task during the profile retrieval.
+            aiohttp.web.HTTPBadRequest: If "duration" is not an integer or falls outside the accepted range.
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If the CPU Flame Graph information for the task is not found.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
@@ -339,13 +502,16 @@ class ReportHead(SubprocessModule):
         attempt_number = req.query.get("attempt_number")
         node_id_hex = req.query.get("node_id")
 
-        duration_s = int(req.query.get("duration", 5))
-        if duration_s > 60:
-            raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
-        format = req.query.get("format", "flamegraph")
+        duration_s = _query_duration(req, RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT)
+        format = req.query.get("format", RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT)
 
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
+        # native/idle/subprocesses default to the operator-configured env vars
+        # (all off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        idle = _query_flag(req, "idle", RAY_DASHBOARD_PROFILING_IDLE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
+        )
         addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
@@ -362,12 +528,17 @@ class ReportHead(SubprocessModule):
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
-            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, for {task_id} with native={native}, idle={idle}, subprocesses={subprocesses}"
         )
 
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                idle=idle,
+                subprocesses=subprocesses,
             )
         )
 
@@ -393,29 +564,28 @@ class ReportHead(SubprocessModule):
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
-        return aiohttp.web.Response(
-            body=(
-                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-                    EMOJI_WARNING,
-                    WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
-                )
-                + SVG_STYLE
-                + (reply.output)
-                if len(task_ids_in_a_worker) > 1
-                else SVG_STYLE + reply.output
-            ),
-            headers={"Content-Type": "text/html"},
-        )
+        return _task_cpu_profiling_response(reply.output, format, task_ids_in_a_worker)
 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Retrieves the traceback information for a specific worker.
 
-        Params:
-            pid: Required. The PID of the worker.
-            ip or node_id: Required. The IP address or hex ID of the node.
+        Args:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the worker.
+                ip or node_id: Required. The IP address or hex ID of the node.
+                native: Optional. Whether to include native (C/C++) stack frames.
+                    Defaults to RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
+                subprocesses: Optional. Whether to also trace child processes of
+                    the worker. Defaults to
+                    RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT.
 
+        Returns:
+            aiohttp.web.Response: The HTTP response containing the traceback
+            information, or an HTTPInternalServerError if the request fails.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         pid = req.query.get("pid")
         ip = req.query.get("ip")
         node_id_hex = req.query.get("node_id")
@@ -441,14 +611,23 @@ class ReportHead(SubprocessModule):
 
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
-        logger.info(
-            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
+        # `native`/`subprocesses` default to the operator-configured env var
+        # (both off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
         )
-        pid = int(pid)
+        logger.info(
+            f"Sending stack trace request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, subprocesses={subprocesses}"
+        )
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
         reply = await reporter_stub.GetTraceback(
-            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+            reporter_pb2.GetTracebackRequest(
+                pid=pid, native=native, subprocesses=subprocesses
+            )
         )
         if reply.success:
             logger.info("Returning stack trace, size {}".format(len(reply.output)))
@@ -460,19 +639,37 @@ class ReportHead(SubprocessModule):
     async def cpu_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Retrieves the CPU profile for a specific worker.
 
-        Params:
-            pid: Required. The PID of the worker.
-            ip or node_id: Required. The IP address or hex ID of the node.
-            duration: Optional. Duration in seconds for profiling (default: 5, max: 60).
-            format: Optional. Output format (default: "flamegraph").
-            native: Optional. Whether to use native profiling (default: false).
+        Args:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the worker.
+                ip or node_id: Required. The IP address or hex ID of the node.
+                duration: Optional. Duration in seconds for profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT and must be within
+                    [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+                format: Optional. Output format, one of
+                    VALID_CPU_PROFILING_FORMATS. Defaults to
+                    RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT.
+                native: Optional. Whether to use native profiling. Defaults to
+                    RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
+                idle: Optional. Whether to include off-CPU / sleeping threads
+                    in the profile. Defaults to
+                    RAY_DASHBOARD_PROFILING_IDLE_DEFAULT.
+                subprocesses: Optional. Whether to also profile child processes
+                    of the worker. Defaults to
+                    RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT.
+
+        Returns:
+            aiohttp.web.Response: The HTTP response containing the CPU profile data,
+            or an HTTPInternalServerError if the request fails.
 
         Raises:
             ValueError: If pid is not provided.
             ValueError: If ip or node_id is not provided.
-            ValueError: If duration exceeds 60 seconds.
+            aiohttp.web.HTTPBadRequest: If "pid" or "duration" is not an integer, or "duration" falls outside the accepted range.
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         pid = req.query.get("pid")
         ip = req.query.get("ip")
         node_id_hex = req.query.get("node_id")
@@ -499,20 +696,31 @@ class ReportHead(SubprocessModule):
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
-        pid = int(pid)
-        duration_s = int(req.query.get("duration", 5))
-        if duration_s > 60:
-            raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
-        format = req.query.get("format", "flamegraph")
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
+        duration_s = _query_duration(req, RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT)
+        format = req.query.get("format", RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT)
 
-        # Default not using `--native` for profiling
-        native = req.query.get("native", False) == "1"
+        # native/idle/subprocesses default to the operator-configured env vars
+        # (all off unless overridden on the head node).
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        idle = _query_flag(req, "idle", RAY_DASHBOARD_PROFILING_IDLE_DEFAULT)
+        subprocesses = _query_flag(
+            req, "subprocesses", RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT
+        )
         logger.info(
-            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
+            f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}, idle={idle}, subprocesses={subprocesses}"
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                idle=idle,
+                subprocesses=subprocesses,
             )
         )
         if reply.success:
@@ -555,6 +763,8 @@ class ReportHead(SubprocessModule):
                     For example, trying to profile a non-Torch training process will
                     result in an error.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
 
         pid = req.query.get("pid")
         ip = req.query.get("ip")
@@ -583,17 +793,23 @@ class ReportHead(SubprocessModule):
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
         # Profile for num_iterations training steps (calls to optimizer.step())
-        num_iterations = int(req.query.get("num_iterations", 4))
+        try:
+            num_iterations = int(req.query.get("num_iterations", 4))
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="num_iterations must be an integer")
 
         logger.info(
             f"Sending GPU profiling request to {build_address(ip, grpc_port)}, pid {pid}. "
             f"Profiling for {num_iterations} training steps."
         )
 
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
+
         reply = await reporter_stub.GpuProfiling(
-            reporter_pb2.GpuProfilingRequest(
-                pid=int(pid), num_iterations=num_iterations
-            )
+            reporter_pb2.GpuProfilingRequest(pid=pid, num_iterations=num_iterations)
         )
 
         if not reply.success:
@@ -614,54 +830,177 @@ class ReportHead(SubprocessModule):
         redirect_url = f"/api/v0/logs/file?{query}"
         raise aiohttp.web.HTTPFound(redirect_url)
 
+    @routes.get("/worker/jax_profile")
+    async def jax_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Retrieves the JAX profile trace for a specific worker.
+
+        Params:
+            req: A request with the following query parameters:
+                pid: Required. The PID of the worker.
+                port: Optional. The port where JAX profiler server is listening.
+                      If not provided, it will be automatically discovered from GCS.
+                ip or node_id: Required. The IP address or hex ID of the node.
+                duration: Optional. Duration in seconds for profiling (default: 5).
+
+        Returns:
+            JSON response with the path where trace files are saved.
+        """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
+
+        pid = req.query.get("pid")
+        port = req.query.get("port")
+        ip = req.query.get("ip")
+        node_id_hex = req.query.get("node_id")
+
+        if not pid:
+            raise ValueError("pid is required")
+        if not node_id_hex and not ip:
+            raise ValueError("ip or node_id is required")
+
+        if node_id_hex:
+            addrs = await self._get_stub_address_by_node_id(
+                NodeID.from_hex(node_id_hex)
+            )
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at node_id {node_id_hex}"
+                )
+        else:
+            addrs = await self._get_stub_address_by_ip(ip)
+            if not addrs:
+                raise aiohttp.web.HTTPInternalServerError(
+                    text=f"Failed to get agent address for node at IP {ip}"
+                )
+
+        node_id, ip, http_port, grpc_port = addrs
+        reporter_stub = self._make_stub(build_address(ip, grpc_port))
+
+        try:
+            duration_s = int(req.query.get("duration", 5))
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(
+                text="duration query parameter must be an integer"
+            )
+        try:
+            pid = int(pid)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
+
+        if not port:
+            port_bytes = await self.gcs_client.async_internal_kv_get(
+                f"jax_profiler_port:{node_id.hex()}:{pid}".encode(),
+                namespace=KV_NAMESPACE_DASHBOARD,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+            if port_bytes:
+                try:
+                    port = int(port_bytes.decode())
+                except (UnicodeDecodeError, ValueError):
+                    raise aiohttp.web.HTTPInternalServerError(
+                        text=(
+                            f"Discovered JAX profiler port for worker {pid} on node"
+                            f"{node_id.hex()} is corrupt: {port_bytes!r}"
+                        )
+                    )
+            else:
+                raise aiohttp.web.HTTPBadRequest(
+                    text=(
+                        f"port is required because JAX profiler port could not be "
+                        f"automatically discovered for worker {pid} on node {node_id.hex()}"
+                    )
+                )
+        else:
+            try:
+                port = int(port)
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(text="port must be an integer")
+
+        logger.info(
+            f"Sending JAX profiling request to {build_address(ip, grpc_port)}, pid {pid}, port {port}"
+        )
+
+        reply = await reporter_stub.JaxProfiling(
+            reporter_pb2.JaxProfilingRequest(pid=pid, port=port, duration=duration_s)
+        )
+
+        if not reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+        logger.info("Returning profiling response, location {}".format(reply.output))
+
+        return dashboard_optional_utils.rest_response(
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="JAX profiling finished.",
+            trace_directory=reply.output,
+        )
+
     @routes.get("/memory_profile")
     async def memory_profile(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         """Retrieves the memory profile for a specific worker or task.
         Note that for tasks, one worker process works on one task at a time
         or one worker works on multiple async tasks.
 
+        Args:
+            req: A request with one of the following sets of query parameters.
+
+                Worker:
+                    pid: The PID of the worker.
+                    ip or node_id: The IP address or hex ID of the node.
+
+                Task:
+                    task_id: The ID of the task.
+                    attempt_number: The attempt number of the task.
+                    node_id: The ID of the node.
+
+                Both accept the following optional parameters:
+                    duration: Duration in seconds for profiling. Defaults to
+                        RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT and must be
+                        within [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+                    format: Output format, one of VALID_MEMORY_PROFILING_FORMATS.
+                        Defaults to RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT.
+                    native: Whether to include native (C/C++) stack frames.
+                        Defaults to RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
+                    leaks: Whether to report memory leaks instead of peak usage.
+                        Defaults to RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT.
+                    trace_python_allocators: Whether to record pymalloc
+                        allocations. Defaults to
+                        RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT.
+
         Returns:
             aiohttp.web.Response: The HTTP response containing the memory profile data.
 
-        Params (1):
-            pid: The PID of the worker.
-            ip or node_id: The IP address or hex ID of the node.
-
-        Params (2):
-            task_id: The ID of the task.
-            attempt_number: The attempt number of the task.
-            node_id: The ID of the node.
-
         Raises:
+            aiohttp.web.HTTPBadRequest: If "pid" or "duration" is not an
+                integer, or "duration" falls outside the accepted range.
             aiohttp.web.HTTPInternalServerError: If no stub
                 found from the given IP address or hex ID value
             aiohttp.web.HTTPInternalServerError: If the
                 "task_id" parameter exists but either "attempt_number"
                 or "node id" is missing in the request query.
-            aiohttp.web.HTTPInternalServerError: If the maximum
-                duration allowed is exceeded.
             aiohttp.web.HTTPInternalServerError: If requesting task
                 profiling for the worker begins working on another task
                 during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If there is
                 an internal server error during the profile retrieval.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         is_task = "task_id" in req.query
 
         # Either is_task or not, we need to get ip and grpc_port.
         if is_task:
             if "attempt_number" not in req.query:
-                return aiohttp.web.HTTPInternalServerError(
+                raise aiohttp.web.HTTPBadRequest(
                     text=(
                         "Failed to execute task profiling: "
                         "task's attempt number is required"
                     )
                 )
             if "node_id" not in req.query:
-                return aiohttp.web.HTTPInternalServerError(
+                raise aiohttp.web.HTTPBadRequest(
                     text=(
-                        "Failed to execute task profiling: "
-                        "task's node id is required"
+                        "Failed to execute task profiling: task's node id is required"
                     )
                 )
 
@@ -683,7 +1022,12 @@ class ReportHead(SubprocessModule):
                 )
             _, ip, _, grpc_port = addrs
         else:
-            pid = int(req.query["pid"])
+            if "pid" not in req.query:
+                raise aiohttp.web.HTTPBadRequest(text="pid is required")
+            try:
+                pid = int(req.query["pid"])
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(text="pid must be an integer")
             ip = req.query.get("ip")
             node_id_hex = req.query.get("node_id")
 
@@ -710,13 +1054,20 @@ class ReportHead(SubprocessModule):
         assert pid is not None
         ip_port = build_address(ip, grpc_port)
 
-        duration_s = int(req.query.get("duration", 10))
+        duration_s = _query_duration(
+            req, RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT
+        )
 
-        # Default not using `--native`, `--leaks` and `--format` for profiling
-        format = req.query.get("format", "flamegraph")
-        native = req.query.get("native", False) == "1"
-        leaks = req.query.get("leaks", False) == "1"
-        trace_python_allocators = req.query.get("trace_python_allocators", False) == "1"
+        # format/native/leaks/trace_python_allocators default to the
+        # operator-configured env vars (unless overridden on the head node).
+        format = req.query.get("format", RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT)
+        native = _query_flag(req, "native", RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT)
+        leaks = _query_flag(req, "leaks", RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT)
+        trace_python_allocators = _query_flag(
+            req,
+            "trace_python_allocators",
+            RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT,
+        )
 
         reporter_stub = self._make_stub(ip_port)
 
@@ -862,7 +1213,10 @@ class ReportHead(SubprocessModule):
     async def run(self):
         await super().run()
         self._state_api_data_source_client = StateDataSourceClient(
-            self.aiogrpc_gcs_channel, self.gcs_client
+            self.aiogrpc_gcs_channel,
+            self.gcs_client,
+            dashboard_socket_dir=self._config.socket_dir,
+            dashboard_session_name=self._config.session_name,
         )
         # Set up the state API in order to fetch task information.
         # This is only used to get task info. If we have Task APIs in GcsClient we can

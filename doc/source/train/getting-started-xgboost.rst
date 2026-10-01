@@ -1,3 +1,6 @@
+.. meta::
+   :description: Convert an XGBoost script to distributed training with Ray Train using XGBoostTrainer, with checkpointing and CPU/GPU ScalingConfig.
+
 .. _train-xgboost:
 
 Get Started with Distributed Training using XGBoost
@@ -176,7 +179,7 @@ Use Ray Data to shard the dataset
 :ref:`Ray Data <data>` is a distributed data processing library that allows you to easily shard and distribute your data across multiple workers. 
 
 First, load your **entire** dataset as a Ray Data Dataset. 
-Reference the :ref:`Ray Data Quickstart <data_quickstart>` for more details on how to load and preprocess data from different sources.
+Reference the :ref:`data_quickstart` for more details on how to load and preprocess data from different sources.
 
 .. testcode:: python
     :skipif: True

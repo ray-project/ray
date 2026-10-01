@@ -401,6 +401,10 @@ class DistributeResources:
             result: The latest results of trial.
             scheduler: The scheduler calling
                 the function.
+
+        Returns:
+            A new ``PlacementGroupFactory`` with updated resource requirements,
+            or None if the trial's resources should be left unchanged.
         """
         # Get base trial resources as defined in
         # ``tune.run(resources_per_trial)``

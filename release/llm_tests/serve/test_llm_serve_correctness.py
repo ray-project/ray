@@ -1,12 +1,12 @@
 import subprocess
 import time
-from typing import Literal
 
-import requests
 import pytest
 from openai import OpenAI
 from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app, ModelLoadingConfig
+from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
+
+from test_utils import create_openai_client, wait_for_server_ready
 
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 RAY_MODEL_ID = "qwen-0.5b"
@@ -48,12 +48,6 @@ def start_ray_serve(
     return ray_url
 
 
-def create_openai_client(server_url: str) -> OpenAI:
-    """Create an OpenAI client."""
-    openai_api_base = f"{server_url}/v1"
-    return OpenAI(base_url=openai_api_base, api_key="fake-key")
-
-
 def generate_completion(client: OpenAI, model_id: str, test_prompt: str) -> str:
     """Generate completion using the provided OpenAI client."""
     response = client.completions.create(
@@ -92,7 +86,7 @@ class VllmServer:
         self.model_id = model_id
         self.vllm_url = self._start_vllm_server()
         self.openai_client = create_openai_client(self.vllm_url)
-        wait_for_server_ready(self.vllm_url, server_type="vllm", timeout=240)
+        wait_for_server_ready(self.vllm_url, model_id=self.model_id, timeout=240)
 
     def _start_vllm_server(self) -> str:
         """Start vLLM server with specified parallelism parameters."""
@@ -131,50 +125,6 @@ class VllmServer:
             self.process.kill()
 
 
-def wait_for_server_ready(
-    url: str,
-    server_type: Literal["ray", "vllm"] = "ray",
-    timeout: int = 120,
-    retry_interval: int = 2,
-) -> bool:
-    """Poll the server until it's ready or timeout is reached.
-
-    Args:
-        url: The server URL to check
-        server_type: Either "ray" or "vllm"
-        timeout: Maximum time to wait in seconds
-        retry_interval: Time between retry attempts
-    """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            # Directly test if the server can handle a completion request
-            model_id = MODEL_ID if server_type == "vllm" else RAY_MODEL_ID
-            test_data = {
-                "model": model_id,
-                "prompt": "test",
-                "max_tokens": 5,
-                "temperature": 0,
-            }
-            completion_response = requests.post(
-                f"{url}/v1/completions", json=test_data, timeout=10
-            )
-            if completion_response.status_code == 200:
-                print(
-                    f"{server_type.upper()} server at {url} is ready to handle requests!"
-                )
-                return True
-        except Exception:
-            pass
-
-        print(f"Waiting for {server_type.upper()} server at {url} to be ready...")
-        time.sleep(retry_interval)
-
-    raise TimeoutError(
-        f"{server_type.upper()} server at {url} did not become ready within {timeout} seconds"
-    )
-
-
 @pytest.mark.parametrize(
     "tensor_parallel_size, pipeline_parallel_size",
     [
@@ -197,7 +147,7 @@ def test_llm_serve_correctness(
     ray_url = start_ray_serve(tensor_parallel_size, pipeline_parallel_size)
     ray_client = create_openai_client(ray_url)
 
-    wait_for_server_ready(ray_url, server_type="ray", timeout=240)
+    wait_for_server_ready(ray_url, model_id=RAY_MODEL_ID, timeout=240)
     time.sleep(5)  # Buffer time for server to be ready
 
     ray_completion_output = generate_completion(ray_client, RAY_MODEL_ID, test_prompt)

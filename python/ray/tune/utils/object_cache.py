@@ -151,7 +151,7 @@ class _ObjectCache:
                 over ``keep_one``.
 
         Yields:
-            Evicted objects to be cleaned up by caller.
+            U: Evicted objects to be cleaned up by caller.
 
         """
         # If force_all=True, don't keep one.

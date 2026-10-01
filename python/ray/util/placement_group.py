@@ -9,9 +9,6 @@ from ray._private.label_utils import validate_label_selector
 from ray._private.utils import get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-bundle_reservation_check = None
 
 VALID_PLACEMENT_GROUP_STRATEGIES = {
     "PACK",
@@ -20,22 +17,9 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_SPREAD",
 }
 
-
-# We need to import this method to use for ready API.
-# But ray.remote is only available in runtime, and
-# if we define this method inside ready method, this function is
-# exported whenever ready is called, which can impact performance,
-# https://github.com/ray-project/ray/issues/6240.
-def _export_bundle_reservation_check_method_if_needed():
-    global bundle_reservation_check
-    if bundle_reservation_check:
-        return
-
-    @ray.remote(num_cpus=0)
-    def bundle_reservation_check_func(placement_group):
-        return placement_group
-
-    bundle_reservation_check = bundle_reservation_check_func
+# Keep this in sync with RAY_NODE_ID_KEY in common.pxi. The module cannot import
+# that value because it forms a circular dependency.
+NODE_ID_LABEL_KEY = "ray.io/node-id"
 
 
 @PublicAPI
@@ -61,40 +45,29 @@ class PlacementGroup:
     def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
 
-        This API runs a small dummy task to wait for placement group creation.
-        It is compatible to ray.get and ray.wait.
+        Returns:
+            An ``ObjectRef`` that resolves once the placement group has been
+            created and all bundles are scheduled.
 
         Example:
-            .. testcode::
-
-                import ray
-
-                pg = ray.util.placement_group([{"CPU": 1}])
-                ray.get(pg.ready())
-
-                pg = ray.util.placement_group([{"CPU": 1}])
-                ray.wait([pg.ready()])
-
+            >>> import ray
+            >>> pg = ray.util.placement_group([{"CPU": 1}])
+            >>> _ = ray.get(pg.ready())
+            >>> pg = ray.util.placement_group([{"CPU": 1}])
+            >>> _ = ray.wait([pg.ready()])
         """
-        self._fill_bundle_cache_if_needed()
+        if self.is_empty:
+            return ray.put(self)
 
-        _export_bundle_reservation_check_method_if_needed()
-
-        assert len(self.bundle_cache) != 0, (
-            "ready() cannot be called on placement group object with a "
-            "bundle length == 0, current bundle length: "
-            f"{len(self.bundle_cache)}"
-        )
-
-        return bundle_reservation_check.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-        ).remote(self)
+        return _call_placement_group_ready_async(self)
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         """Wait for the placement group to be ready within the specified time.
+
         Args:
-             timeout_seconds(float|int): Timeout in seconds.
-        Return:
+             timeout_seconds: Timeout in seconds.
+
+        Returns:
              True if the placement group is created. False otherwise.
         """
         return _call_placement_group_ready(self.id, timeout_seconds)
@@ -124,6 +97,15 @@ class PlacementGroup:
 
 
 @client_mode_wrap
+def _call_placement_group_ready_async(pg: PlacementGroup) -> "ray._raylet.ObjectRef":
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+    # Serialize pg so that ray.get() returns the PlacementGroup
+    serialized = worker.get_serialization_context().serialize(pg)
+    return worker.core_worker.async_wait_placement_group_ready(pg.id, serialized)
+
+
+@client_mode_wrap
 def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -> bool:
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -145,11 +127,12 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
 @client_mode_wrap
 def placement_group(
     bundles: List[Dict[str, float]],
-    strategy: str = "PACK",
+    strategy: Optional[str] = None,
     name: str = "",
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    topology_strategy: Optional[Dict[str, str]] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -177,13 +160,19 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
+        topology_strategy: Topology strategy placement. A dict mapping each
+            topology label key to a placement strategy (e.g.,
+            ``{"ray.io/gpu-domain": "STRICT_PACK"}``).
+            Mutually exclusive with `strategy`.
 
     Raises:
         ValueError: if bundle type is not a list.
         ValueError: if empty bundle or empty resource bundles are given.
         ValueError: if the wrong lifetime arguments are given.
+        ValueError: if `topology_strategy` and `strategy` are both provided,
+            or if invalid `topology_strategy` is passed.
 
-    Return:
+    Returns:
         PlacementGroup: Placement group object.
     """
     worker = ray._private.worker.global_worker
@@ -195,10 +184,22 @@ def placement_group(
         lifetime=lifetime,
         _soft_target_node_id=_soft_target_node_id,
         bundle_label_selector=bundle_label_selector,
+        topology_strategy=topology_strategy,
     )
 
     if bundle_label_selector is None:
         bundle_label_selector = []
+
+    node_level_strategy = _derive_node_level_strategy(strategy, topology_strategy)
+
+    # Current implementation derives node level strategy from topology_strategy,
+    # while we pass a topology strategy with node level strategy stripped.
+    if topology_strategy is not None:
+        stripped_topology_strategy = {
+            k: v for k, v in topology_strategy.items() if k != NODE_ID_LABEL_KEY
+        }
+    else:
+        stripped_topology_strategy = {}
 
     if lifetime == "detached":
         detached = True
@@ -208,13 +209,17 @@ def placement_group(
     placement_group_id = worker.core_worker.create_placement_group(
         name,
         bundles,
-        strategy,
+        node_level_strategy,
         detached,
         _soft_target_node_id,
         bundle_label_selector,
+        stripped_topology_strategy,
     )
 
-    return PlacementGroup(placement_group_id)
+    return PlacementGroup(
+        placement_group_id,
+        bundle_cache=[{k: float(v) for k, v in bundle.items()} for bundle in bundles],
+    )
 
 
 @PublicAPI
@@ -236,6 +241,9 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
 @client_mode_wrap
 def get_placement_group(placement_group_name: str) -> PlacementGroup:
     """Get a placement group object with a global name.
+
+    Args:
+        placement_group_name: Global name of the placement group to look up.
 
     Returns:
         None if can't find a placement group with the given name.
@@ -266,6 +274,10 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     Args:
         placement_group: placement group to see
             states.
+
+    Returns:
+        A dictionary describing the state of the given placement group, or
+        the table of all placement groups if ``placement_group`` is None.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -282,28 +294,22 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     (because drivers never belong to any placement group).
 
     Examples:
-        .. testcode::
+        >>> import ray
+        >>> from ray.util.placement_group import get_current_placement_group
+        >>> from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        >>> @ray.remote
+        ... def f():
+        ...     # This returns the placement group the task f belongs to.
+        ...     # It means this pg is identical to the pg created below.
+        ...     return get_current_placement_group()
+        >>> pg = ray.util.placement_group([{"CPU": 2}])
+        >>> assert ray.get(f.options(
+        ...     scheduling_strategy=PlacementGroupSchedulingStrategy(
+        ...         placement_group=pg)).remote()) == pg
+        >>> # Driver doesn't belong to any placement group, so it returns None.
+        >>> assert get_current_placement_group() is None
 
-            import ray
-            from ray.util.placement_group import get_current_placement_group
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-            @ray.remote
-            def f():
-                # This returns the placement group the task f belongs to.
-                # It means this pg is identical to the pg created below.
-                return get_current_placement_group()
-
-            pg = ray.util.placement_group([{"CPU": 2}])
-            assert ray.get(f.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg)).remote()) == pg
-
-            # Driver doesn't belong to any placement group,
-            # so it returns None.
-            assert get_current_placement_group() is None
-
-    Return:
+    Returns:
         PlacementGroup: Placement group object.
             None if the current task or actor wasn't
             created with any placement group.
@@ -338,21 +344,53 @@ def check_placement_group_index(
         )
 
 
+def _derive_node_level_strategy(
+    strategy: Optional[str], topology_strategy: Optional[Dict[str, str]]
+) -> str:
+    """Assumes valid strategy and topology strategy, and derives the node level
+    strategy from the corresponding fields accordingly.
+    """
+    if topology_strategy is not None:
+        return topology_strategy.get(NODE_ID_LABEL_KEY, "PACK")
+    return strategy if strategy is not None else "PACK"
+
+
 def validate_placement_group(
     bundles: List[Dict[str, float]],
-    strategy: str = "PACK",
+    strategy: Optional[str] = None,
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    topology_strategy: Optional[Dict[str, str]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
     Raises ValueError if inputs are invalid.
     """
-    if _soft_target_node_id and strategy != "STRICT_PACK":
+    # Mutual exclusion: `strategy` and `topology_strategy` cannot both be passed.
+    if topology_strategy is not None and strategy is not None:
+        raise ValueError(
+            "`strategy` and `topology_strategy` cannot both be specified. "
+            "Pass node-level packing via "
+            f"`topology_strategy['{NODE_ID_LABEL_KEY}']`."
+        )
+
+    if strategy is not None and strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+        raise ValueError(
+            f"Invalid placement group strategy {strategy}. "
+            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+        )
+
+    if topology_strategy is not None:
+        _validate_topology_strategy(topology_strategy)
+
+    # Resolve the strategy for the rest of validation that depends on it.
+    node_level_strategy = _derive_node_level_strategy(strategy, topology_strategy)
+
+    if _soft_target_node_id and node_level_strategy != "STRICT_PACK":
         raise ValueError(
             "_soft_target_node_id currently only works "
-            f"with STRICT_PACK but got {strategy}"
+            f"with STRICT_PACK but got {node_level_strategy}"
         )
 
     if _soft_target_node_id and ray.NodeID.from_hex(_soft_target_node_id).is_nil():
@@ -370,16 +408,62 @@ def validate_placement_group(
             )
         _validate_bundle_label_selector(bundle_label_selector)
 
-    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
-        raise ValueError(
-            f"Invalid placement group strategy {strategy}. "
-            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
-        )
-
     if lifetime not in [None, "detached"]:
         raise ValueError(
             "Placement group `lifetime` argument must be either `None` or "
             f"'detached'. Got {lifetime}."
+        )
+
+
+def _validate_topology_strategy(topology_strategy: Dict[str, str]) -> None:
+    """Validates topology_strategy shape.
+
+    Currently accepts a dict containing "ray.io/node-id" and at most one other
+    topology label. The "ray.io/node-id" entry is equivalent to the `strategy=`
+    parameter and accepts any value in VALID_PLACEMENT_GROUP_STRATEGIES. The
+    other (topology) label is restricted to "STRICT_PACK" for now.
+    """
+    if not isinstance(topology_strategy, dict):
+        raise ValueError(
+            "`topology_strategy` must be a dict, "
+            f"got {type(topology_strategy).__name__}."
+        )
+
+    if not (0 <= len(topology_strategy) <= 2):
+        raise ValueError(
+            "`topology_strategy` must contain 0, 1, or 2 entries: "
+            f"`{NODE_ID_LABEL_KEY}` plus an optional topology label. "
+            f"Got {len(topology_strategy)} entries."
+        )
+
+    topology_label_keys = []
+    for key, value in topology_strategy.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                "`topology_strategy` keys must be non-empty strings, " f"got {key!r}."
+            )
+        if value not in VALID_PLACEMENT_GROUP_STRATEGIES:
+            raise ValueError(
+                f"Invalid topology strategy {value!r} for label {key!r}. "
+                f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+            )
+        # The node-id entry is just a redirect to the existing `strategy=`
+        # parameter and accepts any valid placement-group strategy. For other
+        # topology labels (e.g. "ray.io/gpu-domain"), currently only supports
+        # STRICT_PACK.
+        if not key == NODE_ID_LABEL_KEY:
+            topology_label_keys.append(key)
+            if value != "STRICT_PACK":
+                raise ValueError(
+                    f"Topology strategy {value!r} for label {key!r} is not "
+                    "supported yet; only 'STRICT_PACK' is supported for topology "
+                    f"labels other than `{NODE_ID_LABEL_KEY}` for now."
+                )
+
+    if len(topology_label_keys) > 1:
+        raise ValueError(
+            "`topology_strategy` currently supports at most one topology label "
+            f"other than `{NODE_ID_LABEL_KEY}`. Got {topology_label_keys}."
         )
 
 
@@ -461,6 +545,23 @@ def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]])
                 f"Invalid label selector provided in bundle_label_selector list."
                 f" Detailed error: '{error_message}'"
             )
+
+    gpu_domain_accelerator = None
+    for label_selector in bundle_label_selector:
+        accel = label_selector.get("ray.io/accelerator-type")
+        if accel in {"GB200", "GB300"}:
+            gpu_domain_accelerator = accel
+            break
+
+    if gpu_domain_accelerator is not None:
+        for label_selector in bundle_label_selector:
+            if label_selector.get("ray.io/accelerator-type") != gpu_domain_accelerator:
+                raise ValueError(
+                    f"Invalid bundle label selector {label_selector}. "
+                    "GPU-domain scheduling requires all bundles to have "
+                    f"'ray.io/accelerator-type: {gpu_domain_accelerator}'"
+                    " in their label selector."
+                )
 
 
 def _valid_resource_shape(resources, bundle_specs):

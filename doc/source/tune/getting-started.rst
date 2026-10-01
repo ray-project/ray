@@ -1,3 +1,6 @@
+.. meta::
+   :description: Tutorial tuning a PyTorch CNN with the Tuner API, ASHAScheduler for early stopping, and HyperOpt for Bayesian search.
+
 .. _tune-tutorial:
 
 .. TODO: make this an executable notebook later on.

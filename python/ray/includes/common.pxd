@@ -134,6 +134,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
         c_bool IsUnauthenticated()
+        c_bool IsGcsPassive()
 
         c_string ToString()
         c_string CodeAsString()
@@ -383,16 +384,19 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
-                     int64_t generator_backpressure_num_objects)
+                     int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
                      c_string serialized_runtime_env)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
+                     int64_t num_objects_per_yield,
                      c_string serialized_runtime_env,
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
@@ -420,7 +424,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
             CLabelSelector label_selector,
-            c_vector[CFallbackOption] fallback_strategy)
+            c_vector[CFallbackOption] fallback_strategy,
+            int64_t actor_generator_backpressure_num_objects)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -432,6 +437,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
+            const unordered_map[c_string, CPlacementStrategy] &topology_strategy,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
@@ -508,11 +514,19 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const c_vector[CNodeSelector] &node_selectors)
 
         void AsyncGetAll(
-            const MultiItemPyCallback[CGcsNodeInfo] &callback,
+            const OptionalItemPyCallback[c_pair[c_vector[CGcsNodeInfo], int64_t]] &callback,
             int64_t timeout_ms,
-            c_vector[CNodeID] node_ids)
+            optional[CGcsNodeState] state_filter,
+            const c_vector[CNodeSelector] &node_selectors,
+            optional[int64_t] limit) const
+
+        c_bool IsGcsLeader() const
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetDrainingNodes(
+            int64_t timeout_ms,
+            CGetDrainingNodesReply &reply)
+
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,
             CGetAllResourceUsageReply &serialized_reply)
@@ -643,6 +657,13 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_bool &is_accepted,
             c_string &rejection_reason_message
+        )
+
+        CRayStatus ResizeRayletResourceInstances(
+            const c_string &node_id,
+            const unordered_map[c_string, double] &resources,
+            int64_t timeout_ms,
+            unordered_map[c_string, double] &total_resources
         )
 
     cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
@@ -793,6 +814,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
         const c_string& SerializeAsString() const
 
+    cdef cppclass CGetDrainingNodesReply "ray::rpc::GetDrainingNodesReply":
+        const c_string& SerializeAsString() const
+
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)
         c_string key() const
@@ -867,6 +891,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kNodeMarketTypeEnv
     cdef const char[] kNodeRegionEnv
     cdef const char[] kNodeZoneEnv
+    cdef const char[] kLabelKeyNodeID
     cdef const char[] kLabelKeyNodeAcceleratorType
     cdef const char[] kLabelKeyNodeMarketType
     cdef const char[] kLabelKeyNodeRegion

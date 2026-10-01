@@ -9,11 +9,14 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    SignalActor,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     make_global_state_accessor,
-    run_string_as_driver,
     wait_for_pid_to_exit,
 )
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
@@ -614,38 +617,6 @@ except Exception:
     # Make sure we can create a detached actor created/killed
     # at other scripts.
     create_and_kill_actor(dup_actor_name)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"local_mode": True}], indirect=True)
-def test_detached_actor_local_mode(ray_start_regular):
-    RETURN_VALUE = 3
-
-    @ray.remote
-    class Y:
-        def f(self):
-            return RETURN_VALUE
-
-    Y.options(lifetime="detached", name="test").remote()
-    assert ray.util.list_named_actors() == ["test"]
-    y = ray.get_actor("test")
-    assert ray.get(y.f.remote()) == RETURN_VALUE
-
-    ray.kill(y)
-    assert not ray.util.list_named_actors()
-    with pytest.raises(ValueError):
-        ray.get_actor("test")
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"local_mode": True}], indirect=True)
-def test_get_actor_local_mode(ray_start_regular):
-    @ray.remote
-    class A:
-        def hi(self):
-            return "hi"
-
-    a = A.options(name="hi").remote()  # noqa: F841
-    b = ray.get_actor("hi")
-    assert ray.get(b.hi.remote()) == "hi"
 
 
 @pytest.mark.parametrize(

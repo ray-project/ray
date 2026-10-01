@@ -1,6 +1,7 @@
 import functools
 import importlib
 import logging
+import math
 import os
 import pathlib
 import platform
@@ -36,7 +37,7 @@ import pyarrow
 import pyarrow.fs
 
 import ray
-from ray._common.retry import call_with_retry
+from ray._common.retry import call_with_retry, format_exception, matches_error
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -49,7 +50,8 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
@@ -181,6 +183,9 @@ def _autodetect_parallelism(
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if (
         mem_size is not None
+        # Guard against non-scalar types (e.g. numpy arrays) that would cause
+        # np.isnan() to raise TypeError in newer numpy versions.
+        and isinstance(mem_size, (int, float))
         and not np.isnan(mem_size)
         and target_max_block_size is not None
     ):
@@ -259,6 +264,9 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
     Args:
         cur_pg: The current placement group, if any.
+
+    Returns:
+        The estimated number of available CPU slots usable by this Dataset.
     """
     cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
     cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
@@ -310,7 +318,7 @@ def _warn_on_high_parallelism(requested_parallelism, num_read_tasks):
         )
 
 
-def _check_import(obj, *, module: str, package: str) -> None:
+def _check_import(obj: Any, *, module: str, package: str) -> None:
     """Check if a required dependency is installed.
 
     If `module` can't be imported, this function raises an `ImportError` instructing
@@ -346,19 +354,37 @@ def _resolve_custom_scheme(path: str) -> str:
     return path
 
 
+def _normalize_paths_to_strings(
+    paths: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]
+) -> List[str]:
+    """Normalize path input to a list of strings.
+
+    Accepts a single path (str or pathlib.Path) or a list of paths.
+    Returns a list of string paths. Raises ValueError if paths is empty
+    or contains invalid types.
+    """
+    if isinstance(paths, str):
+        return [paths]
+    elif isinstance(paths, pathlib.Path):
+        return [str(paths)]
+    elif isinstance(paths, list):
+        normalized = [str(p) if isinstance(p, pathlib.Path) else p for p in paths]
+        if not normalized:
+            raise ValueError("Must provide at least one path.")
+        if any(not isinstance(p, str) for p in normalized):
+            raise ValueError("All paths must be str or pathlib.Path")
+        return normalized
+    else:
+        raise ValueError(f"paths must be str, pathlib.Path, or list, got {type(paths)}")
+
+
 def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     """Returns True if the given paths are in local scheme.
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    if isinstance(paths, str):
-        paths = [paths]
-    if isinstance(paths, pathlib.Path):
-        paths = [str(paths)]
-    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError("paths must be a path string or a list of path strings.")
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
+    paths = _normalize_paths_to_strings(paths)
+
     num = sum(urllib.parse.urlparse(path).scheme == _LOCAL_SCHEME for path in paths)
     if num > 0 and num < len(paths):
         raise ValueError(
@@ -673,6 +699,52 @@ def get_compute_strategy(
             return TaskPoolStrategy()
 
 
+def get_compute_strategy_for_read_api(
+    compute: Optional["ComputeStrategy"] = None,
+    concurrency: Optional[int] = None,
+) -> "ComputeStrategy":
+    """Get `ComputeStrategy` for read APIs.
+
+    This function is used to support both TaskPoolStrategy and ActorPoolStrategy for read APIs.
+    The default behavior is to use TaskPoolStrategy, with size set to ``concurrency`` (integer).
+    To use ActorPoolStrategy, pass an ActorPoolStrategy instance to the ``compute`` parameter. The
+    ``concurrency`` parameter takes precedence over the ``compute`` parameter.
+
+    Args:
+        compute: The compute strategy to use for reading. Pass an
+            :class:`~ray.data.ActorPoolStrategy` instance to use an actor pool,
+            or a :class:`~ray.data.TaskPoolStrategy` instance (default) to use Ray tasks.
+            If not specified, defaults to ``TaskPoolStrategy(concurrency)``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This parameter takes precedence
+            over the ``compute`` parameter. If both are specified, the ``concurrency`` parameter
+            is used.
+
+    Returns:
+        The `ComputeStrategy` for reading.
+    """
+    from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+
+    # ``concurrency`` parameter takes precedence over the ``compute`` parameter.
+    if concurrency is not None:
+        if compute is not None:
+            logger.warning(
+                "Both ``compute`` and ``concurrency`` are specified. The ``compute`` parameter will be ignored."
+            )
+        return TaskPoolStrategy(concurrency)
+
+    # When ``concurrency`` is not specified:
+    if compute is None:
+        return TaskPoolStrategy()
+    elif isinstance(compute, ComputeStrategy):
+        return compute
+    else:
+        raise ValueError(
+            f"compute must be a ComputeStrategy instance (e.g. ActorPoolStrategy or TaskPoolStrategy), but "
+            f"got {compute}"
+        )
+
+
 def capfirst(s: str):
     """Capitalize the first letter of a string
 
@@ -704,7 +776,9 @@ def pandas_df_to_arrow_block(
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(
+        block, block_exec_stats=stats.build()
+    )
 
 
 def ndarray_to_block(
@@ -716,7 +790,9 @@ def ndarray_to_block(
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(
+        block, block_exec_stats=stats.build()
+    )
 
 
 def get_table_block_metadata_schema(
@@ -725,7 +801,7 @@ def get_table_block_metadata_schema(
     from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
     stats = BlockExecStats.builder()
-    return BlockMetadataWithSchema.from_block(table, stats=stats.build())
+    return BlockMetadataWithSchema.from_block(table, block_exec_stats=stats.build())
 
 
 def unify_block_metadata_schema(
@@ -758,15 +834,12 @@ def unify_schemas_with_validation(
     schemas_to_unify: Iterable["Schema"],
 ) -> Optional["Schema"]:
     if schemas_to_unify:
+        import pyarrow as pa
+
         from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
-        # Check valid pyarrow installation before attempting schema unification
-        try:
-            import pyarrow as pa
-        except ImportError:
-            pa = None
         # If the result contains PyArrow schemas, unify them
-        if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
+        if all(isinstance(s, pa.Schema) for s in schemas_to_unify):
             return unify_schemas(schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
@@ -786,6 +859,125 @@ def unify_ref_bundles_schema(
     return unify_schemas_with_validation(schemas_to_unify)
 
 
+def find_insertion_index(
+    key_columns: List[np.ndarray],
+    pivot: Tuple[Union[Any]],
+    descending: List[bool],
+    has_nulls: Optional[List[bool]] = None,
+    start_from_idx: int = 0,
+) -> int:
+    """For the given list of *sorted* columns, find the index where ``pivot`` value
+    should be added, while maintaining sorted order.
+
+    We do this by iterating over each key column, and binary searching for the
+    insertion index in the column. Each binary search shortens the "range" of indices
+    (represented by ``left`` and ``right``, which are indices of rows) where the pivot
+    value could be inserted.
+
+    Args:
+        key_columns: List of *sorted* arrays (as ndarrays).
+        pivot: A (row-like) tuple of corresponding column values, for which insertion
+                needs to be determined.
+        descending: List of booleans designating whether key columns are in ascending
+                    or descending order, since ``np.searchsorted`` expects these in
+                    ascending order.
+        has_nulls: Optional per-column flag indicating whether the column contains
+                   nulls or NaNs that need to be stripped before ``np.searchsorted``.
+                   When ``None`` (default), the strip runs unconditionally — safe
+                   but expensive when called in a hot loop. Callers that know the
+                   column has no nulls (e.g. via Arrow's O(1) ``null_count``) should
+                   pass ``False`` for that column to skip the O(n) strip.
+        start_from_idx: The index to start the search from. Rows before this
+            index are assumed to already precede ``pivot`` in sorted order.
+
+    Returns:
+        Index where the pivot value would have been inserted into to maintain sorted
+        order of ``key_columns``.
+    """
+
+    # NOTE: Left and right offsets track 2 insertion points:
+    #
+    #   - Left: for value of pivot `P`, it is an index `i`,
+    #     such that: A[i - 1] < P <= A[i]
+    #   - Right: for value of pivot P, it is an index `i`,
+    #     such that: A[i - 1] <= P < A[i]
+    #
+    # Tracking both is necessary to be able to properly find an appropriate
+    # insertion point in the multi-column scenario, since lexicographic ordering
+    # in the second (and beyond) columns might not necessarily match the
+    # non-lexicographic ordering.
+    left, right = start_from_idx, len(key_columns[0])
+
+    for col_idx, cur_pivot_val in enumerate(pivot):
+        if left == right:
+            return right
+
+        # Project column range view for the given [left, right) range
+        #
+        # This is necessary to make sure that the values in the projected range
+        # are in the ascending/descending order (in multi-column scenario)
+        column_range_view = key_columns[col_idx][left:right]
+
+        # Nulls sort last in Arrow, so they accumulate at the tail of
+        # column_range_view. Stripping them before searching avoids a
+        # TypeError from np.searchsorted on None values — and if
+        # cur_pivot_val is also None, the answer is simply the end of
+        # the non-null region. Skip the O(n) strip when the caller has
+        # told us the column has no nulls (Arrow's null_count is O(1),
+        # so the caller can cheaply check once per column instead of us
+        # paying ``pd.isna`` per boundary).
+        if has_nulls is None or has_nulls[col_idx]:
+            column_range_view = column_range_view[~pd.isna(column_range_view)]
+        if cur_pivot_val is None:
+            return left + len(column_range_view)
+
+        if descending[col_idx] is True:
+            # ``np.searchsorted`` expects the array to be sorted in ascending
+            # order, so we pass ``sorter``, which is an array of integer indices
+            # that turn ``column_range_view`` into ascending order.
+            asc_indices = np.arange(len(column_range_view) - 1, -1, -1)
+
+            # The returned index is an index into the ascending order of
+            # ``column_range_view``, so we need to subtract it from
+            # ``len(column_range_view)`` to get the index in the original descending
+            # order of ``column_range_view``.
+            left_ins_offset_asc = np.searchsorted(
+                column_range_view,
+                cur_pivot_val,
+                side="left",
+                sorter=asc_indices,
+            )
+
+            right_ins_offset_asc = np.searchsorted(
+                column_range_view,
+                cur_pivot_val,
+                side="right",
+                sorter=asc_indices,
+            )
+
+            # NOTE: Converting back from ascending offsets into original
+            #       ones, the ordering of the left and right offsets are reversed
+            pivot_left_ins_offset = len(column_range_view) - right_ins_offset_asc
+            pivot_right_ins_offset = len(column_range_view) - left_ins_offset_asc
+
+        else:
+
+            pivot_left_ins_offset = np.searchsorted(
+                column_range_view, cur_pivot_val, side="left"
+            )
+
+            pivot_right_ins_offset = np.searchsorted(
+                column_range_view, cur_pivot_val, side="right"
+            )
+
+        prev_left = left
+
+        left = prev_left + pivot_left_ins_offset
+        right = prev_left + pivot_right_ins_offset
+
+    return right if descending[0] is True else left
+
+
 def find_partition_index(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
     desired: Tuple[Union[int, float]],
@@ -793,11 +985,6 @@ def find_partition_index(
 ) -> int:
     """For the given block, find the index where the desired value should be
     added, to maintain sorted order.
-
-    We do this by iterating over each column, starting with the primary sort key,
-    and binary searching for the desired value in the column. Each binary search
-    shortens the "range" of indices (represented by ``left`` and ``right``, which
-    are indices of rows) where the desired value could be inserted.
 
     Args:
         table: The block to search in.
@@ -810,54 +997,15 @@ def find_partition_index(
     Returns:
         The index where the desired value should be inserted to maintain sorted
         order.
+
+    Note:
+        This converts the key columns to NumPy on every call. To search a single
+        block for many boundaries, convert the columns once and call
+        :func:`find_insertion_index` directly.
     """
-    columns = sort_key.get_columns()
-    descending = sort_key.get_descending()
+    key_columns = [table[col_name].to_numpy() for col_name in sort_key.get_columns()]
 
-    left, right = 0, len(table)
-    for i in range(len(desired)):
-        if left == right:
-            return right
-        col_name = columns[i]
-        col_vals = table[col_name].to_numpy()[left:right]
-        desired_val = desired[i]
-
-        # Handle null values - replace them with sentinel values
-        if desired_val is None:
-            desired_val = NULL_SENTINEL
-
-        prevleft = left
-        if descending[i] is True:
-            # ``np.searchsorted`` expects the array to be sorted in ascending
-            # order, so we pass ``sorter``, which is an array of integer indices
-            # that sort ``col_vals`` into ascending order. The returned index
-            # is an index into the ascending order of ``col_vals``, so we need
-            # to subtract it from ``len(col_vals)`` to get the index in the
-            # original descending order of ``col_vals``.
-            sorter = np.arange(len(col_vals) - 1, -1, -1)
-            left = prevleft + (
-                len(col_vals)
-                - np.searchsorted(
-                    col_vals,
-                    desired_val,
-                    side="right",
-                    sorter=sorter,
-                )
-            )
-            right = prevleft + (
-                len(col_vals)
-                - np.searchsorted(
-                    col_vals,
-                    desired_val,
-                    side="left",
-                    sorter=sorter,
-                )
-            )
-        else:
-            left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
-            right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
-
-    return right if descending[0] is True else left
+    return find_insertion_index(key_columns, desired, sort_key.get_descending())
 
 
 def get_attribute_from_class_name(class_name: str) -> Any:
@@ -942,6 +1090,36 @@ class _InterruptibleQueue(Queue):
                 pass
 
 
+def _arrow_batcher(table: "pyarrow.Table", output_batch_size: int):
+    """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
+    num_rows = table.num_rows
+    for i in range(0, num_rows, output_batch_size):
+        end_idx = min(i + output_batch_size, num_rows)
+        # Use PyArrow's zero-copy slice operation
+        batch_table = table.slice(i, end_idx - i)
+        yield batch_table
+
+
+def _iter_arrow_table_for_target_max_block_size(
+    table: "pyarrow.Table",
+    target_max_block_size: Optional[int],
+) -> Iterator["pyarrow.Table"]:
+    """Yield *table* as one block, or row-split when it exceeds the byte budget.
+
+    Splits by estimating how many blocks are needed from ``table.nbytes`` vs
+    ``target_max_block_size``, then batches rows evenly via :func:`_arrow_batcher`.
+    Used by download paths so block sizing stays consistent.
+    """
+    output_block_size = table.nbytes
+    max_bytes = target_max_block_size
+    if max_bytes is not None and max_bytes > 0 and output_block_size > max_bytes:
+        num_blocks = math.ceil(output_block_size / max_bytes)
+        num_rows = table.num_rows
+        yield from _arrow_batcher(table, int(math.ceil(num_rows / num_blocks)))
+    else:
+        yield table
+
+
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],
@@ -985,9 +1163,9 @@ def make_async_gen(
 
                         num_workers * buffer_size * 2 (input and output)
 
-    Returns:
-        An generator (iterator) of the elements corresponding to the source
-        elements mapped by provided transformation (while *preserving the ordering*)
+    Yields:
+        U: Elements corresponding to the source elements mapped by the provided
+        transformation (while *preserving the ordering* when requested).
     """
 
     gen_id = random.randint(0, 2**31 - 1)
@@ -1255,7 +1433,7 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
 
         Args:
             fs: The underlying filesystem to wrap
-            context: DataContext for retry settings
+            retryable_errors: Error substrings that should trigger a retry
             max_attempts: Maximum number of retry attempts
             max_backoff_s: Maximum backoff time in seconds
         """
@@ -1409,6 +1587,51 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         )
 
 
+def _annotate_exception_with_retry_context(
+    exc: BaseException,
+    *,
+    description: str,
+    attempts: int,
+    max_attempts: int,
+    total_backoff_s: float,
+    exception_str: str,
+) -> BaseException:
+    """Append retry context to ``exc``, preserving its type and traceback."""
+    suffix = (
+        f"Failed to {description} after {attempts}/{max_attempts} "
+        f"attempts (total backoff {total_backoff_s:.1f}s)."
+    )
+    if "ACCESS_DENIED" in exception_str:
+        suffix += (
+            "\nThis looks like an AWS S3 permissions error. Make sure your "
+            "credentials have the correct permissions. If this problem persists, "
+            "try refreshing your credentials, or use s3fs with boto3 (pass "
+            "`filesystem=s3fs.S3FileSystem()` to the read/write API)."
+        )
+    suffix += (
+        "\nTo change retry attempts, backoff, or which errors are retried, "
+        "configure `ray.data.DataContext.get_current()` (`retried_io_errors` "
+        "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
+        "if you believe this to be transient."
+    )
+    try:
+        if exc.args and isinstance(exc.args[0], str):
+            exc.args = (f"{exc.args[0]}\n{suffix}",) + exc.args[1:]
+        else:
+            exc.args = exc.args + (suffix,)
+        return exc
+    except Exception:
+        try:
+            new = type(exc)(f"{exc}\n{suffix}")
+            new.__traceback__ = exc.__traceback__
+            new.__cause__ = exc.__cause__
+            new.__context__ = exc.__context__
+            new.__suppress_context__ = exc.__suppress_context__
+            return new
+        except Exception:
+            return exc
+
+
 def iterate_with_retry(
     iterable_factory: Callable[[], Iterable],
     description: str,
@@ -1416,24 +1639,36 @@ def iterate_with_retry(
     match: Optional[List[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
+    unwrap_cause: bool = False,
 ) -> Any:
     """Iterate through an iterable with retries.
 
     If the iterable raises an exception, this function recreates and re-iterates
     through the iterable, while skipping the items that have already been yielded.
 
+    ``iterable_factory`` must therefore produce the same sequence from the start on
+    every call. A factory that resumes where the previous attempt stopped, such as
+    one that reads from an already-advanced file handle, silently drops data,
+    because the items skipped here are not the ones already yielded.
+
     Args:
-        iterable_factory: A no-argument function that creates the iterable.
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
+        iterable_factory: A no-argument function that creates the iterable. It must
+            replay the same items from the start on every call.
         description: An imperitive description of the function being retried. For
             example, "open the file".
+        match: A list of patterns to match in the exception message. Each pattern
+            is first checked as a substring, then as a regex. If ``None``, any
+            error is retried.
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
+        unwrap_cause: If ``True``, include ``e.__cause__`` in the string matched
+            against ``match``. Use this when exceptions are wrapped (e.g.
+            ``UserCodeException``) and the original error is in the cause chain.
     """
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
     num_items_yielded = 0
+    total_backoff_s = 0.0
     for attempt in range(max_attempts):
         try:
             iterable = iterable_factory()
@@ -1446,16 +1681,30 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
+            error_str = format_exception(e, include_cause=unwrap_cause)
+            is_retryable = match is None or any(
+                matches_error(pattern, error_str) for pattern in match
+            )
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
+                total_backoff_s += backoff
                 logger.debug(
-                    f"Retrying {attempt+1} attempts to {description} "
-                    f"after {backoff} seconds."
+                    f"Retrying attempt {attempt + 1} to {description} "
+                    f"after {backoff:.1f}s due to: {error_str}"
                 )
                 time.sleep(backoff)
             else:
+                e = _annotate_exception_with_retry_context(
+                    e,
+                    description=description,
+                    attempts=attempt + 1,
+                    max_attempts=max_attempts,
+                    total_backoff_s=total_backoff_s,
+                    exception_str=error_str,
+                )
+                if unwrap_cause:
+                    raise e
                 raise e from None
 
 
@@ -1523,6 +1772,27 @@ def _validate_rows_per_file_args(
     return min_rows_per_file, max_rows_per_file
 
 
+def _validate_min_bytes_per_file_args(
+    *,
+    min_bytes_per_file: Optional[int] = None,
+    num_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> None:
+    """Validate the minimum bytes per file and its mutually exclusive arguments."""
+    if min_bytes_per_file is not None and min_bytes_per_file <= 0:
+        raise ValueError("min_bytes_per_file must be a positive integer")
+
+    if min_bytes_per_file is not None and any(
+        value is not None
+        for value in (num_rows_per_file, min_rows_per_file, max_rows_per_file)
+    ):
+        raise ValueError(
+            "min_bytes_per_file cannot be used with min_rows_per_file, "
+            "max_rows_per_file, or num_rows_per_file"
+        )
+
+
 def is_nan(value) -> bool:
     """Returns true if provide value is ``np.nan``"""
 
@@ -1585,7 +1855,7 @@ class MemoryProfiler:
     """
 
     def __init__(self, poll_interval_s: Optional[float]):
-        """
+        """Initialize the memory profiler.
 
         Args:
             poll_interval_s: The interval to poll the USS of the process. If `None`,
@@ -1704,13 +1974,47 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
         return x
 
+    def needs_proxy(dtype: "np.dtype | pd.api.extensions.ExtensionDtype") -> bool:
+        if dtype == "object":
+            return True
+        if isinstance(dtype, pd.ArrowDtype):
+            pa_type = dtype.pyarrow_dtype
+            return (
+                pyarrow.types.is_list(pa_type)
+                or pyarrow.types.is_large_list(pa_type)
+                or pyarrow.types.is_fixed_size_list(pa_type)
+                or pyarrow.types.is_struct(pa_type)
+                or pyarrow.types.is_map(pa_type)
+            )
+        return False
+
+    # Cast Arrow-backed *float* columns to numpy floats — pandas's multi-column
+    # ``sort_values`` builds an ordered Categorical per key column, which rejects
+    # arrow-backed floats containing both ``-0.0`` and ``0.0`` ("categories must
+    # be unique") because they're stored distinctly but compare equal under
+    # numpy. We deliberately leave other Arrow scalar types alone: int columns
+    # may contain ``<NA>`` (which can't fit in numpy ``int64``), and string
+    # columns sort ``<NA>`` first whereas object-with-``None`` sorts last,
+    # which would diverge from the expected DataFrame on the other side.
+    arrow_to_numpy = {}
+    for col in df.columns:
+        dtype = df[col].dtype
+        if isinstance(dtype, pd.ArrowDtype) and pyarrow.types.is_floating(
+            dtype.pyarrow_dtype
+        ):
+            numpy_dtype = getattr(dtype, "numpy_dtype", None)
+            if numpy_dtype is not None:
+                arrow_to_numpy[col] = numpy_dtype
+    if arrow_to_numpy:
+        df = df.astype(arrow_to_numpy)
+
     sort_cols = []
     temp_cols = []
     # Sort by all columns to ensure deterministic order.
     columns = sorted(df.columns)
 
     for col in columns:
-        if df[col].dtype == "object":
+        if needs_proxy(df[col].dtype):
             # Create a temporary column for sorting to handle unhashable types.
             # Use UUID to avoid collisions with existing column names.
             temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"
@@ -1792,3 +2096,47 @@ def infer_compression(path: str) -> Optional[str]:
         if suffix and suffix[1:] == "snappy":
             compression = "snappy"
     return compression
+
+
+def get_max_task_capacity(
+    allocated_resources: Optional["ExecutionResources"],
+    min_scheduling_resources: "ExecutionResources",
+) -> float:
+    if allocated_resources is None:
+        return 0
+
+    if min_scheduling_resources.copy(object_store_memory=0).is_zero():
+        return float("inf")
+
+    capacity = allocated_resources.floordiv(min_scheduling_resources)
+    return min(capacity.cpu, capacity.gpu, capacity.memory)
+
+
+def explain_plan(logical_plan: "LogicalPlan") -> str:
+    """Return a string representation of the logical and physical plan."""
+    from ray.data._internal.dataset_repr import _format_operator_dag
+    from ray.data._internal.logical.optimizers import (
+        LogicalOptimizer,
+        PhysicalOptimizer,
+    )
+    from ray.data._internal.planner import create_planner
+
+    sections = []
+
+    def _add_section(title, plan):
+        plan_str, _ = _format_operator_dag(plan.dag, show_op_repr=True)
+        banner = f"\n-------- {title} --------\n"
+        sections.append(f"{banner}{plan_str}")
+
+    _add_section("Logical Plan", logical_plan)
+
+    optimized_logical = LogicalOptimizer().optimize(logical_plan)
+    _add_section("Logical Plan (Optimized)", optimized_logical)
+
+    physical_plan, _ = create_planner().plan(optimized_logical)
+    _add_section("Physical Plan", physical_plan)
+
+    optimized_physical = PhysicalOptimizer().optimize(physical_plan)
+    _add_section("Physical Plan (Optimized)", optimized_physical)
+
+    return "".join(sections)

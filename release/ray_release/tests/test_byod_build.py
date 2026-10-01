@@ -132,8 +132,9 @@ def test_build_anyscale_base_byod_images() -> None:
         ]
         images = build_anyscale_base_byod_images(tests)
         global_config = get_global_config()
-        aws_cr = global_config["byod_aws_cr"]
-        gcp_cr = global_config["byod_gcp_cr"]
+        aws_cr = global_config["byod_ecr"]
+        # Base images are always from AWS ECR (see get_anyscale_base_byod_image),
+        # so GCE and AWS CPU tests resolve to the same image (6 unique, not 7).
         assert set(images) == {
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu116",
@@ -141,8 +142,49 @@ def test_build_anyscale_base_byod_images() -> None:
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
             f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cpu",
-            f"{gcp_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
         }
+
+
+def test_get_anyscale_base_byod_image_always_uses_aws_ecr() -> None:
+    """Base images should always come from AWS ECR, regardless of test env."""
+    global_config = get_global_config()
+    aws_cr = global_config["byod_ecr"]
+
+    with patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_COMMIT": "abc123",
+            "RAYCI_BUILD_ID": "a1b2c3d4",
+        },
+    ):
+        expected_cpu = f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu"
+        for env in ("aws", "gce", "azure", "kuberay"):
+            test = Test(name="t", env=env, cluster={"byod": {}})
+            assert test.get_anyscale_base_byod_image() == expected_cpu, env
+
+        gpu_test = Test(name="t", env="gce", cluster={"byod": {"type": "gpu"}})
+        assert gpu_test.get_anyscale_base_byod_image() == (
+            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu"
+        )
+
+        # When ray_version is set, base image uses anyscale/ray prefix
+        # instead of byod_ecr.
+        versioned_cpu_test = Test(
+            name="t",
+            env="gce",
+            cluster={"byod": {}, "ray_version": "2.50.0"},
+        )
+        versioned_gpu_test = Test(
+            name="t",
+            env="gce",
+            cluster={"byod": {"type": "gpu"}, "ray_version": "2.50.0"},
+        )
+        assert versioned_cpu_test.get_anyscale_base_byod_image() == (
+            "anyscale/ray:2.50.0-py310-cpu"
+        )
+        assert versioned_gpu_test.get_anyscale_base_byod_image() == (
+            "anyscale/ray:2.50.0-py310-cu121"
+        )
 
 
 if __name__ == "__main__":

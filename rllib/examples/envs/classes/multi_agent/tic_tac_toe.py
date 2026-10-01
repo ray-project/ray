@@ -92,9 +92,9 @@ class TicTacToe(MultiAgentEnv):
 
         # Invalid move: penalize and return without changing board.
         if self.board[action] != 0:
-            truncated = self.timestep >= self.max_timesteps
-            board_arr = np.array(self.board, np.float32)
-            if truncated:
+            # The time limit is reached
+            if self.timestep >= self.max_timesteps:
+                board_arr = np.array(self.board, np.float32)
                 return (
                     {self.current_player: board_arr, opponent: board_arr * -1},
                     {self.current_player: -0.5, opponent: 0.0},
@@ -104,9 +104,10 @@ class TicTacToe(MultiAgentEnv):
                 )
             else:
                 reward = {self.current_player: -0.5}
+                self.board = [-x for x in self.board]
                 self.current_player = opponent
                 return (
-                    {opponent: board_arr * -1},
+                    {opponent: np.array(self.board, np.float32)},
                     reward,
                     {"__all__": False},
                     {"__all__": False},
@@ -115,10 +116,10 @@ class TicTacToe(MultiAgentEnv):
 
         # Place the piece on the board.
         self.board[action] = 1
-        board_arr = np.array(self.board, np.float32)
 
         # Check for win.
         if any(all(self.board[i] == 1 for i in line) for line in self.WIN_LINES):
+            board_arr = np.array(self.board, np.float32)
             return (
                 {self.current_player: board_arr, opponent: board_arr * -1},
                 {self.current_player: 1.0, opponent: -1.0},
@@ -129,6 +130,7 @@ class TicTacToe(MultiAgentEnv):
 
         # Check for draw (board full, no winner).
         if 0 not in self.board:
+            board_arr = np.array(self.board, np.float32)
             return (
                 {self.current_player: board_arr, opponent: board_arr * -1},
                 {self.current_player: 0.0, opponent: 0.0},
@@ -139,6 +141,7 @@ class TicTacToe(MultiAgentEnv):
 
         # Check for truncation.
         if self.timestep >= self.max_timesteps:
+            board_arr = np.array(self.board, np.float32)
             return (
                 {self.current_player: board_arr, opponent: board_arr * -1},
                 {self.current_player: 0.0, opponent: 0.0},
@@ -148,8 +151,8 @@ class TicTacToe(MultiAgentEnv):
             )
 
         # Continue game: flip board and switch player.
-        self.board = [-x for x in self.board]
         reward = {self.current_player: 0.0}
+        self.board = [-x for x in self.board]
         self.current_player = opponent
 
         return (
@@ -178,34 +181,3 @@ class TicTacToe(MultiAgentEnv):
             rows.append(" " + " | ".join(row_cells) + " ")
         separator = "-----------"
         return "\n" + f"\n{separator}\n".join(rows) + "\n"
-
-
-# if __name__ == "__main__":
-#     from ray.rllib.algorithms import PPOConfig
-#     from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-#     config = (
-#         PPOConfig()
-#         .environment(TicTacToe)
-#         .multi_agent(policies={"P0"}, policy_mapping_fn=lambda _, __: "P0")
-#     )
-#     env_runner = MultiAgentEnvRunner(config)
-#     episode = env_runner.sample(num_episodes=1, random_actions=True)[0]
-#     print(f'{episode=}')
-#     for agent_id, sa_episode in episode.agent_episodes.items():
-#         print(f'{agent_id=}')
-#         observations = sa_episode.get_observations()
-#         actions = sa_episode.get_actions()
-#         rewards = sa_episode.get_rewards()
-#         is_terminated = sa_episode.is_terminated
-#         is_truncated = sa_episode.is_truncated
-#
-#         for obs, action, reward, next_obs in zip(observations[:-1], actions, rewards, observations[1:]):
-#             print(f'{obs=}, {action=}, {reward=}, {next_obs=}')
-#         print(f'{is_terminated=}, {is_truncated=}')
-#         print()
-#
-#     final_obs = episode.agent_episodes["player1"].get_observations(-1)
-#     env = TicTacToe()
-#     env.board = final_obs.astype(int)
-#     print('X is current player, O is the opponent')
-#     print(env.render())

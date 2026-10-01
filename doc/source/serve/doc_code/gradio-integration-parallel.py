@@ -41,7 +41,11 @@ class MyGradioServer(GradioIngress):
         self._d1 = downstream_model_1
         self._d2 = downstream_model_2
 
-        super().__init__(lambda: gr.Interface(self.fanout, "textbox", "textbox"))
+        super().__init__(
+            lambda: gr.Interface(
+                self.fanout, "textbox", "textbox", api_name="predict"
+            )
+        )
 
     async def fanout(self, text):
         [result1, result2] = await asyncio.gather(
@@ -61,7 +65,7 @@ app = MyGradioServer.bind(app1, app2)
 # Test example code
 serve.run(app)
 response = requests.post(
-    "http://127.0.0.1:8000/api/predict/", json={"data": ["My name is Lewis"]}
+    "http://127.0.0.1:8000/gradio_api/run/predict/", json={"data": ["My name is Lewis"]}
 )
 assert response.status_code == 200
 print(

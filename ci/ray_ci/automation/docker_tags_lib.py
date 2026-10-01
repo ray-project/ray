@@ -18,14 +18,18 @@ from ci.ray_ci.automation.crane_lib import (
 from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
+    ARCHITECTURES_RAY_LLM,
     ARCHITECTURES_RAY_ML,
     GPU_PLATFORM,
     PLATFORMS_RAY,
+    PLATFORMS_RAY_LLM,
     PLATFORMS_RAY_ML,
     PYTHON_VERSIONS_RAY,
+    PYTHON_VERSIONS_RAY_LLM,
     PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
+from ci.ray_ci.supported_images import get_exceptions
 from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -41,6 +45,10 @@ def _check_python_version(python_version: str, ray_type: str) -> None:
         raise ValueError(
             f"Python version {python_version} not supported for ray-ml image."
         )
+    if ray_type == RayType.RAY_LLM and python_version not in PYTHON_VERSIONS_RAY_LLM:
+        raise ValueError(
+            f"Python version {python_version} not supported for ray-llm image."
+        )
 
 
 def _check_platform(platform: str, ray_type: str) -> None:
@@ -48,6 +56,8 @@ def _check_platform(platform: str, ray_type: str) -> None:
         raise ValueError(f"Platform {platform} not supported for ray image.")
     if ray_type == RayType.RAY_ML and platform not in PLATFORMS_RAY_ML:
         raise ValueError(f"Platform {platform} not supported for ray-ml image.")
+    if ray_type == RayType.RAY_LLM and platform not in PLATFORMS_RAY_LLM:
+        raise ValueError(f"Platform {platform} not supported for ray-llm image.")
 
 
 def _check_architecture(architecture: str, ray_type: str) -> None:
@@ -55,6 +65,10 @@ def _check_architecture(architecture: str, ray_type: str) -> None:
         raise ValueError(f"Architecture {architecture} not supported for ray image.")
     if ray_type == RayType.RAY_ML and architecture not in ARCHITECTURES_RAY_ML:
         raise ValueError(f"Architecture {architecture} not supported for ray-ml image.")
+    if ray_type == RayType.RAY_LLM and architecture not in ARCHITECTURES_RAY_LLM:
+        raise ValueError(
+            f"Architecture {architecture} not supported for ray-llm image."
+        )
 
 
 def _get_python_version_tag(python_version: str) -> str:
@@ -64,6 +78,8 @@ def _get_python_version_tag(python_version: str) -> str:
 def _get_platform_tag(platform: str) -> str:
     if platform == "cpu":
         return "-cpu"
+    if platform == "tpu":
+        return "-tpu"
     versions = platform.split(".")
     return f"-{versions[0]}{versions[1]}"  # cu11.8.0-cudnn8 -> cu118
 
@@ -153,6 +169,14 @@ def check_image_ray_commit(prefix: str, ray_type: str, expected_commit: str) -> 
             PLATFORMS_RAY_ML,
             ARCHITECTURES_RAY_ML,
         )
+    elif ray_type == RayType.RAY_LLM:
+        tags = list_image_tags(
+            prefix,
+            ray_type,
+            PYTHON_VERSIONS_RAY_LLM,
+            PLATFORMS_RAY_LLM,
+            ARCHITECTURES_RAY_LLM,
+        )
     tags = [f"rayproject/{ray_type}:{tag}" for tag in tags]
 
     for i, tag in enumerate(tags):
@@ -194,10 +218,18 @@ def list_image_tags(
     if ray_type not in RayType.__members__.values():
         raise ValueError(f"Ray type {ray_type} not supported.")
 
+    exceptions = get_exceptions(ray_type)
     tag_suffixes = []
     for python_version in python_versions:
         for platf in platforms:
             for architecture in architectures:
+                if any(
+                    ("architectures" not in e or architecture in e["architectures"])
+                    and ("platforms" not in e or platf in e["platforms"])
+                    and ("python" not in e or python_version in e["python"])
+                    for e in exceptions
+                ):
+                    continue
                 tag_suffixes += list_image_tag_suffixes(
                     ray_type, python_version, platf, architecture
                 )

@@ -24,7 +24,8 @@
 
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -35,8 +36,10 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 
 namespace ray {
@@ -125,11 +128,14 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+    // Pin ray events off so WriteActorExportEvent exercises the export-API (file) path
+    // instead of short-circuiting to the RayEventRecorder.
     RayConfig::instance().initialize(
         R"(
 {
   "maximum_gcs_destroyed_actor_cached_count": 10,
-  "enable_export_api_write": true
+  "enable_export_api_write": true,
+  "enable_ray_event": false
 }
   )");
     std::promise<bool> promise;
@@ -149,11 +155,13 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
+        /*clock=*/clock_,
+        /*subscriber_timeout_ms=*/absl::ToInt64Milliseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(publisher));
+    observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
@@ -179,7 +187,9 @@ class GcsActorManagerTest : public ::testing::Test {
         /*ray_event_recorder=*/fake_ray_event_recorder_,
         /*session_name=*/"",
         actor_by_state_gauge_,
-        gcs_actor_by_state_gauge_);
+        gcs_actor_by_state_gauge_,
+        observability_publisher_.get(),
+        clock_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -260,6 +270,7 @@ class GcsActorManagerTest : public ::testing::Test {
     return promise.get_future().get();
   }
 
+  FakeClock clock_;
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -271,6 +282,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;

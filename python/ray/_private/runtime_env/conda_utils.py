@@ -98,6 +98,8 @@ def create_conda_env_if_needed(
             the `--prefix` option to conda create.  This also becomes the name
             of the conda env; i.e. it can be passed into `conda activate` and
             `conda remove`
+        logger: Logger used to surface progress and errors; defaults to the
+            module logger when not provided.
     """
     if logger is None:
         logger = logging.getLogger(__name__)
@@ -228,6 +230,10 @@ def exec_cmd(
         cmd: the command to run, as a list of strings
         throw_on_error: if true, raises an Exception if the exit code of the
             program is nonzero
+        logger: Unused; retained for API compatibility.
+
+    Returns:
+        A tuple of (exit_code, stdout, stderr) from the child process.
     """
     child = subprocess.Popen(
         cmd,

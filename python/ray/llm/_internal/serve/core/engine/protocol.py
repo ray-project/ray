@@ -39,6 +39,13 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def routing_stats(self) -> dict:
+        """Replica routing stats surfaced to Serve's request router via
+        ``record_routing_stats`` (e.g. the KV-events endpoint for KV-aware
+        routing)."""
+        pass
+
+    @abc.abstractmethod
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Mounts the LoRA model on the engine, given the local disk path."""
         pass
@@ -221,6 +228,18 @@ class LLMEngine(abc.ABC):
         """
         return
 
+    async def build_asgi_app(self) -> Any:
+        """Build an ASGI app that serves directly from this engine's frontend.
+
+        Used by direct streaming, which serves traffic from the LLMServer
+        replica's own ASGI ingress instead of the OpenAiIngress deployment.
+        Engines that do not support direct serving should keep the default,
+        which raises NotImplementedError.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support direct ASGI serving."
+        )
+
     ##############################################################
     # Optional methods
     # These methods will be implemented in the future to allow
@@ -309,6 +328,6 @@ class LLMEngine(abc.ABC):
         """
         return False
 
-    def shutdown(self) -> None:
-        """Shuts down the engine"""
+    async def shutdown(self) -> None:
+        """Shuts down the engine and releases its resources."""
         pass

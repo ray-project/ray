@@ -13,11 +13,13 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.cache import _disable_timed_cache_for_tests
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
@@ -25,9 +27,20 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start
+from ray.tests.conftest import (  # noqa: F401
+    _isolate_token_auth_state,
+    _ray_start,
+    _restore_token_auth_env,
+    _token_auth_env_baseline,
+)
 from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
+
+# Keep the footer-reader pool tiny for unit/integration tests. The default
+# 32-actor pool times out under CI parallelism; tests that need a larger pool
+# can override with monkeypatch.setenv. Mirrored in python/ray/data/test.bzl
+# for bazel test targets.
+os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
 
 
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
@@ -44,8 +57,13 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda _: None)
+    op.start = MagicMock(side_effect=lambda *_: None)
     return op
+
+
+def noop_counter():
+    """BlockRefCounter that works without a Ray cluster."""
+    return BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
 
 
 @pytest.fixture(scope="module")
@@ -262,6 +280,48 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
+def _get_supported_tensor_formats():
+    """Get list of supported tensor formats based on PyArrow version.
+
+    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 16 (which supports
+    native FixedShapeTensorScalar, FixedShapeTensorType, FixedShapeTensorArray).
+    """
+    from ray.data._internal.tensor_extensions.arrow import (
+        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+        FixedShapeTensorFormat,
+    )
+
+    formats = [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR:
+        formats.append(FixedShapeTensorFormat.ARROW_NATIVE)
+    return formats
+
+
+@pytest.fixture(params=_get_supported_tensor_formats())
+def tensor_format(request):
+    """Fixture that yields supported tensor formats.
+
+    Yields V1, V2 for all PyArrow versions.
+    Yields ARROW_NATIVE only when PyArrow >= 16.
+
+    This allows tests to use `tensor_format.to_type()` safely without
+    needing fallback logic for unsupported PyArrow versions.
+    """
+    return request.param
+
+
+@pytest.fixture
+def tensor_format_context(request, restore_data_context, tensor_format):
+    """Fixture that sets the DataContext to use the given tensor format.
+
+    Combines restore_data_context with tensor_format to automatically
+    configure the context for tensor format testing.
+    """
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+    return tensor_format
+
+
 @pytest.fixture
 def disable_fallback_to_object_extension(request, restore_data_context):
     """Disables fallback to ArrowPythonObjectType"""
@@ -270,27 +330,64 @@ def disable_fallback_to_object_extension(request, restore_data_context):
     )
 
 
-@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+# (shuffle_strategy, use_disk_based_hash_shuffle) params. The fixture yields the
+# strategy, so ``shuffle_v2_disk`` presents as SHUFFLE_V2 to tests.
+_SHUFFLE_METHOD_PARAMS = [
+    pytest.param(
+        (ShuffleStrategy.SORT_SHUFFLE_PULL_BASED, False), id="sort_shuffle_pull_based"
+    ),
+    pytest.param(
+        (ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED, False), id="sort_shuffle_push_based"
+    ),
+    pytest.param((ShuffleStrategy.HASH_SHUFFLE, False), id="hash_shuffle"),
+    pytest.param((ShuffleStrategy.SHUFFLE_V2, False), id="shuffle_v2"),
+    pytest.param((ShuffleStrategy.SHUFFLE_V2, True), id="shuffle_v2_disk"),
+]
+if os.environ.get("RAY_PYTEST_USE_GPU") == "1":
+    _SHUFFLE_METHOD_PARAMS.append(
+        pytest.param((ShuffleStrategy.GPU_SHUFFLE, False), id="gpu_shuffle")
+    )
+
+
+@pytest.fixture(params=_SHUFFLE_METHOD_PARAMS)
 def configure_shuffle_method(request):
-    shuffle_strategy = request.param
+    shuffle_strategy, use_disk_based_hash_shuffle = request.param
 
     ctx = ray.data.context.DataContext.get_current()
 
     original_shuffle_strategy = ctx.shuffle_strategy
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+    original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
+    original_use_disk_based_hash_shuffle = ctx.use_disk_based_hash_shuffle
+    original_shuffle_input_batch_bytes = ctx.shuffle_input_batch_bytes
 
     ctx.shuffle_strategy = shuffle_strategy
+    ctx.use_disk_based_hash_shuffle = use_disk_based_hash_shuffle
+    if shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+        # One map task per input bundle, so reducers see multiple shards per
+        # partition (the default batching folds small test data into one mapper).
+        ctx.shuffle_input_batch_bytes = 0
 
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+    if shuffle_strategy in [
+        ShuffleStrategy.HASH_SHUFFLE,
+        ShuffleStrategy.SHUFFLE_V2,
+        ShuffleStrategy.GPU_SHUFFLE,
+    ]:
         ctx.default_hash_shuffle_parallelism = 8
 
-    yield request.param
+    if shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+        ctx.gpu_shuffle_num_actors = 1
+
+    yield shuffle_strategy
 
     ctx.shuffle_strategy = original_shuffle_strategy
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+    ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
+    ctx.use_disk_based_hash_shuffle = original_use_disk_based_hash_shuffle
+    ctx.shuffle_input_batch_bytes = original_shuffle_input_batch_bytes
 
 
 @pytest.fixture(params=[True, False])
@@ -433,10 +530,9 @@ def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
-        "udf_time": [1.1, 1.7],
+        "block_transform_time": [1.1, 1.7],
         "node_id": ["a1", "b2"],
         "task_idx": [0, 1],
     }
@@ -444,18 +540,17 @@ def op_two_block():
     block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
-        block_exec_stats = BlockExecStats()
+        start_time_s = time.perf_counter() + i * block_delay
         # The blocks are executing from [0, 5] and [20, 30].
-        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
-        block_exec_stats.end_time_s = (
-            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        block_exec_stats = BlockExecStats(
+            start_time_s=start_time_s,
+            end_time_s=start_time_s + block_params["wall_time"][i],
+            wall_time_s=block_params["wall_time"][i],
+            cpu_time_s=block_params["cpu_time"][i],
+            block_transform_time_s=block_params["block_transform_time"][i],
+            node_id=block_params["node_id"][i],
+            task_idx=block_params["task_idx"][i],
         )
-        block_exec_stats.wall_time_s = block_params["wall_time"][i]
-        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
-        block_exec_stats.udf_time_s = block_params["udf_time"][i]
-        block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]
-        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],
@@ -753,5 +848,11 @@ def assert_blocks_expected_in_plasma(
 
 
 @pytest.fixture(autouse=True, scope="function")
-def log_internal_stack_trace_to_stdout(restore_data_context):
-    ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+def log_internal_stack_trace(restore_data_context):
+    ray.data.context.DataContext.get_current().log_internal_stack_trace = True
+
+
+@pytest.fixture
+def disable_timed_cache_fixture():
+    with _disable_timed_cache_for_tests():
+        yield

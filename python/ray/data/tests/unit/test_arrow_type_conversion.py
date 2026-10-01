@@ -167,7 +167,7 @@ def test_pa_infer_type_failing_to_infer():
 
     inferred_dtype = _infer_pyarrow_type(column_vals)
 
-    # Arrow (17.0) seem to fallback to assume the dtype of the first element
+    # Arrow (17.0) seems to fallback to assume the dtype of the first element
     assert pa.string().equals(inferred_dtype)
 
 
@@ -190,7 +190,7 @@ def test_convert_to_pyarrow_array_object_ext_type_fallback():
 
     assert (
         str(exc_info.value)
-        == "Error converting data to Arrow: ['hi' 1 None list([[[[]]]]) {'a': [[{'b': 2, 'c': UserObj(i=123)}]]}\n UserObj(i=456)]"  # noqa: E501
+        == "Error converting column 'py_object_column' (target type: string) to Arrow: ['hi' 1 None list([[[[]]]]) {'a': [[{'b': 2, 'c': UserObj(i=123)}]]}\n UserObj(i=456)]"  # noqa: E501
     )
 
     # Subsequently, assert that fallback to `ArrowObjectExtensionType` succeeds

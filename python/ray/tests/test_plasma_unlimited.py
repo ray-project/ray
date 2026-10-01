@@ -10,11 +10,11 @@ import pytest
 
 import ray
 from ray._common.network_utils import build_address
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
-    check_spilled_mb,
+from ray._common.test_utils import (
     fetch_prometheus,
+    wait_for_condition,
 )
+from ray._private.test_utils import check_spilled_mb
 
 import psutil
 

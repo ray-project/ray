@@ -10,6 +10,9 @@ COPTS_TESTS = select({
     "@platforms//os:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
+        # Prevent Windows.h from including WinSock.h, which conflicts with
+        # WinSock2.h used by Boost.Asio.
+        "-DWIN32_LEAN_AND_MEAN",
     ],
     "//conditions:default": [
         "-Wunused-result",
@@ -144,9 +147,15 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility =
         **kwargs
     )
 
-def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
+def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main = True, **kwargs):
+    # By default, all `ray_cc_test` targets use `ray_gtest_main`.
+    # Some tests might need bespoke setup logic, so let them skip this dependency.
+    if use_ray_gtest_main:
+      deps = deps + ["//src/ray/common:ray_gtest_main"]
+
     cc_test(
         name = name,
+        deps = deps,
         copts = COPTS_TESTS + copts,
         linkopts = linkopts + ["-pie"],
         **kwargs

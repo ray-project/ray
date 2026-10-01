@@ -20,9 +20,9 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
-#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -188,8 +188,9 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // complete out of order. This ensures that we will not deadlock due to
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
-      send_pos = task_spec.SequenceNumber();
-      queue->second.actor_submit_queue_->Emplace(send_pos, task_spec);
+      send_pos = task_spec.ConcurrencyGroupSequenceNumber();
+      auto concurrency_group = task_spec.ConcurrencyGroupName();
+      queue->second.actor_submit_queue_->Emplace(concurrency_group, send_pos, task_spec);
       queue->second.cur_pending_calls_++;
       task_queued = true;
     }
@@ -200,15 +201,17 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       absl::MutexLock resolver_lock(&resolver_mu_);
       pending_dependency_resolution_.insert(task_id);
     }
+    auto concurrency_group = task_spec.ConcurrencyGroupName();
     io_service_.post(
-        [task_spec, task_id, actor_id, send_pos, this]() mutable {
+        [task_spec, task_id, actor_id, send_pos, concurrency_group, this]() mutable {
           {
             absl::MutexLock resolver_lock(&resolver_mu_);
             if (pending_dependency_resolution_.erase(task_id) == 0) {
               return;
             }
             resolver_.ResolveDependencies(
-                task_spec, [this, send_pos, actor_id, task_id](Status status) {
+                task_spec,
+                [this, send_pos, concurrency_group, actor_id, task_id](Status status) {
                   task_manager_.MarkDependenciesResolved(task_id);
                   bool fail_or_retry_task = false;
                   {
@@ -218,13 +221,15 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                     auto &actor_submit_queue = queue->second.actor_submit_queue_;
                     // Only dispatch tasks if the submitted task is still queued. The task
                     // may have been dequeued if the actor has since failed.
-                    if (actor_submit_queue->Contains(send_pos)) {
+                    if (actor_submit_queue->Contains(concurrency_group, send_pos)) {
                       if (status.ok()) {
-                        actor_submit_queue->MarkDependencyResolved(send_pos);
+                        actor_submit_queue->MarkDependencyResolved(concurrency_group,
+                                                                   send_pos);
                         SendPendingTasks(actor_id);
                       } else {
                         fail_or_retry_task = true;
-                        actor_submit_queue->MarkDependencyFailed(send_pos);
+                        actor_submit_queue->MarkDependencyFailed(concurrency_group,
+                                                                 send_pos);
                       }
                     }
                   }
@@ -506,7 +511,7 @@ void ActorTaskSubmitter::CheckTimeoutTasks() {
   // FailPendingTask requires the opposite. So we copy the tasks out from the queue
   // within the lock. This requires putting the data into shared_ptr.
   std::vector<std::shared_ptr<PendingTaskWaitingForDeathInfo>> timeout_tasks;
-  int64_t now = current_time_ms();
+  int64_t now = clock_.SteadyNowMillis();
   {
     absl::MutexLock lock(&mu_);
     for (auto &[actor_id, client_queue] : client_queues_) {
@@ -537,6 +542,9 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
     // whether we should fail pending tasks or restart the actor.
     // If the actor is restarted, ConnectActor will be called
     // and pending tasks will be sent at that time.
+    RAY_LOG(DEBUG).WithField(actor_id)
+        << "Actor is already out of scope but still pending death from GCS, not sending "
+           "pending tasks.";
     return;
   }
   if (!client_queue.client_address_.has_value()) {
@@ -586,7 +594,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id_);
-  request->set_sequence_number(task_spec.SequenceNumber());
+  request->set_sequence_number(task_spec.ConcurrencyGroupSequenceNumber());
 
   const auto actor_id = task_spec.ActorId();
 
@@ -641,6 +649,12 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
+
+  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
+      << absl::StrFormat("Task %s finished from actor %s on node %s",
+                         task_id.Hex(),
+                         actor_id.Hex(),
+                         NodeID::FromBinary(addr.node_id()).Hex());
 
   bool resubmit_generator = false;
   {
@@ -757,7 +771,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
         // optionally wait for a grace period for the death info.
 
         int64_t death_info_grace_period_ms =
-            current_time_ms() +
+            clock_.SteadyNowMillis() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();
         absl::MutexLock lock(&mu_);
         auto queue_pair = client_queues_.find(actor_id);
@@ -829,7 +843,8 @@ void ActorTaskSubmitter::HandleTaskCancelledBeforeExecution(
       CancelDependencyResolution(task_id);
 
       int64_t death_info_grace_period_ms =
-          current_time_ms() + RayConfig::instance().timeout_ms_task_wait_for_death_info();
+          clock_.SteadyNowMillis() +
+          RayConfig::instance().timeout_ms_task_wait_for_death_info();
 
       error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
       error_info.set_error_message(
@@ -960,7 +975,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 
   const auto actor_id = task_spec.ActorId();
   const auto &task_id = task_spec.TaskId();
-  auto send_pos = task_spec.SequenceNumber();
+  auto concurrency_group = task_spec.ConcurrencyGroupName();
+  auto send_pos = task_spec.ConcurrencyGroupSequenceNumber();
 
   // Shouldn't hold a lock while accessing task_manager_.
   // Task is already canceled or finished.
@@ -985,11 +1001,14 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       return;
     }
 
-    task_queued = queue->second.actor_submit_queue_->Contains(send_pos);
+    task_queued =
+        queue->second.actor_submit_queue_->Contains(concurrency_group, send_pos);
     if (task_queued) {
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task was queued. Mark a task is canceled from a queue.";
-      queue->second.actor_submit_queue_->MarkTaskCanceled(send_pos);
+      queue->second.actor_submit_queue_->MarkTaskCanceled(concurrency_group, send_pos);
+      queue->second.cur_pending_calls_--;
+      SendPendingTasks(actor_id);
     }
   }
 
@@ -1072,6 +1091,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
   // TODO(dayshah): Needs to integrate with the cancellation logic - what if task was
   // cancelled before this?
+  RAY_LOG(DEBUG).WithField(spec.TaskId()) << absl::StrFormat(
+      "Queueing generator for resubmit on actor %s", spec.ActorId().Hex());
   absl::MutexLock lock(&mu_);
   generators_to_resubmit_.insert(spec.TaskId());
   return true;

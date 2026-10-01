@@ -46,6 +46,32 @@ class TestCloudFileSystem:
                 assert call_args["suffixes_to_exclude"] is None
 
     @patch("ray.llm._internal.common.utils.cloud_utils.GCSFileSystem")
+    def test_download_model_tokenizer_only_includes_chat_template_jinja(
+        self, mock_gcs_filesystem
+    ):
+        """Regression test for chat_template.jinja not downloaded in tokenizer-only mode.
+
+        Models like Qwen3.5 use an external chat_template.jinja file instead of the
+        legacy chat_template field inside tokenizer_config.json. Without "chat_template"
+        in the substring filter, the .jinja file is skipped and ChatTemplateStage fails
+        with: ValueError: Cannot use apply_chat_template because this processor does not
+        have a chat template.
+        """
+        mock_gcs_filesystem.get_file.return_value = "abcdef1234567890"
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with patch.object(CloudFileSystem, "download_files") as mock_download:
+                CloudFileSystem.download_model(tempdir, "gs://bucket/model", True)
+
+                mock_download.assert_called_once()
+                substrings = mock_download.call_args[1]["substrings_to_include"]
+                # "chat_template" matches chat_template.jinja, which is the HuggingFace
+                # convention used by newer models (e.g. Qwen3.5) for external chat templates.
+                assert (
+                    "chat_template" in substrings
+                ), "chat_template.jinja files must be downloaded in tokenizer-only mode"
+
+    @patch("ray.llm._internal.common.utils.cloud_utils.GCSFileSystem")
     def test_upload_model(self, mock_gcs_filesystem):
         """Test uploading a model to cloud storage."""
         # Create temp directory for testing

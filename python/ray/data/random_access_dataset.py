@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -14,13 +15,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
-
-try:
-    import pyarrow as pa
-except ImportError:
-    pa = None
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
@@ -28,7 +23,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(
+    message="`RandomAccessDataset` is unmaintained and will be removed in a future release.",
+    warning=False,
+)
 class RandomAccessDataset:
     """A class that provides distributed, random access to a Dataset.
 
@@ -53,7 +51,10 @@ class RandomAccessDataset:
         start = time.perf_counter()
         logger.info("[setup] Indexing dataset by sort key.")
         sorted_ds = ds.sort(key)
+        ctx_label_selector = DataContext.get_current().execution_options.label_selector
         get_bounds = cached_remote_fn(_get_bounds)
+        if ctx_label_selector:
+            get_bounds = get_bounds.options(label_selector=ctx_label_selector)
         bundles = sorted_ds.iter_internal_ref_bundles()
         blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
 
@@ -71,11 +72,11 @@ class RandomAccessDataset:
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
         ctx = DataContext.get_current()
-        scheduling_strategy = ctx.scheduling_strategy
+        worker_options = {"scheduling_strategy": ctx.scheduling_strategy}
+        if ctx_label_selector:
+            worker_options["label_selector"] = ctx_label_selector
         self._workers = [
-            _RandomAccessWorker.options(scheduling_strategy=scheduling_strategy).remote(
-                key
-            )
+            _RandomAccessWorker.options(**worker_options).remote(key)
             for _ in range(num_workers)
         ]
         (
@@ -132,7 +133,7 @@ class RandomAccessDataset:
 
         return block_to_workers, worker_to_blocks
 
-    def get_async(self, key: Any) -> ObjectRef[Any]:
+    def get_async(self, key: Any) -> "ray.ObjectRef[Any]":
         """Asynchronously finds the record for a single key.
 
         Args:

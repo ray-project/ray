@@ -6,12 +6,19 @@ import os
 import pickle
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Generator, Optional, Set, Tuple
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    cast,
+)
 
 import grpc
-import starlette
-import starlette.routing
-from packaging import version
 from starlette.types import Receive
 
 import ray
@@ -24,14 +31,18 @@ from ray.serve._private.common import (
     ReplicaID,
     RequestMetadata,
     RequestProtocol,
+    gRPCStreamingRequest,
 )
 from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-    REQUEST_LATENCY_BUCKETS_MS,
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT,
+    RAY_SERVE_WORKER_PROXY_HTTP_PORT,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOG_COMPONENT,
@@ -51,9 +62,12 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.http_util import (
     MessageQueue,
+    _matches_session_id_header,
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
+    parse_disconnect_disabled_header,
+    parse_request_timeout_header,
     receive_http_body,
     send_http_response_on_exception,
     start_asgi_http_server,
@@ -62,6 +76,7 @@ from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
+    format_client_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -73,9 +88,22 @@ from ray.serve._private.proxy_request_response import (
     ResponseHandlerInfo,
     ResponseStatus,
     gRPCProxyRequest,
+    gRPCStreamingType,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
+from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
+from ray.serve._private.tracing_utils import (
+    is_span_recording,
+    set_http_span_attributes,
+    set_rpc_span_attributes,
+    set_span_attributes,
+    set_span_exception,
+    set_span_name,
+    set_trace_status,
+    setup_tracing,
+    tracing_decorator_factory,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     asyncio_grpc_exception_handler,
@@ -86,8 +114,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import EncodingType, LoggingConfig
-from ray.util import metrics
+from ray.serve.schema import EncodingType, LoggingConfig, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -134,7 +161,7 @@ class GenericProxy(ABC):
         is_head: bool,
         proxy_router: ProxyRouter,
         request_timeout_s: Optional[float] = None,
-        access_log_context: Dict[str, Any] = None,
+        access_log_context: Optional[Dict[str, Any]] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -144,65 +171,12 @@ class GenericProxy(ABC):
         self._is_head = is_head
 
         self.proxy_router = proxy_router
-        self.request_counter = metrics.Counter(
-            f"serve_num_{self.protocol.lower()}_requests",
-            description=f"The number of {self.protocol} requests processed.",
-            tag_keys=("route", "method", "application", "status_code"),
-        )
 
-        self.request_error_counter = metrics.Counter(
-            f"serve_num_{self.protocol.lower()}_error_requests",
-            description=f"The number of errored {self.protocol} responses.",
-            tag_keys=(
-                "route",
-                "error_code",
-                "method",
-                "application",
-            ),
-        )
-
-        self.deployment_request_error_counter = metrics.Counter(
-            f"serve_num_deployment_{self.protocol.lower()}_error_requests",
-            description=(
-                f"The number of errored {self.protocol} "
-                "responses returned by each deployment."
-            ),
-            tag_keys=(
-                "deployment",
-                "error_code",
-                "method",
-                "route",
-                "application",
-            ),
-        )
-
-        # log REQUEST_LATENCY_BUCKET_MS
-        logger.debug(f"REQUEST_LATENCY_BUCKET_MS: {REQUEST_LATENCY_BUCKETS_MS}")
-        self.processing_latency_tracker = metrics.Histogram(
-            f"serve_{self.protocol.lower()}_request_latency_ms",
-            description=(
-                f"The end-to-end latency of {self.protocol} requests "
-                f"(measured from the Serve {self.protocol} proxy)."
-            ),
-            boundaries=REQUEST_LATENCY_BUCKETS_MS,
-            tag_keys=(
-                "method",
-                "route",
-                "application",
-                "status_code",
-            ),
-        )
-
-        self.num_ongoing_requests_gauge = metrics.Gauge(
-            name=f"serve_num_ongoing_{self.protocol.lower()}_requests",
-            description=f"The number of ongoing requests in this {self.protocol} "
-            "proxy.",
-            tag_keys=("node_id", "node_ip_address"),
-        ).set_default_tags(
-            {
-                "node_id": node_id,
-                "node_ip_address": node_ip_address,
-            }
+        self._proxy_metrics = RequestIngressMetrics(
+            self.protocol,
+            source="proxy",
+            node_id=node_id,
+            node_ip_address=node_ip_address,
         )
 
         # `self._ongoing_requests` is used to count the number of ongoing requests
@@ -238,6 +212,7 @@ class GenericProxy(ABC):
         if not self._is_draining():
             return False
 
+        assert self._draining_start_time is not None
         return (not self._ongoing_requests) and (
             (time.time() - self._draining_start_time) > PROXY_MIN_DRAINING_PERIOD_S
         )
@@ -263,22 +238,32 @@ class GenericProxy(ABC):
             self._draining_start_time = None
 
     @abstractmethod
-    async def not_found_response(
-        self, proxy_request: ProxyRequest
-    ) -> ResponseGenerator:
+    def not_found_response(self, proxy_request: ProxyRequest) -> ResponseGenerator:
         raise NotImplementedError
 
     @abstractmethod
-    async def routes_response(
-        self, *, healthy: bool, message: str
-    ) -> ResponseGenerator:
+    def routes_response(self, *, healthy: bool, message: str) -> ResponseGenerator:
         raise NotImplementedError
 
     @abstractmethod
-    async def health_response(
-        self, *, healthy: bool, message: str
-    ) -> ResponseGenerator:
+    def health_response(self, *, healthy: bool, message: str) -> ResponseGenerator:
         raise NotImplementedError
+
+    def _should_emit_request_ingress_metrics(self) -> bool:
+        """Whether this proxy emits the RequestIngressMetrics family itself.
+
+        In HAProxy mode (with HAProxy metrics enabled), this proxy runs as the
+        head-node fallback behind HAProxy. HAProxy already counts every request
+        it forwards -- including the ones it routes to this fallback -- from its
+        per-request log datagrams, so emitting here too would double-count HTTP
+        ingress metrics. gRPC is not proxied by HAProxy, so the fallback proxy
+        still emits gRPC.
+        """
+        return not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and self.protocol == RequestProtocol.HTTP
+        )
 
     def _ongoing_requests_start(self):
         """Ongoing requests start.
@@ -289,7 +274,8 @@ class GenericProxy(ABC):
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -298,7 +284,55 @@ class GenericProxy(ABC):
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.set_num_ongoing_requests(self._ongoing_requests)
+
+    def _setup_proxy_tracing(
+        self,
+        request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: ProxyRequest,
+        additional_attributes: Optional[Dict[str, Any]] = None,
+    ):
+        """Set up tracing attributes for proxy requests.
+
+        Args:
+            request_id: The unique request ID.
+            handle: The deployment handle.
+            proxy_request: The proxy request object.
+            additional_attributes: Optional additional tracing attributes to set.
+        """
+        trace_attributes = {
+            "request_id": request_id,
+            "deployment": handle.deployment_name,
+            "app": handle.app_name,
+            "request_type": proxy_request.request_type,
+        }
+        if additional_attributes:
+            trace_attributes.update(additional_attributes)
+        set_span_attributes(trace_attributes)
+
+    def _finalize_proxy_tracing(
+        self,
+        status: Optional[ResponseStatus],
+        exc: Optional[BaseException],
+    ):
+        """Finalize tracing for proxy requests.
+
+        Set exception and trace status. This is a common helper used by
+        both HTTP and gRPC proxies. Protocol-specific attributes should be
+        set separately (e.g., via set_http_span_attributes or set_rpc_span_attributes).
+
+        Args:
+            status: The response status, if available.
+            exc: The exception that occurred, if any.
+        """
+        if exc:
+            set_span_exception(exc, escaped=True)
+            if status is not None:
+                set_trace_status(status.is_error, str(exc))
+        elif status is not None:
+            set_trace_status(status.is_error)
 
     def _get_health_or_routes_reponse(
         self, proxy_request: ProxyRequest
@@ -342,6 +376,7 @@ class GenericProxy(ABC):
         if proxy_request.is_health_request or proxy_request.is_route_request:
             return self._get_health_or_routes_reponse(proxy_request)
 
+        proxy_request.populate_tracing_context()
         matched_route = None
         if self.protocol == RequestProtocol.HTTP:
             matched_route = self.proxy_router.match_route(proxy_request.route_path)
@@ -367,15 +402,10 @@ class GenericProxy(ABC):
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
-            route_path = proxy_request.route_path
             if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
+                proxy_request = cast(ASGIProxyRequest, proxy_request)
                 assert not route_prefix.endswith("/")
                 proxy_request.set_root_path(proxy_request.root_path + route_prefix)
-                # NOTE(edoakes): starlette<0.33.0 expected the ASGI 'root_prefix'
-                # to be stripped from the 'path', which wasn't technically following
-                # the standard. See https://github.com/encode/starlette/pull/2352.
-                if version.parse(starlette.__version__) < version.parse("0.33.0"):
-                    proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
             # NOTE(abrar): we try to match to a specific route pattern (e.g., /api/{user_id})
             # for logs & metrics when available. If no pattern matches, we fall back to the
@@ -383,6 +413,7 @@ class GenericProxy(ABC):
             # See: https://github.com/ray-project/ray/issues/47999 and
             # https://github.com/ray-project/ray/issues/52212
             if self.protocol == RequestProtocol.HTTP:
+                proxy_request = cast(ASGIProxyRequest, proxy_request)
                 logs_and_metrics_route = self.proxy_router.match_route_pattern(
                     route_prefix, proxy_request.scope
                 )
@@ -448,6 +479,11 @@ class GenericProxy(ABC):
                 self._ongoing_requests_end()
 
         latency_ms = (time.time() - start_time) * 1000.0
+        status_code = (
+            status.code.name  # type: ignore[union-attr]  # pyrefly: ignore[missing-attribute]
+            if self.protocol == RequestProtocol.GRPC
+            else str(status.code)
+        )
         if response_handler_info.should_record_access_log:
             request_context = ray.serve.context._get_serve_request_context()
             self._access_log_context[SERVE_LOG_ROUTE] = request_context.route
@@ -456,47 +492,22 @@ class GenericProxy(ABC):
                 access_log_msg(
                     method=proxy_request.method,
                     route=request_context.route,
-                    status=str(status.code),
+                    status=status_code,
                     latency_ms=latency_ms,
+                    client=format_client_address(proxy_request.client),
                 ),
                 extra=self._access_log_context,
             )
 
-        self.request_counter.inc(
-            tags={
-                "route": response_handler_info.metadata.route,
-                "method": proxy_request.method,
-                "application": response_handler_info.metadata.application_name,
-                "status_code": str(status.code),
-            }
-        )
-
-        self.processing_latency_tracker.observe(
-            latency_ms,
-            tags={
-                "route": response_handler_info.metadata.route,
-                "method": proxy_request.method,
-                "application": response_handler_info.metadata.application_name,
-                "status_code": str(status.code),
-            },
-        )
-        if status.is_error:
-            self.request_error_counter.inc(
-                tags={
-                    "route": response_handler_info.metadata.route,
-                    "method": proxy_request.method,
-                    "application": response_handler_info.metadata.application_name,
-                    "error_code": str(status.code),
-                }
-            )
-            self.deployment_request_error_counter.inc(
-                tags={
-                    "route": response_handler_info.metadata.route,
-                    "method": proxy_request.method,
-                    "application": response_handler_info.metadata.application_name,
-                    "error_code": str(status.code),
-                    "deployment": response_handler_info.metadata.deployment_name,
-                }
+        if self._should_emit_request_ingress_metrics():
+            self._proxy_metrics.record_request(
+                route=response_handler_info.metadata.route,
+                method=proxy_request.method,
+                application=response_handler_info.metadata.application_name,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                is_error=status.is_error,
+                deployment_name=response_handler_info.metadata.deployment_name,
             )
 
     @abstractmethod
@@ -516,7 +527,7 @@ class GenericProxy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def send_request_to_replica(
+    def send_request_to_replica(
         self,
         request_id: str,
         internal_request_id: str,
@@ -537,8 +548,30 @@ class gRPCProxy(GenericProxy):
 
     This is the servicer class for the gRPC server. It implements `unary_unary`
     as the entry point for unary gRPC request and `unary_stream` as the entry
-    point for streaming gRPC request.
+    point for streaming gRPC request. It also implements `stream_unary` and
+    `stream_stream` for client streaming and bidirectional streaming RPCs.
     """
+
+    def __init__(
+        self,
+        node_id: NodeId,
+        node_ip_address: str,
+        is_head: bool,
+        proxy_router: "ProxyRouter",
+        request_timeout_s: Optional[float] = None,
+        access_log_context: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            node_id,
+            node_ip_address,
+            is_head,
+            proxy_router,
+            request_timeout_s=request_timeout_s,
+            access_log_context=access_log_context,
+        )
+        # Dictionary to store active streaming sessions for client/bidi streaming.
+        # Maps session_id -> (request_iterator, cancel_event)
+        self._streaming_sessions: Dict[str, Tuple[Any, asyncio.Event]] = {}
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -547,6 +580,7 @@ class gRPCProxy(GenericProxy):
     async def not_found_response(
         self, proxy_request: ProxyRequest
     ) -> ResponseGenerator:
+        proxy_request = cast(gRPCProxyRequest, proxy_request)
         if not proxy_request.app_name:
             application_message = "Application metadata not set."
         else:
@@ -585,7 +619,9 @@ class gRPCProxy(GenericProxy):
             is_error=not healthy,
         )
 
-    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+    def service_handler_factory(
+        self, service_method: str, streaming_type: gRPCStreamingType
+    ) -> Callable:
         async def unary_unary(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
@@ -600,6 +636,7 @@ class gRPCProxy(GenericProxy):
                 context=context,
                 service_method=service_method,
                 stream=False,
+                streaming_type=gRPCStreamingType.UNARY_UNARY,
             )
 
             status = None
@@ -610,13 +647,17 @@ class gRPCProxy(GenericProxy):
                 else:
                     response = message
 
+            assert status is not None
             set_grpc_code_and_details(context, status)
 
-            return response
+            # When only ResponseStatus is yielded (not-found, errors), response stays
+            # None. Returning None to gRPC causes serialization/type errors; return
+            # empty bytes so the error status is sent cleanly.
+            return response if response is not None else b""
 
         async def unary_stream(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
-        ) -> Generator[bytes, None, None]:
+        ) -> AsyncGenerator[bytes, None]:
             """Entry point of the gRPC proxy streaming request.
 
             This method is called by the gRPC server when a streaming request is
@@ -629,6 +670,7 @@ class gRPCProxy(GenericProxy):
                 context=context,
                 service_method=service_method,
                 stream=True,
+                streaming_type=gRPCStreamingType.UNARY_STREAM,
             )
 
             status = None
@@ -638,9 +680,88 @@ class gRPCProxy(GenericProxy):
                 else:
                     yield message
 
+            assert status is not None
             set_grpc_code_and_details(context, status)
 
-        return unary_stream if stream else unary_unary
+        async def stream_unary(
+            request_iterator: Any, context: grpc._cython.cygrpc._ServicerContext
+        ) -> bytes:
+            """Entry point of the gRPC proxy client streaming request.
+
+            This method is called by the gRPC server when a client streaming request
+            is received. It wraps the request iterator and calls proxy_request.
+            The return value is serialized user defined protobuf bytes.
+            """
+            # Create async iterator wrapper for the request stream
+            async def async_request_iterator():
+                async for request in request_iterator:
+                    yield request
+
+            proxy_request = gRPCProxyRequest(
+                request_proto=None,
+                context=context,
+                service_method=service_method,
+                stream=False,
+                streaming_type=gRPCStreamingType.STREAM_UNARY,
+                request_iterator=async_request_iterator(),
+            )
+
+            status = None
+            response = None
+            async for message in self.proxy_request(proxy_request=proxy_request):
+                if isinstance(message, ResponseStatus):
+                    status = message
+                else:
+                    response = message
+
+            assert status is not None
+            set_grpc_code_and_details(context, status)
+
+            # When only ResponseStatus is yielded (not-found, errors), response stays
+            # None. Returning None to gRPC causes serialization/type errors; return
+            # empty bytes so the error status is sent cleanly.
+            return response if response is not None else b""
+
+        async def stream_stream(
+            request_iterator: Any, context: grpc._cython.cygrpc._ServicerContext
+        ) -> AsyncGenerator[bytes, None]:
+            """Entry point of the gRPC proxy bidirectional streaming request.
+
+            This method is called by the gRPC server when a bidirectional streaming
+            request is received. It wraps the request iterator and calls proxy_request.
+            The return value is a generator of serialized user defined protobuf bytes.
+            """
+            # Create async iterator wrapper for the request stream
+            async def async_request_iterator():
+                async for request in request_iterator:
+                    yield request
+
+            proxy_request = gRPCProxyRequest(
+                request_proto=None,
+                context=context,
+                service_method=service_method,
+                stream=True,
+                streaming_type=gRPCStreamingType.STREAM_STREAM,
+                request_iterator=async_request_iterator(),
+            )
+
+            status = None
+            async for message in self.proxy_request(proxy_request=proxy_request):
+                if isinstance(message, ResponseStatus):
+                    status = message
+                else:
+                    yield message
+
+            assert status is not None
+            set_grpc_code_and_details(context, status)
+
+        handler_map = {
+            gRPCStreamingType.UNARY_UNARY: unary_unary,
+            gRPCStreamingType.UNARY_STREAM: unary_stream,
+            gRPCStreamingType.STREAM_UNARY: stream_unary,
+            gRPCStreamingType.STREAM_STREAM: stream_stream,
+        }
+        return handler_map[streaming_type]
 
     def setup_request_context_and_handle(
         self,
@@ -655,32 +776,133 @@ class gRPCProxy(GenericProxy):
         Unpack gRPC request metadata and extract info to set up request context and
         handle.
         """
+        proxy_request = cast(gRPCProxyRequest, proxy_request)
         multiplexed_model_id = proxy_request.multiplexed_model_id
+        session_id = proxy_request.session_id
         request_id = proxy_request.request_id
         if not request_id:
             request_id = generate_request_id()
-            proxy_request.request_id = request_id
+            proxy_request.request_id = request_id  # type: ignore[assignment]
 
         handle = handle.options(
             stream=proxy_request.stream,
             multiplexed_model_id=multiplexed_model_id,
+            session_id=session_id,
             method_name=proxy_request.method_name,
         )
 
-        request_context_info = {
+        request_context_info: Dict[str, Any] = {
             "route": route,
             "request_id": request_id,
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "session_id": session_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
+            "_client": proxy_request.client,
         }
         ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(**request_context_info)
+            ray.serve.context._RequestContext(**request_context_info)  # type: ignore[arg-type]
         )
         proxy_request.send_request_id(request_id=request_id)
         return handle, request_id
 
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
+        """Receive the next message from a gRPC streaming session.
+
+        This method is called by replicas to receive messages from
+        client/bidirectional streaming sessions.
+
+        Args:
+            session_id: The session ID of the streaming session.
+
+        Returns:
+            A tuple of (has_more, message, is_cancelled).
+            - has_more: True if there are more messages, False if stream is done.
+            - message: The protobuf message object, or None if stream is done.
+            - is_cancelled: True if the stream was cancelled by client or error.
+
+        Note:
+            If the session ID is not found (e.g., after cleanup due to timeout,
+            error, or completion), returns (False, None, True) for graceful
+            termination instead of raising an exception.
+        """
+        if session_id not in self._streaming_sessions:
+            # Session was already cleaned up - return graceful termination
+            # This is consistent with the behavior when cancel_event.is_set()
+            return (False, None, True)
+
+        request_iterator, cancel_event = self._streaming_sessions[session_id]
+
+        if cancel_event.is_set():
+            return (False, None, True)
+
+        try:
+            message = await request_iterator.__anext__()
+            # Return message directly - let Ray handle serialization
+            return (True, message, False)
+        except StopAsyncIteration:
+            return (False, None, False)
+        except Exception as e:
+            logger.warning(
+                f"Error receiving gRPC message for session {session_id}: {e}"
+            )
+            cancel_event.set()
+            return (False, None, True)
+
+    def _cleanup_streaming_session(self, session_id: str):
+        """Clean up a streaming session."""
+        session = self._streaming_sessions.pop(session_id, None)
+        if session is not None:
+            _, cancel_event = session
+            cancel_event.set()
+
+    def _setup_grpc_tracing(
+        self,
+        request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: "gRPCProxyRequest",
+    ):
+        """Set up tracing for gRPC requests.
+
+        This helper function sets up span attributes and span name for gRPC requests,
+        used by both standard and streaming request paths.
+        """
+        self._setup_proxy_tracing(
+            request_id=request_id,
+            handle=handle,
+            proxy_request=proxy_request,
+        )
+        set_span_name(
+            f"proxy_{proxy_request.request_type}_request {handle.deployment_name} {proxy_request.method}"
+        )
+
+    def _finalize_grpc_tracing(
+        self,
+        proxy_request: "gRPCProxyRequest",
+        status: Optional[ResponseStatus],
+        exc: Optional[BaseException],
+    ):
+        """Finalize tracing for gRPC requests.
+
+        This helper function sets RPC span attributes, exception tracking, and trace status
+        in the finally block, used by both standard and streaming request paths.
+        """
+        if status is not None:
+            set_rpc_span_attributes(
+                system=proxy_request.request_type,
+                method=proxy_request.method,
+                status_code=status.code.name
+                if isinstance(status.code, grpc.StatusCode)
+                else grpc.StatusCode.UNKNOWN.name,
+            )
+        self._finalize_proxy_tracing(status=status, exc=exc)
+
+    @tracing_decorator_factory(
+        trace_name="proxy_grpc_request",
+    )
     async def send_request_to_replica(
         self,
         request_id: str,
@@ -689,11 +911,30 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
+        # handle the streaming input that exists in client-streaming and bidi-streaming RPC types.
+        if (
+            isinstance(proxy_request, gRPCProxyRequest)
+            and proxy_request.has_input_stream
+        ):
+            async for message in self._send_streaming_request_to_replica(
+                request_id=request_id,
+                internal_request_id=internal_request_id,
+                handle=handle,
+                proxy_request=proxy_request,
+            ):
+                yield message
+            return
+
+        # Standard server-unary/server-streaming path
+        proxy_request = cast(gRPCProxyRequest, proxy_request)
+        self._setup_grpc_tracing(request_id, handle, proxy_request)
+
         response_generator = ProxyResponseGenerator(
             handle.remote(proxy_request.serialized_replica_arg()),
             timeout_s=self.request_timeout_s,
         )
-
+        status = None
+        exc = None
         try:
             async for context, result in response_generator:
                 context._set_on_grpc_context(proxy_request.context)
@@ -702,10 +943,95 @@ class gRPCProxy(GenericProxy):
             status = ResponseStatus(code=grpc.StatusCode.OK)
         except BaseException as e:
             status = get_grpc_response_status(e, self.request_timeout_s, request_id)
+            exc = e
+        finally:
+            self._finalize_grpc_tracing(proxy_request, status, exc)
 
         # The status code should always be set.
         assert status is not None
         yield status
+
+    async def _send_streaming_request_to_replica(
+        self,
+        request_id: str,
+        internal_request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: "gRPCProxyRequest",
+    ) -> ResponseGenerator:
+        """Handle sending a streaming request (client/bidi) to replica.
+
+        For client streaming (stream_unary), we create a streaming session that
+        the replica can use to receive messages from the client.
+
+        For bidirectional streaming (stream_stream), we do the same but the
+        response is also a stream.
+        """
+        # Set up tracing attributes for streaming
+        self._setup_grpc_tracing(request_id, handle, proxy_request)
+
+        # Create a streaming session
+        session_id = internal_request_id
+        cancel_event = asyncio.Event()
+        self._streaming_sessions[session_id] = (
+            proxy_request.request_iterator,
+            cancel_event,
+        )
+
+        status = None
+        exc = None
+        try:
+            # Get the proxy actor name for callback
+            proxy_actor_name = ray.get_runtime_context().get_actor_name()
+            assert proxy_actor_name is not None
+
+            # Create the streaming request
+            streaming_request = gRPCStreamingRequest(
+                session_id=session_id,
+                proxy_actor_name=proxy_actor_name,
+            )
+
+            # Serialize the streaming request
+            serialized_arg = pickle.dumps(streaming_request)
+
+            response_generator = ProxyResponseGenerator(
+                handle.remote(serialized_arg),
+                timeout_s=self.request_timeout_s,
+            )
+
+            try:
+                async for context, result in response_generator:
+                    context._set_on_grpc_context(proxy_request.context)
+                    yield result
+
+                status = ResponseStatus(code=grpc.StatusCode.OK)
+            except BaseException as e:
+                status = get_grpc_response_status(e, self.request_timeout_s, request_id)
+                exc = e
+                # Yield the error status and return immediately to avoid falling through
+                # to the outer except block, which would produce a duplicate ResponseStatus.
+                yield status
+                return
+
+            # The status code should always be set.
+            assert status is not None
+            yield status
+        except Exception as e:
+            # Handle exceptions that occur before response_generator is created
+            # (e.g., in get_actor_name, pickle.dumps, ProxyResponseGenerator)
+            status = get_grpc_response_status(e, self.request_timeout_s, request_id)
+            exc = e
+            yield status
+        finally:
+            # Clean up the streaming session first to ensure no resource leaks
+            self._cleanup_streaming_session(session_id)
+
+            # Finalize tracing for streaming requests (best-effort)
+            try:
+                self._finalize_grpc_tracing(proxy_request, status, exc)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to finalize tracing for session {session_id}: {e}"
+                )
 
 
 class HTTPProxy(GenericProxy):
@@ -719,7 +1045,7 @@ class HTTPProxy(GenericProxy):
         proxy_router: ProxyRouter,
         self_actor_name: str,
         request_timeout_s: Optional[float] = None,
-        access_log_context: Dict[str, Any] = None,
+        access_log_context: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             node_id,
@@ -739,6 +1065,7 @@ class HTTPProxy(GenericProxy):
     async def not_found_response(
         self, proxy_request: ProxyRequest
     ) -> ResponseGenerator:
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
         status_code = 404
         for message in convert_object_to_asgi_messages(
             f"Path '{proxy_request.path}' not found. "
@@ -754,7 +1081,7 @@ class HTTPProxy(GenericProxy):
     ) -> ResponseGenerator:
         status_code = 200 if healthy else 503
         if healthy:
-            response = dict()
+            response: Any = dict()
             for endpoint, info in self.proxy_router.endpoints.items():
                 # For 2.x deployments, return {route -> app name}
                 if endpoint.app_name:
@@ -795,7 +1122,7 @@ class HTTPProxy(GenericProxy):
 
     async def receive_asgi_messages(
         self, request_metadata: RequestMetadata
-    ) -> ResponseGenerator:
+    ) -> List[Any]:
         queue = self.asgi_receive_queues.get(request_metadata.internal_request_id, None)
         if queue is None:
             raise KeyError(f"Request ID {request_metadata.request_id} not found.")
@@ -854,29 +1181,87 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
-        request_context_info = {
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
+        request_context_info: Dict[str, Any] = {
             "route": route,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
+            "_client": format_client_address(proxy_request.client),
         }
         for key, value in proxy_request.headers:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+            # Normalize the header key: lowercase and replace hyphens with
+            # underscores so that both "serve_multiplexed_model_id" and
+            # "serve-multiplexed-model-id" (the form produced by proxies such
+            # as nginx / AWS API Gateway that convert underscores to hyphens)
+            # are recognised correctly.
+            normalized_key = key.decode().lower().replace("-", "_")
+            if normalized_key == SERVE_MULTIPLEXED_MODEL_ID:
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
+            elif _matches_session_id_header(key.decode()):
+                session_id = value.decode()
+                handle = handle.options(session_id=session_id)
+                request_context_info["session_id"] = session_id
             if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(**request_context_info)
+            ray.serve.context._RequestContext(**request_context_info)  # type: ignore[arg-type]
         )
         return handle, request_context_info["request_id"]
+
+    def _setup_http_tracing(
+        self,
+        request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: ProxyRequest,
+    ):
+        """Set up tracing for HTTP requests.
+
+        This helper function sets up span attributes and span name for HTTP requests.
+        """
+        self._setup_proxy_tracing(
+            request_id=request_id,
+            handle=handle,
+            proxy_request=proxy_request,
+            additional_attributes={
+                "request_method": proxy_request.method,
+                "request_route_path": proxy_request.route_path,
+            },
+        )
+        set_span_name(
+            f"proxy_{proxy_request.request_type}_request {handle.deployment_name} {proxy_request.method} {proxy_request.route_path}"
+        )
+
+    def _finalize_http_tracing(
+        self,
+        proxy_request: ProxyRequest,
+        status_code: str,
+        is_error: bool,
+        exc: Optional[BaseException],
+    ):
+        """Finalize tracing for HTTP requests.
+
+        This helper function sets HTTP span attributes, exception tracking, and trace status
+        in finally block.
+        """
+        set_http_span_attributes(
+            method=proxy_request.method,
+            status_code=int(status_code),  # type: ignore[arg-type]
+            route=proxy_request.route_path,
+        )
+        self._finalize_proxy_tracing(
+            status=ResponseStatus(code=status_code, is_error=is_error),
+            exc=exc,
+        )
 
     async def _format_handle_arg_for_java(
         self,
         proxy_request: ProxyRequest,
-    ) -> bytes:
+    ) -> str:
         """Convert an HTTP request to the Java-accepted format (single byte string)."""
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
         query_string = proxy_request.scope.get("query_string")
         http_body_bytes = await receive_http_body(
             proxy_request.scope, proxy_request.receive, proxy_request.send
@@ -888,6 +1273,9 @@ class HTTPProxy(GenericProxy):
 
         return arg
 
+    @tracing_decorator_factory(
+        trace_name="proxy_http_request",
+    )
     async def send_request_to_replica(
         self,
         request_id: str,
@@ -901,10 +1289,16 @@ class HTTPProxy(GenericProxy):
         The yielded values will be ASGI messages until the final one, which will be
         the status code.
         """
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
+        if is_span_recording():
+            self._setup_http_tracing(request_id, handle, proxy_request)
+
         if app_is_cross_language:
-            handle_arg_bytes = await self._format_handle_arg_for_java(proxy_request)
+            handle_arg_bytes: Any = await self._format_handle_arg_for_java(
+                proxy_request
+            )
             # Response is returned as raw bytes, convert it to ASGI messages.
-            result_callback = convert_object_to_asgi_messages
+            result_callback: Callable = convert_object_to_asgi_messages
         else:
             handle_arg_bytes = proxy_request.serialized_replica_arg(
                 proxy_actor_name=self.self_actor_name,
@@ -921,16 +1315,28 @@ class HTTPProxy(GenericProxy):
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
 
+        # Per-request headers override the global HTTPOptions timeout and disconnect
+        # policy, enabling HAProxy (or other callers) to pass per-request hints.
+        request_headers = dict(proxy_request.headers)
+        request_timeout_s = parse_request_timeout_header(
+            request_headers, self.request_timeout_s
+        )
+        request_disconnect_disabled = parse_disconnect_disabled_header(request_headers)
+
         response_generator = ProxyResponseGenerator(
             handle.remote(handle_arg_bytes),
-            timeout_s=self.request_timeout_s,
-            disconnected_task=proxy_asgi_receive_task,
+            timeout_s=request_timeout_s,
+            disconnected_task=(
+                None if request_disconnect_disabled else proxy_asgi_receive_task
+            ),
             result_callback=result_callback,
         )
 
         status: Optional[ResponseStatus] = None
         response_started = False
         expecting_trailers = False
+        exc = None
+        status_code = None
         try:
             async for asgi_message_batch in response_generator:
                 # See the ASGI spec for message details:
@@ -980,11 +1386,14 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
         except BaseException as e:
-            status = get_http_response_status(e, self.request_timeout_s, request_id)
+            error_status = get_http_response_status(e, request_timeout_s, request_id)
+            if status is None:
+                status = error_status
             for asgi_message in send_http_response_on_exception(
-                status, response_started
+                error_status, response_started
             ):
                 yield asgi_message
+            exc = e
 
         finally:
             # For websocket connection, queue receive task is done when receiving
@@ -1002,23 +1411,50 @@ class HTTPProxy(GenericProxy):
             if status is None and proxy_request.request_type == "websocket":
                 if receive_client_disconnect_msg:
                     # The disconnect message is sent from the client.
+                    status_code = str(proxy_asgi_receive_task.result())
                     status = ResponseStatus(
-                        code=str(proxy_asgi_receive_task.result()),
+                        code=status_code,
                         is_error=True,
                     )
                 else:
+                    status_code = "1000"
                     # The server disconnect without sending a disconnect message
                     # (otherwise the `status` would be set).
                     status = ResponseStatus(
-                        code="1000",  # [Sihan] is there a better code for this?
+                        code="1000",
                         is_error=True,
                     )
+            else:
+                assert status is not None
+                status_code = status.code
 
             del self.asgi_receive_queues[internal_request_id]
+
+            if is_span_recording():
+                self._finalize_http_tracing(
+                    proxy_request, status_code, status.is_error, exc
+                )
 
         # The status code should always be set.
         assert status is not None
         yield status
+
+
+def apply_per_node_port_overrides(
+    http_options: HTTPOptions, grpc_options: gRPCOptions, is_head: bool
+) -> None:
+    """Override this proxy's HTTP and gRPC bind ports from the per-node env knobs.
+
+    Worker proxies bind RAY_SERVE_WORKER_PROXY_HTTP_PORT and
+    RAY_SERVE_WORKER_PROXY_GRPC_PORT when set. The head node is exempt so its
+    configured ports and the fallback proxy stay intact.
+    """
+    if is_head:
+        return
+    if RAY_SERVE_WORKER_PROXY_HTTP_PORT is not None:
+        http_options.port = RAY_SERVE_WORKER_PROXY_HTTP_PORT
+    if RAY_SERVE_WORKER_PROXY_GRPC_PORT is not None:
+        grpc_options.port = RAY_SERVE_WORKER_PROXY_GRPC_PORT
 
 
 class ProxyActorInterface(ABC):
@@ -1034,6 +1470,7 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config: Optional[TracingConfig] = None,
         log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     ):
         """Initialize the proxy actor.
@@ -1042,11 +1479,13 @@ class ProxyActorInterface(ABC):
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
+            tracing_config: Tracing configuration
             log_buffer_size: Size of the log buffer
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
+        self._tracing_config = tracing_config
         self._log_buffer_size = log_buffer_size
 
         self._update_logging_config(logging_config)
@@ -1126,6 +1565,20 @@ class ProxyActorInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
+        """Get the next gRPC message for a streaming session.
+
+        Args:
+            session_id: The session ID of the streaming session
+
+        Returns:
+            Tuple of (has_more, message, is_cancelled)
+        """
+        pass
+
     # Testing and debugging methods
     @abstractmethod
     def _get_http_options(self) -> HTTPOptions:
@@ -1140,6 +1593,11 @@ class ProxyActorInterface(ABC):
     @abstractmethod
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set:
         """Get replicas for a route (for testing)."""
+        pass
+
+    @abstractmethod
+    async def shutdown(self) -> None:
+        """Shuts down proxy."""
         pass
 
     def _update_logging_config(self, logging_config: LoggingConfig):
@@ -1169,6 +1627,9 @@ class ProxyActor(ProxyActorInterface):
             logging_config=logging_config,
         )
 
+        is_head = self._node_id == get_head_node_id()
+        apply_per_node_port_overrides(http_options, grpc_options, is_head)
+
         self._grpc_options = grpc_options
         self._http_options = configure_http_middlewares(http_options)
         grpc_enabled = is_grpc_enabled(self._grpc_options)
@@ -1180,7 +1641,16 @@ class ProxyActor(ProxyActorInterface):
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
             },
             call_in_event_loop=event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
+
+        is_tracing_setup_successful = setup_tracing(
+            component_name="proxy",
+            component_id=node_ip_address,
+            tracing_config=self._tracing_config,
+        )
+        if is_tracing_setup_successful:
+            logger.info("Successfully set up tracing for proxy")
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
         if grpc_enabled:
@@ -1223,13 +1693,12 @@ class ProxyActor(ProxyActorInterface):
                 "serve_access_log": True,
             }
 
-        is_head = self._node_id == get_head_node_id()
         self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=self._node_id,
             node_ip_address=self._node_ip_address,
             is_head=is_head,
-            self_actor_name=ray.get_runtime_context().get_actor_name(),
+            self_actor_name=cast(str, ray.get_runtime_context().get_actor_name()),
             proxy_router=self.proxy_router,
             request_timeout_s=self._http_options.request_timeout_s,
             access_log_context=access_log_context,
@@ -1269,6 +1738,7 @@ class ProxyActor(ProxyActorInterface):
         # The result of this task is checked in the `ready` method.
         self._start_grpc_server_task: Optional[asyncio.Task] = None
         if grpc_enabled:
+            assert self.grpc_proxy is not None
             self._start_grpc_server_task = event_loop.create_task(
                 start_grpc_server(
                     self.grpc_proxy.service_handler_factory,
@@ -1287,29 +1757,35 @@ class ProxyActor(ProxyActorInterface):
         self._event_loop_monitor = EventLoopMonitor(
             component=EventLoopMonitor.COMPONENT_PROXY,
             loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
-            actor_id=ray.get_runtime_context().get_actor_id(),
+            actor_id=cast(str, ray.get_runtime_context().get_actor_id()),
         )
         self._event_loop_monitor.start(event_loop)
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
 
-    def _get_logging_config(self) -> Tuple:
+    def _get_logging_config(self) -> Optional[str]:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.MemoryHandler):
+            if isinstance(handler, logging.handlers.MemoryHandler) and isinstance(
+                handler.target, logging.FileHandler
+            ):
                 log_file_path = handler.target.baseFilename
         return log_file_path
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
-        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
-        return handle._router._asyncio_router._request_router._replica_id_set
+        matched = self.http_proxy.proxy_router.match_route(route)
+        assert matched is not None
+        _, handle, _ = matched
+        return handle._router._asyncio_router._request_router._replica_id_set  # type: ignore[union-attr]  # pyrefly: ignore[missing-attribute]
 
     def _dump_ingress_cache_for_testing(self, route: str) -> Set[ReplicaID]:
         """Get replica IDs that have entries in the queue length cache (for testing)."""
-        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
-        request_router = handle._router._asyncio_router._request_router
+        matched = self.http_proxy.proxy_router.match_route(route)
+        assert matched is not None
+        _, handle, _ = matched
+        request_router = handle._router._asyncio_router._request_router  # type: ignore[union-attr]  # pyrefly: ignore[missing-attribute]
         cache = request_router.replica_queue_len_cache
         return {
             replica_id
@@ -1326,14 +1802,16 @@ class ProxyActor(ProxyActorInterface):
         Raises any exceptions that occur setting up the HTTP or gRPC server.
         """
         try:
-            self._running_http_server_task = await self._start_http_server_task
+            # The proxy has its own draining; the returned server object is
+            # unused.
+            self._running_http_server_task, _ = await self._start_http_server_task
         except Exception as e:
             logger.exception("Failed to start proxy HTTP server.")
             raise e from None
 
         try:
             if self._start_grpc_server_task is not None:
-                self._running_grpc_server_task = await self._start_grpc_server_task
+                self._running_grpc_server_task, _ = await self._start_grpc_server_task
         except Exception as e:
             logger.exception("Failed to start proxy gRPC server.")
             raise e from None
@@ -1350,6 +1828,9 @@ class ProxyActor(ProxyActorInterface):
 
     async def serving(self, wait_for_applications_running: bool = True) -> None:
         """Wait for the proxy to be ready to serve requests."""
+        return
+
+    async def shutdown(self) -> None:
         return
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
@@ -1382,9 +1863,9 @@ class ProxyActor(ProxyActorInterface):
         logger.debug("Received health check.", extra={"log_to_stderr": False})
         return True
 
-    def pong(self):
+    def pong(self) -> str:
         """Called by the replica to initialize its handle to the proxy."""
-        pass
+        return "pong"
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         """Get ASGI messages for the provided `request_metadata`.
@@ -1398,6 +1879,31 @@ class ProxyActor(ProxyActorInterface):
         return pickle.dumps(
             await self.http_proxy.receive_asgi_messages(request_metadata)
         )
+
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
+        """Get the next gRPC message for a streaming session.
+
+        This method is called by replicas to receive messages from
+        client/bidirectional streaming sessions.
+
+        Args:
+            session_id: The session ID of the streaming session.
+
+        Returns:
+            Tuple of (has_more: bool, message: Optional[Any], is_cancelled: bool).
+            - has_more: True if there are more messages, False if stream is done.
+            - message: The protobuf message object, or None if stream is done.
+            - is_cancelled: True if the stream was cancelled by client or error.
+              Also returned when the session ID is not found (e.g., after
+              cleanup due to timeout, error, or completion).
+        """
+        if self.grpc_proxy is None:
+            raise RuntimeError("gRPC proxy is not enabled.")
+
+        # Return tuple directly - Ray handles serialization
+        return await self.grpc_proxy.receive_grpc_messages(session_id)
 
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""

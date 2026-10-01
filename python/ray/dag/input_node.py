@@ -66,16 +66,17 @@ class InputNode(DAGNode):
 
     def __init__(
         self,
-        *args,
+        *args: Any,
         input_type: Optional[Union[type, Dict[Union[int, str], type]]] = None,
-        _other_args_to_resolve=None,
-        **kwargs,
+        _other_args_to_resolve: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ):
         """InputNode should only take attributes of validating and converting
         input data rather than the input data itself. User input should be
         provided via `ray_dag.execute(user_input)`.
 
         Args:
+            *args: Reserved; passing any positional argument raises ``ValueError``.
             input_type: Describes the data type of inputs user will be giving.
                 - if given through singular InputNode: type of InputNode
                 - if given through InputAttributeNodes: map of key -> type
@@ -83,6 +84,7 @@ class InputNode(DAGNode):
             _other_args_to_resolve: Internal only to keep InputNode's execution
                 context throughput pickling, replacement and serialization.
                 User should not use or pass this field.
+            **kwargs: Reserved; passing any keyword argument raises ``ValueError``.
         """
         if len(args) != 0 or len(kwargs) != 0:
             raise ValueError("InputNode should not take any args or kwargs.")
@@ -219,6 +221,19 @@ class InputAttributeNode(DAGNode):
         accessor_method: str,
         input_type: str = None,
     ):
+        """Initialize an InputAttributeNode.
+
+        Args:
+            dag_input_node: The parent ``InputNode`` this attribute access
+                derives from.
+            key: The index, attribute name, or dict key used to access a
+                value of the user input.
+            accessor_method: The accessor method used to extract the value
+                from the user input (e.g., ``"__getitem__"`` or
+                ``"__getattr__"``).
+            input_type: Type hint for the extracted value, used by the
+                Gradio visualizer to pick a UI component.
+        """
         self._dag_input_node = dag_input_node
         self._key = key
         self._accessor_method = accessor_method

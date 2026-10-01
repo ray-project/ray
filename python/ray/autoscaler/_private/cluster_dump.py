@@ -7,7 +7,7 @@ import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, Iterator, List, Optional, Sequence, Tuple
 
 import yaml
 
@@ -105,7 +105,7 @@ class Archive:
         self.close()
 
     @contextmanager
-    def subdir(self, subdir: str, root: Optional[str] = "/"):
+    def subdir(self, subdir: str, root: Optional[str] = "/") -> Iterator[Any]:
         """Open a context to add files to the archive.
 
         Example:
@@ -125,7 +125,7 @@ class Archive:
                 will be named relatively to this path.
 
         Yields:
-            A context object that can be used to add files to the archive.
+            Any: A context object that can be used to add files to the archive.
         """
         root = os.path.abspath(root)
 
@@ -156,9 +156,9 @@ def get_local_ray_logs(
 
     Args:
         archive: Archive object to add log files to.
-        exclude (Sequence[str]): Sequence of regex patterns. Files that match
+        exclude: Sequence of regex patterns. Files that match
             any of these patterns will not be included in the archive.
-        session_dir: Path to the Ray session files. Defaults to
+        session_log_dir: Path to the Ray session files. Defaults to
             ``/tmp/ray/session_latest``
 
     Returns:
@@ -372,8 +372,8 @@ def create_and_get_archive_from_remote_node(
 
     Args:
         remote_node: Remote node to gather archive from.
-        script_path: Path to this script on the remote node.
         parameters: Parameters (settings) for getting data.
+        script_path: Path to this script on the remote node.
 
     Returns:
         Path to a temporary file containing the node's collected data.
@@ -486,7 +486,7 @@ def create_archive_for_remote_nodes(
 
     Args:
         archive: Archive object to add remote data to.
-        remote_nodes (Sequence[Node]): Sequence of remote nodes.
+        remote_nodes: Sequence of remote nodes.
         parameters: Parameters (settings) for getting data.
 
     Returns:
@@ -517,7 +517,7 @@ def create_archive_for_local_and_remote_nodes(
 
     Args:
         archive: Archive object to add data to.
-        remote_nodes (Sequence[Node]): Sequence of remote nodes.
+        remote_nodes: Sequence of remote nodes.
         parameters: Parameters (settings) for getting data.
 
     Returns:

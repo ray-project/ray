@@ -185,7 +185,6 @@ def test_node_object_metrics(ray_start_cluster):
         lambda: get_owner_info(node_ids) == ([(4, 0), (3, 0), (0, 0)], [1, 1, 1])
     )
 
-    # Test with assigned owned
     @ray.remote(resources={"node_2": 0.5}, num_cpus=0)
     class A:
         def ready(self):
@@ -198,11 +197,8 @@ def test_node_object_metrics(ray_start_cluster):
     # actor is not an object, so no object store copies
     actor = A.remote()  # noqa: F841
     ray.get(actor.ready.remote())
-    # o is owned by actor (node_2)
-    # o is stored in object store of node_0
-    o = ray.put(1, _owner=actor)  # noqa: F841
     wait_for_condition(
-        lambda: get_owner_info(node_ids) == ([(4, 1), (3, 0), (1, 0)], [2, 1, 1])
+        lambda: get_owner_info(node_ids) == ([(4, 1), (3, 0), (0, 0)], [1, 1, 1])
     )
 
     # Test with detached owned
@@ -210,7 +206,7 @@ def test_node_object_metrics(ray_start_cluster):
     detached_actor = A.options(lifetime="detached", name="A").remote()
     ray.get(detached_actor.ready.remote())
     for i in range(3):
-        assert get_owner_info(node_ids) == ([(4, 1), (3, 0), (1, 0)], [2, 1, 1])
+        assert get_owner_info(node_ids) == ([(4, 1), (3, 0), (0, 0)], [1, 1, 1])
         import time
 
         time.sleep(1)
@@ -219,7 +215,7 @@ def test_node_object_metrics(ray_start_cluster):
     # the inner object is stored in object store of node_2
     gen_obj = detached_actor.gen.remote()  # noqa: F841
     wait_for_condition(
-        lambda: get_owner_info(node_ids) == ([(5, 1), (3, 0), (2, 0)], [2, 1, 2])
+        lambda: get_owner_info(node_ids) == ([(5, 1), (3, 0), (1, 0)], [1, 1, 2])
     )
 
 

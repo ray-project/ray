@@ -103,6 +103,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   if (event.task_type() == rpc::TaskType::ACTOR_CREATION_TASK) {
     const auto actor_id = TaskID::FromBinary(event.task_id()).ActorId();
     task_info->set_actor_id(actor_id.Binary());
+    if (event.is_detached_actor()) {
+      task_info->set_is_detached_actor(true);
+    }
   }
   if (!event.placement_group_id().empty()) {
     task_info->set_placement_group_id(event.placement_group_id());
@@ -112,6 +115,9 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskDefinitionEvent &&event) {
   }
   if (!event.label_selector().empty()) {
     task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
+  }
+  if (event.has_fallback_strategy()) {
+    task_info->mutable_fallback_strategy()->CopyFrom(event.fallback_strategy());
   }
 
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
@@ -152,6 +158,28 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   if (event.has_actor_repr_name()) {
     task_state_update->set_actor_repr_name(event.actor_repr_name());
   }
+  if (event.has_task_log_info()) {
+    rpc::events::TaskLifecycleEvent::TaskLogInfo &src = *event.mutable_task_log_info();
+    rpc::TaskLogInfo *dst = task_state_update->mutable_task_log_info();
+    if (src.has_stdout_file()) {
+      *dst->mutable_stdout_file() = std::move(*src.mutable_stdout_file());
+    }
+    if (src.has_stderr_file()) {
+      *dst->mutable_stderr_file() = std::move(*src.mutable_stderr_file());
+    }
+    if (src.has_stdout_start()) {
+      dst->set_stdout_start(src.stdout_start());
+    }
+    if (src.has_stdout_end()) {
+      dst->set_stdout_end(src.stdout_end());
+    }
+    if (src.has_stderr_start()) {
+      dst->set_stderr_start(src.stderr_start());
+    }
+    if (src.has_stderr_end()) {
+      dst->set_stderr_end(src.stderr_end());
+    }
+  }
 
   for (const auto &state_transition : event.state_transitions()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());
@@ -182,11 +210,17 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::ActorTaskDefinitionEvent &&even
   if (!event.actor_id().empty()) {
     task_info->set_actor_id(event.actor_id());
   }
+  if (event.is_detached_actor()) {
+    task_info->set_is_detached_actor(true);
+  }
   if (event.has_call_site()) {
     task_info->set_call_site(event.call_site());
   }
   if (!event.label_selector().empty()) {
     task_info->mutable_label_selector()->swap(*event.mutable_label_selector());
+  }
+  if (event.has_fallback_strategy()) {
+    task_info->mutable_fallback_strategy()->CopyFrom(event.fallback_strategy());
   }
   PopulateTaskRuntimeAndFunctionInfo(std::move(*event.mutable_serialized_runtime_env()),
                                      std::move(*event.mutable_actor_func()),

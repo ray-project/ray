@@ -34,6 +34,10 @@ from ray.serve._private.constants import (
     BATCH_WAIT_TIME_BUCKETS_MS,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.tracing_utils import (
+    BatchTraceContextManager,
+    get_trace_context,
+)
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
 from ray.serve.metrics import Counter, Gauge, Histogram
@@ -53,6 +57,7 @@ class _SingleRequest:
     flattened_args: List[Any]
     future: asyncio.Future
     request_context: serve.context._RequestContext
+    trace_context: Optional[Any]
 
 
 @dataclass
@@ -134,9 +139,9 @@ class _BatchQueue:
             batch_wait_timeout_s: time to wait before returning an incomplete
                 batch.
             max_concurrent_batches: max number of batches to run concurrently.
-            handle_batch_func(Optional[Callable]): callback to run in the
+            handle_batch_func: callback to run in the
                 background to handle batches if provided.
-            batch_size_fn(Optional[Callable[[List], int]]): optional function to
+            batch_size_fn: optional function to
                 compute the effective batch size. If None, uses len(batch).
                 The function takes a list of requests and returns an integer
                 representing the batch size. This is useful for batching based
@@ -567,12 +572,17 @@ class _BatchQueue:
                 [req.request_context for req in batch]
             )
 
-            if isasyncgenfunction(func):
-                func_generator = func_future_or_generator
-                await self._consume_func_generator(func_generator, futures, len(batch))
-            else:
-                func_future = func_future_or_generator
-                await self._assign_func_results(func_future, futures, len(batch))
+            # As OTEL span cannot belong to multiple traces, we choose the first request’s context
+            # as the parent, so the span emitted by this batch will appear only in the first request’s trace.
+            with BatchTraceContextManager(batch[0].trace_context):
+                if isasyncgenfunction(func):
+                    func_generator = func_future_or_generator
+                    await self._consume_func_generator(
+                        func_generator, futures, len(batch)
+                    )
+                else:
+                    func_future = func_future_or_generator
+                    await self._assign_func_results(func_future, futures, len(batch))
 
             # Reset the batch request context after the batch is processed
             serve.context._set_batch_request_context([])
@@ -875,6 +885,9 @@ def batch(
             app = BatchedDeployment.bind()
 
     Arguments:
+        _func: When ``@serve.batch`` is applied without arguments, this is the
+            wrapped async function or method. When applied with arguments,
+            ``_func`` is ``None`` and a decorator is returned instead.
         max_batch_size: the maximum batch size that will be executed in
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
@@ -889,6 +902,10 @@ def batch(
             based on custom metrics such as total nodes in graphs, total tokens
             in sequences, or other domain-specific measures. If None, the batch
             size is computed as len(batch).
+
+    Returns:
+        The decorated async function/method (when ``_func`` is supplied) or a
+        decorator that produces one.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
@@ -941,8 +958,11 @@ def batch(
 
             future = get_or_create_event_loop().create_future()
             request_context = serve.context._get_serve_request_context()
+            trace_context = get_trace_context()
             batch_queue.put(
-                _SingleRequest(self, flattened_args, future, request_context)
+                _SingleRequest(
+                    self, flattened_args, future, request_context, trace_context
+                )
             )
             return future
 

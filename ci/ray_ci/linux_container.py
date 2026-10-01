@@ -47,6 +47,11 @@ class LinuxContainer(Container):
         self, build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> List[str]:
         cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
+        # The step's own index, forwarded into the build: docker builds inherit
+        # nothing from the step environment, and the mirror-hosted index
+        # (ci/pypi_proxy_profile.sh) is one HTTPS URL reachable from inside builds.
+        # Unset outside CI, and then the Dockerfile falls back to PyPI.
+        image_index_url = os.environ.get("RAYCI_IMAGE_PIP_INDEX_URL", "")
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
@@ -63,17 +68,31 @@ class LinuxContainer(Container):
             f"BUILD_TYPE={build_type or ''}",
             "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
+            "--build-arg",
+            f"RAYCI_IMAGE_PIP_INDEX_URL={image_index_url}",
         ]
 
-        if not build_type or build_type == "optimized":
-            python_version = self.python_version
-            core_image_tag = f"ray-core-py{python_version}"
+        if not build_type or build_type in (
+            "optimized",
+            "wheel",
+            "wheel-aarch64",
+        ):
+            for base_tag, arg_name in [
+                (f"ray-core-py{self.python_version}", "RAY_CORE_IMAGE"),
+                ("ray-dashboard", "RAY_DASHBOARD_IMAGE"),
+            ]:
+                if self.architecture != DEFAULT_ARCHITECTURE:
+                    base_tag += f"-{self.architecture}"
+                build_cmd += ["--build-arg", f"{arg_name}={get_docker_image(base_tag)}"]
+
+        if build_type in ("wheel", "wheel-aarch64"):
+            base_tag = f"ray-wheel-py{self.python_version}"
             if self.architecture != DEFAULT_ARCHITECTURE:
-                core_image_tag += f"-{self.architecture}"
-            ray_core_image = get_docker_image(core_image_tag)
-            build_cmd += ["--build-arg", f"RAY_CORE_IMAGE={ray_core_image}"]
-            ray_dashboard_image = get_docker_image("ray-dashboard")
-            build_cmd += ["--build-arg", f"RAY_DASHBOARD_IMAGE={ray_dashboard_image}"]
+                base_tag += f"-{self.architecture}"
+            build_cmd += [
+                "--build-arg",
+                f"RAY_WHEEL_IMAGE={get_docker_image(base_tag)}",
+            ]
 
         if mask:
             build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]

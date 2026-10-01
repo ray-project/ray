@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run Serve applications in separate containers with Podman-backed runtime environments, including compatibility notes and troubleshooting."
+---
+
 (serve-container-runtime-env-guide)=
 # Run Multiple Applications in Different Containers
 
@@ -10,11 +16,9 @@ This feature is experimental and the API is subject to change. If you have addit
 The `image_uri` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Follow the [Podman Installation Instructions](https://podman.io/docs/installation) to install Podman in the environment for all head and worker nodes.
 
 :::{note}
-For Ubuntu, the Podman package is only available in the official repositories for Ubuntu 20.10 and newer. To install Podman in Ubuntu 20.04 or older, you need to first add the software repository as a debian source. Follow these instructions to install Podman on Ubuntu 20.04 or older:
+For Ubuntu, the Podman package is available in the official repositories for Ubuntu 20.10 and newer.
 
 ```bash
-sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
-sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 4D64390375060AA4
 sudo apt-get update
 sudo apt-get install podman -y
 ```
@@ -35,8 +39,8 @@ Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
 ::::{tab-set}
 :::{tab-item} whisper.Dockerfile
 ```dockerfile
-# Use the latest Ray GPU image, `rayproject/ray:latest-py38-gpu`, so the Whisper model can run on GPUs.
-FROM rayproject/ray:latest-py38-gpu
+# Use a Ray GPU image, `rayproject/ray:2.56.1-py311-gpu`, so the Whisper model can run on GPUs.
+FROM rayproject/ray:2.56.1-py311-gpu
 
 # Install the package `faster_whisper`, which is a dependency for the Whisper model.
 RUN pip install faster_whisper==0.10.0
@@ -51,8 +55,8 @@ ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 :::
 :::{tab-item} resnet.Dockerfile
 ```dockerfile
-# Use the latest Ray CPU image, `rayproject/ray:latest-py38-cpu`.
-FROM rayproject/ray:latest-py38-cpu
+# Use a Ray CPU image, `rayproject/ray:2.56.1-py311-cpu`.
+FROM rayproject/ray:2.56.1-py311-cpu
 
 # Install the packages `torch` and `torchvision`, which are dependencies for the ResNet model.
 RUN pip install torch==2.0.1 torchvision==0.15.2

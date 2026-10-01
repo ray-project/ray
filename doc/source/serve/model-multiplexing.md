@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve many model variants from a shared replica pool using the serve.multiplexed decorator and serve_multiplexed_model_id request header for per-model routing."
+---
+
 (serve-model-multiplexing)=
 
 # Model Multiplexing
@@ -6,8 +12,7 @@ This section helps you understand how to write multiplexed deployment by using t
 
 ## Why model multiplexing?
 
-Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas, 
-model multiplexing optimizes cost and load balances the traffic. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
+Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas, model multiplexing optimizes cost and load balances the traffic. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
 
 ## Writing a multiplexed deployment
 
@@ -84,6 +89,20 @@ When using model composition, you can send requests from an upstream deployment 
 :start-after: __serve_model_composition_example_begin__
 :end-before: __serve_model_composition_example_end__
 ```
+
+## Configuring model ID matching timeout
+
+When a request arrives with a `serve_multiplexed_model_id`, the Serve router attempts to match it to a replica that already has the model loaded. If no matching replica becomes available within the timeout, the request falls back to the default routing strategy and is sent to any available replica, which then loads the model on demand.
+
+You can configure this timeout using the `RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S` environment variable:
+
+```bash
+export RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S=2.0
+```
+
+**Default**: `1.0` second. To avoid thundering herd problems when many requests for the same unloaded model arrive concurrently, the actual timeout is randomized between this value and `value * 2` (for example, 1.0–2.0 seconds by default).
+
+Increase this timeout if your models take a long time to load and you prefer to wait for a replica that already has the model loaded. Decrease it if you prefer faster fallback to any available replica.
 
 ## Using model multiplexing with batching
 

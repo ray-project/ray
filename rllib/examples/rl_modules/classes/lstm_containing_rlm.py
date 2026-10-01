@@ -1,13 +1,22 @@
-from typing import Any, Dict, Optional
+import abc
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.utils import make_target_network
+from ray.rllib.core.rl_module.apis import (
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
+    InferenceOnlyAPI,
+    TargetNetworkAPI,
+)
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+)
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import NetworkType, TensorType
 
 torch, nn = try_import_torch()
 
@@ -150,3 +159,123 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         embeddings = self._fc_net(embeddings)
         # Squeeze the layer dim (we only have 1 LSTM layer).
         return embeddings, {"h": h.squeeze(0), "c": c.squeeze(0)}
+
+
+class LSTMContainingRLModuleWithTargetNetwork(
+    LSTMContainingRLModule, TargetNetworkAPI, InferenceOnlyAPI, abc.ABC
+):
+    """LSTMContainingRLModule with TargetNetworkAPI support for use with APPO.
+
+    This class extends LSTMContainingRLModule to add target network functionality,
+    which is required by algorithms like APPO that use target networks for
+    importance sampling and policy updates.
+
+    .. testcode::
+
+        import numpy as np
+        import gymnasium as gym
+        import tree
+        import torch
+        from ray.rllib.core.columns import Columns
+
+        B = 10  # batch size
+        T = 5  # seq len
+        e = 25  # embedding dim
+        CELL = 32  # LSTM cell size
+
+        # Construct the RLModule with target network support.
+        my_net = LSTMContainingRLModuleWithTargetNetwork(
+            observation_space=gym.spaces.Box(-1.0, 1.0, (e,), np.float32),
+            action_space=gym.spaces.Discrete(4),
+            model_config={"lstm_cell_size": CELL}
+        )
+
+        # Create target networks (required for TargetNetworkAPI).
+        my_net.make_target_networks()
+
+        # Create some dummy input.
+        obs = torch.from_numpy(
+            np.random.random_sample(size=(B, T, e)
+        ).astype(np.float32))
+        state_in = my_net.get_initial_state()
+        # Repeat state_in across batch.
+        state_in = tree.map_structure(
+            lambda s: torch.from_numpy(s).unsqueeze(0).repeat(B, 1), state_in
+        )
+        input_dict = {
+            Columns.OBS: obs,
+            Columns.STATE_IN: state_in,
+        }
+
+        # Run through all forward passes including target network forward.
+        print("Forward inference:", my_net.forward_inference(input_dict))
+        print("Forward exploration:", my_net.forward_exploration(input_dict))
+        print("Forward train:", my_net.forward_train(input_dict))
+        print("Forward target:", my_net.forward_target(input_dict))
+
+        # Get target network pairs for synchronization.
+        target_pairs = my_net.get_target_network_pairs()
+        print(f"Number of target network pairs: {len(target_pairs)}")
+
+        # Print out the number of parameters.
+        num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
+        print(f"num params = {num_all_params}")
+
+    Example usage with APPO:
+
+    .. testcode::
+
+        from ray.rllib.algorithms.appo import APPOConfig
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
+            LSTMContainingRLModuleWithTargetNetwork,
+        )
+
+        config = (
+            APPOConfig()
+            .environment("CartPole-v1")
+            .rl_module(
+                rl_module_spec=RLModuleSpec(
+                    module_class=LSTMContainingRLModuleWithTargetNetwork,
+                    model_config={"lstm_cell_size": 256, "dense_layers": [128, 128]},
+                )
+            )
+        )
+    """
+
+    @override(TargetNetworkAPI)
+    def make_target_networks(self):
+        """Creates target networks for LSTM, FC net, and policy head."""
+        self._old_lstm = make_target_network(self._lstm)
+        self._old_fc_net = make_target_network(self._fc_net)
+        self._old_pi_head = make_target_network(self._pi_head)
+
+    @override(TargetNetworkAPI)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns pairs of (main_net, target_net) for target network updates."""
+        return [
+            (self._lstm, self._old_lstm),
+            (self._fc_net, self._old_fc_net),
+            (self._pi_head, self._old_pi_head),
+        ]
+
+    @override(TargetNetworkAPI)
+    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        """Forward pass through target networks to get action distribution inputs."""
+        # Compute embeddings using target networks (similar to _compute_embeddings_and_state_outs)
+        obs = batch[Columns.OBS]
+        state_in = batch[Columns.STATE_IN]
+        h, c = state_in["h"], state_in["c"]
+        # Unsqueeze the layer dim (we only have 1 LSTM layer) and forward through target LSTM
+        embeddings, (h, c) = self._old_lstm(obs, (h.unsqueeze(0), c.unsqueeze(0)))
+        # Push through target FC net
+        embeddings = self._old_fc_net(embeddings)
+        # Forward through target policy head to get action distribution inputs
+        old_action_dist_logits = self._old_pi_head(embeddings)
+
+        return {TARGET_NETWORK_ACTION_DIST_INPUTS: old_action_dist_logits}
+
+    @override(InferenceOnlyAPI)
+    def get_non_inference_attributes(self) -> List[str]:
+        """Returns attributes that should not be included in inference-only mode."""
+        return ["_old_lstm", "_old_fc_net", "_old_pi_head", "_values"]

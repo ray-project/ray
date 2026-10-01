@@ -129,6 +129,9 @@ class Result:
         Args:
             storage_filesystem: The filesystem to use.
             storage_path: The source to open for reading.
+
+        Returns:
+            The file contents decoded as a UTF-8 string.
         """
 
         with storage_filesystem.open_input_stream(storage_path) as f:

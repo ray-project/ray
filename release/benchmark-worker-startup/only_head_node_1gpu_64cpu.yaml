@@ -1,9 +1,6 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-max_workers: 0
-
-advanced_configurations_json:
+advanced_instance_config:
     # Fix the volume size so that IOPS is constant even if the default changes.
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
@@ -12,11 +9,13 @@ advanced_configurations_json:
             # 150GB is the default in Anyscale.
             VolumeSize: 150
 
-head_node_type:
-    name: head_node
+head_node:
     instance_type: g5.16xlarge
+    # GPU: 64 is an intentional override (instance has 1 physical GPU);
+    # the benchmark script uses --num_gpus_in_cluster 64 to test
+    # resource scheduling with 64 logical GPU slots.
     resources:
-        cpu: 64
-        gpu: 64
+        CPU: 64
+        GPU: 64
 
-worker_node_types: []
+worker_nodes: []

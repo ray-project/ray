@@ -60,30 +60,36 @@ def broadcast(
         # waiting.
         handle._init(_run_router_in_separate_loop=True)
 
-    # Wait for the router to be populated with replicas
-    # We add a timeout to prevent infinite hanging
-    start_time = time.time()
-    while not handle.running_replicas_populated():
-        if time.time() - start_time > BROADCAST_REPLICA_POPULATION_TIMEOUT_S:
-            raise TimeoutError(
-                "Timed out waiting for deployment replicas to be populated."
-            )
-        time.sleep(0.1)
-
     router = handle._router
     if router is None:
         raise RuntimeError("DeploymentHandle router is None.")
 
-    # Access the request router and replica set
-    # Handle different potential internal structures
-    request_router = None
-    if hasattr(router, "_asyncio_router"):
-        request_router = router._asyncio_router._request_router
-    elif hasattr(router, "_request_router"):
-        request_router = router._request_router
+    # Wait for both the replica set AND the request router to be populated.
+    # `running_replicas_populated()` flips when DEPLOYMENT_TARGETS long-poll
+    # arrives; `request_router` becomes non-None only after DEPLOYMENT_CONFIG
+    # long-poll arrives and sets `_request_router_class`. These are independent
+    # long-polls, so polling only the former races with the latter.
+    #
+    # In normal request flow this is hidden because `assign_request` awaits
+    # `_request_router_initialized` before routing — but `broadcast()` bypasses
+    # `assign_request` and pokes `_replica_id_set` directly, so it has to
+    # synchronize itself.
+    def _get_request_router():
+        if hasattr(router, "_asyncio_router"):
+            return router._asyncio_router.request_router
+        if hasattr(router, "request_router"):
+            return router.request_router
+        return None
 
-    if request_router is None:
-        raise RuntimeError("Request router not initialized. No replicas accessible.")
+    start_time = time.time()
+    while not handle.running_replicas_populated() or _get_request_router() is None:
+        if time.time() - start_time > BROADCAST_REPLICA_POPULATION_TIMEOUT_S:
+            raise TimeoutError(
+                "Timed out waiting for deployment router/replicas to initialize."
+            )
+        time.sleep(0.1)
+
+    request_router = _get_request_router()
 
     replica_set = request_router._replica_id_set
 

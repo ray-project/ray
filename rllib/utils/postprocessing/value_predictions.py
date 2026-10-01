@@ -12,30 +12,47 @@ def compute_value_targets(
     gamma: float,
     lambda_: float,
 ):
-    """Computes value function (vf) targets given vf predictions and rewards.
+    """Computes GAE value targets given vf predictions and rewards.
 
-    Note that advantages can then easily be computed via the formula:
-    advantages = targets - vf_predictions
+    Convention (Gymnasium-aligned, matches ``AddOneTsToEpisodesAndTruncate``):
+      ``terminateds[t] = True``  =>  no s_{t+1}; gate t -> t+1 bootstrap.
+      ``truncateds[t]  = True``  =>  step t ends an episode chunk; V(s_{t+1})
+                                     remains a valid bootstrap, but GAE must
+                                     not propagate across the boundary.
+
+    Advantages = targets - vf_predictions.
+
+    See https://pseudo-rnd-thoughts.github.io/blog/visualising-gae/ for visualisation.
     """
-    # Force-set all values at terminals (not at truncations!) to 0.0.
-    orig_values = flat_values = values * (1.0 - terminateds)
+    # 1 if the transition t -> t+1 exists (not a terminal at t), else 0.
+    non_terminal = 1.0 - terminateds
+    # 1 if GAE may propagate from t+1 back into t, else 0. Both terminal and
+    # chunk-boundary steps stop the recursion.
+    propagate = non_terminal * (1.0 - truncateds)
 
-    flat_values = np.append(flat_values, 0.0)
-    intermediates = rewards + gamma * (1 - lambda_) * flat_values[1:]
-    continues = 1.0 - terminateds
+    # V(s_{t+1}) per timestep. The trailing 0.0 is a dummy: the corresponding
+    # td_residual is masked out downstream by `loss_mask`, and the recursion
+    # carrying it is gated by `propagate`.
+    next_state_values = np.append(values[1:], 0.0)
 
-    Rs = []
-    last = flat_values[-1]
-    for t in reversed(range(intermediates.shape[0])):
-        last = intermediates[t] + continues[t] * gamma * lambda_ * last
-        Rs.append(last)
-        if truncateds[t]:
-            last = orig_values[t]
+    # TD residual: delta_t = r_t + gamma * (1 - terminated_t) * V(s_{t+1}) - V(s_t)
+    # Truncation does NOT zero the bootstrap -- V(s_{t+1}) is a valid
+    # prediction at a truncation boundary.
+    td_residuals = rewards + gamma * non_terminal * next_state_values - values
 
-    # Reverse back to correct (time) direction.
-    value_targets = np.stack(list(reversed(Rs)), axis=0)
+    # GAE backward recursion. `running_advantage` carries advantage[t+1] into
+    # iteration t and is killed at terminal / truncation boundaries by
+    # `propagate`.
+    advantages = np.zeros_like(rewards, dtype=np.float32)
+    running_advantage = 0.0
+    for t in reversed(range(td_residuals.shape[0])):
+        running_advantage = (
+            td_residuals[t] + gamma * lambda_ * propagate[t] * running_advantage
+        )
+        advantages[t] = running_advantage
 
-    return value_targets.astype(np.float32)
+    # target_t = advantage_t + V(s_t).
+    return (advantages + values).astype(np.float32)
 
 
 def extract_bootstrapped_values(vf_preds, episode_lengths, T):

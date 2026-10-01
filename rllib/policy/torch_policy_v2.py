@@ -106,7 +106,7 @@ class TorchPolicyV2(Policy):
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
-        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - num_gpus=0 (set by user).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             self.device = torch.device("cpu")
@@ -122,7 +122,6 @@ class TorchPolicyV2(Policy):
             self.model = model
         # Place on one or more actual GPU(s), when:
         # - num_gpus > 0 (set by user) AND
-        # - local_mode=False AND
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
@@ -1011,6 +1010,7 @@ class TorchPolicyV2(Policy):
                     for k in list(dummy_inputs.keys())
                     + ["state_ins", SampleBatch.SEQ_LENS]
                 },
+                dynamo=False,
             )
         # Save the torch.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).

@@ -8,7 +8,7 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private import ray_constants
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
@@ -50,17 +50,21 @@ def short_gcs_publish_timeout(monkeypatch):
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is done."""
-    ray.init()
+
+    signal_actor = SignalActor.remote()
 
     @ray.remote
     def f():
-        import time
-
-        time.sleep(10)
+        ray.get(signal_actor.wait.remote())
 
     num_cpus = int(ray.available_resources()["CPU"])
-    tasks = [f.remote() for _ in range(num_cpus)]  # noqa
-    wait_for_condition(lambda: len(get_all_ray_worker_processes()) > 0)
+    for _ in range(num_cpus):
+        f.remote()
+    wait_for_condition(
+        lambda: ray.get(signal_actor.cur_num_waiters.remote()) == num_cpus,
+        timeout=20,
+    )
+    assert len(get_all_ray_worker_processes()) > 0
 
     ray.shutdown()
 

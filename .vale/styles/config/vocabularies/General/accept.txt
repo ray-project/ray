@@ -3,6 +3,7 @@
 [Aa]sync
 [Cc]odec
 [Cc]omposable
+Databricks
 [Dd]eduplicate(s)?
 [Dd]eduplication
 [Dd]etokenization
@@ -16,11 +17,12 @@
 [Pp]arallelization
 [Pp]erformant
 [Pp]rofiler
-[Rr]esample
+[Rr]esample[sd]?
 [Rr]esampling
 [Ss]pectogram(s)?
 [Ss]ubclassing
 [Tt][Ll][Ss]
+vCPUs?
 [Vv]ision LMs
 admin
 agentic
@@ -66,10 +68,12 @@ g[Rr][Pp][Cc]
 GGUF
 GKE
 GPT
+gpt-oss
 GPTQ
 GPU(s)?
 hostfile
 http
+HAProxy
 HTTP
 Karpenter
 KServe
@@ -78,6 +82,7 @@ kubectl
 Kubernetes
 Kueue
 lakehouse(s)?
+Langfuse
 LGBM
 LLMServer
 LMs
@@ -88,7 +93,7 @@ Mixtral
 MLflow
 MLOps
 MNIST
-namespace
+namespaces?
 NER
 NLP
 Nsight
@@ -96,8 +101,9 @@ NumPy
 NVIDIA
 NVLink
 NVMe
-OOM
+OOM(s)?
 open-source
+Palo
 [Pp][Aa][Cc][Kk]
 pipelining
 PIL
@@ -111,11 +117,13 @@ Quantizing
 Quickstarts
 Qwen
 Reimplement
+REST
 retrigger
 RISECamp
 RLHF
 rollouts
 SageMaker
+SDKs
 serverless
 SFT
 ShareGPT
@@ -126,10 +134,11 @@ streamable
 Softmax
 streamable
 subprocess
+superset
 teardown
 tiktoken
 TPU(s)?
-tokenization
+[Tt]okenization
 uncaptured
 URI(s)?
 UUID

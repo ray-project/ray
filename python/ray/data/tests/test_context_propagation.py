@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask

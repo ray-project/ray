@@ -14,6 +14,9 @@
 #include "spt_status.h"
 
 #include <string.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /* Darwin doesn't export environ */
 #if defined(__darwin__)
@@ -196,6 +199,132 @@ exit:
 }
 
 
+/* read /proc/self/stat to extract arg_start (field 48) and
+ * arg_end (field 49). These addresses are set by the kernel at execve()
+ * time and never change for the lifetime of the process, so they survive
+ * libc setenv()/putenv() reallocations that move `environ` and break the
+ * environ-walk in find_argv_from_env(). Available on Linux kernels >= 3.5
+ * (2012). Returns 0 on success, -1 on failure. ref: https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html
+ */
+static int
+read_proc_arg_bounds(unsigned long *arg_start_out, unsigned long *arg_end_out)
+{
+    FILE *f = NULL;
+    char buf[8192];
+    size_t n;
+    char *p;
+    int i;
+    int rv = -1;
+
+    f = fopen("/proc/self/stat", "r");
+    if (!f) {
+        spt_debug("opening /proc/self/stat failed");
+        goto exit;
+    }
+    n = fread(buf, 1, sizeof(buf) - 1, f);
+    if (n == 0) {
+        spt_debug("reading /proc/self/stat failed");
+        goto exit;
+    }
+    buf[n] = '\0';
+
+    /* Field 2 (comm) is in parens and may itself contain spaces or parens —
+     * scan to the LAST ')' before whitespace-tokenizing the remaining fields. */
+    p = strrchr(buf, ')');
+    if (!p) {
+        spt_debug("malformed /proc/self/stat: no ')'");
+        goto exit;
+    }
+    p++;
+
+    /* After comm, we're at field 3. arg_start is field 48 and arg_end is
+     * field 49, so skip 45 whitespace-separated fields to land on field 48. */
+    for (i = 0; i < 45; i++) {
+        while (*p == ' ') p++;
+        while (*p && *p != ' ') p++;
+    }
+    while (*p == ' ') p++;
+
+    if (sscanf(p, "%lu %lu", arg_start_out, arg_end_out) != 2) {
+        spt_debug("failed to parse arg_start/arg_end from /proc/self/stat");
+        goto exit;
+    }
+    rv = 0;
+
+exit:
+    if (f) { fclose(f); }
+    return rv;
+}
+
+
+/* fallback to /proc/self/stat when find_argv_from_env() fails.
+ *
+ * Returns a malloc'd argv vector of `argc` pointers into the original
+ * argv memory region, or NULL on error. arg0 (the encoded argv[0] from
+ * Py_GetArgcArgv or /proc/PID/cmdline) is used to validate the discovered
+ * region.
+ */
+static char **
+find_argv_from_proc_stat(int argc, char *arg0)
+{
+    unsigned long arg_start = 0;
+    unsigned long arg_end = 0;
+    char *base;
+    char *limit;
+    char *cur;
+    char **buf = NULL;
+    char **rv = NULL;
+    int i;
+
+    spt_debug("falling back to /proc/self/stat for argv bounds");
+
+    if (read_proc_arg_bounds(&arg_start, &arg_end) < 0) {
+        goto exit;
+    }
+    if (arg_end <= arg_start) {
+        spt_debug("invalid arg_start/arg_end from /proc/self/stat");
+        goto exit;
+    }
+
+    base = (char *)(uintptr_t)arg_start;
+    limit = (char *)(uintptr_t)arg_end;
+
+    /* Validate that the bytes at base match the arg0 we already know.
+     * strncmp guards against running past the region if arg0 happens to be
+     * longer than what's actually there. */
+    if (strncmp(base, arg0, (size_t)(limit - base)) != 0) {
+        spt_debug("argv[0] at /proc arg_start doesn't match expected arg0");
+        goto exit;
+    }
+
+    if (!(buf = (char **)malloc((argc + 1) * sizeof(char *)))) {
+        spt_debug("can't malloc %d args!", argc);
+        PyErr_NoMemory();
+        goto exit;
+    }
+    buf[argc] = NULL;
+
+    cur = base;
+    for (i = 0; i < argc; i++) {
+        if (cur >= limit) {
+            spt_debug("ran past arg_end before exhausting argc");
+            goto exit;
+        }
+        buf[i] = cur;
+        /* Step over the next NUL to land on the start of the next arg. */
+        while (cur < limit && *cur) { cur++; }
+        if (cur < limit) { cur++; }
+    }
+
+    rv = buf;
+    buf = NULL;
+
+exit:
+    if (buf) { free(buf); }
+    return rv;
+}
+
+
 /* Come on, why is this missing?! this is just cruel!
  * I guess you club seal pups for hobby. */
 PyObject *
@@ -373,8 +502,16 @@ get_argc_argv(int *argc_o, char ***argv_o)
     /* If we don't know argv but we know the content of argv[0], we can walk
      * backwards from environ and see if we get it. */
     if (arg0 && !argv) {
-        if (!(argv = find_argv_from_env(argc, arg0))) {
-            spt_debug("couldn't find argv from environ");
+        argv = find_argv_from_env(argc, arg0);
+        if (!argv) {
+            spt_debug("couldn't find argv from environ; trying /proc/self/stat");
+            /* Ray patch: fall back to /proc/self/stat's arg_start/arg_end,
+             * which the kernel sets at execve() and which survive libc
+             * setenv() reallocations that move `environ`. */
+            argv = find_argv_from_proc_stat(argc, arg0);
+        }
+        if (!argv) {
+            spt_debug("couldn't find argv from environ or /proc/self/stat");
             goto exit;
         }
     }

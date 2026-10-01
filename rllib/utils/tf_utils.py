@@ -892,18 +892,31 @@ class TensorFlowVariables:
         if input_variables is not None:
             variable_list += input_variables
 
+        def _get_var_name(v):
+            """Get variable name, supporting both TF1 ResourceVariable and
+            Keras 3 Variable objects."""
+            if hasattr(v, "op"):
+                return v.op.node_def.name
+            return v.name
+
         if not tf1.executing_eagerly():
             for v in variable_list:
-                self.variables[v.op.node_def.name] = v
+                self.variables[_get_var_name(v)] = v
 
             self.placeholders = {}
             self.assignment_nodes = {}
 
             # Create new placeholders to put in custom weights.
             for k, var in self.variables.items():
+                dtype = var.value().dtype if hasattr(var, "op") else var.dtype
+                shape = (
+                    var.get_shape().as_list()
+                    if hasattr(var, "get_shape")
+                    else list(var.shape)
+                )
                 self.placeholders[k] = tf1.placeholder(
-                    var.value().dtype,
-                    var.get_shape().as_list(),
+                    dtype,
+                    shape,
                     name="Placeholder_" + k,
                 )
                 self.assignment_nodes[k] = var.assign(self.placeholders[k])

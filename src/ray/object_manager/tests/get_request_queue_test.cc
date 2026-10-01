@@ -372,8 +372,3 @@ TEST_F(GetRequestQueueTest, TestRemoveTwice) {
   ASSERT_NO_THROW(RemoveGetRequest(get_request_queue, dangling_get_request));
 }
 }  // namespace plasma
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

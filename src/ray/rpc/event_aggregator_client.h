@@ -22,6 +22,7 @@
 
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/events_event_aggregator_service.grpc.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 
@@ -62,14 +63,29 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
 
   void Connect(const int port) override {
     grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
-        "127.0.0.1", port, *client_call_manager_);
+        GetLocalhostIP(), port, *client_call_manager_);
   }
 
-  VOID_RPC_CLIENT_METHOD(rpc::events::EventAggregatorService,
-                         AddEvents,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  void AddEvents(const rpc::events::AddEventsRequest &request,
+                 const ClientCallback<rpc::events::AddEventsReply> &callback) override {
+    if (grpc_client_ == nullptr) {
+      // Connect() was never called, so there is no aggregator to talk to (e.g. a
+      // minimal install where metrics_agent_port <= 0 selects the deferred-connection
+      // constructor). Report failure through the callback so the caller's in-flight
+      // bookkeeping unwinds, instead of dereferencing a null client.
+      RAY_LOG_EVERY_N(WARNING, 100)
+          << "EventAggregatorClient is not connected; dropping AddEvents request.";
+      callback(Status::Disconnected("Event aggregator client is not connected."),
+               rpc::events::AddEventsReply());
+      return;
+    }
+    INVOKE_RPC_CALL(rpc::events::EventAggregatorService,
+                    AddEvents,
+                    request,
+                    callback,
+                    grpc_client_,
+                    /*method_timeout_ms*/ -1);
+  }
 
  private:
   // Saved for deferred connection.

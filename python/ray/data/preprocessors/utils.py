@@ -1,6 +1,16 @@
 import hashlib
 from collections import deque
-from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Union,
+)
 
 import ray
 from ray.air.util.data_batch_conversion import BatchFormat
@@ -8,6 +18,8 @@ from ray.data.aggregate import AggregateFnV2
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from ray.data.dataset import Dataset
 
 
@@ -15,6 +27,35 @@ if TYPE_CHECKING:
 def simple_split_tokenizer(value: str) -> List[str]:
     """Tokenize a string using a split on spaces."""
     return value.split(" ")
+
+
+def _tokenize_ignoring_nulls(
+    values: "pd.Series", tokenization_fn: Callable[[str], List[str]]
+) -> "pd.Series":
+    """Tokenize every present value, leaving missing ones missing.
+
+    A missing document has no text to split, so it gets no token list: the null
+    is carried through to the output rather than handed to ``tokenization_fn``,
+    which would call ``.split()`` on it and raise ``AttributeError``.
+
+    The guard lives here rather than in :func:`simple_split_tokenizer` because
+    ``tokenization_fn`` can be supplied by the caller, and a user-written
+    tokenizer should not have to know about ``pd.NA`` either.
+    """
+    return values.map(tokenization_fn, na_action="ignore")
+
+
+def _null_where_source_is_missing(rows: List[Any], source: "pd.Series") -> List[Any]:
+    """Blank out entries of ``rows`` whose document in ``source`` was missing.
+
+    The vectorizers build one fixed-width row of counts per document by
+    concatenating a column per token, which leaves a row of nulls where the
+    document was missing. Replacing that with a single ``None`` keeps the output
+    a list column of numbers with a missing entry, rather than a list of missing
+    numbers.
+    """
+    missing_mask = source.isna().to_numpy()
+    return [None if missing else row for row, missing in zip(rows, missing_mask)]
 
 
 @DeveloperAPI
@@ -243,3 +284,66 @@ def make_post_processor(base_fn, callbacks: List[Callable]):
         return processed
 
     return wrapper
+
+
+class _Computed:
+    """
+    Wraps a factory callable for defaults that must be computed from the object.
+
+    Plain callable values (e.g. a tokenizer function stored as an attribute)
+    must NOT be wrapped — they will be stored as-is.
+    """
+
+    def __init__(self, factory: Callable[[Any], Any]) -> None:
+        self._factory = factory
+
+    def __call__(self, obj: Any) -> Any:
+        return self._factory(obj)
+
+
+_REQUIRED_FIELD = object()  # Sentinel for required fields with no default value
+
+
+@dataclass
+class _PublicField:
+    """
+    Represents a public field that may have been used in older versions of the code.
+    If the field's default value is not _REQUIRED_FIELD, it will be used if neither the private field nor the public field is present during unpickling.
+    Otherwise, the field is required and must be present as either the private or public field during unpickling, or a ValueError will be raised.
+    Used for backwards compatibility during unpickling.
+    """
+
+    public_field: str
+    default: Any = _REQUIRED_FIELD
+
+
+def migrate_private_fields(
+    obj: Any,
+    *,
+    fields: Dict[str, _PublicField],
+) -> None:
+    """
+    Migrates old public field names to new private field names during unpickling for backwards compatibility.
+    """
+    for private_field, public_field_obj in fields.items():
+        if private_field not in obj.__dict__:
+            if public_field_obj.public_field in obj.__dict__:
+                # Migrate from old public field names to new private field names
+                setattr(
+                    obj, private_field, obj.__dict__.pop(public_field_obj.public_field)
+                )
+            elif public_field_obj.default is _REQUIRED_FIELD:
+                raise ValueError(
+                    f"Invalid serialized {type(obj).__name__}: missing required field '{private_field}'."
+                )
+            else:
+                # Set defaults for missing fields.
+                # _Computed defaults are called with obj; all other values are stored as-is,
+                # including callable objects like tokenizer functions.
+                setattr(
+                    obj,
+                    private_field,
+                    public_field_obj.default(obj)
+                    if isinstance(public_field_obj.default, _Computed)
+                    else public_field_obj.default,
+                )

@@ -646,6 +646,9 @@ class RayActorManager:
 
         Args:
             tracked_actor: Tracked actor object.
+
+        Returns:
+            True if the actor has been started, False otherwise.
         """
         return (
             tracked_actor in self._live_actors_to_ray_actors_resources
@@ -664,6 +667,10 @@ class RayActorManager:
 
         Args:
             tracked_actor: Tracked actor object.
+
+        Returns:
+            The acquired resources of the actor, or ``None`` if the actor has not
+            been started yet.
         """
         if not self.is_actor_started(tracked_actor):
             return None
@@ -705,10 +712,15 @@ class RayActorManager:
             kwargs: Keyword arguments to pass to the task.
             on_result: Callback to invoke when the task resolves.
             on_error: Callback to invoke when the task fails.
+            _return_future: If True, return the scheduled task's ``ObjectRef`` for
+                advanced callers. Defaults to False.
 
         Raises:
             ValueError: If the ``tracked_actor`` is not managed by this event manager.
 
+        Returns:
+            The scheduled task's ``ObjectRef`` if ``_return_future`` is True,
+            otherwise ``None``.
         """
         args = args or tuple()
         kwargs = kwargs or {}

@@ -1,5 +1,6 @@
 import random
 import sys
+import time
 from collections import defaultdict
 from typing import List
 from unittest import mock
@@ -10,23 +11,36 @@ import pytest
 import ray
 from ray._raylet import NodeID
 from ray.serve._private import default_impl
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
+    CreatePlacementGroupRequest,
+    DeploymentID,
+    GangPlacementGroupRequest,
+    ReplicaID,
+)
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_COMPACTION_TIMEOUT_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
+    AvailableNodeResources,
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
     ReplicaSchedulingRequest,
+    ReplicaSchedulingRequestStatus,
+    RequestedResources,
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
+from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
     MockActorClass,
     MockClusterNodeInfoCache,
     MockPlacementGroup,
+    MockTimer,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import (
     In,
@@ -44,7 +58,7 @@ def rconfig(**config_opts):
     return ReplicaConfig.create(dummy, **config_opts)
 
 
-def get_random_resources(n: int) -> List[Resources]:
+def get_random_resources(n: int) -> List[dict]:
     """Gets n random resources."""
 
     resources = {
@@ -61,69 +75,86 @@ def get_random_resources(n: int) -> List[Resources]:
             if random.randint(0, 1) == 0:
                 resource_dict[resource] = callable()
 
-        res.append(Resources(resource_dict))
+        res.append(resource_dict)
 
     return res
 
 
 class TestResources:
+    def test_base_resources_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="cannot be instantiated directly"):
+            Resources()
+
     @pytest.mark.parametrize("resource_type", ["CPU", "GPU", "memory"])
     def test_basic(self, resource_type: str):
         # basic resources
-        a = Resources({resource_type: 1})
-        b = Resources({resource_type: 0})
+        a = AvailableNodeResources({resource_type: 1})
+        b = RequestedResources({resource_type: 0})
         assert a.can_fit(b)
+
+        b = AvailableNodeResources({resource_type: 0})
+        a = RequestedResources({resource_type: 1})
         assert not b.can_fit(a)
 
     def test_neither_bigger(self):
-        a = Resources({"CPU": 1, "GPU": 0})
-        b = Resources({"CPU": 0, "GPU": 1})
+        a = AvailableNodeResources({"CPU": 1, "GPU": 0})
+        b = RequestedResources({"CPU": 0, "GPU": 1})
         assert not a == b
         assert not a.can_fit(b)
-        assert not b.can_fit(a)
 
     combos = [tuple(get_random_resources(20)[i : i + 2]) for i in range(0, 20, 2)]
 
     @pytest.mark.parametrize("resource_A,resource_B", combos)
-    def test_soft_resources_consistent_comparison(self, resource_A, resource_B):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_soft_resources_consistent_comparison(
+        self, resource_A, resource_B, resource_class
+    ):
         """Resources should have consistent comparison. Either A==B, A<B, or A>B."""
 
         assert (
-            resource_A == resource_B
-            or resource_A > resource_B
-            or resource_A < resource_B
+            resource_class(resource_A) == resource_class(resource_B)
+            or resource_class(resource_A) > resource_class(resource_B)
+            or resource_class(resource_A) < resource_class(resource_B)
         )
 
-    def test_compare_resources(self):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_compare_resources(self, resource_class):
         # Prioritize GPU
-        a = Resources({"GPU": 1, "CPU": 10, "memory": 10, "custom": 10})
-        b = Resources({"GPU": 2, "CPU": 0, "memory": 0, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 10, "memory": 10, "custom": 10})
+        b = resource_class({"GPU": 2, "CPU": 0, "memory": 0, "custom": 0})
         assert b > a
 
         # Then CPU
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 10, "custom": 10})
-        b = Resources({"GPU": 1, "CPU": 2, "memory": 0, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 10, "custom": 10})
+        b = resource_class({"GPU": 1, "CPU": 2, "memory": 0, "custom": 0})
         assert b > a
 
         # Then memory
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 10})
-        b = Resources({"GPU": 1, "CPU": 1, "memory": 2, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 10})
+        b = resource_class({"GPU": 1, "CPU": 1, "memory": 2, "custom": 0})
         assert b > a
 
         # Then custom resources
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 1})
-        b = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 2})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 1})
+        b = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 2})
         assert b > a
 
-    def test_sort_resources(self):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_sort_resources(self, resource_class):
         """Prioritize GPUs, CPUs, memory, then custom resources when sorting."""
 
-        a = Resources({"GPU": 0, "CPU": 4, "memory": 99, "A": 10})
-        b = Resources({"GPU": 0, "CPU": 2, "memory": 100})
-        c = Resources({"GPU": 1, "CPU": 1, "memory": 50})
-        d = Resources({"GPU": 2, "CPU": 0, "memory": 0})
-        e = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 6})
-        f = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 2})
+        a = resource_class({"GPU": 0, "CPU": 4, "memory": 99, "A": 10})
+        b = resource_class({"GPU": 0, "CPU": 2, "memory": 100})
+        c = resource_class({"GPU": 1, "CPU": 1, "memory": 50})
+        d = resource_class({"GPU": 2, "CPU": 0, "memory": 0})
+        e = resource_class({"GPU": 3, "CPU": 8, "memory": 10000, "A": 6})
+        f = resource_class({"GPU": 3, "CPU": 8, "memory": 10000, "A": 2})
 
         for _ in range(10):
             resources = [a, b, c, d, e, f]
@@ -132,18 +163,18 @@ class TestResources:
             assert resources == [e, f, d, c, a, b]
 
     def test_custom_resources(self):
-        a = Resources({"alice": 2})
-        b = Resources({"alice": 3})
-        assert a < b
-        assert b.can_fit(a)
-        assert a + b == Resources(**{"alice": 5})
+        a = AvailableNodeResources({"alice": 3})
+        b = AvailableNodeResources({"alice": 2})
+        assert b < a
+        assert a.can_fit(b)
+        assert a + b == AvailableNodeResources(**{"alice": 5})
 
-        a = Resources({"bob": 2})
-        b = Resources({"CPU": 4})
-        assert a + b == Resources(**{"CPU": 4, "bob": 2})
+        a = AvailableNodeResources({"bob": 2})
+        b = AvailableNodeResources({"CPU": 4})
+        assert a + b == AvailableNodeResources(**{"CPU": 4, "bob": 2})
 
     def test_implicit_resources(self):
-        r = Resources()
+        r = AvailableNodeResources()
         # Implicit resources
         assert r.get(f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}random") == 1
         # Everything else
@@ -153,56 +184,117 @@ class TestResources:
         assert r.get("random_custom") == 0
 
         # Arithmetric with implicit resources
-        implicit_resource = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever"
-        a = Resources()
-        b = Resources({implicit_resource: 0.5})
-        assert a.get(implicit_resource) == 1
-        assert b.get(implicit_resource) == 0.5
+        implicit_resource_1 = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever"
+        implicit_resource_2 = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever2"
+        a = AvailableNodeResources()
+        b = RequestedResources({implicit_resource_1: 0.5})
+        c = RequestedResources({implicit_resource_2: 0.25})
+        assert a.get(implicit_resource_1) == 1
         assert a.can_fit(b)
 
         a -= b
-        assert a.get(implicit_resource) == 0.5
+        assert a.get(implicit_resource_1) == 0.5
         assert a.can_fit(b)
 
         a -= b
-        assert a.get(implicit_resource) == 0
+        assert a.get(implicit_resource_1) == 0
         assert not a.can_fit(b)
+
+        for i in range(4):
+            assert a.can_fit(c)
+
+            a -= c
+            assert a.get(implicit_resource_1) == 0
+            assert a.get(implicit_resource_2) == 1 - 0.25 * (i + 1)
+
+        # Implicit resources exhausted
+        assert not a.can_fit(c)
 
 
 def test_deployment_scheduling_info():
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
     )
-    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
+    assert info.required_resources == RequestedResources({"CPU": 2, "GPU": 1})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100}),
-            Resources({"GPU": 100}),
+            RequestedResources({"CPU": 100}),
+            RequestedResources({"GPU": 100}),
         ],
         placement_group_strategy="STRICT_PACK",
     )
-    assert info.required_resources == Resources({"CPU": 100, "GPU": 100})
+    assert info.required_resources == RequestedResources({"CPU": 100, "GPU": 100})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100}),
-            Resources({"GPU": 100}),
+            # Bundle 0 hosts the actor's CPU plus the CPU+GPU for a child
+            # task/actor captured into the PG.
+            RequestedResources({"CPU": 2, "GPU": 1}),
+            RequestedResources({"CPU": 1, "GPU": 1}),
         ],
         placement_group_strategy="PACK",
     )
-    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
+    # Actor is pinned as a subset of bundle 0, so required_resources is
+    # bundle 0's full reservation, not just actor_resources.
+    assert info.required_resources == RequestedResources({"CPU": 2, "GPU": 1})
     assert info.is_non_strict_pack_pg()
+
+
+def test_deployment_scheduling_info_required_resources_no_mutation():
+    dep_id = DeploymentID("app", "name")
+    actor = RequestedResources({"CPU": 1})
+    info = DeploymentSchedulingInfo(
+        deployment_id=dep_id,
+        scheduling_policy=SpreadDeploymentSchedulingPolicy,
+        actor_resources=actor,
+        max_replicas_per_node=2,
+    )
+    implicit = (
+        f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}" f"{dep_id.app_name}:{dep_id.name}"
+    )
+    assert info.required_resources == RequestedResources({"CPU": 1, implicit: 0.5})
+    assert actor == RequestedResources({"CPU": 1})
+    assert implicit not in actor
+
+
+def test_max_replicas_per_node_zero_skips_implicit_resource():
+    """Falsy max_replicas_per_node (e.g. 0) must not trigger 1.0 / 0."""
+    dep_id = DeploymentID("app", "name")
+    implicit = (
+        f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}" f"{dep_id.app_name}:{dep_id.name}"
+    )
+
+    info = DeploymentSchedulingInfo(
+        deployment_id=dep_id,
+        scheduling_policy=SpreadDeploymentSchedulingPolicy,
+        actor_resources=RequestedResources({"CPU": 1}),
+        max_replicas_per_node=0,
+    )
+    assert info.required_resources == RequestedResources({"CPU": 1})
+    assert implicit not in info.required_resources
+
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r0", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+        max_replicas_per_node=0,
+    )
+    assert req.requested_resources == RequestedResources({"CPU": 1})
+    assert implicit not in req.requested_resources
 
 
 def test_get_available_resources_per_node():
@@ -238,7 +330,9 @@ def test_get_available_resources_per_node():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -253,7 +347,9 @@ def test_get_available_resources_per_node():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -270,7 +366,9 @@ def test_get_available_resources_per_node():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -347,7 +445,9 @@ def test_get_available_resources_per_node_pg():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -361,7 +461,9 @@ def test_get_available_resources_per_node_pg():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -377,7 +479,9 @@ def test_get_available_resources_per_node_pg():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -399,10 +503,10 @@ def test_best_fit_node():
     # None of the nodes can schedule the replica
     assert (
         scheduler._best_fit_node(
-            required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+            required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
             available_resources={
-                "node1": Resources(GPU=3, CPU=3),
-                "node2": Resources(CPU=3, customx=1),
+                "node1": AvailableNodeResources(GPU=3, CPU=3),
+                "node2": AvailableNodeResources(CPU=3, customx=1),
             },
         )
         is None
@@ -410,30 +514,30 @@ def test_best_fit_node():
 
     # Only node2 can fit the replica
     assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(CPU=3),
-            "node2": Resources(GPU=1, CPU=3, customx=1),
-            "node3": Resources(CPU=3, customx=1),
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(GPU=1, CPU=3, customx=1),
+            "node3": AvailableNodeResources(CPU=3, customx=1),
         },
     )
 
     # We should prioritize minimizing fragementation of GPUs over CPUs
     assert "node1" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(GPU=2, CPU=10, customx=1),
-            "node2": Resources(GPU=10, CPU=2, customx=1),
+            "node1": AvailableNodeResources(GPU=2, CPU=10, customx=1),
+            "node2": AvailableNodeResources(GPU=10, CPU=2, customx=1),
         },
     )
 
     # When GPU is the same, should prioritize minimizing fragmentation
     # of CPUs over customer resources
     assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(GPU=10, CPU=5, customx=0.1),
-            "node2": Resources(GPU=10, CPU=2, customx=10),
+            "node1": AvailableNodeResources(GPU=10, CPU=5, customx=0.1),
+            "node2": AvailableNodeResources(GPU=10, CPU=2, customx=10),
         },
     )
 
@@ -446,24 +550,69 @@ def test_best_fit_node():
         Resources.CUSTOM_PRIORITY = ["customx", "customy"]
 
         assert "node2" == scheduler._best_fit_node(
-            required_resources=Resources(customx=1, customy=1),
+            required_resources=RequestedResources(customx=1, customy=1),
             available_resources={
-                "node1": Resources(customx=2, customy=5),
-                "node2": Resources(customx=2, customy=1),
+                "node1": AvailableNodeResources(customx=2, customy=5),
+                "node2": AvailableNodeResources(customx=2, customy=1),
             },
         )
 
         # If customx and customy are equal, GPU should determine best fit
         assert "node2" == scheduler._best_fit_node(
-            required_resources=Resources(customx=1, customy=1, GPU=1),
+            required_resources=RequestedResources(customx=1, customy=1, GPU=1),
             available_resources={
-                "node1": Resources(customx=2, customy=2, GPU=10),
-                "node2": Resources(customx=2, customy=2, GPU=2),
+                "node1": AvailableNodeResources(customx=2, customy=2, GPU=10),
+                "node2": AvailableNodeResources(customx=2, customy=2, GPU=2),
             },
         )
 
         # restore
         Resources.CUSTOM_PRIORITY = original
+
+
+def test_best_fit_node_tie_break_key():
+    """Test that _best_fit_node uses tie_break_key only to break ties."""
+
+    scheduler = default_impl.create_deployment_scheduler(
+        MockClusterNodeInfoCache(),
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+
+    required_resources = RequestedResources(CPU=1)
+    tie_break_key = {"node1": 5, "node2": 1, "node3": 3}.get
+
+    # All nodes leave identical remaining space, so the smallest key wins.
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # Best fit dominates: node1 leaves less space and wins despite the largest key.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=2),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # An equal key keeps the first node seen; the tie break only wins if strictly smaller.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=lambda node_id: 0,
+    )
 
 
 def test_schedule_replica():
@@ -610,6 +759,223 @@ def test_schedule_replica():
         "num_cpus": 1,
         "resources": {"my_rs": 1},
     }
+
+    # target_node_id set on the request pins with hard node affinity. The
+    # ingress request router uses this so a replica lands on its proxy node or
+    # not at all, unlike the soft param path above.
+    r5_id = ReplicaID(unique_id="r5", deployment_id=d_id)
+    node_id_2 = NodeID.from_random().hex()
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r5_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r5"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+        target_node_id=node_id_2,
+    )
+    scheduler._pending_replicas[d_id][r5_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+    )
+    assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+    assert scheduling_strategy.node_id == node_id_2
+    assert scheduling_strategy.soft is False
+    assert scheduling_strategy._spill_on_unavailable is False
+
+
+def test_actor_creation_failure_removes_replica_pg():
+    """When actor creation fails after a placement group has already
+    been created for the replica, that placement group should be
+    removed so it does not leak resources.
+    """
+
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    created_pgs = []
+
+    def tracking_create_pg(request):
+        pg = MockPlacementGroup(request)
+        created_pgs.append(pg)
+        return pg
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=tracking_create_pg,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        ReplicaConfig.create(
+            dummy,
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+        ),
+    )
+
+    class AlwaysFailActorClass(MockActorClass):
+        def remote(self, *args):
+            raise RuntimeError("Simulated actor creation failure")
+
+    on_scheduled_mock = Mock()
+    r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+
+    req0 = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=AlwaysFailActorClass(),
+        actor_resources={"CPU": 0},
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="STRICT_PACK",
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=on_scheduled_mock,
+    )
+
+    scheduler._pending_replicas[d_id][r0_id] = req0
+
+    with mock.patch("ray.util.remove_placement_group") as mock_remove_pg:
+        scheduler._schedule_replica(
+            scheduling_request=req0,
+            default_scheduling_strategy="SPREAD",
+        )
+
+        assert req0.status == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+        assert on_scheduled_mock.call_count == 0
+
+        # The PG should have been created and then removed.
+        assert len(created_pgs) == 1
+        mock_remove_pg.assert_called_once_with(created_pgs[0])
+
+
+def test_pg_cleanup_raises_actor_creation_failed_status():
+    """When actor creation fails and the subsequent placement group
+    cleanup also raises, the status should still be ACTOR_CREATION_FAILED.
+    """
+
+    d_id = DeploymentID(name="deployment1")
+
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+
+    created_pgs = []
+
+    def tracking_create_pg(request):
+        pg = MockPlacementGroup(request)
+        created_pgs.append(pg)
+        return pg
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=tracking_create_pg,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        ReplicaConfig.create(
+            dummy,
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+        ),
+    )
+
+    class AlwaysFailActorClass(MockActorClass):
+        def remote(self, *args):
+            raise RuntimeError("Simulated actor creation failure")
+
+    on_scheduled_mock = Mock()
+    r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+
+    req0 = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=AlwaysFailActorClass(),
+        actor_resources={"CPU": 0},
+        placement_group_bundles=[{"CPU": 1}],
+        placement_group_strategy="STRICT_PACK",
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=on_scheduled_mock,
+    )
+
+    scheduler._pending_replicas[d_id][r0_id] = req0
+
+    with mock.patch(
+        "ray.util.remove_placement_group",
+        side_effect=RuntimeError("Simulated PG removal failure"),
+    ) as mock_remove_pg:
+        scheduler._schedule_replica(
+            scheduling_request=req0,
+            default_scheduling_strategy="SPREAD",
+        )
+
+        assert req0.status == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+        assert on_scheduled_mock.call_count == 0
+        assert len(created_pgs) == 1
+        mock_remove_pg.assert_called_once_with(created_pgs[0])
+
+
+def test_actor_creation_failure_does_not_remove_gang_pg():
+    """When actor creation fails for a gang scheduled replica, the
+    gang placement group must not be removed.
+    """
+
+    d_id = DeploymentID(name="deployment1")
+
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1}),
+    )
+
+    class AlwaysFailActorClass(MockActorClass):
+        def remote(self, *args):
+            raise RuntimeError("Simulated actor creation failure")
+
+    gang_pg = MockPlacementGroup(
+        CreatePlacementGroupRequest(
+            bundles=[{"CPU": 1}],
+            strategy="STRICT_PACK",
+            target_node_id=None,
+            name="gang-pg",
+        )
+    )
+
+    on_scheduled_mock = Mock()
+    r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+
+    req0 = ReplicaSchedulingRequest(
+        replica_id=r0_id,
+        actor_def=AlwaysFailActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=on_scheduled_mock,
+        gang_placement_group=gang_pg,
+        gang_pg_index=0,
+    )
+
+    scheduler._pending_replicas[d_id][r0_id] = req0
+
+    with mock.patch("ray.util.remove_placement_group") as mock_remove_pg:
+        scheduler._schedule_replica(
+            scheduling_request=req0,
+            default_scheduling_strategy="SPREAD",
+        )
+
+        assert req0.status == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+        # Gang PG should NOT be removed.
+        mock_remove_pg.assert_not_called()
 
 
 def test_downscale_multiple_deployments():
@@ -915,20 +1281,51 @@ def test_schedule_passes_placement_group_options():
     assert pg_request.bundle_label_selector == test_labels
 
 
+def test_schedule_pins_actor_to_bundle_0():
+    """Replicas with a placement group are scheduled with placement_group_bundle_index=0."""
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=lambda request: MockPlacementGroup(request),
+    )
+
+    dep_id = DeploymentID(name="pin_test")
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+
+    captured_handles = []
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r1"},
+        actor_init_args=(),
+        on_scheduled=lambda handle, **kwargs: captured_handles.append(handle),
+        placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+        placement_group_strategy="PACK",
+    )
+    scheduler.schedule(upscales={dep_id: [req]}, downscales={})
+
+    assert len(captured_handles) == 1
+    strategy = captured_handles[0]._options["scheduling_strategy"]
+    assert isinstance(strategy, PlacementGroupSchedulingStrategy)
+    assert strategy.placement_group_bundle_index == 0
+
+
 def test_filter_nodes_by_label_selector():
     """Test _filter_nodes_by_label_selector logic used by _find_best_fit_node_for_pack
     when bin-packing, such that label constraints are enforced for the preferred node."""
 
-    class MockScheduler(default_impl.DefaultDeploymentScheduler):
+    class MockScheduler(default_impl.DeploymentScheduler):
         def __init__(self):
             pass
 
     scheduler = MockScheduler()
 
     nodes = {
-        "n1": Resources(),
-        "n2": Resources(),
-        "n3": Resources(),
+        "n1": AvailableNodeResources(),
+        "n2": AvailableNodeResources(),
+        "n3": AvailableNodeResources(),
     }
     node_labels = {
         "n1": {"region": "us-west", "gpu": "T4", "env": "prod"},
@@ -974,7 +1371,7 @@ def test_filter_nodes_by_label_selector():
 
 
 def test_build_pack_placement_candidates():
-    """Test strategy generation logic in DefaultDeploymentScheduler._build_pack_placement_candidates,
+    """Test strategy generation logic in DeploymentScheduler._build_pack_placement_candidates,
     verifying that the scheduler correctly generates a list of (resources, labels) tuples to
     attempt for scheduling."""
 
@@ -1378,6 +1775,110 @@ class TestPackScheduling:
         assert state[node_id_1] == 4
         assert state[node_id_2] == 1
 
+    def test_heterogeneous_resources_with_max_replicas_per_node(self):
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+        max_replicas_per_node = {d_id1: 2, d_id2: 3}
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        node1 = NodeID.from_random().hex()
+        node2 = NodeID.from_random().hex()
+
+        cluster_node_info_cache.add_node(node1, {"GPU": 8, "CPU": 32})
+        cluster_node_info_cache.add_node(node2, {"GPU": 10, "CPU": 32})
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1,
+            ReplicaConfig.create(
+                dummy,
+                max_replicas_per_node=max_replicas_per_node[d_id1],
+                ray_actor_options={"num_gpus": 2, "num_cpus": 1},
+            ),
+        )
+        scheduler.on_deployment_deployed(
+            d_id2,
+            ReplicaConfig.create(
+                dummy,
+                max_replicas_per_node=max_replicas_per_node[d_id2],
+                ray_actor_options={"num_gpus": 2, "num_cpus": 1},
+            ),
+        )
+
+        state = defaultdict(list)
+
+        def on_scheduled(actor_handle, *args, **kwargs):
+            scheduling_strategy = actor_handle._options["scheduling_strategy"]
+            assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+            state[scheduling_strategy.node_id].append(
+                actor_handle._options["deployment"]
+            )
+
+        # Schedule one d1 and one d2
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="replica0", deployment_id=d_id1),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id1],
+                        actor_options={"name": "random", "deployment": d_id1},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    ),
+                ],
+                d_id2: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="replica1", deployment_id=d_id2),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id2],
+                        actor_options={"name": "random", "deployment": d_id2},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                ],
+            },
+            downscales={},
+        )
+        assert state[node1].count(d_id1) == 1
+        assert state[node1].count(d_id2) == 1
+        assert len(state[node2]) == 0
+
+        # Schedule two more d1
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(
+                            unique_id=f"replica{i+2}", deployment_id=d_id1
+                        ),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id1],
+                        actor_options={"name": "random", "deployment": d_id1},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                    for i in range(2)
+                ],
+            },
+            downscales={},
+        )
+        # 2 d1 + 1 d2 on node1
+        assert state[node1].count(d_id1) == 2
+        assert state[node1].count(d_id2) == 1
+
+        # 1 d1 on node2 because of max_replicas_per_node=2 (otherwise node1 could have fit both new d1 replicas)
+        assert state[node2].count(d_id1) == 1
+        assert state[node2].count(d_id2) == 0
+
     def test_custom_resources(self):
         d_id = DeploymentID(name="deployment1")
         node_id_1 = NodeID.from_random().hex()
@@ -1423,6 +1924,2041 @@ class TestPackScheduling:
             },
             downscales={},
         )
+
+    def test_actor_creation_failure_does_not_decrement_resources(self):
+        """When actor creation fails for a replica, available resources
+        should not be decremented so subsequent replicas in the same
+        scheduling batch can still use that node.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node has exactly 1 CPU — enough for one 1-CPU replica.
+        cluster_node_info_cache.add_node(node_id, {"CPU": 1})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1}),
+        )
+
+        # Create a mock actor class whose .options().remote() raises on the
+        # first call (simulating actor creation failure) but succeeds after.
+        call_count = 0
+
+        class FailOnceMockActorClass(MockActorClass):
+            def remote(self, *args):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("Simulated actor creation failure")
+                return super().remote(*args)
+
+        on_scheduled_mock = Mock()
+        r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        req0 = ReplicaSchedulingRequest(
+            replica_id=r0_id,
+            actor_def=FailOnceMockActorClass(),
+            actor_resources={"CPU": 1},
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+        req1 = ReplicaSchedulingRequest(
+            replica_id=r1_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 1},
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+
+        scheduler.schedule(
+            upscales={d_id: [req0, req1]},
+            downscales={},
+        )
+
+        # The first replica should have failed.
+        assert req0.status == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+
+        # The second replica should have succeeded and been scheduled to the
+        # node.
+        assert req1.status == ReplicaSchedulingRequestStatus.SUCCEEDED
+        assert on_scheduled_mock.call_count == 1
+        call = on_scheduled_mock.call_args_list[0]
+        scheduling_strategy = call.args[0]._options["scheduling_strategy"]
+        assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+        assert scheduling_strategy.node_id == node_id
+
+    def test_pg_creation_failure_does_not_decrement_resources(self):
+        """When placement group creation fails for a replica, available
+        resources should not be decremented so subsequent replicas in the
+        same scheduling batch can still use that node.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node has exactly 1 CPU — enough for one replica with 1-CPU PG.
+        cluster_node_info_cache.add_node(node_id, {"CPU": 1})
+
+        call_count = 0
+
+        def fail_once_create_pg(request):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("Simulated PG creation failure")
+            return MockPlacementGroup(request)
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=fail_once_create_pg,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(
+                dummy,
+                ray_actor_options={"num_cpus": 0},
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_strategy="STRICT_PACK",
+            ),
+        )
+
+        on_scheduled_mock = Mock()
+        r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        req0 = ReplicaSchedulingRequest(
+            replica_id=r0_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            actor_options={"name": "r0"},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+        req1 = ReplicaSchedulingRequest(
+            replica_id=r1_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            actor_options={"name": "r1"},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+
+        scheduler.schedule(
+            upscales={d_id: [req0, req1]},
+            downscales={},
+        )
+
+        # The first replica should have failed at PG creation.
+        assert (
+            req0.status
+            == ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+        )
+
+        # The second replica should still succeed.
+        assert req1.status == ReplicaSchedulingRequestStatus.SUCCEEDED
+        assert on_scheduled_mock.call_count == 1
+        call = on_scheduled_mock.call_args_list[0]
+        scheduling_strategy = call.args[0]._options["scheduling_strategy"]
+        assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
+
+    def test_pack_prefers_newly_non_idle_node(self):
+        """After scheduling a replica to a previously idle node, subsequent
+        replicas in the same batch should prefer that node (now non-idle)
+        over other idle nodes, even if the idle node is a tighter fit.
+
+        Regression test: without updating node_to_running_replicas after
+        each scheduling, the PACK scheduler would treat all initially-idle
+        nodes as idle for the entire batch, falling through to pure
+        best-fit and potentially spreading replicas across nodes.
+        """
+
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node 1 has GPU + CPU; node 2 has only CPU.
+        # After the GPU replica is placed on node 1, node 2 would be
+        # a tighter best-fit for a CPU-only replica (2 CPU remaining
+        # vs 4 CPU on node 1). But PACK should prefer node 1 because
+        # it is now non-idle.
+        cluster_node_info_cache.add_node(node_id_1, {"GPU": 1, "CPU": 4})
+        cluster_node_info_cache.add_node(node_id_2, {"CPU": 2})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+
+        scheduler.on_deployment_deployed(
+            d_id1,
+            ReplicaConfig.create(
+                dummy, ray_actor_options={"num_gpus": 1, "num_cpus": 0}
+            ),
+        )
+        scheduler.on_deployment_deployed(
+            d_id2,
+            ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1}),
+        )
+
+        on_scheduled_mock1 = Mock()
+        on_scheduled_mock2 = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r0", deployment_id=d_id1),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_mock1,
+                    )
+                ],
+                d_id2: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r1", deployment_id=d_id2),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_mock2,
+                    )
+                ],
+            },
+            downscales={},
+        )
+
+        # The GPU replica must go to node 1 (only node with GPU).
+        assert len(on_scheduled_mock1.call_args_list) == 1
+        call1 = on_scheduled_mock1.call_args_list[0]
+        strategy1 = call1.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy1, NodeAffinitySchedulingStrategy)
+        assert strategy1.node_id == node_id_1
+        assert call1.kwargs == {"placement_group": None}
+
+        # The CPU replica should also go to node 1 (now non-idle) rather
+        # than node 2 (idle but tighter fit). The PACK scheduler prefers
+        # non-idle nodes to consolidate replicas onto fewer nodes.
+        assert len(on_scheduled_mock2.call_args_list) == 1
+        call2 = on_scheduled_mock2.call_args_list[0]
+        strategy2 = call2.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy2, NodeAffinitySchedulingStrategy)
+        assert strategy2.node_id == node_id_1
+        assert call2.kwargs == {"placement_group": None}
+
+
+class TestScheduleGangPlacementGroups:
+    def test_schedule_gang_placement_groups(self, mock_deployment_state_manager):
+        """Creates gangs successfully and verifies placement requests include expected bundles and strategy."""
+        captured_requests = []
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        replica_resource_dict = {"CPU": 2.0, "GPU": 1.0}
+        gang_strategy = "SPREAD"
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d1", app_name="app1")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            gang_strategy,
+            num_replicas_to_add,
+            replica_resource_dict=replica_resource_dict,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert deployment_id in result
+        reservation = result[deployment_id]
+        assert reservation.success
+        assert len(reservation.gang_pgs) == num_gangs
+        assert len(captured_requests) == num_gangs
+        for req in captured_requests:
+            assert isinstance(req, CreatePlacementGroupRequest)
+            assert req.bundles == [replica_resource_dict] * gang_size
+            assert req.strategy == gang_strategy
+
+        assert len(reservation.gang_ids) == num_gangs
+        assert len(reservation.gang_pg_names) == num_gangs
+        assert len(set(reservation.gang_ids)) == num_gangs
+        for pg_name in reservation.gang_pg_names:
+            assert pg_name.startswith(GANG_PG_NAME_PREFIX)
+
+    def test_schedule_gang_placement_groups_invalid_gang_size(
+        self, mock_deployment_state_manager
+    ):
+        """Returns failure when desired replicas cannot be evenly divided by gang size."""
+        gang_size = 3
+        num_replicas_to_add = 4
+        create_pg_fn = Mock()
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d2", app_name="app2")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert not result[deployment_id].success
+        assert "not divisible by gang_size" in result[deployment_id].error_message
+        create_pg_fn.assert_not_called()
+
+    def test_schedule_gang_placement_groups_all_pg_creation_failures(
+        self, mock_deployment_state_manager
+    ):
+        """Reports failure when every gang placement group creation attempt raises exceptions."""
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            raise RuntimeError("simulated placement group creation failure")
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d3", app_name="app3")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert not result[deployment_id].success
+        assert (
+            "Failed to create any gang placement groups"
+            in result[deployment_id].error_message
+        )
+
+    def test_schedule_gang_placement_groups_partial_pg_creation_failures(
+        self, mock_deployment_state_manager
+    ):
+        """Keeps successful gang reservations when only a subset of placement groups fail."""
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        failed_gangs = 1
+        num_calls = 0
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            nonlocal num_calls
+            num_calls += 1
+            if num_calls == 1:
+                raise RuntimeError("fail first gang only")
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d4", app_name="app4")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(result[deployment_id].gang_pgs) == num_gangs - failed_gangs
+
+    def test_schedule_gang_placement_groups_with_per_replica_bundles(
+        self, mock_deployment_state_manager
+    ):
+        """Flattens per-replica bundles and propagates label selectors and fallback strategies correctly."""
+        captured_requests = []
+        gang_size = 2
+        num_gangs = 4
+        num_replicas_to_add = num_gangs * gang_size
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d5", app_name="app5")
+        per_replica_bundles = [{"GPU": 1.0, "CPU": 1.0}, {"CPU": 1.0}]
+        per_replica_label_selector = [{"gpu": "a100"}, {"zone": "z1"}]
+        per_replica_fallback = [{"allow_soft": True}, {"allow_soft": False}]
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            replica_resource_dict={"CPU": 1.0},
+            replica_placement_group_bundles=per_replica_bundles,
+            replica_pg_bundle_label_selector=per_replica_label_selector,
+            replica_pg_fallback_strategy=per_replica_fallback,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(captured_requests) == num_gangs
+        expected_bundles = per_replica_bundles * gang_size
+        expected_label_selector = per_replica_label_selector * gang_size
+        expected_fallback = per_replica_fallback * gang_size
+        for req in captured_requests:
+            assert req.bundles == expected_bundles
+            assert req.bundle_label_selector == expected_label_selector
+            assert req.fallback_strategy == expected_fallback
+
+    def test_schedule_gang_placement_groups_without_per_replica_bundles_uses_resource_dict(
+        self, mock_deployment_state_manager
+    ):
+        """Uses replica resource dict for each gang bundle without optional selectors."""
+        captured_requests = []
+        gang_size = 3
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        replica_resource_dict = {"CPU": 2.0, "GPU": 0.5}
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d6", app_name="app6")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            replica_resource_dict=replica_resource_dict,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(captured_requests) == num_gangs
+        for req in captured_requests:
+            assert req.bundles == [replica_resource_dict] * gang_size
+            assert req.bundle_label_selector is None
+            assert req.fallback_strategy is None
+
+    def test_schedule_gang_placement_groups_multiple_deployments(
+        self, mock_deployment_state_manager
+    ):
+        """Schedules gang placement groups for multiple deployments and returns independent results."""
+        create_pg_fn = Mock(return_value=Mock())
+        gang_size_1 = 2
+        num_gangs_1 = 2
+        num_replicas_to_add_1 = gang_size_1 * num_gangs_1
+        gang_size_2 = 3
+        num_gangs_2 = 2
+        num_replicas_to_add_2 = gang_size_2 * num_gangs_2
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id_1 = DeploymentID(name="d7", app_name="app7")
+        deployment_id_2 = DeploymentID(name="d8", app_name="app8")
+        gang_requests = {
+            deployment_id_1: GangPlacementGroupRequest(
+                deployment_id_1,
+                gang_size_1,
+                "STRICT_PACK",
+                num_replicas_to_add_1,
+                {"CPU": 1.0},
+            ),
+            deployment_id_2: GangPlacementGroupRequest(
+                deployment_id_2,
+                gang_size_2,
+                "STRICT_PACK",
+                num_replicas_to_add_2,
+                {"CPU": 1.0},
+            ),
+        }
+
+        result = scheduler.schedule_gang_placement_groups(gang_requests)
+
+        assert set(result.keys()) == {deployment_id_1, deployment_id_2}
+        assert result[deployment_id_1].success
+        assert result[deployment_id_2].success
+        assert len(result[deployment_id_1].gang_pgs) == num_gangs_1
+        assert len(result[deployment_id_2].gang_pgs) == num_gangs_2
+        assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
+
+
+def _compaction_scheduler(cluster_node_info_cache, head_node_id="fake-head-node-id"):
+    return default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override=head_node_id,
+        create_placement_group_fn_override=None,
+    )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+class TestActiveCompaction:
+    def test_basic(self):
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 8})
+        cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 2})
+        )
+        scheduler.on_deployment_deployed(
+            d_id2, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 1})
+        )
+
+        for i in range(3):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica4", d_id2), "node2")
+
+        node, deadline = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert node == "node2"
+        assert deadline == float("inf")
+        node, deadline = scheduler.get_node_to_compact(allow_new_compaction=False)
+        assert node == "node2"
+        assert deadline == float("inf")
+
+    def test_no_compaction_opportunity(self):
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 8})
+        cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 2})
+        )
+        scheduler.on_deployment_deployed(
+            d_id2, rconfig(ray_actor_options={"num_gpus": 2, "num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id1), "node1")
+        scheduler.on_replica_running(ReplicaID("replica3", d_id2), "node2")
+
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+        # Control: give node1 the room node2's replica needs and node2 is
+        # compacted, so the None above is the fit check and not inaction.
+        roomy = MockClusterNodeInfoCache()
+        roomy.add_node("node1", {"GPU": 8, "CPU": 8})
+        roomy.add_node("node2", {"GPU": 10, "CPU": 2})
+        other = _compaction_scheduler(roomy)
+        other.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_deployed(
+            d_id1, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 2})
+        )
+        other.on_deployment_deployed(
+            d_id2, rconfig(ray_actor_options={"num_gpus": 2, "num_cpus": 1})
+        )
+        other.on_replica_running(ReplicaID("replica0", d_id1), "node1")
+        other.on_replica_running(ReplicaID("replica3", d_id2), "node2")
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+    def test_idle_nodes(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 3})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+        # Control: with node2 non idle, node1 is compacted, so the None above is
+        # the idle node rule and not inaction. node1 is the larger of the two so
+        # the winner does not depend on which node is scanned first.
+        roomy = MockClusterNodeInfoCache()
+        roomy.add_node("node1", {"CPU": 4})
+        roomy.add_node("node2", {"CPU": 3})
+        other = _compaction_scheduler(roomy)
+        other.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+        other.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        other.on_replica_running(ReplicaID("replica1", d_id), "node2")
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == "node1"
+
+    def test_compaction_completes(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+
+        # Every replica has been told to stop, but the node is still active,
+        # so the compaction holds until the autoscaler drains it.
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        assert scheduler._num_succeeded_compactions == 0
+
+        cluster_node_info_cache.draining_nodes["node2"] = 10**9
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._compacting_node is None
+        assert scheduler._num_succeeded_compactions == 1
+        assert scheduler._num_consecutive_failed_compactions == 0
+
+    def test_compaction_holds_node_until_it_drains(self):
+        """An upscale during the drain wait packs elsewhere, not onto the target."""
+        d_id = DeploymentID(name="deployment1")
+
+        node1 = NodeID.from_random().hex()
+        node2 = NodeID.from_random().hex()
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(node1, {"CPU": 4})
+        cluster_node_info_cache.add_node(node2, {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), node1)
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), node1)
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), node2)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == node2
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), node1)
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node2
+
+        # node2 is empty and idle, but still the compaction target.
+        on_scheduled_mock = Mock()
+        replica_id = ReplicaID("replica4", d_id)
+        request = _replica_request(replica_id, on_scheduled_mock)
+        scheduler._pending_replicas[d_id][replica_id] = request
+        assert _pack(scheduler, cluster_node_info_cache, request) == node1
+        strategy = on_scheduled_mock.call_args.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy, NodeAffinitySchedulingStrategy)
+        assert strategy.node_id == node1
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node2
+
+        cluster_node_info_cache.alive_node_ids.discard(node2)
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._num_succeeded_compactions == 1
+
+    def test_upscale_onto_emptied_node_cancels_compaction(self):
+        """A replica that fits only on the emptied target is a failure, not a success."""
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+
+        # node1 is full, so the only room is on the node being held for drain.
+        on_scheduled_mock = Mock()
+        replica_id = ReplicaID("replica4", d_id)
+        request = _replica_request(replica_id, on_scheduled_mock)
+        scheduler._pending_replicas[d_id][replica_id] = request
+        assert _pack(scheduler, cluster_node_info_cache, request) is None
+        on_scheduled_mock.assert_not_called()
+        assert scheduler._compacting_node is None
+        assert scheduler._num_succeeded_compactions == 0
+        assert scheduler._num_consecutive_failed_compactions == 1
+
+    def test_compaction_times_out_waiting_for_drain(self):
+        timer = MockTimer()
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+            scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
+            scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+            timer.advance(1000)
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+
+            # The autoscaler never drains the node, so the timeout still applies.
+            timer.advance(RAY_SERVE_COMPACTION_TIMEOUT_S)
+            assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+            assert scheduler._compacting_node is None
+            assert scheduler._num_succeeded_compactions == 0
+            assert scheduler._num_consecutive_failed_compactions == 1
+
+    def test_compaction_dropped_when_target_node_dies(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # The node goes away with its replica. That's neither a success nor a
+        # failure, so nothing is counted and no backoff starts.
+        cluster_node_info_cache.alive_node_ids.discard("node2")
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._compacting_node is None
+        assert scheduler._num_succeeded_compactions == 0
+        assert scheduler._num_consecutive_failed_compactions == 0
+        assert scheduler._next_allowed_compaction_timestamp_s == 0
+
+    def test_compaction_cancelled(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        assert scheduler._compacting_node is None
+
+    def test_compaction_timeout(self):
+        timer = MockTimer()
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+
+            timer.advance(100)
+            for _ in range(10):
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=False)[0]
+                    == "node2"
+                )
+            timer.advance(1000)
+            for _ in range(10):
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=False)[0]
+                    == "node2"
+                )
+
+            timer.advance(10000)
+            assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+            assert scheduler._compacting_node is None
+
+    def test_exponential_backoff_cancellation(self):
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+            for i in range(5):
+                scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+                scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+
+                expected_backoff = 2 ** (i + 1)
+                timer.advance(expected_backoff / 2)
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+                timer.advance(expected_backoff / 2)
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=True)[0]
+                    == "node2"
+                )
+
+    def test_exponential_backoff_timeout(self):
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+            for i in range(5):
+                timer.advance(1000)
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=True)[0]
+                    == "node2"
+                )
+
+                timer.advance(800)
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+                expected_backoff = 2 ** (i + 1)
+                timer.advance(expected_backoff / 2)
+                assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+                timer.advance(expected_backoff / 2)
+                assert (
+                    scheduler.get_node_to_compact(allow_new_compaction=True)[0]
+                    == "node2"
+                )
+
+    def test_head_node_not_considered(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("head-node-id", {"CPU": 1})
+        cluster_node_info_cache.add_node("worker-node-id", {"CPU": 3})
+        scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node-id")
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "head-node-id")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "worker-node-id")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+        # Control: the same cluster with the head elsewhere does compact the
+        # 1 CPU node, so the None above is the head node rule and not inaction.
+        other = _compaction_scheduler(cluster_node_info_cache, "some-other-node")
+        other.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+        other.on_replica_running(ReplicaID("replica0", d_id), "head-node-id")
+        other.on_replica_running(ReplicaID("replica1", d_id), "worker-node-id")
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == (
+            "head-node-id"
+        )
+
+    def test_custom_resources(self):
+        d1_id = DeploymentID(name="deployment1")
+        d2_id = DeploymentID(name="deployment2")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 1, "customx": 1})
+        scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node-id")
+
+        scheduler.on_deployment_created(d1_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d2_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d1_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+        scheduler.on_deployment_deployed(
+            d2_id,
+            rconfig(ray_actor_options={"num_cpus": 1, "resources": {"customx": 0.1}}),
+        )
+
+        scheduler.on_replica_running(ReplicaID("r1", d1_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r2", d1_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r3", d2_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+        scheduler._next_compaction_scan_timestamp_s = 0
+        cluster_node_info_cache.add_node("node3", {"CPU": 3, "customx": 1})
+        scheduler.on_replica_running(ReplicaID("r4", d1_id), "node3")
+        scheduler.on_replica_running(ReplicaID("r5", d1_id), "node3")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+    def test_migrate_to_multiple_nodes(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 6})
+        cluster_node_info_cache.add_node("node2", {"CPU": 6})
+        cluster_node_info_cache.add_node("node3", {"CPU": 3})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        for i in range(5):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id), "node1")
+        for i in range(5, 9):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id), "node2")
+        for i in range(9, 12):
+            scheduler.on_replica_running(ReplicaID(f"replica{i}", d_id), "node3")
+
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node3"
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node3"
+
+    def test_prioritize_larger_nodes_to_compact(self):
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        if random.randint(0, 1) == 1:
+            expected_node = "node2"
+            cluster_node_info_cache.add_node("node1", {"GPU": 4, "CPU": 8})
+            cluster_node_info_cache.add_node("node2", {"GPU": 10, "CPU": 2})
+        else:
+            expected_node = "node1"
+            cluster_node_info_cache.add_node("node1", {"GPU": 10, "CPU": 2})
+            cluster_node_info_cache.add_node("node2", {"GPU": 4, "CPU": 8})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_gpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("r1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("r2", d_id), "node2")
+
+        node, _ = scheduler.get_node_to_compact(allow_new_compaction=True)
+        assert node == expected_node
+        node, _ = scheduler.get_node_to_compact(allow_new_compaction=False)
+        assert node == expected_node
+
+
+def test_get_deployment_placement_candidates_keeps_empty_actor_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache(), "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        dep_id, rconfig(ray_actor_options={"num_cpus": 1, "label_selector": {}})
+    )
+
+    candidates = scheduler._get_deployment_placement_candidates(
+        scheduler._deployments[dep_id]
+    )
+    assert len(candidates) == 1
+    assert candidates[0][1] == [{}]
+
+
+def test_get_deployment_placement_candidates_no_selector_has_empty_labels():
+    dep_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache(), "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(dep_id, rconfig(ray_actor_options={"num_cpus": 1}))
+
+    candidates = scheduler._get_deployment_placement_candidates(
+        scheduler._deployments[dep_id]
+    )
+    assert len(candidates) == 1
+    assert candidates[0][1] == []
+
+
+def test_get_deployment_placement_candidates_orders_primary_before_fallback():
+    dep_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache(), "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={
+                "num_cpus": 1,
+                "label_selector": {"region": "us-west"},
+                "fallback_strategy": [
+                    {"label_selector": {"region": "us-east"}},
+                    {"label_selector": {"region": "us-central"}},
+                ],
+            },
+        ),
+    )
+
+    candidates = scheduler._get_deployment_placement_candidates(
+        scheduler._deployments[dep_id]
+    )
+    assert [labels for _, labels in candidates] == [
+        [{"region": "us-west"}],
+        [{"region": "us-east"}],
+        [{"region": "us-central"}],
+    ]
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_get_node_to_compact_respects_actor_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    east_filler_dep_id = DeploymentID(name="east-filler")
+    west_filler_dep_id = DeploymentID(name="west-filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node-west", {"CPU": 2}, labels={"region": "us-west"}
+    )
+    cluster_node_info_cache.add_node(
+        "node-east", {"CPU": 1}, labels={"region": "us-east"}
+    )
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(
+        east_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_created(
+        west_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 1, "label_selector": {"region": "us-west"}}
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        east_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"region": "us-east"}}
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        west_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"region": "us-west"}}
+        ),
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), "node-west")
+    scheduler.on_replica_running(
+        ReplicaID("east-filler", east_filler_dep_id), "node-east"
+    )
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    scheduler._next_compaction_scan_timestamp_s = 0
+    cluster_node_info_cache.add_node(
+        "node-west-2", {"CPU": 1}, labels={"region": "us-west"}
+    )
+    scheduler.on_replica_running(
+        ReplicaID("west-filler", west_filler_dep_id), "node-west-2"
+    )
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node-west"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_get_node_to_compact_respects_actor_fallback_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    filler_dep_id = DeploymentID(name="east-filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node-west", {"CPU": 2}, labels={"region": "us-west"}
+    )
+    cluster_node_info_cache.add_node(
+        "node-east", {"CPU": 1}, labels={"region": "us-east"}
+    )
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={
+                "num_cpus": 1,
+                "label_selector": {"region": "us-west"},
+                "fallback_strategy": [{"label_selector": {"region": "us-east"}}],
+            },
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"region": "us-east"}}
+        ),
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), "node-west")
+    scheduler.on_replica_running(ReplicaID("east-filler", filler_dep_id), "node-east")
+
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node-west"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_get_node_to_compact_respects_bundle_label_selector():
+    dep_id = DeploymentID(name="deployment1")
+    t4_filler_dep_id = DeploymentID(name="t4-filler")
+    a100_filler_dep_id = DeploymentID(name="a100-filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node-a100", {"CPU": 2}, labels={"gpu-type": "A100"}
+    )
+    cluster_node_info_cache.add_node("node-t4", {"CPU": 1}, labels={"gpu-type": "T4"})
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(
+        t4_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_created(
+        a100_filler_dep_id, SpreadDeploymentSchedulingPolicy()
+    )
+    scheduler.on_deployment_deployed(
+        dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            placement_group_bundle_label_selector=[{"gpu-type": "A100"}],
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        t4_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"gpu-type": "T4"}}
+        ),
+    )
+    scheduler.on_deployment_deployed(
+        a100_filler_dep_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0, "label_selector": {"gpu-type": "A100"}}
+        ),
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), "node-a100")
+    scheduler.on_replica_running(ReplicaID("t4-filler", t4_filler_dep_id), "node-t4")
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    scheduler._next_compaction_scan_timestamp_s = 0
+    cluster_node_info_cache.add_node(
+        "node-a100-2", {"CPU": 1}, labels={"gpu-type": "A100"}
+    )
+    scheduler.on_replica_running(
+        ReplicaID("a100-filler", a100_filler_dep_id), "node-a100-2"
+    )
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node-a100"
+
+
+def _compaction_cluster(cluster_node_info_cache, dep_id, filler_dep_id, idle_node=None):
+    """Two nodes, the larger one compactable, plus an optional idle node."""
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node_id_1, {"CPU": 2})
+    cluster_node_info_cache.add_node(node_id_2, {"CPU": 1})
+    if idle_node:
+        cluster_node_info_cache.add_node(idle_node, {"CPU": 2})
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(dep_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_deployment_deployed(
+        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 0})
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), node_id_1)
+    scheduler.on_replica_running(ReplicaID("filler", filler_dep_id), node_id_2)
+
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None and node_info[0] == node_id_1
+
+    # A concurrent upscale takes the room the migration was planning to use.
+    scheduler._on_replica_launching(
+        ReplicaID("migration", dep_id), target_node_id=node_id_2
+    )
+    return scheduler, node_id_1, node_id_2
+
+
+def _pack(scheduler, cluster_node_info_cache, request):
+    all_node_labels = {
+        node_id: cluster_node_info_cache.get_node_labels(node_id)
+        for node_id in cluster_node_info_cache.get_active_node_ids()
+    }
+    return scheduler._pack_schedule_replica(
+        request,
+        all_node_labels,
+        scheduler._get_available_resources_per_node(),
+        scheduler._get_node_to_running_replicas(),
+    )
+
+
+def _replica_request(replica_id, on_scheduled, num_cpus=1):
+    return ReplicaSchedulingRequest(
+        replica_id=replica_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": num_cpus},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=on_scheduled,
+    )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_active_compaction_can_schedule_upscale_to_source_node():
+    """An upscale that fits nowhere else cancels the compaction, then lands there."""
+    dep_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler, node_id_1, _ = _compaction_cluster(
+        cluster_node_info_cache, dep_id, DeploymentID(name="filler")
+    )
+
+    on_scheduled_mock = Mock()
+    upscale_replica_id = ReplicaID("r1", dep_id)
+    request = _replica_request(upscale_replica_id, on_scheduled_mock)
+    scheduler._pending_replicas[dep_id][upscale_replica_id] = request
+
+    assert _pack(scheduler, cluster_node_info_cache, request) is None
+    on_scheduled_mock.assert_not_called()
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+
+    # The node is no longer draining, so the next update places the replica.
+    assert _pack(scheduler, cluster_node_info_cache, request) == node_id_1
+    scheduling_strategy = on_scheduled_mock.call_args.args[0]._options[
+        "scheduling_strategy"
+    ]
+    assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+    assert scheduling_strategy.node_id == node_id_1
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_active_compaction_cancelled_when_migration_has_nowhere_to_go():
+    """A migration replacement never goes back to the node it is leaving."""
+    dep_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler, node_id_1, _ = _compaction_cluster(
+        cluster_node_info_cache, dep_id, DeploymentID(name="filler")
+    )
+
+    on_scheduled_mock = Mock()
+    replacement_replica_id = ReplicaID("r1", dep_id)
+    request = _replica_request(replacement_replica_id, on_scheduled_mock)
+    scheduler._pending_replicas[dep_id][replacement_replica_id] = request
+
+    # Cancelled on the spot, so nothing waits out the compaction timeout.
+    assert _pack(scheduler, cluster_node_info_cache, request) is None
+    on_scheduled_mock.assert_not_called()
+    assert replacement_replica_id in scheduler._pending_replicas[dep_id]
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+
+    assert _pack(scheduler, cluster_node_info_cache, request) == node_id_1
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_active_compaction_prefers_idle_node_over_source_node():
+    """An idle node beats the node being compacted, which stays untouched."""
+    dep_id = DeploymentID(name="deployment1")
+    idle_node_id = NodeID.from_random().hex()
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler, node_id_1, _ = _compaction_cluster(
+        cluster_node_info_cache,
+        dep_id,
+        DeploymentID(name="filler"),
+        idle_node=idle_node_id,
+    )
+
+    replica_id = ReplicaID("r1", dep_id)
+    request = _replica_request(replica_id, Mock())
+    scheduler._pending_replicas[dep_id][replica_id] = request
+
+    assert _pack(scheduler, cluster_node_info_cache, request) == idle_node_id
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node_id_1
+    assert scheduler._num_consecutive_failed_compactions == 0
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_cancelled_when_replica_fits_nowhere():
+    """A replica with no room on any node cancels the compaction.
+
+    A migration replacement looks exactly like this while its predecessor still
+    holds the only room in the cluster, and would otherwise sit pending until the
+    compaction timed out.
+    """
+    dep_id = DeploymentID(name="deployment1")
+    big_dep_id = DeploymentID(name="big")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler, node_id_1, _ = _compaction_cluster(
+        cluster_node_info_cache, dep_id, DeploymentID(name="filler")
+    )
+    scheduler.on_deployment_created(big_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        big_dep_id, rconfig(ray_actor_options={"num_cpus": 8})
+    )
+
+    on_scheduled_mock = Mock()
+    replica_id = ReplicaID("big0", big_dep_id)
+    request = _replica_request(replica_id, on_scheduled_mock, num_cpus=8)
+    scheduler._pending_replicas[big_dep_id][replica_id] = request
+
+    assert _pack(scheduler, cluster_node_info_cache, request) is None
+    on_scheduled_mock.assert_not_called()
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+
+    # With no compaction in flight the replica falls back to default scheduling.
+    assert _pack(scheduler, cluster_node_info_cache, request) is None
+    assert on_scheduled_mock.call_args.args[0]._options["scheduling_strategy"] == (
+        "DEFAULT"
+    )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+@pytest.mark.parametrize("kind", ["pinned", "gang"])
+def test_compaction_survives_replicas_pack_does_not_place(kind):
+    """Pinned and gang replicas go where pack cannot decide, so they say nothing."""
+    dep_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler, node_id_1, node_id_2 = _compaction_cluster(
+        cluster_node_info_cache, dep_id, DeploymentID(name="filler")
+    )
+
+    replica_id = ReplicaID("r1", dep_id)
+    request = _replica_request(replica_id, Mock())
+    if kind == "pinned":
+        request.target_node_id = node_id_2
+    else:
+        request.gang_placement_group = Mock()
+        request.gang_pg_index = 0
+    scheduler._pending_replicas[dep_id][replica_id] = request
+
+    assert _pack(scheduler, cluster_node_info_cache, request) is None
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node_id_1
+    assert scheduler._num_consecutive_failed_compactions == 0
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_cancel_mid_batch_still_packs_later_replicas():
+    """The rest of the batch is packed normally after a cancel, not defaulted."""
+    dep_id = DeploymentID(name="deployment1")
+    tiny_dep_id = DeploymentID(name="tiny")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler, node_id_1, node_id_2 = _compaction_cluster(
+        cluster_node_info_cache, dep_id, DeploymentID(name="filler")
+    )
+    scheduler.on_deployment_created(tiny_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        tiny_dep_id, rconfig(ray_actor_options={"num_cpus": 0})
+    )
+
+    # The 1 CPU replica is scheduled first and only fits on the compacted node.
+    first_id = ReplicaID("first", dep_id)
+    second_id = ReplicaID("second", tiny_dep_id)
+    first_on_scheduled, second_on_scheduled = Mock(), Mock()
+    scheduler.schedule(
+        upscales={
+            dep_id: [_replica_request(first_id, first_on_scheduled)],
+            tiny_dep_id: [_replica_request(second_id, second_on_scheduled, num_cpus=0)],
+        },
+        downscales={},
+    )
+
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+    first_on_scheduled.assert_not_called()
+    assert first_id in scheduler._pending_replicas[dep_id]
+
+    # The replica after the cancel is still packed onto a node, not defaulted.
+    second_strategy = second_on_scheduled.call_args.args[0]._options[
+        "scheduling_strategy"
+    ]
+    assert isinstance(second_strategy, NodeAffinitySchedulingStrategy)
+    assert second_strategy.node_id in (node_id_1, node_id_2)
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_get_node_to_compact_skips_gang_deployments():
+    gang_dep_id = DeploymentID(name="gang")
+    filler_dep_id = DeploymentID(name="filler")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 4})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(gang_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        gang_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), is_gang=True
+    )
+    scheduler.on_deployment_deployed(
+        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 3})
+    )
+    scheduler.on_replica_running(ReplicaID("g0", gang_dep_id), "node1")
+    scheduler.on_replica_running(ReplicaID("f0", filler_dep_id), "node2")
+
+    assert (
+        scheduler._get_deployment_placement_candidates(
+            scheduler._deployments[gang_dep_id]
+        )
+        is None
+    )
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    scheduler.on_deployment_deployed(
+        gang_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), is_gang=False
+    )
+    scheduler._next_compaction_scan_timestamp_s = 0
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node1"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_get_node_to_compact_ignores_pinned_replicas():
+    pinned_dep_id = DeploymentID(name="pinned")
+    app_dep_id = DeploymentID(name="app")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 4})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(pinned_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(app_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        pinned_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), pins_replicas=True
+    )
+    scheduler.on_deployment_deployed(
+        app_dep_id, rconfig(ray_actor_options={"num_cpus": 1})
+    )
+    # node1: pinned p0 + a0 (1 free). node2: a1 with 2 CPUs (2 free).
+    scheduler.on_deployment_deployed(
+        app_dep_id, rconfig(ray_actor_options={"num_cpus": 1})
+    )
+    scheduler.on_replica_running(ReplicaID("p0", pinned_dep_id), "node1")
+    scheduler.on_replica_running(ReplicaID("a0", app_dep_id), "node1")
+    big_dep_id = DeploymentID(name="big")
+    scheduler.on_deployment_created(big_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        big_dep_id, rconfig(ray_actor_options={"num_cpus": 2})
+    )
+    scheduler.on_replica_running(ReplicaID("b0", big_dep_id), "node2")
+
+    # Only a0 needs a destination. The pinned replica leaves with its proxy.
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == "node1"
+    assert scheduler._compacting_node.cached_running_replicas_on_target_node == {
+        ReplicaID("a0", app_dep_id)
+    }
+
+    # A pinned replica landing on the target is not a cancelling upscale.
+    scheduler.on_replica_running(ReplicaID("p1", pinned_dep_id), "node1")
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node1"
+
+    # a0 moved off, but the node isn't empty until the pinned replicas go too.
+    scheduler.on_replica_running(ReplicaID("a0-new", app_dep_id), "node2")
+    scheduler.on_replica_stopping(ReplicaID("a0", app_dep_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node1"
+
+    scheduler.on_replica_stopping(ReplicaID("p0", pinned_dep_id))
+    scheduler.on_replica_stopping(ReplicaID("p1", pinned_dep_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node1"
+
+    cluster_node_info_cache.alive_node_ids.discard("node1")
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    assert scheduler._num_succeeded_compactions == 1
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_fruitless_scan_waits_before_rescanning():
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 3})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    for i in range(3):
+        scheduler.on_replica_running(ReplicaID(f"r{i}", d_id), "node1")
+    scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+
+    # node1 is full, so r3 has nowhere to go and the scan finds nothing.
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+    assert scheduler._next_compaction_scan_timestamp_s > time.time()
+
+    # Room opens up, but a stable cluster isn't rescanned until the interval passes.
+    scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    # Any change to the cluster clears the wait, so the next scan runs at once.
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    assert scheduler._next_compaction_scan_timestamp_s == 0
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_tie_break_ignores_node_labels_and_memory_jitter():
+    small_id = DeploymentID(name="small")
+    big_id = DeploymentID(name="big")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    # Same type nodes. They differ only by their node:<ip> label and by the
+    # few MB of memory and object store jitter Ray sizes at raylet start.
+    # node2 has slightly more memory, so raw totals would call it larger.
+    GiB = 2**30
+    MiB = 2**20
+    cluster_node_info_cache.add_node(
+        "node1",
+        {
+            "CPU": 3,
+            "memory": 8 * GiB - 5 * MiB,
+            "object_store_memory": 2 * GiB - 3 * MiB,
+            "node:10.0.0.1": 1,
+        },
+    )
+    cluster_node_info_cache.add_node(
+        "node2",
+        {
+            "CPU": 3,
+            "memory": 8 * GiB + 3 * MiB,
+            "object_store_memory": 2 * GiB + 7 * MiB,
+            "node:10.0.0.2": 1,
+        },
+    )
+    cluster_node_info_cache.add_node("node3", {"CPU": 8, "node:10.0.0.3": 1})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(small_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(big_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        small_id, rconfig(ray_actor_options={"num_cpus": 1})
+    )
+    scheduler.on_deployment_deployed(big_id, rconfig(ray_actor_options={"num_cpus": 6}))
+    # node1: 1 replica to move, node2: 2. node3 can absorb either but not both,
+    # and its own 6 CPU replica fits nowhere else.
+    scheduler.on_replica_running(ReplicaID("s0", small_id), "node1")
+    scheduler.on_replica_running(ReplicaID("s1", small_id), "node2")
+    scheduler.on_replica_running(ReplicaID("s2", small_id), "node2")
+    scheduler.on_replica_running(ReplicaID("b0", big_id), "node3")
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node1"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_get_node_to_compact_disabled_when_pack_falls_back_to_spread():
+    d_id = DeploymentID(name="deployment1")
+    pg_id = DeploymentID(name="pg")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 3})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
+    scheduler.on_replica_running(ReplicaID("r1", d_id), "node2")
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
+
+    scheduler.on_deployment_created(pg_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        pg_id,
+        rconfig(
+            ray_actor_options={"num_cpus": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="PACK",
+        ),
+    )
+    assert not scheduler._use_pack_strategy()
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+    assert scheduler._compacting_node is None
+
+    scheduler.on_deployment_deleted(pg_id)
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
+
+
+def _two_node_compaction_scheduler(cache, d_id, big="node1", small="node2"):
+    """node1 holds two replicas, node2 holds one, so node2 is the target."""
+    cache.add_node(big, {"CPU": 3})
+    cache.add_node(small, {"CPU": 2})
+    scheduler = _compaction_scheduler(cache)
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_replica_running(ReplicaID("r0", d_id), big)
+    scheduler.on_replica_running(ReplicaID("r1", d_id), big)
+    scheduler.on_replica_running(ReplicaID("r2", d_id), small)
+    return scheduler
+
+
+def test_compaction_off_without_pack_scheduling():
+    """With pack scheduling disabled the scheduler never compacts anything."""
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    with mock.patch(
+        "ray.serve._private.deployment_scheduler."
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+        False,
+    ):
+        scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        assert scheduler._compacting_node is None
+
+    # Control: the identical cluster compacts as soon as the flag is on, so the
+    # None above is the flag and not the cluster shape.
+    with mock.patch(
+        "ray.serve._private.deployment_scheduler."
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+        True,
+    ):
+        other = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+@pytest.mark.parametrize("scan_order", [("node_a", "node_b"), ("node_b", "node_a")])
+def test_tie_break_prefers_fewest_migrations(scan_order):
+    """Two equal sized candidates: the one moving fewer replicas wins.
+
+    The scan order is pinned both ways. Without the tie break, whichever node is
+    scanned first would win, so only the tie break can make node_b win in both.
+    """
+    d_id = DeploymentID(name="deployment1")
+    big_id = DeploymentID(name="big")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node_a", {"CPU": 3})
+    cluster_node_info_cache.add_node("node_b", {"CPU": 3})
+    cluster_node_info_cache.add_node("node_c", {"CPU": 8})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(big_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_deployment_deployed(big_id, rconfig(ray_actor_options={"num_cpus": 6}))
+
+    scheduler.on_replica_running(ReplicaID("a0", d_id), "node_a")
+    scheduler.on_replica_running(ReplicaID("a1", d_id), "node_a")
+    scheduler.on_replica_running(ReplicaID("b0", d_id), "node_b")
+    # node_c is the largest node but its 6 CPU replica fits nowhere else, so it
+    # is never a candidate and cannot win on size.
+    scheduler.on_replica_running(ReplicaID("c0", big_id), "node_c")
+
+    # Pin the order the candidates are scanned in, so the result cannot depend
+    # on dict ordering.
+    real = scheduler._get_available_resources_per_node
+
+    def ordered():
+        resources = real()
+        keys = list(scan_order) + [k for k in resources if k not in scan_order]
+        return {k: resources[k] for k in keys}
+
+    scheduler._get_available_resources_per_node = ordered
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node_b"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_backoff_is_capped():
+    """The wait between attempts stops doubling at the configured ceiling."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    with mock.patch("time.time", new=timer.time), mock.patch(
+        "ray.serve._private.deployment_scheduler."
+        "RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S",
+        8,
+    ):
+        scheduler = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # 2, 4, 8, then the cap holds it at 8 instead of 16 and 32.
+        for expected in (2, 4, 8, 8, 8):
+            scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+            assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+            scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+            assert scheduler._next_allowed_compaction_timestamp_s == (
+                timer.time() + expected
+            )
+            timer.advance(expected)
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_backoff_resets_after_a_success():
+    """One success clears the failure streak, so the next failure waits 2s again."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    with mock.patch("time.time", new=timer.time):
+        scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # Two failures in a row take the wait to 4 seconds.
+        for expected in (2, 4):
+            scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+            assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+            scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+            timer.advance(expected)
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+        assert scheduler._num_consecutive_failed_compactions == 2
+
+        # Now let it finish: the replica moves off and the node leaves.
+        scheduler.on_replica_running(ReplicaID("r2-new", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+        # Empty but still active, so the compaction is held, not yet counted.
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        assert scheduler._num_succeeded_compactions == 0
+
+        cluster_node_info_cache.draining_nodes["node2"] = 10**9
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._num_succeeded_compactions == 1
+        assert scheduler._num_consecutive_failed_compactions == 0
+        assert scheduler._next_allowed_compaction_timestamp_s == 0
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_metric_counts_only_successes():
+    """The exported counter rises once per success and never on a failure."""
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+    counter = Mock()
+    scheduler._num_compacted_nodes_counter = counter
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+    # A cancelled compaction records nothing.
+    scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+    counter.inc.assert_not_called()
+
+    # Neither does emptying the node while it is still active.
+    scheduler._next_allowed_compaction_timestamp_s = 0
+    scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+    scheduler.on_replica_running(ReplicaID("r2-new", d_id), "node1")
+    scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+    counter.inc.assert_not_called()
+
+    # Only the drain does.
+    cluster_node_info_cache.draining_nodes["node2"] = 10**9
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    counter.inc.assert_called_once()
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_launching_replica_on_target_cancels_compaction():
+    """A replica still launching on the target counts as a new arrival."""
+    d_id = DeploymentID(name="deployment1")
+    scheduler = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+    # Not yet RUNNING, so only the launching set can see it.
+    scheduler._on_replica_launching(ReplicaID("r3", d_id), target_node_id="node2")
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_slow_compaction_warns_once_at_each_threshold():
+    """The one minute and ten minute warnings each fire once, in that order."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    with mock.patch("time.time", new=timer.time), mock.patch(
+        "ray.serve._private.deployment_scheduler.logger"
+    ) as logger:
+        scheduler = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        def warnings():
+            return [c.args[0] for c in logger.warning.call_args_list]
+
+        timer.advance(30)
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        assert warnings() == []
+
+        timer.advance(31)
+        for _ in range(3):
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+        assert len(warnings()) == 1
+        assert "more than 1 minute" in warnings()[0]
+
+        timer.advance(600)
+        for _ in range(3):
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+        assert len(warnings()) == 2
+        assert "more than 10 minutes" in warnings()[1]
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_deployment_flags_reach_the_scheduler():
+    """`is_gang` and `pins_replicas` are refreshed on every deploy."""
+    d_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache())
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    assert scheduler._deployments[d_id].is_gang is False
+    assert scheduler._deployments[d_id].pins_replicas is False
+
+    scheduler.on_deployment_deployed(
+        d_id,
+        rconfig(ray_actor_options={"num_cpus": 1}),
+        is_gang=True,
+        pins_replicas=True,
+    )
+    assert scheduler._deployments[d_id].is_gang is True
+    assert scheduler._deployments[d_id].pins_replicas is True
+
+    # Dropping the flags on a redeploy clears them again.
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    assert scheduler._deployments[d_id].is_gang is False
+    assert scheduler._deployments[d_id].pins_replicas is False
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_records_the_telemetry_tag():
+    """The usage tag tracks the running count of successful compactions."""
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+    with mock.patch.object(ServeUsageTag.NUM_NODE_COMPACTIONS, "record") as record:
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("r2-new", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        record.assert_not_called()
+
+        cluster_node_info_cache.draining_nodes["node2"] = 10**9
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        record.assert_called_once_with("1")
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_only_a_success_clears_the_failure_streak():
+    """A dropped compaction and a fruitless scan both leave the streak alone."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    with mock.patch("time.time", new=timer.time):
+        scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # One cancellation puts the streak at 1.
+        scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+        assert scheduler._num_consecutive_failed_compactions == 1
+        backoff_at = scheduler._next_allowed_compaction_timestamp_s
+
+        # The target dies before it is emptied. That is neither a success nor a
+        # failure, so the streak and the backoff both survive it.
+        timer.advance(2)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+        cluster_node_info_cache.alive_node_ids.discard("node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._num_succeeded_compactions == 0
+        assert scheduler._num_consecutive_failed_compactions == 1
+        assert scheduler._next_allowed_compaction_timestamp_s == backoff_at
+
+        # A scan that finds nothing does not clear it either.
+        timer.advance(100)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        assert scheduler._num_consecutive_failed_compactions == 1
 
 
 if __name__ == "__main__":

@@ -294,61 +294,57 @@ class TuneBOHB(Searcher):
         def resolve_value(
             par: str, domain: Domain
         ) -> ConfigSpace.hyperparameters.Hyperparameter:
-            quantize = None
 
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
-                quantize = sampler.q
+                logger.warning(
+                    "TuneBOHB does not support quantization. "
+                    "Dropped quantization for parameter '%s'.",
+                    par,
+                )
                 sampler = sampler.sampler
 
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
                     return ConfigSpace.UniformFloatHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=True
+                        par, lower=domain.lower, upper=domain.upper, log=True
                     )
                 elif isinstance(sampler, Uniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
                     return ConfigSpace.UniformFloatHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=False
+                        par, lower=domain.lower, upper=domain.upper, log=False
                     )
                 elif isinstance(sampler, Normal):
+                    if (
+                        domain.lower is None
+                        or domain.upper is None
+                        or not math.isfinite(domain.lower)
+                        or not math.isfinite(domain.upper)
+                    ):
+                        raise ValueError(
+                            f"TuneBOHB does not support unbounded normal "
+                            f"distributions. Please specify bounds for "
+                            f"parameter '{par}' using tune.randn(...).clip(lower, upper) "
+                            f"or Float(lower, upper).normal(mean, sd)."
+                        )
                     return ConfigSpace.hyperparameters.NormalFloatHyperparameter(
-                        par, mu=sampler.mean, sigma=sampler.sd, q=quantize, log=False
+                        par,
+                        mu=sampler.mean,
+                        sigma=sampler.sd,
+                        lower=domain.lower,
+                        upper=domain.upper,
+                        log=False,
                     )
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
-                    else:
-                        # Tune search space integers are exclusive
-                        upper -= 1
+                    # Tune search space integers are exclusive on upper bound
                     return ConfigSpace.UniformIntegerHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=True
+                        par, lower=domain.lower, upper=domain.upper - 1, log=True
                     )
                 elif isinstance(sampler, Uniform):
-                    lower = domain.lower
-                    upper = domain.upper
-                    if quantize:
-                        lower = math.ceil(domain.lower / quantize) * quantize
-                        upper = math.floor(domain.upper / quantize) * quantize
-                    else:
-                        # Tune search space integers are exclusive
-                        upper -= 1
+                    # Tune search space integers are exclusive on upper bound
                     return ConfigSpace.UniformIntegerHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=False
+                        par, lower=domain.lower, upper=domain.upper - 1, log=False
                     )
 
             elif isinstance(domain, Categorical):

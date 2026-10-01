@@ -14,8 +14,11 @@
 
 #include "ray/gcs/gcs_ray_event_converter.h"
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -60,6 +63,12 @@ TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   task_def_event->set_parent_task_id("parent_task_id");
   task_def_event->set_placement_group_id("pg_id");
   (*task_def_event->mutable_label_selector())["region"] = "us-west4";
+  auto *fallback_strategy = task_def_event->mutable_fallback_strategy();
+  auto *option = fallback_strategy->add_options();
+  auto *constraint = option->mutable_label_selector()->add_label_constraints();
+  constraint->set_label_key("region");
+  constraint->set_operator_(rpc::LABEL_OPERATOR_IN);
+  constraint->add_label_values("us-west5");
 
   // Add some required resources
   (*task_def_event->mutable_required_resources())["CPU"] = 1.0;
@@ -107,6 +116,16 @@ TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   EXPECT_EQ(task_info.parent_task_id(), "parent_task_id");
   EXPECT_EQ(task_info.placement_group_id(), "pg_id");
   EXPECT_EQ(task_info.label_selector().at("region"), "us-west4");
+  EXPECT_TRUE(task_info.has_fallback_strategy());
+  const auto &fallback = task_info.fallback_strategy();
+  EXPECT_EQ(fallback.options_size(), 1);
+  const auto &label_selector_verify = fallback.options(0).label_selector();
+  EXPECT_EQ(label_selector_verify.label_constraints_size(), 1);
+  const auto &constraint_verify = label_selector_verify.label_constraints(0);
+  EXPECT_EQ(constraint_verify.label_key(), "region");
+  EXPECT_EQ(constraint_verify.operator_(), rpc::LABEL_OPERATOR_IN);
+  EXPECT_EQ(constraint_verify.label_values_size(), 1);
+  EXPECT_EQ(constraint_verify.label_values(0), "us-west5");
 
   // Verify required resources
   EXPECT_EQ(task_info.required_resources().at("CPU"), 1.0);
@@ -397,6 +416,13 @@ TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   actor_def_event.set_parent_task_id("parent-actor-task");
   actor_def_event.set_placement_group_id("pg-actor");
   (*actor_def_event.mutable_label_selector())["region"] = "us-west4";
+  auto *fallback_strategy = actor_def_event.mutable_fallback_strategy();
+  auto *option = fallback_strategy->add_options();
+  auto *label_selector = option->mutable_label_selector();
+  auto *constraint = label_selector->add_label_constraints();
+  constraint->set_label_key("region");
+  constraint->set_operator_(rpc::LABEL_OPERATOR_IN);
+  constraint->add_label_values("us-west5");
 
   // Set runtime env info
   actor_def_event.set_serialized_runtime_env("test_actor_env");
@@ -434,6 +460,16 @@ TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   EXPECT_EQ(task_info.placement_group_id(), "pg-actor");
   EXPECT_EQ(task_info.label_selector().at("region"), "us-west4");
 
+  EXPECT_TRUE(task_info.has_fallback_strategy());
+  const auto &fallback = task_info.fallback_strategy();
+  EXPECT_EQ(fallback.options_size(), 1);
+  const auto &label_selector_verify = fallback.options(0).label_selector();
+  EXPECT_EQ(label_selector_verify.label_constraints_size(), 1);
+  const auto &constraint_verify = label_selector_verify.label_constraints(0);
+  EXPECT_EQ(constraint_verify.label_key(), "region");
+  EXPECT_EQ(constraint_verify.operator_(), rpc::LABEL_OPERATOR_IN);
+  EXPECT_EQ(constraint_verify.label_values_size(), 1);
+  EXPECT_EQ(constraint_verify.label_values(0), "us-west5");
   // Check required resources
   EXPECT_EQ(task_info.required_resources().at("CPU"), 2.0);
   EXPECT_EQ(task_info.required_resources().at("GPU"), 1.0);
@@ -638,6 +674,167 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<OptionalFieldTestCase> &info) {
       return info.param.test_name;
     });
+
+namespace {
+
+// Builds a request holding a single TaskLifecycleEvent for the given attempt, so the
+// task_log_info tests can convert one event at a time and merge the results.
+rpc::events::AddEventsRequest MakeLifecycleEventRequest(int32_t attempt) {
+  rpc::events::AddEventsRequest request;
+  rpc::events::RayEvent &event = *request.mutable_events_data()->mutable_events()->Add();
+  event.set_event_type(rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
+  rpc::events::TaskLifecycleEvent &lifecycle_event =
+      *event.mutable_task_lifecycle_event();
+  lifecycle_event.set_task_id("test_task_id");
+  lifecycle_event.set_task_attempt(attempt);
+  lifecycle_event.set_job_id("test_job_id");
+  return request;
+}
+
+rpc::TaskEvents ConvertSingleEvent(rpc::events::AddEventsRequest &&request) {
+  std::vector<rpc::AddTaskEventDataRequest> requests =
+      ConvertToTaskEventDataRequests(std::move(request));
+  RAY_CHECK_EQ(requests.size(), static_cast<size_t>(1));
+  return requests[0].data().events_by_task()[0];
+}
+
+}  // namespace
+
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventTaskLogInfo) {
+  rpc::events::AddEventsRequest request = MakeLifecycleEventRequest(1);
+  rpc::events::TaskLifecycleEvent::TaskLogInfo *log_info =
+      request.mutable_events_data()
+          ->mutable_events(0)
+          ->mutable_task_lifecycle_event()
+          ->mutable_task_log_info();
+  log_info->set_stdout_file("/tmp/worker-out.log");
+  log_info->set_stderr_file("/tmp/worker-err.log");
+  log_info->set_stdout_start(10);
+  log_info->set_stdout_end(20);
+  log_info->set_stderr_start(30);
+  log_info->set_stderr_end(40);
+
+  rpc::TaskEvents task_event = ConvertSingleEvent(std::move(request));
+
+  ASSERT_TRUE(task_event.has_state_updates());
+  ASSERT_TRUE(task_event.state_updates().has_task_log_info());
+  const rpc::TaskLogInfo &converted = task_event.state_updates().task_log_info();
+  EXPECT_EQ(converted.stdout_file(), "/tmp/worker-out.log");
+  EXPECT_EQ(converted.stderr_file(), "/tmp/worker-err.log");
+  EXPECT_EQ(converted.stdout_start(), 10);
+  EXPECT_EQ(converted.stdout_end(), 20);
+  EXPECT_EQ(converted.stderr_start(), 30);
+  EXPECT_EQ(converted.stderr_end(), 40);
+}
+
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventWithoutTaskLogInfo) {
+  rpc::TaskEvents task_event = ConvertSingleEvent(MakeLifecycleEventRequest(1));
+
+  ASSERT_TRUE(task_event.has_state_updates());
+  EXPECT_FALSE(task_event.state_updates().has_task_log_info());
+}
+
+// The event a task emits when it finishes carries only the end offsets. The fields it
+// leaves unset must stay unset after conversion.
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventTaskLogInfoEndOffsetsOnly) {
+  rpc::events::AddEventsRequest request = MakeLifecycleEventRequest(1);
+  rpc::events::TaskLifecycleEvent::TaskLogInfo *log_info =
+      request.mutable_events_data()
+          ->mutable_events(0)
+          ->mutable_task_lifecycle_event()
+          ->mutable_task_log_info();
+  log_info->set_stdout_end(20);
+  log_info->set_stderr_end(40);
+
+  rpc::TaskEvents task_event = ConvertSingleEvent(std::move(request));
+
+  ASSERT_TRUE(task_event.state_updates().has_task_log_info());
+  const rpc::TaskLogInfo &converted = task_event.state_updates().task_log_info();
+  EXPECT_FALSE(converted.has_stdout_file());
+  EXPECT_FALSE(converted.has_stderr_file());
+  EXPECT_FALSE(converted.has_stdout_start());
+  EXPECT_FALSE(converted.has_stderr_start());
+  EXPECT_TRUE(converted.has_stdout_end());
+  EXPECT_EQ(converted.stdout_end(), 20);
+  EXPECT_TRUE(converted.has_stderr_end());
+  EXPECT_EQ(converted.stderr_end(), 40);
+}
+
+// A start offset of 0 is legitimate for the first task writing to a fresh log file, so it
+// must survive conversion rather than being treated as absent.
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventTaskLogInfoZeroStartOffset) {
+  rpc::events::AddEventsRequest request = MakeLifecycleEventRequest(1);
+  rpc::events::TaskLifecycleEvent::TaskLogInfo *log_info =
+      request.mutable_events_data()
+          ->mutable_events(0)
+          ->mutable_task_lifecycle_event()
+          ->mutable_task_log_info();
+  log_info->set_stdout_file("/tmp/worker-out.log");
+  log_info->set_stdout_start(0);
+
+  rpc::TaskEvents task_event = ConvertSingleEvent(std::move(request));
+
+  const rpc::TaskLogInfo &converted = task_event.state_updates().task_log_info();
+  EXPECT_TRUE(converted.has_stdout_start());
+  EXPECT_EQ(converted.stdout_start(), 0);
+}
+
+// A worker log can exceed 2 GiB, so offsets past the int32 range must round-trip.
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventTaskLogInfoLargeOffsets) {
+  const int64_t past_int32_max =
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
+
+  rpc::events::AddEventsRequest request = MakeLifecycleEventRequest(1);
+  rpc::events::TaskLifecycleEvent::TaskLogInfo *log_info =
+      request.mutable_events_data()
+          ->mutable_events(0)
+          ->mutable_task_lifecycle_event()
+          ->mutable_task_log_info();
+  log_info->set_stdout_start(past_int32_max);
+  log_info->set_stdout_end(past_int32_max + 100);
+
+  rpc::TaskEvents task_event = ConvertSingleEvent(std::move(request));
+
+  const rpc::TaskLogInfo &converted = task_event.state_updates().task_log_info();
+  EXPECT_EQ(converted.stdout_start(), past_int32_max);
+  EXPECT_EQ(converted.stdout_end(), past_int32_max + 100);
+}
+
+// The log paths arrive when the task starts and the end offsets when it finishes. GCS
+// merges the two events into one attempt, so the paths and start offsets reported first
+// must survive the merge.
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventTaskLogInfoMerge) {
+  rpc::events::AddEventsRequest start_request = MakeLifecycleEventRequest(1);
+  rpc::events::TaskLifecycleEvent::TaskLogInfo *start_log_info =
+      start_request.mutable_events_data()
+          ->mutable_events(0)
+          ->mutable_task_lifecycle_event()
+          ->mutable_task_log_info();
+  start_log_info->set_stdout_file("/tmp/worker-out.log");
+  start_log_info->set_stderr_file("/tmp/worker-err.log");
+  start_log_info->set_stdout_start(10);
+  start_log_info->set_stderr_start(30);
+
+  rpc::events::AddEventsRequest end_request = MakeLifecycleEventRequest(1);
+  rpc::events::TaskLifecycleEvent::TaskLogInfo *end_log_info =
+      end_request.mutable_events_data()
+          ->mutable_events(0)
+          ->mutable_task_lifecycle_event()
+          ->mutable_task_log_info();
+  end_log_info->set_stdout_end(20);
+  end_log_info->set_stderr_end(40);
+
+  rpc::TaskEvents merged = ConvertSingleEvent(std::move(start_request));
+  merged.MergeFrom(ConvertSingleEvent(std::move(end_request)));
+
+  const rpc::TaskLogInfo &converted = merged.state_updates().task_log_info();
+  EXPECT_EQ(converted.stdout_file(), "/tmp/worker-out.log");
+  EXPECT_EQ(converted.stderr_file(), "/tmp/worker-err.log");
+  EXPECT_EQ(converted.stdout_start(), 10);
+  EXPECT_EQ(converted.stderr_start(), 30);
+  EXPECT_EQ(converted.stdout_end(), 20);
+  EXPECT_EQ(converted.stderr_end(), 40);
+}
 
 }  // namespace gcs
 }  // namespace ray

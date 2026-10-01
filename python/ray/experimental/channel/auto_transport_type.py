@@ -54,15 +54,18 @@ class TypeHintResolver:
     """
 
     def __init__(self, actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]]):
-        """
+        """Initialize the type hint resolver.
+
         Args:
             actor_to_gpu_ids: Mapping from actor handle to its GPU IDs.
         """
         self._actor_to_gpu_ids = actor_to_gpu_ids
 
     def _get_gpu_ids(self, actor: "ray.actor.ActorHandle") -> List[str]:
-        """
-        Get the GPU IDs of the actor.
+        """Get the GPU IDs of the actor.
+
+        Args:
+            actor: The actor handle to look up.
 
         Returns:
             The GPU IDs of the actor. If the actor is not found,

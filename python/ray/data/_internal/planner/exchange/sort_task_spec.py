@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
@@ -114,16 +114,18 @@ class SortTaskSpec(ExchangeTaskSpec):
     """
 
     SORT_SAMPLE_SUB_PROGRESS_BAR_NAME = "Sort Sample"
+    # Target number of sample rows per output partition. The total sample
+    # budget is divided evenly across input blocks.
+    SORT_SAMPLE_POINTS_PER_PARTITION = 10
 
     def __init__(
         self,
         boundaries: List[T],
         sort_key: SortKey,
-        batch_format: str,
     ):
         super().__init__(
             map_args=[boundaries, sort_key],
-            reduce_args=[sort_key, batch_format],
+            reduce_args=[sort_key],
         )
 
     @staticmethod
@@ -140,20 +142,19 @@ class SortTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         meta_with_schema = BlockMetadataWithSchema.from_block(
-            block, stats=stats.build()
+            block, block_exec_stats=stats.build()
         )
         return out + [meta_with_schema]
 
     @staticmethod
     def reduce(
         sort_key: SortKey,
-        batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
             mapper_outputs,
-            target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
+            target_block_type=None,
         )
         blocks, meta_with_schema = BlockAccessor.for_block(
             normalized_blocks[0]
@@ -166,16 +167,20 @@ class SortTaskSpec(ExchangeTaskSpec):
         sort_key: SortKey,
         num_reducers: int,
         sample_bar: Optional[ProgressBar] = None,
+        label_selector: Optional[Dict[str, str]] = None,
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
         partition the domain into ranges with approximately equally many elements.
         Each boundary item is a tuple of a form (col1_value, col2_value, ...).
         """
-        columns = sort_key.get_columns()
-        n_samples = int(num_reducers * 10 / len(blocks))
+        n_samples = int(
+            num_reducers * SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION / len(blocks)
+        )
 
         sample_block = cached_remote_fn(_sample_block)
+        if label_selector:
+            sample_block = sample_block.options(label_selector=label_selector)
 
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks
@@ -189,7 +194,22 @@ class SortTaskSpec(ExchangeTaskSpec):
         # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
         del sample_results
-        samples: List[Block] = [s for s in samples if len(s) > 0]
+        return SortTaskSpec.get_boundaries_from_samples(samples, sort_key, num_reducers)
+
+    @staticmethod
+    def get_boundaries_from_samples(
+        samples: List[Block],
+        sort_key: SortKey,
+        num_reducers: int,
+    ) -> List[T]:
+        """Compute range boundaries from already-materialized sample blocks.
+
+        This is split from :meth:`sample_boundaries` so streaming shuffle
+        operators can schedule sampling as part of their own task lifecycle and
+        reuse the same boundary calculation as the legacy sort implementation.
+        """
+        columns = sort_key.get_columns()
+        samples = [s for s in samples if len(s) > 0]
         # The dataset is empty
         if len(samples) == 0:
             return [None] * (num_reducers - 1)

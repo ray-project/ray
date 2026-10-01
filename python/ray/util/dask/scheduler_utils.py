@@ -6,6 +6,7 @@ The following is adapted from Dask release 2021.03.1:
 import os
 import warnings
 from queue import Empty, Queue
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import dask
 from dask import config
@@ -39,26 +40,40 @@ else:
         return q.get()
 
 
-def start_state_from_dask(dsk, cache=None, sortkey=None):
-    """Start state from a dask
-    Examples
-    --------
-    >>> dsk = {
-        'x': 1,
-        'y': 2,
-        'z': (inc, 'x'),
-        'w': (add, 'z', 'y')}  # doctest: +SKIP
-    >>> from pprint import pprint  # doctest: +SKIP
-    >>> pprint(start_state_from_dask(dsk))  # doctest: +SKIP
-    {'cache': {'x': 1, 'y': 2},
-     'dependencies': {'w': {'z', 'y'}, 'x': set(), 'y': set(), 'z': {'x'}},
-     'dependents': {'w': set(), 'x': {'z'}, 'y': {'w'}, 'z': {'w'}},
-     'finished': set(),
-     'ready': ['z'],
-     'released': set(),
-     'running': set(),
-     'waiting': {'w': {'z'}},
-     'waiting_data': {'x': {'z'}, 'y': {'w'}, 'z': {'w'}}}
+def start_state_from_dask(
+    dsk: Dict[Any, Any],
+    cache: Optional[Dict[Any, Any]] = None,
+    sortkey: Optional[Callable[[Any], Any]] = None,
+) -> Dict[str, Any]:
+    """Start state from a dask.
+
+    Args:
+        dsk: A dask dictionary specifying a workflow.
+        cache: Temporary storage of results.
+        sortkey: Function to sort keys.
+
+    Returns:
+        Initial scheduler state dict with keys ``dependencies``, ``dependents``,
+        ``waiting``, ``waiting_data``, ``cache``, ``ready``, ``running``,
+        ``finished``, and ``released``.
+
+    Examples:
+        >>> dsk = {
+        ...     'x': 1,
+        ...     'y': 2,
+        ...     'z': (inc, 'x'),
+        ...     'w': (add, 'z', 'y')}  # doctest: +SKIP
+        >>> from pprint import pprint  # doctest: +SKIP
+        >>> pprint(start_state_from_dask(dsk))  # doctest: +SKIP
+        {'cache': {'x': 1, 'y': 2},
+         'dependencies': {'w': {'z', 'y'}, 'x': set(), 'y': set(), 'z': {'x'}},
+         'dependents': {'w': set(), 'x': {'z'}, 'y': {'w'}, 'z': {'w'}},
+         'finished': set(),
+         'ready': ['z'],
+         'released': set(),
+         'running': set(),
+         'waiting': {'w': {'z'}},
+         'waiting_data': {'x': {'z'}, 'y': {'w'}, 'z': {'w'}}}
     """
     if sortkey is None:
         sortkey = order(dsk).get
@@ -105,11 +120,10 @@ def start_state_from_dask(dsk, cache=None, sortkey=None):
 
 
 def execute_task(key, task_info, dumps, loads, get_id, pack_exception):
-    """
-    Compute task and handle all administration
-    See Also
-    --------
-    _execute_task : actually execute task
+    """Compute task and handle all administration.
+
+    See Also:
+        _execute_task : actually execute task
     """
     try:
         task, data = loads(task_info)
@@ -124,10 +138,10 @@ def execute_task(key, task_info, dumps, loads, get_id, pack_exception):
 
 
 def release_data(key, state, delete=True):
-    """Remove data from temporary storage
-    See Also
-    --------
-    finish_task
+    """Remove data from temporary storage.
+
+    See Also:
+        finish_task
     """
     if key in state["waiting_data"]:
         assert not state["waiting_data"][key]
@@ -178,16 +192,23 @@ def finish_task(
     return state
 
 
-def nested_get(ind, coll):
-    """Get nested index from collection
-    Examples
-    --------
-    >>> nested_get(1, 'abc')
-    'b'
-    >>> nested_get([1, 0], 'abc')
-    ('b', 'a')
-    >>> nested_get([[1, 0], [0, 1]], 'abc')
-    (('b', 'a'), ('a', 'b'))
+def nested_get(ind: Union[int, List[Any]], coll: Any) -> Any:
+    """Get nested index from collection.
+
+    Args:
+        ind: Index or nested list of indices.
+        coll: Collection to index into.
+
+    Returns:
+        Value at the given index, or a nested tuple of values if ``ind`` is a list.
+
+    Examples:
+        >>> nested_get(1, 'abc')
+        'b'
+        >>> nested_get([1, 0], 'abc')
+        ('b', 'a')
+        >>> nested_get([[1, 0], [0, 1]], 'abc')
+        (('b', 'a'), ('a', 'b'))
     """
     if isinstance(ind, list):
         return tuple(nested_get(i, coll) for i in ind)
@@ -219,61 +240,55 @@ def identity(x):
 
 
 def get_async(
-    apply_async,
-    num_workers,
-    dsk,
-    result,
-    cache=None,
-    get_id=default_get_id,
-    rerun_exceptions_locally=None,
-    pack_exception=default_pack_exception,
-    raise_exception=reraise,
-    callbacks=None,
-    dumps=identity,
-    loads=identity,
-    **kwargs,
-):
-    """Asynchronous get function
+    apply_async: Callable[..., Any],
+    num_workers: int,
+    dsk: Dict[Any, Any],
+    result: Union[Any, List[Any]],
+    cache: Optional[Dict[Any, Any]] = None,
+    get_id: Callable[[], Any] = default_get_id,
+    rerun_exceptions_locally: Optional[bool] = None,
+    pack_exception: Callable[..., Any] = default_pack_exception,
+    raise_exception: Callable[..., Any] = reraise,
+    callbacks: Optional[Union[Tuple[Any, ...], List[Tuple[Any, ...]]]] = None,
+    dumps: Callable[[Any], Any] = identity,
+    loads: Callable[[Any], Any] = identity,
+    **kwargs: Any,
+) -> Any:
+    """Asynchronous get function.
+
     This is a general version of various asynchronous schedulers for dask.  It
     takes a an apply_async function as found on Pool objects to form a more
     specific ``get`` method that walks through the dask array with parallel
     workers, avoiding repeat computation and minimizing memory use.
-    Parameters
-    ----------
-    apply_async : function
-        Asynchronous apply function as found on Pool or ThreadPool
-    num_workers : int
-        The number of active tasks we should have at any one time
-    dsk : dict
-        A dask dictionary specifying a workflow
-    result : key or list of keys
-        Keys corresponding to desired data
-    cache : dict-like, optional
-        Temporary storage of results
-    get_id : callable, optional
-        Function to return the worker id, takes no arguments. Examples are
-        `threading.current_thread` and `multiprocessing.current_process`.
-    rerun_exceptions_locally : bool, optional
-        Whether to rerun failing tasks in local process to enable debugging
-        (False by default)
-    pack_exception : callable, optional
-        Function to take an exception and ``dumps`` method, and return a
-        serialized tuple of ``(exception, traceback)`` to send back to the
-        scheduler. Default is to just raise the exception.
-    raise_exception : callable, optional
-        Function that takes an exception and a traceback, and raises an error.
-    dumps: callable, optional
-        Function to serialize task data and results to communicate between
-        worker and parent.  Defaults to identity.
-    loads: callable, optional
-        Inverse function of `dumps`.  Defaults to identity.
-    callbacks : tuple or list of tuples, optional
-        Callbacks are passed in as tuples of length 5. Multiple sets of
-        callbacks may be passed in as a list of tuples. For more information,
-        see the dask.diagnostics documentation.
-    See Also
-    --------
-    threaded.get
+
+    Args:
+        apply_async: Asynchronous apply function as found on Pool or ThreadPool.
+        num_workers: The number of active tasks we should have at any one time.
+        dsk: A dask dictionary specifying a workflow.
+        result: Keys corresponding to desired data (key or list of keys).
+        cache: Temporary storage of results (dict-like, optional).
+        get_id: Function to return the worker id, takes no arguments. Examples
+            are `threading.current_thread` and `multiprocessing.current_process`.
+        rerun_exceptions_locally: Whether to rerun failing tasks in local
+            process to enable debugging (False by default).
+        pack_exception: Function to take an exception and ``dumps`` method, and
+            return a serialized tuple of ``(exception, traceback)`` to send
+            back to the scheduler. Default is to just raise the exception.
+        raise_exception: Function that takes an exception and a traceback, and
+            raises an error.
+        callbacks: Callbacks are passed in as tuples of length 5. Multiple sets
+            of callbacks may be passed in as a list of tuples. For more
+            information, see the dask.diagnostics documentation.
+        dumps: Function to serialize task data and results to communicate
+            between worker and parent. Defaults to identity.
+        loads: Inverse function of `dumps`. Defaults to identity.
+        **kwargs: Additional keyword arguments (unused).
+
+    Returns:
+        The computed result(s), with the same shape as ``result``.
+
+    See Also:
+        threaded.get
     """
     queue = Queue()
 

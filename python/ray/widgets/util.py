@@ -71,7 +71,7 @@ def _has_missing(
     """Return a list of missing dependencies.
 
     Args:
-        deps: Dependencies to check for
+        *deps: Dependencies to check for, as ``(lib, version)`` tuples.
         message: Message to be emitted if a dependency isn't found
 
     Returns:
@@ -140,7 +140,8 @@ def repr_with_fallback(
         about the status of this issue.
 
     Args:
-        notebook_deps: The required dependencies and version for notebook environment.
+        *notebook_deps: The required dependencies and version for notebook
+            environment, as ``(lib, version)`` tuples.
 
     Returns:
         A function that returns the usual _repr_mimebundle_, unless any of the 3

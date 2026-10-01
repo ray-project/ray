@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _env-external-reference-docs:
 
 External Envs
@@ -12,7 +10,7 @@ ray.rllib.env.external.rllink.RLlink
 
 .. currentmodule:: ray.rllib.env.external.rllink
 
-.. autoclass:: ray.rllib.env.external.rllink.RLlink
+.. autoclass:: RLlink
 
 .. autosummary::
    :nosignatures:

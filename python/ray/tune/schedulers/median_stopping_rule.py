@@ -26,6 +26,14 @@ class MedianStoppingRule(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
+            Valid values are any key reported in the result dict by your
+            trainable. The auto-filled keys ``"training_iteration"`` (the
+            iteration count) and ``"time_total_s"`` (wall-clock seconds since
+            the trial started) always work; any additional numeric, monotonic
+            key your trainable reports via ``tune.report({...})`` is also valid
+            (for example ``"timesteps_total"`` or a custom progress counter).
+            Passing a key that is not present in the reported result causes
+            the scheduler to skip its decision for that step.
         metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
@@ -138,7 +146,14 @@ class MedianStoppingRule(FIFOScheduler):
         trials = self._trials_beyond_time(time)
         trials.remove(trial)
 
-        if len(trials) < self._min_samples_required:
+        # Exclude `np.nan` and `np.inf` values.
+        running_means = [
+            running_mean
+            for running_mean in (self._running_mean(other, time) for other in trials)
+            if np.isfinite(running_mean)
+        ]
+
+        if len(running_means) < self._min_samples_required:
             action = self._on_insufficient_samples(tune_controller, trial, time)
             if action == TrialScheduler.PAUSE:
                 self._last_pause[trial] = time
@@ -148,12 +163,12 @@ class MedianStoppingRule(FIFOScheduler):
             logger.debug(
                 "MedianStoppingRule: insufficient samples={} to evaluate "
                 "trial {} at t={}. {}".format(
-                    len(trials), trial.trial_id, time, action_str
+                    len(running_means), trial.trial_id, time, action_str
                 )
             )
             return action
 
-        median_result = self._median_result(trials, time)
+        median_result = np.median(running_means)
         best_result = self._best_result(trial)
         logger.debug(
             "Trial {} best res={} vs median res={} at t={}".format(
@@ -200,9 +215,6 @@ class MedianStoppingRule(FIFOScheduler):
         ]
         return trials
 
-    def _median_result(self, trials: List[Trial], time: float):
-        return np.median([self._running_mean(trial, time) for trial in trials])
-
     def _running_mean(self, trial: Trial, time: float) -> np.ndarray:
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
@@ -210,6 +222,9 @@ class MedianStoppingRule(FIFOScheduler):
         scoped_results = [
             r for r in results if self._grace_period <= r[self._time_attr] <= time
         ]
+        if not scoped_results:
+            # Sparse reporting can skip the window entirely; `np.mean([])` is nan plus a warning.
+            return np.nan
         return np.mean([r[self._metric] for r in scoped_results])
 
     def _best_result(self, trial):

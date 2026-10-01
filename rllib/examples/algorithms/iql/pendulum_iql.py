@@ -75,8 +75,11 @@ config = (
     )
     .rl_module(
         model_config=DefaultModelConfig(
+            fcnet_hiddens=[256, 256],
             fcnet_activation="relu",
-        ),
+            fusionnet_hiddens=[256, 256, 256],
+            fusionnet_activation="relu",
+        )
     )
 )
 

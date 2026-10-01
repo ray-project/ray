@@ -91,7 +91,7 @@ class MockProcessRunner:
 
     def assert_has_call(
         self, ip: str, pattern: Optional[str] = None, exact: Optional[List[str]] = None
-    ):
+    ) -> bool:
         """Checks if the given value was called by this process runner.
 
         NOTE: Either pattern or exact must be specified, not both!
@@ -100,6 +100,10 @@ class MockProcessRunner:
             ip: IP address of the node that the given call was executed on.
             pattern: RegEx that matches one specific call.
             exact: List of strings that when joined exactly match one call.
+
+        Returns:
+            ``True`` when a matching call is found. Raises ``Exception`` when
+            no matching call is recorded.
         """
         with self.lock:
             assert bool(pattern) ^ bool(

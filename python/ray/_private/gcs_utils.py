@@ -70,12 +70,13 @@ _GRPC_OPTIONS = [
 ]
 
 
-def create_gcs_channel(address: str, aio=False):
+def create_gcs_channel(address: str, aio: bool = False):
     """Returns a GRPC channel to GCS.
 
     Args:
         address: GCS address string, e.g. ip:port
         aio: Whether using grpc.aio
+
     Returns:
         grpc.Channel or grpc.aio.Channel to GCS
     """
@@ -117,10 +118,13 @@ def cleanup_redis_storage(
     Args:
        host: The Redis host address.
        port: The Redis port.
-       username: The Redis username.
        password: The Redis password.
        use_ssl: Whether to encrypt the connection.
        storage_namespace: The namespace of the storage to be deleted.
+       username: The Redis username.
+
+    Returns:
+        The result of deleting the GCS key prefix from the Redis storage.
     """
 
     from ray._raylet import del_key_prefix_from_storage  # type: ignore

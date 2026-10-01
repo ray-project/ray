@@ -53,7 +53,7 @@ def bootstrap_aws_example_config_file(file_name):
     return bootstrap_aws_config(config)
 
 
-def node_provider_tags(config, type_name):
+def node_provider_tags(config: dict, type_name: str) -> dict:
     """
     Returns a copy of DEFAULT_NODE_PROVIDER_INSTANCE_TAGS with the Ray node
     kind and Ray user node type filled in from the input config and node type
@@ -73,7 +73,9 @@ def node_provider_tags(config, type_name):
     return tags
 
 
-def apply_node_provider_config_updates(config, node_cfg, node_type_name, max_count):
+def apply_node_provider_config_updates(
+    config: dict, node_cfg: dict, node_type_name: str, max_count: int
+) -> None:
     """
     Applies default updates made by AWSNodeProvider to node_cfg during node
     creation. This should only be used for testing purposes.

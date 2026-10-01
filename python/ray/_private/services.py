@@ -12,7 +12,9 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
+from functools import cache
 from pathlib import Path
 from typing import IO, AnyStr, List, Optional
 
@@ -23,9 +25,11 @@ from ray._common.network_utils import (
     build_address,
     get_localhost_ip,
     is_ipv6,
+    is_localhost,
     node_ip_address_from_perspective,
     parse_address,
 )
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions, NodeID
 from ray.core.generated.common_pb2 import Language
@@ -152,6 +156,9 @@ def _build_python_executable_command_memory_profileable(
             e.g., `-u`.
             It means the logs are flushed immediately (good when there's a failure),
             but writing to a log file can be slower.
+
+    Returns:
+        The list of command arguments to use when launching the component.
     """
     command = [
         sys.executable,
@@ -369,9 +376,32 @@ def find_node_ids():
     return _find_address_from_flag("--node_id")
 
 
+_find_gcs_addresses_lock = threading.Lock()
+
+
+@cache
+def _cached_find_gcs_addresses():
+    return frozenset(_find_address_from_flag("--gcs-address"))
+
+
 def find_gcs_addresses():
-    """Finds any local GCS processes based on grepping ps."""
-    return _find_address_from_flag("--gcs-address")
+    """Finds any local GCS processes based on grepping ps.
+
+    Empty discovery results are not cached.
+    """
+    with _find_gcs_addresses_lock:
+        addresses = _cached_find_gcs_addresses()
+        if not addresses:
+            _cached_find_gcs_addresses.cache_clear()
+        return addresses
+
+
+def _thread_safe_find_gcs_addresses_cache_clear():
+    with _find_gcs_addresses_lock:
+        _cached_find_gcs_addresses.cache_clear()
+
+
+find_gcs_addresses.cache_clear = _thread_safe_find_gcs_addresses_cache_clear
 
 
 def find_bootstrap_address(temp_dir: Optional[str]):
@@ -390,6 +420,11 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     we will fallback to connecting to any detected Ray cluster (legacy).
     3. Otherwise, use the provided address.
 
+    Args:
+        addr: The user-supplied Ray address (may be ``None`` or ``"auto"``).
+        temp_dir: The Ray temp directory used to look up the last active
+            cluster, or ``None`` to use the default temp directory.
+
     Returns:
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
@@ -405,7 +440,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
 
     if len(gcs_addrs) > 1 and bootstrap_addr is not None:
         logger.warning(
-            f"Found multiple active Ray instances: {gcs_addrs}. "
+            f"Found multiple active Ray instances: {set(gcs_addrs)}. "
             f"Connecting to latest cluster at {bootstrap_addr}. "
             "You can override this by setting the `--address` flag "
             "or `RAY_ADDRESS` environment variable."
@@ -413,7 +448,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     elif len(gcs_addrs) > 0 and addr == "auto":
         # Preserve legacy "auto" behavior of connecting to any cluster, even if not
         # started with ray start. However if addr is None, we will raise an error.
-        bootstrap_addr = list(gcs_addrs).pop()
+        bootstrap_addr = next(iter(gcs_addrs))
 
     if bootstrap_addr is None:
         if addr is None:
@@ -444,6 +479,9 @@ def wait_for_node(
             plasma_store_socket_name for the given node which we wait for.
         timeout: The amount of time in seconds to wait before raising an
             exception.
+
+    Returns:
+        None. Returns once the node appears in the client table.
 
     Raises:
         TimeoutError: An exception is raised if the timeout expires before
@@ -476,6 +514,7 @@ def get_node_to_connect_for_driver(
     node_ip_address: str = None,
     node_name: str = None,
     temp_dir: str = None,
+    timeout_seconds: int = ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
 ) -> GcsNodeInfo:
     """
     Get the node to connect to for the driver.
@@ -491,41 +530,55 @@ def get_node_to_connect_for_driver(
                          it will be resolved to a ray node on the same host.
         node_name: The name of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
         temp_dir: The temp directory of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
+        timeout_seconds: The time alotted to find the node to connect to
 
     Returns:
         The node info of the node to connect to.
     """
     node_to_connect_info = None
-    possible_node_ids = find_node_ids()
-    node_selectors = []
-    for id in possible_node_ids:
-        id_node_selector = GetAllNodeInfoRequest.NodeSelector(
-            node_id=NodeID.from_hex(id).binary()
-        )
-        node_selectors.append(id_node_selector)
-    try:
-        node_to_connect_infos = gcs_client.get_all_node_info(
-            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
-            node_selectors=node_selectors,
-            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
-        ).values()
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to get node info for possible node ids: {possible_node_ids}"
-            f" when trying to resolve node to connect to. Error: {repr(e)}"
-        )
-    if not node_to_connect_infos:
-        raise RuntimeError(
-            f"No node info found matching node ids: {possible_node_ids}"
-            f" when trying to resolve node to connect to."
-        )
-
+    start_time = time.time()
+    possible_node_ids = []
     filtered_node_to_connect_infos = []
-    for node_info in node_to_connect_infos:
-        if (
-            node_ip_address is None or node_info.node_manager_address == node_ip_address
-        ) and (node_name is None or node_info.node_name == node_name):
-            filtered_node_to_connect_infos.append(node_info)
+    while not possible_node_ids or not filtered_node_to_connect_infos:
+        time_left = timeout_seconds - (time.time() - start_time)
+        if time_left <= 0:
+            break
+
+        possible_node_ids = find_node_ids()
+        # no need to make gcs call if raylets are not ready yet
+        if len(possible_node_ids) == 0:
+            time.sleep(1)
+            continue
+
+        node_selectors = []
+        for id in possible_node_ids:
+            id_node_selector = GetAllNodeInfoRequest.NodeSelector(
+                node_id=NodeID.from_hex(id).binary()
+            )
+            node_selectors.append(id_node_selector)
+        try:
+            node_to_connect_infos = gcs_client.get_all_node_info(
+                timeout=time_left,
+                node_selectors=node_selectors,
+                state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+            ).values()
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to get node info for possible node ids: {possible_node_ids}"
+                f" when trying to resolve node to connect to. Error: {repr(e)}"
+            )
+        for node_info in node_to_connect_infos:
+            if (
+                (
+                    node_ip_address is None
+                    or node_info.node_manager_address == node_ip_address
+                )
+                and (node_name is None or node_info.node_name == node_name)
+                and (temp_dir is None or node_info.temp_dir == temp_dir)
+            ):
+                filtered_node_to_connect_infos.append(node_info)
+        if not filtered_node_to_connect_infos:
+            time.sleep(1)
 
     if not filtered_node_to_connect_infos:
         attrs = [node_ip_address, node_name, temp_dir]
@@ -639,6 +692,12 @@ def canonicalize_bootstrap_address(
     This function should be used to process user supplied Ray cluster address,
     via ray.init() or `--address` flags, before using the address to connect.
 
+    Args:
+        addr: The user-supplied Ray address (may be ``None``, ``"auto"``, or
+            ``"local"``).
+        temp_dir: The Ray temp directory used to look up the last active
+            cluster, or ``None`` to use the default temp directory.
+
     Returns:
         Ray cluster address string in <host:port> format or None if the caller
         should start a local Ray instance.
@@ -675,6 +734,11 @@ def canonicalize_bootstrap_address_or_die(
     allow easier use of Ray CLIs when debugging a local Ray instance (whose GCS
     addresses are not recorded).
 
+    Args:
+        addr: The user-supplied Ray address (may be ``None`` or ``"auto"``).
+        temp_dir: The Ray temp directory used to look up the last active
+            cluster, or ``None`` to use the default temp directory.
+
     Returns:
         Ray cluster address string in <host:port> format. Throws a
         ConnectionError if zero or multiple active Ray instances are
@@ -693,11 +757,11 @@ def canonicalize_bootstrap_address_or_die(
         )
     if len(running_gcs_addresses) > 1:
         raise ConnectionError(
-            f"Found multiple active Ray instances: {running_gcs_addresses}. "
+            f"Found multiple active Ray instances: {set(running_gcs_addresses)}. "
             "Please specify the one to connect to by setting the `--address` "
             "flag or `RAY_ADDRESS` environment variable."
         )
-    return running_gcs_addresses.pop()
+    return next(iter(running_gcs_addresses))
 
 
 def extract_ip_port(bootstrap_address: str):
@@ -732,7 +796,7 @@ def resolve_ip_for_localhost(host: str):
     """
     if not host:
         raise ValueError(f"Malformed host: {host}")
-    if host == "127.0.0.1" or host == "::1" or host == "localhost":
+    if is_localhost(host):
         # Make sure localhost isn't resolved to the loopback ip
         return get_node_ip_address()
     else:
@@ -766,7 +830,11 @@ def get_node_instance_id():
     return os.getenv("RAY_CLOUD_INSTANCE_ID", "")
 
 
-def create_redis_client(redis_address, password=None, username=None):
+def create_redis_client(
+    redis_address: str,
+    password: Optional[str] = None,
+    username: Optional[str] = None,
+):
     """Create a Redis client.
 
     Args:
@@ -934,7 +1002,7 @@ def start_ray_process(
 
         # TODO(suquark): Any better temp file creation here?
         gdb_init_path = os.path.join(
-            ray._common.utils.get_ray_temp_dir(),
+            ray._common.utils.get_default_ray_temp_dir(),
             f"gdb_init_{process_type}_{time.time()}",
         )
         ray_process_path = command[0]
@@ -1020,6 +1088,8 @@ def start_ray_process(
             raise
 
     def _get_stream_name(stream):
+        if stream == subprocess.DEVNULL:
+            return os.devnull
         if stream is not None:
             try:
                 return stream.name
@@ -1039,13 +1109,17 @@ def start_ray_process(
     )
 
 
-def start_reaper(fate_share=None):
+def start_reaper(fate_share: Optional[bool] = None):
     """Start the reaper process.
 
     This is a lightweight process that simply
     waits for its parent process to die and then terminates its own
     process group. This allows us to ensure that ray processes are always
     terminated properly so long as that process itself isn't SIGKILLed.
+
+    Args:
+        fate_share: If True, the reaper process is bound to the parent's job
+            on Windows so it terminates with the parent.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1141,13 +1215,8 @@ def start_log_monitor(
         )
         command.append(f"--logging-format={logging_format}")
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -1175,6 +1244,7 @@ def start_api_server(
     backup_count: int = 0,
     stdout_filepath: Optional[str] = None,
     stderr_filepath: Optional[str] = None,
+    proxy_server_url: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1193,11 +1263,13 @@ def start_api_server(
         node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
+        logdir: The log directory used to generate dashboard log.
         session_dir: The session directory under temp_dir.
             It is used as a identifier of individual cluster.
-        logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
+        fate_share: If True, the API server is bound to the parent's job on
+            Windows so it terminates with the parent.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1206,6 +1278,8 @@ def start_api_server(
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump dashboard stderr.
             If None, stderr is not redirected.
+        proxy_server_url: The url to redirect dashboard backend api requests to
+            Ex: http://historyserver:8080
 
     Returns:
         A tuple of :
@@ -1284,6 +1358,7 @@ def start_api_server(
             f"--gcs-address={gcs_address}",
             f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
+            f"--proxy-server-url={proxy_server_url or ''}",
         ]
 
         if stdout_filepath:
@@ -1311,13 +1386,8 @@ def start_api_server(
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
 
-        stdout_file = None
-        if stdout_filepath:
-            stdout_file = open(os.devnull, "w")
-
-        stderr_file = None
-        if stderr_filepath:
-            stderr_file = open(os.devnull, "w")
+        stdout_file = subprocess.DEVNULL if stdout_filepath else None
+        stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
         process_info = start_ray_process(
             command,
@@ -1480,6 +1550,8 @@ def start_gcs_server(
         redis_password: The password of the Redis server.
         config: Optional configuration that will
             override defaults in RayConfig.
+        fate_share: If True, the GCS server is bound to the parent's job on
+            Windows so it terminates with the parent.
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
@@ -1522,13 +1594,8 @@ def start_gcs_server(
     if redis_password:
         command += [f"--redis_password={redis_password}"]
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -1555,7 +1622,7 @@ def start_raylet(
     session_dir: str,
     resource_dir: str,
     log_dir: str,
-    resource_and_label_spec,
+    resource_and_label_spec: ResourceAndLabelSpec,
     plasma_directory: str,
     fallback_directory: str,
     object_store_memory: int,
@@ -1578,8 +1645,10 @@ def start_raylet(
     raylet_stderr_filepath: Optional[str] = None,
     dashboard_agent_stdout_filepath: Optional[str] = None,
     dashboard_agent_stderr_filepath: Optional[str] = None,
+    dashboard_agent_log_filepath: Optional[str] = None,
     runtime_env_agent_stdout_filepath: Optional[str] = None,
     runtime_env_agent_stderr_filepath: Optional[str] = None,
+    runtime_env_agent_log_filepath: Optional[str] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
@@ -1602,6 +1671,7 @@ def start_raylet(
         raylet_name: The name of the raylet socket to create.
         plasma_store_name: The name of the plasma store socket to connect
              to.
+        cluster_id: The cluster ID of this Ray cluster.
         worker_path: The path of the Python file that new worker
             processes will execute.
         setup_worker_path: The path of the Python file that will set up
@@ -1617,9 +1687,9 @@ def start_raylet(
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         session_name: The current Ray session name.
+        is_head_node: whether this node is the head node.
         resource_isolation_config: Resource isolation configuration for reserving
             memory and cpu resources for ray system processes through cgroupv2
-        is_head_node: whether this node is the head node.
         min_worker_port: The lowest port number that workers will bind
             on. If not set, random ports will be chosen.
         max_worker_port: The highest port number that workers will bind
@@ -1649,13 +1719,19 @@ def start_raylet(
             dashboard agent stdout. If None, stdout is not redirected.
         dashboard_agent_stderr_filepath: The file path to dump
             dashboard agent stderr. If None, stderr is not redirected.
+        dashboard_agent_log_filepath: The file path for the dashboard agent
+            log file. If None, defaults to "dashboard_agent.log".
         runtime_env_agent_stdout_filepath: The file path to dump
             runtime env agent stdout. If None, stdout is not redirected.
         runtime_env_agent_stderr_filepath: The file path to dump
             runtime env agent stderr. If None, stderr is not redirected.
+        runtime_env_agent_log_filepath: The file path for the runtime env
+            agent log file. If None, defaults to "runtime_env_agent.log".
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         fate_share: Whether to share fate between raylet and this process.
+        socket_to_use: The file descriptor of a socket to pass to the
+            raylet process. If None, no socket is passed.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1668,7 +1744,7 @@ def start_raylet(
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert node_manager_port is not None and type(node_manager_port) is int
+    assert node_manager_port is not None and isinstance(node_manager_port, int)
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1813,6 +1889,10 @@ def start_raylet(
         dashboard_agent_command.append(
             f"--stderr-filepath={dashboard_agent_stderr_filepath}"
         )
+    if dashboard_agent_log_filepath:
+        dashboard_agent_command.append(
+            f"--logging-filename={os.path.basename(dashboard_agent_log_filepath)}"
+        )
     if (
         dashboard_agent_stdout_filepath is None
         and dashboard_agent_stderr_filepath is None
@@ -1859,6 +1939,10 @@ def start_raylet(
     if runtime_env_agent_stderr_filepath:
         runtime_env_agent_command.append(
             f"--stderr-filepath={runtime_env_agent_stderr_filepath}"
+        )
+    if runtime_env_agent_log_filepath:
+        runtime_env_agent_command.append(
+            f"--logging-filename={os.path.basename(runtime_env_agent_log_filepath)}"
         )
     if (
         runtime_env_agent_stdout_filepath is None
@@ -1954,13 +2038,8 @@ def start_raylet(
             f"--node-name={node_name}",
         )
 
-    stdout_file = None
-    if raylet_stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if raylet_stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if raylet_stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if raylet_stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -2120,6 +2199,7 @@ def determine_plasma_store_config(
 
     Args:
         object_store_memory: The object store memory to use.
+        temp_dir: The user-specified temp directory parameter (defaults to <system_temp_dir>/ray).
         plasma_directory: The user-specified plasma directory parameter.
         fallback_directory: The path extracted from the object_spilling_config when the
                             object spilling config is set and the spilling type is to
@@ -2164,7 +2244,7 @@ def determine_plasma_store_config(
                     )
                 )
             else:
-                plasma_directory = ray._common.utils.get_user_temp_dir()
+                plasma_directory = temp_dir
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
@@ -2174,13 +2254,13 @@ def determine_plasma_store_config(
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
                     "sure to set this to more than 30% of available RAM.".format(
-                        ray._common.utils.get_user_temp_dir(),
+                        temp_dir,
                         shm_avail,
                         object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
-            plasma_directory = ray._common.utils.get_user_temp_dir()
+            plasma_directory = temp_dir
 
         # Do some sanity checks.
         if object_store_memory > system_memory:
@@ -2277,12 +2357,16 @@ def start_monitor(
         stderr_filepath: The file path to dump monitor stderr.
             If None, stderr is not redirected.
         autoscaling_config: path to autoscaling config file.
+        fate_share: If True, the monitor is bound to the parent's job on
+            Windows so it terminates with the parent.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
         monitor_ip: IP address of the machine that the monitor will be
             run on. Can be excluded, but required for autoscaler metrics.
+        autoscaler_v2: If True, use the v2 autoscaler entrypoint.
+
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -2321,13 +2405,8 @@ def start_monitor(
     if monitor_ip:
         command.append("--monitor-ip=" + monitor_ip)
 
-    stdout_file = None
-    if stdout_filepath:
-        stdout_file = open(os.devnull, "w")
-
-    stderr_file = None
-    if stderr_filepath:
-        stderr_file = open(os.devnull, "w")
+    stdout_file = subprocess.DEVNULL if stdout_filepath else None
+    stderr_file = subprocess.DEVNULL if stderr_filepath else None
 
     process_info = start_ray_process(
         command,
@@ -2365,11 +2444,13 @@ def start_ray_client_server(
             no redirection should happen, then this should be None.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
+        fate_share: If True, the client server is bound to the parent's job on
+            Windows so it terminates with the parent.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
         node_id: The hex ID of this node.
         server_type: Whether to start the proxy version of Ray Client.
-        serialized_runtime_env_context (str|None): If specified, the serialized
+        serialized_runtime_env_context: If specified, the serialized
             runtime_env_context to start the client server in.
 
     Returns:
@@ -2394,8 +2475,11 @@ def start_ray_client_server(
     ]
     if redis_username:
         command.append(f"--redis-username={redis_username}")
+    env_updates = {}
     if redis_password:
-        command.append(f"--redis-password={redis_password}")
+        # Use an environment variable to pass the Redis password to the client server.
+        # This avoids leaking it via process arguments.
+        env_updates[ray_constants.RAY_REDIS_PASSWORD_ENV] = redis_password
     if serialized_runtime_env_context:
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
@@ -2413,6 +2497,7 @@ def start_ray_client_server(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
+        env_updates=env_updates,
     )
     return process_info
 

@@ -182,6 +182,16 @@ class warn_if_slow:
         message: Optional[str] = None,
         disable: bool = False,
     ):
+        """Initialize the context manager.
+
+        Args:
+            name: Identifier for the operation, used in the warning message.
+            threshold: Duration in seconds above which to warn. Defaults to
+                ``DEFAULT_THRESHOLD``.
+            message: Optional override for the warning message format. Receives
+                ``name`` and ``duration`` as format kwargs.
+            disable: If True, suppress warnings entirely.
+        """
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.message = message or self.DEFAULT_MESSAGE
@@ -450,7 +460,7 @@ def wait_for_gpu(
     retry: int = 20,
     delay_s: int = 5,
     gpu_memory_limit: Optional[float] = None,
-):
+) -> bool:
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
@@ -464,6 +474,7 @@ def wait_for_gpu(
         retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
         delay_s: Seconds to wait before check.
+        gpu_memory_limit: Deprecated. No longer used.
 
     Returns:
         bool: True if free.
@@ -549,16 +560,16 @@ def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
     num_gpus: int = 0,
-):
+) -> bool:
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
         config: Config to pass to Trainable when testing.
         num_gpus: GPU resources to allocate when testing.
-        use_object_store: Whether to save and restore to Ray's object
-            store. Recommended to set this to True if planning to use
-            algorithms that pause training (i.e., PBT, HyperBand).
+
+    Returns:
+        True if the save/restore round-trip succeeded.
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
 

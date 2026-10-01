@@ -14,6 +14,7 @@ from ray.data._internal.datasource.databricks_credentials import (
     build_headers,
     request_with_401_retry,
 )
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
@@ -43,7 +44,7 @@ class DatabricksUCDatasource(Datasource):
         self.host = self._credential_provider.get_host()
         self.warehouse_id = warehouse_id
         self.catalog = catalog
-        self.schema = schema
+        self.schema_name = schema
         self.query = query
 
         if not self.host.startswith(("http://", "https://")):
@@ -59,7 +60,7 @@ class DatabricksUCDatasource(Datasource):
                 "disposition": "EXTERNAL_LINKS",
                 "format": "ARROW_STREAM",
                 "catalog": self.catalog,
-                "schema": self.schema,
+                "schema": self.schema_name,
             }
         )
 
@@ -181,6 +182,9 @@ class DatabricksUCDatasource(Datasource):
                     with pyarrow.ipc.open_stream(raw_response.content) as reader:
                         arrow_table = reader.read_all()
 
+                    # Unpickling untrusted data can execute arbitrary code. Reject
+                    # object columns unless the user has explicitly opted in.
+                    raise_on_pickle_object_columns(arrow_table)
                     yield arrow_table
 
             def read_fn():

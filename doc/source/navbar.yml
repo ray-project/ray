@@ -25,8 +25,8 @@
     - file: rllib/index
       title: Ray RLlib
       caption: Scale reinforcement learning
-- file: index
-  title: "Docs"
+- file: apis/index
+  title: "APIs"
 - link: https://discuss.ray.io
   title: "Resources"
   sections:

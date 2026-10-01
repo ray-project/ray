@@ -284,8 +284,7 @@ class ReaderInterface:
         raise NotImplementedError
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
-        """
-        Read a list of values from this reader.
+        """Read a list of values from this reader.
 
         Args:
             timeout: The maximum time in seconds to wait for reading.
@@ -293,18 +292,22 @@ class ReaderInterface:
                 timeout (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
 
+        Returns:
+            The list of values read from the underlying input channels.
         """
         raise NotImplementedError
 
     def read(self, timeout: Optional[float] = None) -> List[Any]:
-        """
-        Read from this reader.
+        """Read from this reader.
 
         Args:
             timeout: The maximum time in seconds to wait for reading.
                 None means using default timeout, 0 means immediate timeout
                 (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
+
+        Returns:
+            The list of values read from this reader.
         """
         assert (
             timeout is None or timeout >= 0 or timeout == -1
@@ -511,7 +514,7 @@ class WriterInterface:
         self,
         output_channels: List[ChannelInterface],
         output_idxs: List[Optional[Union[int, str]]],
-        is_input=False,
+        is_input: bool = False,
     ):
         """
         Initialize the writer.
@@ -541,10 +544,10 @@ class WriterInterface:
         raise NotImplementedError()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        """
-        Write the value.
+        """Write the value.
 
         Args:
+            val: The value to write to the output channels.
             timeout: The maximum time in seconds to wait for writing. 0 means
                 immediate timeout (immediate success or timeout without blocking).
                 -1 and None mean infinite timeout (blocks indefinitely).
@@ -558,16 +561,20 @@ class WriterInterface:
 
 
 def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
-    """
-    Adapt the raw arguments to the key. If `is_input` is True, this method will
-    retrieve the value from the input data for an InputAttributeNode. Otherwise, it
-    will retrieve either a partial value or the entire value from the output of
-    a ClassMethodNode.
+    """Adapt the raw arguments to the key.
+
+    If ``is_input`` is True, this method will retrieve the value from the input
+    data for an InputAttributeNode. Otherwise, it will retrieve either a partial
+    value or the entire value from the output of a ClassMethodNode.
 
     Args:
         raw_args: The raw arguments to adapt.
         key: The key to adapt.
         is_input: Whether the writer is DAG input writer or not.
+
+    Returns:
+        The value retrieved from ``raw_args`` according to ``key`` and
+        ``is_input``.
     """
     if is_input:
         if not isinstance(raw_args, CompiledDAGArgs):
@@ -627,7 +634,7 @@ class AwaitableBackgroundWriter(WriterInterface):
         self,
         output_channels: List[ChannelInterface],
         output_idxs: List[Optional[Union[int, str]]],
-        is_input=False,
+        is_input: bool = False,
     ):
         super().__init__(output_channels, output_idxs, is_input=is_input)
         self._queue = asyncio.Queue()

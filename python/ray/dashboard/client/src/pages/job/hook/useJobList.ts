@@ -9,13 +9,13 @@ export const useJobList = () => {
   const [isRefreshing, setRefresh] = useState(true);
   const [filter, setFilter] = useState<
     {
-      key: "job_id" | "submission_id" | "status";
+      key: "job_id" | "submission_id" | "status" | "name";
       val: string;
     }[]
   >([]);
   const refreshRef = useRef(isRefreshing);
   const changeFilter = (
-    key: "job_id" | "submission_id" | "status",
+    key: "job_id" | "submission_id" | "status" | "name",
     val: string,
   ) => {
     const newFilter = filter.filter((e) => e.key !== key);
@@ -48,7 +48,13 @@ export const useJobList = () => {
 
   return {
     jobList: jobList.filter((node) =>
-      filter.every((f) => node[f.key] && (node[f.key] ?? "").includes(f.val)),
+      filter.every((f) => {
+        if (f.key === "name") {
+          const jobName = node.metadata?.job_name ?? "";
+          return jobName.includes(f.val);
+        }
+        return node[f.key] && (node[f.key] ?? "").includes(f.val);
+      }),
     ),
     msg,
     isLoading,

@@ -153,6 +153,14 @@ def test_zip_preserve_order(ray_start_regular_shared):
     ), result
 
 
+def test_zip_emits_deprecation_warning(ray_start_regular_shared):
+    ds1 = ray.data.range(1)
+    ds2 = ray.data.range(1)
+
+    with pytest.warns(DeprecationWarning, match="`Dataset.zip` is deprecated"):
+        ds1.zip(ds2)
+
+
 if __name__ == "__main__":
     import sys
 

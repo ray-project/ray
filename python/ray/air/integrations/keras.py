@@ -122,17 +122,17 @@ class ReportCheckpointCallback(_Callback):
                 model.fit(dataset_shard, callbacks=[ReportCheckpointCallback()])
 
     Args:
+        checkpoint_on: When to save checkpoints. Must be one of the Keras event hooks
+            (less the ``on_``), e.g. "train_start" or "predict_end". Defaults to
+            "epoch_end".
+        report_metrics_on: When to report metrics. Must be one of
+            the Keras event hooks (less the ``on_``), e.g.
+            "train_start" or "predict_end". Defaults to "epoch_end".
         metrics: Metrics to report. If this is a list, each item describes
             the metric key reported to Keras, and it's reported under the
             same name. If this is a dict, each key is the name reported
             and the respective value is the metric key reported to Keras.
             If this is None, all Keras logs are reported.
-        report_metrics_on: When to report metrics. Must be one of
-            the Keras event hooks (less the ``on_``), e.g.
-            "train_start" or "predict_end". Defaults to "epoch_end".
-        checkpoint_on: When to save checkpoints. Must be one of the Keras event hooks
-            (less the ``on_``), e.g. "train_start" or "predict_end". Defaults to
-            "epoch_end".
     """
 
     def __init__(
@@ -160,7 +160,7 @@ class ReportCheckpointCallback(_Callback):
 
         should_checkpoint = when in self._checkpoint_on
         if should_checkpoint:
-            checkpoint = TensorflowCheckpoint.from_model(self.model)
+            checkpoint = TensorflowCheckpoint._from_model_internal(self.model)
             ray.train.report(metrics, checkpoint=checkpoint)
             # Clean up temporary checkpoint
             shutil.rmtree(checkpoint.path, ignore_errors=True)

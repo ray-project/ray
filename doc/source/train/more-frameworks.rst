@@ -1,3 +1,6 @@
+.. meta::
+   :description: Index of Ray Train integration guides for additional frameworks: Hugging Face Accelerate, DeepSpeed, TensorFlow/Keras, LightGBM, and Horovod.
+
 .. _train-more-frameworks:
 
 More Frameworks

@@ -31,6 +31,14 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
+            Valid values are any key reported in the result dict by your
+            trainable. The auto-filled keys ``"training_iteration"`` (the
+            iteration count) and ``"time_total_s"`` (wall-clock seconds since
+            the trial started) always work; any additional numeric, monotonic
+            key your trainable reports via ``tune.report({...})`` is also valid
+            (for example ``"timesteps_total"`` or a custom progress counter).
+            Passing a key that is not present in the reported result causes
+            the scheduler to skip its decision for that step.
         metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
@@ -212,6 +220,16 @@ class _Bracket:
         s: int,
         stop_last_trials: bool = True,
     ):
+        """Initialize a bracket of the asynchronous successive halving algorithm.
+
+        Args:
+            min_t: Minimum number of iterations before a trial can be stopped.
+            max_t: Maximum number of iterations per trial.
+            reduction_factor: Halving rate used to derive rung spacing.
+            s: Bracket index, used to offset the first rung.
+            stop_last_trials: If True, allow trials that survive the final rung
+                to still be stopped by the bracket.
+        """
         self.rf = reduction_factor
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
         self._rungs = [

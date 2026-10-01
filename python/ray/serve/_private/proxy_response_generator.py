@@ -24,14 +24,14 @@ class _ProxyResponseGeneratorBase(ABC):
         """Implements a generator wrapping a deployment response.
 
         Args:
-            - timeout_s: an end-to-end timeout for the request. If this expires and the
-              response is not completed, the request will be cancelled. If `None`,
-              there's no timeout.
-            - disconnected_task: a task whose completion signals that the client has
-              disconnected. When this happens, the request will be cancelled. If `None`,
-              disconnects will not be detected.
-            - result_callback: will be called on each result before it's returned. If
-              `None`, the unmodified result is returned.
+            timeout_s: an end-to-end timeout for the request. If this expires and the
+                response is not completed, the request will be cancelled. If `None`,
+                there's no timeout.
+            disconnected_task: a task whose completion signals that the client has
+                disconnected. When this happens, the request will be cancelled. If `None`,
+                disconnects will not be detected.
+            result_callback: will be called on each result before it's returned. If
+                `None`, the unmodified result is returned.
         """
         self._timeout_s = timeout_s
         self._start_time_s = time.time()
@@ -129,7 +129,9 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         return result
 
     async def _await_response_anext(self) -> Any:
-        return await self._response.__anext__()
+        # Only called when `self._response` is a `DeploymentResponseGenerator`
+        # (checked via `isinstance` in `__anext__`).
+        return await self._response.__anext__()  # type: ignore[union-attr]
 
     async def _get_next_streaming_result(self) -> Any:
         next_result_task = asyncio.create_task(self._await_response_anext())

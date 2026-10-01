@@ -18,9 +18,11 @@ from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
 from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+    AsyncDashboardHeadPublisherClient,
     AsyncGCSTaskEventsPublisherClient,
     AsyncHttpPublisherClient,
 )
+from ray.dashboard.modules.aggregator.publisher.configs import TASK_EVENT_TYPES
 from ray.dashboard.modules.aggregator.publisher.ray_event_publisher import (
     NoopPublisher,
     RayEventPublisher,
@@ -40,12 +42,18 @@ CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS", 0.1
 )
 # Maximum size of the event buffer in the aggregator agent
+# The default value was 1,000,000 but was reduced to 100,000 now to avoid being OOM Killed.
+# We observed that the previous 1,000,000 could take up to 20 GB of memory.
+# TODO (rueian): Find a better way for the event buffer to store events while avoiding being OOM Killed. For example:
+# 1. Store bytes instead of python objects and count the size in bytes.
+# 2. Compress the bytes before storing them in the buffer? (This will increase the CPU usage)
+# 3. Don't be fixed at 10,0000 but adjust the buffer size based on the available memory on startup.
 MAX_EVENT_BUFFER_SIZE = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE", 1000000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE", 100000
 )
 # Maximum number of events to send in a single batch to the destination
 MAX_EVENT_SEND_BATCH_SIZE = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 10000
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_SEND_BATCH_SIZE", 1000
 )
 # Address of the external service to send events with format of "http://<ip>:<port>"
 EVENTS_EXPORT_ADDR = os.environ.get(
@@ -58,6 +66,13 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", False
+)
+# flag to enable publishing task events to the dashboard head.
+# This happens only when this flag is true since it control spinning up
+# of TaskEventsHead, if task events are published there and if read
+# happens from there.
+PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD = (
+    ray._config.enable_task_events_to_dashboard_head()
 )
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
@@ -101,9 +116,17 @@ class AggregatorAgent(
             thread_name_prefix="aggregator_agent_executor",
         )
 
-        # Task metadata buffer accumulates dropped task attempts for GCS publishing
+        # Task metadata buffers accumulate dropped task attempts to publish. Each
+        # publisher needs its own buffer because reads are destructive
+        # (TaskEventsMetadataBuffer.get() pops), so a shared buffer would split the
+        # dropped attempts across publishers instead of delivering them to both.
         self._task_metadata_buffer = TaskEventsMetadataBuffer(
-            common_metric_tags=self._common_tags
+            common_metric_tags=self._common_tags,
+            publisher_name="ray_gcs",
+        )
+        self._dashboard_head_task_metadata_buffer = TaskEventsMetadataBuffer(
+            common_metric_tags=self._common_tags,
+            publisher_name="dashboard_head",
         )
 
         self._events_export_addr = (
@@ -149,6 +172,25 @@ class AggregatorAgent(
             logger.info("Publishing events to GCS is disabled")
             self._gcs_publisher = NoopPublisher()
 
+        if PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD:
+            logger.info("Publishing events to the dashboard head is enabled")
+            self._event_processing_enabled = True
+            self._dashboard_head_publisher = RayEventPublisher(
+                name="dashboard_head",
+                publish_client=AsyncDashboardHeadPublisherClient(
+                    gcs_client=self._dashboard_agent.gcs_client,
+                    executor=self._executor,
+                    endpoint_path="/api/task_events",
+                    exposable_event_types=TASK_EVENT_TYPES,
+                ),
+                event_buffer=self._event_buffer,
+                common_metric_tags=self._common_tags,
+                task_metadata_buffer=self._dashboard_head_task_metadata_buffer,
+            )
+        else:
+            logger.info("Publishing events to the dashboard head is disabled")
+            self._dashboard_head_publisher = NoopPublisher()
+
         # Metrics
         self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
 
@@ -183,6 +225,10 @@ class AggregatorAgent(
 
         if PUBLISH_EVENTS_TO_GCS:
             self._task_metadata_buffer.merge(events_data.task_events_metadata)
+        if PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD:
+            self._dashboard_head_task_metadata_buffer.merge(
+                events_data.task_events_metadata
+            )
 
         for event in events_data.events:
             try:
@@ -215,6 +261,7 @@ class AggregatorAgent(
             await asyncio.gather(
                 self._http_endpoint_publisher.run_forever(),
                 self._gcs_publisher.run_forever(),
+                self._dashboard_head_publisher.run_forever(),
             )
         finally:
             self._executor.shutdown()

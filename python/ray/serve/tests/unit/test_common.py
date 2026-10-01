@@ -2,17 +2,36 @@ import pytest
 
 from ray.serve._private.common import (
     REPLICA_ID_FULL_ID_STR_PREFIX,
+    RUNNING_REQUESTS_KEY,
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
+    HandleMetricReport,
     ReplicaID,
     RunningReplicaInfo,
+    TimeStampedValue,
 )
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
+from ray.serve._private.utils import get_deployment_actor_name, get_random_string
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
+
+
+def test_get_deployment_actor_name():
+    """Test deterministic actor name for deployment-scoped actors."""
+    dep_id = DeploymentID(name="MyDeployment", app_name="my_app")
+    assert get_deployment_actor_name(dep_id, "prefix_tree", "v1") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}my_app::MyDeployment::v1::prefix_tree"
+    )
+
+    dep_id_default_app = DeploymentID(name="Other")  # app_name="default"
+    assert get_deployment_actor_name(dep_id_default_app, "x", "abc") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}default::Other::abc::x"
+    )
 
 
 def test_replica_id_formatting():
@@ -108,6 +127,83 @@ class TestDeploymentStatusInfo:
 
         assert deployment_status_info == reconstructed_info
 
+    @pytest.mark.parametrize(
+        "status",
+        [
+            DeploymentStatus.UPDATING,
+            DeploymentStatus.UPSCALING,
+            DeploymentStatus.DOWNSCALING,
+            DeploymentStatus.UNHEALTHY,
+            DeploymentStatus.HEALTHY,
+        ],
+    )
+    def test_rolling_update_failure_is_deploy_failed(self, status):
+        info = DeploymentStatusInfo(
+            name="test",
+            status=status,
+            status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+        )
+        message = "The rolling update is stopped."
+
+        result = info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.ROLLING_UPDATE_FAILED,
+            message=message,
+        )
+
+        assert result.status == DeploymentStatus.DEPLOY_FAILED
+        assert result.status_trigger == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+        assert result.message == message
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            DeploymentStatus.UPSCALING,
+            DeploymentStatus.DOWNSCALING,
+            DeploymentStatus.UNHEALTHY,
+        ],
+    )
+    def test_startup_failure_outside_rolling_update_remains_unhealthy(self, status):
+        info = DeploymentStatusInfo(
+            name="test",
+            status=status,
+            status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+        )
+
+        result = info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
+            message="Replica failed to start.",
+        )
+
+        assert result.status == DeploymentStatus.UNHEALTHY
+        assert result.status_trigger == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+
+    def test_handle_transition_deployment_actor_failed_when_already_deploy_failed(
+        self,
+    ):
+        """DEPLOYMENT_ACTOR_FAILED must be handled in DEPLOY_FAILED block.
+
+        When status is already DEPLOY_FAILED, repeated ticks call handle_transition
+        with DEPLOYMENT_ACTOR_FAILED. Without handling, the trigger falls through
+        and returns self (old message). With handling, returns updated copy.
+        """
+        info = DeploymentStatusInfo(
+            name="test",
+            status=DeploymentStatus.DEPLOY_FAILED,
+            status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message="original error message",
+        )
+        new_message = (
+            "The deployment failed to start deployment actors 2 times in a row."
+        )
+        result = info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message=new_message,
+        )
+        assert result is not None
+        assert result.status == DeploymentStatus.DEPLOY_FAILED
+        assert result.status_trigger == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        assert result.message == new_message
+
 
 def test_running_replica_info():
     """Test hash value of RunningReplicaInfo"""
@@ -146,6 +242,107 @@ def test_running_replica_info():
     )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
+
+    # Test that backend_http_port affects hash so long-poll updates
+    # propagate when the backend HTTP port changes.
+    replica4 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8001,
+    )
+    replica5 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8002,
+    )
+    assert replica4._hash != replica1._hash
+    assert replica4._hash != replica5._hash
+
+    # Test that network endpoint changes affect hash so wrappers and
+    # long-poll consumers refresh when the replica moves or its gRPC
+    # port changes.
+    replica6 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica7 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_b",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica8 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9001,
+    )
+    assert replica6._hash != replica7._hash
+    assert replica6._hash != replica8._hash
+
+
+def test_handle_metric_report_total_requests():
+    """Per-series peaks are summed, so the value survives a mid-window dip and counts
+    every replica. It deliberately over-states any single instant."""
+    deployment_id = DeploymentID(name="D", app_name="app")
+    r1, r2 = (
+        ReplicaID(r, deployment_id=deployment_id).to_full_id_str() for r in ("r1", "r2")
+    )
+
+    def report(queued, running):
+        return HandleMetricReport(
+            deployment_id=deployment_id,
+            handle_id="h1",
+            actor_id="a1",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            queued_requests=queued,
+            metrics={RUNNING_REQUESTS_KEY: running} if running else {},
+            timestamp=2,
+        )
+
+    # Peaks are 4 (queued), 6 (r1) and 3 (r2). Summing every point would give 18 and
+    # taking either endpoint would give 4, so this pins both the peak and the per-
+    # replica sum rather than passing on a coincidence.
+    peaky = report(
+        [TimeStampedValue(1, 1), TimeStampedValue(2, 4), TimeStampedValue(3, 2)],
+        {
+            r1: [
+                TimeStampedValue(1, 0),
+                TimeStampedValue(2, 6),
+                TimeStampedValue(3, 1),
+            ],
+            r2: [TimeStampedValue(1, 3), TimeStampedValue(2, 1)],
+        },
+    )
+    assert peaky.total_requests == 13
+
+    # An empty series contributes nothing rather than raising.
+    assert report([], {r1: []}).total_requests == 0
+    assert report([], {}).total_requests == 0
 
 
 if __name__ == "__main__":

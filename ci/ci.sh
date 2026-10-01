@@ -39,7 +39,11 @@ compile_pip_dependencies() {
     python -c "import torch" 2>/dev/null && HAS_TORCH=1
     pip install --no-cache-dir numpy torch
 
-    pip-compile --verbose --resolver=backtracking \
+    # pip-compile writes whatever index it used into the lockfile. Keep CI's temporary
+    # mirror URL out, or the regenerated file stops matching the committed one.
+    env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
+      -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
+      pip-compile --verbose --resolver=backtracking \
       --pip-args --no-deps --strip-extras --no-header \
       --unsafe-package ray \
       --unsafe-package pip \
@@ -49,11 +53,14 @@ compile_pip_dependencies() {
       python/requirements/lint-requirements.txt \
       python/requirements/test-requirements.txt \
       python/requirements/cloud-requirements.txt \
+      python/requirements/serve/serve-test-requirements.txt \
       python/requirements/docker/ray-docker-requirements.txt \
       python/requirements/ml/core-requirements.txt \
       python/requirements/ml/data-requirements.txt \
       python/requirements/ml/data-test-requirements.txt \
       python/requirements/ml/dl-cpu-requirements.txt \
+      python/requirements/ml/ml-requirements.txt \
+      python/requirements/ml/third_party.txt \
       python/requirements/ml/rllib-requirements.txt \
       python/requirements/ml/rllib-test-requirements.txt \
       python/requirements/ml/train-requirements.txt \
@@ -69,7 +76,14 @@ compile_pip_dependencies() {
     # This is needed because we specify the requirements as torch==version, but
     # the resolver adds the device-specific version tag. If this is not removed,
     # pip install will complain about irresolvable constraints.
-    sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "python/$TARGET"
+    # Strip the whole local segment whenever it names cpu: +cpu, +pt29cpu, and
+    # Astral's +cpu.torch.2.9. The result has to be the bare public version --
+    # this file is also the constraint for the GPU depsets, and only a bare
+    # torch-scatter==2.1.2 lets their +cu.12.8.torch.2.9 pin satisfy it. The old
+    # pattern stopped at the first "cpu" and left 2.1.2.torch.2.9 behind. The
+    # public version may carry a pre/post/dev suffix (2.10.0rc1, 2.10.0.post0),
+    # hence letters in the first class.
+    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "python/$TARGET"
 
     cat "python/$TARGET"
 
@@ -142,8 +156,9 @@ build_dashboard_front_end() {
       if [[ -z "${BUILDKITE-}" || "${OSTYPE}" != linux* ]]; then
         if [[ -d "${HOME}/.nvm" ]]; then
           set +x  # suppress set -x since it'll get very noisy here
+          export TMPDIR="${TMPDIR:-/tmp}"
           . "${HOME}/.nvm/nvm.sh"
-          NODE_VERSION="14"
+          NODE_VERSION="20"
           nvm install $NODE_VERSION
           nvm use --silent $NODE_VERSION
         fi
@@ -204,7 +219,13 @@ install_ray() {
     # too high that can break CI, especially on MacOS.
     pip install -q cython==3.0.12
 
-    pip install -v -e . -c requirements_compiled.txt
+    # editable_mode=compat: force setuptools (>=64) to emit a legacy
+    # .egg-link / easy-install.pth editable install instead of a PEP 660
+    # .pth + MetaPathFinder. Static tools (mypy, pyright) walk sys.path and
+    # can't follow PEP 660 finders, so test_typing fails with
+    # `Module "ray" has no attribute "init"` under strict editables.
+    pip install -v -e . -c requirements_compiled.txt \
+      --config-settings editable_mode=compat
   )
   (
     # For runtime_env tests, wheels are needed

@@ -6,7 +6,7 @@ change your pytest running directory to ray/python/ray/tune/tests/
 
 import sys
 import unittest
-from collections import defaultdict
+from collections import Counter, defaultdict
 from unittest.mock import patch
 
 import numpy as np
@@ -203,38 +203,31 @@ class SearchSpaceTest(unittest.TestCase):
             ):
                 yield generated["config"]
 
-        with patch("ray.tune.search.sample.LEGACY_RNG", True):
-            global_seed_legacy = [
-                next(config_generator(random_state=None)) for _ in range(100)
-            ]
-            seed_legacy = [
-                next(config_generator(random_state=1000)) for _ in range(100)
-            ]
-            generator_legacy = [
-                next(config_generator(random_state=np.random.RandomState(1000)))
-                for _ in range(100)
-            ]
-            for i in range(100):
-                assertDictAlmostEqual(global_seed_legacy[0], global_seed_legacy[i])
-                assertDictAlmostEqual(global_seed_legacy[0], seed_legacy[i])
-                assertDictAlmostEqual(global_seed_legacy[0], generator_legacy[i])
-
-        if not ray.tune.search.sample.LEGACY_RNG:
-            seed_new = [next(config_generator(random_state=1000)) for _ in range(100)]
-            generator_new = [
-                next(config_generator(random_state=np.random.default_rng(1000)))
-                for _ in range(100)
-            ]
-            for i in range(100):
-                assertDictAlmostEqual(seed_new[0], seed_new[i])
-                assertDictAlmostEqual(seed_new[0], generator_new[i])
+        # The global `np.random` stream and an explicit `RandomState`, both seeded
+        # with 1000, draw the same variants.
+        global_seed = [next(config_generator(random_state=None)) for _ in range(100)]
+        legacy_generator = [
+            next(config_generator(random_state=np.random.RandomState(1000)))
+            for _ in range(100)
+        ]
+        # An int seed builds a `default_rng`, which has a stream of its own.
+        seed = [next(config_generator(random_state=1000)) for _ in range(100)]
+        generator = [
+            next(config_generator(random_state=np.random.default_rng(1000)))
+            for _ in range(100)
+        ]
+        for i in range(100):
+            assertDictAlmostEqual(global_seed[0], global_seed[i])
+            assertDictAlmostEqual(global_seed[0], legacy_generator[i])
+            assertDictAlmostEqual(seed[0], seed[i])
+            assertDictAlmostEqual(seed[0], generator[i])
 
     def testReproducibilityBasicVariantGenerator(self):
         config = self.config.copy()
         config.pop("func")
         from ray.tune.search.basic_variant import BasicVariantGenerator
 
-        ray.init(num_cpus=1, local_mode=True)
+        ray.init(num_cpus=1)
 
         num_samples = 5
         params = dict(
@@ -244,91 +237,76 @@ class SearchSpaceTest(unittest.TestCase):
             mode="max",
             num_samples=num_samples,
         )
-        with patch("ray.tune.search.sample.LEGACY_RNG", True):
-            np.random.seed(1000)
-            analysis_global_seed = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
-                **params,
+        # The global `np.random` stream and an explicit `RandomState`, both seeded
+        # with 1000, generate the same trials.
+        np.random.seed(1000)
+        analysis_global_seed = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
+            **params,
+        )
+        np.random.seed(1000)
+        analysis_global_seed_2 = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
+            **params,
+        )
+        analysis_generator = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.RandomState(1000)
+            ),
+            **params,
+        )
+        analysis_generator_2 = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.RandomState(1000)
+            ),
+            **params,
+        )
+        for i in range(num_samples):
+            assertDictAlmostEqual(
+                analysis_global_seed.trials[i].config,
+                analysis_generator.trials[i].config,
             )
-            np.random.seed(1000)
-            analysis_global_seed_2 = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1),  # global seed
-                **params,
+            assertDictAlmostEqual(
+                analysis_global_seed.trials[i].config,
+                analysis_global_seed_2.trials[i].config,
             )
-            analysis_seed = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
+            assertDictAlmostEqual(
+                analysis_global_seed.trials[i].config,
+                analysis_generator_2.trials[i].config,
             )
-            analysis_seed_2 = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
-            )
-            analysis_generator = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.RandomState(1000)
-                ),
-                **params,
-            )
-            analysis_generator_2 = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.RandomState(1000)
-                ),
-                **params,
-            )
-            for i in range(num_samples):
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_seed.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_generator.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_global_seed_2.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_seed_2.trials[i].config,
-                )
-                assertDictAlmostEqual(
-                    analysis_global_seed.trials[i].config,
-                    analysis_generator_2.trials[i].config,
-                )
 
-        if not ray.tune.search.sample.LEGACY_RNG:
-            analysis_seed = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
+        # An int seed builds a `default_rng`, which has a stream of its own.
+        analysis_seed = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
+            **params,
+        )
+        analysis_seed_2 = tune.run(
+            search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
+            **params,
+        )
+        analysis_generator = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.default_rng(1000)
+            ),
+            **params,
+        )
+        analysis_generator_2 = tune.run(
+            search_alg=BasicVariantGenerator(
+                max_concurrent=1, random_state=np.random.default_rng(1000)
+            ),
+            **params,
+        )
+        for i in range(num_samples):
+            assertDictAlmostEqual(
+                analysis_seed.trials[i].config, analysis_generator.trials[i].config
             )
-            analysis_seed_2 = tune.run(
-                search_alg=BasicVariantGenerator(max_concurrent=1, random_state=1000),
-                **params,
+            assertDictAlmostEqual(
+                analysis_seed.trials[i].config, analysis_seed_2.trials[i].config
             )
-            analysis_generator = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.default_rng(1000)
-                ),
-                **params,
+            assertDictAlmostEqual(
+                analysis_seed.trials[i].config,
+                analysis_generator_2.trials[i].config,
             )
-            analysis_generator_2 = tune.run(
-                search_alg=BasicVariantGenerator(
-                    max_concurrent=1, random_state=np.random.default_rng(1000)
-                ),
-                **params,
-            )
-            for i in range(num_samples):
-                assertDictAlmostEqual(
-                    analysis_seed.trials[i].config, analysis_generator.trials[i].config
-                )
-                assertDictAlmostEqual(
-                    analysis_seed.trials[i].config, analysis_seed_2.trials[i].config
-                )
-                assertDictAlmostEqual(
-                    analysis_seed.trials[i].config,
-                    analysis_generator_2.trials[i].config,
-                )
 
     def testBoundedFloat(self):
         bounded = ray.tune.search.sample.Float(-4.2, 8.3)
@@ -437,6 +415,170 @@ class SearchSpaceTest(unittest.TestCase):
         samples = ray.tune.search.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testQuantizedQOne(self):
+        # https://github.com/ray-project/ray/issues/45494
+        # Seeded because assertIn below needs both endpoints actually drawn;
+        # RandomState, not default_rng, is the generator with a frozen stream.
+        random_state = np.random.RandomState(1000)
+
+        samples = tune.quniform(-10, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(s.is_integer() for s in samples))
+        self.assertTrue(all(-10 <= s <= 10 for s in samples))
+        self.assertIn(-10.0, samples)
+        self.assertIn(10.0, samples)
+
+        samples = tune.qrandn(0, 5, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(s.is_integer() for s in samples))
+
+        samples = tune.qloguniform(1, 100, 1).sample(
+            size=1000, random_state=random_state
+        )
+        self.assertTrue(all(s.is_integer() for s in samples))
+        self.assertTrue(all(1 <= s <= 100 for s in samples))
+
+        samples = tune.qrandint(1, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(isinstance(s, int) for s in samples))
+        self.assertTrue(all(1 <= s <= 10 for s in samples))
+
+    def testQuantizedSampleRespectsDomainType(self):
+        for q in (1, 2):
+            scalar = tune.qrandint(1, 10, q).sample()
+            self.assertIsInstance(scalar, int, msg=f"qrandint scalar, q={q}")
+            array = tune.qrandint(1, 10, q).sample(size=10)
+            self.assertTrue(
+                all(isinstance(s, int) for s in array), msg=f"qrandint array, q={q}"
+            )
+
+            scalar = tune.quniform(-10, 10, q).sample()
+            self.assertIsInstance(scalar, float, msg=f"quniform scalar, q={q}")
+            array = tune.quniform(-10, 10, q).sample(size=10)
+            self.assertTrue(
+                all(isinstance(s, float) for s in array), msg=f"quniform array, q={q}"
+            )
+
+    @staticmethod
+    def _quantized_integer_grid(lower, upper, q):
+        """The multiples of ``q`` in ``[lower, upper]``, which is what should be
+        sampled: the upper bound is inclusive for quantized integer domains."""
+        return [
+            k * q for k in range(int(np.ceil(lower / q)), int(np.floor(upper / q)) + 1)
+        ]
+
+    def testQuantizedIntegerGrid(self):
+        """A quantized integer domain samples the multiples of `q` in [lower, upper].
+
+        Both bounds are inclusive, so a bound that is itself a multiple of `q` is
+        drawable, and a bound that is not is rounded inwards to the nearest multiple
+        that is. `q == 1` is the documented exception: `qrandint`/`qlograndint` then
+        keep `randint`/`lograndint`'s exclusive upper bound.
+        """
+        random_state = np.random.RandomState(1000)
+
+        for lower, upper, q in [(2, 10, 2), (1, 11, 2), (1, 10, 3), (2, 20, 2)]:
+            grid = self._quantized_integer_grid(lower, upper, q)
+            for name in ("qrandint", "qlograndint"):
+                domain = getattr(tune, name)(lower, upper, q)
+                sampled = domain.sample(size=5000, random_state=random_state)
+                where = f"{name}({lower}, {upper}, {q})"
+                self.assertEqual(sorted(set(sampled)), grid, msg=where)
+
+        # Negative bounds, which `qlograndint` does not accept.
+        grid = self._quantized_integer_grid(-21, 12, 3)
+        sampled = tune.qrandint(-21, 12, 3).sample(size=5000, random_state=random_state)
+        self.assertEqual(sorted(set(sampled)), grid)
+
+        # A grid holding a single point is a valid domain of one value.
+        for name in ("qrandint", "qlograndint"):
+            domain = getattr(tune, name)(1, 9, 5)
+            sampled = domain.sample(size=100, random_state=random_state)
+            self.assertEqual(set(sampled), {5}, msg=name)
+
+        # `q == 1` keeps `randint`/`lograndint`'s exclusive upper bound.
+        for name in ("qrandint", "qlograndint"):
+            domain = getattr(tune, name)(1, 10, 1)
+            sampled = domain.sample(size=5000, random_state=random_state)
+            self.assertEqual(sorted(set(sampled)), list(range(1, 10)), msg=name)
+
+        # A range holding no multiple of `q` at all has nothing to sample.
+        with self.assertRaisesRegex(ValueError, "no multiple of the quantization"):
+            tune.qrandint(3, 4, 5).sample(random_state=random_state)
+
+    def testQuantizedFloatKeepsItsBounds(self):
+        """A quantized float domain samples the whole grid, both bounds included.
+
+        The bounds below are all divisible by `q` in exact arithmetic but not in
+        floating point - `0.6 / 0.3` is 2.0000000000000004 and `599.7 / 0.3` is
+        1998.9999999999998 which is why they are written as `k * q`. `Float.quantized`
+        accepts such bounds under `math.isclose`, so snapping them onto the grid has to
+        use the same tolerance, or a bound moves a whole step inwards and is lost.
+        """
+        random_state = np.random.RandomState(1000)
+
+        for first, last, q in [(3, 11, 0.1), (7, 13, 0.3), (3, 11, 0.05)]:
+            grid = [k * q for k in range(first, last + 1)]
+            domain = tune.quniform(first * q, last * q, q)
+            sampled = sorted(set(domain.sample(size=5000, random_state=random_state)))
+            where = f"quniform({first * q!r}, {last * q!r}, {q})"
+            self.assertEqual(len(sampled), len(grid), msg=where)
+            for got, expected in zip(sampled, grid):
+                self.assertAlmostEqual(got, expected, places=12, msg=where)
+
+    def testQuantizedIntegerUniform(self):
+        """`qrandint` draws every point of its grid with equal probability.
+
+        Each point should take 1 / len(grid) of the draws; `delta` allows for the
+        sampling error left at `size` draws from the seeded stream.
+        """
+        random_state = np.random.RandomState(1000)
+        size = 40000
+
+        for lower, upper, q in [(2, 10, 2), (-21, 12, 3), (0, 10, 5)]:
+            grid = self._quantized_integer_grid(lower, upper, q)
+            counts = Counter(
+                tune.qrandint(lower, upper, q).sample(
+                    size=size, random_state=random_state
+                )
+            )
+            expected = size / len(grid)
+            for value in grid:
+                self.assertAlmostEqual(
+                    counts[value] / expected,
+                    1.0,
+                    delta=0.05,
+                    msg=f"qrandint({lower}, {upper}, {q}) is not uniform at {value}",
+                )
+
+    def testQuantizedIntegerLogUniform(self):
+        """`qlograndint` is log-uniform over its grid, not over the raw integers.
+
+        It is `lograndint` over the grid indices, so index `k` covers [k, k + 1) in
+        log space and grid point `k * q` takes log((k + 1) / k) / log((last + 1) / first)
+        of the draws - a share that falls off as `k` grows, unlike a uniform grid.
+        """
+        random_state = np.random.RandomState(1000)
+        size = 40000
+
+        for lower, upper, q in [(1, 10, 2), (1, 128, 8), (2, 20, 2)]:
+            first = int(np.ceil(lower / q))
+            last = int(np.floor(upper / q))
+            counts = Counter(
+                tune.qlograndint(lower, upper, q).sample(
+                    size=size, random_state=random_state
+                )
+            )
+            log_range = np.log((last + 1) / first)
+            for k in range(first, last + 1):
+                expected = size * np.log((k + 1) / k) / log_range
+                self.assertAlmostEqual(
+                    counts[k * q] / expected,
+                    1.0,
+                    delta=0.15,
+                    msg=(
+                        f"qlograndint({lower}, {upper}, {q}) is not log-uniform "
+                        f"at {k * q}"
+                    ),
+                )
+
     def testCategoricalDtype(self):
         dist = tune.choice([1.0, "str"])
 
@@ -473,7 +615,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -503,15 +645,17 @@ class SearchSpaceTest(unittest.TestCase):
             },
         ]
 
-        client1 = AxClient(random_seed=1234)
+        client1 = AxClient(random_seed=42)
         client1.create_experiment(
-            parameters=converted_config, objective_name="a", minimize=False
+            parameters=converted_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
-        client2 = AxClient(random_seed=1234)
+        client2 = AxClient(random_seed=42)
         client2.create_experiment(
-            parameters=ax_config, objective_name="a", minimize=False
+            parameters=ax_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -539,12 +683,19 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax import Models
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.service.ax_client import AxClient
+        try:
+            # ax 1.0+: ax.modelbridge was removed
+            from ax.adapter.registry import Generators as Models
+            from ax.generation_strategy.generation_node import GenerationStep
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
+        except ImportError:
+            # ax 0.x
+            from ax import Models
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -564,16 +715,20 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        # Legacy Ax versions (compatbile with Python 3.6)
-        # use `num_arms` instead
+        # ax 1.0+ renamed 'model' to 'generator'; ax <0.2.0 used 'num_arms'
         try:
             generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+                steps=[GenerationStep(generator=Models.UNIFORM, num_trials=-1)]
             )
         except TypeError:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
-            )
+            try:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
+                )
+            except TypeError:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+                )
 
         client1 = AxClient(
             enforce_sequential_optimization=False,
@@ -582,8 +737,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1.create_experiment(
             parameters=AxSearch.convert_search_space(config),
-            objective_name="a",
-            minimize=False,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
@@ -715,7 +869,7 @@ class SearchSpaceTest(unittest.TestCase):
         bohb_config.add_hyperparameters(
             [
                 ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
-                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4, q=2),
+                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4),
                 ConfigSpace.UniformFloatHyperparameter(
                     "b/z", lower=1e-4, upper=1e-2, log=True
                 ),
@@ -762,7 +916,13 @@ class SearchSpaceTest(unittest.TestCase):
 
         ignore = [
             "func",
-            "qloguniform",  # There seems to be an issue here
+            "quniform",  # BOHB drops quantization
+            "qloguniform",  # BOHB drops quantization
+            "qrandint",  # BOHB drops quantization
+            "qrandint_q3",  # BOHB drops quantization
+            "qlograndint",  # BOHB drops quantization
+            "randn",  # ConfigSpace 1.2+ doesn't support unbounded normals
+            "qrandn",  # ConfigSpace 1.2+ doesn't support unbounded normals
         ]
 
         config = self.config.copy()
@@ -1011,6 +1171,34 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
+    def testConvertHyperOptChoiceOfConstantDicts(self):
+        # https://github.com/ray-project/ray/issues/49507
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        choices = [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
+        config = {"space": tune.choice(choices)}
+
+        searcher = HyperOptSearch(space=config, metric="a", mode="max")
+        suggestion = searcher.suggest("0")
+
+        # The constant dict categories must survive conversion instead of
+        # being replaced by empty dicts.
+        self.assertIn(suggestion["space"], choices)
+
+    def testConvertHyperOptChoiceOfMixedConstantAndVariableDicts(self):
+        # A choice category that mixes a constant and a search-space value
+        # must keep its constant key, not just the variable one.
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        config = {"space": tune.choice([{"const": 5, "var": tune.uniform(0.0, 1.0)}])}
+
+        searcher = HyperOptSearch(space=config, metric="m", mode="max")
+        suggestion = searcher.suggest("0")
+
+        self.assertEqual(suggestion["space"]["const"], 5)
+        self.assertGreaterEqual(suggestion["space"]["var"], 0.0)
+        self.assertLessEqual(suggestion["space"]["var"], 1.0)
+
     def testConvertHyperOptConstant(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
@@ -1181,18 +1369,18 @@ class SearchSpaceTest(unittest.TestCase):
 
         def optuna_define_by_run(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
 
         def optuna_define_by_run_with_constants(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return {"constant": 1}
 
         def optuna_define_by_run_invalid(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return 1
 
@@ -1854,6 +2042,76 @@ class SearchSpaceTest(unittest.TestCase):
         # Also, for different samples the random variables should differ
         self.assertEqual(configs[0]["grid"], configs[3]["grid"])
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
+
+    def testConstantGridSearchResolvedVarsPerVariant(self):
+        """Each variant must report its own grid value, not the last one."""
+        config = {"grid": tune.grid_search([1, 2, 3]), "rand": tune.uniform(0, 1000)}
+
+        for constant_grid_search in (False, True):
+            variants = list(
+                generate_variants(config, constant_grid_search=constant_grid_search)
+            )
+            reported = [resolved_vars[("grid",)] for resolved_vars, _ in variants]
+            actual = [spec["grid"] for _, spec in variants]
+
+            self.assertEqual(actual, [1, 2, 3])
+            self.assertEqual(
+                reported,
+                actual,
+                f"resolved_vars disagrees with the spec for "
+                f"constant_grid_search={constant_grid_search}",
+            )
+
+    def testConstantGridSearchTrialsReportTheirOwnGridValue(self):
+        """The experiment tag and evaluated_params must match the config each trial runs."""
+        from ray.tune.search.basic_variant import BasicVariantGenerator
+
+        config = {"grid": tune.grid_search([1, 2, 3]), "rand": tune.uniform(0, 1000)}
+        searcher = BasicVariantGenerator(constant_grid_search=True)
+        searcher.add_configurations(
+            Experiment(run=_mock_objective, name="test", config=config, num_samples=1)
+        )
+
+        trials = []
+        while not searcher.is_finished():
+            trial = searcher.next_trial()
+            if not trial:
+                break
+            trials.append(trial)
+
+        self.assertEqual([t.config["grid"] for t in trials], [1, 2, 3])
+        self.assertEqual([t.evaluated_params["grid"] for t in trials], [1, 2, 3])
+        self.assertEqual(len({t.experiment_tag for t in trials}), len(trials))
+
+    def testConstantGridSearchKeepsFirstPassVars(self):
+        """A variable sampled before the grid loop must survive a second resolution pass."""
+        # `dep` reads `grid`, so the first pass cannot resolve it and a second pass runs
+        # per grid value. That second pass only covers what is left to resolve, so `const`
+        # (the variable `constant_grid_search` exists to hold fixed) has to be carried over.
+        config = {
+            "grid": tune.grid_search([1, 2, 3]),
+            "const": tune.uniform(0, 1000),
+            "dep": tune.sample_from(lambda spec: spec.config.grid * 10),
+        }
+
+        for constant_grid_search in (False, True):
+            variants = list(
+                generate_variants(config, constant_grid_search=constant_grid_search)
+            )
+            self.assertEqual(len(variants), 3)
+            for resolved_vars, spec in variants:
+                reported = {path[0]: value for path, value in resolved_vars.items()}
+                self.assertEqual(
+                    sorted(reported),
+                    ["const", "dep", "grid"],
+                    f"constant_grid_search={constant_grid_search} lost a variable",
+                )
+                for key in ("grid", "const", "dep"):
+                    self.assertEqual(reported[key], spec[key])
+
+        # and the point of constant_grid_search still holds: one value across the grid
+        variants = list(generate_variants(config, constant_grid_search=True))
+        self.assertEqual(len({spec["const"] for _, spec in variants}), 1)
 
     @patch.object(logger, "warning")
     @pytest.mark.skipif(

@@ -7,8 +7,10 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -156,29 +158,34 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(df)
 
     batch_size = 2
-    batches = list(
-        ds.iter_batches(
-            prefetch_batches=2, batch_size=batch_size, batch_format="pandas"
+    old_preserve_order = ds.context.execution_options.preserve_order
+    try:
+        ds.context.execution_options.preserve_order = True
+        batches = list(
+            ds.iter_batches(
+                prefetch_batches=2, batch_size=batch_size, batch_format="pandas"
+            )
         )
-    )
-    assert all(len(batch) == batch_size for batch in batches)
-    assert len(batches) == math.ceil(
-        (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size
-    )
-    assert pd.concat(batches, ignore_index=True).equals(
-        pd.concat(dfs, ignore_index=True)
-    )
+        assert all(len(batch) == batch_size for batch in batches)
+        assert len(batches) == math.ceil(
+            (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size
+        )
+        assert pd.concat(batches, ignore_index=True).equals(
+            pd.concat(dfs, ignore_index=True)
+        )
 
-    # Prefetch more than number of blocks.
-    batches = list(
-        ds.iter_batches(
-            prefetch_batches=len(dfs), batch_size=None, batch_format="pandas"
+        # Prefetch more than number of blocks.
+        batches = list(
+            ds.iter_batches(
+                prefetch_batches=len(dfs), batch_size=None, batch_format="pandas"
+            )
         )
-    )
-    assert len(batches) == len(dfs)
-    for batch, df in zip(batches, dfs):
-        assert isinstance(batch, pd.DataFrame)
-        assert batch.equals(df)
+        assert len(batches) == len(dfs)
+        for batch, df in zip(batches, dfs):
+            assert isinstance(batch, pd.DataFrame)
+            assert batch.equals(df)
+    finally:
+        ds.context.execution_options.preserve_order = old_preserve_order
 
     # Prefetch with ray.wait.
     context = DataContext.get_current()
@@ -530,7 +537,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+        np.testing.assert_array_equal(
+            np.sort(df.values, axis=0), np.sort(combined_iterations, axis=0)
+        )
 
 
 @pytest.mark.skipif(
@@ -548,7 +557,36 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
         for batch in ds.iter_tf_batches(batch_size=2):
             iterations.append(batch["data"])
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(arr, combined_iterations)
+        np.testing.assert_array_equal(
+            np.sort(arr, axis=0), np.sort(combined_iterations, axis=0)
+        )
+
+
+def test_get_internal_block_refs(ray_start_regular_shared):
+    blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
+    assert len(blocks) == 10
+    out = []
+    for b in ray.get(blocks):
+        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+    out = sorted(out)
+    assert out == list(range(10)), out
+
+
+def test_iter_internal_ref_bundles(ray_start_regular_shared):
+    n = 10
+    ds = ray.data.range(n, override_num_blocks=n)
+    iter_ref_bundles = ds.iter_internal_ref_bundles()
+
+    out = []
+    ref_bundle_count = 0
+    for ref_bundle in iter_ref_bundles:
+        for entry in ref_bundle.blocks:
+            b = ray.get(entry.ref)
+            out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+        ref_bundle_count += 1
+    out = sorted(out)
+    assert ref_bundle_count == n
+    assert out == list(range(n)), out
 
 
 if __name__ == "__main__":

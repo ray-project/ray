@@ -1,9 +1,7 @@
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from typing import Tuple
 from urllib.parse import urljoin
 
-import grpc
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -13,10 +11,27 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import RequestProtocol
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import BackPressureError
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
+# (deployment options, expected rejection status, expected Retry-After header).
+BACKPRESSURE_RESPONSE_CASES = [
+    pytest.param({}, 503, None, id="default_503"),
+    pytest.param(
+        {"backpressure_config": {"status_code": 429, "retry_after_s": 7}},
+        429,
+        "7",
+        id="429_with_retry_after",
+    ),
+]
+
+
+def check_rejection_response(response, expected_status: int, expected_retry_after):
+    assert response.status_code == expected_status
+    if expected_retry_after is None:
+        assert "retry-after" not in response.headers
+    else:
+        assert response.headers["retry-after"] == expected_retry_after
 
 
 def test_handle_backpressure(serve_instance):
@@ -39,6 +54,16 @@ def test_handle_backpressure(serve_instance):
 
     # Check that beyond the 1st queued request, others are dropped due to backpressure.
     second_response = handle.remote("hi-2")
+
+    # Wait until "hi-2" is actually registered as queued in the router before
+    # sending more requests. The router processes the request asynchronously on
+    # its own event loop thread, so without this the requests below can race
+    # ahead and get queued themselves (blocking forever) instead of being
+    # rejected with backpressure.
+    wait_for_condition(
+        lambda: handle._router._asyncio_router._metrics_manager.num_queued_requests == 1
+    )
+
     for _ in range(10):
         with pytest.raises(BackPressureError):
             handle.remote().result()
@@ -53,8 +78,15 @@ def test_handle_backpressure(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
-def test_http_backpressure(serve_instance):
-    """Requests should return a 503 once the limit is reached."""
+@pytest.mark.parametrize(
+    "backpressure_options,expected_status,expected_retry_after",
+    BACKPRESSURE_RESPONSE_CASES,
+)
+def test_http_backpressure(
+    serve_instance, backpressure_options, expected_status, expected_retry_after
+):
+    """Requests should be rejected with the configured response once the limit
+    is reached (503 with no Retry-After header by default)."""
 
     signal_actor = SignalActor.remote()
 
@@ -65,92 +97,58 @@ def test_http_backpressure(serve_instance):
             await signal_actor.wait.remote()
             return msg
 
-    serve.run(Deployment.bind())
+    serve.run(Deployment.options(**backpressure_options).bind())
 
-    @ray.remote(num_cpus=0)
-    def do_request(msg: str) -> Tuple[int, str]:
+    def send_request(msg: str = "hi"):
         application_url = get_application_url()
-        r = httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
-        return r.status_code, r.text
+        return httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
 
-    # First response should block. Until the signal is sent, all subsequent requests
-    # will be queued in the handle.
-    first_ref = do_request.remote("hi-1")
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-    _, pending = ray.wait([first_ref], timeout=0.1)
-    assert len(pending) == 1
+    with ThreadPoolExecutor(max_workers=5) as exc:
+        # First response should block. Until the signal is sent, all subsequent
+        # requests will be queued in the handle.
+        first_fut = exc.submit(send_request, "hi-1")
+        wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+        done, _ = wait([first_fut], timeout=0.1, return_when=FIRST_COMPLETED)
+        assert len(done) == 0
 
-    # Check that beyond the 1st queued request, others are dropped due to backpressure.
-    second_ref = do_request.remote("hi-2")
-    _, pending = ray.wait([second_ref], timeout=0.1)
-    for _ in range(10):
-        status_code, text = ray.get(do_request.remote(("hi-err")))
-        assert status_code == 503
-        assert text.startswith("Request dropped due to backpressure")
-
-    # Send the signal; the first request will be unblocked and the second should
-    # subsequently get scheduled and executed.
-    ray.get(signal_actor.send.remote())
-    assert ray.get(first_ref) == (200, "hi-1")
-    assert ray.get(second_ref) == (200, "hi-2")
-
-    ray.get(signal_actor.send.remote(clear=True))
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
-
-
-def test_grpc_backpressure(serve_instance):
-    """Requests should return UNAVAILABLE once the limit is reached."""
-
-    signal_actor = SignalActor.remote()
-
-    @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
-    class Deployment:
-        async def __call__(self, request: serve_pb2.UserDefinedMessage):
-            await signal_actor.wait.remote()
-            return serve_pb2.UserDefinedResponse(greeting=request.name)
-
-    serve.run(Deployment.bind())
-
-    @ray.remote(num_cpus=0)
-    def do_request(msg: str) -> Tuple[grpc.StatusCode, str]:
-        channel = grpc.insecure_channel(
-            get_application_url(protocol=RequestProtocol.GRPC)
+        # Second request should get queued.
+        second_fut = exc.submit(send_request, "hi-2")
+        done, _ = wait(
+            [first_fut, second_fut], timeout=0.1, return_when=FIRST_COMPLETED
         )
-        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-        try:
-            response, call = stub.__call__.with_call(
-                serve_pb2.UserDefinedMessage(name=msg)
-            )
-            return call.code(), response.greeting
-        except grpc.RpcError as e:
-            return e.code(), e.details()
+        assert len(done) == 0
 
-    # First response should block. Until the signal is sent, all subsequent requests
-    # will be queued in the handle.
-    first_ref = do_request.remote("hi-1")
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-    _, pending = ray.wait([first_ref], timeout=0.1)
-    assert len(pending) == 1
+        # Check that beyond the 1st queued request, others are dropped due to
+        # backpressure.
+        for _ in range(10):
+            rejected_fut = exc.submit(send_request, "hi-err")
+            response = rejected_fut.result()
+            check_rejection_response(response, expected_status, expected_retry_after)
+            assert response.text.startswith("Request dropped due to backpressure")
 
-    # Check that beyond the 1st queued request, others are dropped due to backpressure.
-    second_ref = do_request.remote("hi-2")
-    _, pending = ray.wait([second_ref], timeout=0.1)
-    for _ in range(10):
-        status_code, text = ray.get(do_request.remote(("hi-err")))
-        assert status_code == grpc.StatusCode.RESOURCE_EXHAUSTED
-        assert text.startswith("Request dropped due to backpressure")
-
-    # Send the signal; the first request will be unblocked and the second should
-    # subsequently get scheduled and executed.
-    ray.get(signal_actor.send.remote())
-    assert ray.get(first_ref) == (grpc.StatusCode.OK, "hi-1")
-    assert ray.get(second_ref) == (grpc.StatusCode.OK, "hi-2")
+        # Send the signal; the first request will be unblocked and the second
+        # should subsequently get scheduled and executed.
+        ray.get(signal_actor.send.remote())
+        assert (first_fut.result().status_code, first_fut.result().text) == (
+            200,
+            "hi-1",
+        )
+        assert (second_fut.result().status_code, second_fut.result().text) == (
+            200,
+            "hi-2",
+        )
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
-def test_model_composition_backpressure(serve_instance):
+@pytest.mark.parametrize(
+    "backpressure_options,expected_status,expected_retry_after",
+    BACKPRESSURE_RESPONSE_CASES,
+)
+def test_model_composition_backpressure(
+    serve_instance, backpressure_options, expected_status, expected_retry_after
+):
     signal_actor = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
@@ -170,7 +168,7 @@ def test_model_composition_backpressure(serve_instance):
     def send_request():
         return httpx.get(get_application_url())
 
-    serve.run(Parent.bind(child=Child.bind()))
+    serve.run(Parent.bind(child=Child.options(**backpressure_options).bind()))
     with ThreadPoolExecutor(max_workers=3) as exc:
         # Send first request, wait for it to be blocked while executing.
         executing_fut = exc.submit(send_request)
@@ -187,7 +185,9 @@ def test_model_composition_backpressure(serve_instance):
 
         # Send third request, it should get rejected.
         rejected_fut = exc.submit(send_request)
-        assert rejected_fut.result().status_code == 503
+        check_rejection_response(
+            rejected_fut.result(), expected_status, expected_retry_after
+        )
 
         # Send signal, check the two requests succeed.
         ray.get(signal_actor.send.remote(clear=False))
@@ -200,15 +200,25 @@ def test_model_composition_backpressure(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
+@pytest.mark.parametrize(
+    "backpressure_options,expected_status,expected_retry_after",
+    BACKPRESSURE_RESPONSE_CASES,
+)
 @pytest.mark.parametrize("request_type", ["async_non_gen", "sync_non_gen"])
-def test_model_composition_backpressure_with_fastapi(serve_instance, request_type):
+def test_model_composition_backpressure_with_fastapi(
+    serve_instance,
+    request_type,
+    backpressure_options,
+    expected_status,
+    expected_retry_after,
+):
     """Tests backpressure behavior with FastAPI model composition.
 
     Tests that when a Child deployment with max_ongoing_requests=1 and max_queued_requests=1
     is called through a Parent FastAPI deployment:
     1. First request blocks while executing
     2. Second request gets queued
-    3. Third request gets rejected with 503 status code
+    3. Third request gets rejected with the configured status code (503 by default)
     4. After unblocking, first two requests complete successfully
 
     Tests both async and sync non-generator endpoints.
@@ -246,7 +256,7 @@ def test_model_composition_backpressure_with_fastapi(serve_instance, request_typ
         resp = httpx.get(url_map[request_type])
         return resp
 
-    serve.run(Parent.bind(child=Child.bind()))
+    serve.run(Parent.bind(child=Child.options(**backpressure_options).bind()))
 
     with ThreadPoolExecutor(max_workers=3) as exc:
         executing_fut = exc.submit(send_request)
@@ -261,7 +271,9 @@ def test_model_composition_backpressure_with_fastapi(serve_instance, request_typ
         assert len(done) == 0
 
         rejected_fut = exc.submit(send_request)
-        assert rejected_fut.result().status_code == 503
+        check_rejection_response(
+            rejected_fut.result(), expected_status, expected_retry_after
+        )
 
         # Send signal, let the two requests succeed.
         ray.get(signal_actor.send.remote())

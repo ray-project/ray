@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Tune experiments across a multi-node Ray cluster, covering launch on cloud VMs, storage options, spot instances, and failure recovery.
+
 .. _tune-distributed-ref:
 
 Running Distributed Experiments with Ray Tune
@@ -204,7 +207,7 @@ To summarize, here are the commands to run:
 .. code-block:: bash
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch_trainable.py
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-default.yaml
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/tune-default.yaml
     ray submit tune-default.yaml mnist_pytorch_trainable.py --start -- --ray-address=localhost:6379
 
     # wait a while until after all nodes have started

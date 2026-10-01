@@ -11,121 +11,36 @@ import pytest
 import ray
 from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
     RequestMetadata,
+    RunningReplicaInfo,
 )
-from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
-from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.constants import (
+    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+)
 from ray.serve._private.request_router import (
     PendingRequest,
     PowerOfTwoChoicesRequestRouter,
-    RunningReplica,
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
-from ray.serve._private.test_utils import MockTimer
+from ray.serve._private.test_utils import (
+    FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS as DEFAULT_MAX_ONGOING_REQUESTS,
+    FakeRunningReplica,
+    MockTimer,
+)
 from ray.serve._private.utils import generate_request_id
 
 TIMER = MockTimer()
 
-DEFAULT_MAX_ONGOING_REQUESTS = 10
 ROUTER_NODE_ID = "router_node_id"
 ROUTER_AZ = "router_az"
-
-
-class FakeRunningReplica(RunningReplica):
-    def __init__(
-        self,
-        replica_unique_id: str,
-        *,
-        node_id: str = "",
-        availability_zone: Optional[str] = None,
-        reset_after_response: bool = False,
-        model_ids: Optional[Set[str]] = None,
-        sleep_time_s: float = 0.0,
-        max_ongoing_requests: int = DEFAULT_MAX_ONGOING_REQUESTS,
-    ):
-        self._replica_id = ReplicaID(
-            unique_id=replica_unique_id,
-            deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
-        )
-        self._node_id = node_id
-        self._availability_zone = availability_zone
-        self._queue_len = 0
-        self._max_ongoing_requests = max_ongoing_requests
-        self._has_queue_len_response = asyncio.Event()
-        self._reset_after_response = reset_after_response
-        self._model_ids = model_ids or set()
-        self._sleep_time_s = sleep_time_s
-
-        self.get_queue_len_was_cancelled = False
-        self.queue_len_deadline_history = list()
-        self.num_get_queue_len_calls = 0
-
-    @property
-    def replica_id(self) -> ReplicaID:
-        return self._replica_id
-
-    @property
-    def node_id(self) -> str:
-        return self._node_id
-
-    @property
-    def availability_zone(self) -> Optional[str]:
-        return self._availability_zone
-
-    @property
-    def multiplexed_model_ids(self) -> Set[str]:
-        return self._model_ids
-
-    @property
-    def max_ongoing_requests(self) -> int:
-        return self._max_ongoing_requests
-
-    def set_queue_len_response(
-        self,
-        queue_len: int,
-        exception: Optional[Exception] = None,
-    ):
-        self._queue_len = queue_len
-        self._exception = exception
-        self._has_queue_len_response.set()
-
-    def push_proxy_handle(self, handle: ActorHandle):
-        pass
-
-    async def get_queue_len(self, *, deadline_s: float) -> int:
-        self.num_get_queue_len_calls += 1
-        self.queue_len_deadline_history.append(deadline_s)
-        try:
-            while not self._has_queue_len_response.is_set():
-                await self._has_queue_len_response.wait()
-
-            if self._sleep_time_s > 0:
-                await asyncio.sleep(self._sleep_time_s)
-
-            if self._reset_after_response:
-                self._has_queue_len_response.clear()
-
-            if self._exception is not None:
-                raise self._exception
-
-            return self._queue_len
-        except asyncio.CancelledError:
-            self.get_queue_len_was_cancelled = True
-            raise
-
-    def try_send_request(
-        self, pr: PendingRequest, with_rejection: bool
-    ) -> ReplicaResult:
-        raise NotImplementedError()
-
-    def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:
-        raise NotImplementedError()
 
 
 @pytest.fixture
@@ -210,6 +125,27 @@ def fake_pending_request(
                 multiplexed_model_id=model_id,
             ),
         )
+
+
+async def verify_replicas_chosen(
+    router: PowerOfTwoChoicesRequestRouter, expected_replica_ids: Set[ReplicaID]
+):
+    """Route requests until every expected replica has been chosen.
+
+    Candidates are picked at random, so one batch of 10 can miss a valid replica.
+    Route up to 1000 in batches of 10: fast on average, and no longer a coin flip.
+    """
+    loop = get_or_create_event_loop()
+    chosen_replica_ids = set()
+    for _ in range(100):
+        tasks = [
+            loop.create_task(router._choose_replica_for_request(fake_pending_request()))
+            for _ in range(10)
+        ]
+        chosen_replica_ids |= {r.replica_id for r in await asyncio.gather(*tasks)}
+        if chosen_replica_ids == expected_replica_ids:
+            return
+    assert chosen_replica_ids == expected_replica_ids
 
 
 @pytest.mark.asyncio
@@ -986,7 +922,6 @@ async def test_prefer_az_off(pow_2_router):
     """
 
     s = pow_2_router
-    loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica("r1", availability_zone=ROUTER_AZ)
     r2 = FakeRunningReplica("r2", availability_zone=ROUTER_AZ)
@@ -996,31 +931,11 @@ async def test_prefer_az_off(pow_2_router):
     r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
-    async def choose_replicas():
-        tasks = []
-        for _ in range(10):
-            tasks.append(
-                loop.create_task(s._choose_replica_for_request(fake_pending_request()))
-            )
-        replicas = await asyncio.gather(*tasks)
-        return {r.replica_id for r in replicas}
-
-    async def verify_replicas_batched(expected_replicas: Set[str]):
-        chosen_replicas = set()
-        for _ in range(100):
-            chosen_replicas = chosen_replicas.union(await choose_replicas())
-            print("Replicas chosen after batch of 10:", chosen_replicas)
-            if chosen_replicas == expected_replicas:
-                break
-        assert chosen_replicas == expected_replicas
-
-    # Requests should be spread across all nodes
-    # NOTE(zcin): Choose up to 1000 replicas in batches of 10 at a time.
-    # This deflakes the test, but also makes sure the test runs fast on average
-    await verify_replicas_batched({r1.replica_id, r2.replica_id, r3.replica_id})
+    # Requests should be spread across all nodes.
+    await verify_replicas_chosen(s, {r1.replica_id, r2.replica_id, r3.replica_id})
 
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
-    await verify_replicas_batched({r2.replica_id, r3.replica_id})
+    await verify_replicas_chosen(s, {r2.replica_id, r3.replica_id})
 
 
 @pytest.mark.asyncio
@@ -1059,7 +974,7 @@ async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_router):
     # All requests should be routed to the two nodes in the same AZ
     # (r1 and r2). Without node preference in routing, requests should
     # be routed to BOTH r1 and r2
-    assert set(await choose_replicas()) == {r1, r2}
+    await verify_replicas_chosen(s, {r1.replica_id, r2.replica_id})
 
     # Update replica on one of the nodes in the same AZ to reject
     # requests. Now requests should only go to the remaining node in the
@@ -1113,7 +1028,7 @@ async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_router):
     # If replica on same node is blocked, there should be no preference between
     # remaining replicas even if the availability zones are different.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
-    assert set(await choose_replicas()) == {r2, r3}
+    await verify_replicas_chosen(s, {r2.replica_id, r3.replica_id})
 
 
 @pytest.mark.asyncio
@@ -1365,13 +1280,26 @@ class TestModelMultiplexing:
             assert done.pop() == m2_tasks[0]
             m2_tasks = m2_tasks[1:]
 
-    async def test_replicas_with_model_id_not_chosen_when_busy(self, pow_2_router):
+    async def test_replicas_with_model_id_not_chosen_when_busy(
+        self, pow_2_router, monkeypatch
+    ):
         """
         Setup 3 replicas, one of which has the model ID, the other two do not. Verifies
         that when the replica with the model ID is busy, the other replicas are chosen.
         """
         s = pow_2_router
         loop = get_or_create_event_loop()
+
+        # Restore the production matching timeout. The deadline below has to sit
+        # between normal routing and a request that waits the window out, and the
+        # fixture-shortened 10ms window leaves those two too close together.
+        monkeypatch.setattr(
+            ray.serve._private.request_router.request_router,
+            "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S",
+            1.0,
+        )
+        # The deadline below only proves "right away" while this patch is in effect.
+        assert s._multiplexed_matching_timeout >= 1.0
 
         r1 = FakeRunningReplica("r1", model_ids={"m1"})
         r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
@@ -1390,15 +1318,51 @@ class TestModelMultiplexing:
         ]
 
         # Ensure that all tasks are routed to r2 and r3 right away, since r1 is busy.
-        #
-        # The timeout is important in this test, else the request can still wait for the
-        # _multiplexed_matching_timeout to expire then to go to other replicas. This
-        # timeout ensures that the request is routed to other replicas right away
-        # after first try.
-        done, _ = await asyncio.wait(tasks, timeout=0.1)
+        # The deadline is what proves "right away": it sits below the 1s floor of
+        # the matching window, so a request that waited that out cannot make it.
+        done, _ = await asyncio.wait(tasks, timeout=0.5)
         assert len(done) == 100
         for task in done:
             assert task.result() in {r2, r3}
+
+    async def test_replica_actor_died_removed_from_model_ids(self, pow_2_router):
+        """
+        A replica that dies must also be dropped from the multiplexed model ID
+        mapping, not just from the replica set.
+
+        The mapping is otherwise only rebuilt by `update_replicas`, so until the
+        controller broadcasts the new replica set it keeps pointing at a replica
+        that is no longer in `self._replicas`, and the next request for that
+        model raises a `KeyError`.
+        """
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1.set_queue_len_response(
+            queue_len=0,
+            exception=ActorDiedError(),
+        )
+        r2 = FakeRunningReplica("r2", model_ids={})
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        assert s._multiplexed_model_id_to_replica_ids.get("m1") == {r1.replica_id}
+
+        # Routing the first request surfaces the ActorDiedError and evicts r1.
+        request = fake_pending_request(model_id="m1")
+        task = loop.create_task(s._choose_replica_for_request(request))
+        assert (await task) == r2
+        assert r1.replica_id not in s.curr_replicas
+        assert s._multiplexed_model_id_to_replica_ids.get("m1") == set()
+
+        # Subsequent requests for m1 start with a fresh routing context, so they
+        # read the mapping again. They must fall back to r2 rather than select
+        # the dead replica.
+        for _ in range(10):
+            request = fake_pending_request(model_id="m1")
+            task = loop.create_task(s._choose_replica_for_request(request))
+            assert (await task) == r2
 
 
 @pytest.mark.asyncio
@@ -1743,6 +1707,115 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_router):
 @pytest.mark.parametrize(
     "pow_2_router",
     [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decremented_on_request_completion(pow_2_router):
+    """
+    Verify that decrement_queue_len_cache decrements the queue length cache.
+    Without this, with max_ongoing_requests=1 the cache gets stuck at 1
+    after routing, causing every subsequent pick to require blocking probe RPCs.
+    """
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Simulate: request was sent, on_send_request bumped cache to 1
+    s.on_send_request(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 1
+
+    # Request completes - cache should decrement to 0
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decremented_multiple_requests(pow_2_router):
+    """Verify that multiple request completions correctly decrement the cache."""
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Simulate 3 in-flight requests
+    s._replica_queue_len_cache.update(r1.replica_id, 3)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 3
+
+    # Each completion decrements
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 2
+
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 1
+
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decrement_does_not_go_negative(pow_2_router):
+    """Verify that cache never goes below 0 (e.g. duplicate completion callbacks)."""
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    s._replica_queue_len_cache.update(r1.replica_id, 0)
+
+    # Duplicate or spurious completion - should stay at 0
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decrement_skipped_when_expired(pow_2_router):
+    """
+    Verify that decrement_queue_len_cache does not add a cache entry when the
+    replica's cache entry has expired (get returns None).
+    """
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Expire the cache entry (from initial probe)
+    TIMER.advance(RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S + 1)
+    assert s._replica_queue_len_cache.get(r1.replica_id) is None
+
+    # Completion should not add an entry (we only update when current is not None)
+    s.decrement_queue_len_cache(r1.replica_id)
+
+    # Cache should still be empty - we don't incorrectly create an entry
+    assert s._replica_queue_len_cache.get(r1.replica_id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
         {"prefer_local_node": True, "prefer_local_az": True},
     ],
     indirect=True,
@@ -2006,6 +2079,70 @@ async def test_rank_replicas_via_locality(pow_2_router: PowerOfTwoChoicesRequest
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
+async def test_update_running_replicas_refreshes_multiplexed_model_ids(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """
+    When _update_running_replicas reuses an existing wrapper for a known replica_id,
+    it must call update_replica_info so that multiplexed_model_ids from the new
+    RunningReplicaInfo (e.g. from record_multiplexed_model_ids broadcast) are applied.
+    Otherwise _update_multiplexed_model_ids_with_replicas builds stale model-to-replica
+    mapping and multiplexed model routing breaks.
+    """
+    deploy_id = DeploymentID(name="TEST_DEPLOYMENT")
+    replica_id = ReplicaID(unique_id="r1", deployment_id=deploy_id)
+
+    def create_fake_replica(replica_info: RunningReplicaInfo) -> FakeRunningReplica:
+        return FakeRunningReplica(
+            replica_info.replica_id.unique_id,
+            model_ids=set(replica_info.multiplexed_model_ids),
+        )
+
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=deploy_id,
+        handle_source=DeploymentHandleSource.REPLICA,
+        prefer_local_node_routing=False,
+        prefer_local_az_routing=False,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        use_replica_queue_len_cache=False,
+        get_curr_time_s=TIMER.time,
+        create_replica_wrapper_func=create_fake_replica,
+    )
+    router.initialize_state()
+
+    # First update: replica r1 has model m1 only
+    info_v1 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="n1",
+        node_ip="127.0.0.1",
+        availability_zone=None,
+        actor_name="actor_r1",
+        max_ongoing_requests=10,
+        multiplexed_model_ids=["m1"],
+    )
+    router._update_running_replicas([info_v1])
+    assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
+    assert "m2" not in router._multiplexed_model_id_to_replica_ids
+
+    # Second update: same replica, now has m1 and m2 (e.g. after loading model m2)
+    info_v2 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="n1",
+        node_ip="127.0.0.1",
+        availability_zone=None,
+        actor_name="actor_r1",
+        max_ongoing_requests=10,
+        multiplexed_model_ids=["m1", "m2"],
+    )
+    router._update_running_replicas([info_v2])
+    assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
+    assert router._multiplexed_model_id_to_replica_ids.get("m2") == {replica_id}
+
+
+@pytest.mark.asyncio
 async def test_rank_replicas_via_multiplex(
     pow_2_router: PowerOfTwoChoicesRequestRouter,
 ):
@@ -2032,6 +2169,67 @@ async def test_rank_replicas_via_multiplex(
         [replica_with_no_model],  # replica with fewer cached models ranked 1
         [replica_with_other_models],  # replica with more cached models ranked 2
     ]
+
+
+def test_request_router_backoff_params_default():
+    """Test that backoff params use env var defaults when not specified."""
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+    )
+
+    assert router.initial_backoff_s == RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+    assert router.backoff_multiplier == RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+    assert router.max_backoff_s == RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
+
+
+def test_request_router_backoff_params_custom():
+    """Test that custom backoff params are properly set on the RequestRouter."""
+    custom_initial_backoff = 0.1
+    custom_multiplier = 5
+    custom_max_backoff = 3.0
+
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+        initial_backoff_s=custom_initial_backoff,
+        backoff_multiplier=custom_multiplier,
+        max_backoff_s=custom_max_backoff,
+    )
+
+    assert router.initial_backoff_s == custom_initial_backoff
+    assert router.backoff_multiplier == custom_multiplier
+    assert router.max_backoff_s == custom_max_backoff
+
+
+def test_compute_backoff_s_does_not_overflow():
+    """A large attempt must clamp to max_backoff_s, not raise OverflowError.
+
+    initial_backoff_s * (backoff_multiplier ** attempt) overflows once attempt
+    grows large enough (e.g. during a long cold start), which previously crashed
+    the routing loop. See the same guard on _probe_queue_lens for backoff_index.
+    """
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+        initial_backoff_s=0.1,
+        backoff_multiplier=2,
+        max_backoff_s=1.0,
+    )
+
+    assert router._compute_backoff_s(2048) == router.max_backoff_s
 
 
 if __name__ == "__main__":

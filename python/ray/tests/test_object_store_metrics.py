@@ -4,14 +4,13 @@ from typing import Dict
 
 import numpy as np
 import pytest
-import requests
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
-    raw_metric_timeseries,
+    wait_for_condition,
 )
+from ray._private.test_utils import raw_metric_timeseries, request_with_auth_token
 from ray._private.worker import RayContext
 from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 
@@ -70,8 +69,6 @@ def approx_eq_dict_in(actual: Dict, expected: Dict, e: int) -> bool:
 )
 def test_shared_memory_and_inline_worker_heap(shutdown_only):
     """Test objects allocated in shared memory"""
-    import numpy as np
-
     info = ray.init(
         object_store_memory=100 * MiB,
         _system_config={
@@ -321,8 +318,6 @@ def test_fallback_memory(shutdown_only):
 )
 def test_seal_memory(shutdown_only):
     """Test objects sealed states reported correctly"""
-    import numpy as np
-
     info = ray.init(
         object_store_memory=100 * MiB,
         _system_config=_SYSTEM_CONFIG,
@@ -381,7 +376,9 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
             if sample.labels["Name"] == "object_store_memory":
                 object_store_memory_bytes_from_metrics += sample.value
 
-        r = requests.get(f"http://{ctx.dashboard_url}/nodes?view=summary")
+        r = request_with_auth_token(
+            "GET", f"http://{ctx.dashboard_url}/nodes?view=summary"
+        )
         object_store_memory_bytes_from_dashboard = int(
             r.json()["data"]["summary"][0]["raylet"]["objectStoreAvailableMemory"]
         )

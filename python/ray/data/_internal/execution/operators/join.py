@@ -14,11 +14,14 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     ShuffleAggregation,
     _combine,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    ReduceFn,
+)
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
-from ray.data.block import Block
+from ray.data.block import Block, Schema
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -37,15 +40,15 @@ class _DatasetPreprocessingResult:
     unsupported_projection: "pa.Table"
 
 
-_JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP = {
+# Polars has no right-semi / right-anti; those are rewritten to left-semi /
+# left-anti after swapping the inputs. See ``_join_tables_iter``.
+_JOIN_TYPE_TO_POLARS_JOIN_TYPE_MAP = {
     JoinType.INNER: "inner",
-    JoinType.LEFT_OUTER: "left outer",
-    JoinType.RIGHT_OUTER: "right outer",
-    JoinType.FULL_OUTER: "full outer",
-    JoinType.LEFT_SEMI: "left semi",
-    JoinType.RIGHT_SEMI: "right semi",
-    JoinType.LEFT_ANTI: "left anti",
-    JoinType.RIGHT_ANTI: "right anti",
+    JoinType.LEFT_OUTER: "left",
+    JoinType.RIGHT_OUTER: "right",
+    JoinType.FULL_OUTER: "full",
+    JoinType.LEFT_SEMI: "semi",
+    JoinType.LEFT_ANTI: "anti",
 }
 
 
@@ -59,7 +62,7 @@ class JoiningAggregation(ShuffleAggregation):
         - Accumulating identical keys from both sequences into the same partition
         - Performing join on individual partitions independently
 
-    For actual joining, Pyarrow native joining functionality is utilised.
+    For the in-partition join, Polars streaming join is used.
     """
 
     def __init__(
@@ -79,7 +82,7 @@ class JoiningAggregation(ShuffleAggregation):
             left_key_col_names
         ), "Number of columns for both left and right join operands has to match"
 
-        assert join_type in _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP, (
+        assert isinstance(join_type, JoinType), (
             f"Join type is not currently supported (got: {join_type}; "  # noqa: C416
             f"supported: {[jt for jt in JoinType]})"  # noqa: C416
         )
@@ -104,241 +107,520 @@ class JoiningAggregation(ShuffleAggregation):
         left_table = _combine(left_partition_shards)
         right_table = _combine(right_partition_shards)
 
-        left_on = list(self._left_key_col_names)
-        right_on = list(self._right_key_col_names)
-
-        # Preprocess: split unsupported columns and add index columns if needed
-        preprocess_result_l, preprocess_result_r = self._preprocess(
-            left_table, right_table, left_on, right_on
+        yield from _join_tables_iter(
+            left_table,
+            right_table,
+            join_type=self._join_type,
+            left_key_col_names=self._left_key_col_names,
+            right_key_col_names=self._right_key_col_names,
+            left_columns_suffix=self._left_columns_suffix,
+            right_columns_suffix=self._right_columns_suffix,
         )
 
-        # Perform the join on supported columns
-        arrow_join_type = _JOIN_TYPE_TO_ARROW_JOIN_VERB_MAP[self._join_type]
 
-        supported = preprocess_result_l.supported_projection.join(
-            preprocess_result_r.supported_projection,
-            join_type=arrow_join_type,
-            keys=left_on,
-            right_keys=right_on,
-            left_suffix=self._left_columns_suffix,
-            right_suffix=self._right_columns_suffix,
+def _make_join_reduce_fn(
+    *,
+    join_type: JoinType,
+    left_key_col_names: Tuple[str, ...],
+    right_key_col_names: Tuple[str, ...],
+    left_columns_suffix: Optional[str] = None,
+    right_columns_suffix: Optional[str] = None,
+    left_schema: Optional[Schema] = None,
+    right_schema: Optional[Schema] = None,
+) -> ReduceFn:
+    """Build a V2-shuffle reduce fn that joins two co-partitioned inputs."""
+    import pyarrow as pa
+
+    def _side_table(
+        tables: List[Block], schema: Optional[Schema]
+    ) -> Optional["pa.Table"]:
+        if tables:
+            return _combine(tables)
+        if isinstance(schema, pa.Schema):
+            return schema.empty_table()
+        return None
+
+    def _empty_table_with_key_schema(
+        table: "pa.Table",
+        source_key_col_names: Tuple[str, ...],
+        target_key_col_names: Tuple[str, ...],
+    ) -> "pa.Table":
+        return (
+            table.select(list(source_key_col_names))
+            .schema.empty_table()
+            .rename_columns(list(target_key_col_names))
         )
 
-        # Add back unsupported columns
-        result = self._postprocess(
-            supported,
+    def _reduce(
+        partition_id: int, tables_by_input: List[List[Block]]
+    ) -> Iterator[Block]:
+        assert (
+            len(tables_by_input) == 2
+        ), f"Join reduce expects two inputs (got {len(tables_by_input)})"
+        left_table = _side_table(tables_by_input[0], left_schema)
+        right_table = _side_table(tables_by_input[1], right_schema)
+
+        if left_table is None and right_table is None:
+            return
+
+        # Synthesize an unknown empty side's join-key schema from the known side.
+        if left_table is None:
+            left_table = _empty_table_with_key_schema(
+                right_table,
+                right_key_col_names,
+                left_key_col_names,
+            )
+        elif right_table is None:
+            right_table = _empty_table_with_key_schema(
+                left_table,
+                left_key_col_names,
+                right_key_col_names,
+            )
+        yield from _join_tables_iter(
+            left_table,
+            right_table,
+            join_type=join_type,
+            left_key_col_names=left_key_col_names,
+            right_key_col_names=right_key_col_names,
+            left_columns_suffix=left_columns_suffix,
+            right_columns_suffix=right_columns_suffix,
+        )
+
+    return _reduce
+
+
+def join_tables(
+    left_table: "pa.Table",
+    right_table: "pa.Table",
+    *,
+    join_type: JoinType,
+    left_key_col_names: Tuple[str, ...],
+    right_key_col_names: Tuple[str, ...],
+    left_columns_suffix: Optional[str] = None,
+    right_columns_suffix: Optional[str] = None,
+) -> "pa.Table":
+    """Join two tables and return a single Arrow table.
+
+    Shared with plan-time schema inference (``Join.infer_schema``), which
+    calls this with empty tables built from the input schemas. Plan-time and
+    runtime schemas therefore agree by construction. The physical executor
+    uses ``_join_tables_iter`` so Polars can stream output batches.
+    """
+    import pyarrow as pa
+
+    blocks = list(
+        _join_tables_iter(
+            left_table,
+            right_table,
+            join_type=join_type,
+            left_key_col_names=left_key_col_names,
+            right_key_col_names=right_key_col_names,
+            left_columns_suffix=left_columns_suffix,
+            right_columns_suffix=right_columns_suffix,
+        )
+    )
+    if len(blocks) == 1:
+        return blocks[0]
+    return pa.concat_tables(blocks)
+
+
+def _join_tables_iter(
+    left_table: "pa.Table",
+    right_table: "pa.Table",
+    *,
+    join_type: JoinType,
+    left_key_col_names: Tuple[str, ...],
+    right_key_col_names: Tuple[str, ...],
+    left_columns_suffix: Optional[str] = None,
+    right_columns_suffix: Optional[str] = None,
+) -> Iterator[Block]:
+    """Preprocess -> Polars streaming join -> postprocess, yielding Arrow batches."""
+    pl = _require_polars()
+
+    left_on = list(left_key_col_names)
+    right_on = list(right_key_col_names)
+    is_semi_or_anti = join_type in (
+        JoinType.LEFT_SEMI,
+        JoinType.LEFT_ANTI,
+        JoinType.RIGHT_SEMI,
+        JoinType.RIGHT_ANTI,
+    )
+
+    # Eagerly validate suffix conflicts so callers get a clear error instead
+    # of an opaque schema-merge failure. Skip for semi/anti joins: only one
+    # side's columns appear in the result, so overlapping non-key names
+    # between left and right are harmless.
+    if not is_semi_or_anti:
+        left_cols = set(left_table.schema.names)
+        # Right key columns are coalesced into the left keys, so only right
+        # non-key columns can collide with left columns. Subtracting only
+        # right_on (not left_on) correctly handles asymmetric key names.
+        right_output_cols = set(right_table.schema.names) - set(right_on)
+        collisions = left_cols & right_output_cols
+        if left_columns_suffix is None and right_columns_suffix is None and collisions:
+            raise ValueError(
+                "Left and right columns suffixes cannot be both None "
+                f"(overlapping columns: {sorted(collisions)})"
+            )
+
+        # The renamed sets mirror the renames below, including the left side's
+        # exclusion of its own key columns.
+        _validate_suffix_collision(
+            "left", left_columns_suffix, left_cols, collisions - set(left_on)
+        )
+        _validate_suffix_collision(
+            "right",
+            right_columns_suffix,
+            set(right_table.schema.names),
+            collisions,
+        )
+
+    preprocess_result_l, preprocess_result_r = _preprocess(
+        left_table, right_table, left_on, right_on, join_type
+    )
+
+    left_df = pl.from_arrow(
+        preprocess_result_l.supported_projection, rechunk=False
+    ).lazy()
+    right_df = pl.from_arrow(
+        preprocess_result_r.supported_projection, rechunk=False
+    ).lazy()
+
+    target_join_type = join_type
+    left_cols_suffix = left_columns_suffix
+    right_cols_suffix = right_columns_suffix
+
+    # Polars has no right-semi / right-anti; swap sides and run the left form.
+    if target_join_type in (JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI):
+        left_df, right_df = right_df, left_df
+        left_on, right_on = right_on, left_on
+        left_cols_suffix, right_cols_suffix = right_cols_suffix, left_cols_suffix
+        target_join_type = (
+            JoinType.LEFT_SEMI
+            if target_join_type is JoinType.RIGHT_SEMI
+            else JoinType.LEFT_ANTI
+        )
+
+    # Polars only suffixes the right side of name collisions
+    # (https://github.com/pola-rs/polars/issues/12418). Pre-rename colliding
+    # columns so left_suffix / right_suffix match Arrow join behavior.
+    # Skip for semi/anti: only one side appears in the result, so suffixes
+    # must not rewrite the kept side's names (Arrow left them unchanged).
+    if not is_semi_or_anti:
+        left_cols = set(left_df.collect_schema().names())
+        right_output_cols = set(right_df.collect_schema().names()) - set(right_on)
+        collisions = left_cols & right_output_cols
+
+        if left_cols_suffix:
+            # Exclude left keys: left_on still references their original names.
+            renameable_on_left = collisions - set(left_on)
+            if renameable_on_left:
+                left_df = left_df.rename(
+                    {c: f"{c}{left_cols_suffix}" for c in renameable_on_left}
+                )
+
+        if right_cols_suffix and collisions:
+            right_df = right_df.rename(
+                {c: f"{c}{right_cols_suffix}" for c in collisions}
+            )
+
+    right_suffix = right_cols_suffix or "_right"
+    # Names present on either input before the join. Used so we do not
+    # drop a user payload column that happens to be named like a suffixed
+    # right key (e.g. ``id_right`` on an ``id`` join).
+    preexisting_cols = set(left_df.collect_schema().names()) | set(
+        right_df.collect_schema().names()
+    )
+    joined = left_df.join(
+        right_df,
+        how=_JOIN_TYPE_TO_POLARS_JOIN_TYPE_MAP[target_join_type],
+        left_on=left_on,
+        right_on=right_on,
+        suffix=right_suffix,
+        coalesce=True,
+    )
+
+    if join_type not in (JoinType.FULL_OUTER, JoinType.RIGHT_OUTER):
+        # Inner/left: drop coalesced-away right keys if Polars still emits
+        # them as suffixed duplicates. Skip right_outer: it coalesces into
+        # the right keys, so ``{right_key}{suffix}`` is the coalesced key
+        # itself whenever the left already has that name.
+        # Skip names that already existed on an input — those are payload
+        # columns, not duplicate keys. Polars' suffix defaults to
+        # ``_right`` even when the caller passed none.
+        joined_cols = joined.collect_schema().names()
+        duplicate_columns = [
+            col
+            for col in (f"{right_key}{right_suffix}" for right_key in right_on)
+            if col in joined_cols and col not in preexisting_cols
+        ]
+        if duplicate_columns:
+            joined = joined.drop(duplicate_columns)
+
+    has_output = False
+    for batch in joined.collect_batches(engine="streaming"):
+        has_output = True
+        yield _postprocess(
+            batch.to_arrow(),
             preprocess_result_l.unsupported_projection,
             preprocess_result_r.unsupported_projection,
         )
 
-        yield result
-
-    def _preprocess(
-        self,
-        left_table: "pa.Table",
-        right_table: "pa.Table",
-        left_on: List[str],
-        right_on: List[str],
-    ) -> Tuple[_DatasetPreprocessingResult, _DatasetPreprocessingResult]:
-        """Preprocesses tables by splitting unsupported columns and adding indices."""
-        # Get supported columns
-        supported_l, unsupported_l = self._split_unsupported_columns(left_table)
-        supported_r, unsupported_r = self._split_unsupported_columns(right_table)
-
-        # Handle joins on unsupported columns
-        conflicting_columns: Set[str] = set(unsupported_l.column_names) & set(left_on)
-        if conflicting_columns:
-            raise ValueError(
-                f"Cannot join on columns with unjoinable types. "
-                f"Left join key columns {conflicting_columns} have unjoinable types "
-                f"(map, union, list, struct, etc.) which cannot be used for join operations."
-            )
-
-        conflicting_columns: Set[str] = set(unsupported_r.column_names) & set(right_on)
-        if conflicting_columns:
-            raise ValueError(
-                f"Cannot join on columns with unjoinable types. "
-                f"Right join key columns {conflicting_columns} have unjoinable types "
-                f"(map, union, list, struct, etc.) which cannot be used for join operations."
-            )
-
-        # Index if we have unsupported columns
-        should_index_l = self._should_index_side("left", supported_l, unsupported_l)
-        should_index_r = self._should_index_side("right", supported_r, unsupported_r)
-
-        # Add index columns for back-referencing if we have unsupported columns
-        if should_index_l:
-            supported_l = self._append_index_column(
-                table=supported_l, col_name=self._index_name("left")
-            )
-        if should_index_r:
-            supported_r = self._append_index_column(
-                table=supported_r, col_name=self._index_name("right")
-            )
-
-        left = _DatasetPreprocessingResult(
-            supported_projection=supported_l,
-            unsupported_projection=unsupported_l,
+    # Streaming collect can return no batches for a 0-row join. Yield a
+    # schema-carrying empty table so downstream joins don't see a 0-column
+    # sentinel.
+    if not has_output:
+        empty = pl.DataFrame(schema=joined.collect_schema()).to_arrow()
+        yield _postprocess(
+            empty,
+            preprocess_result_l.unsupported_projection,
+            preprocess_result_r.unsupported_projection,
         )
-        right = _DatasetPreprocessingResult(
-            supported_projection=supported_r,
-            unsupported_projection=unsupported_r,
+
+
+def _validate_suffix_collision(
+    side: str,
+    suffix: Optional[str],
+    side_col_names: Set[str],
+    renamed_col_names: Set[str],
+) -> None:
+    """Reject a suffix that renames a column onto a name already in use.
+
+    A suffix can create a duplicate instead of resolving one: renaming ``c``
+    to ``f"{c}{suffix}"`` collides when a column of that name already exists
+    on the same side. Polars reports this from deep inside the lazy plan as a
+    DuplicateError naming only the result, so name the inputs here.
+
+    Only a column that keeps its name can be collided with. Polars applies a
+    rename mapping in one step, so ``value`` -> ``value{suffix}`` is fine when
+    ``value{suffix}`` -> ``value{suffix}{suffix}`` moves the occupant aside in
+    the same mapping -- the shape a self-join or a chained join produces once
+    an earlier join has already left suffixed columns behind. Two renamed
+    columns can never collide with each other either, since appending one
+    suffix to distinct names keeps them distinct.
+
+    Args:
+        side: ``"left"`` or ``"right"``, used in the error message.
+        suffix: The suffix to apply, or None to skip the check.
+        side_col_names: Every column name on that side.
+        renamed_col_names: The subset that the suffix will be applied to.
+    """
+    if not suffix:
+        return
+
+    unmoved_col_names = side_col_names - renamed_col_names
+    conflicting = sorted(
+        f"{c}{suffix}" for c in renamed_col_names if f"{c}{suffix}" in unmoved_col_names
+    )
+    if conflicting:
+        raise ValueError(
+            f"{side.capitalize()} columns suffix {suffix!r} collides with existing "
+            f"{side} columns: {conflicting}"
         )
-        return left, right
 
-    def _postprocess(
-        self,
-        supported: "pa.Table",
-        unsupported_l: "pa.Table",
-        unsupported_r: "pa.Table",
-    ) -> "pa.Table":
-        # Index if we have unsupported columns
-        should_index_l = self._index_name("left") in supported.schema.names
-        should_index_r = self._index_name("right") in supported.schema.names
 
-        # Add back unsupported columns (join type logic is in should_index_* variables)
-        if should_index_l:
-            supported = self._add_back_unsupported_columns(
-                joined_table=supported,
-                unsupported_table=unsupported_l,
-                index_col_name=self._index_name("left"),
-            )
+_POLARS_MAX_THREADS_ENV_VAR = "POLARS_MAX_THREADS"
 
-        if should_index_r:
-            supported = self._add_back_unsupported_columns(
-                joined_table=supported,
-                unsupported_table=unsupported_r,
-                index_col_name=self._index_name("right"),
-            )
 
-        return supported
+def _with_polars_thread_cap(
+    ray_remote_args: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    args = dict(ray_remote_args or {})
+    runtime_env = dict(args.get("runtime_env") or {})
+    env_vars = dict(runtime_env.get("env_vars") or {})
+    env_vars.setdefault(_POLARS_MAX_THREADS_ENV_VAR, "1")
+    runtime_env["env_vars"] = env_vars
+    args["runtime_env"] = runtime_env
+    return args
 
-    def _index_name(self, suffix: str) -> str:
-        return f"__rd_index_level_{suffix}__"
 
-    def _should_index_side(
-        self, side: str, supported_table: "pa.Table", unsupported_table: "pa.Table"
-    ) -> bool:
-        """
-        Determine whether to create an index column for a given side of the join.
+def _require_polars():
+    try:
+        import polars as pl
+    except ImportError as e:
+        raise ImportError(
+            "Dataset.join depends on 'polars', but Ray Data couldn't import it. "
+            "Install it by running `pip install polars`."
+        ) from e
+    return pl
 
-        A column is "supported" if it is "joinable", and "unsupported" otherwise.
-        A supported_table is a table with only "supported" columns. Index columns are
-        needed when we have both supported and unsupported columns in a table, and
-        that table's columns will appear in the final result.
 
-        Args:
-            side: "left" or "right" to indicate which side of the join
-            supported_table: Table containing ONLY joinable columns
-            unsupported_table: Table containing ONLY unjoinable columns
+def _preprocess(
+    left_table: "pa.Table",
+    right_table: "pa.Table",
+    left_on: List[str],
+    right_on: List[str],
+    join_type: JoinType,
+) -> Tuple[_DatasetPreprocessingResult, _DatasetPreprocessingResult]:
+    """Split inputs into supported/unsupported columns and add indices."""
+    supported_l, unsupported_l = _split_unsupported_columns(left_table)
+    supported_r, unsupported_r = _split_unsupported_columns(right_table)
 
-        Returns:
-            True if an index column should be created for this side
-        """
-        # Must have both supported and unsupported columns to need indexing.
-        # We cannot rely on row_count because it can return a non-zero row count
-        # for an empty-schema.
-        if not supported_table.schema or not unsupported_table.schema:
-            return False
-
-        # For semi/anti joins, only index the side that appears in the result
-        if side == "left":
-            # Left side appears in result for all joins except right_semi/right_anti
-            return self._join_type not in [JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI]
-        else:  # side == "right"
-            # Right side appears in result for all joins except left_semi/left_anti
-            return self._join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
-
-    def _split_unsupported_columns(
-        self, table: "pa.Table"
-    ) -> Tuple["pa.Table", "pa.Table"]:
-        """
-        Split a PyArrow table into two tables based on column joinability.
-
-        Separates columns into supported types and unsupported types that cannot be
-        directly joined on but should be preserved in results.
-
-        Args:
-            table: Input PyArrow table to split
-
-        Returns:
-            Tuple of (supported_table, unsupported_table) where:
-            - supported_table contains columns with primitive/joinable types
-            - unsupported_table contains columns with complex/unjoinable types
-        """
-        supported, unsupported = [], []
-        for idx in range(len(table.columns)):
-            col: "pa.ChunkedArray" = table.column(idx)
-            col_type: "pa.DataType" = col.type
-
-            if _is_pa_extension_type(col_type) or self._is_pa_join_not_supported(
-                col_type
-            ):
-                unsupported.append(idx)
-            else:
-                supported.append(idx)
-
-        return table.select(supported), table.select(unsupported)
-
-    def _add_back_unsupported_columns(
-        self,
-        joined_table: "pa.Table",
-        unsupported_table: "pa.Table",
-        index_col_name: str,
-    ) -> "pa.Table":
-        # Extract the index column array and drop the column from the joined table
-        i = joined_table.schema.get_field_index(index_col_name)
-        indices = joined_table.column(i)
-        joined_table = joined_table.remove_column(i)
-
-        # Project the unsupported columns using the indices and combine with joined table
-        projected = ArrowBlockAccessor(unsupported_table).take(indices)
-        return ArrowBlockAccessor(joined_table).hstack(projected)
-
-    def _append_index_column(self, table: "pa.Table", col_name: str) -> "pa.Table":
-        import numpy as np
-        import pyarrow as pa
-
-        index_col = pa.array(np.arange(table.num_rows))
-        return table.append_column(col_name, index_col)
-
-    def _is_pa_join_not_supported(self, type: "pa.DataType") -> bool:
-        """
-        The latest pyarrow versions do not support joins where the
-        tables contain the following types below (lists,
-        structs, maps, unions, extension types, etc.)
-
-        Args:
-            type: The input type of column.
-
-        Returns:
-            True if the type cannot be present (non join-key) during joins.
-            False if the type can be present.
-        """
-        import pyarrow as pa
-
-        pyarrow_version = get_pyarrow_version()
-        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
-        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
-
-        return (
-            pa.types.is_map(type)
-            or pa.types.is_union(type)
-            or pa.types.is_list(type)
-            or pa.types.is_struct(type)
-            or pa.types.is_null(type)
-            or pa.types.is_large_list(type)
-            or pa.types.is_fixed_size_list(type)
-            or (is_v12 and pa.types.is_run_end_encoded(type))
-            or (
-                is_v16
-                and (
-                    pa.types.is_binary_view(type)
-                    or pa.types.is_string_view(type)
-                    or pa.types.is_list_view(type)
-                )
-            )
+    # Handle joins on unsupported columns
+    conflicting_columns: Set[str] = set(unsupported_l.column_names) & set(left_on)
+    if conflicting_columns:
+        raise ValueError(
+            f"Cannot join on columns with unjoinable types. "
+            f"Left join key columns {conflicting_columns} have unjoinable types "
+            f"(map, union, list, struct, etc.) which cannot be used for join operations."
         )
+
+    conflicting_columns: Set[str] = set(unsupported_r.column_names) & set(right_on)
+    if conflicting_columns:
+        raise ValueError(
+            f"Cannot join on columns with unjoinable types. "
+            f"Right join key columns {conflicting_columns} have unjoinable types "
+            f"(map, union, list, struct, etc.) which cannot be used for join operations."
+        )
+
+    # Index if we have unsupported columns
+    should_index_l = _should_index_side("left", supported_l, unsupported_l, join_type)
+    should_index_r = _should_index_side("right", supported_r, unsupported_r, join_type)
+
+    # Add index columns for back-referencing if we have unsupported columns
+    if should_index_l:
+        supported_l = _append_index_column(
+            table=supported_l, col_name=_index_name("left")
+        )
+    if should_index_r:
+        supported_r = _append_index_column(
+            table=supported_r, col_name=_index_name("right")
+        )
+
+    left = _DatasetPreprocessingResult(
+        supported_projection=supported_l,
+        unsupported_projection=unsupported_l,
+    )
+    right = _DatasetPreprocessingResult(
+        supported_projection=supported_r,
+        unsupported_projection=unsupported_r,
+    )
+    return left, right
+
+
+def _postprocess(
+    supported: "pa.Table",
+    unsupported_l: "pa.Table",
+    unsupported_r: "pa.Table",
+) -> "pa.Table":
+    """Re-attach unsupported columns to the joined table via the index column."""
+    should_index_l = _index_name("left") in supported.schema.names
+    should_index_r = _index_name("right") in supported.schema.names
+
+    # Add back unsupported columns (join type logic is in should_index_* variables)
+    if should_index_l:
+        supported = _add_back_unsupported_columns(
+            joined_table=supported,
+            unsupported_table=unsupported_l,
+            index_col_name=_index_name("left"),
+        )
+
+    if should_index_r:
+        supported = _add_back_unsupported_columns(
+            joined_table=supported,
+            unsupported_table=unsupported_r,
+            index_col_name=_index_name("right"),
+        )
+
+    return supported
+
+
+def _index_name(suffix: str) -> str:
+    return f"__rd_index_level_{suffix}__"
+
+
+def _should_index_side(
+    side: str,
+    supported_table: "pa.Table",
+    unsupported_table: "pa.Table",
+    join_type: JoinType,
+) -> bool:
+    """
+    Determine whether to create an index column for a given side of the join.
+
+    A column is "supported" if it is "joinable", and "unsupported" otherwise.
+    A supported_table is a table with only "supported" columns. Index columns are
+    needed when we have both supported and unsupported columns in a table, and
+    that table's columns will appear in the final result.
+
+    Args:
+        side: "left" or "right" to indicate which side of the join
+        supported_table: Table containing ONLY joinable columns
+        unsupported_table: Table containing ONLY unjoinable columns
+        join_type: The join type, used to decide whether this side appears in
+            the result (semi/anti joins drop one side).
+
+    Returns:
+        True if an index column should be created for this side
+    """
+    # Must have both supported and unsupported columns to need indexing.
+    # We cannot rely on row_count because it can return a non-zero row count
+    # for an empty-schema.
+    if len(supported_table.schema) == 0 or len(unsupported_table.schema) == 0:
+        return False
+
+    # For semi/anti joins, only index the side that appears in the result
+    if side == "left":
+        # Left side appears in result for all joins except right_semi/right_anti
+        return join_type not in [JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI]
+    else:  # side == "right"
+        # Right side appears in result for all joins except left_semi/left_anti
+        return join_type not in [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI]
+
+
+def _split_unsupported_columns(
+    table: "pa.Table",
+) -> Tuple["pa.Table", "pa.Table"]:
+    """
+    Split a PyArrow table into two tables based on column joinability.
+
+    Separates columns into supported types and unsupported types that cannot be
+    directly joined on but should be preserved in results.
+
+    Args:
+        table: Input PyArrow table to split
+
+    Returns:
+        Tuple of (supported_table, unsupported_table) where:
+        - supported_table contains columns with primitive/joinable types
+        - unsupported_table contains columns with complex/unjoinable types
+    """
+    supported, unsupported = [], []
+    for idx in range(len(table.columns)):
+        col: "pa.ChunkedArray" = table.column(idx)
+        col_type: "pa.DataType" = col.type
+
+        if _is_pa_extension_type(col_type) or JoinOperator._is_pa_join_not_supported(
+            col_type
+        ):
+            unsupported.append(idx)
+        else:
+            supported.append(idx)
+
+    return table.select(supported), table.select(unsupported)
+
+
+def _add_back_unsupported_columns(
+    joined_table: "pa.Table",
+    unsupported_table: "pa.Table",
+    index_col_name: str,
+) -> "pa.Table":
+    # Extract the index column array and drop the column from the joined table
+    i = joined_table.schema.get_field_index(index_col_name)
+    indices = joined_table.column(i)
+    joined_table = joined_table.remove_column(i)
+
+    # Project the unsupported columns using the indices and combine with joined table
+    projected = ArrowBlockAccessor(unsupported_table).take(indices)
+    return ArrowBlockAccessor(joined_table).hstack(projected)
+
+
+def _append_index_column(table: "pa.Table", col_name: str) -> "pa.Table":
+    import numpy as np
+    import pyarrow as pa
+
+    index_col = pa.array(np.arange(table.num_rows))
+    return table.append_column(col_name, index_col)
 
 
 class JoinOperator(HashShufflingOperatorBase):
@@ -394,6 +676,45 @@ class JoinOperator(HashShufflingOperatorBase):
             finalize_progress_bar_name="Join",
         )
 
+    @staticmethod
+    def _is_pa_join_not_supported(dtype: "pa.DataType") -> bool:
+        """
+        The latest pyarrow versions do not support joins where the
+        tables contain the following types below (lists,
+        structs, maps, unions, extension types, etc.)
+
+        Args:
+            dtype: The input type of column.
+
+        Returns:
+            True if the type cannot be present (non join-key) during joins.
+            False if the type can be present.
+        """
+        import pyarrow as pa
+
+        pyarrow_version = get_pyarrow_version()
+        is_v12 = pyarrow_version >= MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES
+        is_v16 = pyarrow_version >= MIN_PYARROW_VERSION_VIEW_TYPES
+
+        return (
+            pa.types.is_map(dtype)
+            or pa.types.is_union(dtype)
+            or pa.types.is_list(dtype)
+            or pa.types.is_struct(dtype)
+            or pa.types.is_null(dtype)
+            or pa.types.is_large_list(dtype)
+            or pa.types.is_fixed_size_list(dtype)
+            or (is_v12 and pa.types.is_run_end_encoded(dtype))
+            or (
+                is_v16
+                and (
+                    pa.types.is_binary_view(dtype)
+                    or pa.types.is_string_view(dtype)
+                    or pa.types.is_list_view(dtype)
+                )
+            )
+        )
+
     def _get_operator_num_cpus_override(self) -> float:
         return self.data_context.join_operator_actor_num_cpus_override
 
@@ -415,11 +736,10 @@ class JoinOperator(HashShufflingOperatorBase):
             estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to perform actual (in-memory) join
-        # operation (inclusive of 50% overhead allocated for Pyarrow join
-        # implementation)
+        # (inclusive of overhead allocated for Polars' in-memory join)
         #
         # NOTE:
-        #   - 2x due to budgeted 100% overhead of Arrow's in-memory join
+        #   - 2x due to budgeted 100% overhead of the in-memory join
         join_memory_required: int = math.ceil(partition_byte_size_estimate * 2)
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)

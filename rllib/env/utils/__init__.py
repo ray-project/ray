@@ -104,7 +104,7 @@ def _gym_env_creator(
     # decent error message.
     try:
         # If class provided, call constructor directly.
-        if isinstance(env_descriptor, type):
+        if callable(env_descriptor):
             env = env_descriptor(env_context)
         else:
             env = gym.make(env_descriptor, **env_context)

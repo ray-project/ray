@@ -7,9 +7,12 @@ import gymnasium as gym
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import (
+    DefaultBCTorchRLModule,
+)
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.offline.offline_data import OfflineData, OfflinePreLearner
-from ray.rllib.offline.offline_prelearner import SCHEMA
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 
@@ -187,10 +190,7 @@ class TestOfflineData(unittest.TestCase):
         ds.write_parquet(dir_path)
 
         # Define a config.
-        config = AlgorithmConfig()
-        config.input_ = [dir_path]
-        # Explicitly request to use a different schema.
-        config.input_read_schema = {
+        input_read_schema = {
             Columns.OBS: "o_t",
             Columns.ACTIONS: "a_t",
             Columns.REWARDS: "r_t",
@@ -198,6 +198,17 @@ class TestOfflineData(unittest.TestCase):
             Columns.EPS_ID: "episode_id",
             Columns.TERMINATEDS: "d_t",
         }
+
+        config = BCConfig().offline_data(
+            input_=[dir_path], input_read_schema=input_read_schema
+        )
+        config.rl_module(
+            rl_module_spec=RLModuleSpec(
+                module_class=DefaultBCTorchRLModule,
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
+        )
         # Create the `OfflineData` instance. Note, this tests reading
         # the files.
         offline_data = OfflineData(config)
@@ -213,9 +224,7 @@ class TestOfflineData(unittest.TestCase):
         self.assertTrue("episode_id" in batch.keys())
         # Preprocess the batch to episodes. Note, here we test that the
         # user schema is used.
-        episodes = OfflinePreLearner._map_to_episodes(
-            is_multi_agent=False, batch=batch, schema=SCHEMA | config.input_read_schema
-        )
+        episodes = OfflinePreLearner(config=config)._map_to_episodes(batch=batch)
         self.assertEqual(len(episodes["episodes"]), batch["o_t"].shape[0])
         # Finally, remove the files and folders.
         shutil.rmtree(dir_path)

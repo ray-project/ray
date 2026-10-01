@@ -1,0 +1,8 @@
+Build: 4103000   State: Finished   Success: False   Duration: 450s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Sphinx warnings (1):
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64230/doc/source/api/foo.md:1: WARNING: some unrecognized problem here [app.unknown_thing]
+
+Summary line: build finished with problems, 1 warning.

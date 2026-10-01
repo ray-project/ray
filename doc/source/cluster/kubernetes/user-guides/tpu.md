@@ -1,12 +1,16 @@
+---
+myst:
+  html_meta:
+    description: "Use TPUs with KubeRay: configure Kubernetes Pods for TPUs, TPU workload scheduling and default labels, and multi-host TPU autoscaling."
+---
+
 (kuberay-tpu)=
 
 # Use TPUs with KubeRay
 
 This document provides tips on TPU usage with KubeRay.
 
-TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure
-both the Kubernetes setup and add additional values to the RayCluster CR configuration.
-Configure TPUs on GKE by referencing the {ref}`kuberay-gke-tpu-cluster-setup`.
+TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure both the Kubernetes setup and add additional values to the RayCluster CR configuration. Configure TPUs on GKE by referencing the {ref}`kuberay-gke-tpu-cluster-setup`.
 
 ## About TPUs
 
@@ -16,13 +20,9 @@ TPUs are custom-designed AI accelerators, which are optimized for training and i
 
 After setting up a GKE cluster with TPUs and the Ray TPU initialization webhook, run a workload on Ray with TPUs. {ref}`Serve a Stable Diffusion model on GKE with TPUs <kuberay-tpu-stable-diffusion-example>` shows how to serve a model with KubeRay on single-host TPUs.
 
-## Configuring Ray Pods for TPU usage
+## Configuring Kubernetes Pods for TPU usage
 
-Using any TPU accelerator requires specifying `google.com/tpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s
-`workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. KubeRay v1.1.0 adds a `numOfHosts`
-field to the RayCluster custom resource, specifying the number of TPU hosts to create per worker group replica. For multi-host worker groups,
-Ray treats replicas as Pod slices rather than individual workers, and creates `numOfHosts` worker nodes per replica.
-Additionally, GKE uses `gke-tpu` node selectors to schedule TPU Pods on the node matching the desired TPU accelerator and topology.
+Using any TPU accelerator requires specifying `google.com/tpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s `workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. KubeRay v1.1.0 adds a `numOfHosts` field to the RayCluster custom resource, specifying the number of TPU hosts to create per worker group replica. For multi-host worker groups, Ray treats replicas as Pod slices rather than individual workers, and creates `numOfHosts` worker nodes per replica. Additionally, GKE uses `gke-tpu` node selectors to schedule TPU Pods on the node matching the desired TPU accelerator and topology.
 
 Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Pods. Ray schedules each worker on its own GKE v4 TPU node belonging to the same TPU Pod slice.
 
@@ -54,9 +54,7 @@ Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Po
 
 ## TPU workload scheduling
 
-After Ray deploys a Ray Pod with TPU resources, the Ray Pod can execute tasks and actors annotated with TPU requests.
-Ray supports TPUs as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources).
-Tasks or actors request TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
+After Ray deploys a Pod with TPU resources, the Pod can execute tasks and actors annotated with TPU requests. Ray supports TPUs as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources). Tasks or actors request TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
 
 ### TPU default labels
 
@@ -97,7 +95,7 @@ The `SlicePlacementGroup` class provides a high-level interface to reserve one o
 **How it works:**
 
 1.  **Reservation:** When you create a `SlicePlacementGroup`, it first interacts with the Ray scheduler to find an available TPU slice matching your specified `topology` and `accelerator_version`. It does this by temporarily reserving the "head" TPU node (worker ID 0) of a slice using a small, internal placement group.
-2.  **Slice Identification:** From the reserved head node, it retrieves the unique slice name (using the `ray.io/tpu-slice-name` default label). This label is set using an environment variable injected by a GKE webhook. The GKE webhook also ensures that KubeRay pods with `numOfHosts > 1` are scheduled with affinity on the same GKE nodepool, which is 1:1 with a TPU multi-host slice.
+2.  **Slice Identification:** From the reserved head node, it retrieves the unique slice name (using the `ray.io/tpu-slice-name` default label). This label is set using an environment variable injected by a GKE webhook. The GKE webhook also ensures that Pods with `numOfHosts > 1` are scheduled with affinity on the same GKE node pool, which is 1:1 with a TPU multi-host slice.
 3.  **Main Placement Group Creation:** It then creates the main placement group you requested. This group contains bundles representing each host (VM) in the slice(s). For each slice, it uses `bundle_label_selector` to target the specific `ray.io/tpu-slice-name` identified in the previous step. This ensures all bundles for a given slice land on workers within that exact slice.
 4.  **Handle:** It returns a `SlicePlacementGroup` handle which exposes the underlying Ray `PlacementGroup` object (`.placement_group`) along with useful properties like the number of workers (`.num_workers`) and chips per host (`.chips_per_host`).
 
@@ -133,8 +131,8 @@ tasks = [
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             placement_group=slice_pg,
         )
-    ).remote(world_size=slice_handle.num_workers, rank=i)
-    for i in range(slice_handle.num_workers)
+    ).remote(world_size=slice_handle.num_hosts, rank=i)
+    for i in range(slice_handle.num_hosts)
 ]
 
 results = ray.get(tasks)
@@ -161,7 +159,7 @@ Returns the total number of TPU chips on the current node. Returns 0 if none are
 
 ## Multi-Host TPU autoscaling
 
-Multi-host TPU autoscaling is supported in Kuberay versions 1.1.0 or later and Ray versions 2.32.0 or later. Ray multi-host TPU worker groups are worker groups, which specify "google.com/tpu" Kubernetes container limits or requests and have `numOfHosts` greater than 1. Ray treats each replica of a Ray multi-host TPU worker group as a TPU Pod slice and scales them atomically. When scaling up, multi-host worker groups create `numOfHosts` Ray workers per replica. Likewise, Ray scales down multi-host worker group replicas by `numOfHosts` workers. When Ray schedules a deletion of a single Ray worker in a multi-host TPU worker group, it terminates the entire replica to which the worker belongs. When scheduling TPU workloads on multi-host worker groups, ensure that Ray tasks or actors run on every TPU VM host in a worker group replica to avoid Ray from scaling down idle TPU workers.
+Multi-host TPU autoscaling is supported in KubeRay versions 1.1.0 or later and Ray versions 2.32.0 or later. Ray multi-host TPU worker groups are worker groups, which specify "google.com/tpu" Kubernetes container limits or requests and have `numOfHosts` greater than 1. Ray treats each replica of a Ray multi-host TPU worker group as a TPU Pod slice and scales them atomically. When scaling up, multi-host worker groups create `numOfHosts` Ray workers per replica. Likewise, Ray scales down multi-host worker group replicas by `numOfHosts` workers. When Ray schedules a deletion of a single Ray worker in a multi-host TPU worker group, it terminates the entire replica to which the worker belongs. When scheduling TPU workloads on multi-host worker groups, ensure that Ray tasks or actors run on every TPU VM host in a worker group replica to avoid Ray from scaling down idle TPU workers.
 
 Further reference and discussion
 --------------------------------

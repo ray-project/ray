@@ -43,13 +43,14 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The trained policies should achieve an average reward of at least -0.5 within
-2 million timesteps. Since the policies play against both each other and a
-random opponent, rewards will vary. A reward close to 0 or positive indicates
+Four policies are trained plus a fifth random policy are randomly paired against
+each other. Training is stopped when policy 0 achieves a return of < -0.3 within
+2 million timesteps. A reward close to 0 or positive indicates
 the policies are learning to win or draw more often than they lose.
 """
 import random
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -58,6 +59,11 @@ from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
+)
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_MODULE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 
 parser = add_rllib_example_script_args(
@@ -113,5 +119,16 @@ config = (
 )
 
 
+stop = {
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_MODULE_RETURN_MEAN}/p0": args.stop_reward,
+    f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+    TRAINING_ITERATION: args.stop_iters,
+}
+success_metric = {
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_MODULE_RETURN_MEAN}/p0": args.stop_reward
+}
+
 if __name__ == "__main__":
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(
+        config, args, stop=stop, success_metric=success_metric
+    )

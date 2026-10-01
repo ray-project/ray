@@ -104,8 +104,8 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
     wait_for_condition(node_is_dead, timeout=1)
 
 
-# Bundles can be leaked if the gcs dies before the CancelResourceReserve RPCs are
-# propagated to all the raylets. Since this is inherently racy, we block CancelResourceReserve RPCs
+# Bundles can be leaked if the gcs dies before the RemovePlacementGroupBundles RPCs are
+# propagated to all the raylets. Since this is inherently racy, we block RemovePlacementGroupBundles RPCs
 # from ever succeeding to make this test deterministic.
 @pytest.fixture
 def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
@@ -117,7 +117,7 @@ def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
         json.dumps(
             {
                 "NodeManagerService.grpc_client.ReleaseUnusedBundles": failure,
-                "NodeManagerService.grpc_client.CancelResourceReserve": {
+                "NodeManagerService.grpc_client.RemovePlacementGroupBundles": {
                     "num_failures": -1,
                     "req_failure_prob": 100,
                     "resp_failure_prob": 0,
@@ -158,7 +158,7 @@ def test_release_unused_bundles_idempotent(
     ).remote()
     assert ray.get(result_ref) == "success"
 
-    # Remove the placement group. This will trigger CancelResourceReserve RPCs which need to be blocked
+    # Remove the placement group. This will trigger RemovePlacementGroupBundles RPCs which need to be blocked
     # for the placement group bundle to be leaked.
     remove_placement_group(pg)
 

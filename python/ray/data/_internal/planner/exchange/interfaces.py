@@ -5,9 +5,8 @@ import ray._private.worker
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import convert_bytes_to_human_readable_str
-from ray.data.block import Block, BlockType
+from ray.data.block import Block
 from ray.data.context import DataContext
-from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
 
@@ -65,24 +64,13 @@ class ExchangeTaskSpec:
         Reduce function to be run for each output block.
 
         Args:
-            mapper_outputs: List of map output blocks to reduce.
+            *mapper_outputs: List of map output blocks to reduce.
             partial_reduce: Whether should partially or fully reduce.
 
         Returns:
             The reduced block and its metadata.
         """
         raise NotImplementedError
-
-    @staticmethod
-    def _derive_target_block_type(batch_format: str) -> Optional[BlockType]:
-        if batch_format == BatchFormat.ARROW:
-            return BlockType.ARROW
-        elif batch_format == BatchFormat.PANDAS:
-            return BlockType.PANDAS
-        else:
-            # NOTE: Unless desired batch-format is specified, avoid
-            #       overriding existing one
-            return None
 
 
 class ExchangeTaskScheduler:
@@ -92,7 +80,8 @@ class ExchangeTaskScheduler:
     """
 
     def __init__(self, exchange_spec: ExchangeTaskSpec):
-        """
+        """Initialize the scheduler.
+
         Args:
             exchange_spec: The implementation of exchange tasks to execute.
         """

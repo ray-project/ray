@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextlib
 import copy
 import ipaddress
 import json
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 import warnings
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import quote_plus
 
@@ -29,7 +31,11 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    fetch_prometheus_metrics,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
@@ -37,16 +43,16 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
     format_web_url,
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
+    request_with_auth_token,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHead
 from ray.dashboard.utils import DashboardHeadModule
 from ray.experimental.internal_kv import _initialize_internal_kv
@@ -142,7 +148,7 @@ def test_basic(ray_start_regular):
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
     logger.info("Test agent register is OK.")
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     assert dashboard_proc.status() in [psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING]
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
@@ -186,7 +192,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -207,7 +213,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -251,7 +257,7 @@ def test_agent_report_unexpected_raylet_death(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -293,7 +299,7 @@ def test_agent_report_unexpected_raylet_death_large_file(
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -373,8 +379,8 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     while True:
         time.sleep(3)
         try:
-            response = requests.get(
-                webui_url + "/test/http_get?url=" + quote_plus(target_url)
+            response = request_with_auth_token(
+                "GET", webui_url + "/test/http_get?url=" + quote_plus(target_url)
             )
             response.raise_for_status()
             try:
@@ -393,9 +399,10 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert agent_addr is not None
             node_ip, http_port, _ = json.loads(agent_addr)
 
-            response = requests.get(
+            response = request_with_auth_token(
+                "GET",
                 f"http://{build_address(node_ip, http_port)}"
-                f"/test/http_get_from_agent?url={quote_plus(target_url)}"
+                f"/test/http_get_from_agent?url={quote_plus(target_url)}",
             )
             response.raise_for_status()
             try:
@@ -651,21 +658,24 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
 
     def dashboard_available():
         try:
-            return requests.get(webui_url).status_code == 200
+            return request_with_auth_token("GET", webui_url).status_code == 200
         except Exception:
             return False
 
     wait_for_condition(dashboard_available)
 
     # Starting and getting jobs should be fine from API clients
-    response = requests.post(webui_url + "/api/jobs/", json={"entrypoint": "ls"})
+    response = request_with_auth_token(
+        "POST", webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+    )
     response.raise_for_status()
-    response = requests.get(webui_url + "/api/jobs/")
+    response = request_with_auth_token("GET", webui_url + "/api/jobs/")
     response.raise_for_status()
 
     # Starting job should be blocked for browsers
     for testcase in testcases:
-        response = requests.post(
+        response = request_with_auth_token(
+            "POST",
             webui_url + "/api/jobs/",
             json={"entrypoint": "ls"},
             headers=testcase,
@@ -675,7 +685,8 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
 
     # DELETE should be blocked for browsers
     for testcase in testcases:
-        response = requests.delete(
+        response = request_with_auth_token(
+            "DELETE",
             webui_url + "/api/jobs/nonexistent-job-id",
             headers=testcase,
         )
@@ -683,7 +694,8 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
 
     # PATCH should also be blocked for browsers
     for testcase in testcases:
-        response = requests.patch(
+        response = request_with_auth_token(
+            "PATCH",
             webui_url + "/api/jobs/nonexistent-job-id",
             headers=testcase,
             json={},
@@ -691,7 +703,7 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
         assert response.status_code == 405, "PATCH should be blocked for browsers"
 
     # Getting jobs should be fine for browsers
-    response = requests.get(webui_url + "/api/jobs/")
+    response = request_with_auth_token("GET", webui_url + "/api/jobs/")
     response.raise_for_status()
 
 
@@ -706,20 +718,23 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
 
     def dashboard_available():
         try:
-            return requests.get(webui_url).status_code == 200
+            return request_with_auth_token("GET", webui_url).status_code == 200
         except Exception:
             return False
 
     wait_for_condition(dashboard_available)
 
     # Starting and getting jobs should be fine from API clients
-    response = requests.post(webui_url + "/api/jobs/", json={"entrypoint": "ls"})
+    response = request_with_auth_token(
+        "POST", webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+    )
     response.raise_for_status()
-    response = requests.get(webui_url + "/api/jobs/")
+    response = request_with_auth_token("GET", webui_url + "/api/jobs/")
     response.raise_for_status()
 
     # Starting job should be blocked for browsers
-    response = requests.post(
+    response = request_with_auth_token(
+        "POST",
         webui_url + "/api/jobs/",
         json={"entrypoint": "ls"},
         headers={
@@ -731,8 +746,44 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
         response.raise_for_status()
 
     # Getting jobs should be fine for browsers
-    response = requests.get(webui_url + "/api/jobs/")
+    response = request_with_auth_token("GET", webui_url + "/api/jobs/")
     response.raise_for_status()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_profiling_endpoints_disabled_by_default(
+    enable_test_module, ray_start_with_dashboard
+):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    profiling_endpoints = [
+        "/worker/traceback?pid=1&node_id=abc",
+        "/worker/cpu_profile?pid=1&node_id=abc",
+        "/worker/gpu_profile?pid=1&node_id=abc",
+        "/task/traceback?task_id=abc&attempt_number=0&node_id=abc",
+        "/task/cpu_profile?task_id=abc&attempt_number=0&node_id=abc",
+        "/memory_profile?pid=1&node_id=abc",
+        "/memory_profile?task_id=abc&attempt_number=0&node_id=abc",
+    ]
+
+    for endpoint in profiling_endpoints:
+        response = request_with_auth_token("GET", webui_url + endpoint)
+        assert response.status_code == 403, (
+            f"Expected 403 for {endpoint} when profiling is disabled, "
+            f"got {response.status_code}"
+        )
+        assert "RAY_DASHBOARD_ENABLE_PROFILING" in response.text
+
+    # The status endpoint should report profiling as disabled.
+    response = request_with_auth_token("GET", webui_url + "/api/profiling_enabled")
+    response.raise_for_status()
+    data = response.json()
+    assert data["data"]["profilingEnabled"] is False
 
 
 @pytest.mark.skipif(
@@ -910,7 +961,9 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps = set()
     for _ in range(10):
-        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1")
+        response = request_with_auth_token(
+            "GET", webui_url + "/test/aiohttp_cache/t1?value=1"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -918,7 +971,9 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + "/test/aiohttp_cache/t1?value=1&nocache=1")
+        response = request_with_auth_token(
+            "GET", webui_url + "/test/aiohttp_cache/t1?value=1&nocache=1"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -926,7 +981,9 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + f"/test/aiohttp_cache/tt{x}?value=1")
+        response = request_with_auth_token(
+            "GET", webui_url + f"/test/aiohttp_cache/tt{x}?value=1"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -934,14 +991,18 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + f"/test/aiohttp_cache/tt?value={x}")
+        response = request_with_auth_token(
+            "GET", webui_url + f"/test/aiohttp_cache/tt?value={x}"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
     assert len(timestamps) == 10
 
     timestamps.clear()
-    response = requests.get(webui_url + "/test/aiohttp_cache/raise_exception")
+    response = request_with_auth_token(
+        "GET", webui_url + "/test/aiohttp_cache/raise_exception"
+    )
     with pytest.raises(Exception):
         response.raise_for_status()
     result = response.json()
@@ -950,7 +1011,9 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
 
     timestamps.clear()
     for x in range(10):
-        response = requests.get(webui_url + f"/test/aiohttp_cache_lru/tt{x % 4}")
+        response = request_with_auth_token(
+            "GET", webui_url + f"/test/aiohttp_cache_lru/tt{x % 4}"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         timestamps.add(timestamp)
@@ -959,7 +1022,9 @@ def test_aiohttp_cache(enable_test_module, ray_start_with_dashboard):
     timestamps.clear()
     data = collections.defaultdict(set)
     for x in [0, 1, 2, 3, 4, 5, 2, 1, 0, 3]:
-        response = requests.get(webui_url + f"/test/aiohttp_cache_lru/t1?value={x}")
+        response = request_with_auth_token(
+            "GET", webui_url + f"/test/aiohttp_cache_lru/t1?value={x}"
+        )
         response.raise_for_status()
         timestamp = response.json()["data"]["timestamp"]
         data[x].add(timestamp)
@@ -982,7 +1047,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
     # Check that the cluster_status endpoint works without the underlying data
     # from the GCS, but returns nothing.
     def get_cluster_status():
-        response = requests.get(f"{webui_url}/api/cluster_status")
+        response = request_with_auth_token("GET", f"{webui_url}/api/cluster_status")
         response.raise_for_status()
         print(response.json())
         assert response.json()["result"]
@@ -1003,7 +1068,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
     )
     ray.experimental.internal_kv._internal_kv_put(DEBUG_AUTOSCALING_ERROR, "world")
 
-    response = requests.get(f"{webui_url}/api/cluster_status")
+    response = request_with_auth_token("GET", f"{webui_url}/api/cluster_status")
     response.raise_for_status()
     assert response.json()["result"]
     assert "autoscalingStatus" in response.json()["data"]
@@ -1037,7 +1102,7 @@ def test_get_nodes_summary(call_ray_start):
     webui_url = format_web_url(webui_url)
 
     def get_nodes_summary():
-        response = requests.get(f"{webui_url}/nodes?view=summary")
+        response = request_with_auth_token("GET", f"{webui_url}/nodes?view=summary")
         response.raise_for_status()
         response = response.json()
         print(response)
@@ -1145,6 +1210,7 @@ import time
 import requests
 from ray._private.test_utils import (
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 import logging
@@ -1162,7 +1228,7 @@ start_time = time.time()
 while True:
     time.sleep(1)
     try:
-        response = requests.get(
+        response = request_with_auth_token("GET",
             webui_url + "/test/dump", proxies={"http": None, "https": None}
         )
         response.raise_for_status()
@@ -1193,33 +1259,37 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = parse_address(address_info["webui_url"])
-    temp_dir = "/tmp/ray"
-    session_dir = "/tmp/ray/session_latest"
-    log_dir = "/tmp/ray/session_latest/logs"
+
     dashboard_cmd = [
         sys.executable,
         dashboard.__file__,
         f"--host={host}",
         f"--port={port}",
-        f"--temp-dir={temp_dir}",
-        f"--log-dir={log_dir}",
+        "--temp-dir=/tmp/ray",
+        "--log-dir=/tmp/ray/session_latest/logs",
         f"--gcs-address={address_info['gcs_address']}",
         f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
-        f"--session-dir={session_dir}",
+        "--session-dir=/tmp/ray/session_latest",
         "--node-ip-address=127.0.0.1",
     ]
-    logger.info("The dashboard should be exit: %s", dashboard_cmd)
+
+    # Start a duplicate dashboard process with no port retries,
+    # it should crash due to port conflict.
+    print("Starting dashboard process *without* port retries:", dashboard_cmd)
     dashboard_process = subprocess.Popen(dashboard_cmd)
-    dashboard_process.wait(5)
+    try:
+        dashboard_process.wait(30)
+    finally:
+        dashboard_process.kill()
+        dashboard_process.wait()
 
+    # Now retry with port retries, it should find a port and succeed.
     dashboard_cmd.append("--port-retries=10")
+    print("Starting dashboard process *with* port retries:", dashboard_cmd)
     conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
+    try:
 
-    timeout_seconds = 10
-    start_time = time.time()
-    while True:
-        time.sleep(1)
-        try:
+        def _new_dashboard_url_populated():
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -1227,16 +1297,14 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)
-                break
-        except AssertionError as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
-    dashboard_process.kill()
-    conflicting_dashboard_process.kill()
-    dashboard_process.wait()
-    conflicting_dashboard_process.wait()
+                return True
+
+            return False
+
+        wait_for_condition(_new_dashboard_url_populated)
+    finally:
+        conflicting_dashboard_process.kill()
+        conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
@@ -1283,7 +1351,9 @@ def test_dashboard_does_not_depend_on_serve():
     ctx = ray.init()
 
     # Ensure standard dashboard features, like component_activities, still work
-    response = requests.get(f"http://{ctx.dashboard_url}/api/component_activities")
+    response = request_with_auth_token(
+        "GET", f"http://{ctx.dashboard_url}/api/component_activities"
+    )
     assert response.status_code == 200
 
     assert "driver" in response.json()
@@ -1296,7 +1366,9 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/applications/")
+        response = request_with_auth_token(
+            "GET", f"http://{agent_url}/api/serve/applications/"
+        )
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -1322,7 +1394,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -1334,7 +1406,9 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/applications/")
+        response = request_with_auth_token(
+            "GET", f"http://{agent_url}/api/serve/applications/"
+        )
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -1372,7 +1446,7 @@ def test_agent_port_conflict(shutdown_only):
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
-    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
     agent_proc = search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
@@ -1436,15 +1510,34 @@ async def test_dashboard_module_load(tmpdir):
     with pytest.raises(AssertionError):
         head._load_modules(modules_to_load=loaded_modules_expected)
 
+    # A requested-but-disabled subprocess module (is_enabled() is False, e.g. the
+    # flag-gated TaskEventsHead) is skipped, not treated as a load failure.
+    disabled_subprocess_modules = {
+        m.__name__
+        for m in dashboard_utils.get_all_modules(SubprocessModule)
+        if not m.is_enabled()
+    }
+    if disabled_subprocess_modules:
+        _, subprocess_module_handles = head._load_modules(
+            modules_to_load=disabled_subprocess_modules
+        )
+        assert len(subprocess_module_handles) == 0
+
     # Test the base case.
     # It is needed to pass assertion check from one of modules.
     gcs_client = MagicMock()
     _initialize_internal_kv(gcs_client)
+    # Mirror the loader, which skips modules whose is_enabled() is False (e.g. modules
+    # gated behind a feature flag such as TaskEventsHead / PlatformEventsHead).
     loaded_dashboard_head_modules_expected = {
-        m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+        m.__name__
+        for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+        if m.is_enabled()
     }
     loaded_subprocess_module_handles_expected = {
-        m.__name__ for m in dashboard_utils.get_all_modules(SubprocessModule)
+        m.__name__
+        for m in dashboard_utils.get_all_modules(SubprocessModule)
+        if m.is_enabled()
     }
     dashboard_head_modules, subprocess_module_handles = head._load_modules()
     assert {
@@ -1486,6 +1579,56 @@ def test_dashboard_module_no_warnings(enable_test_module):
         debug._disabled = old_val
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server(
+    httpserver, ray_start_with_dashboard_and_proxy
+):
+    """
+    Test that the dashboard middleware correctly forwards requests to an external server.
+    """
+    target_path = "/api/call"
+    mock_response = {"status": "success", "data": "mocked_payload"}
+    httpserver.expect_request(target_path).respond_with_json(mock_response)
+
+    assert (
+        wait_until_server_available(ray_start_with_dashboard_and_proxy["webui_url"])
+        is True
+    )
+    address_info = ray_start_with_dashboard_and_proxy
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = request_with_auth_token("GET", f"{webui_url}{target_path}")
+    assert response.json() == mock_response
+    assert response.status_code == 200
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server_with_ray_start(
+    httpserver, call_ray_start_context_with_proxy_server
+):
+    """
+    Test that the dashboard middleware correctly forwards requests to an external server when using `ray start`.
+    """
+    target_path = "/api/call"
+    mock_response = {"status": "success", "data": "mocked_payload"}
+    httpserver.expect_request(target_path).respond_with_json(mock_response)
+
+    address = ray.init(address=call_ray_start_context_with_proxy_server)
+    webui_url = address["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = request_with_auth_token("GET", f"{webui_url}{target_path}")
+    assert response.json() == mock_response
+    assert response.status_code == 200
+
+
 def test_dashboard_not_included_ray_init(shutdown_only, capsys):
     addr = ray.init(include_dashboard=False, dashboard_port=8265)
     dashboard_url = addr["webui_url"]
@@ -1502,7 +1645,7 @@ def test_dashboard_not_included_ray_init(shutdown_only, capsys):
     with pytest.raises(ConnectionError):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
-        requests.get("http://localhost:8265")
+        request_with_auth_token("GET", "http://localhost:8265")
 
 
 def test_dashboard_not_included_ray_start(shutdown_only, capsys):
@@ -1528,7 +1671,7 @@ def test_dashboard_not_included_ray_start(shutdown_only, capsys):
         with pytest.raises(ConnectionError):
             # Since the dashboard doesn't start, it should raise ConnectionError
             # becasue we cannot estabilish a connection.
-            requests.get("http://localhost:8265")
+            request_with_auth_token("GET", "http://localhost:8265")
     finally:
         runner.invoke(scripts.stop, ["--force"])
 
@@ -1553,7 +1696,7 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
     with pytest.raises(ConnectionError):
         # Since the dashboard doesn't start, it should raise ConnectionError
         # becasue we cannot estabilish a connection.
-        requests.get("http://localhost:8265")
+        request_with_auth_token("GET", "http://localhost:8265")
 
 
 @pytest.mark.skipif(
@@ -1575,14 +1718,17 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     import aiohttp
     from prometheus_client.samples import Sample
 
+    from ray._private.test_utils import _auth_token_header
+
     ray_context = ray_start_with_dashboard
     assert wait_until_server_available(ray_context["webui_url"]) is True
     webui_url = format_web_url(ray_context["webui_url"])
     blocking_url = webui_url + "/test/block_event_loop?seconds=1"
+    auth_headers = _auth_token_header()
 
     async def make_blocking_call():
         async with aiohttp.ClientSession() as session:
-            async with session.get(blocking_url) as resp:
+            async with session.get(blocking_url, headers=auth_headers) as resp:
                 resp.raise_for_status()
                 return await resp.text()
 
@@ -1604,6 +1750,268 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
         return True
 
     wait_for_condition(check_lag_metrics)
+
+
+_COMPONENT_CPU_METRIC = "ray_component_cpu_percentage"
+
+# `_record_dashboard_metrics` is wrapped in an infinite loop by
+# `async_loop_forever`. `__wrapped__` is the undecorated coroutine, so a test can
+# drive one record cycle at a time.
+_record_metrics_once = DashboardHead._record_dashboard_metrics.__wrapped__
+
+
+# Any non-zero value works; the tests only check that a reused handle stops
+# reading 0.0.
+_STUB_CPU_PERCENTAGE = 12.5
+
+
+@contextlib.contextmanager
+def _idle_process():
+    """Spawn a child process that only sleeps, and reap it on exit."""
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3600)"])
+    try:
+        yield process
+    finally:
+        process.kill()
+        # Wait so the pid is not left behind as a zombie, which psutil still
+        # considers running.
+        process.wait()
+
+
+def _stub_cpu_percent(monkeypatch):
+    """Emulate psutil's cpu_percent() contract without spending any CPU.
+
+    psutil measures CPU against the previous call on the same Process object and
+    reads 0.0 the first time an object is asked. Getting a real non-zero reading
+    means pegging a core long enough to register, so this emulates the contract
+    instead: a handle reads 0.0 until it is reused. The code under test reads the
+    value through `as_dict(attrs=["cpu_percent", ...])`, which dispatches here.
+    """
+
+    def cpu_percent(self, *args, **kwargs):
+        if getattr(self, "_asked_before", False):
+            return _STUB_CPU_PERCENTAGE
+        # Mark the instance, not the pid: a rebuilt handle for the same pid has
+        # to start over at 0.0, the way psutil behaves.
+        self._asked_before = True
+        return 0.0
+
+    monkeypatch.setattr(psutil.Process, "cpu_percent", cpu_percent)
+
+
+def _fake_subprocess_module_handle(process, module_name="DataHead"):
+    """Build a stand-in for SubprocessModuleHandle.
+
+    `_record_dashboard_metrics` only reads `process.pid` and
+    `module_cls.__name__` off the handle, the latter becoming the
+    `dashboard_<module_name>` component label.
+    """
+    return SimpleNamespace(process=process, module_cls=type(module_name, (), {}))
+
+
+def _make_dashboard_head_for_metrics(tmpdir):
+    """A DashboardHead wired up only enough to record metrics.
+
+    `DashboardHead.__init__` does no I/O and makes no GCS connection, so it can
+    be constructed directly. `metrics` and `_event_loop_lag_s_max` are normally
+    initialized in `run()`, which these tests do not call.
+    """
+    head = DashboardHead(
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        node_ip_address="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
+        log_dir=str(tmpdir),
+        logging_level=ray_constants.LOGGER_LEVEL,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
+        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=True,
+        serve_frontend=False,
+    )
+    head.metrics = DashboardPrometheusMetrics()
+    head._event_loop_lag_s_max = None
+    return head
+
+
+def _component_cpu_percentage(head, component, pid=None):
+    """Read the exported CPU percentage of `component`, or None if unexported.
+
+    A component that restarted has a sample per pid it has run under, so `pid`
+    selects which one to read.
+    """
+    for metric in head.metrics.registry.collect():
+        for sample in metric.samples:
+            if (
+                sample.name == _COMPONENT_CPU_METRIC
+                and sample.labels.get("Component") == component
+                and (pid is None or sample.labels.get("pid") == str(pid))
+            ):
+                return sample.value
+    return None
+
+
+async def _record_twice(head, handles):
+    """Record two cycles, the minimum for a handle to report CPU usage."""
+    await _record_metrics_once(head, handles)
+    await _record_metrics_once(head, handles)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir, monkeypatch):
+    """The `dashboard_<Module>` CPU metric must not be stuck at zero.
+
+    `psutil.Process.cpu_percent()` is measured relative to the previous call on
+    the *same* Process object, so it returns 0.0 the first time it is called on a
+    new object. Building a fresh Process every record cycle therefore pinned this
+    metric at ~0. See https://github.com/ray-project/ray/issues/29848
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as process:
+        handles = [_fake_subprocess_module_handle(process)]
+
+        await _record_metrics_once(head, handles)
+        # The very first reading has no baseline to compare against, so 0.0 is
+        # expected.
+        assert _component_cpu_percentage(head, "dashboard_DataHead") == 0.0
+
+        await _record_metrics_once(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        ), "the module's handle was rebuilt, so its CPU reading stayed at 0"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_restarted_subprocess_module_cpu_percentage_becomes_nonzero(
+    tmpdir, monkeypatch
+):
+    """A module that restarts under a new pid still reports its CPU usage."""
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as first_process:
+        handle = _fake_subprocess_module_handle(first_process)
+        await _record_twice(head, [handle])
+
+    # Leaving the block above reaped the first process, so this stands in for the
+    # health check restarting the module under a new pid.
+    with _idle_process() as second_process:
+        handle.process = second_process
+        assert second_process.pid != first_process.pid
+
+        await _record_twice(head, [handle])
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead", second_process.pid)
+            == _STUB_CPU_PERCENTAGE
+        ), "the restarted module's CPU usage was not reported under its new pid"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir, monkeypatch):
+    """Recording module metrics must not disturb the main `dashboard` component."""
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as process:
+        await _record_twice(head, [_fake_subprocess_module_handle(process)])
+
+    assert _component_cpu_percentage(head, "dashboard") == _STUB_CPU_PERCENTAGE
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recorded_while_alive", [False, True])
+async def test_exited_subprocess_module_does_not_hide_other_modules(
+    tmpdir, monkeypatch, recorded_while_alive
+):
+    """A module that has exited must not cost the other modules their metrics.
+
+    A module can exit between a health check and the next record cycle, making
+    psutil raise `NoSuchProcess`. Recording has to carry on with the remaining
+    modules instead of abandoning the cycle. `recorded_while_alive` covers both
+    a module that was never recorded and one whose handle is already cached.
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as live_process:
+        exiting_process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(3600)"]
+        )
+        # The exiting module is recorded first, so an unhandled psutil error
+        # would abandon the cycle before reaching the live one.
+        handles = [
+            _fake_subprocess_module_handle(exiting_process, "ExitedHead"),
+            _fake_subprocess_module_handle(live_process, "DataHead"),
+        ]
+        try:
+            if recorded_while_alive:
+                await _record_metrics_once(head, handles)
+        finally:
+            exiting_process.kill()
+            exiting_process.wait()
+
+        await _record_twice(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_subprocess_module_dying_mid_read_does_not_hide_other_modules(
+    tmpdir, monkeypatch
+):
+    """A module dying while its metrics are read must not hide the others.
+
+    A cached handle can pass the liveness check and then have its process exit
+    before the attributes are read, which makes `as_dict` raise. That window is
+    too small to hit reliably, so `as_dict` is patched to raise for one module.
+    """
+    head = _make_dashboard_head_for_metrics(tmpdir)
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as dying_process, _idle_process() as live_process:
+        handles = [
+            _fake_subprocess_module_handle(dying_process, "DyingHead"),
+            _fake_subprocess_module_handle(live_process, "DataHead"),
+        ]
+        real_as_dict = psutil.Process.as_dict
+
+        def as_dict(self, *args, **kwargs):
+            if self.pid == dying_process.pid:
+                raise psutil.NoSuchProcess(self.pid)
+            return real_as_dict(self, *args, **kwargs)
+
+        monkeypatch.setattr(psutil.Process, "as_dict", as_dict)
+
+        await _record_twice(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        )
 
 
 if __name__ == "__main__":

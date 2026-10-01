@@ -118,8 +118,12 @@ class ExportEventLoggerAdapter:
         event_as_str = self._export_event_to_string(event)
 
         self.logger.info(event_as_str)
-        # Force flush so that we won't lose events
-        self.logger.handlers[0].flush()
+        # Force flush all handlers so that we won't lose events.
+        for handler in self.logger.handlers[:]:
+            try:
+                handler.flush()
+            except Exception:
+                global_logger.exception("Failed to flush export event logger handler.")
 
     def _create_export_event(self, event_data: ExportEventDataType) -> ExportEvent:
         event = ExportEvent()
@@ -218,6 +222,9 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
     Args:
         log_type: The type of the export event.
         sink_dir: The directory to sink event logs.
+
+    Returns:
+        The export event logger adapter for the given log type.
     """
     with _export_event_logger_lock:
         global _export_event_logger
@@ -240,6 +247,9 @@ def check_export_api_enabled(
 
     Args:
         source: The source of the export event.
+
+    Returns:
+        True if the export API is enabled for the given source, else False.
     """
     if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
         return True

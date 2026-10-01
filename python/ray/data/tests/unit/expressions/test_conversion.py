@@ -10,6 +10,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pytest
+from packaging.version import parse as version_parse
 from pyiceberg.expressions import (
     And,
     EqualTo,
@@ -67,61 +68,51 @@ class TestToPyArrow:
     # ── Basic Expressions ──
 
     @pytest.mark.parametrize(
-        "ray_expr,equivalent_pyarrow_expr,description",
+        "ray_expr,equivalent_pyarrow_expr",
         [
-            (col("age"), lambda: pc.field("age"), "column reference"),
-            (lit(42), lambda: pc.scalar(42), "integer literal"),
-            (lit("hello"), lambda: pc.scalar("hello"), "string literal"),
+            (col("age"), lambda: pc.field("age")),
+            (lit(42), lambda: pc.scalar(42)),
+            (lit("hello"), lambda: pc.scalar("hello")),
         ],
         ids=["col", "int_lit", "str_lit"],
     )
-    def test_basic_expressions(
-        self, test_table, ray_expr, equivalent_pyarrow_expr, description
-    ):
+    def test_basic_expressions(self, test_table, ray_expr, equivalent_pyarrow_expr):
         """Test conversion of basic expressions."""
         converted = ray_expr.to_pyarrow()
         expected = equivalent_pyarrow_expr()
-
-        assert isinstance(converted, pc.Expression)
-        assert isinstance(expected, pc.Expression)
+        assert converted.equals(expected)
 
     # ── Arithmetic Expressions ──
 
     @pytest.mark.parametrize(
-        "ray_expr,equivalent_pyarrow_expr,description",
+        "ray_expr,equivalent_pyarrow_expr",
         [
             (
                 col("x") + 5,
                 lambda: pc.add(pc.field("x"), pc.scalar(5)),
-                "addition",
             ),
             (
                 col("x") - 3,
                 lambda: pc.subtract(pc.field("x"), pc.scalar(3)),
-                "subtraction",
             ),
             (
                 col("x") * 2,
                 lambda: pc.multiply(pc.field("x"), pc.scalar(2)),
-                "multiplication",
             ),
             (
                 col("x") / 2,
                 lambda: pc.divide(pc.field("x"), pc.scalar(2)),
-                "division",
             ),
         ],
         ids=["add", "sub", "mul", "div"],
     )
     def test_arithmetic_expressions(
-        self, test_table, ray_expr, equivalent_pyarrow_expr, description
+        self, test_table, ray_expr, equivalent_pyarrow_expr
     ):
         """Test conversion of arithmetic expressions."""
         converted = ray_expr.to_pyarrow()
         expected = equivalent_pyarrow_expr()
-
-        assert isinstance(converted, pc.Expression)
-        assert isinstance(expected, pc.Expression)
+        assert converted.equals(expected)
 
     # ── Comparison Expressions ──
 
@@ -275,10 +266,86 @@ class TestToPyArrow:
         converted = ray_expr.to_pyarrow()
         assert isinstance(converted, pc.Expression)
 
+    # ── PyArrow Compute UDF Expressions ──
+
+    @pytest.mark.parametrize(
+        "ray_expr,equivalent_pyarrow_expr",
+        [
+            pytest.param(
+                col("name").str.match_regex("foo.*bar"),
+                lambda: pc.match_substring_regex(pc.field("name"), "foo.*bar"),
+                id="match_regex",
+            ),
+            pytest.param(
+                col("name").str.starts_with("foo"),
+                lambda: pc.starts_with(pc.field("name"), "foo"),
+                id="starts_with",
+            ),
+            pytest.param(
+                col("name").str.ends_with("bar"),
+                lambda: pc.ends_with(pc.field("name"), "bar"),
+                id="ends_with",
+            ),
+            pytest.param(
+                col("name").str.contains("baz"),
+                lambda: pc.match_substring(pc.field("name"), "baz"),
+                id="contains",
+            ),
+            pytest.param(
+                col("name").str.upper(),
+                lambda: pc.utf8_upper(pc.field("name")),
+                id="upper",
+            ),
+            pytest.param(
+                col("x").ceil(),
+                lambda: pc.ceil(pc.field("x")),
+                id="ceil",
+            ),
+            pytest.param(
+                col("x").abs(),
+                lambda: pc.abs_checked(pc.field("x")),
+                id="abs",
+            ),
+        ],
+    )
+    def test_pyarrow_compute_udf_expressions(
+        self, test_table, ray_expr, equivalent_pyarrow_expr
+    ):
+        """Test that PyArrow-compute-backed UDFs convert to PyArrow expressions."""
+        converted = ray_expr.to_pyarrow()
+        expected = equivalent_pyarrow_expr()
+        assert converted.equals(expected)
+
+    @pytest.mark.skipif(
+        version_parse(pa.__version__) < version_parse("19.0.0"),
+        reason="Requires PyArrow >= 19 for string compute UDF pushdown",
+    )
+    def test_negated_pyarrow_compute_udf(self, test_table):
+        """Test that negated PyArrow compute UDF expressions convert correctly."""
+        ray_expr = ~col("status").str.match_regex("act.*")
+        converted = ray_expr.to_pyarrow()
+        assert isinstance(converted, pc.Expression)
+
+        dataset = ds.dataset(test_table)
+        result = dataset.to_table(filter=converted)
+        assert all(
+            not bool(pc.match_substring_regex(s, "act.*"))
+            for s in result.column("status").to_pylist()
+        )
+
+    def test_pyarrow_compute_udf_as_dataset_filter(self, test_table):
+        """Test that converted UDF expressions work as dataset scan filters."""
+        ray_expr = col("status").str.match_regex("^active$")
+        pa_expr = ray_expr.to_pyarrow()
+
+        dataset = ds.dataset(test_table)
+        result = dataset.to_table(filter=pa_expr)
+        assert all(s == "active" for s in result.column("status").to_pylist())
+
     # ── Unsupported Expressions ──
 
-    def test_udf_expression_raises(self):
-        """Test that UDF expressions raise TypeError."""
+    def test_user_udf_expression_raises(self):
+        """Test that user-defined UDF expressions raise TypeError."""
 
         def dummy_fn(x):
             return x

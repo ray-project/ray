@@ -18,15 +18,13 @@ def _setup_logger(logger_name: str):
 
     # Skip setup if the logger already has handlers setup or if the parent (Data
     # logger) has handlers.
-    if logger.handlers or llm_logger.handlers:
-        return
-
-    # Set up stream handler, which logs to console as plaintext.
-    stream_handler = logging.StreamHandler()
-    stream_handler.addFilter(CoreContextFilter())
-    logger.addHandler(stream_handler)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
+    if not (logger.handlers or llm_logger.handlers):
+        # Set up stream handler, which logs to console as plaintext.
+        stream_handler = logging.StreamHandler()
+        stream_handler.addFilter(CoreContextFilter())
+        logger.addHandler(stream_handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
 
 
 def get_logger(name: Optional[str] = None):

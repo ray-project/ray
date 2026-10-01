@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import threading
 import time
@@ -137,6 +138,13 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             task_unknown.connect(self._handle_unknown_task)
 
     def register_task_handle(self, func, name=None):
+        # Celery does not support async task handlers
+        if asyncio.iscoroutinefunction(func):
+            raise NotImplementedError(
+                "Async task handlers are not supported yet. "
+                "Please use synchronous functions for task handlers."
+            )
+
         task_options = {
             "autoretry_for": (Exception,),
             "retry_kwargs": {"max_retries": self._config.max_retries},

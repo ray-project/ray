@@ -4,20 +4,22 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray._common.runtime_env_package import PY_MODULES, validate_package_extension
+from ray._common.runtime_env_uri import Protocol, parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    Protocol,
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
+    get_local_dir_uri_path,
     get_uri_for_directory,
     get_uri_for_file,
     get_uri_for_package,
     install_wheel_package,
     is_whl_uri,
     package_exists,
-    parse_uri,
+    raise_if_local_dir_uri_missing,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
@@ -31,17 +33,16 @@ default_logger = logging.getLogger(__name__)
 
 
 def _check_is_uri(s: str) -> bool:
+    if get_local_dir_uri_path(s) is not None:
+        return True
+
     try:
         protocol, path = parse_uri(s)
     except ValueError:
         protocol, path = None, None
 
-    if (
-        protocol in Protocol.remote_protocols()
-        and not path.endswith(".zip")
-        and not path.endswith(".whl")
-    ):
-        raise ValueError("Only .zip or .whl files supported for remote URIs.")
+    if protocol == Protocol.GCS or protocol in Protocol.remote_protocols():
+        validate_package_extension(path, PY_MODULES, display_path=s.split("?", 1)[0])
 
     return protocol is not None
 
@@ -49,7 +50,7 @@ def _check_is_uri(s: str) -> bool:
 def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
     include_gitignore: bool,
-    scratch_dir: Optional[str] = os.getcwd(),
+    scratch_dir: Optional[str] = None,
     logger: Optional[logging.Logger] = default_logger,
     upload_fn=None,
 ) -> Dict[str, Any]:
@@ -111,6 +112,8 @@ def upload_py_modules_if_needed(
                 else:
                     module_uri = get_uri_for_file(module_path)
                 if upload_fn is None:
+                    if scratch_dir is None:
+                        scratch_dir = os.getcwd()
                     try:
                         upload_package_if_needed(
                             module_uri,
@@ -178,6 +181,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         try_to_create_directory(self._resources_dir)
 
     def _get_local_dir_from_uri(self, uri: str):
+        local_dir = get_local_dir_uri_path(uri)
+        if local_dir is not None:
+            return local_dir
         return get_local_dir_from_uri(uri, self._resources_dir)
 
     def delete_uri(
@@ -185,6 +191,14 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pymodule URI %s", uri)
+        if get_local_dir_uri_path(uri) is not None:
+            # Ray does not own this directory; never delete it.
+            logger.info(
+                "Skipping deletion of in-place py_module URI %s: it is not "
+                "managed by Ray.",
+                uri,
+            )
+            return 0
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
@@ -205,6 +219,12 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
+
+        module_dir = get_local_dir_uri_path(uri)
+        if module_dir is not None:
+            raise_if_local_dir_uri_missing(module_dir, uri, "py_modules entry")
+            logger.info("Using in place py_module '%s'.", module_dir)
+            return 0
 
         module_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_client, logger=logger
@@ -229,7 +249,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
-            if not module_dir.exists():
+            if get_local_dir_uri_path(uri) is not None:
+                raise_if_local_dir_uri_missing(module_dir, uri, "py_modules entry")
+            elif not module_dir.exists():
                 raise ValueError(
                     f"Local directory {module_dir} for URI {uri} does "
                     "not exist on the cluster. Something may have gone wrong while "

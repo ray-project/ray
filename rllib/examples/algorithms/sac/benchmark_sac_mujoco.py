@@ -8,12 +8,10 @@ from ray.rllib.utils.metrics import (
 from ray.tune import Stopper
 
 # Needs the following packages to be installed on Ubuntu:
-#   sudo apt-get libosmesa-dev
-#   sudo apt-get install patchelf
+#   sudo apt-get install libosmesa6-dev libgl1 libglfw3
 #   python -m pip install "gymnasium[mujoco]"
-# Might need to be added to bashsrc:
-#   export MUJOCO_GL=osmesa"
-#   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco200/bin"
+# For headless (off-screen) rendering, might need to be added to bashrc:
+#   export MUJOCO_GL=osmesa
 
 # See the following links for becnhmark results of other libraries:
 #   Original paper: https://arxiv.org/abs/1812.05905
@@ -112,6 +110,8 @@ config = (
             "post_fcnet_activation": None,
             "post_fcnet_weights_initializer": "orthogonal_",
             "post_fcnet_weights_initializer_config": {"gain": 0.01},
+            "fusionnet_hiddens": [256, 256, 256],
+            "fusionnet_activation": "relu",
         },
     )
     .reporting(

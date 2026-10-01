@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
@@ -80,6 +80,12 @@ class BlockOutputBuffer:
     """
 
     def __init__(self, output_block_size_option: Optional[OutputBlockSizeOption]):
+        """Initialize the output buffer.
+
+        Args:
+            output_block_size_option: Options controlling the target output block size,
+                or ``None`` to disable output block size enforcement.
+        """
         self._output_block_size_option = output_block_size_option
         self._buffer = DelegatingBlockBuilder()
         self._finalized = False
@@ -210,3 +216,12 @@ class BlockOutputBuffer:
         self._has_yielded_blocks = True
 
         return block
+
+    def iter_ready_blocks(self) -> Iterator[Block]:
+        """Yield all complete output blocks that are currently ready.
+
+        Drains the buffer of every block for which ``has_next()`` is true. Call
+        ``finalize()`` first to also flush any partial trailing block.
+        """
+        while self.has_next():
+            yield self.next()

@@ -10,7 +10,12 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_localhost,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
@@ -22,6 +27,10 @@ from ray._raylet import (
     METRICS_EXPORT_PORT_NAME,
     GcsClient,
     persist_port,
+)
+from ray.dashboard.event_loop_monitor import (
+    EVENT_LOOP_MONITOR_ENABLED,
+    EventLoopMonitor,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +86,8 @@ class DashboardAgent:
         self.server = None
         # http_server is None in minimal.
         self.http_server = None
+        # Event-loop stall monitor, started in run() for non-minimal agents.
+        self._event_loop_monitor = None
 
         # Used by the agent and sub-modules.
         self.gcs_client = GcsClient(
@@ -108,13 +119,13 @@ class DashboardAgent:
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
 
+        from ray._common.tls_utils import add_port_to_grpc_server
         from ray._private.authentication.authentication_utils import (
             is_token_auth_enabled,
         )
         from ray._private.authentication.grpc_authentication_server_interceptor import (
             AsyncAuthenticationServerInterceptor,
         )
-        from ray._private.tls_utils import add_port_to_grpc_server
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
@@ -150,12 +161,12 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        # grpc_port can be 0 for dynamic port assignment. get the actual bound port.
-        self.grpc_port = add_port_to_grpc_server(
-            self.server, build_address(self.ip, self.grpc_port)
+        grpc_ip = (
+            get_localhost_ip() if is_localhost(self.ip) else get_all_interfaces_ip()
         )
-        if not is_localhost(self.ip):
-            add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
+        self.grpc_port = add_port_to_grpc_server(
+            self.server, build_address(grpc_ip, self.grpc_port)
+        )
 
         persist_port(
             self.session_dir,
@@ -280,7 +291,21 @@ class DashboardAgent:
 
             tasks.append(wait_forever())
 
-        await asyncio.gather(*tasks)
+        # Watch the serving event loop for stalls while the module tasks run;
+        # this loop also handles job submission and metric/event export.
+        # Started here (not during startup) so slow module loading isn't misread
+        # as a stall, and kept adjacent to the try/finally so stop() always
+        # runs. Not started for minimal agents; opt in elsewhere with
+        # RAY_DASHBOARD_AGENT_LOOP_MONITOR_ENABLED=1.
+        if not self.minimal and EVENT_LOOP_MONITOR_ENABLED:
+            self._event_loop_monitor = EventLoopMonitor()
+            self._event_loop_monitor.start()
+
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            if self._event_loop_monitor is not None:
+                self._event_loop_monitor.stop()
 
         if self.http_server:
             await self.http_server.cleanup()

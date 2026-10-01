@@ -147,6 +147,34 @@ TEST_F(ResourceRequestTest, TestOperators) {
   ASSERT_EQ(r4.ToResourceMap(), expected);
 }
 
+// Equality must account for all fields, not just resource quantities: requests
+// with the same quantities but different label selectors or object-store-memory
+// flags are not interchangeable.
+TEST_F(ResourceRequestTest, TestEqualityConsidersAllFields) {
+  auto cpu_id = ResourceID::CPU();
+  absl::flat_hash_map<ResourceID, FixedPoint> resources = {{cpu_id, 1}};
+
+  ResourceRequest base(
+      resources, /*requires_object_store_memory=*/false, LabelSelector());
+
+  // Same quantities, differ only by the object-store-memory flag.
+  ResourceRequest with_object_store(
+      resources, /*requires_object_store_memory=*/true, LabelSelector());
+  EXPECT_NE(base, with_object_store);
+
+  // Same quantities, differ only by the label selector.
+  ResourceRequest with_label(
+      resources,
+      /*requires_object_store_memory=*/false,
+      LabelSelector(absl::flat_hash_map<std::string, std::string>{{"region", "us"}}));
+  EXPECT_NE(base, with_label);
+
+  // Identical in every field.
+  ResourceRequest same(
+      resources, /*requires_object_store_memory=*/false, LabelSelector());
+  EXPECT_EQ(base, same);
+}
+
 class TaskResourceInstancesTest : public ::testing::Test {};
 
 TEST_F(TaskResourceInstancesTest, TestBasic) {

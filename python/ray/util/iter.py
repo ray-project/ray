@@ -26,6 +26,10 @@ def from_items(
         items: The list of items to iterate over.
         num_shards: The number of worker actors to create.
         repeat: Whether to cycle over the items forever.
+
+    Returns:
+        A ``ParallelIterator`` over the items, partitioned round-robin
+        across ``num_shards`` worker actors.
     """
     shards = [[] for _ in range(num_shards)]
     for i, item in enumerate(items):
@@ -51,6 +55,10 @@ def from_range(
         n: The max end of the range of numbers.
         num_shards: The number of worker actors to create.
         repeat: Whether to cycle over the range forever.
+
+    Returns:
+        A ``ParallelIterator`` over the integers ``0..n``, partitioned
+        sequentially across ``num_shards`` worker actors.
     """
     generators = []
     shard_size = n // num_shards
@@ -73,7 +81,7 @@ def from_range(
 
 @Deprecated
 def from_iterators(
-    generators: List[Iterable[T]], repeat: bool = False, name=None
+    generators: List[Iterable[T]], repeat: bool = False, name: str = None
 ) -> "ParallelIterator[T]":
     """Create a parallel iterator from a list of iterables.
     An iterable can be a conatiner (list, str, tuple, set, etc.),
@@ -100,6 +108,9 @@ def from_iterators(
             but a lambda that returns it can be.
         repeat: Whether to cycle over the iterators forever.
         name: Optional name to give the iterator.
+
+    Returns:
+        A ``ParallelIterator`` backed by one worker actor per generator.
     """
     worker_cls = ray.remote(ParallelIteratorWorker)
     actors = [worker_cls.remote(g, repeat) for g in generators]
@@ -112,7 +123,7 @@ def from_iterators(
 
 @Deprecated
 def from_actors(
-    actors: List["ray.actor.ActorHandle"], name=None
+    actors: List["ray.actor.ActorHandle"], name: str = None
 ) -> "ParallelIterator[T]":
     """Create a parallel iterator from an existing set of actors.
 
@@ -122,6 +133,9 @@ def from_actors(
         actors: List of actors that each implement
             ParallelIteratorWorker.
         name: Optional name to give the iterator.
+
+    Returns:
+        A ``ParallelIterator`` whose shards are backed by the supplied actors.
     """
     if not name:
         name = f"from_actors[shards={len(actors)}]"
@@ -244,7 +258,10 @@ class ParallelIterator(Generic[T]):
         )
 
     def for_each(
-        self, fn: Callable[[T], U], max_concurrency=1, resources=None
+        self,
+        fn: Callable[[T], U],
+        max_concurrency: int = 1,
+        resources: dict = None,
     ) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator.
 
@@ -295,6 +312,10 @@ class ParallelIterator(Generic[T]):
         Args:
             fn: returns False for items to drop from the iterator.
 
+        Returns:
+            A ``ParallelIterator`` containing only items for which ``fn``
+            returned True.
+
         Examples:
             >>> it = from_items([0, 1, 2]).filter(lambda x: x > 0)
             >>> next(it.gather_sync())
@@ -308,6 +329,10 @@ class ParallelIterator(Generic[T]):
         Args:
             n: Number of items to batch together.
 
+        Returns:
+            A ``ParallelIterator`` whose elements are lists of up to ``n``
+            consecutive items from the source iterator.
+
         Examples:
             >>> next(from_range(10, 1).batch(4).gather_sync())
             ... [0, 1, 2, 3]
@@ -316,6 +341,10 @@ class ParallelIterator(Generic[T]):
 
     def flatten(self) -> "ParallelIterator[T[0]]":
         """Flatten batches of items into individual items.
+
+        Returns:
+            A ``ParallelIterator`` of individual items expanded from each
+            batch element of the source iterator.
 
         Examples:
             >>> next(from_range(10, 1).batch(4).flatten())
@@ -465,6 +494,10 @@ class ParallelIterator(Generic[T]):
 
         This is the equivalent of batch_across_shards().flatten().
 
+        Returns:
+            A ``LocalIterator`` that yields items from all shards in
+            deterministic synchronous order.
+
         Examples:
             >>> it = from_range(100, 1).gather_sync()
             >>> next(it)
@@ -480,6 +513,10 @@ class ParallelIterator(Generic[T]):
 
     def batch_across_shards(self) -> "LocalIterator[List[T]]":
         """Iterate over the results of multiple shards in parallel.
+
+        Returns:
+            A ``LocalIterator`` that yields one list per round, containing
+            one item per shard fetched in parallel.
 
         Examples:
             >>> it = from_iterators([range(3), range(3)])
@@ -517,13 +554,13 @@ class ParallelIterator(Generic[T]):
         name = f"{self}.batch_across_shards()"
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
-    def gather_async(self, batch_ms=0, num_async=1) -> "LocalIterator[T]":
+    def gather_async(self, batch_ms: int = 0, num_async: int = 1) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
 
-        Arguments:
+        Args:
             batch_ms: Batches items for batch_ms milliseconds
                 on each shard before retrieving it.
                 Increasing batch_ms increases latency but improves throughput.
@@ -531,6 +568,10 @@ class ParallelIterator(Generic[T]):
             num_async: The max number of async requests in flight
                 per actor. Increasing this improves the amount of pipeline
                 parallelism in the iterator.
+
+        Returns:
+            A ``LocalIterator`` that yields items from all shards in
+            non-deterministic order as they become ready.
 
         Examples:
             >>> it = from_range(100, 1).gather_async()
@@ -652,7 +693,7 @@ class ParallelIterator(Generic[T]):
         The iterator is guaranteed to be serializable and can be passed to
         remote tasks or actors.
 
-        Arguments:
+        Args:
             shard_index: Index of the shard to gather.
             batch_ms: Batches items for batch_ms milliseconds
                 before retrieving it.
@@ -661,6 +702,10 @@ class ParallelIterator(Generic[T]):
             num_async: The max number of requests in flight.
                 Increasing this improves the amount of pipeline
                 parallelism in the iterator.
+
+        Returns:
+            A serializable ``LocalIterator`` over the items produced by the
+            shard at ``shard_index``.
         """
         if num_async < 1:
             raise ValueError("num async must be positive")
@@ -725,7 +770,7 @@ class LocalIterator(Generic[T]):
         shared_metrics: SharedMetrics,
         local_transforms: List[Callable[[Iterable], Any]] = None,
         timeout: int = None,
-        name=None,
+        name: str = None,
     ):
         """Create a local iterator (this is an internal function).
 
@@ -995,12 +1040,15 @@ class LocalIterator(Generic[T]):
             if i >= n:
                 break
 
-    def duplicate(self, n) -> List["LocalIterator[T]"]:
+    def duplicate(self, n: int) -> List["LocalIterator[T]"]:
         """Copy this iterator `n` times, duplicating the data.
 
         The child iterators will be prioritized by how much of the parent
         stream they have consumed. That is, we will not allow children to fall
         behind, since that can cause infinite memory buildup in this operator.
+
+        Args:
+            n: Number of child iterators to produce. Must be at least 2.
 
         Returns:
             List[LocalIterator[T]]: child iterators that each have a copy
@@ -1061,6 +1109,8 @@ class LocalIterator(Generic[T]):
         """Return an iterator that is the union of this and the others.
 
         Args:
+            *others: Additional ``LocalIterator`` instances to union with
+                this iterator.
             deterministic: If deterministic=True, we alternate between
                 reading from one iterator and the others. Otherwise we return
                 items from iterators as they become ready.
@@ -1070,6 +1120,10 @@ class LocalIterator(Generic[T]):
                 [2, 1, "*"] will cause as many items to be pulled as possible
                 from the third iterator without blocking. This overrides the
                 deterministic flag.
+
+        Returns:
+            A ``LocalIterator`` that yields items from ``self`` and each of
+            ``others`` according to the chosen scheduling policy.
         """
 
         for it in others:

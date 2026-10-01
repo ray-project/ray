@@ -1,16 +1,29 @@
+import os
+
 import pytest
 
 import ray
 import ray.cluster_utils
 from ray.exceptions import CrossLanguageError, RayActorError
 
+# plus.so / counter.so are staged next to this file via the bazel
+# target's `data` attr; resolve them absolutely so the worker finds them
+# regardless of its cwd.
+_CODE_SEARCH_DIR = os.path.dirname(os.path.abspath(__file__))
+_CODE_SEARCH_PATH = [
+    os.path.join(_CODE_SEARCH_DIR, "plus.so"),
+    os.path.join(_CODE_SEARCH_DIR, "counter.so"),
+]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def ray_start():
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=_CODE_SEARCH_PATH))
+    yield
+    ray.shutdown()
+
 
 def test_cross_language_cpp():
-    ray.init(
-        job_config=ray.job_config.JobConfig(
-            code_search_path=["../../plus.so:../../counter.so"]
-        )
-    )
     obj = ray.cross_language.cpp_function("Plus1").remote(1)
     assert 2 == ray.get(obj)
 

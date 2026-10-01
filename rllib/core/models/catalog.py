@@ -284,7 +284,7 @@ class Catalog:
             # TODO (Artur): Maybe check for original spaces here
             # input_space is a 1D Box
             if isinstance(observation_space, Box) and len(observation_space.shape) == 1:
-                # In order to guarantee backward compatability with old configs,
+                # In order to guarantee backward compatibility with old configs,
                 # we need to check if no latent dim was set and simply reuse the last
                 # fcnet hidden dim for that purpose.
                 hidden_layer_dims = model_config_dict["fcnet_hiddens"][:-1]
@@ -293,6 +293,12 @@ class Catalog:
                     input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
+                    hidden_layer_use_layernorm=model_config_dict.get(
+                        "fcnet_use_layernorm", False
+                    ),
+                    output_layer_use_layernorm=model_config_dict.get(
+                        "fcnet_use_layernorm", False
+                    ),
                     hidden_layer_weights_initializer=model_config_dict[
                         "fcnet_kernel_initializer"
                     ],

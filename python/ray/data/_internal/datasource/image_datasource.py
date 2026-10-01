@@ -1,6 +1,7 @@
 import io
 import logging
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
@@ -51,7 +52,7 @@ class ImageDatasource(FileBasedDatasource):
                 f"but got {len(size)} integers instead."
             )
 
-        if size is not None and (size[0] < 0 or size[1] < 0):
+        if size is not None and (size[0] <= 0 or size[1] <= 0):
             raise ValueError(
                 f"Expected `size` to contain positive integers, but got {size} instead."
             )
@@ -170,5 +171,7 @@ class ImageFileMetadataProvider(DefaultFileMetadataProvider):
             paths, rows_per_file=rows_per_file, file_sizes=file_sizes
         )
         if metadata.size_bytes is not None:
-            metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)
+            metadata = replace(
+                metadata, size_bytes=int(metadata.size_bytes * self._encoding_ratio)
+            )
         return metadata

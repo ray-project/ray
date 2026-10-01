@@ -6,7 +6,9 @@ import pytest
 
 import ray
 from ray.data import Dataset
-from ray.data._internal.logical.interfaces import Plan
+from ray.data._internal.logical.interfaces import LogicalOperator, Plan
+from ray.data._internal.logical.operators import Download, Limit
+from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -27,11 +29,105 @@ def _check_valid_plan_and_result(
         assert actual_result == expected_result
     else:
         assert rows_same(pd.DataFrame(actual_result), pd.DataFrame(expected_result))
-    assert ds._plan._logical_plan.dag.dag_str == expected_plan
+    assert ds._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
     for op in expected_physical_plan_ops:
         assert op in ds.stats(), f"Operator {op} not found: {ds.stats()}"
+
+
+class _DummyLogicalOperator(LogicalOperator):
+    def __init__(self, input_dependencies, name=None):
+        object.__setattr__(self, "_input_dependencies", input_dependencies)
+        if name is not None:
+            object.__setattr__(self, "_name", name)
+
+
+def test_limit_pushdown_recreates_frozen_download():
+    input_op = _DummyLogicalOperator(input_dependencies=[], name="DummyInput")
+    download_op = Download(
+        uri_column_names=["uri"],
+        output_bytes_column_names=["bytes"],
+        input_dependencies=[input_op],
+    )
+    limit_op = Limit(1, input_dependencies=[download_op])
+
+    result = LimitPushdownRule()._push_limit_down(limit_op)
+
+    assert isinstance(result, Download)
+    assert isinstance(result.input_dependencies[0], Limit)
+    assert result.input_dependencies[0].limit == 1
+    assert result.input_dependencies[0].input_dependencies[0] is input_op
+
+
+class _LimitRecordingScanner:
+    """Minimal ``SupportsLimitPushdown`` stand-in that records the pushed limit."""
+
+    def __init__(self, limit=None):
+        self.limit = limit
+
+    def push_limit(self, limit: int) -> "_LimitRecordingScanner":
+        return _LimitRecordingScanner(limit=limit)
+
+
+def _read_files_op(scanner):
+    import pyarrow as pa
+
+    from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
+
+    list_files = ListFiles(
+        paths=["/does/not/matter"],
+        file_indexer=None,
+        filesystem=None,
+        source_paths=["/does/not/matter"],
+    )
+    return ReadFiles(
+        datasource_name="Test",
+        scanner=scanner,
+        schema=pa.schema([("a", pa.int64())]),
+        parallelism=1,
+        input_dependencies=[list_files],
+    )
+
+
+def test_limit_pushdown_into_adjacent_read_files():
+    """A ``Limit`` sitting directly on ``ReadFiles`` still pushes its limit in.
+
+    There are no num-rows-preserving ops to push through, so the rule used to
+    bail out and leave the read unbounded.
+    """
+    from ray.data._internal.datasource_v2.interfaces.pushdown import (
+        SupportsLimitPushdown,
+    )
+    from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+    SupportsLimitPushdown.register(_LimitRecordingScanner)
+    read_files = _read_files_op(_LimitRecordingScanner())
+    limit_op = Limit(10, input_dependencies=[read_files])
+
+    result = LimitPushdownRule()._push_limit_down(limit_op)
+
+    # ``Limit`` stays on top for exact enforcement...
+    assert isinstance(result, Limit)
+    assert result.limit == 10
+    # ...and the read below it now carries the limit.
+    new_read = result.input_dependencies[0]
+    assert isinstance(new_read, ReadFiles)
+    assert new_read.scanner.limit == 10
+    # The original op is untouched — the rule must not mutate in place.
+    assert read_files.scanner.limit is None
+
+
+def test_limit_pushdown_leaves_adjacent_read_files_alone_without_support():
+    """A scanner that can't take a limit means the plan is returned unchanged."""
+
+    class _NoLimitScanner:
+        pass
+
+    read_files = _read_files_op(_NoLimitScanner())
+    limit_op = Limit(10, input_dependencies=[read_files])
+
+    assert LimitPushdownRule()._push_limit_down(limit_op) is limit_op
 
 
 def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
@@ -232,7 +328,7 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     assert result == expected
 
     # The plan should show all operations after the limit
-    plan_str = ds._plan._logical_plan.dag.dag_str
+    plan_str = ds._logical_plan.dag.dag_str
     assert (
         "Read[ReadRange] -> Limit[limit=3] -> Project[Project] -> MapRows[Map(<lambda>)]"
         == plan_str
@@ -415,7 +511,7 @@ def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
     # Result should contain 5 distinct ids with count == 1.
     res = ds.take_all()
     # Plan suffix check (no branch limits past Aggregate).
-    assert ds._plan._logical_plan.dag.dag_str.endswith(
+    assert ds._logical_plan.dag.dag_str.endswith(
         "Union[Union] -> Aggregate[Aggregate] -> Limit[limit=5]"
     )
     assert len(res) == 5 and all(r["count()"] == 1 for r in res)
@@ -612,6 +708,18 @@ def test_does_not_pushdown_limit_past_map_batches_by_default(
     # If the optimizer incorrectly pushes the limit past the map operator, then the
     # returned count is 2.
     num_rows = ray.data.range(1).map_batches(duplicate_id).limit(1).count()
+    assert num_rows == 1, num_rows
+
+
+def test_does_not_pushdown_limit_past_map_groups_by_default(
+    ray_start_regular_shared_2_cpus,
+):
+    def duplicate_id(batch):
+        yield {"data": list(batch["id"]) * 2}
+
+    # If the optimizer incorrectly pushes the limit past the map operator, then the
+    # returned count is 2.
+    num_rows = ray.data.range(1).groupby("id").map_groups(duplicate_id).limit(1).count()
     assert num_rows == 1, num_rows
 
 

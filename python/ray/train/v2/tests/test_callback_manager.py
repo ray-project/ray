@@ -68,5 +68,19 @@ def test_invoke_callback_error_returns_controller_error():
     assert isinstance(exc_info.value.controller_failure, ValueError)
 
 
+def test_invoke_best_effort_calls_all_callbacks_even_on_failure():
+    """invoke_best_effort continues calling remaining callbacks after failure."""
+    callback1 = MagicMock()
+    callback1.test_hook = MagicMock(side_effect=ValueError("fail"))
+    callback2 = MagicMock()
+    callback2.test_hook = MagicMock()
+
+    manager = CallbackManager([callback1, callback2])
+    manager.invoke_best_effort("test_hook", "arg")
+
+    callback1.test_hook.assert_called_once_with("arg")
+    callback2.test_hook.assert_called_once_with("arg")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-x", __file__]))

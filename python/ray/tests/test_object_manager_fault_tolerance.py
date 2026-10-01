@@ -5,24 +5,25 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.test_utils import (
     RPC_FAILURE_MAP,
     RPC_FAILURE_TYPES,
-    wait_for_condition,
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 @pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
-def test_free_objects_idempotent(
+def test_free_local_objects_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
+    # A retried free must still reclaim every copy.
     failure = RPC_FAILURE_MAP[deterministic_failure].copy()
     failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        json.dumps({"ObjectManagerService.grpc_client.FreeObjects": failure}),
+        json.dumps({"NodeManagerService.grpc_client.FreeLocalObjects": failure}),
     )
 
     @ray.remote

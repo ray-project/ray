@@ -9,11 +9,11 @@ import pytest
 import ray
 import ray.client_builder as client_builder
 import ray.util.client.server.server as ray_client_server
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     run_string_as_driver,
-    run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.util.state import list_workers
 
 
@@ -241,12 +241,26 @@ def test_module_lacks_client_builder():
         exception = None
         try:
             ray.client("othermodule://")
-        except AssertionError as e:
+        except RuntimeError as e:
             exception = e
         assert (
             exception is not None
-        ), "Module without ClientBuilder did not raise AssertionError"
+        ), "Module without ClientBuilder did not raise RuntimeError"
         assert "does not have ClientBuilder" in str(exception)
+
+
+@pytest.mark.parametrize("address", ["http://127.0.0.1:8265", "https://127.0.0.1:8265"])
+def test_http_address_error_message(address):
+    """Test that a helpful error is raised when RAY_ADDRESS is set to HTTP/HTTPS."""
+    exception = None
+    try:
+        ray.client(address)
+    except ValueError as e:
+        exception = e
+
+    assert exception is not None, f"Address {address} did not raise ValueError"
+    assert "RAY_ADDRESS" in str(exception)
+    assert "GCS address" in str(exception)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
@@ -386,8 +400,9 @@ def test_client_deprecation_warn():
 
     # Test that passing namespace through env doesn't add namespace to the
     # replacement
-    with warnings.catch_warnings(record=True) as w, patch.dict(
-        os.environ, {"RAY_NAMESPACE": "aksdj"}
+    with (
+        warnings.catch_warnings(record=True) as w,
+        patch.dict(os.environ, {"RAY_NAMESPACE": "aksdj"}),
     ):
         with ray.client("localhost:50055").connect():
             pass
@@ -421,8 +436,9 @@ def test_client_deprecation_warn():
 
         # We don't expect namespace to appear in the warning message, since
         # it was configured through an env var
-        with warnings.catch_warnings(record=True) as w, patch.dict(
-            os.environ, {"RAY_NAMESPACE": "abcdef"}
+        with (
+            warnings.catch_warnings(record=True) as w,
+            patch.dict(os.environ, {"RAY_NAMESPACE": "abcdef"}),
         ):
             try:
                 ray.client("localhost:50055").env({"pip": ["requests"]}).connect()
@@ -447,7 +463,14 @@ def test_client_deprecation_warn():
 def test_task_use_prestarted_worker(call_ray_start):
     ray.init("ray://localhost:50056")
 
-    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+    assert (
+        len(
+            list_workers(
+                filters=[("worker_type", "!=", "DRIVER")], raise_on_missing_output=False
+            )
+        )
+        == 2
+    )
 
     @ray.remote(num_cpus=2)
     def f():
@@ -455,7 +478,14 @@ def test_task_use_prestarted_worker(call_ray_start):
 
     assert ray.get(f.remote()) == 42
 
-    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+    assert (
+        len(
+            list_workers(
+                filters=[("worker_type", "!=", "DRIVER")], raise_on_missing_output=False
+            )
+        )
+        == 2
+    )
 
 
 if __name__ == "__main__":

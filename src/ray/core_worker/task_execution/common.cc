@@ -21,61 +21,62 @@
 namespace ray {
 namespace core {
 
-TaskToExecute::TaskToExecute(
-    std::function<void(const TaskSpecification &)> execute_callback,
-    std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
-    TaskSpecification task_spec)
-    : execute_callback_(std::move(execute_callback)),
-      cancel_callback_(std::move(cancel_callback)),
-      task_spec_(std::move(task_spec)),
-      pending_dependencies_(task_spec_.GetDependencies()) {}
-
-void TaskToExecute::Execute() { execute_callback_(task_spec_); }
-
-void TaskToExecute::Cancel(const Status &status) { cancel_callback_(task_spec_, status); }
-
-ray::TaskID TaskToExecute::TaskID() const { return task_spec_.TaskId(); }
-
-uint64_t TaskToExecute::AttemptNumber() const { return task_spec_.AttemptNumber(); }
-
-bool TaskToExecute::IsRetry() const { return task_spec_.IsRetry(); }
-
-const std::string &TaskToExecute::ConcurrencyGroupName() const {
-  return task_spec_.ConcurrencyGroupName();
-}
-
-ray::FunctionDescriptor TaskToExecute::FunctionDescriptor() const {
-  return task_spec_.FunctionDescriptor();
-}
-
-const std::vector<rpc::ObjectReference> &TaskToExecute::PendingDependencies() const {
-  return pending_dependencies_;
-};
-
-bool TaskToExecute::DependenciesResolved() const { return pending_dependencies_.empty(); }
-
-void TaskToExecute::MarkDependenciesResolved() { pending_dependencies_.clear(); }
-
-const TaskSpecification &TaskToExecute::TaskSpec() const { return task_spec_; }
-
 ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
     AsyncWaitForArgs async_wait_for_args)
-    : async_wait_for_args_(async_wait_for_args) {}
+    : async_wait_for_args_(std::move(async_wait_for_args)) {}
 
-void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReference> &args,
-                                            std::function<void()> on_args_ready) {
-  auto tag = next_tag_++;
-  in_flight_waits_.emplace(tag, std::move(on_args_ready));
-  async_wait_for_args_(args, tag);
+void ActorTaskExecutionArgWaiter::BeginArgsFetch(
+    const std::vector<rpc::ObjectReference> &args, const TaskAttempt &task_attempt) {
+  async_wait_for_args_(args, task_attempt.first, task_attempt.second);
 }
 
-void ActorTaskExecutionArgWaiter::MarkReady(int64_t tag) {
-  auto it = in_flight_waits_.find(tag);
-  RAY_CHECK(it != in_flight_waits_.end())
-      << "MarkReady called on a non-existent tag. This likely means it was called twice "
-         "for the same tag mistakenly.";
-  it->second();
+void ActorTaskExecutionArgWaiter::OnArgsReady(const TaskAttempt &task_attempt,
+                                              std::function<void()> on_args_ready) {
+  RAY_CHECK(static_cast<bool>(on_args_ready))
+      << "OnArgsReady called with empty callback for task " << task_attempt.first
+      << " attempt " << task_attempt.second;
+  auto it = in_flight_waits_.find(task_attempt);
+  if (it != in_flight_waits_.end()) {
+    // The only valid state we can find an existing entry in here is one parked
+    // by MarkReady arriving first: callback empty + execute_immediate true.
+    RAY_CHECK(it->second.execute_immediate &&
+              !static_cast<bool>(it->second.on_args_ready))
+        << "OnArgsReady called twice for task " << task_attempt.first << " attempt "
+        << task_attempt.second;
+
+    // Remove the entry and run the callback immediately
+    in_flight_waits_.erase(it);
+    on_args_ready();
+    return;
+  }
+
+  // No prior entry: store the callback. Invariant — exactly one of `on_args_ready`
+  // or `execute_immediate` is set on every entry. Here the callback is set.
+  auto [_, inserted] = in_flight_waits_.emplace(
+      task_attempt, WaitEntry{std::move(on_args_ready), /*execute_immediate=*/false});
+  RAY_CHECK(inserted);
+}
+
+void ActorTaskExecutionArgWaiter::MarkReady(const TaskAttempt &task_attempt) {
+  auto it = in_flight_waits_.find(task_attempt);
+  if (it == in_flight_waits_.end()) {
+    // OnArgsReady hasn't been called yet (deferred-attempt path in the unordered
+    // queue, or the worker began exiting between BeginArgsFetch and the
+    // bookkeeping post). Park the "ready" flag; OnArgsReady will pick it up.
+    // Invariant — exactly one of `on_args_ready` or `execute_immediate` is set.
+    auto [_, inserted] = in_flight_waits_.emplace(
+        task_attempt, WaitEntry{/*on_args_ready=*/{}, /*execute_immediate=*/true});
+    RAY_CHECK(inserted);
+    return;
+  }
+
+  // A duplicate (task_id, attempt_number) at the executor is not possible.
+  RAY_CHECK(static_cast<bool>(it->second.on_args_ready) && !it->second.execute_immediate)
+      << "MarkReady called twice for task " << task_attempt.first << " attempt "
+      << task_attempt.second;
+  auto callback = std::move(it->second.on_args_ready);
   in_flight_waits_.erase(it);
+  callback();
 }
 }  // namespace core
 }  // namespace ray

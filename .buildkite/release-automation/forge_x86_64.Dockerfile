@@ -11,14 +11,14 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y curl zip clang-12 git
+apt-get install -y curl zip clang-14 git
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
 addgroup --gid 993 docker
 addgroup --gid 992 docker1 # docker group on buildkite AMI as of 2025-06-07
 
-ln -s /usr/bin/clang-12 /usr/bin/clang
+ln -s /usr/bin/clang-14 /usr/bin/clang
 
 # Install miniforge3
 curl -fsSL https://github.com/conda-forge/miniforge/releases/download/25.3.0-1/Miniforge3-25.3.0-1-Linux-x86_64.sh > /tmp/miniforge3.sh
@@ -33,7 +33,7 @@ chmod +x /usr/local/bin/bazelisk
 ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
 # Install uv
-curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 mkdir -p /usr/local/python
 # Install Python using uv
@@ -61,6 +61,6 @@ EOF
 
 USER forge
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-14
 
 CMD ["echo", "ray release-automation forge"]

@@ -6,12 +6,8 @@ from typing import TYPE_CHECKING, Collection, List, Optional, Type, Union
 from ray.tune.callback import Callback, CallbackList
 from ray.tune.constants import RAY_TUNE_CALLBACKS_ENV_VAR
 from ray.tune.logger import (
-    CSVLogger,
     CSVLoggerCallback,
-    JsonLogger,
     JsonLoggerCallback,
-    LegacyLoggerCallback,
-    TBXLogger,
     TBXLoggerCallback,
 )
 
@@ -115,15 +111,8 @@ def _create_default_callbacks(
         callbacks.append(trial_progress_callback)
 
     # Check if we have a CSV, JSON and TensorboardX logger
-    for i, callback in enumerate(callbacks):
-        if isinstance(callback, LegacyLoggerCallback):
-            if CSVLogger in callback.logger_classes:
-                has_csv_logger = True
-            if JsonLogger in callback.logger_classes:
-                has_json_logger = True
-            if TBXLogger in callback.logger_classes:
-                has_tbx_logger = True
-        elif isinstance(callback, CSVLoggerCallback):
+    for callback in callbacks:
+        if isinstance(callback, CSVLoggerCallback):
             has_csv_logger = True
         elif isinstance(callback, JsonLoggerCallback):
             has_json_logger = True

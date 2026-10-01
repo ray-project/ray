@@ -1,4 +1,7 @@
+import asyncio
 import json
+from dataclasses import asdict
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from google.protobuf.json_format import Parse
@@ -7,6 +10,7 @@ from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobErrorType,
     JobInfo,
+    JobInfoStorageClient,
     JobStatus,
     JobSubmitRequest,
     http_uri_components_to_uri,
@@ -126,23 +130,28 @@ class TestJobSubmitRequestValidation:
 
 
 def test_uri_to_http_and_back():
-    assert uri_to_http_components("gcs://hello.zip") == ("gcs", "hello.zip")
-    assert uri_to_http_components("gcs://hello.whl") == ("gcs", "hello.whl")
+    for extension in [".zip", ".tar.gz", ".tgz", ".tar.xz", ".whl"]:
+        package_name = f"hello{extension}"
+        assert uri_to_http_components(f"gcs://{package_name}") == (
+            "gcs",
+            package_name,
+        )
 
     with pytest.raises(ValueError, match="'blah' is not a valid Protocol"):
         uri_to_http_components("blah://halb.zip")
 
-    with pytest.raises(ValueError, match="does not end in .zip or .whl"):
+    with pytest.raises(ValueError, match="does not end in a supported format"):
         assert uri_to_http_components("gcs://hello.not_zip")
 
-    with pytest.raises(ValueError, match="does not end in .zip or .whl"):
+    with pytest.raises(ValueError, match="does not end in a supported format"):
         assert uri_to_http_components("gcs://hello")
 
     assert http_uri_components_to_uri("gcs", "hello.zip") == "gcs://hello.zip"
     assert http_uri_components_to_uri("blah", "halb.zip") == "blah://halb.zip"
     assert http_uri_components_to_uri("blah", "halb.whl") == "blah://halb.whl"
 
-    for original_uri in ["gcs://hello.zip", "gcs://fasdf.whl"]:
+    for extension in [".zip", ".tar.gz", ".tgz", ".tar.xz", ".whl"]:
+        original_uri = f"gcs://hello{extension}"
         new_uri = http_uri_components_to_uri(*uri_to_http_components(original_uri))
         assert new_uri == original_uri
 
@@ -263,6 +272,33 @@ def test_job_info_json_to_proto():
         "driver_node_id",
     ]:
         assert not minimal_info_proto.HasField(unset_optional_field)
+
+
+def test_get_all_jobs_filters_out_none_job_info():
+    prefix = JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+    mock_gcs = MagicMock()
+    mock_gcs.async_internal_kv_keys = AsyncMock(
+        return_value=[
+            (prefix + "job1").encode(),
+            (prefix + "job2").encode(),
+        ]
+    )
+
+    storage = JobInfoStorageClient(mock_gcs)
+    job_info_1 = JobInfo(status=JobStatus.RUNNING, entrypoint="echo 1")
+
+    async def mock_get_info(job_id, timeout=30):
+        if job_id == "job1":
+            return job_info_1
+        return None
+
+    storage.get_info = mock_get_info
+
+    result = asyncio.run(storage.get_all_jobs())
+
+    assert result == {"job1": job_info_1}
+    for job_id, job_info in result.items():
+        asdict(job_info)  # This should not raise an exception
 
 
 if __name__ == "__main__":

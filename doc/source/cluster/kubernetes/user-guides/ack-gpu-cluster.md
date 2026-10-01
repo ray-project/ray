@@ -1,9 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "Create an Aliyun ACK cluster with GPU node pools for KubeRay, including node labels, taints, and driver upgrades."
+---
+
 (kuberay-ack-gpu-cluster-setup)=
 
 # Start an Aliyun ACK cluster with GPUs for KubeRay
 
-This guide provides step-by-step instructions for creating an ACK cluster with GPU nodes specifically configured for KubeRay.
-The configuration outlined here can be applied to most KubeRay examples found in the documentation.
+This guide provides step-by-step instructions for creating an ACK cluster with GPU nodes specifically configured for KubeRay. The configuration outlined here can be applied to most KubeRay examples found in the documentation.
 
 ## Step 1: Create a Kubernetes cluster on Aliyun ACK
 

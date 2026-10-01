@@ -15,7 +15,7 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_kv_manager.h"

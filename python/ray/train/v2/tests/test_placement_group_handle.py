@@ -56,6 +56,16 @@ def test_default_handle_wait():
     handle.shutdown()
 
 
+def test_default_handle_wait_not_found_returns_false():
+    """wait() should return False if the placement group no longer exists."""
+    mock_pg = MagicMock()
+    mock_pg.wait.side_effect = Exception(
+        "Placement group PlacementGroupID(abc) does not exist."
+    )
+    handle = DefaultPlacementGroupHandle(mock_pg)
+    assert handle.wait(timeout_seconds=0) is False
+
+
 def test_default_handle_shutdown():
     """shutdown() should remove the placement group."""
     pg = placement_group([{"CPU": 1}])

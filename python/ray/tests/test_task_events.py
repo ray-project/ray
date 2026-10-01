@@ -7,12 +7,15 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
+)
 from ray._private.state_api_test_utils import (
     verify_failed_task,
 )
 from ray._private.test_utils import (
-    PrometheusTimeseries,
     raw_metric_timeseries,
     wait_for_aggregator_agent_if_enabled,
 )
@@ -240,29 +243,24 @@ def test_failed_task_unschedulable(shutdown_only):
 
 
 def test_failed_task_runtime_env_setup(shutdown_only):
-    import conda
-
     @ray.remote
     def f():
         pass
 
-    bad_env = RuntimeEnv(conda={"dependencies": ["_this_does_not_exist"]})
+    bad_env = RuntimeEnv(
+        pip=["nonexistent-package"],
+    )
     with pytest.raises(
         RuntimeEnvSetupError,
     ):
         ray.get(f.options(runtime_env=bad_env, name="task-runtime-env-failed").remote())
 
-    conda_major_version = int(conda.__version__.split(".")[0])
-    error_message = (
-        "PackagesNotFoundError"
-        if conda_major_version >= 24
-        else "ResolvePackageNotFound"
-    )
     wait_for_condition(
         verify_failed_task,
         name="task-runtime-env-failed",
         error_type="RUNTIME_ENV_SETUP_FAILED",
-        error_message=error_message,
+        # Verify that the pip error content is propagated to task event.
+        error_message="nonexistent-package",
     )
 
 

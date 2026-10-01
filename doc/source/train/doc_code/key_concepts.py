@@ -17,6 +17,8 @@ def train_fn(config):
                 checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
             )
 
+    return {"total loss": 3}
+
 
 trainer = DataParallelTrainer(
     train_fn, scaling_config=ray.train.ScalingConfig(num_workers=2)
@@ -71,6 +73,11 @@ print("Minimum loss", min(df["loss"]))
 # __result_dataframe_end__
 
 
+# __result_return_value_start__
+print("Returned data", result.return_value)
+# __result_return_value_end__
+
+
 # __result_checkpoint_start__
 print("Last checkpoint:", result.checkpoint)
 
@@ -104,12 +111,11 @@ print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 # __result_path_end__
 
 
-# TODO(justinvyu): Result.from_path is not supported in Train V2 yet.
 # __result_restore_start__
-# from ray.train import Result
+from ray.train import Result
 
-# restored_result = Result.from_path(result_path)
-# print("Restored loss", result.metrics["loss"])
+restored_result = Result.from_path(result_path)
+print("Restored loss", restored_result.metrics["loss"])
 # __result_restore_end__
 
 

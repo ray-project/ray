@@ -1,14 +1,32 @@
 # syntax=docker/dockerfile:1.3-labs
-ARG BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04
+ARG BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
 FROM $BASE_IMAGE
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG PYTHON=3.10
+ARG CUDA_VERSION=12.8.1
+ARG NCCL_VERSION=2.28.9-1+cuda12.9
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Where pip and uv resolve from while building this image. Docker builds cannot see an
+# index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
+# from it -- so it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment.
+#
+# Empty for anyone building these images outside CI, and then this is exactly the index
+# pip would have used anyway, so an external build behaves as it does today.
+#
+# ENV rather than ARG on purpose: the *.build.Dockerfile images build FROM this
+# image (directly or via another base) and install packages themselves, and the
+# persisted value is what carries the index into those derived builds.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 ENV TZ=America/Los_Angeles
 
-ENV RAY_BUILD_ENV=ubuntu20.04_cuda12.8.1_py$PYTHON
+ENV RAY_BUILD_ENV=ubuntu22.04_clang14_cuda${CUDA_VERSION}_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON
@@ -28,11 +46,16 @@ apt-get install -y -qq \
     sudo zip unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
-    clang-format-12 jq \
-    clang-tidy-12 clang-12
-ln -s /usr/bin/clang-format-12 /usr/bin/clang-format
-ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy
-ln -s /usr/bin/clang-12 /usr/bin/clang
+    clang-format-14 jq \
+    clang-tidy-14 clang-14
+ln -s /usr/bin/clang-format-14 /usr/bin/clang-format
+ln -s /usr/bin/clang-tidy-14 /usr/bin/clang-tidy
+ln -s /usr/bin/clang-14 /usr/bin/clang
+
+apt-get install -y -qq --allow-change-held-packages --allow-downgrades "libnccl2=${NCCL_VERSION}" "libnccl-dev=${NCCL_VERSION}"
+apt-mark hold libnccl2 libnccl-dev
+command -v ncclras  # Fail the build if the pin did not stick or the client binary is missing.
+dpkg-query -W -f='${Package} ${Version}\n' libnccl2 libnccl-dev
 
 # Install docker CLI
 mkdir -p /etc/apt/keyrings
@@ -47,10 +70,12 @@ apt-get install -y docker-ce-cli
 
 echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
 
+curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
 EOF
 
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-14
 
 # System conf for tests
 RUN locale -a

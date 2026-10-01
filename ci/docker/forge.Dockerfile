@@ -5,12 +5,26 @@ FROM ubuntu:22.04
 ARG BUILDKITE_BAZEL_CACHE_URL
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Where pip and uv resolve from while building this image. Docker builds cannot see an
+# index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
+# from it -- so it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment.
+#
+# Empty for anyone building these images outside CI, and then this is exactly the index
+# pip would have used anyway, so an external build behaves as it does today.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
 RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
+  --mount=type=bind,source=ci/pypi_proxy_profile.sh,target=pypi_proxy_profile.sh \
+  --mount=type=bind,source=ci/bazel_mirror_downloader.sh,target=bazel_mirror_downloader.sh \
 <<EOF
 #!/bin/bash
 
@@ -47,16 +61,24 @@ Components: main
 Architectures: $(dpkg --print-architecture)
 Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-cli.sources
 
+# Add Google Cloud CLI repository
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg |
+  gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg
+echo "deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] \
+  https://packages.cloud.google.com/apt cloud-sdk main" |
+  tee /etc/apt/sources.list.d/google-cloud-sdk.list
+
 # Install packages
 
 apt-get update
 apt-get install -y \
   awscli nodejs build-essential python-is-python3 \
   python3-pip openjdk-8-jre wget jq \
-  docker-ce-cli azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
+  docker-ce-cli azure-cli="${AZ_VER}"-1~"${AZ_DIST}" \
+  google-cloud-cli
 
 # Install uv
-curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 mkdir -p /usr/local/python
 # Install Python using uv
@@ -74,6 +96,16 @@ ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
 uv pip install --system pip==25.0 cffi==1.16.0
+
+# Point pip, uv and bazel at the CI package mirror's hosted PyPI index when it is
+# reachable: ci/pypi_proxy_profile.sh probes and decides per step (CI steps run
+# under `bash -elic`, a login shell, so profile.d covers every step). The bazel
+# downloader helper lives beside it in /etc/rayci because the hook runs at shell
+# start, before any checkout exists.
+mkdir -p /etc/rayci
+cp bazel_mirror_downloader.sh /etc/rayci/bazel_mirror_downloader.sh
+cp pypi_proxy_profile.sh /etc/profile.d/zz-rayci-pypi-proxy.sh
+chmod 0644 /etc/profile.d/zz-rayci-pypi-proxy.sh /etc/rayci/bazel_mirror_downloader.sh
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
@@ -140,4 +172,4 @@ ENV DOCKER_API_VERSION=1.43
 CMD ["echo", "ray forge"]
 
 
-# last update: 2026-01-13
+# last update: 2026-02-10

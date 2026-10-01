@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import logging.handlers
 import os
 import time
 import traceback
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Tuple
+from typing import Callable, Dict, List, Set, Tuple, Union
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
@@ -58,6 +60,155 @@ class CreatedEnvResult:
 
 # e.g., "working_dir"
 UriType = str
+
+
+class _SetupFileHandler(logging.handlers.RotatingFileHandler):
+    """A rotating file handler that stays closed once closed.
+
+    FileHandler.emit (and RotatingFileHandler.shouldRollover) lazily reopen
+    the file whenever the stream is None. Without this guard, a thread that
+    read the handler from the logger's handler list before it was detached —
+    e.g. executor-backed plugin work logging after a setup timeout — would
+    silently reopen the file on a late emit, leaking a descriptor with no
+    owner left to close it. Handler.handle() and FileHandler.close() take
+    the same per-handler lock, so checking the flag in emit() cannot race
+    with close().
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._closed_by_pool = False
+
+    def close(self) -> None:
+        self.acquire()
+        try:
+            self._closed_by_pool = True
+            # The handler lock is reentrant, so the nested acquire in
+            # FileHandler.close is fine.
+            super().close()
+        finally:
+            self.release()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self._closed_by_pool:
+            return
+        super().emit(record)
+
+
+@dataclass
+class _PooledHandler:
+    """A log handler shared by concurrent setups, closed at zero references."""
+
+    handler: logging.Handler
+    ref_count: int = 0
+
+
+class SetupLoggerFactory:
+    """Creates loggers scoped to a single runtime env setup.
+
+    Loggers used to be cached per job and never closed, so the agent's open
+    file descriptors grew with the cumulative number of jobs the node had ever
+    handled until setup failed with EMFILE (#54935). Instead, each setup gets
+    its own logger for the duration of the setup only:
+
+    - File handlers are pooled by absolute log path and reference counted, so
+      concurrent setups writing the same file share one handler (and one
+      rotation owner). The file is closed when the last setup using it exits.
+    - The logger is constructed directly instead of via `logging.getLogger`,
+      so the global logging registry never holds a reference to it.
+
+    Only file *descriptors* are scoped to the setup; the log files themselves
+    are left on disk for the log monitor and dashboard to read.
+    """
+
+    def __init__(
+        self,
+        *,
+        logging_level: Union[int, str],
+        logging_format: str,
+        log_dir: str,
+        max_bytes: int,
+        backup_count: int,
+    ):
+        if isinstance(logging_level, str):
+            logging_level = logging.getLevelName(logging_level.upper())
+        self._logging_level = logging_level
+        self._formatter = logging.Formatter(logging_format)
+        self._log_dir = log_dir
+        self._max_bytes = max_bytes
+        self._backup_count = backup_count
+        # Absolute log path -> pooled handler. Only ever touched from the
+        # event loop thread with no `await` in between, so no lock is needed;
+        # executor-backed plugin work holds the logger, never this pool.
+        self._pooled_handlers: Dict[str, _PooledHandler] = {}
+
+    def _acquire(self, path: str) -> logging.Handler:
+        entry = self._pooled_handlers.get(path)
+        if entry is None:
+            handler = _SetupFileHandler(
+                path,
+                maxBytes=self._max_bytes,
+                backupCount=self._backup_count,
+            )
+            handler.setLevel(self._logging_level)
+            handler.setFormatter(self._formatter)
+            entry = _PooledHandler(handler=handler)
+            self._pooled_handlers[path] = entry
+        entry.ref_count += 1
+        return entry.handler
+
+    def _release(self, path: str) -> None:
+        entry = self._pooled_handlers[path]
+        entry.ref_count -= 1
+        if entry.ref_count == 0:
+            del self._pooled_handlers[path]
+            entry.handler.close()
+
+    @contextmanager
+    def setup_logger(self, job_id: str, log_files: List[str]):
+        """Yield a logger for one setup, releasing its file handles on exit.
+
+        The `finally` below runs on every exit path: success, exception,
+        timeout, and cancellation (`asyncio.wait_for` awaits the cancelled
+        coroutine before raising, so the context manager unwinds first).
+        """
+        filenames = [f"runtime_env_setup-{job_id}.log", *log_files]
+        # Not `logging.getLogger`: see the class docstring.
+        logger = logging.Logger(f"runtime_env_{job_id}")
+        logger.setLevel(self._logging_level)
+        logger.propagate = False
+        acquired: List[str] = []
+        try:
+            for filename in filenames:
+                if not filename or not self._log_dir:
+                    # Mirror setup_component_logger's fallback to stderr.
+                    # Stream handlers own no file descriptor, so they are
+                    # not pooled.
+                    handler = logging.StreamHandler()
+                    handler.setLevel(self._logging_level)
+                    handler.setFormatter(self._formatter)
+                    logger.addHandler(handler)
+                    continue
+                path = os.path.abspath(os.path.join(self._log_dir, filename))
+                if path in acquired:
+                    continue
+                handler = self._acquire(path)
+                acquired.append(path)
+                logger.addHandler(handler)
+            yield logger
+        finally:
+            # Atomically swap the handler list before closing anything, for
+            # late writes from executor-backed plugin work (e.g. after a
+            # setup timeout): a concurrent Logger.callHandlers sees either
+            # the old list object (handlers still open at this point) or the
+            # new one — never an empty list, which would fall through to
+            # logging.lastResort on stderr, and never a half-detached state.
+            # A writer iterating the old snapshot may still emit after the
+            # close below; _SetupFileHandler refuses to emit once closed, so
+            # that write cannot reopen the file and re-leak the descriptor.
+            logger.handlers = [logging.NullHandler()]
+            for path in acquired:
+                self._release(path)
 
 
 class ReferenceTable:
@@ -171,13 +322,25 @@ class RuntimeEnvAgent:
 
     def __init__(
         self,
-        runtime_env_dir,
-        logging_params,
+        runtime_env_dir: str,
+        logging_params: dict,
         gcs_client: GcsClient,
-        temp_dir,
-        address,
-        runtime_env_agent_port,
+        temp_dir: str,
+        address: str,
+        runtime_env_agent_port: int,
     ):
+        """Initialize the runtime env agent.
+
+        Args:
+            runtime_env_dir: Directory used to store runtime env resources.
+            logging_params: Keyword arguments forwarded to
+                :func:`setup_component_logger` to configure the agent logger.
+            gcs_client: GCS client used to fetch package data.
+            temp_dir: Temporary directory used by plugins (e.g. container plugin).
+            address: IP address that the agent is listening on, used for logging.
+            runtime_env_agent_port: Port that the agent is listening on, used for
+                logging.
+        """
         super().__init__()
 
         self._logger = default_logger
@@ -194,7 +357,13 @@ class RuntimeEnvAgent:
         self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
 
         self._runtime_env_dir = runtime_env_dir
-        self._per_job_logger_cache = dict()
+        self._setup_logger_factory = SetupLoggerFactory(
+            logging_level=self._logging_params["logging_level"],
+            logging_format=self._logging_params["logging_format"],
+            log_dir=self._logging_params["log_dir"],
+            max_bytes=self._logging_params["max_bytes"],
+            backup_count=self._logging_params["backup_count"],
+        )
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
@@ -289,17 +458,6 @@ class RuntimeEnvAgent:
             else:
                 delete_runtime_env()
 
-    def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
-        job_id = job_id.decode()
-        if job_id not in self._per_job_logger_cache:
-            params = self._logging_params.copy()
-            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
-            params["logger_name"] = f"runtime_env_{job_id}"
-            params["propagate"] = False
-            per_job_logger = setup_component_logger(**params)
-            self._per_job_logger_cache[job_id] = per_job_logger
-        return self._per_job_logger_cache[job_id]
-
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
@@ -312,53 +470,60 @@ class RuntimeEnvAgent:
             runtime_env_config: RuntimeEnvConfig,
         ):
             log_files = runtime_env_config.get("log_files", [])
-            # Use a separate logger for each job.
-            per_job_logger = self.get_or_create_logger(request.job_id, log_files)
-            context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+            # Use a separate logger scoped to this setup. Its file handles are
+            # released when the setup exits (on success, failure, timeout, and
+            # cancellation alike), not kept for the lifetime of the job.
+            with self._setup_logger_factory.setup_logger(
+                request.job_id.decode(), log_files
+            ) as per_job_logger:
+                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
 
-            # Warn about unrecognized fields in the runtime env.
-            for name, _ in runtime_env.plugins():
-                if name not in self._plugin_manager.plugins:
-                    per_job_logger.warning(
-                        f"runtime_env field {name} is not recognized by "
-                        "Ray and will be ignored.  In the future, unrecognized "
-                        "fields in the runtime_env will raise an exception."
-                    )
-
-            # Creates each runtime env URI by their priority. `working_dir` is special
-            # because it needs to be created before other plugins. All other plugins are
-            # created in the priority order (smaller priority value -> earlier to
-            # create), with a special environment variable being set to the working dir.
-            # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
-
-            # First create working dir...
-            working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
-            await create_for_plugin_if_needed(
-                runtime_env,
-                working_dir_ctx.class_instance,
-                working_dir_ctx.uri_cache,
-                context,
-                per_job_logger,
-            )
-
-            # Then within the working dir, create the other plugins.
-            working_dir_uri_or_none = runtime_env.working_dir_uri()
-            with self._working_dir_plugin.with_working_dir_env(working_dir_uri_or_none):
-                """Run setup for each plugin unless it has already been cached."""
-                for (
-                    plugin_setup_context
-                ) in self._plugin_manager.sorted_plugin_setup_contexts():
-                    plugin = plugin_setup_context.class_instance
-                    if plugin.name != WorkingDirPlugin.name:
-                        uri_cache = plugin_setup_context.uri_cache
-                        await create_for_plugin_if_needed(
-                            runtime_env, plugin, uri_cache, context, per_job_logger
+                # Warn about unrecognized fields in the runtime env.
+                for name, _ in runtime_env.plugins():
+                    if name not in self._plugin_manager.plugins:
+                        per_job_logger.warning(
+                            f"runtime_env field {name} is not recognized by "
+                            "Ray and will be ignored.  In the future, unrecognized "
+                            "fields in the runtime_env will raise an exception."
                         )
-            return context
+
+                # Creates each runtime env URI by their priority. `working_dir` is
+                # special because it needs to be created before other plugins. All
+                # other plugins are created in the priority order (smaller priority
+                # value -> earlier to create), with a special environment variable
+                # being set to the working dir.
+                # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
+
+                # First create working dir...
+                working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
+                await create_for_plugin_if_needed(
+                    runtime_env,
+                    working_dir_ctx.class_instance,
+                    working_dir_ctx.uri_cache,
+                    context,
+                    per_job_logger,
+                )
+
+                # Then within the working dir, create the other plugins.
+                working_dir_uri_or_none = runtime_env.working_dir_uri()
+                with self._working_dir_plugin.with_working_dir_env(
+                    working_dir_uri_or_none
+                ):
+                    """Run setup for each plugin unless it has already been cached."""
+                    for (
+                        plugin_setup_context
+                    ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                        plugin = plugin_setup_context.class_instance
+                        if plugin.name != WorkingDirPlugin.name:
+                            uri_cache = plugin_setup_context.uri_cache
+                            await create_for_plugin_if_needed(
+                                runtime_env, plugin, uri_cache, context, per_job_logger
+                            )
+                return context
 
         async def _create_runtime_env_with_retry(
-            runtime_env,
-            setup_timeout_seconds,
+            runtime_env: RuntimeEnv,
+            setup_timeout_seconds: int,
             runtime_env_config: RuntimeEnvConfig,
         ) -> Tuple[bool, str, str]:
             """Create runtime env with retry times. This function won't raise exceptions.

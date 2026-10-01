@@ -94,15 +94,17 @@ class UnBatchToIndividualItems(ConnectorV2):
                                 "shared_data['vector_env_episodes_map'] for a missing ",
                                 "mapping.",
                             )
-                        # If an episode has not just started and the agent's episode
-                        # is done do not return data.
-                        # This should not be `True` for new `MultiAgentEpisode`s.
-                        if (
-                            episode.agent_episodes
-                            and episode.agent_episodes[agent_id].is_done
-                            and not episode.is_done
-                        ):
-                            continue
+                        if episode.agent_episodes and not episode.is_done:
+                            sa_episode = episode.agent_episodes.get(agent_id)
+                            if sa_episode is None or sa_episode.is_done:
+                                raise ValueError(
+                                    f"Agent {agent_id!r} in `memorized_map_structure` "
+                                    f"is missing or already done for episode "
+                                    f"{episode.id_!r}, but only live agents should "
+                                    f"reach the module-to-env pipeline. The "
+                                    f"env-to-module `AgentToModuleMapping` done-agent "
+                                    f"filter did not run or regressed (see GH #61602)."
+                                )
 
                         new_column_data[key].append(column_data[i])
                     module_data[column] = dict(new_column_data)

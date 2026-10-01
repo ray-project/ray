@@ -44,7 +44,7 @@ class APPOLearner(IMPALALearner):
             # For APPO use a large queue.
             self._learner_thread_in_queue = Queue(maxsize=self.config.simple_queue_size)
 
-        # Now build the super class. Otherwise the learner-queue would overriden.
+        # Now build the super class. Otherwise the learner-queue would be overridden.
         super().build()
 
         # Make target networks.

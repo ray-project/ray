@@ -40,7 +40,7 @@ class _TrialGroup:
     """
 
     def __init__(self, primary_trial_id: str, config: Dict, max_trials: int = 1):
-        assert type(config) is dict, "config is not a dict, got {}".format(config)
+        assert isinstance(config, dict), "config is not a dict, got {}".format(config)
         self.primary_trial_id = primary_trial_id
         self.config = config
         self._trials = {primary_trial_id: None}
@@ -130,7 +130,7 @@ class Repeater(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if self._current_group is None or self._current_group.full():
             config = self.searcher.suggest(trial_id)
-            if config is None:
+            if config is None or config == Searcher.FINISHED:
                 return config
             self._current_group = _TrialGroup(
                 trial_id, copy.deepcopy(config), max_trials=self.repeat
