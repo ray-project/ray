@@ -34,6 +34,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 )
 from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
@@ -301,6 +302,53 @@ def test_get_read_tasks_can_disable_bounded_memory(monkeypatch):
 
     assert [table.to_pydict() for table in read_task()] == [{"value": [1]}]
     assert scanned_task_counts == [expected_task_count]
+
+
+def test_get_read_task_rejects_pickle_object_columns(monkeypatch, tmp_path):
+    """A scan result carrying a pickled-object column must be rejected before
+    anything is unpickled."""
+    from pyiceberg.io import pyarrow as pyi_pa_io
+
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    poisoned = pa.table(
+        {"value": [1, 2], "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
+    )
+
+    class FakeArrowScan:
+        def __init__(self, **kwargs):
+            pass
+
+        def to_table(self, tasks):
+            return poisoned
+
+    monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+    schema = pyi_schema.Schema(
+        pyi_types.NestedField(
+            field_id=1, name="value", field_type=pyi_types.LongType(), required=False
+        )
+    )
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(
+            _get_read_task(
+                tasks=("file-1",),
+                table_io=object(),
+                table_metadata=object(),
+                row_filter=object(),
+                case_sensitive=True,
+                limit=None,
+                schema=schema,
+                read_file_tasks_sequentially=False,
+            )
+        )
+
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 def test_get_read_task_normalizes_batch_schemas(monkeypatch):

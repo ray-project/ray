@@ -16,15 +16,19 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
-from ray._common.utils import get_or_create_event_loop
+from ray._common.utils import binary_to_hex, get_or_create_event_loop
 from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
 import ray._private.ray_constants as ray_constants
-from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllResourceUsageReply,
+    GetDrainingNodesReply,
+)
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
+    CGetDrainingNodesReply,
     ConnectOnSingletonIoContext,
     MultiItemPyCallback,
     OptionalItemPyCallback,
@@ -451,6 +455,29 @@ cdef class InnerGcsClient:
     #############################################################
     # NodeResources methods
     #############################################################
+    def get_draining_nodes(
+        self, timeout: Optional[int | float] = None
+    ) -> Dict[str, int]:
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef CGetDrainingNodesReply c_reply
+        cdef c_string serialized_reply
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get()
+                .NodeResources()
+                .GetDrainingNodes(timeout_ms, c_reply)
+            )
+            serialized_reply = c_reply.SerializeAsString()
+
+        reply = GetDrainingNodesReply()
+        reply.ParseFromString(serialized_reply)
+        return {
+            binary_to_hex(
+                draining_node.node_id
+            ): draining_node.draining_deadline_timestamp_ms
+            for draining_node in reply.draining_nodes
+        }
+
     def get_all_resource_usage(
         self, timeout: Optional[int | float] = None
     ) -> GetAllResourceUsageReply:

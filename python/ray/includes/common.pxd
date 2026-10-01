@@ -523,6 +523,10 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
         c_bool IsGcsLeader() const
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetDrainingNodes(
+            int64_t timeout_ms,
+            CGetDrainingNodesReply &reply)
+
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,
             CGetAllResourceUsageReply &serialized_reply)
@@ -808,6 +812,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         const c_string &SerializeAsString() const
 
     cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
+        const c_string& SerializeAsString() const
+
+    cdef cppclass CGetDrainingNodesReply "ray::rpc::GetDrainingNodesReply":
         const c_string& SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
