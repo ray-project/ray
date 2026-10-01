@@ -628,7 +628,15 @@ class Dataset:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
         """
-        return f"{self._dataset_name or 'dataset'}_{self._uuid}_{self._run_index}"
+        return self._get_dataset_id_for_run(self._run_index)
+
+    def _get_dataset_id_for_run(self, run_index: int) -> str:
+        """Helper to return the dataset id for the given run index."""
+        return f"{self._dataset_name or 'dataset'}_{self._uuid}_{run_index}"
+
+    def _get_dataset_id_for_next_run(self) -> str:
+        """Helper to return the dataset id for the next run index."""
+        return self._get_dataset_id_for_run(self._run_index + 1)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
@@ -2334,6 +2342,14 @@ class Dataset:
             ..
                 https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
 
+        .. tip::
+
+            Repartitioning with ``keys`` hash-shuffles the whole dataset. If the
+            dataset is much larger than the cluster's aggregate object-store
+            memory, enable :ref:`disk-based shuffle <disk-based-shuffle>` by
+            setting ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100).repartition(10).materialize()
@@ -3613,6 +3629,14 @@ class Dataset:
 
         Joins require the ``polars`` package.
 
+        .. tip::
+
+            Joins hash-shuffle both input datasets by key. If the inputs are
+            much larger than the cluster's aggregate object-store memory,
+            enable :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
+
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
@@ -3789,6 +3813,14 @@ class Dataset:
 
         Use this method to transform data based on a
         categorical variable.
+
+        .. tip::
+
+            Grouping hash-shuffles the dataset by key. If the dataset is much
+            larger than the cluster's aggregate object-store memory, enable
+            :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Examples:
 
@@ -5398,27 +5430,28 @@ class Dataset:
             storage_options: A dictionary of storage options passed to the
                 ``deltalake`` library for authentication and configuration (e.g.
                 cloud credentials).
-            schema_mode: How an ``APPEND`` handles a column present in the
+            schema_mode: How an ``APPEND`` handles a field present in the
                 data being written but absent from the table's current
-                schema. Has no effect on ``SaveMode.OVERWRITE`` (which always
+                schema, including fields nested in structs, lists, or maps.
+                Has no effect on ``SaveMode.OVERWRITE`` (which always
                 replaces the table's schema wholesale) or when the table
                 doesn't exist yet (there's no existing schema to compare
                 against). One of:
 
-                * ``"merge"`` (default): Add the new column to the table
+                * ``"merge"`` (default): Add the new field to the table
                   before committing the write, like SQL's
-                  ``ALTER TABLE ... ADD COLUMN``. The new column is always
+                  ``ALTER TABLE ... ADD COLUMN``. The new field is always
                   added as nullable, and every row written before this
                   reads back with ``None`` for it.
                 * ``"error"``: Reject the write with a ``ValueError``
                   instead, leaving the table's schema unchanged.
 
-                A column present in *both* the data and the table, but with
+                A field present in *both* the data and the table, but with
                 an incompatible type (for example, writing a string into a
                 column the table has as an integer), always raises a
                 ``ValueError`` -- regardless of ``schema_mode``. Only adding
-                a brand-new column is supported; changing an existing
-                column's type is not.
+                a brand-new field is supported; changing an existing
+                field's type is not.
             filesystem: Optional PyArrow filesystem used for worker Parquet
                 writes, instead of one built from ``storage_options`` or ambient
                 credentials. Cannot be combined with ``catalog``.

@@ -2,20 +2,18 @@ from typing import Any
 
 import pytest
 
-from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
+from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
+from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+    _file_chunks_to_manifest,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
     FileChunks,
     RowGroupInfo,
 )
-from ray.data._internal.datasource_v2.chunkers.parquet_row_group_coalescing import (
+from ray.data._internal.datasource_v2.formats.parquet.parquet_row_group_coalescing import (
     coalesce_row_groups,
 )
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
-    _file_chunks_to_manifest,
-)
-from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
-    OnlineBinPacker,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
 
 def _rg(
