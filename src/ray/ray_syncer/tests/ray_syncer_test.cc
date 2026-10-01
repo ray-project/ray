@@ -1287,5 +1287,46 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
   ASSERT_GT(client.syncer->GetAllConnectedNodeIDs().size(), 0);
 }
 
+grpc::Status StartSyncWithMetadata(
+    const std::string &port,
+    const std::vector<std::pair<std::string, std::string>> &metadata) {
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", port),
+                                     grpc::InsecureChannelCredentials());
+  auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  for (const auto &[key, value] : metadata) {
+    context.AddMetadata(key, value);
+  }
+  auto stream = stub->StartSync(&context);
+  stream->WritesDone();
+  return stream->Finish();
+}
+
+TEST_F(SyncerAuthenticationTest, MissingNodeIdAndTokenIsRejected) {
+  auto server = CreateAuthenticatedServer("37897", "server-token-12345");
+  ASSERT_EQ(StartSyncWithMetadata("37897", {}).error_code(),
+            grpc::StatusCode::UNAUTHENTICATED);
+}
+
+TEST_F(SyncerAuthenticationTest, MissingNodeIdWithValidTokenIsRejected) {
+  const std::string token = "server-token-12345";
+  auto server = CreateAuthenticatedServer("37898", token);
+  ASSERT_EQ(StartSyncWithMetadata(
+                "37898",
+                {{kAuthTokenKey,
+                  ray::rpc::AuthenticationToken(token).ToAuthorizationHeaderValue()}})
+                .error_code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(SyncerAuthenticationTest, MissingOrMalformedNodeIdWithoutAuthIsRejected) {
+  auto server = CreateAuthenticatedServer("37899", "");
+  ASSERT_EQ(StartSyncWithMetadata("37899", {}).error_code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_EQ(StartSyncWithMetadata("37899", {{"node_id", "not-hex"}}).error_code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+}
+
 }  // namespace syncer
 }  // namespace ray

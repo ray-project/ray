@@ -27,7 +27,10 @@ namespace {
 std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_context) {
   const auto &metadata = server_context->client_metadata();
   auto iter = metadata.find("node_id");
-  RAY_CHECK(iter != metadata.end());
+  if (iter == metadata.end()) {
+    return NodeID::Nil().Binary();
+  }
+  // Malformed hex parses to Nil; the constructor rejects Nil after authentication.
   return NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
 }
 
@@ -73,6 +76,13 @@ RayServerBidiReactor::RayServerBidiReactor(
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Invalid bearer token"));
       return;
     }
+  }
+
+  if (NodeID::FromBinary(GetRemoteNodeID()).IsNil()) {
+    RAY_LOG(WARNING) << "Missing or malformed node_id in syncer connection";
+    Finish(
+        grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Missing or malformed node_id"));
+    return;
   }
 
   // Send the local node id to the remote
