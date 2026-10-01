@@ -194,8 +194,11 @@ class Image:
         object.__setattr__(self, "_env", {})
         object.__setattr__(self, "_workdir", None)
         object.__setattr__(self, "_shell", None)
-        object.__setattr__(self, "_cmd", ())
-        object.__setattr__(self, "_entrypoint", ())
+        # None until set: `cmd([])` and `entrypoint([])` clear the base
+        # image's CMD and ENTRYPOINT on Modal, so an empty argv has to stay
+        # distinguishable from one that was never given.
+        object.__setattr__(self, "_cmd", None)
+        object.__setattr__(self, "_entrypoint", None)
         object.__setattr__(self, "_startup_files", ())
 
     # -- internals ---------------------------------------------------------
@@ -208,8 +211,8 @@ class Image:
         object.__setattr__(image, "_env", overrides.get("env", {}))
         object.__setattr__(image, "_workdir", overrides.get("workdir"))
         object.__setattr__(image, "_shell", overrides.get("shell"))
-        object.__setattr__(image, "_cmd", overrides.get("cmd", ()))
-        object.__setattr__(image, "_entrypoint", overrides.get("entrypoint", ()))
+        object.__setattr__(image, "_cmd", overrides.get("cmd"))
+        object.__setattr__(image, "_entrypoint", overrides.get("entrypoint"))
         object.__setattr__(image, "_startup_files", overrides.get("startup_files", ()))
         return image
 
@@ -483,7 +486,8 @@ class Image:
     def cmd(self, cmd: List[str]) -> "Image":
         """Set the default command for the sandbox's main process.
 
-        Arguments passed to ``Sandbox.create()`` override this.
+        Arguments passed to ``Sandbox.create()`` override this. An empty list
+        clears the base image's CMD, as on Modal.
 
         Args:
             cmd: Command and arguments.
@@ -498,6 +502,11 @@ class Image:
 
     def entrypoint(self, entrypoint_commands: List[str]) -> "Image":
         """Set a prefix applied to the sandbox's main process.
+
+        An empty list clears the base image's ENTRYPOINT, as on Modal, which is
+        how a base image's own startup script is skipped. Setting one keeps the
+        base image's CMD: measured, Modal does not apply Docker's rule that a
+        new ENTRYPOINT resets an inherited CMD.
 
         Args:
             entrypoint_commands: Command and arguments to prefix with.

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import time
 from pathlib import PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
@@ -54,11 +55,13 @@ DEFAULT_TIMEOUT = 300
 # Modal's default soft CPU limit sits this many cores above the request.
 _DEFAULT_CPU_HEADROOM = 16
 
-# How long the *creation* of a sandbox may take: pulling the image and waiting
-# for runsc to report the container running. Deliberately not derived from
-# Modal's `timeout`, which is the Sandbox's lifetime and answers a different
-# question -- a sandbox meant to live ten seconds still needs a cold image pull
-# to finish, and one meant to live an hour should not wait an hour to start.
+# The startup bounds of a sandbox: the timeout of each network request of its
+# image pull, and how long runsc may take to report the container running.
+# Neither bounds the creation as a whole -- a large image takes as long as its
+# layers take to download. Deliberately not derived from Modal's `timeout`,
+# which is the Sandbox's lifetime and answers a different question -- a
+# sandbox meant to live ten seconds still needs a cold image pull to finish,
+# and one meant to live an hour should not wait an hour to start.
 # SandboxRuntime.create defaults this to 30s, which is tight for a first pull;
 # 120s is what the image layer itself uses when asked directly.
 _CREATE_TIMEOUT_SECONDS = 120
@@ -143,29 +146,67 @@ def _validate_resource(name: str, value: Union[float, int, Tuple, None]) -> None
         )
 
 
-def _gpu_count(gpu: Optional[str]) -> Optional[float]:
-    """Parse Modal's ``"A100"`` / ``"A100:2"`` GPU spec into a count.
-
-    Ray schedules on GPU count, not model, so the model name is ignored.
-    """
-    if gpu is None:
-        return None
-    if isinstance(gpu, (int, float)):
-        return float(gpu)
-    _, _, count = str(gpu).partition(":")
-    if not count:
-        return 1.0
-    try:
-        return float(count)
-    except ValueError:
-        raise InvalidError(f"Could not parse a GPU count from {gpu!r}.")
-
-
 def _clean_env(env: Optional[Dict[str, Optional[str]]]) -> Dict[str, str]:
     """Drop the None values Modal uses to mean 'leave unset'."""
     if not env:
         return {}
     return {k: v for k, v in env.items() if v is not None}
+
+
+# Modal's rule for an environment variable name passed to Sandbox.create
+# (`_SECRET_KEYNAME_REGEX`). fullmatch where Modal uses `^...$`, which also
+# accepts a trailing newline.
+_ENV_NAME = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
+
+
+def _validate_env(env: Any, what: str, *, check_names: bool) -> None:
+    """Refuse an env mapping that the backend would mangle rather than reject.
+
+    The backend writes each pair as ``f"{key}={value}"`` -- into the OCI spec
+    for create(), onto the ``runsc exec -env`` command line for exec() -- so a
+    key containing ``=`` would set a different variable from the one named,
+    and a value that is not a string would be stringified, or fail far from
+    the call that passed it.
+
+    Args:
+        env: The ``env`` argument as given. None values are dropped before
+            checking, as they are before use.
+        what: The callee, for Modal's type error message.
+        check_names: Apply Modal's name rule, which Modal enforces for
+            ``Sandbox.create`` only. Without it, only names that can never
+            work are refused.
+
+    Raises:
+        InvalidError: ``env`` is not usable.
+    """
+    if not env:
+        return
+    type_error = f"the env argument to {what} must be a dict[str, str | None]"
+    if not isinstance(env, dict):
+        raise InvalidError(type_error)
+    kept = {k: v for k, v in env.items() if v is not None}
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in kept.items()):
+        raise InvalidError(type_error)
+    for key, value in kept.items():
+        if check_names:
+            if not key:
+                raise InvalidError("Secret key name cannot be empty")
+            if not _ENV_NAME.fullmatch(key):
+                raise InvalidError(
+                    f"Secret key name {key!r} is invalid for environment "
+                    "variables. Only letters, numbers, and underscores are "
+                    "allowed."
+                )
+        elif not key or "=" in key or "\0" in key:
+            raise InvalidError(
+                f"Environment variable name {key!r} is invalid: it must be "
+                "non-empty and contain no '=' or NUL character."
+            )
+        if "\0" in value:
+            raise InvalidError(
+                f"The value of environment variable {key!r} contains a NUL "
+                "character, which an environment cannot hold."
+            )
 
 
 # Said once per process. The condition is the default, so a program that
@@ -316,7 +357,8 @@ class _Sandbox:
             name: Accepted for Modal compatibility and ignored.
             image: Container image, as an :class:`Image` or a reference string.
             env: Environment variables for the Sandbox. None values are
-                dropped, matching Modal.
+                dropped, matching Modal. Names must be letters, digits and
+                underscores, not starting with a digit, as on Modal.
             timeout: Maximum lifetime in seconds. Defaults to 300. Pass None to
                 disable.
             workdir: Working directory for commands. Must be absolute.
@@ -330,10 +372,12 @@ class _Sandbox:
                 The request is reserved from Ray; only a given limit caps the
                 container, as on Modal.
             block_network: Cut off network access entirely. When False (the
-                default) the Sandbox runs in the *host* network namespace --
-                which grants public internet egress, but also reaches host
-                loopback (where this node's Ray RPC ports listen), private
-                network ranges, and any cloud instance-metadata endpoint. Set
+                default) the Sandbox gets a network namespace and loopback of
+                its own, with no path to the node's loopback, but its egress
+                leaves through this node's sockets with no destination filter:
+                beyond the public internet, it reaches the private ranges this
+                node can reach -- Ray nodes' ports on their network addresses
+                among them -- and any cloud instance-metadata endpoint. Set
                 this to True when running code you do not trust.
             verbose: Log sandbox setup at INFO level.
             tags: Unsupported.
@@ -377,6 +421,8 @@ class _Sandbox:
             A running :class:`Sandbox`.
 
         Raises:
+            InvalidError: An argument is not usable, such as an ``env`` that
+                is not a dict of strings or names a variable Modal would refuse.
             NotImplementedError: A Modal-only parameter was passed.
             ValueError: ``app`` was never initialized with ``App.lookup()``.
         """
@@ -450,13 +496,14 @@ class _Sandbox:
             # the workload still cannot see it. Fail rather than waste it.
             raise _unsupported(
                 "The 'gpu' parameter",
-                "Ray currently do not pass a GPU device into the "
+                "Ray does not currently pass a GPU device into the "
                 "sandbox, so the reservation would be consumed but unusable.",
             )
         if args:
             _validate_exec_args(args)
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError("workdir must be an absolute path.")
+        _validate_env(env, "Sandbox", check_names=True)
         if readiness_probe is not None and not isinstance(readiness_probe, Probe):
             raise InvalidError(
                 "readiness_probe must be a Probe, got "
@@ -653,7 +700,8 @@ class _Sandbox:
                 running at the deadline ends there, and a later one returns
                 nothing. 0 or None means no timeout.
             workdir: Working directory for the command. Must be absolute.
-            env: Extra environment variables for this command only.
+            env: Extra environment variables for this command only. None
+                values are dropped.
             text: Decode the streams as UTF-8 text. When False they yield bytes.
             bufsize: ``-1`` for unbuffered output, ``1`` for line-buffered.
                 Line buffering requires ``text=True``.
@@ -686,6 +734,7 @@ class _Sandbox:
             raise ValueError("line-buffering is only supported when text=True")
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError("workdir must be an absolute path.")
+        _validate_env(env, "Sandbox.exec", check_names=False)
         if timeout is not None and timeout < 0:
             # Modal's request builder refuses this outright. Accepted, it
             # would leave the handle reporting -1 while the actor -- which

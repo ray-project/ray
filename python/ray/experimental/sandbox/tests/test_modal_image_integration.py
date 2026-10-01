@@ -27,6 +27,8 @@ pytestmark = pytest.mark.usefixtures("ensure_slirp4netns")
 # coreutils rather than busybox applets.
 MINIMAL_IMAGE = "busybox:latest"
 PYTHON_IMAGE = "python:3.13-slim"
+# Its config sets ENTRYPOINT ["git"] and CMD ["--help"].
+ENTRYPOINT_IMAGE = "alpine/git:latest"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -121,6 +123,29 @@ def test_entrypoint_prefixes_whichever_command_wins():
     try:
         # `env sh -c 'echo prefixed'` runs the overriding command via entrypoint.
         assert sandbox.stdout.read().strip() == "prefixed"
+    finally:
+        sandbox.terminate()
+
+
+@pytest.mark.parametrize(
+    "clear,expected",
+    [
+        # The base image's ENTRYPOINT ["git"] turns the arguments into a git
+        # subcommand...
+        (False, "git: 'echo' is not a git command."),
+        # ...and entrypoint([]) removes it, as on Modal.
+        (True, "MAIN"),
+    ],
+)
+def test_an_empty_entrypoint_clears_the_base_images(clear, expected):
+    image = modal.Image.from_registry(ENTRYPOINT_IMAGE)
+    if clear:
+        image = image.entrypoint([])
+    sandbox = modal.Sandbox.create("echo", "MAIN", image=image, timeout=300)
+    try:
+        sandbox.wait(raise_on_termination=False)
+        output = sandbox.stdout.read() + sandbox.stderr.read()
+        assert output.strip().startswith(expected), output
     finally:
         sandbox.terminate()
 

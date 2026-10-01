@@ -409,6 +409,71 @@ def test_a_reader_that_keeps_up_reports_no_truncation():
     assert reader.bytes_lost == 0
 
 
+class ItemsActor:
+    """Serves a stream as exactly these ``(offset, data)`` items, holes and all."""
+
+    def __init__(self, items):
+        self._items = items
+        self.stream_output = _RemoteShim(self._stream_output)
+
+    async def _stream_output(self, exec_id, fd, start_offset=0):
+        for offset, data in self._items:
+            if offset + len(data) > start_offset:
+                yield _FakeRef((offset, data))
+
+
+@pytest.mark.parametrize(
+    "items,text,by_line,expected,lost",
+    [
+        # Retained output starts inside a character -- a window moving byte by
+        # byte: the rest of that character is skipped.
+        ([(1, b"\xa9" + "éé\n".encode())], True, False, "éé\n", 2),
+        # A character cut off by a gap is dropped rather than decoded together
+        # with whatever follows the gap.
+        ([(0, b"ab\xc3"), (10, b"cd\n")], True, False, "abcd\n", 8),
+        # A character's tail spread over several tiny chunks.
+        ([(1, b"\xa9"), (2, b"\xa9"), (3, b"ok\n")], True, False, "ok\n", 3),
+        # By line, an unfinished line ends at the gap instead of being spliced
+        # onto the unrelated text after it -- with a character cut at both
+        # edges, and with plain ASCII.
+        (
+            [(0, b"one\nab\xc3"), (20, b"\xa9cd\n")],
+            True,
+            True,
+            ["one\n", "ab", "cd\n"],
+            # The 13-byte gap, the cut-off lead byte, and its skipped tail.
+            15,
+        ),
+        (
+            [(0, b"one\ntw"), (20, b"x\nthree\n")],
+            True,
+            True,
+            ["one\n", "tw", "x\n", "three\n"],
+            14,
+        ),
+        # Bytes are bytes: nothing is skipped.
+        ([(1, b"\xa9abc")], False, False, b"\xa9abc", 1),
+    ],
+)
+def test_a_gap_that_cuts_a_character_does_not_fail_the_read(
+    items, text, by_line, expected, lost
+):
+    """A strict UTF-8 decoder raised on the halves of a character a gap had
+    cut, failing the whole read instead of returning what was still there."""
+    reader = _StreamReader(
+        ItemsActor(items), "exec-1", STDOUT_FD, text=text, by_line=by_line
+    )
+
+    async def collect():
+        if by_line:
+            return [line async for line in reader]
+        return await reader.read()
+
+    assert run(collect()) == expected
+    assert reader.truncated is True
+    assert reader.bytes_lost == lost
+
+
 class _FsActor(FakeActor):
     """A FakeActor with the exec lifecycle ``copy_to_local`` drives."""
 

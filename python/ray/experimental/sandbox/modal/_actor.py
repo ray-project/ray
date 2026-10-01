@@ -684,8 +684,9 @@ class _OutputBuffer:
             piece = chunk if chunk_start >= start else chunk[start - chunk_start :]
             room = max_bytes - total
             if len(piece) >= room:
-                # Truncate rather than overshoot: an oversized yield would
-                # spill to plasma. The rest is still here for the next read.
+                # Truncate rather than overshoot: max_bytes sizes each object,
+                # and with it how much the client's backpressure window holds
+                # in flight. The rest is still here for the next read.
                 pieces.append(piece[:room] if len(piece) > room else piece)
                 total += min(len(piece), room)
                 break

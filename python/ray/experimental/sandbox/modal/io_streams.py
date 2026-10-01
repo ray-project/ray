@@ -221,18 +221,29 @@ class _StreamReader:
         if self._stream_type == StreamType.STDOUT:
             raise InvalidError(_STDOUT_MESSAGE)
 
-    async def _raw(self, start: Optional[int] = None) -> AsyncGenerator[bytes, None]:
+    async def _raw(
+        self,
+        start: Optional[int] = None,
+        loss: Optional["_PassLoss"] = None,
+        mark_gaps: bool = False,
+    ) -> AsyncGenerator[Union[bytes, object], None]:
         """Yield raw chunks from the actor, tracking position and gaps.
 
         With ``start`` None this continues the reader's own cursor, which is
         what iteration uses. Otherwise it is an independent pass from
         ``start``, as ``read()`` makes.
+
+        ``loss`` collects what this pass lost, shared with a caller that
+        discards more at a gap. ``mark_gaps`` yields :data:`_GAP` just before
+        the first bytes after each gap, for a decoder that must not join the
+        bytes on either side of one.
         """
         if self._deadline_passed():
             # Answered here, without the actor, as Modal's client answers it.
             return
         cursor = self._offset if start is None else start
-        pass_lost = 0
+        if loss is None:
+            loss = _PassLoss()
         stream = iter_stream(self._actor, self._exec_id, self._file_descriptor, cursor)
         try:
             with _sandbox_gone_as_not_found():
@@ -247,8 +258,10 @@ class _StreamReader:
                         return
                     if offset > cursor:
                         # The actor dropped bytes this pass had not reached yet.
-                        pass_lost += offset - cursor
-                        self._note_gap(offset - cursor, pass_lost)
+                        loss.lost += offset - cursor
+                        self._note_gap(offset - cursor, loss.lost)
+                        if mark_gaps:
+                            yield _GAP
                     cursor = offset + len(chunk)
                     if start is None:
                         self._offset = cursor
@@ -317,9 +330,46 @@ class _StreamReader:
             else None
         )
         splitter = _LineSplitter() if by_line else None
-        source = self._raw(start)
+        loss = _PassLoss()
+        # Only text needs to know where the gaps are: bytes join up anyway.
+        source = self._raw(start, loss=loss, mark_gaps=decoder is not None)
+        # UTF-8 continuation bytes still to skip after a gap; see below.
+        skip = 0
         try:
             async for chunk in source:
+                if chunk is _GAP:
+                    # The bytes on either side of a gap do not join up. A
+                    # character can be cut at either edge -- a window moving
+                    # byte by byte, or a drop at a pipe read's boundary -- and
+                    # the strict decoder raised on the halves, failing the
+                    # read instead of returning what is still there.
+                    items: List[Union[str, bytes]] = []
+                    if splitter is not None:
+                        # An unfinished line ends at the gap: what follows it
+                        # is not its continuation.
+                        before = decoder.decode(splitter.finish())
+                        if before:
+                            items.append(before)
+                    held, _ = decoder.getstate()
+                    decoder.reset()
+                    if held:
+                        loss.lost += len(held)
+                        self._note_gap(len(held), loss.lost)
+                    # UTF-8 resynchronizes: at most three continuation bytes
+                    # lead into the next character's first byte.
+                    skip = 3
+                    if items:
+                        yield items
+                    continue
+                if skip:
+                    cut = _continuation_prefix(chunk, skip)
+                    if cut:
+                        chunk = chunk[cut:]
+                        loss.lost += cut
+                        self._note_gap(cut, loss.lost)
+                    skip = 0 if chunk else skip - cut
+                    if not chunk:
+                        continue
                 if splitter is None:
                     item = decoder.decode(chunk) if decoder else chunk
                     if item:
@@ -372,6 +422,31 @@ class _StreamReader:
                 self._file_descriptor,
                 exc_info=True,
             )
+
+
+# Yielded by _StreamReader._raw, when asked, just before the first bytes after
+# a gap in the stream.
+_GAP = object()
+
+
+class _PassLoss:
+    """What one pass over a stream has lost so far: gaps, and the bytes of a
+    character a gap cut in two."""
+
+    __slots__ = ("lost",)
+
+    def __init__(self):
+        self.lost = 0
+
+
+def _continuation_prefix(chunk: bytes, limit: int) -> int:
+    """How many of ``chunk``'s first bytes, at most ``limit``, are UTF-8
+    continuation bytes (``0b10xxxxxx``) -- the rest of a character whose
+    start was lost."""
+    count = 0
+    while count < limit and count < len(chunk) and 0x80 <= chunk[count] <= 0xBF:
+        count += 1
+    return count
 
 
 class _LineSplitter:

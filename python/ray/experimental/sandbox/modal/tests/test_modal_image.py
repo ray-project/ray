@@ -168,6 +168,42 @@ def test_main_argv_precedence(entrypoint, cmd, override, expected):
     assert resolve_image(image).main_argv(override) == expected
 
 
+# alpine/git's own config, the image the Modal measurements below used.
+_GIT_CONFIG = {"Entrypoint": ["git"], "Cmd": ["--help"]}
+
+
+@pytest.mark.parametrize(
+    "build,override,expected",
+    [
+        # Each case's expectation was measured on Modal with alpine/git.
+        (lambda image: image, [], ["git", "--help"]),
+        (lambda image: image.cmd(["--version"]), [], ["git", "--version"]),
+        # An empty argv clears the base's rather than falling back to it.
+        (lambda image: image.entrypoint([]), ["echo", "MAIN"], ["echo", "MAIN"]),
+        (lambda image: image.cmd([]), [], ["git"]),
+        # A new ENTRYPOINT keeps the inherited CMD: Modal does not apply
+        # Docker's rule that setting one resets the other.
+        (
+            lambda image: image.entrypoint(["/bin/echo", "EP"]),
+            [],
+            ["/bin/echo", "EP", "--help"],
+        ),
+        # Left with nothing to run, the sandbox starts idle.
+        (lambda image: image.entrypoint([]).cmd([]), [], []),
+    ],
+)
+def test_main_argv_layers_over_the_base_image_config(build, override, expected):
+    resolved = resolve_image(build(Image(BASE)))
+    assert resolved.main_argv(override, _GIT_CONFIG) == expected
+
+
+def test_an_unset_argv_is_none_rather_than_empty():
+    """None is what lets the base image's own value through."""
+    resolved = resolve_image(Image(BASE))
+    assert resolved.argv_prefix is None
+    assert resolved.default_cmd is None
+
+
 def test_metadata_alone_resolves_to_the_base_image():
     image = Image(BASE).env({"A": "1"}).workdir("/app").cmd(["x"]).entrypoint(["y"])
     assert image.reference == BASE

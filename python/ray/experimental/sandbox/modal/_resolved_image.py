@@ -47,8 +47,11 @@ class ResolvedImage:
         workdir: Working directory for the main process, or None for the
             image's own WORKDIR.
         shell: Interpreter for string commands, or None for the default.
-        argv_prefix: ENTRYPOINT to prefix onto the main process argv.
-        default_cmd: CMD to run when ``Sandbox.create()`` passes no arguments.
+        argv_prefix: ENTRYPOINT to prefix onto the main process argv, or
+            None for the base image's own. Empty clears the base image's.
+        default_cmd: CMD to run when ``Sandbox.create()`` passes no
+            arguments, or None for the base image's own. Empty clears the
+            base image's.
         startup_files: Local files to push once the sandbox exists.
     """
 
@@ -57,8 +60,8 @@ class ResolvedImage:
     env: Dict[str, str] = field(default_factory=dict)
     workdir: Optional[str] = None
     shell: Optional[str] = None
-    argv_prefix: Tuple[str, ...] = ()
-    default_cmd: Tuple[str, ...] = ()
+    argv_prefix: Optional[Tuple[str, ...]] = None
+    default_cmd: Optional[Tuple[str, ...]] = None
     startup_files: Tuple[StartupFile, ...] = ()
 
     def main_argv(
@@ -76,10 +79,19 @@ class ResolvedImage:
         sandbox created from an application image starts idle -- no main
         process, no output, no exit code -- where Modal would have run the
         image's CMD.
+
+        Each layer falls back to the base image's only when the Image never
+        set it: ``entrypoint([])`` and ``cmd([])`` clear the base's, as
+        measured on Modal. A sandbox left with nothing to run starts idle
+        here; on Modal it fails to start, with exit code 128.
         """
         config = image_config or {}
-        prefix = self.argv_prefix or tuple(config.get("Entrypoint") or ())
-        default = self.default_cmd or tuple(config.get("Cmd") or ())
+        prefix = self.argv_prefix
+        if prefix is None:
+            prefix = tuple(config.get("Entrypoint") or ())
+        default = self.default_cmd
+        if default is None:
+            default = tuple(config.get("Cmd") or ())
 
         chosen = list(override) if override else list(default)
         if not chosen and not prefix:

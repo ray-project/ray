@@ -45,19 +45,6 @@ def test_resource_tuples_use_the_request_half(value, expected):
 
 
 @pytest.mark.parametrize(
-    "gpu,expected",
-    [(None, None), ("A100", 1.0), ("A100:2", 2.0), ("T4:4", 4.0), (2, 2.0)],
-)
-def test_gpu_specs_reduce_to_a_count(gpu, expected):
-    assert sandbox_mod._gpu_count(gpu) == expected
-
-
-def test_unparseable_gpu_spec_is_rejected():
-    with pytest.raises(InvalidError, match="GPU count"):
-        sandbox_mod._gpu_count("A100:many")
-
-
-@pytest.mark.parametrize(
     "env,expected",
     [
         (None, {}),
@@ -69,6 +56,44 @@ def test_unparseable_gpu_spec_is_rejected():
 )
 def test_none_valued_env_entries_are_dropped(env, expected):
     assert sandbox_mod._clean_env(env) == expected
+
+
+@pytest.mark.parametrize("env", ["A=1", ["A"], {1: "x"}, {"A": 1}, {"A": b"x"}])
+def test_create_refuses_an_env_that_is_not_a_dict_of_strings(env):
+    """Modal's check and message. The backend would stringify the value, or
+    fail far from the call, when it writes the OCI spec."""
+    with pytest.raises(
+        InvalidError,
+        match=r"env argument to Sandbox must be a dict\[str, str \| None\]",
+    ):
+        Sandbox.create(image="busybox:latest", env=env)
+
+
+# "A=B" is the one that matters most: written as "A=B=x", it sets A to "B=x".
+@pytest.mark.parametrize("key", ["1A", "A-B", "A=B", "A B", "A\n", "Ä"])
+def test_create_refuses_a_variable_name_modal_refuses(key):
+    with pytest.raises(InvalidError, match="is invalid for environment variables"):
+        Sandbox.create(image="busybox:latest", env={key: "x"})
+
+
+def test_create_refuses_an_empty_variable_name():
+    with pytest.raises(InvalidError, match="cannot be empty"):
+        Sandbox.create(image="busybox:latest", env={"": "x"})
+
+
+def test_create_refuses_a_nul_in_a_value():
+    with pytest.raises(InvalidError, match="NUL"):
+        Sandbox.create(image="busybox:latest", env={"A": "x\0y"})
+
+
+def test_create_accepts_names_modal_accepts():
+    # A None value is dropped before checking, as on Modal, so its name is
+    # never looked at.
+    sandbox_mod._validate_env(
+        {"A": "1", "_x9": "", "lower": "v", "1A": None},
+        "Sandbox",
+        check_names=True,
+    )
 
 
 @pytest.mark.parametrize(
@@ -691,6 +716,23 @@ def test_a_zero_exec_timeout_means_no_deadline(timeout, has_deadline):
     sb = Sandbox._from_impl(_Sandbox(_ExecRecorder(), "ray-sandbox-test", None))
     process = sb.exec("true", timeout=timeout)
     assert (process._impl._exec_deadline is not None) is has_deadline
+
+
+@pytest.mark.parametrize(
+    "env",
+    ["A=1", {"A": 1}, {"": "x"}, {"A=B": "x"}, {"A\0": "x"}, {"A": "x\0"}],
+)
+def test_exec_refuses_an_env_the_backend_would_mangle(env):
+    """Each pair reaches `runsc exec -env` as "key=value"."""
+    sb = Sandbox._from_impl(_Sandbox(_ExecRecorder(), "ray-sandbox-test", None))
+    with pytest.raises(InvalidError):
+        sb.exec("true", env=env)
+
+
+def test_exec_does_not_apply_modals_create_only_name_rule():
+    """Modal checks names for create() alone; exec keeps that latitude."""
+    sb = Sandbox._from_impl(_Sandbox(_ExecRecorder(), "ray-sandbox-test", None))
+    sb.exec("true", env={"1A": "x", "A-B": "y", "C": None})
 
 
 class _DeadActor:

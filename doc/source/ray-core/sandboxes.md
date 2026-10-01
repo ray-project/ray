@@ -468,13 +468,14 @@ A Ray sandbox is owned by the handle that created it and there's no hosted contr
 | `filesystem.*` except `watch()` | Supported |
 | `App`, and the `app` / `name` arguments | Accepted and ignored |
 | `Image` | Supported as a reference to a registry image or a local OCI tar, cached on each node like any sandbox image and pulled again with `force_build=True`. Layer builders such as `pip_install()` aren't available. |
-| `cpu`, `memory`, `gpu`, `timeout`, `workdir`, `env`, `block_network` | Supported. `gpu` uses the count only, since Ray schedules on GPU count rather than model. |
+| `cpu`, `memory`, `timeout`, `workdir`, `env`, `block_network` | Supported |
 | `readiness_probe`, `wait_until_ready()` | Supported with `Probe.with_exec()`. `Probe.with_tcp()` isn't. |
 | `from_id`, `from_name`, `list`, `get_tags`, `set_tags` | Not supported — sandboxes aren't registered anywhere |
 | `tunnels`, `create_connect_token`, and the `*_ports` arguments | Not supported — the backend publishes no ports |
 | `snapshot_filesystem`, `snapshot_directory`, `mount_image`, `unmount_image` | Not supported |
 | `secrets`, `volumes`, `network_file_systems`, `proxy` | Not supported |
 | `cloud`, `region`, `idle_timeout`, `pty` | Not supported |
+| `gpu` | Not supported — no GPU device is passed into the sandbox, so a reservation would go unused |
 | `filesystem.watch()` | Not supported — needs inotify inside the sandbox |
 
 Two behavioral differences worth knowing:
