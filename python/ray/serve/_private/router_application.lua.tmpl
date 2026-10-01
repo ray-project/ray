@@ -3,6 +3,7 @@
 -- Filled in by _write_router_application_lua in haproxy.py.
 
 local DECISION_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
+local DIRECT_RESPONSE_HEADER = "${DIRECT_RESPONSE_HEADER}"
 local REQUEST_ID_HEADER = "x-request-id"
 -- Lowercase RAY_SERVE_SESSION_ID_HEADER_KEY; empty disables forwarding.
 local SESSION_HEADER = "${SESSION_HEADER}"
@@ -86,13 +87,19 @@ local function parse_response(response)
     return status, response:sub(1, head_end - 1), response:sub(body_start + 1)
 end
 
+local function response_header(head, name)
+    local escaped = name:gsub("%-", "%%-")
+    return head:match("\r\n" .. escaped .. ":%s*([^\r\n]*)")
+        or head:lower():match("\r\n" .. escaped:lower() .. ":%s*([^\r\n]*)")
+end
+
 -- Decision fields are plain strings without escapes.
 local function json_string_field(json_body, name)
     return json_body:match('"' .. name .. '"%s*:%s*"([^"\\]*)"')
 end
 
 local function reply_with(txn, status, head, body)
-    local content_type = head:match("\r\n[Cc]ontent%-[Tt]ype:%s*([^\r\n]*)")
+    local content_type = response_header(head, "content-type")
     local reply = txn:reply()
     reply:set_status(status)
     reply:add_header("content-type", content_type or "text/plain")
@@ -160,6 +167,9 @@ local function route(txn, router)
     local status, head, response_body = parse_response(response)
     if not status then
         return fail(txn, "malformed_decision")
+    end
+    if response_header(head, DIRECT_RESPONSE_HEADER) == "1" then
+        return reply_with(txn, status, head, response_body)
     end
     if status < 200 or status > 299 then
         return reply_with(txn, status, head, response_body)

@@ -82,6 +82,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy_templates import (
@@ -1381,6 +1382,7 @@ class HAProxyApi(ProxyApi):
 
         content = _load_lua_template("router_application.lua.tmpl").substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            DIRECT_RESPONSE_HEADER=SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
             ROUTERS=_format_router_application_pools_lua(pools),
             APPS=_format_router_target_apps_lua(_router_target_apps(backends)),
