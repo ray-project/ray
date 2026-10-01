@@ -6,7 +6,12 @@ import sys
 
 import ray
 from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app, build_pd_openai_app
+from ray.serve.llm import (
+    LLMConfig,
+    ModelLoadingConfig,
+    build_openai_app,
+    build_pd_openai_app,
+)
 from vllm import AsyncEngineArgs
 
 from vllm.v1.engine.async_llm import AsyncLLM
@@ -19,6 +24,10 @@ from ray.serve._private.test_utils import wait_for_haproxy_routing_to_replica
 import time
 
 from utils import shutdown_serve_and_wait_for_controller
+
+S3_ARTIFACT_ASSETS_URL = (
+    "https://air-example-data.s3.amazonaws.com/rayllm-ossci/assets/"
+)
 
 # Pooling models (classify/reward) are only served through vLLM's native ASGI
 # app, which is used when direct streaming is enabled. The default OpenAiIngress
@@ -651,6 +660,117 @@ def test_chat_completion_with_default_chat_template_kwargs():
 
     shutdown_serve_and_wait_for_controller()
     time.sleep(1)
+
+
+@pytest.mark.timeout(600)
+@pytest.mark.parametrize(
+    "model, modality",
+    [
+        ("Qwen/Qwen3-VL-2B-Instruct", "image"),
+        ("Qwen/Qwen3-ASR-0.6B", "audio"),
+    ],
+    ids=["image", "audio"],
+)
+def test_pd_multimodal_with_tokenize_once(model, modality):
+    """Multimodal P/D chat must work with pd_tokenize_once enabled."""
+    if modality == "image":
+        content = [
+            {"type": "text", "text": "Describe the image briefly."},
+            {
+                "type": "image_url",
+                "image_url": {"url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"},
+            },
+        ]
+        limits = {"image": 1, "video": 0}
+    else:
+        content = [
+            {"type": "text", "text": "Transcribe the audio."},
+            {
+                "type": "audio_url",
+                "audio_url": {"url": S3_ARTIFACT_ASSETS_URL + "winning_call.ogg"},
+            },
+        ]
+        limits = {"audio": 1}
+
+    prefill_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id=model, model_source=model),
+        deployment_config={"num_replicas": 1},
+        engine_kwargs={
+            "tensor_parallel_size": 1,
+            "max_model_len": 2048,
+            "max_num_batched_tokens": 2048,
+            "max_num_seqs": 2,
+            "gpu_memory_utilization": 0.8,
+            "enforce_eager": True,
+            "limit_mm_per_prompt": limits,
+            "mm_processor_kwargs": {"max_pixels": 224 * 224}
+            if modality == "image"
+            else {},
+            # vLLM 0.29 indexes the submodel's otherwise empty architectures.
+            # Remove after upgrading past vllm-project/vllm#58212.
+            "hf_overrides": {"text_config": {"architectures": ["Qwen3ForCausalLM"]}}
+            if modality == "image"
+            else {},
+            "kv_transfer_config": {
+                "kv_connector": "NixlConnector",
+                "kv_role": "kv_both",
+            },
+        },
+        experimental_configs={"NIXL_SIDE_CHANNEL_PORT_BASE": 15000},
+    )
+    decode_config = prefill_config.model_copy(deep=True)
+    decode_config.experimental_configs = {
+        "NIXL_SIDE_CHANNEL_PORT_BASE": 16000,
+        "pd_tokenize_once": True,
+    }
+    app = build_pd_openai_app(
+        {
+            "prefill_config": prefill_config,
+            "decode_config": decode_config,
+        }
+    )
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    with openai.OpenAI(
+        base_url="http://localhost:8000/v1", api_key="test", timeout=120, max_retries=0
+    ) as client:
+        for stream in (False, True):
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": content}],
+                max_tokens=32,
+                temperature=0,
+                stream=stream,
+                stream_options={"include_usage": True} if stream else None,
+                # Even if the caller asks prefill to return IDs, decode must
+                # render the media instead of taking vLLM's token-only path.
+                extra_body={"return_token_ids": True},
+            )
+            if stream:
+                chunks = list(response)
+                text = "".join(
+                    choice.delta.content or ""
+                    for chunk in chunks
+                    for choice in chunk.choices
+                )
+                finish_reasons = [
+                    choice.finish_reason
+                    for chunk in chunks
+                    for choice in chunk.choices
+                    if choice.finish_reason
+                ]
+                usage = chunks[-1].usage
+            else:
+                text = response.choices[0].message.content
+                finish_reasons = [response.choices[0].finish_reason]
+                usage = response.usage
+            assert text and text.strip()
+            assert finish_reasons == ["stop"] or finish_reasons == ["length"]
+            assert usage.prompt_tokens > 0
+            assert usage.completion_tokens > 0
+
+    shutdown_serve_and_wait_for_controller()
 
 
 if __name__ == "__main__":
