@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED
 from ray.rllib.utils.metrics.stats.sum import SumStats
@@ -42,3 +46,7 @@ def test_synchronous_parallel_sample_ignores_nan_agent_step_metrics():
     assert samples == [["sample"]]
     assert len(metrics) == 1
     assert int(metrics[0][NUM_AGENT_STEPS_SAMPLED]["present_agent"]) == 2
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -2171,7 +2171,7 @@ py_test(
     size = "small",
     srcs = ["execution/tests/test_rollout_ops.py"],
     tags = [
-        "execution",
+        "core",
         "team:rllib",
     ],
     deps = [":conftest"],
