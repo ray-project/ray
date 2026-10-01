@@ -81,6 +81,33 @@ class TestAuthMiddleware:
         assert resp.status_code == 200
         assert resp.json()["user_id"] == AUTHENTICATED_USER_ID
 
+    def test_non_ascii_token_rejected_not_crashed(self):
+        # Starlette decodes header bytes as latin-1, so a token can be non-ASCII.
+        # secrets.compare_digest raises TypeError on non-ASCII str, so without
+        # byte-comparison this 401 would instead be a 500. Drive _is_authorized
+        # with raw header bytes (TestClient/httpx refuse non-ASCII header values).
+        from starlette.requests import Request
+
+        mw = AuthMiddleware(None, api_key=API_KEY)
+        req = Request(
+            {"type": "http", "headers": [(b"authorization", b"Bearer caf\xe9")]}
+        )
+        assert mw._is_authorized(req) is False  # no TypeError
+
+    def test_non_ascii_key_accepts_matching_token(self):
+        from starlette.requests import Request
+
+        # A non-ASCII configured key still matches its exact (latin-1) token.
+        mw = AuthMiddleware(None, api_key="caf\xe9")
+        match = Request(
+            {"type": "http", "headers": [(b"authorization", b"Bearer caf\xe9")]}
+        )
+        wrong = Request(
+            {"type": "http", "headers": [(b"authorization", b"Bearer caf\xe8")]}
+        )
+        assert mw._is_authorized(match) is True
+        assert mw._is_authorized(wrong) is False
+
     def test_bearer_scheme_is_case_insensitive(self):
         app = _build_app(api_key=API_KEY)
         resp = _post(app, {"Authorization": f"bearer {API_KEY}"})
@@ -191,14 +218,17 @@ class TestInitWiring:
 
 
 class TestApplyIngressApiKeyToDirectStreaming:
-    """`_apply_ingress_api_key` propagates the explicit key to the replica env so
-    vLLM's native auth enforces it on direct-streaming paths."""
+    """`_apply_ingress_api_key` routes the explicit key through vLLM's
+    `engine_kwargs["api_key"]` so vLLM's native auth enforces it on
+    direct-streaming paths, without mutating runtime_env (which would clobber
+    inherited env vars)."""
 
-    def _config(self, runtime_env=None):
+    def _config(self, engine_kwargs=None):
         from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
         return LLMConfig(
-            model_loading_config=dict(model_id="m"), runtime_env=runtime_env
+            model_loading_config=dict(model_id="m"),
+            engine_kwargs=engine_kwargs or {},
         )
 
     def _apply(self, config, api_key):
@@ -212,23 +242,26 @@ class TestApplyIngressApiKeyToDirectStreaming:
         config = self._config()
         assert self._apply(config, None) is config
 
-    def test_injects_vllm_api_key_env_var(self):
+    def test_injects_api_key_as_list_into_engine_kwargs(self):
+        # vLLM's FrontendArgs.api_key is list[str].
         out = self._apply(self._config(), API_KEY)
-        assert out.runtime_env["env_vars"][ENV_VAR] == API_KEY
+        assert out.engine_kwargs["api_key"] == [API_KEY]
 
-    def test_preserves_existing_env_vars(self):
-        config = self._config(runtime_env={"env_vars": {"OTHER": "1"}})
-        env = self._apply(config, API_KEY).runtime_env["env_vars"]
-        assert env == {"OTHER": "1", ENV_VAR: API_KEY}
+    def test_does_not_touch_runtime_env(self):
+        # runtime_env must stay None so get_deployment_options keeps inherited
+        # job/deployment env vars.
+        out = self._apply(self._config(), API_KEY)
+        assert out.runtime_env is None
 
-    def test_explicit_key_overrides_existing_env(self):
-        config = self._config(runtime_env={"env_vars": {ENV_VAR: "old"}})
-        assert self._apply(config, API_KEY).runtime_env["env_vars"][ENV_VAR] == API_KEY
+    def test_preserves_existing_engine_kwargs(self):
+        out = self._apply(self._config(engine_kwargs={"max_model_len": 8}), API_KEY)
+        assert out.engine_kwargs["max_model_len"] == 8
+        assert out.engine_kwargs["api_key"] == [API_KEY]
 
     def test_original_config_unchanged(self):
-        config = self._config()
+        config = self._config(engine_kwargs={"max_model_len": 8})
         self._apply(config, API_KEY)
-        assert config.runtime_env is None
+        assert "api_key" not in config.engine_kwargs
 
 
 if __name__ == "__main__":

@@ -241,8 +241,16 @@ class AuthMiddleware:
         if scheme.lower() != "bearer":
             return False
         token = param.strip()
+        if not token:
+            return False
         # Constant-time comparison to avoid leaking the key via response timing.
-        return bool(token) and secrets.compare_digest(token, self.api_key)
+        # Compare as UTF-8 bytes: secrets.compare_digest raises TypeError on
+        # non-ASCII str inputs, which would otherwise surface as a 500 (the
+        # middleware runs outside the exception-handling middleware) for a
+        # token/key containing non-ASCII characters.
+        return secrets.compare_digest(
+            token.encode("utf-8"), self.api_key.encode("utf-8")
+        )
 
     async def __call__(self, scope, receive, send):
         # No key configured, or non-HTTP scope (lifespan/websocket): pass through.

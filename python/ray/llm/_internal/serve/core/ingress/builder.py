@@ -14,13 +14,12 @@ from ray.llm._internal.serve.constants import (
     RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     get_llm_serve_runtime_env,
 )
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig, LLMEngine
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.ingress.middleware import VLLM_API_KEY_ENV_VAR
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -56,29 +55,32 @@ def _apply_ingress_api_key(llm_config: LLMConfig, api_key: Optional[str]) -> LLM
     """Propagate an explicit ingress ``api_key`` to a direct-streaming replica.
 
     In direct-streaming mode the ingress app is vLLM's own FastAPI app, built
-    inside the replica, which enforces ``VLLM_API_KEY`` read from the replica
-    process environment. Injecting the configured key there makes the explicit
-    ``api_key`` config enforce auth on the direct-streaming paths too, so
-    authentication does not depend on which builder/mode is used. Takes
-    precedence over any pre-existing ``VLLM_API_KEY`` in the model's
-    ``runtime_env``, matching the OpenAiIngress precedence (explicit key over
-    environment).
+    inside the replica from the engine args, and it enforces auth from vLLM's
+    ``FrontendArgs.api_key``. Routing the configured key through
+    ``engine_kwargs["api_key"]`` (which the vLLM engine maps onto
+    ``FrontendArgs.api_key``) makes the explicit ``api_key`` config enforce auth
+    on the direct-streaming paths too, so authentication does not depend on
+    which builder/mode is used.
+
+    ``engine_kwargs`` is used rather than ``runtime_env`` env vars on purpose:
+    ``LLMServer.get_deployment_options`` shallow-merges ``runtime_env``, so
+    injecting an ``env_vars`` dict would clobber env vars inherited from the job
+    and deployment. Only applied for the vLLM engine, whose ``FrontendArgs``
+    defines ``api_key`` (a ``list[str]``, hence the single-element list).
 
     Args:
         llm_config: The model configuration to augment.
         api_key: The explicit bearer key, or ``None``/empty to leave unchanged.
 
     Returns:
-        The original config when no key is given, else a copy whose
-        ``runtime_env.env_vars`` carries ``VLLM_API_KEY``.
+        The original config when no key is given or the engine is not vLLM, else
+        a copy whose ``engine_kwargs`` carries ``api_key``.
     """
-    if not api_key:
+    if not api_key or llm_config.llm_engine != LLMEngine.vLLM:
         return llm_config
-    runtime_env = dict(llm_config.runtime_env or {})
-    env_vars = dict(runtime_env.get("env_vars") or {})
-    env_vars[VLLM_API_KEY_ENV_VAR] = api_key
-    runtime_env["env_vars"] = env_vars
-    return llm_config.model_copy(update={"runtime_env": runtime_env})
+    engine_kwargs = dict(llm_config.engine_kwargs)
+    engine_kwargs["api_key"] = [api_key]
+    return llm_config.model_copy(update={"engine_kwargs": engine_kwargs})
 
 
 def _build_direct_streaming_llm_deployment(
