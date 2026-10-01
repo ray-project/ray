@@ -170,9 +170,26 @@ class PDOrchestratorMixin:
 
     @staticmethod
     def _can_reuse_prompt_token_ids(request: RequestType) -> bool:
-        """Allow reuse for completions and text-only chats without echo or prompt text."""
+        """Allow reuse for single-prompt completions and text-only chats, no echo."""
         if isinstance(request, CompletionRequest):
-            return True
+            # Prefill returns ids for the first prompt only, so batched or
+            # embeds prompts would be collapsed. Echo needs the prompt text.
+            prompt = request.prompt
+            return (
+                not request.echo
+                and request.prompt_embeds is None
+                and (
+                    isinstance(prompt, str)
+                    or (
+                        isinstance(prompt, list)
+                        and len(prompt) > 0
+                        and (
+                            len(prompt) == 1
+                            or all(isinstance(token, int) for token in prompt)
+                        )
+                    )
+                )
+            )
         if not isinstance(request, ChatCompletionRequest):
             return False
         if request.echo or request.return_prompt_text:

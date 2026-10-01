@@ -439,6 +439,35 @@ class TestPDOrchestratorMixin:
 
         assert engine_inputs == [{"prompt_token_ids": [1, 2, 3]}]
 
+    @pytest.mark.parametrize(
+        "prompt, request_options, reuse_ids",
+        [
+            ("hello", {}, True),
+            (["hello"], {}, True),
+            ([4, 5], {}, True),
+            ([[4, 5]], {}, True),
+            (["hello", "world"], {}, False),
+            ([[4, 5], [6, 7]], {}, False),
+            ("hello", {"echo": True}, False),
+        ],
+    )
+    def test_completion_token_reuse(self, prompt, request_options, reuse_ids):
+        """Batched and echo completions must keep their original prompt."""
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        request = CompletionRequest(
+            model="test-model", prompt=prompt, **request_options
+        )
+        request.return_token_ids = False
+        server._request_prefill_token_ids(request)
+        assert request.return_token_ids is reuse_ids
+
+        server._forward_prefill_token_ids(
+            request,
+            SimpleNamespace(choices=[SimpleNamespace(prompt_token_ids=[1, 2, 3])]),
+        )
+        assert request.prompt == ([1, 2, 3] if reuse_ids else prompt)
+
     def test_prepare_prefill_request_limits_chat_to_one_token(self):
         from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
             DefaultConnectorBackend,
