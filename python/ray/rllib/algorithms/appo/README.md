@@ -20,10 +20,6 @@ buffer. A target network and doubly-importance sampled surrogate objective is in
 to enforce training stability in the asynchronous data-collection setting.
 [See implementation here](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/appo/appo.py)
 
-### Decentralized Distributed PPO (DDPPO)
-
-[See implementation here](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ddppo/ddppo.py)
-
 
 ## Documentation & Implementation:
 
@@ -31,4 +27,4 @@ to enforce training stability in the asynchronous data-collection setting.
 
 **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#appo)**
 
-**[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ppo/appo.py)**
+**[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/appo/appo.py)**
