@@ -140,6 +140,14 @@ class MCAPDatasource(FileBasedDatasource):
             include_metadata: Whether to include MCAP metadata fields in the output.
                 Defaults to True. When True, includes schema, channel, and message
                 metadata.
+            decode_video: Whether to decode video topics into frames. Defaults to
+                False, which keeps the raw payload in the ``data`` column. When
+                True, each row carries a decoded RGB frame in a ``frame`` column
+                and ``data`` is dropped. Requires ``av`` and ``Pillow``.
+            fps: Subsample decoded frames to approximately this rate, applied
+                against message log time. Only valid with ``decode_video=True``.
+            resize: Resize decoded frames to this ``(height, width)``. Only valid
+                with ``decode_video=True``.
             **file_based_datasource_kwargs: Additional arguments for FileBasedDatasource.
         """
         super().__init__(paths, **file_based_datasource_kwargs)
