@@ -61,9 +61,17 @@ class OrcScanner(ArrowFileScanner):
             if self.batch_size is not None
             else _ARROW_DEFAULT_BATCH_SIZE
         )
+        # FileReader appends synthesized columns after scanning, then uses
+        # ``columns`` to restore the logical schema order. Keep that ordering
+        # when the caller has not pushed down a projection.
+        columns = (
+            list(self.columns)
+            if self.columns is not None
+            else list(self.read_schema().names)
+        )
         return OrcFileReader(
             batch_size=batch_size,
-            columns=list(self.columns) if self.columns is not None else None,
+            columns=columns,
             predicate=self.predicate,
             limit=self.limit,
             filesystem=self.filesystem,

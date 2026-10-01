@@ -123,7 +123,7 @@ def test_orc_reader_synthesizes_partition_and_path(tmp_path):
     _write_orc(path, pa.table({"id": [1, 2]}))
     # The datasource passes the final schema, including synthesized columns.
     schema = pa.schema(
-        [("id", pa.int64()), ("year", pa.string()), ("path", pa.string())]
+        [("id", pa.int64()), ("path", pa.string()), ("year", pa.string())]
     )
 
     scanner = OrcScanner(
@@ -135,7 +135,8 @@ def test_orc_reader_synthesizes_partition_and_path(tmp_path):
     )
     result = pa.concat_tables(list(scanner.create_reader().read(_manifest(path))))
 
-    assert scanner.read_schema().names == ["id", "year", "path"]
+    assert scanner.read_schema().names == schema.names
+    assert result.schema.names == schema.names
     assert result.to_pylist() == [
         {"id": 1, "year": "2024", "path": str(path)},
         {"id": 2, "year": "2024", "path": str(path)},
@@ -217,6 +218,22 @@ def test_orc_reader_projects_synthesized_path(tmp_path):
     ]
 
 
+def test_orc_reader_adds_synthesized_path_missing_from_schema(tmp_path):
+    path = tmp_path / "data.orc"
+    table = pa.table({"id": [1, 2]})
+    _write_orc(path, table)
+    scanner = OrcScanner(schema=table.schema, synthesized_columns=(PathColumn(),))
+
+    result = pa.concat_tables(list(scanner.create_reader().read(_manifest(path))))
+
+    assert scanner.read_schema().names == ["id", "path"]
+    assert result.schema.names == scanner.read_schema().names
+    assert result.to_pylist() == [
+        {"id": 1, "path": str(path)},
+        {"id": 2, "path": str(path)},
+    ]
+
+
 def test_orc_scanner_read_schema_projects_synthesized_column_missing_from_schema():
     scanner = OrcScanner(
         schema=pa.schema([("id", pa.int64())]),
@@ -237,7 +254,7 @@ def test_orc_scanner_read_schema_uses_synthesized_type_for_existing_field():
 
 def test_orc_reader_uses_synthesized_type_when_replacing_file_column(tmp_path):
     path = tmp_path / "data.orc"
-    table = pa.table({"id": [1, 2], "path": [10, 20]})
+    table = pa.table({"id": [1, 2], "path": [10, 20], "value": ["a", "b"]})
     _write_orc(path, table)
 
     scanner = OrcScanner(schema=table.schema, synthesized_columns=(PathColumn(),))
@@ -245,8 +262,11 @@ def test_orc_reader_uses_synthesized_type_when_replacing_file_column(tmp_path):
     result = pa.concat_tables(batches)
 
     assert scanner.read_schema().field("path").type == pa.string()
+    assert scanner.read_schema().names == ["id", "path", "value"]
+    assert result.schema.names == scanner.read_schema().names
     assert result.schema.field("path").type == pa.string()
     assert result.column("path").to_pylist() == [str(path), str(path)]
+    assert result.column("value").to_pylist() == ["a", "b"]
 
 
 if __name__ == "__main__":
