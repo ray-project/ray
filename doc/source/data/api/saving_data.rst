@@ -125,6 +125,15 @@ NumPy
 
    Dataset.write_numpy
 
+ORC
+^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_orc
+
 Pandas
 ^^^^^^
 
@@ -231,4 +240,3 @@ Pandas refs
    :toctree: doc/
 
    Dataset.to_pandas_refs
-

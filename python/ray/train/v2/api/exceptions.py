@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Dict
 
 from ray.train.v2._internal.exceptions import RayTrainError
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.train.v2.api.preemption import PreemptionInfo
@@ -31,6 +31,11 @@ class WorkerGroupError(TrainingFailedError):
 
     def __reduce__(self):
         return (self.__class__, (self._error_message, self.worker_failures))
+
+
+@DeveloperAPI
+class NCCLHangError(WorkerGroupError):
+    """Exception raised when the NCCL RAS subsystem detects a hung training job."""
 
 
 @PublicAPI(stability="alpha")

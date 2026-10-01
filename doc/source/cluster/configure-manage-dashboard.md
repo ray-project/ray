@@ -11,7 +11,7 @@ myst:
 Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster vs. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced dashboard experience.
 
 :::{note}
-Ray dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
+Ray dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.md), and other observability tools.
 :::
 
 ## Changing the Ray dashboard port
