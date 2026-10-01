@@ -1,4 +1,5 @@
 # Unit tests for ray._private.gcs_passive_utils.
+import asyncio
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
@@ -185,6 +186,19 @@ async def test_async_is_gcs_leader_with_check_alive(monkeypatch):
     client.async_check_alive.reset_mock()
     assert await _async_is_gcs_leader(client) is True
     client.async_check_alive.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_is_gcs_leader_with_future():
+    """Verify that when async_check_alive returns an asyncio.Future (as Cython GcsClient does), it is properly awaited."""
+    client = MagicMock()
+    fut = asyncio.Future()
+    fut.set_result([])
+    client.async_check_alive = MagicMock(return_value=fut)
+    client.is_gcs_leader_local = MagicMock(return_value=True)
+
+    assert await _async_is_gcs_leader(client, interval=3.0) is True
+    client.async_check_alive.assert_called_once_with(node_ids=[], timeout=3.0)
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 # coding: utf-8
 import asyncio
+import inspect
 import logging
 from typing import Any, Optional, Union
 
@@ -104,7 +105,7 @@ async def _async_is_gcs_leader(gcs_client: Any, interval: float = 2.0) -> bool:
     if callable(async_check_alive):
         try:
             res = async_check_alive(node_ids=[], timeout=interval)
-            if asyncio.iscoroutine(res):
+            if inspect.isawaitable(res):
                 await res
         except Exception:
             # GCS may be unreachable or slow during a failover;
