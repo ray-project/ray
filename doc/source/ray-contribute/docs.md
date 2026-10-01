@@ -360,7 +360,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Install the Vale VS Code extension by following these [installation instructions](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode).
 
@@ -382,7 +382,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Run Vale in your terminal.
 
@@ -418,7 +418,7 @@ To add custom terminology, complete the following steps:
 2. If it doesn't already exist, create a text file named `accept.txt`. For example, `.vale/styles/Vocab/Data/accept.txt`.
 3. Add your term to `accept.txt`. Vale accepts Regex.
 
-For more information, see [Vocabularies](https://vale.sh/docs/topics/vocab/) in the Vale documentation.
+For more information, see [Vocabularies](https://vale.sh/docs/keys/vocab) in the Vale documentation.
 
 ### How to handle false Google.WordList errors
 

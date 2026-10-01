@@ -1028,7 +1028,7 @@ class DataContext:
     # to perform aggregations on partitions produced during hash-shuffling
     #
     # When unset defaults to the smaller of
-    #   - Total # of CPUs available in the cluster * 2
+    #   - Total # of CPUs available in the cluster (at least 1)
     #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
     max_hash_shuffle_aggregators: Optional[int] = None
 

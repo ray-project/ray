@@ -204,7 +204,7 @@ Use Ray Data to shard the dataset
 :ref:`Ray Data <data>` is a distributed data processing library that allows you to easily shard and distribute your data across multiple workers. 
 
 First, load your **entire** dataset as a Ray Data Dataset. 
-Reference the :ref:`Ray Data Quickstart <data_quickstart>` for more details on how to load and preprocess data from different sources.
+Reference the :ref:`data_quickstart` for more details on how to load and preprocess data from different sources.
 
 .. testcode:: python
     :skipif: True
