@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from typing import List
 
 from ray._common.network_utils import get_all_interfaces_ip
@@ -748,8 +749,11 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
     os.environ.get("RAY_SERVE_ENABLE_DIRECT_INGRESS", "0") == "1"
 )
 
-# Feature flag to use HAProxy.
-RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
+# Use HAProxy by default on Linux. Other platforms use the Python proxy.
+RAY_SERVE_ENABLE_HA_PROXY = (
+    os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "1" if sys.platform == "linux" else "0")
+    == "1"
+)
 
 # Ingress request router replicas pinned to each proxy node.
 RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE = get_env_int_positive(
