@@ -48,8 +48,8 @@ The following diagram shows the complete planning process.
 
 Operators are the building blocks of these plans. Ray Data uses two kinds of operators, one for each plan:
 
-* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write `dataset = ray.data.read_parquet(...)`, Ray Data creates a `Read` logical operator to specify what data to read.
-* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the `Read` logical operator into a `TaskPoolMapOperator` physical operator that launches Ray tasks to read the data.
+* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write `dataset = ray.data.read_csv(...)`, Ray Data creates a `Read` logical operator to specify what data to read.
+* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the `Read` logical operator into two physical operators, an `InputDataBuffer` and a `TaskPoolMapOperator`. The `TaskPoolMapOperator` launches Ray tasks to read the data.
 
 The following example shows how Ray Data builds a logical plan. As you chain operations, Ray Data constructs the logical plan behind the scenes:
 
@@ -69,10 +69,7 @@ Project
    +- Dataset(schema={...})
 ```
 
-When execution begins, Ray Data optimizes the logical plan and then translates it into a physical plan, which is a series of operators that implement the data transformations. The following happens during this translation:
-
-* A single logical operator can become multiple physical operators. For example, `Read` becomes both `InputDataBuffer` and `TaskPoolMapOperator`.
-* Both logical and physical plans go through optimization passes. For example, `FuseOperators` combines map operators to reduce serialization overhead.
+When execution begins, Ray Data optimizes the logical plan, translates it into a physical plan, and then optimizes the physical plan. The physical plan is a series of operators that implement the data transformations. A single logical operator can become multiple physical operators during translation. For example, `Read` becomes both `InputDataBuffer` and `TaskPoolMapOperator`. The physical optimization pass then applies rules such as `FuseOperators`, which combines map operators to reduce serialization overhead.
 
 Physical operators do the following:
 

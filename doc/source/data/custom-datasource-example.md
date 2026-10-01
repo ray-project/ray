@@ -8,7 +8,7 @@ myst:
 
 # Advanced: Read and write custom file types
 
-This advanced guide shows you how to extend Ray Data to read and write file types that it doesn't support natively. The guide relies on unstable internal APIs.
+This advanced guide shows you how to extend Ray Data to read and write file types that it doesn't support natively. The guide relies on developer APIs, whose interfaces might change across minor releases of Ray.
 
 Ray Data already supports images with the {func}`~ray.data.read_images` and {meth}`~ray.data.Dataset.write_images` APIs. This example shows you how to implement them anyway, as an illustration.
 
