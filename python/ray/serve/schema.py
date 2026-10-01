@@ -1489,11 +1489,13 @@ class DeploymentDetails(BaseModel):
     rollout_complete: Optional[bool] = Field(
         default=None,
         description=(
-            "Whether the target config is ready: old replicas are gone, "
-            "reconfiguration, recovery, and deployment-actor work are finished, "
-            "and capacity meets the target count or autoscaling bounds. "
-            "Zero running replicas requires a zero target. "
-            "Check health separately. None means readiness was not reported."
+            "Whether the deployment is ready with the target config. "
+            "Old replicas must be gone, and reconfiguration, recovery, and "
+            "deployment actor setup and cleanup must be finished. "
+            "Fixed-size deployments must settle at the target replica count. "
+            "Autoscaling deployments can keep scaling within their configured bounds. "
+            "Zero running replicas are allowed only when the target is zero. "
+            "None means this field was not reported."
         ),
     )
 

@@ -3237,10 +3237,11 @@ class DeploymentState:
         return self._autoscaling_state_manager.should_autoscale_deployment(self._id)
 
     def rollout_complete(self) -> bool:
-        """Check config rollout readiness without waiting for autoscaling to settle.
+        """Check rollout readiness without waiting for autoscaling to fully settle.
 
         Fixed-size deployments must settle at the target count. Autoscaling may
-        continue within bounds; zero running replicas requires a zero target.
+        continue within bounds. Zero running replicas are allowed only when
+        the target is zero.
         """
         target_version = self._target_state.version
         if target_version is None or self._target_state.deleting:
