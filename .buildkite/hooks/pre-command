@@ -44,3 +44,6 @@ export RAYCI_CHECKOUT_DIR
 # never be the reason a job fails, and every path inside falls back to public PyPI.
 # shellcheck source=ci/pypi_proxy_agent.sh
 source ./ci/pypi_proxy_agent.sh || true
+
+# repro-ci: isolate premerge to the repro steps (delete the branch to reset)
+export RAYCI_SELECT="repro-ci-windows"
