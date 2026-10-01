@@ -262,8 +262,14 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
         # Keyed by sink dir as well as log type: a process that outlives a Ray
         # session, such as one that calls `ray.shutdown()` and `ray.init()`
         # again, must write into the new session's logs dir rather than keep
-        # appending to the previous, now stale, one.
-        key = (log_type.log_type_name, sink_dir)
+        # appending to the previous, now stale, one. A per-process log type is
+        # also keyed by pid, so that a process forked after the first emit gets
+        # a file of its own rather than inheriting its parent's.
+        key = (
+            log_type.log_type_name,
+            sink_dir,
+            os.getpid() if log_type.per_process else None,
+        )
         if key not in _export_event_logger:
             logger = _build_export_event_file_logger(log_type, sink_dir)
             _export_event_logger[key] = ExportEventLoggerAdapter(log_type, logger)

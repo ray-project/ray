@@ -176,6 +176,59 @@ def test_annotation_writes_one_file_per_process(logs_dir):
     )
 
 
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="Requires os.fork.")
+def test_annotation_forked_process_writes_its_own_file(logs_dir):
+    """A process forked after its parent emitted, such as a fork-based
+    DataLoader worker, must not inherit the parent's cached logger: it would
+    write into, and rotate, the parent's file."""
+    annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
+    annotation.annotate(event="custom_event", message="from-parent")
+
+    pid = os.fork()
+    if pid == 0:
+        # Exit without running pytest's teardown in the child.
+        try:
+            annotation.annotate(event="custom_event", message="from-child")
+        finally:
+            os._exit(0)
+    os.waitpid(pid, 0)
+
+    def messages(file_pid):
+        path = os.path.join(
+            str(logs_dir), "export_events", f"event_EXPORT_ANNOTATION_{file_pid}.log"
+        )
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(line)["event_data"]["message"] for line in f]
+
+    assert messages(os.getpid()) == ["from-parent"]
+    assert messages(pid) == ["from-child"]
+
+
+@pytest.mark.parametrize(
+    "env_var, value",
+    [
+        ("RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES", "12345"),
+        ("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", "3"),
+    ],
+)
+def test_export_event_rotation_is_configurable(env_var, value):
+    """Annotations rotate with the export event limits, which must parse as
+    integers: a non-boolean value used to read as ``False``, i.e. ``0``, which
+    disables rotation of the file entirely."""
+    import subprocess
+
+    output = subprocess.check_output(
+        [
+            sys.executable,
+            "-c",
+            f"from ray._private import ray_constants; print(ray_constants.{env_var})",
+        ],
+        env={**os.environ, env_var: value},
+        text=True,
+    )
+    assert output.strip() == value
+
+
 def test_annotation_writes_utf8(logs_dir):
     """Annotation messages can contain non-ASCII characters (e.g. Ray Train's
     controller state-change messages contain ``→``), which the platform default
