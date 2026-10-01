@@ -347,7 +347,13 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
     const std::string &call_site,
-    int max_retries) {
+    int max_retries,
+    bool consume_once) {
+  RAY_CHECK(!consume_once || (spec.IsActorTask() && !spec.IsStreamingGenerator() &&
+                              !spec.ReturnsDynamic()))
+      << absl::StrFormat(
+             "consume_once is only supported on non-generator actor tasks, got task %s",
+             spec.TaskId().Hex());
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
@@ -380,6 +386,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   std::vector<ObjectID> return_ids;
   return_ids.reserve(num_returns);
   auto tensor_transport = spec.TensorTransport();
+  const MoveState move_state = consume_once ? MoveState::MOVABLE : MoveState::NOT_MOVABLE;
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
@@ -406,7 +413,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         lineage_eligibility,
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
-                                        tensor_transport);
+                                        tensor_transport,
+                                        move_state);
     }
 
     return_ids.push_back(return_id);
