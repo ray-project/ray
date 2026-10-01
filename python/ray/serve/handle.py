@@ -63,6 +63,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 T = TypeVar("T")
 # TypeVar for the response/result type in DeploymentResponse[R]
 R = TypeVar("R")
+# The handle, args and kwargs of a call that has not been routed yet.
+_PendingCall = Tuple["DeploymentHandle", Tuple[Any, ...], Dict[str, Any]]
 
 
 class _DeploymentHandleBase(Generic[T]):
@@ -351,12 +353,32 @@ class _DeploymentResponseBase(Generic[R]):
         ],
         request_metadata: RequestMetadata,
         _is_router_running_in_separate_loop: bool = True,
+        _pending_call: Optional[_PendingCall] = None,
     ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
         self._request_metadata: RequestMetadata = request_metadata
         self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
+        self._pending_call = _pending_call
+
+    def _claim_pending_call(self) -> Optional[_PendingCall]:
+        """Take over this call before it is routed, so Serve can forward it instead.
+
+        A call made in a handler reaches the router only after the handler's step ends.
+        """
+        future = self._replica_result_future
+        if (
+            self._pending_call is None
+            or self._request_metadata._routing_started
+            or future.done()
+        ):
+            return None
+        if not future.cancel():
+            # A future that refuses to cancel is already on its way to a replica.
+            return None
+        call, self._pending_call = self._pending_call, None
+        return call
 
     @property
     def request_id(self) -> str:
@@ -1172,12 +1194,14 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 future,
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+                _pending_call=(self, args, kwargs),
             )
         else:
             return DeploymentResponse(
                 future,
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+                _pending_call=(self, args, kwargs),
             )
 
     def choose_replica(
