@@ -14,6 +14,8 @@
 
 #include "ray/ray_syncer/ray_syncer_server.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <utility>
 
@@ -27,10 +29,15 @@ namespace {
 std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_context) {
   const auto &metadata = server_context->client_metadata();
   auto iter = metadata.find("node_id");
-  if (iter == metadata.end()) {
+  // Validate before NodeID::FromHex, which logs an error on malformed input. This runs
+  // before authentication, so client-controlled input must not reach that log. The
+  // constructor rejects the returned Nil after authentication.
+  if (iter == metadata.end() || iter->second.length() != 2 * NodeID::Size() ||
+      !std::all_of(iter->second.begin(), iter->second.end(), [](char c) {
+        return std::isxdigit(static_cast<unsigned char>(c));
+      })) {
     return NodeID::Nil().Binary();
   }
-  // Malformed hex parses to Nil; the constructor rejects Nil after authentication.
   return NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
 }
 
@@ -79,7 +86,8 @@ RayServerBidiReactor::RayServerBidiReactor(
   }
 
   if (NodeID::FromBinary(GetRemoteNodeID()).IsNil()) {
-    RAY_LOG(WARNING) << "Missing or malformed node_id in syncer connection";
+    RAY_LOG(WARNING) << "Missing or malformed node_id in syncer connection from peer "
+                     << server_context_->peer();
     Finish(
         grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Missing or malformed node_id"));
     return;

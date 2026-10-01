@@ -1326,6 +1326,10 @@ TEST_F(SyncerAuthenticationTest, MissingOrMalformedNodeIdWithoutAuthIsRejected) 
             grpc::StatusCode::INVALID_ARGUMENT);
   ASSERT_EQ(StartSyncWithMetadata("37899", {{"node_id", "not-hex"}}).error_code(),
             grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_EQ(
+      StartSyncWithMetadata("37899", {{"node_id", std::string(2 * NodeID::Size(), 'z')}})
+          .error_code(),
+      grpc::StatusCode::INVALID_ARGUMENT);
 }
 
 }  // namespace syncer
