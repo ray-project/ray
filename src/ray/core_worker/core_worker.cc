@@ -2302,6 +2302,31 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   return returned_refs;
 }
 
+Status CoreWorker::CheckNoConsumeOnceArgs(const std::vector<ObjectID> &arg_ids) const {
+  for (const ObjectID &object_id : arg_ids) {
+    if (object_id.IsNil()) {
+      continue;
+    }
+    const std::optional<MoveState> move_state =
+        reference_counter_->GetMoveState(object_id);
+    if (!move_state.has_value()) {
+      // At this point, object_id is not nil, move state should have not null value.
+      // This might be a bug somewhere in reference counter.
+      // But still its not MOVABLE, therefore not failing here.
+      RAY_LOG(WARNING) << absl::StrFormat(
+          "No reference found for task argument %s while checking for consume-once "
+          "arguments.",
+          object_id.Hex());
+      continue;
+    }
+    if (*move_state != MoveState::NOT_MOVABLE) {
+      return Status::InvalidArgument(absl::StrFormat(
+          "Object %s was created with consume_once=True.", object_id.Hex()));
+    }
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
@@ -2742,7 +2767,7 @@ Status CoreWorker::SubmitActorTask(
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   task_returns = task_manager_->AddPendingTask(
-      rpc_address_, task_spec, CurrentCallSite(), max_retries);
+      rpc_address_, task_spec, CurrentCallSite(), max_retries, task_options.consume_once);
   actor_task_submitter_->SubmitTask(task_spec);
   return Status::OK();
 }
