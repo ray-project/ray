@@ -18,6 +18,8 @@ libfabric
 dmabuf
 [Rr]eparent(ed|s)?
 [Rr]etryable
+[Rr]etryability
+[Rr]econstructable
 runsc
 netstack
 [Ss]ubreaper
