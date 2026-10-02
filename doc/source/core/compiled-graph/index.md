@@ -14,13 +14,13 @@ Ray Compiled Graph is currently in beta (since Ray 2.44). The APIs are subject t
 
 As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential. {ref}`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
 
-* System overhead of ~1 ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
-* Lack of support for direct GPU-to-GPU communication, requiring manual development with external libraries like NVIDIA Collective Communications Library ([NCCL](https://developer.nvidia.com/nccl)).
+* System overhead of about 1 ms per task launch, which is unsuitable for high-performance tasks such as LLM inference.
+* Lack of support for direct GPU-to-GPU communication, requiring manual development with external libraries such as NVIDIA Collective Communications Library ([NCCL](https://developer.nvidia.com/nccl)).
 
-Ray Compiled Graph gives you a Ray Core-like API but with:
+Ray Compiled Graph gives you an API similar to Ray Core, with the following advantages:
 
-- **Less than 50us system overhead** for workloads that repeatedly execute the same task graph.
-- **Native support for GPU-GPU communication** with NCCL.
+- **Less than 50 microseconds of system overhead** for workloads that repeatedly execute the same task graph.
+- **Native support for GPU-to-GPU communication** with NCCL.
 
 For example, consider the following Ray Core code, which sends data to an actor and gets the result:
 
@@ -34,7 +34,7 @@ ray.get(ref)
 ```
 
 
-This code shows how to compile and execute the same example as a Compiled Graph.
+The following code compiles and executes the same example as a Compiled Graph:
 
 ```{testcode}
 :skipif: True
@@ -49,30 +49,33 @@ ref = graph.execute(data)
 ray.get(ref)
 ```
 
-Ray Compiled Graph has a static execution model. It's different from classic Ray APIs, which are eager. Because of the static nature, Ray Compiled Graph can perform various optimizations such as:
+Ray Compiled Graph has a static execution model, while classic Ray APIs are eager. Because its execution model is static, Ray Compiled Graph can perform optimizations such as the following:
 
-- Pre-allocate resources so that it can reduce system overhead.
-- Prepare NCCL communicators and apply deadlock-free scheduling.
-- (experimental) Automatically overlap GPU compute and communication.
-- Improve multi-node performance.
+- Pre-allocating resources to reduce system overhead.
+- Preparing NCCL communicators and applying deadlock-free scheduling.
+- Automatically overlapping GPU compute and communication, an experimental feature.
+- Improving multi-node performance.
 
-## Use Cases
-Ray Compiled Graph APIs simplify development of high-performance multi-GPU workloads such as LLM inference or distributed training that require:
+## Use cases
 
-- Sub-millisecond level task orchestration.
-- Direct GPU-GPU peer-to-peer or collective communication.
-- [Heterogeneous](https://www.youtube.com/watch?v=Mg08QTBILWU) or MPMD (Multiple Program Multiple Data) execution.
+Ray Compiled Graph APIs simplify development of high-performance multi-GPU workloads such as LLM inference or distributed training that require the following:
 
-## More Resources
+- Sub-millisecond task orchestration.
+- Direct GPU-to-GPU peer-to-peer or collective communication.
+- [Heterogeneous](https://www.youtube.com/watch?v=Mg08QTBILWU) or multiple program, multiple data (MPMD) execution.
+
+## More resources
+
+See the following blog post and talks:
 
 - [Ray Compiled Graph blog](https://www.anyscale.com/blog/announcing-compiled-graphs)
 - [Ray Compiled Graph talk at Ray Summit](https://www.youtube.com/watch?v=jv58Cpr6SAs)
 - [Heterogeneous training with Ray Compiled Graph](https://www.youtube.com/watch?v=Mg08QTBILWU)
 - [Distributed LLM inference with Ray Compiled Graph](https://www.youtube.com/watch?v=oMb_WiUwf5o)
 
-## Table of Contents
+## Table of contents
 
-Learn more details about Ray Compiled Graph from the following links.
+Learn more about Ray Compiled Graph from the following pages.
 
 ```{toctree}
 :maxdepth: 1
