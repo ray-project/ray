@@ -8326,6 +8326,16 @@ def test_locality_routing_flags_lightweight_config_broadcast(
     assert config_key in notified
     assert getattr(notified[config_key], field_name) == new_value
 
+    ds._long_poll_host.notify_changed.reset_mock()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert reconfigure_calls == []
+    assert getattr(ds._target_state.info.deployment_config, field_name) == new_value
+    for call in ds._long_poll_host.notify_changed.call_args_list:
+        notified_keys = call[0][0]
+        assert config_key not in notified_keys
+
 
 def test_redeploy_onto_deleting_state_republishes(mock_deployment_state_manager):
     """A redeploy reusing a deleting DeploymentState must republish its snapshots.
