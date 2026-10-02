@@ -14,8 +14,8 @@ myst:
 
 Key Concepts <key-concepts>
 User Guides <user-guide>
-Examples <examples/overview>
-Internals <internals>
+Examples <examples/index>
+Internals <internals/index>
 ```
 
 Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications. This walk-through introduces you to these core concepts with simple examples that demonstrate how to transform your Python functions and classes into distributed Ray tasks and actors, and how to work effectively with Ray objects.

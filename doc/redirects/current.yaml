@@ -450,7 +450,7 @@ redirects:
   to: /rllib/index.html
   type: page
 - from: /placement-group.html
-  to: /en/master/ray-core/scheduling/placement-group.html
+  to: /en/master/core/scheduling/placement-group.html
   type: page
 - from: /joblib.html
   to: /ray-more-libs/joblib.html
@@ -804,10 +804,103 @@ redirects:
 - from: /serve/tutorials/*
   to: /serve/index.html
   type: page
-- from: /ray-core/examples/*
+- from: /ray-core/walkthrough.html
+  to: /core/index.html
+  type: page
+- from: /ray-core/runtime_env_auth.html
+  to: /core/runtime-env-auth.html
+  type: page
+- from: /ray-core/actors/async_api.html
+  to: /core/actors/async-api.html
+  type: page
+- from: /ray-core/actors/concurrency_group_api.html
+  to: /core/actors/concurrency-group-api.html
+  type: page
+- from: /ray-core/tasks/dynamic_generators.html
+  to: /core/tasks/dynamic-generators.html
+  type: page
+- from: /ray-core/examples/monte_carlo_pi.html
+  to: /core/examples/monte-carlo-pi.html
+  type: page
+- from: /ray-core/compiled-graph/ray-compiled-graph.html
+  to: /core/compiled-graph/index.html
+  type: page
+- from: /ray-core/direct-transport/direct-transport.html
+  to: /core/direct-transport/index.html
+  type: page
+- from: /ray-core/actors.html
+  to: /core/actors/index.html
+  type: page
+- from: /ray-core/objects.html
+  to: /core/objects/index.html
+  type: page
+- from: /ray-core/tasks.html
+  to: /core/tasks/index.html
+  type: page
+- from: /ray-core/fault-tolerance.html
+  to: /core/fault-tolerance/index.html
+  type: page
+- from: /ray-core/internals.html
+  to: /core/internals/index.html
+  type: page
+- from: /ray-core/examples/overview.html
+  to: /core/examples/index.html
+  type: page
+- from: /ray-core/fault_tolerance/*
+  to: /core/fault-tolerance/:splat
+  type: page
+- from: /core/walkthrough.html
+  to: /core/index.html
+  type: page
+- from: /core/runtime_env_auth.html
+  to: /core/runtime-env-auth.html
+  type: page
+- from: /core/actors/async_api.html
+  to: /core/actors/async-api.html
+  type: page
+- from: /core/actors/concurrency_group_api.html
+  to: /core/actors/concurrency-group-api.html
+  type: page
+- from: /core/tasks/dynamic_generators.html
+  to: /core/tasks/dynamic-generators.html
+  type: page
+- from: /core/examples/monte_carlo_pi.html
+  to: /core/examples/monte-carlo-pi.html
+  type: page
+- from: /core/compiled-graph/ray-compiled-graph.html
+  to: /core/compiled-graph/index.html
+  type: page
+- from: /core/direct-transport/direct-transport.html
+  to: /core/direct-transport/index.html
+  type: page
+- from: /core/actors.html
+  to: /core/actors/index.html
+  type: page
+- from: /core/objects.html
+  to: /core/objects/index.html
+  type: page
+- from: /core/tasks.html
+  to: /core/tasks/index.html
+  type: page
+- from: /core/fault-tolerance.html
+  to: /core/fault-tolerance/index.html
+  type: page
+- from: /core/internals.html
+  to: /core/internals/index.html
+  type: page
+- from: /core/examples/overview.html
+  to: /core/examples/index.html
+  type: page
+- from: /core/fault_tolerance/*
+  to: /core/fault-tolerance/:splat
+  type: page
+- from: /ray-core/*
+  to: /core/:splat
+  type: page
+- from: /core/examples/*
   to: /ray-overview/examples.html
   type: page
-- from: /ray-core/api/*
+- from: /core/api/*
   to: /ray-core/api/index.html
   type: page
 - from: /ray-observability/*

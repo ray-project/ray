@@ -51,7 +51,7 @@ API_PATH_PREFIXES = (
     "train/api/",
     "tune/api/",
     "serve/api/",
-    "ray-core/api/",
+    "core/api/",
     "rllib/package_ref/",
 )
 

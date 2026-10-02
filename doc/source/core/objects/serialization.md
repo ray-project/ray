@@ -38,7 +38,7 @@ You can often avoid serialization issues by using only native types (e.g., numpy
 
 Because Ray puts numpy arrays in the object store, when deserialized as arguments in remote functions they will become read-only. For example, the following code snippet will crash:
 
-```{literalinclude} /ray-core/doc_code/deser.py
+```{literalinclude} /core/doc_code/deser.py
 ```
 
 To avoid this issue, you can manually copy the array at the destination if you need to mutate it (`arr = arr.copy()`). Note that this is effectively like disabling the zero-copy deserialization feature provided by Ray.
