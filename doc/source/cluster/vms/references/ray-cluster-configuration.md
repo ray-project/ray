@@ -625,12 +625,12 @@ setup_commands:
 
 - **Tip**: if you also want to run apt-get commands during setup add the following list of commands:
 
-  ```yaml
-  setup_commands:
-    - sudo pkill -9 apt-get || true
-    - sudo pkill -9 dpkg || true
-    - sudo dpkg --configure -a
-  ```
+  > ```yaml
+  > setup_commands:
+  >   - sudo pkill -9 apt-get || true
+  >   - sudo pkill -9 dpkg || true
+  >   - sudo dpkg --configure -a
+  > ```
 
 (cluster-configuration-head-setup-commands)=
 
@@ -1493,37 +1493,37 @@ Valid examples:
 
 1. `ray up` on a frozen VM to be deployed from an OVF template:
 
-   ```yaml
-   frozen_vm:
-       name: single-frozen-vm
-       library_item: frozen-vm-template
-       cluster: vsanCluster
-       datastore: vsanDatastore
-   ```
+   > ```yaml
+   > frozen_vm:
+   >     name: single-frozen-vm
+   >     library_item: frozen-vm-template
+   >     cluster: vsanCluster
+   >     datastore: vsanDatastore
+   > ```
 
 2. `ray up` on an existing frozen VM:
 
-   ```yaml
-   frozen_vm:
-       name: existing-single-frozen-vm
-   ```
+   > ```yaml
+   > frozen_vm:
+   >     name: existing-single-frozen-vm
+   > ```
 
 3. `ray up` on a resource pool of frozen VMs to be deployed from an OVF template:
 
-   ```yaml
-   frozen_vm:
-       name: frozen-vm-prefix
-       library_item: frozen-vm-template
-       resource_pool: frozen-vm-resource-pool
-       datastore: vsanDatastore
-   ```
+   > ```yaml
+   > frozen_vm:
+   >     name: frozen-vm-prefix
+   >     library_item: frozen-vm-template
+   >     resource_pool: frozen-vm-resource-pool
+   >     datastore: vsanDatastore
+   > ```
 
 4. `ray up` on an existing resource pool of frozen VMs:
 
-   ```yaml
-   frozen_vm:
-       resource_pool: frozen-vm-resource-pool
-   ```
+   > ```yaml
+   > frozen_vm:
+   >     resource_pool: frozen-vm-resource-pool
+   > ```
 
 Other cases not in above examples are invalid.
 
