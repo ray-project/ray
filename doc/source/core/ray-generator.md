@@ -167,7 +167,7 @@ You can pass an `ObjectRefGenerator` as an input to `ray.wait`. The generator is
 
 All of the `ray.wait` input arguments, such as `timeout`, `num_returns`, and `fetch_local`, work with a generator.
 
-You can mix regular Ray object references and generators in the inputs to `ray.wait`. The following example checks whether each ready input is an `ObjectRefGenerator` and handles the two kinds differently.
+You can mix regular Ray object references and generators in the inputs to `ray.wait`. In this case, your application should handle the two kinds of inputs differently. The following example checks whether each ready input is an `ObjectRefGenerator`.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python

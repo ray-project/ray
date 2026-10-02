@@ -25,13 +25,13 @@ The Ray dashboard provides a web interface for cluster monitoring and debugging.
 
 ### Avoid scheduling on the head node
 
-Don't run tasks or actors on the head node, because it hosts critical system components. Keeping work off the head node helps reduce contention and memory pressure.
+Avoid running tasks or actors on the head node, because it hosts critical system components. Keeping work off the head node helps reduce contention and memory pressure.
 
 For head node best practices, see {ref}`vms-large-cluster-configure-head-node`.
 
 ### Disable the dashboard
 
-If you don't need the dashboard, disable it to remove event caching and the related memory overhead. Disabling the dashboard reduces observability into the system, so don't disable it on production clusters.
+If you don't need the dashboard, disable it to remove event caching and the related memory overhead. Disabling the dashboard reduces observability into the system, so Ray doesn't recommend disabling it on production clusters.
 
 To disable the dashboard with the Python API, run the following:
 
@@ -99,7 +99,7 @@ Follow these practices to keep head node memory under control:
 1. Set Kubernetes resource limits, and set memory and GPU requests to match them.
 
 :::{note}
-Disabling the dashboard severely limits observability, so don't disable it in production. To disable it, see [Disable the dashboard](#disable-the-dashboard).
+Disabling the dashboard severely limits observability, so Ray doesn't recommend it for production. If you choose to disable it, see [Disable the dashboard](#disable-the-dashboard).
 :::
 
 ## Troubleshooting
@@ -107,6 +107,6 @@ Disabling the dashboard severely limits observability, so don't disable it in pr
 If your head node runs into OOM errors, do the following:
 
 1. Check memory usage with `ray memory`. See {ref}`debug-with-ray-memory`.
-1. Increase the head node's memory allocation.
+1. Consider increasing the head node's memory allocation.
 
 For more information on OOM prevention, see {ref}`ray-oom-prevention`.
