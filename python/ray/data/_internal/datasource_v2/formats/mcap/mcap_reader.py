@@ -46,7 +46,9 @@ from typing_extensions import override
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
     MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     ROW_ID_COLUMN,
     TOPIC_GRANULARITY,
     WINDOW_GRANULARITY,
@@ -54,10 +56,18 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     VideoOptions,
     WindowSpec,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_records import (
+    RecordRowBatch,
+    iter_records,
+    read_record_at,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
+    attachment_unit_id,
     message_row_id,
+    metadata_unit_id,
     topic_unit_id,
     unindexed_message_row_id,
+    unindexed_record_row_id,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_video import (
     VideoCodec,
@@ -477,13 +487,28 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         statistics is counted by scanning it, which is still exact.
         """
         from mcap.reader import SeekingReader
+        from mcap.records import Attachment, Metadata
 
         filesystem = self._filesystem or LocalFileSystem()
         for path in dict.fromkeys(str(p) for p in file_manifest.paths):
             with filesystem.open_input_file(path) as f:
                 summary = SeekingReader(f).get_summary()
                 statistics = summary.statistics if summary is not None else None
-                if summary is not None and statistics is not None:
+                if self._granularity == ATTACHMENT_GRANULARITY:
+                    if statistics is not None:
+                        num_rows = statistics.attachment_count
+                    elif summary is not None and summary.attachment_indexes:
+                        num_rows = len(summary.attachment_indexes)
+                    else:
+                        num_rows = sum(1 for _ in iter_records(f, Attachment))
+                elif self._granularity == METADATA_GRANULARITY:
+                    if statistics is not None:
+                        num_rows = statistics.metadata_count
+                    elif summary is not None and summary.metadata_indexes:
+                        num_rows = len(summary.metadata_indexes)
+                    else:
+                        num_rows = sum(1 for _ in iter_records(f, Metadata))
+                elif summary is not None and statistics is not None:
                     selected = self._selection.selected_channel_ids(
                         summary.channels, summary.schemas
                     )
@@ -503,9 +528,11 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
     @override
     def available_metadata(self) -> Set[MetadataType]:
         # A time range cannot be counted from statistics; a coarse row is not a
-        # message, so nothing counts it.
+        # message, so nothing counts it. Metadata records carry no time.
+        if self._granularity == METADATA_GRANULARITY:
+            return {MetadataType.NUM_ROWS}
         if (
-            self._granularity != MESSAGE_GRANULARITY
+            self._granularity not in (MESSAGE_GRANULARITY, ATTACHMENT_GRANULARITY)
             or self._selection.time_range is not None
         ):
             return set()
@@ -523,6 +550,9 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
 
         filesystem = self._filesystem or LocalFileSystem()
         with filesystem.open_input_file(assignment.path) as f:
+            if self._granularity in (ATTACHMENT_GRANULARITY, METADATA_GRANULARITY):
+                yield from self._record_tables(f, assignment)
+                return
             summary = SeekingReader(f).get_summary()
             if summary is not None and not summary.chunk_indexes:
                 summary = None
@@ -1136,6 +1166,69 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
             "(RAY_DATA_MCAP_MAX_ROW_BYTES). Read this data at "
             "read_granularity='window' or 'message' instead."
         )
+
+    # -- attachment and metadata rows --------------------------------------
+
+    def _record_tables(self, f: Any, assignment: _Assignment) -> Iterator[pa.Table]:
+        """Emit the Attachment or Metadata rows this task was assigned.
+
+        An indexed file's rows name the records by byte offset, so each is
+        read with one seek. A whole-file row means the records are not indexed;
+        the file is scanned for them, and ``time_range`` is applied to
+        attachments either way.
+        """
+        from mcap.records import Attachment, Metadata
+
+        path = assignment.path
+        attachments = self._granularity == ATTACHMENT_GRANULARITY
+        batch = RecordRowBatch(
+            granularity=self._granularity, include_row_id=self._include_row_id
+        )
+        if assignment.offsets is not None:
+            located = [
+                (
+                    read_record_at(f, offset),
+                    (attachment_unit_id if attachments else metadata_unit_id)(
+                        path, offset
+                    ),
+                    offset,
+                )
+                for offset in sorted(assignment.offsets)
+            ]
+        else:
+            kind = "a" if attachments else "md"
+            scanned = iter_records(f, Attachment if attachments else Metadata)
+            located = [
+                (record, unindexed_record_row_id(path, kind, ordinal), None)
+                for ordinal, record in enumerate(scanned)
+            ]
+        for record, row_id, offset in located:
+            if attachments:
+                if not isinstance(record, Attachment):
+                    raise ValueError(
+                        f"MCAP file {path!r}: expected an Attachment record at "
+                        f"offset {offset}, found {type(record).__name__}"
+                    )
+                if not self._selection.in_time_range(record.log_time):
+                    continue
+                batch.add_attachment(path, row_id, record)
+            else:
+                if not isinstance(record, Metadata):
+                    raise ValueError(
+                        f"MCAP file {path!r}: expected a Metadata record at offset "
+                        f"{offset}, found {type(record).__name__}"
+                    )
+                batch.add_metadata(path, row_id, record)
+            if (
+                self._target_block_size is not None
+                and batch.payload_bytes >= self._target_block_size
+            ):
+                yield self._finish(batch.build(), assignment, 0)
+                batch = RecordRowBatch(
+                    granularity=self._granularity, include_row_id=self._include_row_id
+                )
+        if len(batch) > 0:
+            yield self._finish(batch.build(), assignment, 0)
 
     # -- finishing a table -------------------------------------------------
 

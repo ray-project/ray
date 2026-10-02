@@ -36,8 +36,10 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
     FILE_GRANULARITY,
     MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     TOPIC_GRANULARITY,
     MCAPSelection,
 )
@@ -45,9 +47,12 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_pushdown import (
     narrow_selection,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
+    attachment_unit_id,
     chunk_run,
     chunk_unit_id,
+    metadata_unit_id,
     read_summary,
+    record_run,
     topic_run_metadata,
     topic_unit_id,
 )
@@ -200,6 +205,16 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
                 paths=[path], sizes=[size], chunk_metadatas=[None]
             )
 
+        if self._granularity in (ATTACHMENT_GRANULARITY, METADATA_GRANULARITY):
+            yield from self._record_manifests(
+                path,
+                size,
+                summary,
+                excluded_read_unit_ids,
+                selection or self._selection,
+            )
+            return
+
         if summary is None or not summary.chunk_indexes:
             yield whole_file()
             return
@@ -234,6 +249,66 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             and chunk_unit_id(path, chunk_index.chunk_start_offset)
             not in excluded_read_unit_ids
         ]
+        if runs:
+            yield FileManifest.construct_manifest(
+                paths=[path] * len(runs),
+                sizes=[size] * len(runs),
+                chunk_metadatas=[run.to_metadata() for run in runs],
+            )
+
+    def _record_manifests(
+        self,
+        path: str,
+        size: int,
+        summary: Optional["Summary"],
+        excluded_read_unit_ids: AbstractSet[str],
+        selection: MCAPSelection,
+    ) -> Iterator[FileManifest]:
+        """Listing rows for a file's Attachment or Metadata records, one each.
+
+        The summary indexes both kinds by byte offset. A file whose summary
+        says it holds none yields nothing; a file without a summary, or whose
+        records were written without an index, is one whole-file row the reader
+        scans.
+        """
+        attachments = self._granularity == ATTACHMENT_GRANULARITY
+        statistics = summary.statistics if summary is not None else None
+        indexes = (
+            (summary.attachment_indexes if attachments else summary.metadata_indexes)
+            if summary is not None
+            else []
+        )
+        if not indexes:
+            if statistics is not None:
+                count = (
+                    statistics.attachment_count
+                    if attachments
+                    else statistics.metadata_count
+                )
+                if count == 0:
+                    return
+            yield FileManifest.construct_manifest(
+                paths=[path], sizes=[size], chunk_metadatas=[None]
+            )
+            return
+        runs = []
+        if attachments:
+            assert summary is not None
+            for attachment in summary.attachment_indexes:
+                if not selection.overlaps(attachment.log_time, attachment.log_time):
+                    continue
+                if (
+                    attachment_unit_id(path, attachment.offset)
+                    in excluded_read_unit_ids
+                ):
+                    continue
+                runs.append(record_run(attachment.offset, attachment.data_size))
+        else:
+            assert summary is not None
+            for metadata in summary.metadata_indexes:
+                if metadata_unit_id(path, metadata.offset) in excluded_read_unit_ids:
+                    continue
+                runs.append(record_run(metadata.offset, metadata.length))
         if runs:
             yield FileManifest.construct_manifest(
                 paths=[path] * len(runs),

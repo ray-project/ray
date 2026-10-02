@@ -8,7 +8,9 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
 from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
     MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     MCAPSelection,
     VideoOptions,
     WindowSpec,
@@ -92,16 +94,18 @@ class MCAPScanner(
         """Whether ``count()`` can be answered from the summaries.
 
         A summary's ``Statistics`` counts messages per channel, so a selection
-        by topic or message type is exact from metadata. A time range is not:
-        the statistics say nothing about how many messages fall inside it.
-        Coarse rows are windows, topics or files, which no statistic counts.
+        by topic or message type is exact from metadata, and it counts
+        attachments and metadata records outright. A time range is not: the
+        statistics say nothing about how many records fall inside it. Coarse
+        rows are windows, topics or files, which no statistic counts.
         """
-        return (
-            self.granularity == MESSAGE_GRANULARITY
-            and self.limit is None
-            and self.partition_predicate is None
-            and self.selection.time_range is None
-        )
+        if self.limit is not None or self.partition_predicate is not None:
+            return False
+        if self.granularity == METADATA_GRANULARITY:
+            return True
+        if self.granularity in (MESSAGE_GRANULARITY, ATTACHMENT_GRANULARITY):
+            return self.selection.time_range is None
+        return False
 
     @override
     def push_filters(self, predicate: Expr) -> Tuple["MCAPScanner", Optional[Expr]]:
