@@ -165,16 +165,17 @@ class DeploymentConfig(BaseModel):
         rolling_update_percentage: The fraction of replicas (of
             ``target_num_replicas``) to update at a time during a rolling
             update. Must be in ``(0.0, 1.0]``. Defaults to 0.2 (20%).
-        prefer_local_node_routing: Feature flag to turn on node locality
-            routing. Applies to both proxy-to-replica and replica-to-replica
-            routing. Defaults to the value of
-            ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING`` (on by default).
-            Explicit deployment config overrides the env var.
-        prefer_local_az_routing: Feature flag to turn on AZ locality routing.
-            Applies to both proxy-to-replica and replica-to-replica routing.
-            Defaults to the value of
-            ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING`` (on by default).
-            Explicit deployment config overrides the env var.
+        prefer_local_node_routing: Prefer routing requests to replicas on
+            the same node as the caller. Applies to both proxy-to-replica and
+            replica-to-replica routing. The default differs by caller: proxy
+            handles default to ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING``
+            (on by default), while inter-deployment handles default to off.
+            An explicit value overrides both defaults.
+        prefer_local_az_routing: Prefer routing requests to replicas in the
+            same availability zone as the caller. Applies to both
+            proxy-to-replica and replica-to-replica routing. If not set,
+            defaults to the value of ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING``
+            (on by default). Explicit deployment config overrides the env var.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
