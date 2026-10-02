@@ -42,6 +42,7 @@ from typing import (
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, LocalFileSystem
+from typing_extensions import override
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
@@ -73,6 +74,10 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_windows import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnit
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
@@ -80,6 +85,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 from ray.data._internal.util import GiB, iterate_with_retry
+from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -350,12 +356,18 @@ class _ChannelMessages:
 
 
 @DeveloperAPI
-class MCAPReader(Reader[FileManifest]):
+class MCAPReader(Reader[FileManifest], SupportsMetadata):
     """Reads the chunks of MCAP files a manifest assigns to one task.
 
     Created by ``MCAPScanner.create_reader`` with every pushdown applied:
     the message selection, the projected columns and the per-task row limit.
+    Also answers ``count()`` from the summaries (:meth:`read_metadata`) when
+    the selection can be counted there.
     """
+
+    # Files whose summaries one count task reads. A summary read is two small
+    # ranged requests, so several per task amortize the task overhead.
+    _COUNT_ROWS_BATCH_SIZE = 16
 
     def __init__(
         self,
@@ -453,6 +465,55 @@ class MCAPReader(Reader[FileManifest]):
                         table = table.slice(0, remaining)
                     remaining -= table.num_rows
                 yield table
+
+    # -- metadata ----------------------------------------------------------
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield one ``BlockMetadata`` per file with its selected message count.
+
+        ``Statistics`` holds the count per channel, so a selection by topic or
+        schema is summed from it without reading a payload. A file with no
+        statistics is counted by scanning it, which is still exact.
+        """
+        from mcap.reader import SeekingReader
+
+        filesystem = self._filesystem or LocalFileSystem()
+        for path in dict.fromkeys(str(p) for p in file_manifest.paths):
+            with filesystem.open_input_file(path) as f:
+                summary = SeekingReader(f).get_summary()
+                statistics = summary.statistics if summary is not None else None
+                if summary is not None and statistics is not None:
+                    selected = self._selection.selected_channel_ids(
+                        summary.channels, summary.schemas
+                    )
+                    num_rows = sum(
+                        statistics.channel_message_counts.get(cid, 0)
+                        for cid in selected
+                    )
+                else:
+                    num_rows = sum(1 for _ in self._iter_unindexed(f, path))
+            yield BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=None,
+                exec_stats=None,
+                input_files=(path,),
+            )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        # A time range cannot be counted from statistics; a coarse row is not a
+        # message, so nothing counts it.
+        if (
+            self._granularity != MESSAGE_GRANULARITY
+            or self._selection.time_range is not None
+        ):
+            return set()
+        return {MetadataType.NUM_ROWS}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        return self._COUNT_ROWS_BATCH_SIZE
 
     # -- one file ----------------------------------------------------------
 
