@@ -133,7 +133,7 @@ SSE
 streamable
 Softmax
 streamable
-subprocess
+[Ss]ubprocess(es)?
 superset
 teardown
 tiktoken
@@ -178,3 +178,12 @@ NPU(s)?
 [Uu]ntrusted
 [Uu]serspace
 [Ww]alkthrough
+ARP
+Bazel
+[Cc]lasspath
+GRUB
+HOCON
+netrc
+OAuth
+POSIX
+Typesafe
