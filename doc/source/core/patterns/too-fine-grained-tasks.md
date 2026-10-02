@@ -6,11 +6,9 @@ myst:
 
 # Anti-pattern: Over-parallelizing with too fine-grained tasks harms speedup
 
-**TLDR:** Avoid over-parallelizing. Parallelizing tasks has higher overhead than using normal functions.
+Avoid over-parallelizing. Parallelizing or distributing tasks usually has higher overhead than an ordinary function call. If you parallelize a function that runs quickly, the overhead could take longer than the function call itself.
 
-Parallelizing or distributing tasks usually comes with higher overhead than an ordinary function call. Therefore, if you parallelize a function that executes very quickly, the overhead could take longer than the actual function call!
-
-To handle this problem, we should be careful about parallelizing too much. If you have a function or task that’s too small, you can use a technique called **batching** to make your tasks do more meaningful work in a single call.
+To handle this problem, avoid parallelizing too much. If a function or task is too small, use a technique called **batching** to make each task do more meaningful work in a single call.
 
 ## Code example
 
@@ -30,4 +28,4 @@ To handle this problem, we should be careful about parallelizing too much. If yo
 :end-before: __batching_end__
 ```
 
-As we can see from the example above, over-parallelizing has higher overhead and the program runs slower than the serial version. Through batching with a proper batch size, we are able to amortize the overhead and achieve the expected speedup.
+The preceding example shows that over-parallelizing has higher overhead, and the program runs slower than the serial version. With batching and a proper batch size, you can amortize the overhead and achieve the expected speedup.
