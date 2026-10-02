@@ -18,7 +18,7 @@ build:
     # The guard matches doc/ but excludes doc/.claude/ (Claude Code skills
     # and agent files), which never participate in the Sphinx build, so a
     # PR that changes only those paths skips the build instead of running one.
-    # Code sources (python/ray/, rllib/) are intentionally not matched, so a
+    # Code sources (python/ray/) are intentionally not matched, so a
     # code-only PR skips this PR preview. The RTD PR check is not a required
     # merge gate, and the post-merge master build and the Buildkite doc_build
     # still render docstring-driven API-reference changes. This trades a
