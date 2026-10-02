@@ -23,9 +23,7 @@ To limit sources of nondeterministic behavior, add {func}`ray.train.torch.enable
 ```
 
 :::{warning}
-{func}`ray.train.torch.enable_reproducibility` can't guarantee
-
-completely reproducible results across executions. To learn more, read the [PyTorch notes on randomness](https://pytorch.org/docs/stable/notes/randomness.html).
+{func}`ray.train.torch.enable_reproducibility` can't guarantee completely reproducible results across executions. To learn more, read the [PyTorch notes on randomness](https://pytorch.org/docs/stable/notes/randomness.html).
 :::
 ::::
 :::::
