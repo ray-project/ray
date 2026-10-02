@@ -1,0 +1,57 @@
+
+====================================================================
+ARM: nokill
+====================================================================
+  [nokill] coordinator started
+  [nokill] NC-outage: no kill
+  [nokill] exec_pre                         (5, 45)
+  [nokill] exec_during                      (50, 141)
+  [nokill] exec_after                       (164, 400)
+  [nokill] writes_during                    (49, 140)
+  [nokill] writes_after                     (165, 401)
+  [nokill] sampler_errors                   0
+  [nokill] epochs_seen                      [1]
+  [nokill] kv_unavailable_during_outage     False
+  [nokill] kv_available_after_restore       True
+  [nokill] kv_error_examples                []
+  [nokill] live actor rows: 1  rows: [{"state": "ALIVE", "pid": "", "restarts": 0}]
+  [nokill] committed=400 dupes=False contiguous=True
+  [nokill] final={"epoch": 1, "instance_id": "2a1dd84833ab44bf9e5c903935b47e0d", "resumed_from": 0, "executed_this_incarnation": 400, "finished": true, "fatal": null, "ledger_writes": 401, "ledger_keys": 5, "pid": 990191}
+
+====================================================================
+ARM: kill
+====================================================================
+  [kill] coordinator started
+  [kill] SIGKILL gcs_server pid=990782 -- nothing else stopped
+  [kill] re-exec'd gcs_server as pid 991588 after 35s
+  [kill] exec_pre                         (4, 44)
+  [kill] exec_during                      (48, 48)
+  [kill] exec_after                       (59, 327)
+  [kill] writes_during                    (49, 49)
+  [kill] writes_after                     (58, 328)
+  [kill] sampler_errors                   1
+  [kill] epochs_seen                      [1]
+  [kill] kv_unavailable_during_outage     True
+  [kill] kv_available_after_restore       True
+  [kill] kv_error_examples                ['GetTimeoutError: Get timed out: some object(s) not ready.', 'GetTimeoutError: Get timed out: some object(s) not ready.']
+  [kill] live actor rows: 1  rows: [{"state": "ALIVE", "pid": "", "restarts": 0}]
+  [kill] committed=336 dupes=False contiguous=True
+  [kill] final={"epoch": 1, "instance_id": "acf3f8e57bc047bb9fd46ec790a29bb6", "resumed_from": 0, "executed_this_incarnation": 336, "finished": false, "fatal": null, "ledger_writes": 337, "ledger_keys": 4, "pid": 991371}
+
+====================================================================
+  NC_outage_nokill_progressed                  True
+  VOID_nokill_also_stalled                     False
+  work_continued_during_outage                 False
+  durability_paused_during_outage              True
+  kv_confirmed_unavailable_during_outage       True
+  kv_confirmed_available_after_restore         True
+  NC_sampler_saw_kv_go_red                     True
+  recovered_after_restore                      True
+  durability_resumed_after_restore             True
+  ray55996_wedged_after_restore                False
+  coordinator_survived                         True
+  no_duplicate_incarnation                     True
+  ledger_no_dupes                              True
+  ledger_contiguous                            True
+  no_restart_epoch_stayed_1                    True
+====================================================================

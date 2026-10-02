@@ -1,0 +1,379 @@
+{
+  "arms": {
+    "base_0": {
+      "arm": "base_0",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 53314,
+      "kv": {
+        "p50": 0.795,
+        "p95": 1.117,
+        "p99": 3.173,
+        "p999": 10.494
+      },
+      "rt": {
+        "p50": 0.929,
+        "p95": 1.596,
+        "p99": 6.375
+      },
+      "measured_load_rate": 0.0
+    },
+    "r26": {
+      "arm": "r26",
+      "rate": 26.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 52710,
+      "kv": {
+        "p50": 0.796,
+        "p95": 1.136,
+        "p99": 3.267,
+        "p999": 11.681
+      },
+      "rt": {
+        "p50": 0.94,
+        "p95": 1.672,
+        "p99": 7.051
+      },
+      "measured_load_rate": 26.0
+    },
+    "base_1": {
+      "arm": "base_1",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 52876,
+      "kv": {
+        "p50": 0.793,
+        "p95": 1.124,
+        "p99": 3.436,
+        "p999": 11.996
+      },
+      "rt": {
+        "p50": 0.93,
+        "p95": 1.612,
+        "p99": 7.087
+      },
+      "measured_load_rate": 0.0
+    },
+    "r50": {
+      "arm": "r50",
+      "rate": 50.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 52258,
+      "kv": {
+        "p50": 0.799,
+        "p95": 1.143,
+        "p99": 3.503,
+        "p999": 11.939
+      },
+      "rt": {
+        "p50": 0.946,
+        "p95": 1.644,
+        "p99": 6.632
+      },
+      "measured_load_rate": 50.0
+    },
+    "base_2": {
+      "arm": "base_2",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 53304,
+      "kv": {
+        "p50": 0.793,
+        "p95": 1.112,
+        "p99": 3.411,
+        "p999": 11.389
+      },
+      "rt": {
+        "p50": 0.923,
+        "p95": 1.616,
+        "p99": 5.895
+      },
+      "measured_load_rate": 0.0
+    },
+    "r100": {
+      "arm": "r100",
+      "rate": 100.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 52215,
+      "kv": {
+        "p50": 0.803,
+        "p95": 1.146,
+        "p99": 3.521,
+        "p999": 11.415
+      },
+      "rt": {
+        "p50": 0.95,
+        "p95": 1.686,
+        "p99": 6.882
+      },
+      "measured_load_rate": 100.0
+    },
+    "base_3": {
+      "arm": "base_3",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 53191,
+      "kv": {
+        "p50": 0.793,
+        "p95": 1.111,
+        "p99": 3.107,
+        "p999": 11.153
+      },
+      "rt": {
+        "p50": 0.929,
+        "p95": 1.537,
+        "p99": 6.667
+      },
+      "measured_load_rate": 0.0
+    },
+    "r200": {
+      "arm": "r200",
+      "rate": 200.0,
+      "n_loaders": 1,
+      "value_bytes": 256,
+      "kv_n": 51532,
+      "kv": {
+        "p50": 0.805,
+        "p95": 1.177,
+        "p99": 3.736,
+        "p999": 11.759
+      },
+      "rt": {
+        "p50": 0.95,
+        "p95": 1.742,
+        "p99": 7.285
+      },
+      "measured_load_rate": 200.0
+    },
+    "base_4": {
+      "arm": "base_4",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 52941,
+      "kv": {
+        "p50": 0.798,
+        "p95": 1.13,
+        "p99": 3.11,
+        "p999": 11.055
+      },
+      "rt": {
+        "p50": 0.947,
+        "p95": 1.615,
+        "p99": 6.44
+      },
+      "measured_load_rate": 0.0
+    },
+    "bigvalue": {
+      "arm": "bigvalue",
+      "rate": 0.0,
+      "n_loaders": 4,
+      "value_bytes": 4194304,
+      "kv_n": 5492,
+      "kv": {
+        "p50": 0.951,
+        "p95": 34.797,
+        "p99": 132.098,
+        "p999": 391.117
+      },
+      "rt": {
+        "p50": 1.395,
+        "p95": 13.781,
+        "p99": 29.327
+      },
+      "measured_load_rate": 59.8
+    },
+    "base_5": {
+      "arm": "base_5",
+      "rate": null,
+      "n_loaders": 0,
+      "value_bytes": 0,
+      "kv_n": 53351,
+      "kv": {
+        "p50": 0.789,
+        "p95": 1.124,
+        "p99": 3.491,
+        "p999": 11.19
+      },
+      "rt": {
+        "p50": 0.931,
+        "p95": 1.595,
+        "p99": 6.048
+      },
+      "measured_load_rate": 0.0
+    }
+  },
+  "order": [
+    "base_0",
+    "r26",
+    "base_1",
+    "r50",
+    "base_2",
+    "r100",
+    "base_3",
+    "r200",
+    "base_4",
+    "bigvalue",
+    "base_5"
+  ],
+  "config": {
+    "victim_seconds": 60,
+    "design_rate": 26.0,
+    "arms_spec": [
+      [
+        "base_0",
+        null,
+        0,
+        0
+      ],
+      [
+        "r26",
+        26.0,
+        1,
+        256
+      ],
+      [
+        "base_1",
+        null,
+        0,
+        0
+      ],
+      [
+        "r50",
+        50.0,
+        1,
+        256
+      ],
+      [
+        "base_2",
+        null,
+        0,
+        0
+      ],
+      [
+        "r100",
+        100.0,
+        1,
+        256
+      ],
+      [
+        "base_3",
+        null,
+        0,
+        0
+      ],
+      [
+        "r200",
+        200.0,
+        1,
+        256
+      ],
+      [
+        "base_4",
+        null,
+        0,
+        0
+      ],
+      [
+        "bigvalue",
+        0.0,
+        4,
+        4194304
+      ],
+      [
+        "base_5",
+        null,
+        0,
+        0
+      ]
+    ]
+  },
+  "verdict": {
+    "baseline_p99s": {
+      "base_0": 3.173,
+      "base_1": 3.436,
+      "base_2": 3.411,
+      "base_3": 3.107,
+      "base_4": 3.11,
+      "base_5": 3.491
+    },
+    "noise_floor_2sigma_frac": 0.0981,
+    "baseline_spread_frac": 0.1168,
+    "baseline_p99_mean": 3.288,
+    "noise_floor_below_25pct": true,
+    "threshold_frac": 0.25,
+    "deltas": {
+      "r26": {
+        "vs": "base_0",
+        "p99": 3.267,
+        "base_p99": 3.173,
+        "delta_frac": 0.0296,
+        "p95": 1.136,
+        "base_p95": 1.117,
+        "p95_delta_frac": 0.017,
+        "load": 26.0
+      },
+      "r50": {
+        "vs": "base_1",
+        "p99": 3.503,
+        "base_p99": 3.436,
+        "delta_frac": 0.0195,
+        "p95": 1.143,
+        "base_p95": 1.124,
+        "p95_delta_frac": 0.0169,
+        "load": 50.0
+      },
+      "r100": {
+        "vs": "base_2",
+        "p99": 3.521,
+        "base_p99": 3.411,
+        "delta_frac": 0.0322,
+        "p95": 1.146,
+        "base_p95": 1.112,
+        "p95_delta_frac": 0.0306,
+        "load": 100.0
+      },
+      "r200": {
+        "vs": "base_3",
+        "p99": 3.736,
+        "base_p99": 3.107,
+        "delta_frac": 0.2024,
+        "p95": 1.177,
+        "base_p95": 1.111,
+        "p95_delta_frac": 0.0594,
+        "load": 200.0
+      },
+      "bigvalue": {
+        "vs": "base_4",
+        "p99": 132.098,
+        "base_p99": 3.11,
+        "delta_frac": 41.4752,
+        "p95": 34.797,
+        "base_p95": 1.13,
+        "p95_delta_frac": 29.7938,
+        "load": 59.8
+      }
+    },
+    "regressed": {
+      "r26": false,
+      "r50": false,
+      "r100": false,
+      "r200": false,
+      "bigvalue": true
+    },
+    "POSCTRL_bigvalue_regressed": true,
+    "VOID_rig_blind": false,
+    "design_r26_delta": 0.0296,
+    "design_within_threshold": true,
+    "ledger_rates_that_regressed": [],
+    "max_ledger_rate_tested": 200.0,
+    "C3b_proven": true
+  }
+}

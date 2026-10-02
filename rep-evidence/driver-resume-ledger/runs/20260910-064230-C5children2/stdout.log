@@ -1,0 +1,51 @@
+
+====================================================================
+ARM: opaque
+====================================================================
+  phase1 created 6 children, only 2 recorded before the crash
+  adopted                2
+  adopted_same_pid       True
+  created_now            4
+  unreachable            0
+  orphans                4
+  orphan_names           ['0606bb10929f4644a48df52799259bb8', '579626343aad4367ab92e60c181799a9', '9e5ad2c3a2b349da91cda65558721ae7', 'cd98d1c7340d4bf3ac28c585ddf66109']
+  live_named_total       10
+
+====================================================================
+ARM: prefixed_explicit
+====================================================================
+  phase1 created 6 children, only 2 recorded before the crash
+  adopted                6
+  adopted_same_pid       True
+  created_now            0
+  unreachable            0
+  orphans                0
+  orphan_names           []
+  live_named_total       16
+
+====================================================================
+ARM: prefixed_getifexists
+====================================================================
+  phase1 created 6 children, only 2 recorded before the crash
+  adopted                2
+  adopted_same_pid       True
+  created_now            4
+  unreachable            0
+  orphans                0
+  orphan_names           []
+  live_named_total       22
+
+====================================================================
+  NC_opaque_leaked_as_required                   True
+  VOID_control_clean                             False
+  opaque_orphans                                 4
+  opaque_real_duplicates                         4
+  explicit_orphans                               0
+  explicit_adopted_all                           True
+  explicit_adoption_real_same_pid                True
+  explicit_created_nothing                       True
+  getifexists_orphans                            0
+  getifexists_reacquired                         4
+  C5_proven_conditional_on_scoped_names          True
+  getifexists_is_sufficient_on_its_own           True
+====================================================================

@@ -1,0 +1,4899 @@
+{
+  "arms": {
+    "async_nokill": {
+      "arm": "async_nokill",
+      "Q": 8,
+      "buffer_units": 24,
+      "samples": [
+        {
+          "t": 0.0,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 4,
+            "committed_this_incarnation": 4,
+            "durable_units": 3,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 2.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 10,
+            "committed_this_incarnation": 12,
+            "durable_units": 9,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 4.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 15,
+            "committed_this_incarnation": 14,
+            "durable_units": 15,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 6.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 21,
+            "committed_this_incarnation": 22,
+            "durable_units": 21,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 8.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 27,
+            "committed_this_incarnation": 30,
+            "durable_units": 27,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 10.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 33,
+            "committed_this_incarnation": 32,
+            "durable_units": 33,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 12.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 38,
+            "committed_this_incarnation": 39,
+            "durable_units": 36,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 14.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 44,
+            "committed_this_incarnation": 41,
+            "durable_units": 42,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 16.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 50,
+            "committed_this_incarnation": 49,
+            "durable_units": 48,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 18.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 55,
+            "committed_this_incarnation": 57,
+            "durable_units": 54,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 20.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 61,
+            "committed_this_incarnation": 59,
+            "durable_units": 60,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 22.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 67,
+            "committed_this_incarnation": 67,
+            "durable_units": 66,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 24.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 72,
+            "committed_this_incarnation": 75,
+            "durable_units": 72,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 26.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 78,
+            "committed_this_incarnation": 77,
+            "durable_units": 78,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 28.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 84,
+            "committed_this_incarnation": 85,
+            "durable_units": 84,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 30.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 90,
+            "committed_this_incarnation": 93,
+            "durable_units": 90,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 32.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 95,
+            "committed_this_incarnation": 94,
+            "durable_units": 93,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 34.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 101,
+            "committed_this_incarnation": 102,
+            "durable_units": 99,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 36.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 107,
+            "committed_this_incarnation": 104,
+            "durable_units": 105,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 38.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 112,
+            "committed_this_incarnation": 112,
+            "durable_units": 111,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 40.17,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 118,
+            "committed_this_incarnation": 120,
+            "durable_units": 117,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 42.17,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 124,
+            "committed_this_incarnation": 122,
+            "durable_units": 123,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 44.17,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 129,
+            "committed_this_incarnation": 130,
+            "durable_units": 129,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 46.18,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 135,
+            "committed_this_incarnation": 138,
+            "durable_units": 135,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 48.18,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 141,
+            "committed_this_incarnation": 140,
+            "durable_units": 141,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 50.18,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 147,
+            "committed_this_incarnation": 148,
+            "durable_units": 147,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 52.19,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 152,
+            "committed_this_incarnation": 149,
+            "durable_units": 150,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 54.19,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 158,
+            "committed_this_incarnation": 157,
+            "durable_units": 156,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 56.19,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 164,
+            "committed_this_incarnation": 165,
+            "durable_units": 162,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 58.2,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 169,
+            "committed_this_incarnation": 167,
+            "durable_units": 168,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 60.2,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 175,
+            "committed_this_incarnation": 175,
+            "durable_units": 174,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 62.2,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 181,
+            "committed_this_incarnation": 183,
+            "durable_units": 180,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 64.21,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 186,
+            "committed_this_incarnation": 185,
+            "durable_units": 186,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 66.21,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 192,
+            "committed_this_incarnation": 193,
+            "durable_units": 192,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 68.21,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 198,
+            "committed_this_incarnation": 201,
+            "durable_units": 198,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 70.22,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 204,
+            "committed_this_incarnation": 203,
+            "durable_units": 204,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 72.22,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 209,
+            "committed_this_incarnation": 210,
+            "durable_units": 207,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 74.22,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 215,
+            "committed_this_incarnation": 212,
+            "durable_units": 213,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 76.23,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 221,
+            "committed_this_incarnation": 220,
+            "durable_units": 219,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 78.23,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 226,
+            "committed_this_incarnation": 228,
+            "durable_units": 225,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 80.23,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 232,
+            "committed_this_incarnation": 230,
+            "durable_units": 231,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 82.24,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 238,
+            "committed_this_incarnation": 238,
+            "durable_units": 237,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 84.24,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 243,
+            "committed_this_incarnation": 246,
+            "durable_units": 243,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 86.24,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 249,
+            "committed_this_incarnation": 248,
+            "durable_units": 249,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 88.24,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 255,
+            "committed_this_incarnation": 256,
+            "durable_units": 255,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 90.25,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 261,
+            "committed_this_incarnation": 264,
+            "durable_units": 261,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 92.25,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 266,
+            "committed_this_incarnation": 265,
+            "durable_units": 264,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 94.25,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 272,
+            "committed_this_incarnation": 273,
+            "durable_units": 270,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 96.26,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 278,
+            "committed_this_incarnation": 275,
+            "durable_units": 276,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 98.26,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 283,
+            "committed_this_incarnation": 283,
+            "durable_units": 282,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 100.26,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 289,
+            "committed_this_incarnation": 291,
+            "durable_units": 288,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 102.27,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 295,
+            "committed_this_incarnation": 293,
+            "durable_units": 294,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 104.27,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 300,
+            "committed_this_incarnation": 301,
+            "durable_units": 300,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 106.27,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 306,
+            "committed_this_incarnation": 309,
+            "durable_units": 306,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 108.28,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 312,
+            "committed_this_incarnation": 311,
+            "durable_units": 312,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 110.28,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 318,
+            "committed_this_incarnation": 319,
+            "durable_units": 318,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 112.28,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 323,
+            "committed_this_incarnation": 320,
+            "durable_units": 321,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 114.29,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 329,
+            "committed_this_incarnation": 328,
+            "durable_units": 327,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 116.29,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 335,
+            "committed_this_incarnation": 336,
+            "durable_units": 333,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 118.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 340,
+            "committed_this_incarnation": 338,
+            "durable_units": 339,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 120.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 346,
+            "committed_this_incarnation": 346,
+            "durable_units": 345,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 122.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 352,
+            "committed_this_incarnation": 354,
+            "durable_units": 351,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 124.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 357,
+            "committed_this_incarnation": 356,
+            "durable_units": 357,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 126.31,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 363,
+            "committed_this_incarnation": 364,
+            "durable_units": 363,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 128.31,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 369,
+            "committed_this_incarnation": 372,
+            "durable_units": 369,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 130.31,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 375,
+            "committed_this_incarnation": 374,
+            "durable_units": 375,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 132.32,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 380,
+            "committed_this_incarnation": 381,
+            "durable_units": 378,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 134.32,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 386,
+            "committed_this_incarnation": 383,
+            "durable_units": 384,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 136.32,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 392,
+            "committed_this_incarnation": 391,
+            "durable_units": 390,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 138.33,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 397,
+            "committed_this_incarnation": 399,
+            "durable_units": 396,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 140.33,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "durable_units": 400,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": true,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 142.33,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "durable_units": 400,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": true,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 144.34,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "durable_units": 400,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": true,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 146.34,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "durable_units": 400,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": true,
+            "fatal": null,
+            "pid": 1006599
+          }
+        },
+        {
+          "t": 148.35,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 400,
+            "committed_this_incarnation": 401,
+            "durable_units": 400,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": true,
+            "fatal": null,
+            "pid": 1006599
+          }
+        }
+      ],
+      "window": {
+        "exec_during": [
+          50,
+          141
+        ],
+        "durable_during": [
+          48,
+          141
+        ],
+        "queued_during": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "exec_after": [
+          164,
+          400
+        ],
+        "writer_errors": [],
+        "work_during_outage": 91,
+        "max_queued": 0,
+        "queue_saturated": false
+      },
+      "final": {
+        "final": {
+          "epoch": 1,
+          "executed_this_incarnation": 400,
+          "committed_this_incarnation": 401,
+          "durable_units": 400,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 0,
+          "writer_error": null,
+          "finished": true,
+          "fatal": null,
+          "pid": 1006599
+        },
+        "epochs": [
+          1
+        ],
+        "committed": 400,
+        "has_dupes": false,
+        "contiguous": true
+      }
+    },
+    "async_outage": {
+      "arm": "async_outage",
+      "Q": 8,
+      "buffer_units": 24,
+      "samples": [
+        {
+          "t": 0.0,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 4,
+            "committed_this_incarnation": 4,
+            "durable_units": 3,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 2.1,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 10,
+            "committed_this_incarnation": 12,
+            "durable_units": 9,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 4.1,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 16,
+            "committed_this_incarnation": 14,
+            "durable_units": 15,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 6.1,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 21,
+            "committed_this_incarnation": 22,
+            "durable_units": 21,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 8.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 27,
+            "committed_this_incarnation": 30,
+            "durable_units": 27,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 10.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 33,
+            "committed_this_incarnation": 32,
+            "durable_units": 33,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 12.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 38,
+            "committed_this_incarnation": 39,
+            "durable_units": 36,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 14.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 44,
+            "committed_this_incarnation": 41,
+            "durable_units": 42,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 16.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 50,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 18.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 55,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 2,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 20.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 61,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 4,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 22.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 67,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 6,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 24.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 73,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 26.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 28.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 30.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 32.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 34.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 36.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 38.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 40.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 42.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 44.17,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 46.18,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 48.19,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 50.19,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 52.2,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 77,
+            "committed_this_incarnation": 76,
+            "durable_units": 75,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 54.2,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 83,
+            "committed_this_incarnation": 84,
+            "durable_units": 81,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 56.2,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 88,
+            "committed_this_incarnation": 86,
+            "durable_units": 87,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 58.21,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 94,
+            "committed_this_incarnation": 94,
+            "durable_units": 93,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 60.21,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 100,
+            "committed_this_incarnation": 102,
+            "durable_units": 99,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 62.21,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 105,
+            "committed_this_incarnation": 104,
+            "durable_units": 105,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 64.22,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 111,
+            "committed_this_incarnation": 112,
+            "durable_units": 111,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 66.22,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 117,
+            "committed_this_incarnation": 120,
+            "durable_units": 117,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 68.22,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 123,
+            "committed_this_incarnation": 122,
+            "durable_units": 123,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 70.22,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 128,
+            "committed_this_incarnation": 129,
+            "durable_units": 126,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 72.23,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 134,
+            "committed_this_incarnation": 131,
+            "durable_units": 132,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 74.23,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 140,
+            "committed_this_incarnation": 139,
+            "durable_units": 138,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 76.23,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 145,
+            "committed_this_incarnation": 147,
+            "durable_units": 144,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 78.24,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 151,
+            "committed_this_incarnation": 149,
+            "durable_units": 150,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 80.24,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 157,
+            "committed_this_incarnation": 157,
+            "durable_units": 156,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 82.24,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 162,
+            "committed_this_incarnation": 165,
+            "durable_units": 162,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 84.25,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 168,
+            "committed_this_incarnation": 167,
+            "durable_units": 168,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 86.25,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 174,
+            "committed_this_incarnation": 175,
+            "durable_units": 174,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 88.25,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 180,
+            "committed_this_incarnation": 183,
+            "durable_units": 180,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 90.26,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 185,
+            "committed_this_incarnation": 184,
+            "durable_units": 183,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 92.26,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 191,
+            "committed_this_incarnation": 192,
+            "durable_units": 189,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 94.26,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 197,
+            "committed_this_incarnation": 194,
+            "durable_units": 195,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 96.27,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 202,
+            "committed_this_incarnation": 202,
+            "durable_units": 201,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 98.27,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 208,
+            "committed_this_incarnation": 210,
+            "durable_units": 207,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 100.28,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 214,
+            "committed_this_incarnation": 212,
+            "durable_units": 213,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 102.28,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 219,
+            "committed_this_incarnation": 220,
+            "durable_units": 219,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 104.28,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 225,
+            "committed_this_incarnation": 228,
+            "durable_units": 225,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 106.29,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 231,
+            "committed_this_incarnation": 230,
+            "durable_units": 231,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 108.29,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 237,
+            "committed_this_incarnation": 238,
+            "durable_units": 237,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 110.29,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 242,
+            "committed_this_incarnation": 239,
+            "durable_units": 240,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 112.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 248,
+            "committed_this_incarnation": 247,
+            "durable_units": 246,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 114.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 254,
+            "committed_this_incarnation": 255,
+            "durable_units": 252,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 116.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 259,
+            "committed_this_incarnation": 257,
+            "durable_units": 258,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 118.3,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 265,
+            "committed_this_incarnation": 265,
+            "durable_units": 264,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 120.31,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 271,
+            "committed_this_incarnation": 273,
+            "durable_units": 270,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 122.31,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 276,
+            "committed_this_incarnation": 275,
+            "durable_units": 276,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 124.32,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 282,
+            "committed_this_incarnation": 283,
+            "durable_units": 282,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 126.32,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 288,
+            "committed_this_incarnation": 291,
+            "durable_units": 288,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 128.32,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 294,
+            "committed_this_incarnation": 293,
+            "durable_units": 294,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 130.33,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 299,
+            "committed_this_incarnation": 300,
+            "durable_units": 297,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 132.33,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 305,
+            "committed_this_incarnation": 302,
+            "durable_units": 303,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 134.34,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 311,
+            "committed_this_incarnation": 310,
+            "durable_units": 309,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 136.34,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 316,
+            "committed_this_incarnation": 318,
+            "durable_units": 315,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 138.36,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 322,
+            "committed_this_incarnation": 320,
+            "durable_units": 321,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 140.36,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 328,
+            "committed_this_incarnation": 328,
+            "durable_units": 327,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 142.36,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 334,
+            "committed_this_incarnation": 336,
+            "durable_units": 333,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 144.37,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 339,
+            "committed_this_incarnation": 338,
+            "durable_units": 339,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 146.37,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 345,
+            "committed_this_incarnation": 346,
+            "durable_units": 345,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        },
+        {
+          "t": 148.38,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 351,
+            "committed_this_incarnation": 354,
+            "durable_units": 351,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1007603
+          }
+        }
+      ],
+      "window": {
+        "exec_during": [
+          50,
+          75
+        ],
+        "durable_during": [
+          45,
+          45
+        ],
+        "queued_during": [
+          0,
+          2,
+          4,
+          6,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "exec_after": [
+          88,
+          351
+        ],
+        "writer_errors": [],
+        "work_during_outage": 25,
+        "max_queued": 8,
+        "queue_saturated": true
+      },
+      "final": {
+        "final": {
+          "epoch": 1,
+          "executed_this_incarnation": 360,
+          "committed_this_incarnation": 363,
+          "durable_units": 360,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 0,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1007603
+        },
+        "epochs": [
+          1
+        ],
+        "committed": 360,
+        "has_dupes": false,
+        "contiguous": true
+      }
+    },
+    "async_crash_outage": {
+      "arm": "async_crash_outage",
+      "Q": 8,
+      "buffer_units": 24,
+      "samples": [
+        {
+          "t": 0.0,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 4,
+            "committed_this_incarnation": 4,
+            "durable_units": 3,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 2.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 10,
+            "committed_this_incarnation": 12,
+            "durable_units": 9,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 4.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 15,
+            "committed_this_incarnation": 14,
+            "durable_units": 15,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 6.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 21,
+            "committed_this_incarnation": 22,
+            "durable_units": 21,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 8.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 27,
+            "committed_this_incarnation": 30,
+            "durable_units": 27,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 10.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 33,
+            "committed_this_incarnation": 32,
+            "durable_units": 33,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 12.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 38,
+            "committed_this_incarnation": 39,
+            "durable_units": 36,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 14.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 44,
+            "committed_this_incarnation": 41,
+            "durable_units": 42,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 16.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 50,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 18.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 55,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 2,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 20.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 61,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 4,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 22.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 67,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 6,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 24.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 73,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 26.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 28.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 30.17,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 32.17,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 34.17,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 36.18,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 75,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 8,
+            "queue_depth": 8,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008813
+          }
+        },
+        {
+          "t": 36.18,
+          "died": true
+        },
+        {
+          "t": 38.18,
+          "error": "GetTimeoutError: Get timed out: some object(s) not ready."
+        },
+        {
+          "t": 48.18,
+          "p": {
+            "epoch": 2,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008811
+          }
+        },
+        {
+          "t": 55.99,
+          "p": {
+            "epoch": 2,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008811
+          }
+        },
+        {
+          "t": 58.0,
+          "p": {
+            "epoch": 3,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008814
+          }
+        },
+        {
+          "t": 60.99,
+          "p": {
+            "epoch": 3,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008814
+          }
+        },
+        {
+          "t": 63.0,
+          "p": {
+            "epoch": 3,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008814
+          }
+        },
+        {
+          "t": 65.0,
+          "p": {
+            "epoch": 4,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008812
+          }
+        },
+        {
+          "t": 67.0,
+          "p": {
+            "epoch": 4,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008812
+          }
+        },
+        {
+          "t": 69.01,
+          "p": {
+            "epoch": 4,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1008812
+          }
+        },
+        {
+          "t": 71.01,
+          "p": {
+            "epoch": 5,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009459
+          }
+        },
+        {
+          "t": 73.02,
+          "p": {
+            "epoch": 5,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009459
+          }
+        },
+        {
+          "t": 75.02,
+          "p": {
+            "epoch": 5,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009459
+          }
+        },
+        {
+          "t": 77.02,
+          "p": {
+            "epoch": 6,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009537
+          }
+        },
+        {
+          "t": 79.02,
+          "p": {
+            "epoch": 6,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009537
+          }
+        },
+        {
+          "t": 81.03,
+          "p": {
+            "epoch": 6,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009537
+          }
+        },
+        {
+          "t": 83.03,
+          "p": {
+            "epoch": 7,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009596
+          }
+        },
+        {
+          "t": 85.04,
+          "p": {
+            "epoch": 7,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009596
+          }
+        },
+        {
+          "t": 87.04,
+          "p": {
+            "epoch": 7,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009596
+          }
+        },
+        {
+          "t": 89.04,
+          "p": {
+            "epoch": 8,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009668
+          }
+        },
+        {
+          "t": 91.05,
+          "p": {
+            "epoch": 8,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009668
+          }
+        },
+        {
+          "t": 93.05,
+          "p": {
+            "epoch": 8,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009668
+          }
+        },
+        {
+          "t": 95.06,
+          "p": {
+            "epoch": 9,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009792
+          }
+        },
+        {
+          "t": 97.06,
+          "p": {
+            "epoch": 9,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009792
+          }
+        },
+        {
+          "t": 99.06,
+          "p": {
+            "epoch": 9,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009792
+          }
+        },
+        {
+          "t": 101.07,
+          "p": {
+            "epoch": 10,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009879
+          }
+        },
+        {
+          "t": 103.07,
+          "p": {
+            "epoch": 10,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009879
+          }
+        },
+        {
+          "t": 105.08,
+          "p": {
+            "epoch": 10,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009879
+          }
+        },
+        {
+          "t": 107.08,
+          "p": {
+            "epoch": 11,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009933
+          }
+        },
+        {
+          "t": 109.08,
+          "p": {
+            "epoch": 11,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009933
+          }
+        },
+        {
+          "t": 111.09,
+          "p": {
+            "epoch": 11,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009933
+          }
+        },
+        {
+          "t": 113.09,
+          "p": {
+            "epoch": 12,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009989
+          }
+        },
+        {
+          "t": 115.1,
+          "p": {
+            "epoch": 12,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009989
+          }
+        },
+        {
+          "t": 117.1,
+          "p": {
+            "epoch": 12,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1009989
+          }
+        },
+        {
+          "t": 119.1,
+          "p": {
+            "epoch": 13,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010038
+          }
+        },
+        {
+          "t": 121.11,
+          "p": {
+            "epoch": 13,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010038
+          }
+        },
+        {
+          "t": 123.11,
+          "p": {
+            "epoch": 13,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010038
+          }
+        },
+        {
+          "t": 125.11,
+          "p": {
+            "epoch": 14,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010090
+          }
+        },
+        {
+          "t": 127.12,
+          "p": {
+            "epoch": 14,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010090
+          }
+        },
+        {
+          "t": 129.12,
+          "p": {
+            "epoch": 14,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010090
+          }
+        },
+        {
+          "t": 131.12,
+          "p": {
+            "epoch": 15,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010160
+          }
+        },
+        {
+          "t": 133.13,
+          "p": {
+            "epoch": 15,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010160
+          }
+        },
+        {
+          "t": 135.13,
+          "p": {
+            "epoch": 15,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010160
+          }
+        },
+        {
+          "t": 137.14,
+          "p": {
+            "epoch": 16,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010216
+          }
+        },
+        {
+          "t": 139.14,
+          "p": {
+            "epoch": 16,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010216
+          }
+        },
+        {
+          "t": 141.14,
+          "p": {
+            "epoch": 16,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010216
+          }
+        },
+        {
+          "t": 143.15,
+          "p": {
+            "epoch": 17,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010280
+          }
+        },
+        {
+          "t": 145.15,
+          "p": {
+            "epoch": 17,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010280
+          }
+        },
+        {
+          "t": 147.15,
+          "p": {
+            "epoch": 17,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010280
+          }
+        },
+        {
+          "t": 149.16,
+          "p": {
+            "epoch": 18,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 8,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010327
+          }
+        }
+      ],
+      "window": {
+        "exec_during": [
+          50,
+          0
+        ],
+        "durable_during": [
+          45,
+          45
+        ],
+        "queued_during": [
+          0,
+          2,
+          4,
+          6,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          0
+        ],
+        "exec_after": [
+          0,
+          0
+        ],
+        "writer_errors": [],
+        "work_during_outage": -50,
+        "max_queued": 8,
+        "queue_saturated": true
+      },
+      "redo": {
+        "executed_at_death": 75,
+        "durable_at_death": 45,
+        "backlog_at_death": 30,
+        "queued_at_death": 8,
+        "resumed_from": 45,
+        "redo_units": 30,
+        "bound": 27,
+        "within_bound": false,
+        "died": true,
+        "restart_epoch": 18
+      },
+      "final": {
+        "final": {
+          "epoch": 18,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1010327
+        },
+        "epochs": [
+          18
+        ],
+        "committed": 45,
+        "has_dupes": false,
+        "contiguous": true
+      }
+    },
+    "sync_crash_outage": {
+      "arm": "sync_crash_outage",
+      "Q": 0,
+      "buffer_units": 0,
+      "samples": [
+        {
+          "t": 0.0,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 4,
+            "committed_this_incarnation": 4,
+            "durable_units": 3,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 2.1,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 10,
+            "committed_this_incarnation": 12,
+            "durable_units": 9,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 4.1,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 15,
+            "committed_this_incarnation": 14,
+            "durable_units": 15,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 6.1,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 21,
+            "committed_this_incarnation": 22,
+            "durable_units": 21,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 8.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 27,
+            "committed_this_incarnation": 30,
+            "durable_units": 27,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 10.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 32,
+            "committed_this_incarnation": 31,
+            "durable_units": 30,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 12.11,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 38,
+            "committed_this_incarnation": 39,
+            "durable_units": 36,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 14.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 44,
+            "committed_this_incarnation": 41,
+            "durable_units": 42,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 16.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 18.12,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 20.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 22.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 24.13,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 26.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 28.14,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 30.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 32.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 34.15,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 36.16,
+          "p": {
+            "epoch": 1,
+            "executed_this_incarnation": 48,
+            "committed_this_incarnation": 49,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 0,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010814
+          }
+        },
+        {
+          "t": 36.16,
+          "died": true
+        },
+        {
+          "t": 38.16,
+          "error": "GetTimeoutError: Get timed out: some object(s) not ready."
+        },
+        {
+          "t": 48.16,
+          "p": {
+            "epoch": 2,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010815
+          }
+        },
+        {
+          "t": 53.0,
+          "p": {
+            "epoch": 3,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010813
+          }
+        },
+        {
+          "t": 55.0,
+          "p": {
+            "epoch": 3,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010813
+          }
+        },
+        {
+          "t": 57.01,
+          "p": {
+            "epoch": 3,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010813
+          }
+        },
+        {
+          "t": 59.01,
+          "p": {
+            "epoch": 4,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010812
+          }
+        },
+        {
+          "t": 61.02,
+          "p": {
+            "epoch": 4,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010812
+          }
+        },
+        {
+          "t": 63.03,
+          "p": {
+            "epoch": 4,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1010812
+          }
+        },
+        {
+          "t": 65.03,
+          "p": {
+            "epoch": 5,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011395
+          }
+        },
+        {
+          "t": 67.03,
+          "p": {
+            "epoch": 5,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011395
+          }
+        },
+        {
+          "t": 69.04,
+          "p": {
+            "epoch": 5,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011395
+          }
+        },
+        {
+          "t": 71.04,
+          "p": {
+            "epoch": 6,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011476
+          }
+        },
+        {
+          "t": 73.04,
+          "p": {
+            "epoch": 6,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011476
+          }
+        },
+        {
+          "t": 75.05,
+          "p": {
+            "epoch": 6,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011476
+          }
+        },
+        {
+          "t": 77.05,
+          "p": {
+            "epoch": 7,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011530
+          }
+        },
+        {
+          "t": 79.05,
+          "p": {
+            "epoch": 7,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011530
+          }
+        },
+        {
+          "t": 81.06,
+          "p": {
+            "epoch": 7,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011530
+          }
+        },
+        {
+          "t": 83.06,
+          "p": {
+            "epoch": 8,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011586
+          }
+        },
+        {
+          "t": 85.07,
+          "p": {
+            "epoch": 8,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011586
+          }
+        },
+        {
+          "t": 87.07,
+          "p": {
+            "epoch": 8,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011586
+          }
+        },
+        {
+          "t": 89.07,
+          "p": {
+            "epoch": 9,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011630
+          }
+        },
+        {
+          "t": 91.08,
+          "p": {
+            "epoch": 9,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011630
+          }
+        },
+        {
+          "t": 93.08,
+          "p": {
+            "epoch": 9,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011630
+          }
+        },
+        {
+          "t": 95.08,
+          "p": {
+            "epoch": 10,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011678
+          }
+        },
+        {
+          "t": 97.09,
+          "p": {
+            "epoch": 10,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011678
+          }
+        },
+        {
+          "t": 99.09,
+          "p": {
+            "epoch": 10,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011678
+          }
+        },
+        {
+          "t": 101.09,
+          "p": {
+            "epoch": 11,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011730
+          }
+        },
+        {
+          "t": 103.1,
+          "p": {
+            "epoch": 11,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011730
+          }
+        },
+        {
+          "t": 105.1,
+          "p": {
+            "epoch": 11,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011730
+          }
+        },
+        {
+          "t": 107.11,
+          "p": {
+            "epoch": 12,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011787
+          }
+        },
+        {
+          "t": 109.11,
+          "p": {
+            "epoch": 12,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011787
+          }
+        },
+        {
+          "t": 111.11,
+          "p": {
+            "epoch": 12,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011787
+          }
+        },
+        {
+          "t": 113.12,
+          "p": {
+            "epoch": 13,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011842
+          }
+        },
+        {
+          "t": 115.12,
+          "p": {
+            "epoch": 13,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011842
+          }
+        },
+        {
+          "t": 117.13,
+          "p": {
+            "epoch": 13,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011842
+          }
+        },
+        {
+          "t": 119.13,
+          "p": {
+            "epoch": 14,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011888
+          }
+        },
+        {
+          "t": 121.13,
+          "p": {
+            "epoch": 14,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011888
+          }
+        },
+        {
+          "t": 123.14,
+          "p": {
+            "epoch": 14,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011888
+          }
+        },
+        {
+          "t": 125.14,
+          "p": {
+            "epoch": 15,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011941
+          }
+        },
+        {
+          "t": 127.15,
+          "p": {
+            "epoch": 15,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011941
+          }
+        },
+        {
+          "t": 129.15,
+          "p": {
+            "epoch": 15,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1011941
+          }
+        },
+        {
+          "t": 131.15,
+          "p": {
+            "epoch": 16,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012003
+          }
+        },
+        {
+          "t": 133.16,
+          "p": {
+            "epoch": 16,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012003
+          }
+        },
+        {
+          "t": 135.16,
+          "p": {
+            "epoch": 16,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012003
+          }
+        },
+        {
+          "t": 137.16,
+          "p": {
+            "epoch": 17,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012059
+          }
+        },
+        {
+          "t": 139.17,
+          "p": {
+            "epoch": 17,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012059
+          }
+        },
+        {
+          "t": 141.17,
+          "p": {
+            "epoch": 17,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012059
+          }
+        },
+        {
+          "t": 143.17,
+          "p": {
+            "epoch": 18,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012113
+          }
+        },
+        {
+          "t": 145.18,
+          "p": {
+            "epoch": 18,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012113
+          }
+        },
+        {
+          "t": 147.18,
+          "p": {
+            "epoch": 18,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012113
+          }
+        },
+        {
+          "t": 149.18,
+          "p": {
+            "epoch": 19,
+            "executed_this_incarnation": 0,
+            "committed_this_incarnation": 6,
+            "durable_units": 45,
+            "queued": 0,
+            "queue_depth": 0,
+            "resumed_from": 45,
+            "writer_error": null,
+            "finished": false,
+            "fatal": null,
+            "pid": 1012160
+          }
+        }
+      ],
+      "window": {
+        "exec_during": [
+          48,
+          0
+        ],
+        "durable_during": [
+          45,
+          45
+        ],
+        "queued_during": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "exec_after": [
+          0,
+          0
+        ],
+        "writer_errors": [],
+        "work_during_outage": -48,
+        "max_queued": 0,
+        "queue_saturated": true
+      },
+      "redo": {
+        "executed_at_death": 48,
+        "durable_at_death": 45,
+        "backlog_at_death": 3,
+        "queued_at_death": 0,
+        "resumed_from": 45,
+        "redo_units": 3,
+        "bound": 3,
+        "within_bound": true,
+        "died": true,
+        "restart_epoch": 19
+      },
+      "final": {
+        "final": {
+          "epoch": 19,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 0,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1012160
+        },
+        "epochs": [
+          19
+        ],
+        "committed": 45,
+        "has_dupes": false,
+        "contiguous": true
+      }
+    }
+  },
+  "config": {
+    "N": 400,
+    "W": 3,
+    "K": 3,
+    "Q": 8,
+    "unit_seconds": 0.35,
+    "outage_s": 35
+  },
+  "verdict": {
+    "NC_nokill_completed_all": true,
+    "NC_nokill_clean": true,
+    "VOID_nokill_corrupted": false,
+    "clause1_work_during_outage": 25,
+    "clause1_beats_sync_baseline_zero": true,
+    "NC_queue_saturated": true,
+    "clause2_async_queued_at_death": 8,
+    "clause2_async_backlog_at_death": 30,
+    "NC_async_had_a_backlog_to_lose": true,
+    "NC_sync_backlog_at_death": 3,
+    "NC_coordinator_actually_died": true,
+    "clause2_async_redo": 30,
+    "clause2_async_bound": 27,
+    "clause2_async_within_bound": false,
+    "NC_sync_redo": 3,
+    "NC_sync_within_W": true,
+    "clause3_contiguous_everywhere": true,
+    "writer_errors": [],
+    "C26_proven": false
+  }
+}

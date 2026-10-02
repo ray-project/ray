@@ -1,0 +1,137 @@
+{
+  "arms": {
+    "hard": {
+      "arm": "hard",
+      "before": {
+        "target_node": "ac53b1f3af080b3db540c15730e7579e47bf639291f5637d649a620e",
+        "head_node": "df410df1ea111fe79739ddf1ea138660a0610717e678d0e2b15477e3",
+        "placed_node": "ac53b1f3af080b3db540c15730e7579e47bf639291f5637d649a620e",
+        "placed_off_head": true,
+        "info": {
+          "epoch": 1,
+          "instance_id": "446ed5af757942cc979dc37651bcce08",
+          "resumed_from": 0,
+          "executed_this_incarnation": 60,
+          "finished": true,
+          "fatal": null,
+          "ledger_writes": 59,
+          "ledger_keys": 5,
+          "pid": 982825
+        }
+      },
+      "after": {
+        "session": "session_2026-09-10_06-16-09_404722_982254",
+        "epoch1_state_units": 60,
+        "named": [
+          {
+            "name": "coord-hard",
+            "namespace": "r4"
+          }
+        ],
+        "reattach": {
+          "error": "ActorUnschedulableError: The actor is not schedulable: The node specified via NodeAffinitySchedulingStrategy doesn't exist any more or is infeasible, and soft=False was specified."
+        }
+      },
+      "reattached": false,
+      "resumed_from": null,
+      "reattach_error": "ActorUnschedulableError: The actor is not schedulable: The node specified via NodeAffinitySchedulingStrategy doesn't exist any more or is infeasible, and soft=False was specified."
+    },
+    "soft": {
+      "arm": "soft",
+      "before": {
+        "target_node": "65a37edfeef647691a034ffb9a41dcf522b4ac40776771f0214613e4",
+        "head_node": "9df359345a5a3fe7c8fae19912dafac4e1120df468f7a1695ba1ac39",
+        "placed_node": "65a37edfeef647691a034ffb9a41dcf522b4ac40776771f0214613e4",
+        "placed_off_head": true,
+        "info": {
+          "epoch": 1,
+          "instance_id": "d2aa2425261f4b8ba13f91c8d5b8771d",
+          "resumed_from": 0,
+          "executed_this_incarnation": 60,
+          "finished": true,
+          "fatal": null,
+          "ledger_writes": 59,
+          "ledger_keys": 5,
+          "pid": 984221
+        }
+      },
+      "after": {
+        "session": "session_2026-09-10_06-17-32_299936_983625",
+        "epoch1_state_units": 60,
+        "named": [
+          {
+            "name": "coord-soft",
+            "namespace": "r4"
+          }
+        ],
+        "reattach": {
+          "epoch": 2,
+          "instance_id": "050443eeab6646f0a732f86c19d158c7",
+          "resumed_from": 60,
+          "executed_this_incarnation": 0,
+          "finished": false,
+          "fatal": null,
+          "ledger_writes": 8,
+          "ledger_keys": 3,
+          "pid": 984825
+        }
+      },
+      "reattached": true,
+      "resumed_from": 60,
+      "reattach_error": null
+    },
+    "none": {
+      "arm": "none",
+      "before": {
+        "target_node": "bb9f5d1e509e7dd812edc1e8e44583dd785ea598131a5761ed42d37e",
+        "head_node": "ec9517cbbb0142da89513a43312ab0500055c3a245427bec65a245de",
+        "placed_node": "bb9f5d1e509e7dd812edc1e8e44583dd785ea598131a5761ed42d37e",
+        "placed_off_head": true,
+        "info": {
+          "epoch": 1,
+          "instance_id": "e6ba2a61bede47e9bc96f4c7d1b48e55",
+          "resumed_from": 0,
+          "executed_this_incarnation": 60,
+          "finished": true,
+          "fatal": null,
+          "ledger_writes": 59,
+          "ledger_keys": 5,
+          "pid": 985552
+        }
+      },
+      "after": {
+        "session": "session_2026-09-10_06-18-54_245156_984948",
+        "epoch1_state_units": 60,
+        "named": [
+          {
+            "name": "coord-none",
+            "namespace": "r4"
+          }
+        ],
+        "reattach": {
+          "epoch": 2,
+          "instance_id": "6267fd9858a5480b8e55e773ac5ec706",
+          "resumed_from": 60,
+          "executed_this_incarnation": 0,
+          "finished": false,
+          "fatal": null,
+          "ledger_writes": 8,
+          "ledger_keys": 3,
+          "pid": 986110
+        }
+      },
+      "reattached": true,
+      "resumed_from": 60,
+      "reattach_error": null
+    }
+  },
+  "verdict": {
+    "control_hard_failed_as_required": true,
+    "soft_reattached": true,
+    "none_reattached": true,
+    "soft_reattached_with_progress": true,
+    "none_reattached_with_progress": true,
+    "VOID_control_did_not_fire": false,
+    "C25_proven": true
+  }
+}

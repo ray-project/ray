@@ -1,0 +1,53 @@
+
+====================================================================
+ARM: async_nokill
+====================================================================
+  [async_nokill] booted, Q=8
+  [async_nokill] work during window: 91 units, max queued 0 (Q=8 batches = 24 units), saturated=False
+  [async_nokill] committed=400 dupes=False contiguous=True epochs=[1]
+
+====================================================================
+ARM: async_outage
+====================================================================
+  [async_outage] booted, Q=8
+  [async_outage] SIGKILL gcs_server 1002760
+  [async_outage] gcs_server re-exec'd after 35s
+  [async_outage] work during window: 25 units, max queued 8 (Q=8 batches = 24 units), saturated=True
+  [async_outage] committed=360 dupes=False contiguous=True epochs=[1]
+
+====================================================================
+ARM: async_crash_outage
+====================================================================
+  [async_crash_outage] booted, Q=8
+  [async_crash_outage] SIGKILL gcs_server 1003997; letting the queue back up
+  [async_crash_outage] gcs_server back; crashing the coordinator immediately
+  [async_crash_outage] executed=97 durable=96 resumed_from=96 redo=1 bound=27 within=True
+  [async_crash_outage] committed=96 dupes=False contiguous=True epochs=[2]
+
+====================================================================
+ARM: sync_crash_outage
+====================================================================
+  [sync_crash_outage] booted, Q=0
+  [sync_crash_outage] SIGKILL gcs_server 1005013; letting the queue back up
+  [sync_crash_outage] gcs_server back; crashing the coordinator immediately
+  [sync_crash_outage] executed=64 durable=63 resumed_from=63 redo=1 bound=3 within=True
+  [sync_crash_outage] committed=63 dupes=False contiguous=True epochs=[2]
+
+====================================================================
+  NC_nokill_completed_all                True
+  NC_nokill_clean                        True
+  VOID_nokill_corrupted                  False
+  clause1_work_during_outage             25
+  clause1_beats_sync_baseline_zero       True
+  NC_queue_saturated                     True
+  clause2_async_queued_at_kill           0
+  NC_async_had_a_backlog_to_lose         True
+  clause2_async_redo                     1
+  clause2_async_bound                    27
+  clause2_async_within_bound             True
+  NC_sync_redo                           1
+  NC_sync_within_W                       True
+  clause3_contiguous_everywhere          True
+  writer_errors                          []
+  C26_proven                             True
+====================================================================

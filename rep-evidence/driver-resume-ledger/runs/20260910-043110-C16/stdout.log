@@ -1,0 +1,30 @@
+experiment=C16 git=9ea80fdc7d5b budgets=[1, 2]
+
+==============================================================================
+REAL PROTOCOL -- two concurrent instances, windowed exhaustive search
+==============================================================================
+  tiny/w=4  traces=1061    fenced-active=971       2.4s  {'INV-FENCE-ACK': 663}
+  tiny/w=6  traces=4193    fenced-active=3949      9.6s  {'INV-FENCE-ACK': 2739}
+  tiny/w=8  traces=16221   fenced-active=15627    36.5s  {'INV-FENCE-ACK': 11123}
+  small/w=4  traces=1395    fenced-active=1340      4.0s  {'INV-FENCE-ACK': 1004}
+  small/w=6  traces=5695    fenced-active=5486     16.1s  {'INV-FENCE-ACK': 4136}
+  small/w=8  traces=22579   fenced-active=22020    64.2s  {'INV-FENCE-ACK': 16744}
+
+  cross-check: random interleaving fuzzer, no window bound
+  tiny     traces=2500   fenced-active=1437   {'INV-FENCE-ACK': 977}
+  small    traces=2500   fenced-active=2023   {'INV-FENCE-ACK': 1440}
+
+==============================================================================
+NEGATIVE CONTROLS
+==============================================================================
+  NC13_carry_forward_ptr_first   {'INV-FENCE-ACK': 2739, 'INV-DUR': 28}  (4193 traces)
+  NC1_fence_ignored              {'INV-FENCE-ACK': 2612, 'INV-ONE': 126}  (4071 traces)
+      INV-ONE: {1: ['A', 'B'], 2: ['audit']}
+  NC2_fence_inverted             {'INV-LIVE': 73}  (123 traces)
+
+  regression: the C6 sequential sweep, unchanged
+  C6 regression: 7620 traces CLEAN
+
+==============================================================================
+VERDICT: C16prime=proven -- INV-DUR=0, INV-FENCE-ACK=38826, INV-ONE=0, coverage=49393, C6 regression clean
+==============================================================================

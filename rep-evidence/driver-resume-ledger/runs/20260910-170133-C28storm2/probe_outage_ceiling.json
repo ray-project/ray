@@ -1,0 +1,38 @@
+{
+  "store_exists": true,
+  "store_entries": [
+    "kv",
+    "session_name",
+    "tables"
+  ],
+  "raylet_alive_before_restart": 0,
+  "cold_restart_rc": 0,
+  "probe": {
+    "session_name": "session_2026-09-10_17-07-06_531282_1118893",
+    "epoch_keys": [
+      3
+    ],
+    "committed": 45,
+    "contiguous": true,
+    "ledger_key_count": 3,
+    "named": [
+      {
+        "name": "coord-outage_60",
+        "namespace": "r4"
+      }
+    ],
+    "fresh_incarnation": {
+      "epoch": 3,
+      "executed_this_incarnation": 0,
+      "committed_this_incarnation": 6,
+      "durable_units": 45,
+      "queued": 0,
+      "queue_depth": 0,
+      "resumed_from": 45,
+      "writer_error": null,
+      "finished": false,
+      "fatal": null,
+      "pid": 1124605
+    }
+  }
+}

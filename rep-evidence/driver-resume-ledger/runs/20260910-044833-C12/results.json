@@ -1,0 +1,342 @@
+{
+  "experiment": "C12",
+  "verdict": "C12=proven C15=refuted",
+  "why": "C12: new session executed every unit and destroyed nothing; NC9 red. C15: in-place base produced 0 INV-DUR under crashes and concurrency",
+  "config": {
+    "experiment": "C12",
+    "git_rev": "798c7e7f79f8d01d5ca6dac1fbcb47e9ea6ac3ae",
+    "python": "3.10.14",
+    "budgets": [
+      1,
+      2
+    ],
+    "faults": [
+      "crash_before",
+      "crash_after",
+      "lost_ack"
+    ],
+    "workloads": {
+      "small": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "batched": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "wide": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      }
+    },
+    "controls": {
+      "NC1_fence_ignored": {
+        "fence_mode": "ignore"
+      },
+      "NC2_fence_inverted": {
+        "fence_mode": "inverted"
+      },
+      "NC3_state_not_epoch_scoped": {
+        "epoch_scoped_state": false
+      },
+      "NC4_sweep_before_ptr": {
+        "sweep_before_ptr": true
+      },
+      "NC5_compact_delete_before_ptr": {
+        "compact_delete_before_ptr": true
+      },
+      "NC6_compact_base_in_place": {
+        "compact_in_place": true
+      },
+      "NC7_no_startup_sweep": {
+        "startup_sweep": false
+      },
+      "NC8_ctor_seeds_empty_base": {
+        "carry_forward": false
+      },
+      "NC10_compact_ptr_before_base": {
+        "compact_ptr_before_base": true
+      },
+      "NC1b_fence_raw_no_readback": {
+        "fence_mode": "raw"
+      },
+      "NC11_ack_before_commit": {
+        "ack_before_commit": true
+      },
+      "NC12_resume_ignores_ledger": {
+        "resume_ignores_ledger": true
+      },
+      "NC13_carry_forward_ptr_first": {
+        "carry_forward_ptr_first": true
+      }
+    },
+    "seeds": "n/a -- deterministic exhaustive DFS, no randomness",
+    "started": "2026-09-10T04:48:33"
+  },
+  "c12": {
+    "real/small": {
+      "prior_completed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "new_session_executed": 6,
+      "new_session_recovered": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "prior_keys_destroyed": [],
+      "violations": []
+    },
+    "NC9/small": {
+      "prior_completed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "new_session_executed": 0,
+      "new_session_recovered": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "prior_keys_destroyed": [
+        "job1/epoch/0001",
+        "job1/state/0001/base@0006",
+        "job1/state/0001/base_ptr"
+      ],
+      "violations": [
+        "INV-SESS: the new session executed only 0 of 6 units -- it adopted the prior cluster's ledger",
+        "INV-SESS: the new session deleted 3 key(s) belonging to the prior cluster, e.g. ['job1/epoch/0001', 'job1/state/0001/base@0006', 'job1/state/0001/base_ptr']"
+      ]
+    },
+    "real/batched": {
+      "prior_completed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "new_session_executed": 8,
+      "new_session_recovered": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "prior_keys_destroyed": [],
+      "violations": []
+    },
+    "NC9/batched": {
+      "prior_completed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "new_session_executed": 0,
+      "new_session_recovered": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "prior_keys_destroyed": [
+        "job1/epoch/0001",
+        "job1/state/0001/base@0004",
+        "job1/state/0001/base_ptr"
+      ],
+      "violations": [
+        "INV-SESS: the new session executed only 0 of 8 units -- it adopted the prior cluster's ledger",
+        "INV-SESS: the new session deleted 3 key(s) belonging to the prior cluster, e.g. ['job1/epoch/0001', 'job1/state/0001/base@0004', 'job1/state/0001/base_ptr']"
+      ]
+    },
+    "real/wide": {
+      "prior_completed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "new_session_executed": 12,
+      "new_session_recovered": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "prior_keys_destroyed": [],
+      "violations": []
+    },
+    "NC9/wide": {
+      "prior_completed": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "new_session_executed": 0,
+      "new_session_recovered": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "prior_keys_destroyed": [
+        "job1/epoch/0001",
+        "job1/state/0001/base@0003",
+        "job1/state/0001/base_ptr",
+        "job1/state/0001/seg/0004"
+      ],
+      "violations": [
+        "INV-SESS: the new session executed only 0 of 12 units -- it adopted the prior cluster's ledger",
+        "INV-SESS: the new session deleted 4 key(s) belonging to the prior cluster, e.g. ['job1/epoch/0001', 'job1/state/0001/base@0003', 'job1/state/0001/base_ptr']"
+      ]
+    }
+  },
+  "c15": {
+    "sequential_crash_regression": {
+      "traces": 6585,
+      "violations_by_kind": {}
+    },
+    "2-instance": {
+      "comparison_arm_unmodified": {
+        "traces": 630,
+        "violations_by_kind": {
+          "INV-FENCE-ACK": 462
+        }
+      },
+      "in_place": {
+        "traces": 630,
+        "violations_by_kind": {
+          "INV-FENCE-ACK": 457
+        },
+        "examples": []
+      }
+    },
+    "3-instance": {
+      "comparison_arm_unmodified": {
+        "traces": 1110,
+        "violations_by_kind": {
+          "INV-FENCE-ACK": 885
+        }
+      },
+      "in_place": {
+        "traces": 1110,
+        "violations_by_kind": {
+          "INV-FENCE-ACK": 881
+        },
+        "examples": []
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+
+======================================================================
+profile constant: rate 200..200/s, W_mean=8 W_peak=8
+======================================================================
+  fixed_mean  wr_mean=  25.00/s dev= 4.75% redo_units_max=     7 redo_time_max=   0.04s W=8..8
+  fixed_peak  wr_mean=  25.00/s dev= 4.75% redo_units_max=     7 redo_time_max=   0.04s W=8..8
+  adaptive    wr_mean=  25.00/s dev= 4.75% redo_units_max=     7 redo_time_max=   0.04s W=8..8
+
+======================================================================
+profile step: rate 50..500/s, W_mean=11 W_peak=20
+======================================================================
+  fixed_mean  wr_mean=  25.00/s dev= 4.75% redo_units_max=    10 redo_time_max=   0.20s W=11..11
+  fixed_peak  wr_mean=  13.75/s dev=47.61% redo_units_max=    19 redo_time_max=   0.38s W=20..20
+  adaptive    wr_mean=  25.40/s dev= 3.24% redo_units_max=    19 redo_time_max=   0.04s W=2..20
+
+======================================================================
+profile ramp: rate 5..500/s, W_mean=5 W_peak=20
+======================================================================
+  fixed_mean  wr_mean=  21.52/s dev=18.00% redo_units_max=     4 redo_time_max=   0.80s W=5..5
+  fixed_peak  wr_mean=   5.38/s dev=79.50% redo_units_max=    19 redo_time_max=   3.80s W=20..20
+  adaptive    wr_mean=  19.65/s dev=25.14% redo_units_max=    18 redo_time_max=   0.04s W=1..19
+
+======================================================================
+profile bursty: rate 20..500/s, W_mean=10 W_peak=20
+======================================================================
+  fixed_mean  wr_mean=  26.00/s dev= 0.94% redo_units_max=     9 redo_time_max=   0.45s W=10..10
+  fixed_peak  wr_mean=  13.00/s dev=50.47% redo_units_max=    19 redo_time_max=   0.95s W=20..20
+  adaptive    wr_mean=  21.80/s dev=16.92% redo_units_max=    19 redo_time_max=   0.85s W=2..20
+
+======================================================================
+  NC_constant_write_rate_tie_frac        0.0
+  NC_constant_redo_time_tie_frac         0.0
+  NC_constant_is_a_tie                   True
+  VOID_adaptive_won_on_constant          False
+  adaptive_write_rate_dev                {'step': 0.0324, 'ramp': 0.2514, 'bursty': 0.1692}
+  adaptive_holds_target_rate             False
+  fixed_mean_dev                         {'step': 0.0475, 'ramp': 0.18, 'bursty': 0.0094}
+  fixed_peak_redo_time_vs_adaptive       {'step': 10.0, 'ramp': 103.2, 'bursty': 1.12}
+  fixed_matches_adaptive_everywhere      False
+  adaptive_redo_units_max                {'step': 19, 'ramp': 18, 'bursty': 19}
+  fixed_peak_redo_units_max              {'step': 19, 'ramp': 19, 'bursty': 19}
+  C32_proven                             False
+======================================================================

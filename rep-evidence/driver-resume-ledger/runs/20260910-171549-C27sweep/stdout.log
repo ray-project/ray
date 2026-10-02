@@ -1,0 +1,42 @@
+
+==================================================================
+Q = 0  (buffer 0 units)
+==================================================================
+  [Q=0] gcs killed; die at +30s, restore at +45s
+
+==================================================================
+Q = 2  (buffer 6 units)
+==================================================================
+  [Q=2] gcs killed; die at +30s, restore at +45s
+
+==================================================================
+Q = 4  (buffer 12 units)
+==================================================================
+  [Q=4] gcs killed; die at +30s, restore at +45s
+
+==================================================================
+Q = 8  (buffer 24 units)
+==================================================================
+  [Q=8] gcs killed; die at +30s, restore at +45s
+
+==================================================================
+Q = 16  (buffer 48 units)
+==================================================================
+  [Q=16] gcs killed; die at +30s, restore at +45s
+
+==================================================================
+  NC_sync_redo                       None
+  NC_sync_equals_W                   False
+  NC_all_async_arms_saturated        False
+  saturation_by_Q                    {'2': None, '4': None, '8': None, '16': None}
+  redo_by_Q                          {'0': None, '2': None, '4': None, '8': None, '16': None}
+  predicted_by_Q                     {'0': 3, '2': 12, '4': 18, '8': 30, '16': 54}
+  exact_match_by_Q                   {'0': None, '2': None, '4': None, '8': None, '16': None}
+  fitted_slope                       None
+  expected_slope                     3
+  fitted_intercept                   None
+  expected_intercept                 6
+  contiguous_everywhere              False
+  dupes_anywhere                     False
+  C27_proven                         False
+==================================================================

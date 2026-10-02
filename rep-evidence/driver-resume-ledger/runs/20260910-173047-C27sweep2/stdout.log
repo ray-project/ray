@@ -1,0 +1,52 @@
+
+==================================================================
+Q = 0  (buffer 0 units)
+==================================================================
+  [Q=0] gcs killed; die at +30s, restore at +45s
+  [Q=0] executed=48 queued=0 resumed_from=45 redo=3 predicted=3 saturated=True match=True
+  [Q=0] committed=45 contiguous=True dupes=False
+
+==================================================================
+Q = 2  (buffer 6 units)
+==================================================================
+  [Q=2] gcs killed; die at +30s, restore at +45s
+  [Q=2] executed=57 queued=2 resumed_from=45 redo=12 predicted=12 saturated=True match=True
+  [Q=2] committed=45 contiguous=True dupes=False
+
+==================================================================
+Q = 4  (buffer 12 units)
+==================================================================
+  [Q=4] gcs killed; die at +30s, restore at +45s
+  [Q=4] executed=63 queued=4 resumed_from=45 redo=18 predicted=18 saturated=True match=True
+  [Q=4] committed=45 contiguous=True dupes=False
+
+==================================================================
+Q = 8  (buffer 24 units)
+==================================================================
+  [Q=8] gcs killed; die at +30s, restore at +45s
+  [Q=8] executed=75 queued=8 resumed_from=45 redo=30 predicted=30 saturated=True match=True
+  [Q=8] committed=45 contiguous=True dupes=False
+
+==================================================================
+Q = 16  (buffer 48 units)
+==================================================================
+  [Q=16] gcs killed; die at +30s, restore at +45s
+  [Q=16] executed=98 queued=16 resumed_from=45 redo=53 predicted=54 saturated=True match=False
+  [Q=16] committed=45 contiguous=True dupes=False
+
+==================================================================
+  NC_sync_redo                       3
+  NC_sync_equals_W                   True
+  NC_all_async_arms_saturated        True
+  saturation_by_Q                    {'2': True, '4': True, '8': True, '16': True}
+  redo_by_Q                          {'0': 3, '2': 12, '4': 18, '8': 30, '16': 53}
+  predicted_by_Q                     {'0': 3, '2': 12, '4': 18, '8': 30, '16': 54}
+  exact_match_by_Q                   {'0': True, '2': True, '4': True, '8': True, '16': False}
+  fitted_slope                       2.9285714285714284
+  expected_slope                     3
+  fitted_intercept                   6.142857142857143
+  expected_intercept                 6
+  contiguous_everywhere              True
+  dupes_anywhere                     False
+  C27_proven                         False
+==================================================================

@@ -1,0 +1,106 @@
+{
+  "ray_version": "2.58.0",
+  "system_config": {
+    "gcs_storage": "rocksdb",
+    "gcs_storage_path": "/tmp/r4gcs_stage_c"
+  },
+  "python": "3.10.14",
+  "t1": {
+    "put_when_absent": false,
+    "put_when_present": true,
+    "value_after_failed_cas": "a",
+    "cas_held": true,
+    "return_value_is_inverted": true,
+    "prefix_list": [
+      "t1pfx/0",
+      "t1pfx/1",
+      "t1pfx/2"
+    ],
+    "prefix_list_works": true
+  },
+  "t2": {
+    "driver1_exited_cleanly": true,
+    "units_executed_with_no_driver_attached": 40,
+    "driver1_stderr_tail": "",
+    "reattached_by_name": true,
+    "info_after_reattach": {
+      "epoch": 1,
+      "instance_id": "e428984da45f4e6aad68b57910aeec96",
+      "resumed_from": 0,
+      "executed_this_incarnation": 40,
+      "finished": true,
+      "fatal": null,
+      "ledger_writes": 31,
+      "ledger_keys": 4,
+      "pid": 933425
+    }
+  },
+  "t3": {
+    "before_kill": {
+      "epoch": 1,
+      "instance_id": "e428984da45f4e6aad68b57910aeec96",
+      "resumed_from": 0,
+      "executed_this_incarnation": 40,
+      "finished": true,
+      "fatal": null,
+      "ledger_writes": 31,
+      "ledger_keys": 4,
+      "pid": 933425
+    },
+    "after_restart": {
+      "epoch": 2,
+      "instance_id": "81fa2e3377cc4d1a92c75486f155e833",
+      "resumed_from": 40,
+      "executed_this_incarnation": 0,
+      "finished": false,
+      "fatal": null,
+      "ledger_writes": 7,
+      "ledger_keys": 3,
+      "pid": 933423
+    },
+    "final": {
+      "epoch": 2,
+      "instance_id": "81fa2e3377cc4d1a92c75486f155e833",
+      "resumed_from": 40,
+      "executed_this_incarnation": 0,
+      "finished": true,
+      "fatal": null,
+      "ledger_writes": 7,
+      "ledger_keys": 3,
+      "pid": 933423
+    },
+    "new_process": true,
+    "epoch_advanced": true,
+    "resumed_rather_than_restarted": true
+  },
+  "t4": {
+    "old_session": "session_2026-09-10_04-59-11_276143_933138",
+    "new_session": "session_2026-09-10_04-59-11_276143_933138",
+    "session_name_inherited": true,
+    "session_name_file_contents": "session_2026-09-10_04-59-11_276143_933138",
+    "kv_survived_restart": true,
+    "survivor_value": "written-before-restart",
+    "keys_before": [
+      "session_2026-09-10_04-59-11_276143_933138/jobA/epoch/000002",
+      "session_2026-09-10_04-59-11_276143_933138/jobA/state/000002/base@000010",
+      "session_2026-09-10_04-59-11_276143_933138/jobA/state/000002/base_ptr",
+      "survivor",
+      "t1",
+      "t1pfx/0",
+      "t1pfx/1",
+      "t1pfx/2"
+    ],
+    "n_keys_before": 8,
+    "n_keys_after": 8,
+    "prior_ledger_visible_to_new_cluster": true
+  },
+  "verdict": {
+    "C8_zero_core_patches": true,
+    "C4a_survives_driver_death": true,
+    "C4a_resume_after_coordinator_kill": true,
+    "C21_session_name_stable": true,
+    "C12_refuted_by_inherited_session": true,
+    "rocksdb_really_durable": true,
+    "inverted_put_return_confirmed": true
+  }
+}

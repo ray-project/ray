@@ -1,0 +1,347 @@
+{
+  "experiment": "C20",
+  "verdict": "proven",
+  "why": "zero INV-DUR at 3 and 4 instances; n3={'INV-FENCE-ACK': 10026}; n4={'INV-FENCE-ACK': 13582}; regressions {'INV-FENCE-ACK': 3397}; NC15 red",
+  "config": {
+    "experiment": "C20",
+    "git_rev": "04a7dfc14512641115bee3fa0403616d4a4dbdbe",
+    "python": "3.10.14",
+    "budgets": [
+      1,
+      2
+    ],
+    "faults": [
+      "crash_before",
+      "crash_after",
+      "lost_ack"
+    ],
+    "workloads": {
+      "small": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "batched": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "wide": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "carry_forward_epochs_descending": false,
+        "carry_forward_ptr_first": false,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      }
+    },
+    "controls": {
+      "NC1_fence_ignored": {
+        "fence_mode": "ignore"
+      },
+      "NC2_fence_inverted": {
+        "fence_mode": "inverted"
+      },
+      "NC3_state_not_epoch_scoped": {
+        "epoch_scoped_state": false
+      },
+      "NC4_sweep_before_ptr": {
+        "sweep_before_ptr": true
+      },
+      "NC5_compact_delete_before_ptr": {
+        "compact_delete_before_ptr": true
+      },
+      "NC6_compact_base_in_place": {
+        "compact_in_place": true
+      },
+      "NC7_no_startup_sweep": {
+        "startup_sweep": false
+      },
+      "NC8_ctor_seeds_empty_base": {
+        "carry_forward": false
+      },
+      "NC10_compact_ptr_before_base": {
+        "compact_ptr_before_base": true
+      },
+      "NC1b_fence_raw_no_readback": {
+        "fence_mode": "raw"
+      },
+      "NC11_ack_before_commit": {
+        "ack_before_commit": true
+      },
+      "NC12_resume_ignores_ledger": {
+        "resume_ignores_ledger": true
+      },
+      "NC13_carry_forward_ptr_first": {
+        "carry_forward_ptr_first": true
+      }
+    },
+    "seeds": "n/a -- deterministic exhaustive DFS, no randomness",
+    "started": "2026-09-10T04:43:09"
+  },
+  "n3_totals": {
+    "INV-FENCE-ACK": 10026
+  },
+  "n4_totals": {
+    "INV-FENCE-ACK": 13582
+  },
+  "regression_totals": {
+    "INV-FENCE-ACK": 3397
+  },
+  "regressions": {
+    "C6_sequential": {
+      "traces": 7620,
+      "violations_by_kind": {}
+    },
+    "two_instance_tiny": {
+      "traces": 2117,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1352
+      }
+    },
+    "two_instance_small": {
+      "traces": 2833,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2045
+      }
+    }
+  },
+  "n_instance": {
+    "n=3/tiny/w=4": {
+      "instances": 3,
+      "traces": 390,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 307
+      },
+      "fenced_active_traces": 390,
+      "seconds": 1.23,
+      "inv_dur_examples": []
+    },
+    "n=3/tiny/w=5": {
+      "instances": 3,
+      "traces": 1110,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 885
+      },
+      "fenced_active_traces": 1110,
+      "seconds": 3.52,
+      "inv_dur_examples": []
+    },
+    "n=3/tiny/w=6": {
+      "instances": 3,
+      "traces": 3270,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2566
+      },
+      "fenced_active_traces": 3263,
+      "seconds": 10.27,
+      "inv_dur_examples": []
+    },
+    "n=3/small/w=4": {
+      "instances": 3,
+      "traces": 390,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 334
+      },
+      "fenced_active_traces": 390,
+      "seconds": 1.44,
+      "inv_dur_examples": []
+    },
+    "n=3/small/w=5": {
+      "instances": 3,
+      "traces": 1110,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 967
+      },
+      "fenced_active_traces": 1110,
+      "seconds": 4.17,
+      "inv_dur_examples": []
+    },
+    "n=3/small/w=6": {
+      "instances": 3,
+      "traces": 3270,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 2799
+      },
+      "fenced_active_traces": 3270,
+      "seconds": 12.44,
+      "inv_dur_examples": []
+    },
+    "n=4/tiny/w=4": {
+      "instances": 4,
+      "traces": 390,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 307
+      },
+      "fenced_active_traces": 390,
+      "seconds": 1.32,
+      "inv_dur_examples": []
+    },
+    "n=4/tiny/w=5": {
+      "instances": 4,
+      "traces": 1350,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1079
+      },
+      "fenced_active_traces": 1350,
+      "seconds": 4.63,
+      "inv_dur_examples": []
+    },
+    "n=4/tiny/w=6": {
+      "instances": 4,
+      "traces": 5190,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 4110
+      },
+      "fenced_active_traces": 5183,
+      "seconds": 18.15,
+      "inv_dur_examples": []
+    },
+    "n=4/small/w=4": {
+      "instances": 4,
+      "traces": 390,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 334
+      },
+      "fenced_active_traces": 390,
+      "seconds": 1.56,
+      "inv_dur_examples": []
+    },
+    "n=4/small/w=5": {
+      "instances": 4,
+      "traces": 1350,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1174
+      },
+      "fenced_active_traces": 1350,
+      "seconds": 5.6,
+      "inv_dur_examples": []
+    },
+    "n=4/small/w=6": {
+      "instances": 4,
+      "traces": 5190,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 4461
+      },
+      "fenced_active_traces": 5190,
+      "seconds": 21.73,
+      "inv_dur_examples": []
+    }
+  },
+  "fuzz": {
+    "n=3/tiny": {
+      "traces": 2000,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 873
+      }
+    },
+    "n=3/small": {
+      "traces": 2000,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1295
+      }
+    },
+    "n=4/tiny": {
+      "traces": 2000,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 880
+      }
+    },
+    "n=4/small": {
+      "traces": 2000,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 1237
+      }
+    }
+  },
+  "controls": {
+    "NC15_epochs_descending": {
+      "flags": {
+        "carry_forward_epochs_descending": true
+      },
+      "kwargs": {
+        "spawns": [
+          3
+        ]
+      },
+      "traces": 1110,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 885,
+        "INV-DUR": 1146
+      },
+      "red_INV_DUR": true,
+      "red_INV_ONE": false
+    },
+    "NC14_same_instance_id": {
+      "flags": {},
+      "kwargs": {
+        "same_id": true
+      },
+      "traces": 630,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 462,
+        "INV-ONE": 31
+      },
+      "red_INV_DUR": false,
+      "red_INV_ONE": true
+    },
+    "NC13_carry_forward_ptr_first": {
+      "flags": {
+        "carry_forward_ptr_first": true
+      },
+      "kwargs": {
+        "spawns": [
+          3
+        ]
+      },
+      "traces": 1110,
+      "violations_by_kind": {
+        "INV-FENCE-ACK": 885
+      },
+      "red_INV_DUR": false,
+      "red_INV_ONE": false
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "arms": {
+    "0": {
+      "Q": 0,
+      "buffer_units": 0,
+      "predicted_redo": 3,
+      "error": "no death dump -- coordinator did not die"
+    },
+    "2": {
+      "Q": 2,
+      "buffer_units": 6,
+      "predicted_redo": 12,
+      "error": "no death dump -- coordinator did not die"
+    },
+    "4": {
+      "Q": 4,
+      "buffer_units": 12,
+      "predicted_redo": 18,
+      "error": "no death dump -- coordinator did not die"
+    },
+    "8": {
+      "Q": 8,
+      "buffer_units": 24,
+      "predicted_redo": 30,
+      "error": "no death dump -- coordinator did not die"
+    },
+    "16": {
+      "Q": 16,
+      "buffer_units": 48,
+      "predicted_redo": 54,
+      "error": "no death dump -- coordinator did not die"
+    }
+  },
+  "config": {
+    "N": 600,
+    "W": 3,
+    "K": 3,
+    "unit_seconds": 0.35,
+    "outage_s": 45,
+    "die_into_outage": 30
+  },
+  "verdict": {
+    "NC_sync_redo": null,
+    "NC_sync_equals_W": false,
+    "NC_all_async_arms_saturated": false,
+    "saturation_by_Q": {
+      "2": null,
+      "4": null,
+      "8": null,
+      "16": null
+    },
+    "redo_by_Q": {
+      "0": null,
+      "2": null,
+      "4": null,
+      "8": null,
+      "16": null
+    },
+    "predicted_by_Q": {
+      "0": 3,
+      "2": 12,
+      "4": 18,
+      "8": 30,
+      "16": 54
+    },
+    "exact_match_by_Q": {
+      "0": null,
+      "2": null,
+      "4": null,
+      "8": null,
+      "16": null
+    },
+    "fitted_slope": null,
+    "expected_slope": 3,
+    "fitted_intercept": null,
+    "expected_intercept": 6,
+    "contiguous_everywhere": false,
+    "dupes_anywhere": false,
+    "C27_proven": false
+  }
+}

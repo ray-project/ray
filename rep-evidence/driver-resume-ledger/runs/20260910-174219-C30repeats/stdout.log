@@ -1,0 +1,58 @@
+
+==================================================================
+repeat 0  Q=8  death at +25.0s into outage
+==================================================================
+  [r0] gcs killed; die at +25.0s, restore at +42s
+  [r0 phase=25.0] executed=75 queued=8 resumed_from=45 redo=30 p=3 interval=[28,30] in=True saturated=True
+  [r0] committed=45 contiguous=True dupes=False
+
+==================================================================
+repeat 1  Q=8  death at +26.3s into outage
+==================================================================
+  [r1] gcs killed; die at +26.3s, restore at +42s
+  [r1 phase=26.3] executed=75 queued=8 resumed_from=45 redo=30 p=3 interval=[28,30] in=True saturated=True
+  [r1] committed=45 contiguous=True dupes=False
+
+==================================================================
+repeat 2  Q=8  death at +27.6s into outage
+==================================================================
+  [r2] gcs killed; die at +27.6s, restore at +42s
+  [r2 phase=27.6] executed=75 queued=8 resumed_from=45 redo=30 p=3 interval=[28,30] in=True saturated=True
+  [r2] committed=45 contiguous=True dupes=False
+
+==================================================================
+repeat 3  Q=8  death at +28.9s into outage
+==================================================================
+  [r3] gcs killed; die at +28.9s, restore at +42s
+  [r3 phase=28.9] executed=75 queued=8 resumed_from=45 redo=30 p=3 interval=[28,30] in=True saturated=True
+  [r3] committed=45 contiguous=True dupes=False
+
+==================================================================
+repeat 4  Q=8  death at +30.2s into outage
+==================================================================
+  [r4] gcs killed; die at +30.2s, restore at +42s
+  [r4 phase=30.2] executed=75 queued=8 resumed_from=45 redo=30 p=3 interval=[28,30] in=True saturated=True
+  [r4] committed=45 contiguous=True dupes=False
+
+==================================================================
+repeat 5  Q=8  death at +31.5s into outage
+==================================================================
+  [r5] gcs killed; die at +31.5s, restore at +42s
+  [r5 phase=31.5] executed=75 queued=8 resumed_from=45 redo=30 p=3 interval=[28,30] in=True saturated=True
+  [r5] committed=45 contiguous=True dupes=False
+
+==================================================================
+  repeats_measured                   6
+  NC_saturated_count                 6
+  NC_enough_saturated                True
+  redo_values                        [30, 30, 30, 30, 30, 30]
+  p_values                           [3, 3, 3, 3, 3, 3]
+  distinct_redo_values               [30]
+  n_distinct                         1
+  predicted_interval                 [28, 30]
+  all_in_interval                    True
+  modal_is_p_equals_W                True
+  contiguous_everywhere              True
+  C30_proven                         False
+  C30_refuted_constant               True
+==================================================================
