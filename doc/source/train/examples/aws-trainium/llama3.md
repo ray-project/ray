@@ -53,7 +53,7 @@ chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh
 
 6. Update the ECR image ARN in the manifest file used for creating the Ray cluster.
 
-Replace the <AWS_ACCOUNT_ID> and <REGION> placeholders with actual values in the `1-llama3-finetune-trn1-create-raycluster.yaml` file using commands below to reflect the ECR image ARN created above:
+Replace the <AWS_ACCOUNT_ID> and \<REGION> placeholders with actual values in the `1-llama3-finetune-trn1-create-raycluster.yaml` file using commands below to reflect the ECR image ARN created above:
 
 
 ```
