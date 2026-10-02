@@ -184,9 +184,7 @@ Here's an overview of all available search algorithms in Tune:
 ```
 
 :::{note}
-Unlike {ref}`Tune's Trial Schedulers <tune-schedulers>`,
-
-Tune Search Algorithms cannot affect or stop training processes. However, you can use them together to early stop the evaluation of bad trials.
+Unlike {ref}`Tune's Trial Schedulers <tune-schedulers>`, Tune Search Algorithms cannot affect or stop training processes. However, you can use them together to early stop the evaluation of bad trials.
 :::
 
 In case you want to implement your own search algorithm, the interface is easy to implement, you can {ref}`read the instructions here <byo-algo>`.

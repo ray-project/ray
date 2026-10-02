@@ -166,9 +166,7 @@ See the {class}`~ray.tune.SyncConfig` API reference for artifact syncing configu
 You can save trial artifacts directly in the trainable, as shown below:
 
 :::{tip}
-Make sure that any logging calls or objects stay within scope of the Trainable.
-
-You may see pickling or other serialization errors or inconsistent logs otherwise.
+Make sure that any logging calls or objects stay within scope of the Trainable. You may see pickling or other serialization errors or inconsistent logs otherwise.
 :::
 
 ::::{tab-set}

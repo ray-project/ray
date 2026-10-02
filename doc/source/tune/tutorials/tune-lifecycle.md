@@ -31,9 +31,7 @@ The provided `my_trainable` is evaluated multiple times in parallel with differe
 Every Tune run consists of "driver process" and many "worker processes". The driver process is the python process that calls `Tuner.fit()` (which calls `ray.init()` underneath the hood). The Tune driver process runs on the node where you run your script (which calls `Tuner.fit()`), while Ray Tune trainable "actors" run on any node (either on the same node or on worker nodes (distributed Ray only)).
 
 :::{note}
-{ref}`Ray Actors <actor-guide>` allow you to parallelize an instance of a class in Python.
-
-When you instantiate a class that is a Ray actor, Ray will start a instance of that class on a separate process either on the same machine (or another distributed machine, if running a Ray cluster). This actor can then asynchronously execute method calls and maintain its own internal state.
+{ref}`Ray Actors <actor-guide>` allow you to parallelize an instance of a class in Python. When you instantiate a class that is a Ray actor, Ray will start a instance of that class on a separate process either on the same machine (or another distributed machine, if running a Ray cluster). This actor can then asynchronously execute method calls and maintain its own internal state.
 :::
 
 The driver spawns parallel worker processes ({ref}`Ray actors <actor-guide>`) that are responsible for evaluating each trial using its hyperparameter configuration and the provided trainable.

@@ -35,9 +35,7 @@ results = tuner.fit()
 ```
 
 :::{caution}
-If you use a SearchAlgorithm, you may not be able to specify lambdas or grid search with this
-
-interface, as some search algorithms may not be compatible.
+If you use a SearchAlgorithm, you may not be able to specify lambdas or grid search with this interface, as some search algorithms may not be compatible.
 :::
 
 
