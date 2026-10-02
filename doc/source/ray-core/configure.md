@@ -225,7 +225,7 @@ kubectl create secret generic ca-tls --from-file=ca.crt=<path-to-ca.crt> --from-
 
 ### Step 2: Generate individual private keys and self-signed certificates for the Ray head and workers
 
-The [YAML file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/kuberay/configs/static-ray-cluster.tls.yaml), has a ConfigMap named `tls` that includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section.
+The [YAML file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml), has a ConfigMap named `tls` that includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section.
 
 The scripts perform the following steps: first, it generates a 2048-bit RSA private key and saves the key as `/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file and the `csr.conf` configuration file. Finally, a self-signed certificate (`tls.crt`) is created using the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`).
 
