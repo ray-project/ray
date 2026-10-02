@@ -4,6 +4,7 @@ import os
 from unittest.mock import Mock
 
 import pyarrow as pa
+import pytest
 from pyarrow import orc
 
 import ray.data.read_api as read_api
@@ -190,3 +191,9 @@ def test_read_orc_routes_to_v1_when_v2_is_disabled(monkeypatch, tmp_path):
     assert captured["v1_init_kwargs"]["file_extensions"] == ["orc"]
     assert captured["kwargs"]["parallelism"] == 2
     assert captured["kwargs"]["override_num_blocks"] == 3
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
