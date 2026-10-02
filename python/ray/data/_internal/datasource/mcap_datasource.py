@@ -7,9 +7,13 @@ time-series data.
 
 import json
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
 
+# ``TimeRange`` is defined with the V2 datasource so that ``datasource_v2`` does
+# not depend on this legacy module; it is re-exported here for existing imports.
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (  # noqa: F401
+    TimeRange,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import Block
@@ -22,32 +26,6 @@ if TYPE_CHECKING:
     from mcap.reader import Channel, Message, Schema
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class TimeRange:
-    """Time range for filtering MCAP messages.
-
-    Attributes:
-        start_time: Start time in nanoseconds (inclusive).
-        end_time: End time in nanoseconds (exclusive).
-    """
-
-    start_time: int
-    end_time: int
-
-    def __post_init__(self):
-        """Validate time range after initialization."""
-        if self.start_time >= self.end_time:
-            raise ValueError(
-                f"start_time ({self.start_time}) must be less than "
-                f"end_time ({self.end_time})"
-            )
-        if self.start_time < 0 or self.end_time < 0:
-            raise ValueError(
-                f"time values must be non-negative, got start_time={self.start_time}, "
-                f"end_time={self.end_time}"
-            )
 
 
 @DeveloperAPI

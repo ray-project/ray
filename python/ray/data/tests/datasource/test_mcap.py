@@ -20,6 +20,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True, params=[False, True], ids=["v1", "v2"])
+def datasource_v2(request, restore_data_context):
+    """Run every test against both read paths of ``read_mcap``.
+
+    ``True`` routes through ``MCAPDatasourceV2`` (``ListFiles`` -> ``ReadFiles``),
+    ``False`` through the legacy ``MCAPDatasource``. The two must agree on every
+    row; tests that exercise one path's internals say so by name.
+    """
+    ray.data.DataContext.get_current().use_datasource_v2 = request.param
+    return request.param
+
+
 def create_test_mcap_file(file_path: str, messages: list) -> None:
     """Create a test MCAP file with given messages."""
     from mcap.writer import Writer
@@ -136,13 +148,16 @@ def time_series_mcap_file(tmp_path):
     return path, base_time
 
 
-def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
+def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file, datasource_v2):
     """Test basic MCAP file reading."""
     ds = ray.data.read_mcap(basic_mcap_file)
 
     # Test metadata operations
     assert ds.count() == 2
-    assert ds.input_files() == [_unwrap_protocol(basic_mcap_file)]
+    if not datasource_v2:
+        # The V2 read path lists files inside the plan and does not report
+        # them through the dataset's metadata.
+        assert ds.input_files() == [_unwrap_protocol(basic_mcap_file)]
 
     # Verify basic fields are present
     rows = ds.take_all()
@@ -153,7 +168,7 @@ def test_read_mcap_basic(ray_start_regular_shared, basic_mcap_file):
         assert "publish_time" in row
 
 
-def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path):
+def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path, datasource_v2):
     """Test reading multiple MCAP files."""
     paths = []
     for i in range(2):
@@ -170,7 +185,8 @@ def test_read_mcap_multiple_files(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_mcap(paths)
     assert ds.count() == 2
-    assert set(ds.input_files()) == {_unwrap_protocol(p) for p in paths}
+    if not datasource_v2:
+        assert set(ds.input_files()) == {_unwrap_protocol(p) for p in paths}
 
     rows = ds.take_all()
     file_ids = {row["data"]["file_id"] for row in rows}
@@ -338,7 +354,7 @@ def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])
 def test_read_mcap_ignore_missing_paths(
-    ray_start_regular_shared, simple_mcap_file, ignore_missing_paths
+    ray_start_regular_shared, simple_mcap_file, ignore_missing_paths, datasource_v2
 ):
     """Test ignore_missing_paths parameter."""
     paths = [simple_mcap_file, "/nonexistent/missing.mcap"]
@@ -346,7 +362,8 @@ def test_read_mcap_ignore_missing_paths(
     if ignore_missing_paths:
         ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
         assert ds.count() == 1
-        assert ds.input_files() == [_unwrap_protocol(simple_mcap_file)]
+        if not datasource_v2:
+            assert ds.input_files() == [_unwrap_protocol(simple_mcap_file)]
     else:
         with pytest.raises(Exception):  # FileNotFoundError or similar
             ds = ray.data.read_mcap(paths, ignore_missing_paths=ignore_missing_paths)
@@ -529,6 +546,110 @@ def test_read_mcap_yields_blocks_at_target_max_block_size(
     for block in blocks:
         rows.extend(BlockAccessor.for_block(block).iter_rows(True))
     assert rows == expected
+
+
+def _write_chunked_mcap(path, num_messages, topics=("/a", "/b", "/c")):
+    """One message per chunk, so every message boundary is a split point."""
+    from mcap.writer import CompressionType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=1, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b"{}"
+        )
+        channels = {
+            topic: writer.register_channel(
+                schema_id=schema_id, topic=topic, message_encoding="json"
+            )
+            for topic in topics
+        }
+        for i in range(num_messages):
+            writer.add_message(
+                channel_id=channels[topics[i % len(topics)]],
+                log_time=1_000_000_000 + i * 1_000_000,
+                publish_time=1_000_000_000 + i * 1_000_000,
+                data=json.dumps({"seq": i}).encode(),
+            )
+        writer.finish()
+
+
+def test_read_mcap_v2_splits_a_file_across_read_tasks(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """On the V2 path a file is read by as many tasks as its chunks call for.
+
+    With a one-byte packing budget every chunk is its own read task, so a
+    nine-chunk file comes out as nine blocks; the legacy path always reads a
+    file in one task.
+    """
+    path = os.path.join(tmp_path, "chunked.mcap")
+    _write_chunked_mcap(path, 9)
+    monkeypatch.setenv("RAY_DATA_MCAP_BIN_PACKING_BYTES", "1")
+
+    ds = ray.data.read_mcap(path).materialize()
+
+    assert ds.count() == 9
+    assert sorted(row["data"]["seq"] for row in ds.take_all()) == list(range(9))
+    if datasource_v2:
+        assert ds.num_blocks() == 9
+
+
+def test_read_mcap_include_row_id(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """``row_id`` names a message the same way however the read is split."""
+    paths = []
+    for i in range(2):
+        path = os.path.join(tmp_path, f"f{i}.mcap")
+        _write_chunked_mcap(path, 6)
+        paths.append(path)
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="include_row_id"):
+            ray.data.read_mcap(paths, include_row_id=True)
+        return
+
+    one_task_per_chunk = ray.data.read_mcap(paths, include_row_id=True)
+    by_id = {row["row_id"]: row["log_time"] for row in one_task_per_chunk.take_all()}
+    assert len(by_id) == 12
+
+    monkeypatch.setenv("RAY_DATA_MCAP_BIN_PACKING_BYTES", "1")
+    resplit = ray.data.read_mcap(paths, include_row_id=True)
+    assert {row["row_id"]: row["log_time"] for row in resplit.take_all()} == by_id
+
+    # The topic filter drops rows but never renames the ones it keeps.
+    filtered = ray.data.read_mcap(paths, topics=["/b"], include_row_id=True)
+    for row in filtered.take_all():
+        assert by_id[row["row_id"]] == row["log_time"]
+
+
+def test_read_mcap_checkpoint_config_turns_on_row_id(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2
+):
+    """A checkpoint keyed on ``row_id`` gets the column without asking for it."""
+    from ray.data.checkpoint import CheckpointConfig
+
+    if not datasource_v2:
+        pytest.skip("row_id is a V2 column")
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column="row_id", checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
+    )
+    assert "row_id" in ray.data.read_mcap(simple_mcap_file).schema().names
+
+
+def test_read_mcap_v2_schema_matches_rows(
+    ray_start_regular_shared, multi_topic_mcap_file, datasource_v2
+):
+    """The planning-time schema is the schema of the blocks that come out."""
+    if not datasource_v2:
+        pytest.skip("the legacy path infers its schema from the first block")
+    ds = ray.data.read_mcap(multi_topic_mcap_file, include_paths=True)
+    planned = ds.schema()
+    (block,) = ray.get(ds.materialize().get_internal_block_refs())
+    assert block.schema.names == planned.names
+    assert block.schema.types == planned.types
 
 
 if __name__ == "__main__":
