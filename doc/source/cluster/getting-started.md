@@ -12,7 +12,6 @@ myst:
 :hidden:
 
 Key Concepts <key-concepts>
-Deploying on Kubernetes <../kuberay/index>
 Deploying on VMs <vms/index>
 metrics
 configure-manage-dashboard
