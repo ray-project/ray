@@ -23,8 +23,7 @@ pip install "ray[default]"
 
 See the {ref}`installation guide <installation>` for more details on installing Ray.
 
-To submit a job, you need to send HTTP requests to a Ray Cluster.
-This guide assumes that you are using a local Ray Cluster, which you can start by running:
+To submit a job, you need to send HTTP requests to a Ray Cluster. This guide assumes that you are using a local Ray Cluster, which you can start by running:
 
 ```shell
 ray start --head
@@ -33,9 +32,7 @@ ray start --head
 # ...
 ```
 
-This command creates a Ray head node on a local machine that you can use for development purposes.
-Note the Ray dashboard URL that appears on stdout when starting or connecting to a Ray Cluster. Use this URL later to submit a job.
-For more details on production deployment scenarios, see the guides for deploying Ray on {ref}`VMs <vm-cluster-quick-start>` and {ref}`Kubernetes <kuberay-quickstart>`.
+This command creates a Ray head node on a local machine that you can use for development purposes. Note the Ray dashboard URL that appears on stdout when starting or connecting to a Ray Cluster. Use this URL later to submit a job. For more details on production deployment scenarios, see the guides for deploying Ray on {ref}`VMs <vm-cluster-quick-start>` and {ref}`Kubernetes <kuberay-quickstart>`.
 
 
 ## Submitting a job
@@ -62,12 +59,9 @@ Create an empty working directory with the preceding Python script inside a file
 | ├── script.py
 ```
 
-Next, find the HTTP address of the Ray Cluster to which you can submit a job request.
-Submit jobs to the same address that the **Ray dashboard** uses.
-By default, this job uses port 8265.
+Next, find the HTTP address of the Ray Cluster to which you can submit a job request. Submit jobs to the same address that the **Ray dashboard** uses. By default, this job uses port 8265.
 
-If you are using a local Ray Cluster (`ray start --head`), connect directly at `http://127.0.0.1:8265`.
-If you are using a Ray Cluster started on VMs or Kubernetes, follow the instructions there for setting up network access from a client. See {ref}`Using a Remote Cluster <jobs-remote-cluster>` for tips.
+If you are using a local Ray Cluster (`ray start --head`), connect directly at `http://127.0.0.1:8265`. If you are using a Ray Cluster started on VMs or Kubernetes, follow the instructions there for setting up network access from a client. See {ref}`Using a Remote Cluster <jobs-remote-cluster>` for tips.
 
 
 To tell the Ray Jobs CLI how to find your Ray Cluster, pass the Ray dashboard address. Set the `RAY_API_SERVER_ADDRESS` environment variable:
@@ -84,9 +78,7 @@ Additionally, if you wish to pass headers per HTTP request to the Cluster, use t
 $ export RAY_JOB_HEADERS='{"KEY": "VALUE"}'
 ```
 
-To submit the job, use `ray job submit`.
-Make sure to specify the path to the working directory in the `--working-dir` argument.
-For local clusters this argument isn't strictly necessary, but for remote clusters this argument is required in order to upload the working directory to the cluster.
+To submit the job, use `ray job submit`. Make sure to specify the path to the working directory in the `--working-dir` argument. For local clusters this argument isn't strictly necessary, but for remote clusters this argument is required in order to upload the working directory to the cluster.
 
 ```bash
 $ ray job submit --working-dir your_working_directory -- python script.py
@@ -120,17 +112,12 @@ The double dash (`--`) separates the arguments for the entrypoint command (e.g.,
 :::
 
 :::{note}
-By default the entrypoint script runs on the head node. To override this behavior, specify one of the
-`--entrypoint-num-cpus`, `--entrypoint-num-gpus`, `--entrypoint-resources`, or
-`--entrypoint-memory` arguments to the `ray job submit` command.
-See {ref}`Specifying CPU and GPU resources <ray-job-cpu-gpu-resources>` for more details.
+By default the entrypoint script runs on the head node. To override this behavior, specify one of the `--entrypoint-num-cpus`, `--entrypoint-num-gpus`, `--entrypoint-resources`, or `--entrypoint-memory` arguments to the `ray job submit` command. See {ref}`Specifying CPU and GPU resources <ray-job-cpu-gpu-resources>` for more details.
 :::
 
 ## Interacting with Long-running Jobs
 
-For long-running applications, you probably don't want to require the client to wait for the job to finish.
-To do this, pass the `--no-wait` flag to `ray job submit` and use the other CLI commands to check on the job's status.
-Try this modified script that submits a task every second in an infinite loop:
+For long-running applications, you probably don't want to require the client to wait for the job to finish. To do this, pass the `--no-wait` flag to `ray job submit` and use the other CLI commands to check on the job's status. Try this modified script that submits a task every second in an infinite loop:
 
 ```python
 # script.py
@@ -216,8 +203,7 @@ Run the following command on your local machine, where `cluster.yaml` is the con
 ray dashboard cluster.yaml
 ```
 
-Once this command is running, verify that you can view the Ray dashboard in your local browser at `http://127.0.0.1:8265`.
-Also, verify that you set the environment variable `RAY_API_SERVER_ADDRESS` to `"http://127.0.0.1:8265"`. After this setup, you can use the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
+Once this command is running, verify that you can view the Ray dashboard in your local browser at `http://127.0.0.1:8265`. Also, verify that you set the environment variable `RAY_API_SERVER_ADDRESS` to `"http://127.0.0.1:8265"`. After this setup, you can use the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
 
 ### Using the CLI on Kubernetes
 
@@ -229,8 +215,7 @@ Alternatively, you can set up Ingress to the dashboard port of the cluster over 
 
 ## Dependency management
 
-To run a distributed application, ensure that all workers run in the same environment.
-This configuration can be challenging if multiple applications in the same Ray Cluster have different and conflicting dependencies.
+To run a distributed application, ensure that all workers run in the same environment. This configuration can be challenging if multiple applications in the same Ray Cluster have different and conflicting dependencies.
 
 To avoid dependency conflicts, Ray provides a mechanism called {ref}`runtime environments <runtime-environments>`. Runtime environments allow an application to override the default environment on the Ray Cluster and run in an isolated environment, similar to virtual environments in single-node Python. Dependencies can include both files and Python packages.
 
@@ -302,8 +287,7 @@ $ ray job submit --runtime-env-json='{"pip": ["requests==2.26.0"]}' -- python sc
 ```
 
 :::{note}
-If both the Driver and Job specify a runtime environment, Ray tries to merge them and raises an exception if they conflict.
-See {ref}`runtime environments <runtime-environments-job-conflict>` for more details.
+If both the Driver and Job specify a runtime environment, Ray tries to merge them and raises an exception if they conflict. See {ref}`runtime environments <runtime-environments-job-conflict>` for more details.
 :::
 
 - See {ref}`Ray Jobs CLI <ray-job-submission-cli-ref>` for a full API reference of the CLI.

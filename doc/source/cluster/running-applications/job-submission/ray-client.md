@@ -89,19 +89,16 @@ If necessary, you can modify the Ray Client server port to be other than `10001`
 
 Ensure that your local machine can access the Ray Client port on the head node.
 
-The easiest way to accomplish this is to use SSH port forwarding or [K8s port-forwarding](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod).
-This allows you to connect to the Ray Client server on the head node via `localhost`.
+The easiest way to accomplish this is to use SSH port forwarding or [K8s port-forwarding](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod). This allows you to connect to the Ray Client server on the head node via `localhost`.
 
-First, open up an SSH connection with your Ray cluster and forward the
-listening port (`10001`). For Clusters launched with the Ray Cluster launcher this looks like:
+First, open up an SSH connection with your Ray cluster and forward the listening port (`10001`). For Clusters launched with the Ray Cluster launcher this looks like:
 
 ```bash
 $ ray up cluster.yaml
 $ ray attach cluster.yaml -p 10001
 ```
 
-Then connect to the Ray cluster **from another terminal** using  `localhost` as the
-`head_node_host`.
+Then connect to the Ray cluster **from another terminal** using  `localhost` as the `head_node_host`.
 
 ```python
 import ray
@@ -141,18 +138,13 @@ do_work.remote(2)
 
 ### Alternative Connection Approach:
 
-Instead of port-forwarding, you can directly connect to the Ray Client server on the head node if your computer
-has network access to the head node. This is an option if your computer is on the same network as the Cluster or
-if your computer can connect to the Cluster with a VPN.
+Instead of port-forwarding, you can directly connect to the Ray Client server on the head node if your computer has network access to the head node. This is an option if your computer is on the same network as the Cluster or if your computer can connect to the Cluster with a VPN.
 
-If your computer does not have direct access, you can modify the network configuration to grant access. On [EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html),
-this can be done by modifying the security group to allow inbound access from your local IP address to the Ray Client server port (`10001` by default).
+If your computer does not have direct access, you can modify the network configuration to grant access. On [EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html), this can be done by modifying the security group to allow inbound access from your local IP address to the Ray Client server port (`10001` by default).
 
 ::::{tab-set}
 :::{tab-item} AWS
-With the Ray cluster launcher, you can configure the security group
-to allow inbound access by defining {ref}`cluster-configuration-security-group`
-in your `cluster.yaml`.
+With the Ray cluster launcher, you can configure the security group to allow inbound access by defining {ref}`cluster-configuration-security-group` in your `cluster.yaml`.
 
 ```yaml
 # An unique identifier for the head node and workers of this cluster.

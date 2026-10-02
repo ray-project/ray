@@ -20,8 +20,7 @@ pip install "ray[default]"
 
 See the {ref}`installation guide <installation>` for more details on installing Ray.
 
-To run a Ray Job, we also need to be able to send HTTP requests to a Ray Cluster.
-For convenience, this guide will assume that you are using a local Ray Cluster, which we can start by running:
+To run a Ray Job, we also need to be able to send HTTP requests to a Ray Cluster. For convenience, this guide will assume that you are using a local Ray Cluster, which we can start by running:
 
 ```shell
 ray start --head
@@ -30,10 +29,7 @@ ray start --head
 # ...
 ```
 
-This will create a Ray head node on our local machine that we can use for development purposes.
-Note the Ray dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
-See {ref}`Using a Remote Cluster <jobs-remote-cluster>` for tips on port-forwarding if using a remote cluster.
-For more details on production deployment scenarios, check out the guides for deploying Ray on {ref}`VMs <vm-cluster-quick-start>` and {ref}`Kubernetes <kuberay-quickstart>`.
+This will create a Ray head node on our local machine that we can use for development purposes. Note the Ray dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job. See {ref}`Using a Remote Cluster <jobs-remote-cluster>` for tips on port-forwarding if using a remote cluster. For more details on production deployment scenarios, check out the guides for deploying Ray on {ref}`VMs <vm-cluster-quick-start>` and {ref}`Kubernetes <kuberay-quickstart>`.
 
 ## Submitting a Ray Job
 
@@ -51,8 +47,7 @@ ray.init()
 print(ray.get(hello_world.remote()))
 ```
 
-SDK calls are made via a `JobSubmissionClient` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray dashboard (`8265` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses; see
-{ref}`Using a Remote Cluster <jobs-remote-cluster>` for details on setting up port forwarding.
+SDK calls are made via a `JobSubmissionClient` object.  To initialize the client, provide the Ray cluster head node address and the port used by the Ray dashboard (`8265` by default). For this example, we'll use a local Ray cluster, but the same example will work for remote Ray cluster addresses; see {ref}`Using a Remote Cluster <jobs-remote-cluster>` for details on setting up port forwarding.
 
 ```python
 from ray.job_submission import JobSubmissionClient
@@ -69,8 +64,7 @@ print(job_id)
 ```
 
 :::{tip}
-By default, the Ray job server will generate a new `job_id` and return it, but you can alternatively choose a unique `job_id` string first and pass it into {code}`submit_job`.
-In this case, the Job will be executed with your given id, and will throw an error if the same `job_id` is submitted more than once for the same Ray cluster.
+By default, the Ray job server will generate a new `job_id` and return it, but you can alternatively choose a unique `job_id` string first and pass it into {code}`submit_job`. In this case, the Job will be executed with your given id, and will throw an error if the same `job_id` is submitted more than once for the same Ray cluster.
 :::
 
 Because job submission is asynchronous, the above call will return immediately with output like the following:
@@ -79,8 +73,7 @@ Because job submission is asynchronous, the above call will return immediately w
 raysubmit_g8tDzJ6GqrCy7pd6
 ```
 
-Now we can write a simple polling loop that checks the job status until it reaches a terminal state (namely, `JobStatus.SUCCEEDED`, `JobStatus.STOPPED`, or `JobStatus.FAILED`).
-We can also get the output of the job by calling `client.get_job_logs`.
+Now we can write a simple polling loop that checks the job status until it reaches a terminal state (namely, `JobStatus.SUCCEEDED`, `JobStatus.STOPPED`, or `JobStatus.FAILED`). We can also get the output of the job by calling `client.get_job_logs`.
 
 ```python
 from ray.job_submission import JobSubmissionClient, JobStatus
@@ -156,14 +149,11 @@ Sleeping...
 
 To get information about all jobs, call `client.list_jobs()`.  This returns a `Dict[str, JobInfo]` object mapping Job IDs to their information.
 
-Job information (status and associated metadata) is stored on the cluster indefinitely.
-To delete this information, you may call `client.delete_job(job_id)` for any job that is already in a terminal state.
-See the {ref}`SDK API Reference <ray-job-submission-sdk-ref>` for more details.
+Job information (status and associated metadata) is stored on the cluster indefinitely. To delete this information, you may call `client.delete_job(job_id)` for any job that is already in a terminal state. See the {ref}`SDK API Reference <ray-job-submission-sdk-ref>` for more details.
 
 ## Dependency Management
 
-Similar to the {ref}`Jobs CLI <jobs-quickstart>`, we can also package our application's dependencies by using a Ray {ref}`runtime environment <runtime-environments>`.
-Using the Python SDK, the syntax looks something like this:
+Similar to the {ref}`Jobs CLI <jobs-quickstart>`, we can also package our application's dependencies by using a Ray {ref}`runtime environment <runtime-environments>`. Using the Python SDK, the syntax looks something like this:
 
 ```python
 job_id = client.submit_job(
@@ -189,11 +179,9 @@ For full details, see the {ref}`API Reference <ray-job-submission-sdk-ref>`.
 
 ## Specifying CPU and GPU resources
 
-By default, the job entrypoint script always runs on the head node. We recommend doing heavy computation within Ray tasks, actors, or Ray libraries, not directly in the top level of your entrypoint script.
-No extra configuration is needed to do this.
+By default, the job entrypoint script always runs on the head node. We recommend doing heavy computation within Ray tasks, actors, or Ray libraries, not directly in the top level of your entrypoint script. No extra configuration is needed to do this.
 
-However, if you need to do computation directly in the entrypoint script and would like to reserve CPU and GPU resources for the entrypoint script, you may specify the `entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_memory` and `entrypoint_resources` arguments to `submit_job`.  These arguments function
-identically to the `num_cpus`, `num_gpus`, `resources`, and `_memory` arguments to `@ray.remote()` decorator for tasks and actors as described in {ref}`resource-requirements`.
+However, if you need to do computation directly in the entrypoint script and would like to reserve CPU and GPU resources for the entrypoint script, you may specify the `entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_memory` and `entrypoint_resources` arguments to `submit_job`.  These arguments function identically to the `num_cpus`, `num_gpus`, `resources`, and `_memory` arguments to `@ray.remote()` decorator for tasks and actors as described in {ref}`resource-requirements`.
 
 If any of these arguments are specified, the entrypoint script will be scheduled on a node with at least the specified resources, instead of the head node, which is the default.  For example, the following code will schedule the entrypoint script on a node with at least 1 GPU:
 
@@ -210,15 +198,12 @@ job_id = client.submit_job(
 
 The same arguments are also available as options `--entrypoint-num-cpus`, `--entrypoint-num-gpus`, `--entrypoint-memory`, and `--entrypoint-resources` to `ray job submit` in the Jobs CLI; see {ref}`Ray Job Submission CLI Reference <ray-job-submission-cli-ref>`.
 
-If `num_gpus` is not specified, GPUs will still be available to the entrypoint script, but Ray will not provide isolation in terms of visible devices.
-To be precise, the environment variable `CUDA_VISIBLE_DEVICES` will not be set in the entrypoint script; it will only be set inside tasks and actors that have `num_gpus` specified in their `@ray.remote()` decorator.
+If `num_gpus` is not specified, GPUs will still be available to the entrypoint script, but Ray will not provide isolation in terms of visible devices. To be precise, the environment variable `CUDA_VISIBLE_DEVICES` will not be set in the entrypoint script; it will only be set inside tasks and actors that have `num_gpus` specified in their `@ray.remote()` decorator.
 
 :::{note}
-Resources specified by `entrypoint_num_cpus`, `entrypoint_num_gpus`,  `entrypoint-memory`, and `entrypoint_resources` are separate from any resources specified
-for tasks and actors within the job.
+Resources specified by `entrypoint_num_cpus`, `entrypoint_num_gpus`,  `entrypoint-memory`, and `entrypoint_resources` are separate from any resources specified for tasks and actors within the job.
 
-For example, if you specify `entrypoint_num_gpus=1`, then the entrypoint script will be scheduled on a node with at least 1 GPU,
-but if your script also contains a Ray task defined with `@ray.remote(num_gpus=1)`, then the task will be scheduled to use a different GPU (on the same node if the node has at least 2 GPUs, or on a different node otherwise).
+For example, if you specify `entrypoint_num_gpus=1`, then the entrypoint script will be scheduled on a node with at least 1 GPU, but if your script also contains a Ray task defined with `@ray.remote(num_gpus=1)`, then the task will be scheduled to use a different GPU (on the same node if the node has at least 2 GPUs, or on a different node otherwise).
 :::
 
 :::{note}
@@ -233,16 +218,13 @@ By default, 0 CPUs and 0 GPUs are reserved for the entrypoint script.
 
 ## Client Configuration
 
-Additional client connection options, such as custom HTTP headers and cookies, can be passed to the `JobSubmissionClient` class.
-A full list of options can be found in the {ref}`API Reference <ray-job-submission-sdk-ref>`.
+Additional client connection options, such as custom HTTP headers and cookies, can be passed to the `JobSubmissionClient` class. A full list of options can be found in the {ref}`API Reference <ray-job-submission-sdk-ref>`.
 
 ### TLS Verification
-By default, any HTTPS client connections will be verified using system certificates found by the underlying `requests` and `aiohttp` libraries.
-The `verify` parameter can be set to override this behavior. For example:
+By default, any HTTPS client connections will be verified using system certificates found by the underlying `requests` and `aiohttp` libraries. The `verify` parameter can be set to override this behavior. For example:
 
 ```python
 client = JobSubmissionClient("https://<job-server-url>", verify="/path/to/cert.pem")
 ```
 
-will use the certificate found at `/path/to/cert.pem` to verify the job server's certificate.
-Certificate verification can be disabled by setting the `verify` parameter to `False`.
+will use the certificate found at `/path/to/cert.pem` to verify the job server's certificate. Certificate verification can be disabled by setting the `verify` parameter to `False`.
