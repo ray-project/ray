@@ -1671,12 +1671,36 @@ class AsyncioRouter:
 class _HandOffFuture(concurrent.futures.Future):
     """A routing future whose call may wait for its caller's loop to turn.
 
-    A blocking wait would stall that loop, so it hands the call off at once.
+    An await or a blocking wait hands the call off at once; a claim takes it instead.
     """
+
+    _pending_lock = threading.Lock()
 
     def __init__(self):
         super().__init__()
-        self.hand_off: Callable[[], None] = lambda: None
+        self._pending: Optional[Callable[[], None]] = None
+
+    def _take_pending(self) -> Optional[Callable[[], None]]:
+        if self._pending is None:
+            return None
+        # A claim on the caller's loop and a blocking wait on another thread can race.
+        with _HandOffFuture._pending_lock:
+            pending, self._pending = self._pending, None
+        return pending
+
+    def hand_off(self) -> None:
+        pending = self._take_pending()
+        if pending is not None:
+            pending()
+
+    def claim(self) -> bool:
+        pending = self._take_pending()
+        if pending is None:
+            return False
+        self.cancel()
+        # Sees the cancellation and closes the never-started coroutine.
+        pending()
+        return True
 
     def result(self, timeout: Optional[float] = None):
         self.hand_off()
@@ -1768,7 +1792,9 @@ class SingletonThreadRouter(Router):
         This method uses `run_coroutine_threadsafe` to execute the actual request
         assignment logic (`_asyncio_router.assign_request`) on the dedicated
         asyncio event loop thread. It returns a `concurrent.futures.Future` that
-        can be awaited or queried from the calling thread.
+        can be awaited or queried from the calling thread. Inside a plain HTTP
+        handler, the hand-off waits for the caller loop's next turn, an await or a
+        blocking wait, so a call the handler returns unawaited can be forwarded.
 
         Args:
             request_meta: Metadata describing the inbound request.
@@ -1779,22 +1805,17 @@ class SingletonThreadRouter(Router):
             A concurrent.futures.Future resolving to the ReplicaResult representing
             the assigned request.
         """
-        # Only a replica's handler can return the call unawaited for Serve to forward.
         caller_loop: Optional[asyncio.AbstractEventLoop] = None
-        context = ray.serve.context
-        if (
-            context._get_internal_replica_context() is not None
-            and context._get_serve_request_context().request_id
-        ):
+        if ray.serve.context._get_serve_request_context()._forwardable:
             try:
                 caller_loop = asyncio.get_running_loop()
             except RuntimeError:
+                # A sync handler runs in the threadpool, with no loop to wait for.
                 pass
         return self._wrap_asyncio_call_in_future(
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
-            request_meta=request_meta,
             defer_on=caller_loop,
         )
 
@@ -1901,7 +1922,6 @@ class SingletonThreadRouter(Router):
     def _wrap_asyncio_call_in_future(
         self,
         coro: Coroutine,
-        request_meta: Optional[RequestMetadata] = None,
         defer_on: Optional[asyncio.AbstractEventLoop] = None,
     ) -> concurrent.futures.Future[ReplicaResult]:
         """Wrap an async call in a concurrent.futures.Future for cross-thread execution.
@@ -1910,7 +1930,6 @@ class SingletonThreadRouter(Router):
 
         Args:
             coro: The coroutine to execute (e.g., _asyncio_router.assign_request(...))
-            request_meta: Marked as routing once the call leaves the caller's thread.
             defer_on: The caller's loop. The hand-off waits for its next turn, so a
                 handler that returns the call unawaited can still claim it to forward.
 
@@ -1967,18 +1986,11 @@ class SingletonThreadRouter(Router):
                     concurrent_future.set_exception(exc)
                 raise
 
-        once = threading.Lock()
-
         def hand_off():
-            # The caller's loop and a blocking wait in any thread can both get here.
-            if not once.acquire(blocking=False):
-                return
             if concurrent_future.cancelled():
-                # Claimed for forwarding before it left the caller's thread.
+                # Claimed or cancelled before it left the caller's thread.
                 coro.close()
                 return
-            if request_meta is not None:
-                request_meta._routing_started = True
             # Schedule on the event loop thread
             cast(asyncio.AbstractEventLoop, self._asyncio_loop).call_soon_threadsafe(
                 create_task_and_setup
@@ -1987,8 +1999,9 @@ class SingletonThreadRouter(Router):
         if defer_on is None:
             hand_off()
         else:
-            defer_on.call_soon(hand_off)
-            concurrent_future.hand_off = hand_off
+            # Held on the future only until it is handed off or claimed.
+            concurrent_future._pending = hand_off
+            defer_on.call_soon(concurrent_future.hand_off)
         return concurrent_future
 
     async def broadcast(
