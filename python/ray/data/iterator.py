@@ -104,6 +104,10 @@ class DataIterator(abc.ABC):
         (Dataset isn't materialized))
     """
 
+    # Set by `_enable_checkpointing`. Declared at the class level so that
+    # every subclass has it, even ones that don't call `super().__init__()`.
+    _checkpointer: Optional["DataIteratorCheckpointer"] = None
+
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
         self,
@@ -230,17 +234,13 @@ class DataIterator(abc.ABC):
         Raises:
             ValueError: If checkpointing is not enabled on this iterator.
         """
-        checkpointer = self._get_checkpointer()
-        if not checkpointer:
+        if self._checkpointer is None:
             raise ValueError("Checkpointing is not enabled on this iterator.")
 
-        return checkpointer.state_dict()
+        return self._checkpointer.state_dict()
 
     def _enable_checkpointing(self, checkpointer: "DataIteratorCheckpointer") -> None:
         self._checkpointer = checkpointer
-
-    def _get_checkpointer(self) -> Optional["DataIteratorCheckpointer"]:
-        return getattr(self, "_checkpointer", None)
 
     def _create_batch_iterator(
         self,
@@ -248,13 +248,12 @@ class DataIterator(abc.ABC):
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
         **kwargs,
     ) -> BatchIterator:
-        checkpointer = self._get_checkpointer()
-        if checkpointer is not None:
+        if self._checkpointer is not None:
             from ray.data.checkpoint.iterator import CheckpointingBatchIterator
 
             return CheckpointingBatchIterator(
                 ref_bundles_iter,
-                checkpointer=checkpointer,
+                checkpointer=self._checkpointer,
                 prefetch_bytes_callback=prefetch_bytes_callback,
                 **kwargs,
             )
