@@ -4,23 +4,23 @@ myst:
     description: "Limit concurrency per actor method with concurrency groups, including the default group and choosing a group at call time."
 ---
 
-# Limiting Concurrency Per-Method with Concurrency Groups
+# Limiting concurrency per method with concurrency groups
 
-Besides setting the max concurrency overall for an actor, Ray allows methods to be separated into *concurrency groups*, each with its own thread(s). This allows you to limit the concurrency per-method, e.g., allow a health-check method to be given its own concurrency quota separate from request serving methods.
+Besides setting an actor's overall maximum concurrency, you can separate its methods into *concurrency groups*, each with one or more threads of its own. Use concurrency groups to limit concurrency per method. For example, give a health-check method its own concurrency quota, separate from the methods that serve requests.
 
 :::{tip}
-Concurrency groups work with both asyncio and threaded actors. The syntax is the same.
+Concurrency groups work with both `asyncio` and threaded actors. The syntax is the same.
 :::
 
 (defining-concurrency-groups)=
 
-## Defining Concurrency Groups
+## Defining concurrency groups
 
-This defines two concurrency groups, "io" with max concurrency = 2 and "compute" with max concurrency = 4.  The methods `f1` and `f2` are placed in the "io" group, and the methods `f3` and `f4` are placed into the "compute" group. Note that there is always a default concurrency group for actors, which has a default concurrency of 1000 for AsyncIO actors and 1 otherwise.
+The following example defines two concurrency groups, `io` with a maximum concurrency of 2 and `compute` with a maximum concurrency of 4. It places the methods `f1` and `f2` in the `io` group and the methods `f3` and `f4` in the `compute` group. Actors always have a default concurrency group, which has a default concurrency limit of 1000 for `asyncio` actors and 1 otherwise.
 
 ::::{tab-set}
 :::{tab-item} Python
-You can define concurrency groups for actors using the `concurrency_group` decorator argument:
+Define concurrency groups for an actor with the `concurrency_groups` argument of `@ray.remote`:
 
 ```{testcode}
 import ray
@@ -59,7 +59,7 @@ a.f5.remote()  # executed in the default group.
 :::
 
 :::{tab-item} Java
-You can define concurrency groups for concurrent actors using the API `setConcurrencyGroups()` argument:
+Define concurrency groups for a concurrent actor with the `setConcurrencyGroups()` method:
 
 ```java
 class ConcurrentActor {
@@ -115,13 +115,13 @@ myActor.task(ConcurrentActor::f5).remote();  // executed in the "default" group.
 
 (default-concurrency-group)=
 
-## Default Concurrency Group
+## Default concurrency group
 
-By default, methods are placed in a default concurrency group which has a concurrency limit of 1000 for AsyncIO actors and 1 otherwise. The concurrency of the default group can be changed by setting the `max_concurrency` actor option.
+By default, Ray places methods in the default concurrency group, which has a concurrency limit of 1000 for `asyncio` actors and 1 otherwise. To change the default group's concurrency, set the `max_concurrency` actor option.
 
 ::::{tab-set}
 :::{tab-item} Python
-The following actor has 2 concurrency groups: "io" and "default". The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
+The following actor has two concurrency groups, `io` and `default`. The maximum concurrency of `io` is 2, and the maximum concurrency of `default` is 10.
 
 ```{testcode}
 @ray.remote(concurrency_groups={"io": 2})
@@ -134,7 +134,7 @@ actor = AsyncIOActor.options(max_concurrency=10).remote()
 :::
 
 :::{tab-item} Java
-The following concurrent actor has 2 concurrency groups: "io" and "default". The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
+The following concurrent actor has two concurrency groups, `io` and `default`. The maximum concurrency of `io` is 2, and the maximum concurrency of `default` is 10.
 
 ```java
 class ConcurrentActor {
@@ -161,15 +161,13 @@ ActorHandle<ConcurrentActor> myActor = Ray.actor(ConcurrentActor::new)
 
 (setting-the-concurrency-group-at-runtime)=
 
-## Setting the Concurrency Group at Runtime
+## Setting the concurrency group at runtime
 
-You can also dispatch actor methods into a specific concurrency group at runtime.
-
-The following snippet demonstrates setting the concurrency group of the `f2` method dynamically at runtime.
+You can also dispatch an actor method to a specific concurrency group at runtime. The following example sets the concurrency group of the `f2` method at runtime.
 
 ::::{tab-set}
 :::{tab-item} Python
-You can use the `.options` method.
+Pass `concurrency_group` to the `.options` method:
 
 ```{testcode}
 # Executed in the "io" group (as defined in the actor class).
@@ -181,7 +179,7 @@ a.f2.options(concurrency_group="compute").remote()
 :::
 
 :::{tab-item} Java
-You can use `setConcurrencyGroup` method.
+Call the `setConcurrencyGroup` method:
 
 ```java
 // Executed in the "io" group (as defined in the actor creation).

@@ -8,46 +8,46 @@ myst:
 
 # Serialization
 
-Since Ray processes do not share memory space, data transferred between workers and nodes will need to be **serialized** and **deserialized**. Ray uses the [Plasma object store](https://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/) to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
+Ray processes don't share memory space, so Ray must *serialize* and *deserialize* any data that moves between workers and nodes. Ray uses the [Plasma object store](https://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/) to transfer objects efficiently between processes and nodes. Workers on the same node share NumPy arrays in the object store without copying them, through zero-copy deserialization.
 
 ## Overview
 
-Ray has decided to use a customized [Pickle protocol version 5](https://www.python.org/dev/peps/pep-0574/) backport to replace the original PyArrow serializer. This gets rid of several previous limitations (e.g. cannot serialize recursive objects).
+Ray uses a customized backport of [Pickle protocol version 5](https://www.python.org/dev/peps/pep-0574/) in place of the original PyArrow serializer. It removes several limitations of the PyArrow serializer, such as its inability to serialize recursive objects.
 
-Ray is currently compatible with Pickle protocol version 5, while Ray supports serialization of a wider range of objects (e.g. lambda & nested functions, dynamic classes) with the help of cloudpickle.
+Ray is compatible with Pickle protocol version 5. With the help of cloudpickle, Ray also serializes a wider range of objects, such as lambda functions, nested functions, and dynamic classes.
 
 (plasma-store)=
 
-### Plasma Object Store
+### Plasma object store
 
-Plasma is an in-memory object store. It has been originally developed as part of Apache Arrow. Prior to Ray's version 1.0.0 release, Ray forked Arrow's Plasma code into Ray's code base in order to disentangle and continue development with respect to Ray's architecture and performance needs.
+Plasma is an in-memory object store that started as part of Apache Arrow. Before the Ray 1.0.0 release, the Ray project forked Arrow's Plasma code into the Ray code base to develop it independently for Ray's architecture and performance needs.
 
-Plasma is used to efficiently transfer objects across different processes and different nodes. All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
+Ray uses Plasma to transfer objects efficiently between processes and nodes. All objects in the Plasma store are immutable and live in shared memory, so many workers on the same node can access them efficiently.
 
-Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
+Each node has its own object store. Ray doesn't automatically broadcast data in an object store to other nodes. The data stays local to the writer until a task or actor on another node requests it.
 
-### Numpy Arrays
+### NumPy arrays
 
-Ray optimizes for numpy arrays by using Pickle protocol 5 with out-of-band data. The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
+Ray optimizes for NumPy arrays by using Pickle protocol 5 with out-of-band data. Ray stores each NumPy array as a read-only object, and all Ray workers on the same node read the array from the object store without copying it. Each NumPy array object in a worker process holds a pointer to the array in shared memory. To write to the read-only object, you must first copy it into the local process memory.
 
 :::{tip}
-You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors to hold objects that cannot be serialized.
+You can often avoid serialization issues by using only native types, such as NumPy arrays, lists or dictionaries of NumPy arrays, and other primitive types. For an object that Ray can't serialize, hold it in an actor instead.
 :::
 
 ### Fixing "assignment destination is read-only"
 
-Because Ray puts numpy arrays in the object store, when deserialized as arguments in remote functions they will become read-only. For example, the following code snippet will crash:
+Because Ray puts NumPy arrays in the object store, the arrays are read-only when Ray deserializes them as arguments to remote functions. For example, the following code crashes:
 
 ```{literalinclude} /core/doc_code/deser.py
 ```
 
-To avoid this issue, you can manually copy the array at the destination if you need to mutate it (`arr = arr.copy()`). Note that this is effectively like disabling the zero-copy deserialization feature provided by Ray.
+If you need to mutate the array, copy it at the destination with `arr = arr.copy()`. Copying the array is effectively like disabling the zero-copy deserialization that Ray provides.
 
 ## Serialization notes
 
-- Ray is currently using Pickle protocol version 5. The default pickle protocol used by most python distributions is protocol 3. Protocol 4 & 5 are more efficient than protocol 3 for larger objects.
+- Ray uses Pickle protocol version 5. Most Python distributions default to Pickle protocol 3. Protocols 4 and 5 are more efficient than protocol 3 for larger objects.
 
-- For non-native objects, Ray will always keep a single copy even it is referred multiple times in an object:
+- For non-native objects, Ray always keeps a single copy, even if an object refers to it multiple times:
 
   ```{testcode}
   import ray
@@ -58,30 +58,35 @@ To avoid this issue, you can manually copy the array at the destination if you n
   assert l[0] is l[1]  # no problem!
   ```
 
-- Whenever possible, use numpy arrays or Python collections of numpy arrays for maximum performance.
+- Whenever possible, use NumPy arrays or Python collections of NumPy arrays for maximum performance.
 
-- Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
+- Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. If your object contains a lock, you might need a workaround.
 
-## Zero-Copy Serialization for Read-Only Tensors
-Ray provides optional zero-copy serialization for read-only PyTorch tensors. Ray serializes these tensors by converting them to NumPy arrays and leveraging pickle5's zero-copy buffer sharing. This avoids copying the underlying tensor data, which can improve performance when passing large tensors across tasks or actors. However, PyTorch does not natively support read-only tensors, so this feature must be used with caution.
+## Zero-copy serialization for read-only tensors
 
-When the feature is enabled, Ray won't copy and allow a write to shared memory. One process changing a tensor after `ray.get()` could be reflected in another process if both processes are colocated on the same node. This feature works best under the following conditions:
+Ray provides optional zero-copy serialization for read-only PyTorch tensors. Ray converts these tensors to NumPy arrays and serializes them with pickle5's zero-copy buffer sharing. Skipping the copy of the underlying tensor data can improve performance when you pass large tensors between tasks or actors.
 
-- The tensor has `requires_grad = False` (i.e., is detached from the autograd graph).
+:::{caution}
+PyTorch doesn't natively support read-only tensors, so use this feature with caution. With the feature enabled, Ray doesn't copy the tensor, so a write goes to shared memory. If two processes run on the same node, a change that one process makes to a tensor after `ray.get()` could appear in the other process.
+:::
 
-- The tensor is contiguous in memory (`tensor.is_contiguous()`).
+This feature works best under the following conditions:
 
-- Performance benefits from this are larger if the tensor resides in CPU memory.
+- The tensor has `requires_grad = False`, meaning it's detached from the autograd graph.
 
-- You are not using Ray Direct Transport.
+- The tensor is contiguous in memory, so `tensor.is_contiguous()` returns `True`.
 
-This feature is disabled by default. You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS`. Set this variable externally before running your script to enable zero-copy serialization in the driver process:
+- The tensor resides in CPU memory, where the performance benefits are larger.
+
+- You aren't using Ray Direct Transport.
+
+This feature is off by default. To enable it, set the `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS` environment variable. To enable zero-copy serialization in the driver process, set the variable outside your script before you run it:
 
 ```bash
 export RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=1
 ```
 
-The following example calculates the sum of a 1GiB tensor using `ray.get()`, leveraging zero-copy serialization:
+The following example uses zero-copy serialization to calculate the sum of a 1 GiB tensor with `ray.get()`:
 
 ```{testcode}
 :hide:
@@ -109,7 +114,7 @@ print(f"Elapsed time: {elapsed_time}s")
 assert result == x.sum()
 ```
 
-In this example, enabling zero-copy serialization reduces end-to-end latency by **66.3%**:
+In this example, enabling zero-copy serialization reduces end-to-end latency by 66.3%:
 
 ```bash
 # Without Zero-Copy Serialization
@@ -118,13 +123,13 @@ Elapsed time: 23.53883756196592s
 Elapsed time: 7.933729998010676s
 ```
 
-## Customized Serialization
+## Customized serialization
 
-Sometimes you may want to customize your serialization process because the default serializer used by Ray (pickle5 + cloudpickle) does not work for you (fail to serialize some objects, too slow for certain objects, etc.).
+Ray's default serializer combines pickle5 and cloudpickle. It might not work for you, because it fails to serialize some objects or is too slow for others. In those cases, customize the serialization process.
 
-There are at least 3 ways to define your custom serialization process:
+You can define a custom serialization process in at least three ways:
 
-1. If you want to customize the serialization of a type of objects, and you have access to the code, you can define `__reduce__` function inside the corresponding class. This is commonly done by most Python libraries. Example code:
+1. To customize serialization for a type of object whose code you can access, define a `__reduce__` function in the corresponding class. Most Python libraries use this approach. The following code shows an example:
 
    ```{testcode}
    import ray
@@ -153,8 +158,7 @@ There are at least 3 ways to define your custom serialization process:
    <sqlite3.Connection object at ...>
    ```
 
-
-2. If you want to customize the serialization of a type of objects, but you cannot access or modify the corresponding class, you can register the class with the serializer you use:
+1. To customize serialization for a type of object whose class you can't access or modify, register the class with the serializer you use:
 
    ```{testcode}
    import ray
@@ -192,11 +196,13 @@ There are at least 3 ways to define your custom serialization process:
    ray.util.deregister_serializer(A)
    ```
 
-   NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker, if you want to use the serializer, you need to register the serializer. Deregister a serializer also only applies locally.
+   :::{note}
+   Each Ray worker manages its serializers locally, so register the serializer in every Ray worker that uses it. Calling `ray.util.deregister_serializer` also applies only to the local worker.
+   :::
 
-   If you register a new serializer for a class, the new serializer would replace the old serializer immediately in the worker. This API is also idempotent, there are no side effects caused by re-registering the same serializer.
+   If you register a new serializer for a class, the new serializer replaces the old one in the worker immediately. The API is also idempotent, so re-registering the same serializer has no side effects.
 
-3. We also provide you an example, if you want to customize the serialization of a specific object:
+1. To customize the serialization of a specific object, wrap it in a helper class that defines `__reduce__`, as in the following example:
 
    ```{testcode}
    import threading
@@ -230,9 +236,9 @@ There are at least 3 ways to define your custom serialization process:
 
 (custom-exception-serializer)=
 
-## Custom Serializers for Exceptions
+## Custom serializers for exceptions
 
-When Ray tasks raise exceptions that cannot be serialized with the default pickle mechanism, you can register custom serializers to handle them (Note: the serializer must be registered in the driver and all workers).
+When a task raises an exception that the default pickle mechanism can't serialize, register a custom serializer to handle it. Register the serializer in the driver and in all workers.
 
 ```{testcode}
 import ray
@@ -276,20 +282,19 @@ except ray.exceptions.RayTaskError as e:
     print(f"Caught exception: {e.cause}")  # This will be our CustomError
 ```
 
-When a custom exception is raised in a remote task, Ray will:
+When a remote task raises a custom exception, Ray does the following:
 
-1. Serialize the exception using your custom serializer
-2. Wrap it in a {class}`RayTaskError <ray.exceptions.RayTaskError>`
-3. The deserialized exception will be available as `ray_task_error.cause`
+1. Serializes the exception with your custom serializer.
+1. Wraps it in a {class}`RayTaskError <ray.exceptions.RayTaskError>`.
+1. Makes the deserialized exception available as `ray_task_error.cause`.
 
 Whenever serialization fails, Ray throws an {class}`UnserializableException <ray.exceptions.UnserializableException>` containing the string representation of the original stack trace.
 
-
 ## Troubleshooting
 
-Use `ray.util.inspect_serializability` to identify tricky pickling issues. This function can be used to trace a potential non-serializable object within any Python object -- whether it be a function, class, or object instance.
+Use `ray.util.inspect_serializability` to identify tricky pickling issues. The function traces a potential non-serializable object within any Python object, whether it's a function, a class, or an object instance.
 
-Below, we demonstrate this behavior on a function with a non-serializable object (threading lock):
+The following example inspects a function that references a non-serializable threading lock:
 
 ```{testcode}
 from ray.util import inspect_serializability
@@ -303,7 +308,7 @@ def test():
 inspect_serializability(test, name="test")
 ```
 
-The resulting output is:
+The example produces the following output:
 
 ```{testoutput}
 :options: +MOCK
@@ -333,6 +338,6 @@ For even more detailed information, set environmental variable `RAY_PICKLE_VERBO
 
 ## Known Issues
 
-Users could experience memory leak when using certain python3.8 & 3.9 versions. This is due to [a bug in python's pickle module](https://bugs.python.org/issue39492).
+You might experience a memory leak with certain Python 3.8 and 3.9 versions, because of [a bug in Python's pickle module](https://bugs.python.org/issue39492).
 
-This issue has been solved for Python 3.8.2rc1, Python 3.9.0 alpha 4 or late versions.
+Python 3.8.2rc1, Python 3.9.0 alpha 4, and later versions fix this issue.
