@@ -6,22 +6,22 @@ myst:
 
 (fault-tolerance-gcs)=
 
-# GCS Fault Tolerance
+# GCS fault tolerance
 
-The Global Control Service, or GCS, manages cluster-level metadata. It also provides a handful of cluster-level operations including {ref}`actor <ray-remote-classes>`, {ref}`placement groups <ray-placement-group-doc-ref>` and node management. By default, the GCS isn't fault tolerant because it stores all data in memory. If it fails, the entire Ray cluster fails. To enable GCS fault tolerance, back the GCS with durable storage so it can reload cluster metadata after a restart. Ray offers two backends:
+The Global Control Service, or GCS, manages cluster-level metadata. It also handles cluster-level operations, including {ref}`actor <ray-remote-classes>`, {ref}`placement group <ray-placement-group-doc-ref>`, and node management. By default, the GCS isn't fault tolerant because it stores all data in memory. If it fails, the entire Ray cluster fails. To enable GCS fault tolerance, back the GCS with durable storage so it can reload cluster metadata after a restart. Ray offers two backends:
 
-- **External Redis** (officially supported): the GCS persists its state to a highly available Redis instance, known as HA Redis.
-- **Embedded RocksDB** (alpha): the GCS persists its state to a local [RocksDB](https://rocksdb.org/) database on a persistent volume, with no external datastore to run. See {ref}`fault-tolerance-gcs-rocksdb`.
+- **External Redis**: The GCS persists its state to a highly available Redis instance, known as HA Redis. This backend is officially supported.
+- **Embedded RocksDB**: The GCS persists its state to a local [RocksDB](https://rocksdb.org/) database on a persistent volume, so you don't run an external data store. This backend is alpha. See {ref}`fault-tolerance-gcs-rocksdb`.
 
-Either way, when the GCS restarts, it loads all the data back from the backing store and resumes regular functions.
+With either backend, when the GCS restarts, it reloads all its data from the backing store and resumes its regular functions.
 
 During the recovery period, the following functions aren't available:
 
-- Actor creation, deletion and reconstruction.
-- Placement group creation, deletion and reconstruction.
-- Resource management.
-- Worker node registration.
-- Worker process creation.
+- Actor creation, deletion, and reconstruction
+- Placement group creation, deletion, and reconstruction
+- Resource management
+- Worker node registration
+- Worker process creation
 
 However, running Ray tasks and actors remain alive, and any existing objects stay available.
 
@@ -29,11 +29,11 @@ However, running Ray tasks and actors remain alive, and any existing objects sta
 
 ::::{tab-set}
 :::{tab-item} KubeRay (officially supported)
-If you are using {ref}`KubeRay <kuberay-index>`, refer to {ref}`KubeRay docs on GCS Fault Tolerance <kuberay-gcs-ft>`.
+If you use {ref}`KubeRay <kuberay-index>`, see the {ref}`KubeRay docs on GCS fault tolerance <kuberay-gcs-ft>`.
 :::
 
 :::{tab-item} ray start
-If you are using {ref}`ray start <ray-start-doc>` to start the Ray head node, set the OS environment `RAY_REDIS_ADDRESS` to the Redis address, and supply the `--redis-password` flag with the password when calling `ray start`:
+If you use {ref}`ray start <ray-start-doc>` to start the Ray head node, set the `RAY_REDIS_ADDRESS` OS environment variable to the Redis address, and pass the password with the `--redis-password` flag when you call `ray start`:
 
 ```shell
 RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --redis-username default
@@ -41,7 +41,7 @@ RAY_REDIS_ADDRESS=redis_ip:port ray start --head --redis-password PASSWORD --red
 :::
 
 :::{tab-item} ray up
-If you are using {ref}`ray up <ray-up-doc>` to start the Ray cluster, change {ref}`head_start_ray_commands <cluster-configuration-head-start-ray-commands>` field to add `RAY_REDIS_ADDRESS` and `--redis-password` to the `ray start` command:
+If you use {ref}`ray up <ray-up-doc>` to start the Ray cluster, add `RAY_REDIS_ADDRESS` and `--redis-password` to the `ray start` command in the {ref}`head_start_ray_commands <cluster-configuration-head-start-ray-commands>` field:
 
 ```yaml
 head_start_ray_commands:
@@ -52,16 +52,16 @@ head_start_ray_commands:
 ::::
 
 
-After you back the GCS with Redis, it recovers its state from Redis when it restarts. While the GCS recovers, each raylet tries to reconnect to it. If a raylet can't reconnect for more than 60 seconds, that raylet exits and the corresponding node fails. Set this timeout threshold with the OS environment variable `RAY_gcs_rpc_server_reconnect_timeout_s`.
+After you back the GCS with Redis, it recovers its state from Redis when it restarts. While the GCS recovers, each raylet tries to reconnect to it. If a raylet can't reconnect for more than 60 seconds, that raylet exits and the corresponding node fails. Set this timeout with the `RAY_gcs_rpc_server_reconnect_timeout_s` OS environment variable.
 
-If the GCS IP address might change after restarts, use a qualified domain name and pass it to all raylets at start time. Each raylet resolves the domain name and connects to the correct GCS. You need to ensure that at any time, only one GCS is alive.
+If the GCS IP address might change after restarts, use a qualified domain name and pass it to all raylets at start time. Each raylet resolves the domain name and connects to the correct GCS. Make sure that only one GCS is alive at any time.
 
 :::{note}
-GCS fault tolerance with external Redis is officially supported only if you are using {ref}`KubeRay <kuberay-index>` for {ref}`Ray serve fault tolerance <serve-e2e-ft>`. For other cases, you can use it at your own risk and you need to implement additional mechanisms to detect the failure of GCS or the head node and restart it.
+GCS fault tolerance with external Redis is officially supported only if you use {ref}`KubeRay <kuberay-index>` for {ref}`Ray Serve fault tolerance <serve-e2e-ft>`. In other cases, you can use it at your own risk, but you need to implement additional mechanisms that detect a failure of the GCS or the head node and restart it.
 :::
 
 :::{note}
-You can also enable GCS fault tolerance when running Ray on [Anyscale](https://www.anyscale.com/). See the Anyscale [documentation](https://docs.anyscale.com/platform/services/head-node-ft/) for instructions.
+You can also enable GCS fault tolerance when you run Ray on [Anyscale](https://www.anyscale.com/). For instructions, see the [Anyscale documentation](https://docs.anyscale.com/platform/services/head-node-ft/).
 :::
 
 (fault-tolerance-gcs-rocksdb)=
@@ -69,12 +69,12 @@ You can also enable GCS fault tolerance when running Ray on [Anyscale](https://w
 ## Embedded RocksDB backend (alpha)
 
 :::{note}
-The embedded RocksDB backend is in alpha and may change before becoming stable. We're actively looking for feedback: please share your experience on [GitHub](https://github.com/ray-project/ray/issues).
+The embedded RocksDB backend is alpha and might change before it becomes stable. The Ray project welcomes feedback. Share your experience in a [GitHub issue](https://github.com/ray-project/ray/issues).
 :::
 
-The Redis-backed setup above makes the GCS fault tolerant, but it also adds an external, highly available Redis instance that you have to deploy, secure, and operate. The *embedded RocksDB backend* removes that dependency: the GCS persists its state to a local [RocksDB](https://rocksdb.org/) database on a persistent volume instead of to Redis. There's no separate datastore to run, just a directory on durable storage.
+The Redis backend makes the GCS fault tolerant, but it also adds an external, highly available Redis instance that you have to deploy, secure, and operate. The *embedded RocksDB backend* removes that dependency. The GCS persists its state to a local [RocksDB](https://rocksdb.org/) database on a persistent volume instead of to Redis. Instead of running a separate data store, you provide a directory on durable storage.
 
-The recovery model is identical to Redis-backed fault tolerance. When the GCS restarts, it reads its state back from disk and resumes, and each raylet reconnects while it recovers. Only the *location* of the persisted state differs: a local RocksDB database instead of an external Redis instance.
+The recovery model is identical to Redis-backed fault tolerance. When the GCS restarts, it reads its state back from disk and resumes, and each raylet reconnects while the GCS recovers. The only difference is where the state persists, in a local RocksDB database instead of an external Redis instance.
 
 ### Redis or RocksDB?
 
@@ -86,7 +86,7 @@ The recovery model is identical to Redis-backed fault tolerance. When the GCS re
   - External Redis
   - Embedded RocksDB
 * - Extra process to operate
-  - Yes (HA Redis)
+  - Yes, HA Redis
   - No
 * - Where state lives
   - External Redis instance
@@ -98,34 +98,34 @@ The recovery model is identical to Redis-backed fault tolerance. When the GCS re
   - All platforms
   - Linux only
 * - Maturity
-  - Officially supported (with KubeRay for Ray Serve)
+  - Officially supported with KubeRay for Ray Serve
   - Alpha
 ```
 
-Choose the embedded RocksDB backend when you want GCS fault tolerance without running Redis, and you can attach a durable, reattachable volume, for example a Kubernetes `PersistentVolume`, to whichever node runs the GCS.
+Choose the embedded RocksDB backend when you want GCS fault tolerance without running Redis, and you can attach a durable volume that you can reattach to whichever node runs the GCS, such as a Kubernetes `PersistentVolume`.
 
 ### Enabling it
 
 Set two environment variables before you start the head node:
 
 - `RAY_gcs_storage=rocksdb` selects the backend.
-- `RAY_gcs_storage_path=<dir>` points at a directory on a persistent volume where RocksDB stores its files. This is required; Ray fails fast at startup if it's unset.
+- `RAY_gcs_storage_path=<dir>` points at a directory on a persistent volume where RocksDB stores its files. This variable is required. If it's unset, Ray fails fast at startup.
 
 ```shell
 RAY_gcs_storage=rocksdb RAY_gcs_storage_path=/mnt/ray-gcs ray start --head
 ```
 
-The directory must live on storage that survives a GCS (head) restart and that can be reattached to the node running the recovered GCS: the same durability requirement that HA Redis satisfies for the Redis backend.
+The directory must live on storage that survives a restart of the GCS or the head node, and that you can reattach to the node running the recovered GCS. HA Redis satisfies the same durability requirement for the Redis backend.
 
 :::{note}
-The RocksDB database is embedded in the GCS process and is single-writer: exactly one GCS may open the storage path at a time. Point every restart of a given cluster's head at the *same* path, and never share a path between clusters.
+The GCS process embeds the RocksDB database, which is single-writer. Only one GCS can open the storage path at a time. Point every restart of a cluster's head node at the same path, and never share a path between clusters.
 :::
 
 For a step-by-step Kubernetes walkthrough, see {ref}`kuberay-gcs-rocksdb-ft`.
 
 ### Advanced tuning
 
-RocksDB I/O, including the write-ahead-log fsync that dominates write latency, runs on a dedicated thread pool so it never stalls the GCS event loop. Two environment variables tune it. The defaults suit the GCS metadata workload, and most users never change them:
+RocksDB I/O runs on a dedicated thread pool so it never stalls the GCS event loop. This I/O includes the write-ahead-log fsync, which dominates write latency. The defaults suit the GCS metadata workload, so you usually don't need to change them. Tune the pool with the following two environment variables:
 
-- `RAY_gcs_rocksdb_io_pool_size` (default `4`): worker threads in the RocksDB I/O offload pool.
-- `RAY_gcs_rocksdb_strand_buckets` (default `64`): per-key ordering buckets. Single-key operations are hashed into a bucket and serialized within it, while different buckets run concurrently.
+- `RAY_gcs_rocksdb_io_pool_size`: The number of worker threads in the RocksDB I/O offload pool. Defaults to `4`.
+- `RAY_gcs_rocksdb_strand_buckets`: The number of per-key ordering buckets. Single-key operations are hashed into a bucket and serialized within it, while different buckets run concurrently. Defaults to `64`.

@@ -7,18 +7,18 @@ myst:
 (gpu-support)=
 (accelerator-support)=
 
-# Accelerator Support
+# Accelerator support
 
-Accelerators like GPUs are critical for many machine learning apps. Ray Core natively supports many accelerators as pre-defined {ref}`resource <core-resources>` types and allows tasks and actors to specify their accelerator {ref}`resource requirements <resource-requirements>`.
+Accelerators such as GPUs are critical for many machine learning apps. Ray Core natively supports many accelerators as predefined {ref}`resource <core-resources>` types, and you can specify the accelerator {ref}`resource requirements <resource-requirements>` of your tasks and actors.
 
-The accelerators natively supported by Ray Core are:
+Ray Core natively supports the following accelerators:
 
 ```{list-table}
 :header-rows: 1
 
 * - Accelerator
-  - Ray Resource Name
-  - Support Level
+  - Ray resource name
+  - Support level
 * - NVIDIA GPU
   - GPU
   - Fully tested, supported by the Ray team
@@ -56,7 +56,7 @@ The accelerators natively supported by Ray Core are:
 
 ## Starting Ray nodes with accelerators
 
-By default, Ray sets the quantity of accelerator resources of a node to the physical quantities of accelerators auto detected by Ray. If you need to, you can {ref}`override <specify-node-resources>` this.
+By default, Ray sets a node's quantity of accelerator resources to the physical quantity of accelerators that Ray auto-detects. You can {ref}`override <specify-node-resources>` this value.
 
 :::::{tab-set}
 ::::{tab-item} NVIDIA GPU
@@ -127,18 +127,18 @@ You can set the `CUDA_VISIBLE_DEVICES` environment variable before starting a Ra
 ::::{tab-item} FuriosaAI
 :sync: FuriosaAI
 :::{tip}
-You can set the `FURIOSA_DEVICES` environment variable before starting a Ray node to limit the FuriosaAI NPUs that are visible to Ray, using `npu:<id>` tokens. For example, `FURIOSA_DEVICES=npu:1,npu:3 ray start --head` lets Ray only see devices 1 and 3 (Ray auto-detects the count). Bare integer IDs (e.g., `FURIOSA_DEVICES=1,3`) are also accepted on read.
+You can set the `FURIOSA_DEVICES` environment variable to a list of `npu:<id>` tokens before starting a Ray node to limit the FuriosaAI NPUs that are visible to Ray. For example, `FURIOSA_DEVICES=npu:1,npu:3 ray start --head` lets Ray only see devices 1 and 3. Ray auto-detects the count. Bare integer IDs, such as `FURIOSA_DEVICES=1,3`, are also accepted on read.
 :::
 
 :::{note}
-When using the `furiosa_llm.LLM` Python API inside a Ray task or actor, pass the assigned devices explicitly; `LLM(devices=None)` would allocate all visible NPUs and bypass Ray's per-worker isolation:
+When you use the `furiosa_llm.LLM` Python API inside a Ray task or actor, pass the assigned devices explicitly. `LLM(devices=None)` would allocate all visible NPUs and bypass Ray's per-worker isolation. The following example passes the assigned devices:
 
 ```
 from furiosa_llm import LLM
 llm = LLM(model_path, devices=os.environ["FURIOSA_DEVICES"])
 ```
 
-`furiosa-llm` also accepts the PE-level form `npu:X:Y` (e.g., `npu:0:0-3` for fused PE 0-3 of NPU 0), but Ray currently treats each NPU as a single resource and does not preserve PE ranges through worker scheduling.
+`furiosa-llm` also accepts the PE-level form `npu:X:Y`, such as `npu:0:0-3` for fused PE 0-3 of NPU 0. However, Ray currently treats each NPU as a single resource and doesn't preserve PE ranges through worker scheduling.
 :::
 ::::
 
@@ -150,12 +150,12 @@ You can set the `QBRUNTIME_VISIBLE_DEVICES` environment variable before starting
 ::::
 :::::
 :::{note}
-There's nothing preventing you from specifying a larger number of accelerator resources (e.g., `num_gpus`) than the true number of accelerators on the machine given Ray resources are {ref}`logical <logical-resources>`. In this case, Ray acts as if the machine has the number of accelerators you specified for the purposes of scheduling tasks and actors that require accelerators. Trouble only occurs if those tasks and actors attempt to actually use accelerators that don't exist.
+Because Ray resources are {ref}`logical <logical-resources>`, nothing prevents you from specifying more accelerator resources, such as `num_gpus`, than the machine physically has. In this case, Ray schedules tasks and actors that require accelerators as if the machine has the number of accelerators you specified. Problems occur only if those tasks and actors try to use accelerators that don't exist.
 :::
 
-## Using accelerators in Tasks and Actors
+## Using accelerators in tasks and actors
 
-If a task or actor requires accelerators, you can specify the corresponding {ref}`resource requirements <resource-requirements>` (e.g. `@ray.remote(num_gpus=1)`). Ray then schedules the task or actor to a node that has enough free accelerator resources and assign accelerators to the task or actor by setting the corresponding environment variable (e.g. `CUDA_VISIBLE_DEVICES`) before running the task or actor code.
+If a task or actor requires accelerators, specify the corresponding {ref}`resource requirements <resource-requirements>`, such as `@ray.remote(num_gpus=1)`. Ray then schedules the task or actor on a node that has enough free accelerator resources. Before running the task or actor code, Ray assigns accelerators to it by setting the corresponding environment variable, such as `CUDA_VISIBLE_DEVICES`.
 
 ::::{tab-set}
 :::{tab-item} NVIDIA GPU
@@ -610,7 +610,11 @@ ray.get(mblt_task.remote())
 
 Inside a task or actor, {func}`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a list of accelerator IDs that are available to the task or actor. Typically, it is not necessary to call `get_accelerator_ids()` because Ray automatically sets the corresponding environment variable (e.g. `CUDA_VISIBLE_DEVICES`), which most ML frameworks respect for purposes of accelerator assignment.
 
-**Note:** The remote function or actor defined above doesn't actually use any accelerators. Ray schedules it on a node which has at least one accelerator, and reserves one accelerator for it while it is being executed, however it is up to the function to actually make use of the accelerator. This is typically done through an external library like TensorFlow. Here is an example that actually uses accelerators. In order for this example to work, you need to install the GPU version of TensorFlow.
+:::{note}
+The preceding remote function and actor don't use any accelerators. Ray schedules each one on a node that has at least one accelerator and reserves one accelerator for it while it runs. Using the accelerator is up to your code, which typically does so through an external library such as TensorFlow.
+:::
+
+The following example uses accelerators. To run it, install the GPU version of TensorFlow.
 
 ```{testcode}
 @ray.remote(num_gpus=1)
@@ -622,10 +626,11 @@ def gpu_task():
     tf.Session()
 ```
 
+:::{note}
+Your code can ignore the assigned accelerators and use all of the accelerators on the machine. Ray doesn't prevent this, and it can lead to too many tasks or actors using the same accelerator at the same time. However, Ray automatically sets the environment variable, such as `CUDA_VISIBLE_DEVICES`, which restricts the accelerators that most deep learning frameworks use unless you override the variable.
+:::
 
-**Note:** It is certainly possible for the person to ignore assigned accelerators and to use all of the accelerators on the machine. Ray does not prevent this from happening, and this can lead to too many tasks or actors using the same accelerator at the same time. However, Ray does automatically set the environment variable (e.g. `CUDA_VISIBLE_DEVICES`), which restricts the accelerators used by most deep learning frameworks assuming it's not overridden by the user.
-
-## Fractional Accelerators
+## Fractional accelerators
 
 Ray supports {ref}`fractional resource requirements <fractional-resource-requirements>` so multiple tasks and actors can share the same accelerator.
 
@@ -701,17 +706,17 @@ ray.get([f.remote() for _ in range(4)])
 
 :::{tab-item} AWS Neuron Core
 :sync: AWS Neuron Core
-AWS Neuron Core doesn't support fractional resource.
+AWS Neuron Core doesn't support fractional resources.
 :::
 
 :::{tab-item} Google TPU
 :sync: Google TPU
-Google TPU doesn't support fractional resource.
+Google TPU doesn't support fractional resources.
 :::
 
 :::{tab-item} Intel Gaudi
 :sync: Intel Gaudi
-Intel Gaudi doesn't support fractional resource.
+Intel Gaudi doesn't support fractional resources.
 :::
 
 :::{tab-item} Huawei Ascend
@@ -776,7 +781,9 @@ Mobilint MBLT doesn't support fractional resources.
 :::
 ::::
 
-**Note:** It is the user's responsibility to make sure that the individual tasks don't use more than their share of the accelerator memory. Pytorch and TensorFlow can be configured to limit its memory usage.
+:::{note}
+Make sure that individual tasks don't use more than their share of the accelerator memory. You can configure PyTorch and TensorFlow to limit their memory usage.
+:::
 
 When Ray assigns accelerators of a node to tasks or actors with fractional resource requirements, it packs one accelerator before moving on to the next one to avoid fragmentation.
 
@@ -809,9 +816,9 @@ fractional_gpu_actors = [FractionalGPUActor.remote() for _ in range(3)]
 
 (gpu-leak)=
 
-## Workers not Releasing GPU Resources
+## Workers not releasing GPU resources
 
-Currently, when a worker executes a task that uses a GPU (e.g., through TensorFlow), the task may allocate memory on the GPU and may not release it when the task finishes executing. This can lead to problems the next time a task tries to use the same GPU. To address the problem, Ray disables the worker process reuse between GPU tasks by default, where the GPU resources is released after the task process exits. Since this adds overhead to GPU task scheduling, you can re-enable worker reuse by setting `max_calls=0` in the {func}`ray.remote <ray.remote>` decorator.
+When a worker executes a task that uses a GPU, such as through TensorFlow, the task might allocate memory on the GPU and might not release it when the task finishes executing. This can cause problems the next time a task tries to use the same GPU. To address the problem, Ray disables worker process reuse between GPU tasks by default, so the GPU resources are released after the task process exits. Because this adds overhead to GPU task scheduling, you can re-enable worker reuse by setting `max_calls=0` in the {func}`ray.remote <ray.remote>` decorator.
 
 ```{testcode}
 # By default, ray does not reuse workers for GPU tasks to prevent
@@ -820,15 +827,15 @@ Currently, when a worker executes a task that uses a GPU (e.g., through TensorFl
 def leak_gpus():
     import tensorflow as tf
 
-    # This task allocates memory on the GPU and then never release it.
+    # This task allocates memory on the GPU and then never releases it.
     tf.Session()
 ```
 
 (accelerator-types)=
 
-## Accelerator Types
+## Accelerator types
 
-Ray supports resource specific accelerator types. The `accelerator_type` option can be used to force to a task or actor to run on a node with a specific type of accelerator. Under the hood, the accelerator type option is implemented as a {ref}`custom resource requirement <custom-resources>` of `"accelerator_type:<type>": 0.001`. This forces the task or actor to be placed on a node with that particular accelerator type available. This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
+Ray supports resource-specific accelerator types. Use the `accelerator_type` option to force a task or actor to run on a node with a specific type of accelerator. Ray implements the accelerator type option as a {ref}`custom resource requirement <custom-resources>` of `"accelerator_type:<type>": 0.001`. This requirement forces Ray to place the task or actor on a node that has that accelerator type available. It also tells the multi-node-type autoscaler that there's demand for that type of resource, which can trigger the launch of new nodes that provide that accelerator.
 
 ```{testcode}
 :hide:
