@@ -41,16 +41,12 @@ Table:
 View {ref}`Monitoring with the CLI or SDK <state-api-overview-ref>` for more details.
 
 ## Metrics
-Ray collects and exposes the physical stats (e.g., CPU, memory, GRAM, disk, and network usage of each node),
-internal stats (e.g., number of Actors in the cluster, number of Worker failures in the Cluster),
-and custom application metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
-to monitor the Cluster over time.
+Ray collects and exposes the physical stats (e.g., CPU, memory, GRAM, disk, and network usage of each node), internal stats (e.g., number of Actors in the cluster, number of Worker failures in the Cluster), and custom application metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used to monitor the Cluster over time.
 
 View {ref}`Metrics View <dash-metrics-view>` for where to view the metrics in Ray dashboard. View {ref}`collecting metrics <collect-metrics>` for how to collect metrics from Ray Clusters.
 
 ## Exceptions
-Creating a new Task or submitting an Actor Task generates an object reference. When `ray.get` is called on the Object Reference,
-the API raises an exception if anything goes wrong with a related Task, Actor or Object. For example,
+Creating a new Task or submitting an Actor Task generates an object reference. When `ray.get` is called on the Object Reference, the API raises an exception if anything goes wrong with a related Task, Actor or Object. For example,
 
 - {class}`RayTaskError <ray.exceptions.RayTaskError>` is raised when an error from user code throws an exception.
 - {class}`RayActorError <ray.exceptions.RayActorError>` is raised when an Actor is dead (by a system failure, such as a node failure, or a user-level failure, such as an exception from `__init__` method).
@@ -59,9 +55,7 @@ the API raises an exception if anything goes wrong with a related Task, Actor or
 See {ref}`Exceptions Reference <ray-core-exceptions>` for more details.
 
 ## Debugger
-Ray has a built-in debugger for debugging your distributed applications.
-Set breakpoints in Ray Tasks and Actors, and when hitting the breakpoint,
-drop into a PDB session to:
+Ray has a built-in debugger for debugging your distributed applications. Set breakpoints in Ray Tasks and Actors, and when hitting the breakpoint, drop into a PDB session to:
 
 - Inspect variables in that context
 - Step within a Task or Actor
@@ -95,8 +89,7 @@ Logs are important for general monitoring and debugging. For distributed Ray app
 ```
 
 ### Driver logs
-An entry point of Ray applications that calls `ray.init()` is called a **Driver**.
-All the Driver logs are handled in the same way as normal Python programs.
+An entry point of Ray applications that calls `ray.init()` is called a **Driver**. All the Driver logs are handled in the same way as normal Python programs.
 
 (ray-worker-logs)=
 

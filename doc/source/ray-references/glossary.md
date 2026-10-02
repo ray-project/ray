@@ -8,8 +8,7 @@ myst:
 
 # Ray Glossary
 
-On this page you find a list of important terminology used throughout the Ray
-documentation, sorted alphabetically.
+On this page you find a list of important terminology used throughout the Ray documentation, sorted alphabetically.
 
 ````{glossary}
 Action space

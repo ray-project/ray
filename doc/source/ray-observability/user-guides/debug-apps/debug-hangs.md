@@ -15,11 +15,7 @@ The {ref}`Ray dashboard <observability-getting-started>`  lets you profile Ray D
 :width: 80%
 ```
 
-Clicking "Stack Trace" returns the current stack trace sample using `py-spy`. By default, only the Python stack
-trace is shown. To show native code frames, set the URL parameter `native=1` (only supported on Linux). To make native
-frames the default for every stack trace on the cluster, set the `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1` environment
-variable on the Ray head node. Native frames add significant profiling overhead, so enable them only when sampling the
-Python layer alone isn't enough. See {ref}`Configuring profiling defaults <profiling-defaults>`.
+Clicking "Stack Trace" returns the current stack trace sample using `py-spy`. By default, only the Python stack trace is shown. To show native code frames, set the URL parameter `native=1` (only supported on Linux). To make native frames the default for every stack trace on the cluster, set the `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1` environment variable on the Ray head node. Native frames add significant profiling overhead, so enable them only when sampling the Python layer alone isn't enough. See {ref}`Configuring profiling defaults <profiling-defaults>`.
 
 ```{image} /images/stack.png
 :align: center
@@ -44,9 +40,6 @@ The following errors are conditional and not signals of failures for your Python
 
 ## Use `ray stack` CLI command
 
-Once `py-spy` is installed (it is automatically installed if "Ray dashboard" component is included when {ref}`installing Ray <installation>`), you can run `ray stack` to dump the stack traces of all Ray Worker processes on
-the current node.
+Once `py-spy` is installed (it is automatically installed if "Ray dashboard" component is included when {ref}`installing Ray <installation>`), you can run `ray stack` to dump the stack traces of all Ray Worker processes on the current node.
 
-This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, please
-[let us know](https://github.com/ray-project/ray/issues).
+This document discusses some common problems that people run into when using Ray as well as some known problems. If you encounter other problems, please [let us know](https://github.com/ray-project/ray/issues).

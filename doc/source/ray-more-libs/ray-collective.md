@@ -15,8 +15,7 @@ myst:
 
 # Ray Collective Communication Lib
 
-The Ray collective communication library (`ray.util.collective`) offers a set of native collective primitives for
-communication between distributed CPUs or GPUs.
+The Ray collective communication library (`ray.util.collective`) offers a set of native collective primitives for communication between distributed CPUs or GPUs.
 
 Ray collective communication library
 
@@ -112,8 +111,7 @@ See below the current support matrix for all collective calls with different bac
 
 ### Installation and Importing
 
-Ray collective library is bundled with the released Ray wheel. Besides Ray, users need to install either [torch](https://pytorch.org/get-started/locally/)
-or [cupy](https://docs.cupy.dev/en/stable/install.html) in order to use collective communication with the GLOO (torch.distributed.gloo) and NCCL backend, respectively.
+Ray collective library is bundled with the released Ray wheel. Besides Ray, users need to install either [torch](https://pytorch.org/get-started/locally/) or [cupy](https://docs.cupy.dev/en/stable/install.html) in order to use collective communication with the GLOO (torch.distributed.gloo) and NCCL backend, respectively.
 
 ```python
 pip install torch
@@ -128,12 +126,9 @@ import ray.util.collective as col
 
 ### Initialization
 
-Collective functions operate on collective groups.
-A collective group contains a number of processes (in Ray, they are usually Ray-managed actors or tasks) that will together enter the collective function calls.
-Before making collective calls, users need to declare a set of actors/tasks, statically, as a collective group.
+Collective functions operate on collective groups. A collective group contains a number of processes (in Ray, they are usually Ray-managed actors or tasks) that will together enter the collective function calls. Before making collective calls, users need to declare a set of actors/tasks, statically, as a collective group.
 
-Below is an example code snippet that uses the two APIs `init_collective_group()` and `create_collective_group()` to initialize collective groups among a few
-remote actors. Refer to [APIs](#api-references) for the detailed descriptions of the two APIs.
+Below is an example code snippet that uses the two APIs `init_collective_group()` and `create_collective_group()` to initialize collective groups among a few remote actors. Refer to [APIs](#api-references) for the detailed descriptions of the two APIs.
 
 ```python
 import ray
@@ -185,8 +180,7 @@ collective.create_collective_group(workers, **_options)
 results = ray.get([w.compute.remote() for w in workers])
 ```
 
-Note that for the same set of actors/task processes, multiple collective groups can be constructed, with `group_name` as their unique identifier.
-This enables specifying complex communication patterns between different (sub)set of processes.
+Note that for the same set of actors/task processes, multiple collective groups can be constructed, with `group_name` as their unique identifier. This enables specifying complex communication patterns between different (sub)set of processes.
 
 ### Collective Communication
 
@@ -196,8 +190,7 @@ Note that the current set of collective communication APIs are imperative, and e
 
 
 * All the collective APIs are synchronous blocking calls
-* Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group.
-  Once all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
+* Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group. Once all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
 * The APIs are imperative and the communication happens out-of-band --- they need to be used inside the collective process (actor/task) code.
 
 An example of using `ray.util.collective.allreduce` is below:
@@ -228,9 +221,7 @@ ray.get([A.compute.remote(), B.compute.remote()])
 
 `ray.util.collective` also supports P2P send/recv communication between processes.
 
-The send/recv exhibits the same behavior with the collective functions:
-they are synchronous blocking calls -- a pair of send and recv must be called together on paired processes in order to specify the entire communication,
-and must successfully rendezvous with each other to proceed. See the code example below:
+The send/recv exhibits the same behavior with the collective functions: they are synchronous blocking calls -- a pair of send and recv must be called together on paired processes in order to specify the entire communication, and must successfully rendezvous with each other to proceed. See the code example below:
 
 ```python
 import ray
@@ -275,14 +266,9 @@ ray.get([A.do_send.remote(target_rank=1)])
 
 ### Single-GPU and Multi-GPU Collective Primitives
 
-In many cluster setups, a machine usually has more than 1 GPU;
-effectively leveraging the GPU-GPU bandwidth, such as [NVLINK](https://www.nvidia.com/en-us/data-center/nvlink/),
-can significantly improve communication performance.
+In many cluster setups, a machine usually has more than 1 GPU; effectively leveraging the GPU-GPU bandwidth, such as [NVLINK](https://www.nvidia.com/en-us/data-center/nvlink/), can significantly improve communication performance.
 
-`ray.util.collective` supports multi-GPU collective calls, in which case, a process (actor/tasks) manages more than 1 GPU (e.g., via `ray.remote(num_gpus=4)`).
-Using these multi-GPU collective functions are normally more performance-advantageous than using single-GPU collective API
-and spawning the number of processes equal to the number of GPUs.
-See the API references for the signatures of multi-GPU collective APIs.
+`ray.util.collective` supports multi-GPU collective calls, in which case, a process (actor/tasks) manages more than 1 GPU (e.g., via `ray.remote(num_gpus=4)`). Using these multi-GPU collective functions are normally more performance-advantageous than using single-GPU collective API and spawning the number of processes equal to the number of GPUs. See the API references for the signatures of multi-GPU collective APIs.
 
 Also of note that all multi-GPU APIs are with the following restrictions:
 

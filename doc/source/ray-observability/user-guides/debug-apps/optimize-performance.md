@@ -10,52 +10,24 @@ myst:
 
 ## No speedup
 
-You just ran an application using Ray, but it wasn't as fast as you expected it
-to be. Or worse, perhaps it was slower than the serial version of the
-application! The most common reasons are the following.
+You just ran an application using Ray, but it wasn't as fast as you expected it to be. Or worse, perhaps it was slower than the serial version of the application! The most common reasons are the following.
 
-- **Number of cores:** How many cores is Ray using? When you start Ray, it will
-  determine the number of CPUs on each machine with `psutil.cpu_count()`. Ray
-  usually will not schedule more tasks in parallel than the number of CPUs. So
-  if the number of CPUs is 4, the most you should expect is a 4x speedup.
+- **Number of cores:** How many cores is Ray using? When you start Ray, it will determine the number of CPUs on each machine with `psutil.cpu_count()`. Ray usually will not schedule more tasks in parallel than the number of CPUs. So if the number of CPUs is 4, the most you should expect is a 4x speedup.
 
-- **Physical versus logical CPUs:** Do the machines you're running on have fewer
-  **physical** cores than **logical** cores? You can check the number of logical
-  cores with `psutil.cpu_count()` and the number of physical cores with
-  `psutil.cpu_count(logical=False)`. This is common on a lot of machines and
-  especially on EC2. For many workloads (especially numerical workloads), you
-  often cannot expect a greater speedup than the number of physical CPUs.
+- **Physical versus logical CPUs:** Do the machines you're running on have fewer **physical** cores than **logical** cores? You can check the number of logical cores with `psutil.cpu_count()` and the number of physical cores with `psutil.cpu_count(logical=False)`. This is common on a lot of machines and especially on EC2. For many workloads (especially numerical workloads), you often cannot expect a greater speedup than the number of physical CPUs.
 
-- **Small tasks:** Are your tasks very small? Ray introduces some overhead for
-  each task (the amount of overhead depends on the arguments that are passed
-  in). You will be unlikely to see speedups if your tasks take less than ten
-  milliseconds. For many workloads, you can easily increase the sizes of your
-  tasks by batching them together.
+- **Small tasks:** Are your tasks very small? Ray introduces some overhead for each task (the amount of overhead depends on the arguments that are passed in). You will be unlikely to see speedups if your tasks take less than ten milliseconds. For many workloads, you can easily increase the sizes of your tasks by batching them together.
 
-- **Variable durations:** Do your tasks have variable duration? If you run 10
-  tasks with variable duration in parallel, you shouldn't expect an N-fold
-  speedup (because you'll end up waiting for the slowest task). In this case,
-  consider using `ray.wait` to begin processing tasks that finish first.
+- **Variable durations:** Do your tasks have variable duration? If you run 10 tasks with variable duration in parallel, you shouldn't expect an N-fold speedup (because you'll end up waiting for the slowest task). In this case, consider using `ray.wait` to begin processing tasks that finish first.
 
-- **Multi-threaded libraries:** Are all of your tasks attempting to use all of
-  the cores on the machine? If so, they are likely to experience contention and
-  prevent your application from achieving a speedup.
-  This is common with some versions of `numpy`. To avoid contention, set an
-  environment variable like `MKL_NUM_THREADS` (or the equivalent depending on
-  your installation) to `1`.
+- **Multi-threaded libraries:** Are all of your tasks attempting to use all of the cores on the machine? If so, they are likely to experience contention and prevent your application from achieving a speedup. This is common with some versions of `numpy`. To avoid contention, set an environment variable like `MKL_NUM_THREADS` (or the equivalent depending on your installation) to `1`.
 
-  For many - but not all - libraries, you can diagnose this by opening `top`
-  while your application is running. If one process is using most of the CPUs,
-  and the others are using a small amount, this may be the problem. The most
-  common exception is PyTorch, which will appear to be using all the cores
-  despite needing `torch.set_num_threads(1)` to be called to avoid contention.
+  For many - but not all - libraries, you can diagnose this by opening `top` while your application is running. If one process is using most of the CPUs, and the others are using a small amount, this may be the problem. The most common exception is PyTorch, which will appear to be using all the cores despite needing `torch.set_num_threads(1)` to be called to avoid contention.
 
-If you are still experiencing a slowdown, but none of the above problems apply,
-we'd really like to know! Create a [GitHub issue](https://github.com/ray-project/ray/issues) and Submit a minimal code example that demonstrates the problem.
+If you are still experiencing a slowdown, but none of the above problems apply, we'd really like to know! Create a [GitHub issue](https://github.com/ray-project/ray/issues) and Submit a minimal code example that demonstrates the problem.
 
 
-This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, [let us know](https://github.com/ray-project/ray/issues).
+This document discusses some common problems that people run into when using Ray as well as some known problems. If you encounter other problems, [let us know](https://github.com/ray-project/ray/issues).
 
 
 (ray-core-timeline)=
@@ -78,38 +50,28 @@ ray.timeline(filename="timeline.json")
 
 ## Python CPU profiling in the dashboard
 
-The {ref}`Ray dashboard <observability-getting-started>`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
-actions for active workers, actors, and jobs.
+The {ref}`Ray dashboard <observability-getting-started>`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph" actions for active workers, actors, and jobs.
 
 ```{image} /images/profile.png
 :align: center
 :width: 80%
 ```
 
-Clicking "Stack Trace" returns the current stack trace sample using `py-spy`. By default, only the Python stack
-trace is shown. To show native code frames, set the URL parameter `native=1` (only supported on Linux). To also
-dump stack traces for child processes of the target (for example, data loader or multiprocess inference workers),
-set the URL parameter `subprocesses=1`.
+Clicking "Stack Trace" returns the current stack trace sample using `py-spy`. By default, only the Python stack trace is shown. To show native code frames, set the URL parameter `native=1` (only supported on Linux). To also dump stack traces for child processes of the target (for example, data loader or multiprocess inference workers), set the URL parameter `subprocesses=1`.
 
 ```{image} /images/stack.png
 :align: center
 :width: 60%
 ```
 
-Clicking "CPU Flame Graph" takes a number of stack trace samples and combine them into a flame graph visualization.
-This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
-of the flame graph, you can change the `duration` parameter in the URL. Similarly, you can change the `native`
-parameter to enable native profiling. To also include off-CPU (sleeping) threads, such as threads blocked on locks,
-I/O, or CUDA syncs, set the URL parameter `idle=1`. To also profile child processes of the target (for example,
-data loader or multiprocess inference workers), set the URL parameter `subprocesses=1`.
+Clicking "CPU Flame Graph" takes a number of stack trace samples and combine them into a flame graph visualization. This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration of the flame graph, you can change the `duration` parameter in the URL. Similarly, you can change the `native` parameter to enable native profiling. To also include off-CPU (sleeping) threads, such as threads blocked on locks, I/O, or CUDA syncs, set the URL parameter `idle=1`. To also profile child processes of the target (for example, data loader or multiprocess inference workers), set the URL parameter `subprocesses=1`.
 
 ```{image} /images/flamegraph.png
 :align: center
 :width: 80%
 ```
 
-The profiling feature requires `py-spy` to be installed. If it is not installed, or if the `py-spy` binary does
-not have root permissions, the dashboard prompts with instructions on how to setup `py-spy` correctly:
+The profiling feature requires `py-spy` to be installed. If it is not installed, or if the `py-spy` binary does not have root permissions, the dashboard prompts with instructions on how to setup `py-spy` correctly:
 
 ```
 This command requires `py-spy` to be installed with root permissions. You
@@ -135,19 +97,12 @@ You may run into permission errors when using py-spy in the docker containers. T
 
 ## Profiling using Python's cProfile
 
-You can use Python's native cProfile [profiling module](https://docs.python.org/3/library/profile.html#module-cProfile) to profile the performance of your Ray application. Rather than tracking
-line-by-line of your application code, cProfile can give the total runtime
-of each loop function, as well as list the number of calls made and
-execution time of all function calls made within the profiled code.
+You can use Python's native cProfile [profiling module](https://docs.python.org/3/library/profile.html#module-cProfile) to profile the performance of your Ray application. Rather than tracking line-by-line of your application code, cProfile can give the total runtime of each loop function, as well as list the number of calls made and execution time of all function calls made within the profiled code.
 
 
-Unlike `line_profiler` above, this detailed list of profiled function calls
-**includes** internal function calls and function calls made within Ray.
+Unlike `line_profiler` above, this detailed list of profiled function calls **includes** internal function calls and function calls made within Ray.
 
-However, similar to `line_profiler`, cProfile can be enabled with minimal
-changes to your application code (given that each section of the code you want
-to profile is defined as its own function). To use cProfile, add an import
-statement, then replace calls to the loop functions as follows:
+However, similar to `line_profiler`, cProfile can be enabled with minimal changes to your application code (given that each section of the code you want to profile is defined as its own function). To use cProfile, add an import statement, then replace calls to the loop functions as follows:
 
 ```{testcode}
 :skipif: True
@@ -169,18 +124,13 @@ if __name__ == "__main__":
     main()
 ```
 
-Now, when you execute your Python script, a cProfile list of profiled function
-calls are printed on the terminal for each call made to `cProfile.run()`.
-At the very top of cProfile's output gives the total execution time for
-`'ex1()'`:
+Now, when you execute your Python script, a cProfile list of profiled function calls are printed on the terminal for each call made to `cProfile.run()`. At the very top of cProfile's output gives the total execution time for `'ex1()'`:
 
 ```bash
 601 function calls (595 primitive calls) in 2.509 seconds
 ```
 
-Following is a snippet of profiled function calls for `'ex1()'`. Most of
-these calls are quick and take around 0.000 seconds, so the functions of
-interest are the ones with non-zero execution times:
+Following is a snippet of profiled function calls for `'ex1()'`. Most of these calls are quick and take around 0.000 seconds, so the functions of interest are the ones with non-zero execution times:
 
 ```bash
 ncalls  tottime  percall  cumtime  percall filename:lineno(function)
@@ -198,24 +148,14 @@ ncalls  tottime  percall  cumtime  percall filename:lineno(function)
 ...
 ```
 
-The 5 separate calls to Ray's `get`, taking the full 0.502 seconds each call,
-can be noticed at `worker.py:2535(get)`. Meanwhile, the act of calling the
-remote function itself at `remote_function.py:103(remote)` only takes 0.001
-seconds over 5 calls, and thus is not the source of the slow performance of
-`ex1()`.
+The 5 separate calls to Ray's `get`, taking the full 0.502 seconds each call, can be noticed at `worker.py:2535(get)`. Meanwhile, the act of calling the remote function itself at `remote_function.py:103(remote)` only takes 0.001 seconds over 5 calls, and thus is not the source of the slow performance of `ex1()`.
 
 
 ### Profiling Ray Actors with cProfile
 
-Considering that the detailed output of cProfile can be quite different depending
-on what Ray functionalities we use, let us see what cProfile's output might look
-like if our example involved Actors (for an introduction to Ray actors, see our
-{ref}`Actor documentation <actor-guide>`).
+Considering that the detailed output of cProfile can be quite different depending on what Ray functionalities we use, let us see what cProfile's output might look like if our example involved Actors (for an introduction to Ray actors, see our {ref}`Actor documentation <actor-guide>`).
 
-Now, instead of looping over five calls to a remote function like in `ex1`,
-let's create a new example and loop over five calls to a remote function
-**inside an actor**. Our actor's remote function again just sleeps for 0.5
-seconds:
+Now, instead of looping over five calls to a remote function like in `ex1`, let's create a new example and loop over five calls to a remote function **inside an actor**. Our actor's remote function again just sleeps for 0.5 seconds:
 
 ```{testcode}
 # Our actor
@@ -229,8 +169,7 @@ class Sleeper:
         time.sleep(self.sleepValue)
 ```
 
-Recalling the suboptimality of `ex1`, let's first see what happens if we
-attempt to perform all five `actor_func()` calls within a single actor:
+Recalling the suboptimality of `ex1`, let's first see what happens if we attempt to perform all five `actor_func()` calls within a single actor:
 
 ```{testcode}
 def ex4():
@@ -280,23 +219,11 @@ ncalls  tottime  percall  cumtime  percall filename:lineno(function)
 ...
 ```
 
-It turns out that the entire example still took 2.5 seconds to execute, or the
-time for five calls to `actor_func()` to run in serial. If you recall `ex1`,
-this behavior was because we did not wait until after submitting all five
-remote function tasks to call `ray.get()`, but we can verify on cProfile's
-output line `worker.py:2535(get)` that `ray.get()` was only called once at
-the end, for 2.509 seconds. What happened?
+It turns out that the entire example still took 2.5 seconds to execute, or the time for five calls to `actor_func()` to run in serial. If you recall `ex1`, this behavior was because we did not wait until after submitting all five remote function tasks to call `ray.get()`, but we can verify on cProfile's output line `worker.py:2535(get)` that `ray.get()` was only called once at the end, for 2.509 seconds. What happened?
 
-It turns out Ray cannot parallelize this example, because we have only
-initialized a single `Sleeper` actor. Because each actor is a single,
-stateful worker, our entire code is submitted and ran on a single worker the
-whole time.
+It turns out Ray cannot parallelize this example, because we have only initialized a single `Sleeper` actor. Because each actor is a single, stateful worker, our entire code is submitted and ran on a single worker the whole time.
 
-To better parallelize the actors in `ex4`, we can take advantage
-that each call to `actor_func()` is independent, and instead
-create five `Sleeper` actors. That way, we are creating five workers
-that can run in parallel, instead of creating a single worker that
-can only handle one call to `actor_func()` at a time.
+To better parallelize the actors in `ex4`, we can take advantage that each call to `actor_func()` is independent, and instead create five `Sleeper` actors. That way, we are creating five workers that can run in parallel, instead of creating a single worker that can only handle one call to `actor_func()` at a time.
 
 ```{testcode}
 def ex4():

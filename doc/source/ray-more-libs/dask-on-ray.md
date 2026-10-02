@@ -9,22 +9,11 @@ myst:
 # Using Dask on Ray
 
 
-[Dask](https://dask.org/) is a Python parallel computing library geared towards scaling analytics and
-scientific computing workloads. It provides [big data collections](https://docs.dask.org/en/latest/user-interfaces.html) that mimic the APIs of
-the familiar [NumPy](https://numpy.org/) and [Pandas](https://pandas.pydata.org/) libraries,
-allowing those abstractions to represent
-larger-than-memory data and/or allowing operations on that data to be run on a multi-machine cluster,
-while also providing automatic data parallelism, smart scheduling,
-and optimized operations. Operations on these collections create a task graph, which is
-executed by a scheduler.
+[Dask](https://dask.org/) is a Python parallel computing library geared towards scaling analytics and scientific computing workloads. It provides [big data collections](https://docs.dask.org/en/latest/user-interfaces.html) that mimic the APIs of the familiar [NumPy](https://numpy.org/) and [Pandas](https://pandas.pydata.org/) libraries, allowing those abstractions to represent larger-than-memory data and/or allowing operations on that data to be run on a multi-machine cluster, while also providing automatic data parallelism, smart scheduling, and optimized operations. Operations on these collections create a task graph, which is executed by a scheduler.
 
-Ray provides a scheduler for Dask (`dask_on_ray`) which allows you to build data
-analyses using Dask's collections and execute
-the underlying tasks on a Ray cluster.
+Ray provides a scheduler for Dask (`dask_on_ray`) which allows you to build data analyses using Dask's collections and execute the underlying tasks on a Ray cluster.
 
-`dask_on_ray` uses Dask's scheduler API, which allows you to
-specify any callable as the scheduler that you would like Dask to use to execute your
-workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
+`dask_on_ray` uses Dask's scheduler API, which allows you to specify any callable as the scheduler that you would like Dask to use to execute your workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be executed on top of Ray.
 
 :::{note}
 > We always ensure that the latest Dask versions are compatible with Ray nightly.
@@ -92,22 +81,14 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
 (dask-on-ray-scheduler)=
 
-The Dask-on-Ray scheduler can execute any valid Dask graph, and can be used with
-any Dask [.compute()](https://docs.dask.org/en/latest/api.html#dask.compute)
-call.
-Here's an example:
+The Dask-on-Ray scheduler can execute any valid Dask graph, and can be used with any Dask [.compute()](https://docs.dask.org/en/latest/api.html#dask.compute) call. Here's an example:
 
 ```{literalinclude} doc_code/dask_on_ray_scheduler_example.py
 :language: python
 ```
 
 :::{note}
-For execution on a Ray cluster, you should *not* use the
-[Dask.distributed](https://distributed.dask.org/en/latest/quickstart.html)
-client; simply use plain Dask and its collections, and pass `ray_dask_get`
-to `.compute()` calls, set the scheduler in one of the other ways detailed [here](https://docs.dask.org/en/latest/scheduling.html#configuration), or use our `enable_dask_on_ray` configuration helper. Follow the instructions for
-{ref}`using Ray on a cluster <cluster-index>` to modify the
-`ray.init()` call.
+For execution on a Ray cluster, you should *not* use the [Dask.distributed](https://distributed.dask.org/en/latest/quickstart.html) client; simply use plain Dask and its collections, and pass `ray_dask_get` to `.compute()` calls, set the scheduler in one of the other ways detailed [here](https://docs.dask.org/en/latest/scheduling.html#configuration), or use our `enable_dask_on_ray` configuration helper. Follow the instructions for {ref}`using Ray on a cluster <cluster-index>` to modify the `ray.init()` call.
 :::
 
 Why use Dask on Ray?
@@ -121,12 +102,9 @@ Why use Dask on Ray?
 Dask-on-Ray is an ongoing project and is not expected to achieve the same performance as using Ray directly. All [Dask abstractions](https://docs.dask.org/en/latest/user-interfaces.html) should run seamlessly on top of Ray using this scheduler, so if you find that one of these abstractions doesn't run on Ray, please [open an issue](https://github.com/ray-project/ray/issues/new/choose).
 
 ## Best Practice for Large Scale workloads
-For Ray 1.3, the default scheduling policy is to pack tasks to the same node as much as possible.
-It is more desirable to spread tasks if you run a large scale / memory intensive Dask on Ray workloads.
+For Ray 1.3, the default scheduling policy is to pack tasks to the same node as much as possible. It is more desirable to spread tasks if you run a large scale / memory intensive Dask on Ray workloads.
 
-In this case, there are two recommended setups.
-\- Reducing the config flag `scheduler_spread_threshold` to tell the scheduler to prefer spreading tasks across the cluster instead of packing.
-\- Setting the head node's `num-cpus` to 0 so that tasks are not scheduled on a head node.
+In this case, there are two recommended setups. \- Reducing the config flag `scheduler_spread_threshold` to tell the scheduler to prefer spreading tasks across the cluster instead of packing. \- Setting the head node's `num-cpus` to 0 so that tasks are not scheduled on a head node.
 
 ```bash
 # Head node. Set `num_cpus=0` to avoid tasks being scheduled on a head node.
@@ -140,24 +118,13 @@ RAY_scheduler_spread_threshold=0.0 ray start --address=[head-node-address]
 
 (dask-on-ray-out-of-core)=
 
-Processing datasets larger than cluster memory is supported via Ray's {ref}`object spilling <object-spilling>`: if
-the in-memory object store is full, objects will be spilled to external storage (local disk by
-default). This feature is available but off by default in Ray 1.2, and is on by default
-in Ray 1.3+. Please see your Ray version's object spilling documentation for steps to enable and/or configure
-object spilling.
+Processing datasets larger than cluster memory is supported via Ray's {ref}`object spilling <object-spilling>`: if the in-memory object store is full, objects will be spilled to external storage (local disk by default). This feature is available but off by default in Ray 1.2, and is on by default in Ray 1.3+. Please see your Ray version's object spilling documentation for steps to enable and/or configure object spilling.
 
 ## Persist
 
 (dask-on-ray-persist)=
 
-Dask-on-Ray patches [dask.persist()](https://docs.dask.org/en/latest/api.html#dask.persist)  in order to match [Dask
-Distributed's persist semantics](https://distributed.dask.org/en/latest/manage-computation.html#client-persist); namely, calling `dask.persist()` with a Dask-on-Ray
-scheduler will submit the tasks to the Ray cluster and return Ray futures inlined in the
-Dask collection. This is nice if you wish to compute some base collection (such as
-a Dask array), followed by multiple different downstream computations (such as
-aggregations): those downstream computations will be faster since that base collection
-computation was kicked off early and referenced by all downstream computations, often
-via shared memory.
+Dask-on-Ray patches [dask.persist()](https://docs.dask.org/en/latest/api.html#dask.persist)  in order to match [Dask Distributed's persist semantics](https://distributed.dask.org/en/latest/manage-computation.html#client-persist); namely, calling `dask.persist()` with a Dask-on-Ray scheduler will submit the tasks to the Ray cluster and return Ray futures inlined in the Dask collection. This is nice if you wish to compute some base collection (such as a Dask array), followed by multiple different downstream computations (such as aggregations): those downstream computations will be faster since that base collection computation was kicked off early and referenced by all downstream computations, often via shared memory.
 
 ```{literalinclude} doc_code/dask_on_ray_persist_example.py
 :language: python
@@ -169,29 +136,19 @@ via shared memory.
 (dask-on-ray-annotations)=
 
 
-Dask-on-Ray supports specifying resources or any other Ray task option via [Dask's
-annotation API](https://docs.dask.org/en/stable/api.html#dask.annotate). This
-annotation context manager can be used to attach resource requests (or any other Ray task
-option) to specific Dask operations, with the annotations funneling down to the
-underlying Ray tasks. Resource requests and other Ray task options can also be specified
-globally via the `.compute(ray_remote_args={...})` API, which will
-serve as a default for all Ray tasks launched via the Dask workload. Annotations on
-individual Dask operations will override this global default.
+Dask-on-Ray supports specifying resources or any other Ray task option via [Dask's annotation API](https://docs.dask.org/en/stable/api.html#dask.annotate). This annotation context manager can be used to attach resource requests (or any other Ray task option) to specific Dask operations, with the annotations funneling down to the underlying Ray tasks. Resource requests and other Ray task options can also be specified globally via the `.compute(ray_remote_args={...})` API, which will serve as a default for all Ray tasks launched via the Dask workload. Annotations on individual Dask operations will override this global default.
 
 ```{literalinclude} doc_code/dask_on_ray_annotate_example.py
 :language: python
 ```
 
-Note that you may need to disable graph optimizations since it can break annotations,
-see [this Dask issue](https://github.com/dask/dask/issues/7036).
+Note that you may need to disable graph optimizations since it can break annotations, see [this Dask issue](https://github.com/dask/dask/issues/7036).
 
 ## Custom optimization for Dask DataFrame shuffling
 
 (dask-on-ray-shuffle-optimization)=
 
-Dask-on-Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
-execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
-Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
+Dask-on-Ray provides a Dask DataFrame optimizer that leverages Ray's ability to execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray. Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 
 ```{literalinclude} doc_code/dask_on_ray_shuffle_optimization.py
 :language: python
@@ -201,14 +158,9 @@ Simply set the `dataframe_optimize` configuration option to our optimizer functi
 
 (dask-on-ray-callbacks)=
 
-Dask's [custom callback abstraction](https://docs.dask.org/en/latest/diagnostics-local.html#custom-callbacks)
-is extended with Ray-specific callbacks, allowing the user to hook into the
-Ray task submission and execution lifecycles.
-With these hooks, implementing Dask-level scheduler and task introspection,
-such as progress reporting, diagnostics, caching, etc., is simple.
+Dask's [custom callback abstraction](https://docs.dask.org/en/latest/diagnostics-local.html#custom-callbacks) is extended with Ray-specific callbacks, allowing the user to hook into the Ray task submission and execution lifecycles. With these hooks, implementing Dask-level scheduler and task introspection, such as progress reporting, diagnostics, caching, etc., is simple.
 
-Here's an example that measures and logs the execution time of each task using
-the `ray_pretask` and `ray_posttask` hooks:
+Here's an example that measures and logs the execution time of each task using the `ray_pretask` and `ray_posttask` hooks:
 
 ```{literalinclude} doc_code/dask_on_ray_callbacks.py
 :language: python
@@ -236,13 +188,9 @@ The following Ray-specific callbacks are provided:
 > 6. {code}`ray_finish(result)`: Run after all Ray tasks have finished
 >    executing and the final result has been returned.
 
-See the docstring for {class}`~ray.util.dask.RayDaskCallback`
-for further details about these callbacks, their arguments, and their return
-values.
+See the docstring for {class}`~ray.util.dask.RayDaskCallback` for further details about these callbacks, their arguments, and their return values.
 
-When creating your own callbacks, you can use
-{class}`RayDaskCallback <ray.util.dask.callbacks.RayDaskCallback>`
-directly, passing the callback functions as constructor arguments:
+When creating your own callbacks, you can use {class}`RayDaskCallback <ray.util.dask.callbacks.RayDaskCallback>` directly, passing the callback functions as constructor arguments:
 
 ```{literalinclude} doc_code/dask_on_ray_callbacks.py
 :language: python
@@ -266,10 +214,7 @@ You can also specify multiple callbacks:
 :end-before: __multiple_callbacks_end__
 ```
 
-Combining Dask callbacks with an actor yields simple patterns for stateful data
-aggregation, such as capturing task execution statistics and caching results.
-Here is an example that does both, caching the result of a task if its
-execution time exceeds some user-defined threshold:
+Combining Dask callbacks with an actor yields simple patterns for stateful data aggregation, such as capturing task execution statistics and caching results. Here is an example that does both, caching the result of a task if its execution time exceeds some user-defined threshold:
 
 ```{literalinclude} doc_code/dask_on_ray_callbacks.py
 :language: python
@@ -278,12 +223,7 @@ execution time exceeds some user-defined threshold:
 ```
 
 :::{note}
-The existing Dask scheduler callbacks (`start`, `start_state`,
-`pretask`, `posttask`, `finish`) are also available, which can be used to
-introspect the Dask task to Ray task conversion process, but note that the `pretask`
-and `posttask` hooks are executed before and after the Ray task is *submitted*, not
-executed, and that `finish` is executed after all Ray tasks have been
-*submitted*, not executed.
+The existing Dask scheduler callbacks (`start`, `start_state`, `pretask`, `posttask`, `finish`) are also available, which can be used to introspect the Dask task to Ray task conversion process, but note that the `pretask` and `posttask` hooks are executed before and after the Ray task is *submitted*, not executed, and that `finish` is executed after all Ray tasks have been *submitted*, not executed.
 :::
 
 This callback API is currently unstable and subject to change.

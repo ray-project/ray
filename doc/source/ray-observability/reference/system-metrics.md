@@ -12,9 +12,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
 :::{note}
 Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
 
-Starting with Ray 2.53+, the `WorkerId` label is no longer exported by default due to its high cardinality.
-The Ray team doesn't expect this to be a breaking change, as none of Ray’s built-in components rely on this label.
-However, if you have custom tooling that depends on `WorkerId` label, take note of this change.
+Starting with Ray 2.53+, the `WorkerId` label is no longer exported by default due to its high cardinality. The Ray team doesn't expect this to be a breaking change, as none of Ray’s built-in components rely on this label. However, if you have custom tooling that depends on `WorkerId` label, take note of this change.
 
 You can restore or adjust label behavior using the environment variable `RAY_metric_cardinality_level`:
 
@@ -24,21 +22,9 @@ You can restore or adjust label behavior using the environment variable `RAY_met
 :::
 
 :::{note}
-Ray uses an optional NVML API to collect per-process GPU SM utilization. Ray
-automatically skips this API for devices whose name matches a known PPU
-device-name pattern (for example, `PPU-ZW810`). For other NVML-compatible
-libraries that don't safely support this API, set
-`RAY_SKIP_PROCESS_UTIL_API=true` on each affected Ray node.
-To skip specific device names, use the comma-separated
-`RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES` environment variable (names are
-matched case-insensitively and exactly).
+Ray uses an optional NVML API to collect per-process GPU SM utilization. Ray automatically skips this API for devices whose name matches a known PPU device-name pattern (for example, `PPU-ZW810`). For other NVML-compatible libraries that don't safely support this API, set `RAY_SKIP_PROCESS_UTIL_API=true` on each affected Ray node. To skip specific device names, use the comma-separated `RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES` environment variable (names are matched case-insensitively and exactly).
 
-These variables must be set in the Ray node and Dashboard Reporter process
-environment before `ray start` (for example, in the Pod environment when
-using KubeRay). They are not applied through `runtime_env`. Ray continues to
-report GPU process IDs, allocated GPU memory, and device-level utilization,
-memory, power, and temperature metrics. Only per-process GPU utilization is
-unavailable.
+These variables must be set in the Ray node and Dashboard Reporter process environment before `ray start` (for example, in the Pod environment when using KubeRay). They are not applied through `runtime_env`. Ray continues to report GPU process IDs, allocated GPU memory, and device-level utilization, memory, power, and temperature metrics. Only per-process GPU utilization is unavailable.
 :::
 
 ```{list-table} Ray System Metrics

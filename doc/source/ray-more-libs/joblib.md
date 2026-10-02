@@ -9,26 +9,16 @@ myst:
 # Distributed Scikit-learn / Joblib
 
 
-Ray supports running distributed [scikit-learn](https://scikit-learn.org) programs by
-implementing a Ray backend for [joblib](https://joblib.readthedocs.io) using {doc}`Ray Actors </ray-core/actors>`
-instead of local processes. This makes it easy to scale existing applications
-that use scikit-learn from a single node to a cluster.
+Ray supports running distributed [scikit-learn](https://scikit-learn.org) programs by implementing a Ray backend for [joblib](https://joblib.readthedocs.io) using {doc}`Ray Actors </ray-core/actors>` instead of local processes. This makes it easy to scale existing applications that use scikit-learn from a single node to a cluster.
 
 :::{note}
-This API is new and may be revised in future Ray releases. If you encounter
-any bugs, please file an [issue on GitHub](https://github.com/ray-project/ray/issues).
+This API is new and may be revised in future Ray releases. If you encounter any bugs, please file an [issue on GitHub](https://github.com/ray-project/ray/issues).
 :::
 
 
 ## Quickstart
 
-To get started, first {doc}`install Ray </ray-overview/installation>`, then use
-`from ray.util.joblib import register_ray` and run `register_ray()`.
-This will register Ray as a joblib backend for scikit-learn to use.
-Then run your original scikit-learn code inside
-`with joblib.parallel_backend('ray')`. This will start a local Ray cluster.
-See the [Run on a Cluster](#run-on-a-cluster) section below for instructions to run on
-a multi-node Ray cluster instead.
+To get started, first {doc}`install Ray </ray-overview/installation>`, then use `from ray.util.joblib import register_ray` and run `register_ray()`. This will register Ray as a joblib backend for scikit-learn to use. Then run your original scikit-learn code inside `with joblib.parallel_backend('ray')`. This will start a local Ray cluster. See the [Run on a Cluster](#run-on-a-cluster) section below for instructions to run on a multi-node Ray cluster instead.
 
 ```python
 import numpy as np
@@ -52,9 +42,7 @@ with joblib.parallel_backend('ray'):
     search.fit(digits.data, digits.target)
 ```
 
-You can also set the `ray_remote_args` argument in `parallel_backend` to {func}`configure
-the Ray Actors <ray.remote>` making up the Pool. This can be used to e.g., {ref}`assign resources
-to Actors, such as GPUs <actor-resource-guide>`.
+You can also set the `ray_remote_args` argument in `parallel_backend` to {func}`configure the Ray Actors <ray.remote>` making up the Pool. This can be used to e.g., {ref}`assign resources to Actors, such as GPUs <actor-resource-guide>`.
 
 ```python
 # Allows to use GPU-enabled estimators, such as cuML
@@ -64,16 +52,12 @@ with joblib.parallel_backend('ray', ray_remote_args=dict(num_gpus=1)):
 
 ## Run on a Cluster
 
-This section assumes that you have a running Ray cluster. To start a Ray cluster,
-see the {ref}`cluster setup <cluster-index>` instructions.
+This section assumes that you have a running Ray cluster. To start a Ray cluster, see the {ref}`cluster setup <cluster-index>` instructions.
 
-To connect scikit-learn to a running Ray cluster, you have to specify the address of the
-head node by setting the `RAY_ADDRESS` environment variable.
+To connect scikit-learn to a running Ray cluster, you have to specify the address of the head node by setting the `RAY_ADDRESS` environment variable.
 
-You can also start Ray manually by calling `ray.init()` (with any of its supported
-configuration options) before calling `with joblib.parallel_backend('ray')`.
+You can also start Ray manually by calling `ray.init()` (with any of its supported configuration options) before calling `with joblib.parallel_backend('ray')`.
 
 :::{warning}
-If you do not set the `RAY_ADDRESS` environment variable and do not provide
-`address` in `ray.init(address=<address>)` then scikit-learn will run on a SINGLE node!
+If you do not set the `RAY_ADDRESS` environment variable and do not provide `address` in `ray.init(address=<address>)` then scikit-learn will run on a SINGLE node!
 :::

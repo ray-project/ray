@@ -24,28 +24,20 @@ Before reading this section, familiarize yourself with the Ray {ref}`Memory Mana
 
 ### What's the Out-of-Memory Error?
 
-Memory is a limited resource. When a process requests memory and the OS fails to allocate it, the OS executes a routine to free up memory
-by killing a process that has high memory usage (via SIGKILL) to avoid the OS becoming unstable. This routine is called the [Linux Out of Memory killer](https://www.kernel.org/doc/gorman/html/understand/understand016.html).
+Memory is a limited resource. When a process requests memory and the OS fails to allocate it, the OS executes a routine to free up memory by killing a process that has high memory usage (via SIGKILL) to avoid the OS becoming unstable. This routine is called the [Linux Out of Memory killer](https://www.kernel.org/doc/gorman/html/understand/understand016.html).
 
 For Ray, the Linux out-of-memory (OOM) killer kills Ray processes without the control plane noticing. This causes the following problems:
 
-1. The Linux OOM killer indiscriminately kills processes based on memory footprint.
-   For Ray, this can result in significant loss of progress and, in some scenarios, in the death of critical
-   Ray components, which leads to node deaths.
-2. The Linux OOM killer uses SIGKILL to kill processes. Because processes can't handle SIGKILL,
-   Ray has difficulty raising a proper error message and taking proper actions for fault tolerance.
+1. The Linux OOM killer indiscriminately kills processes based on memory footprint. For Ray, this can result in significant loss of progress and, in some scenarios, in the death of critical Ray components, which leads to node deaths.
+2. The Linux OOM killer uses SIGKILL to kill processes. Because processes can't handle SIGKILL, Ray has difficulty raising a proper error message and taking proper actions for fault tolerance.
 
-To solve this problem, Ray has (from Ray 2.2) an application-level {ref}`memory monitor <ray-oom-monitor>`,
-which continually monitors the memory usage of the host and kills the Ray Workers before the Linux out-of-memory killer executes.
+To solve this problem, Ray has (from Ray 2.2) an application-level {ref}`memory monitor <ray-oom-monitor>`, which continually monitors the memory usage of the host and kills the Ray Workers before the Linux out-of-memory killer executes.
 
 (troubleshooting-out-of-memory-how-to-detect)=
 
 ### Detecting Out-of-Memory errors
 
-You can monitor out-of-memory errors on the Ray dashboard's {ref}`metrics page <dash-metrics-view>` via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
-The Ray OOM Kills panel shows the number of workers killed by the Ray OOM killer.
-The Unexpected System Level Worker Failures panel shows the number of workers that failed unexpectedly. These failures are typically
-caused by the Linux out-of-memory killer; correlate with memory usage metrics to confirm.
+You can monitor out-of-memory errors on the Ray dashboard's {ref}`metrics page <dash-metrics-view>` via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel. The Ray OOM Kills panel shows the number of workers killed by the Ray OOM killer. The Unexpected System Level Worker Failures panel shows the number of workers that failed unexpectedly. These failures are typically caused by the Linux out-of-memory killer; correlate with memory usage metrics to confirm.
 
 ```{image} ../../images/ray-oom-kills.png
 :align: center
@@ -56,9 +48,7 @@ caused by the Linux out-of-memory killer; correlate with memory usage metrics to
 ```
 
 
-If the Linux out-of-memory killer terminates Tasks or Actors, Ray Worker processes are unable to catch and display an exact root cause
-because SIGKILL cannot be handled by processes. If you call `ray.get` into the Tasks and Actors that were executed from the dead worker,
-it raises an exception with one of the following error messages (which indicates the worker is killed unexpectedly).
+If the Linux out-of-memory killer terminates Tasks or Actors, Ray Worker processes are unable to catch and display an exact root cause because SIGKILL cannot be handled by processes. If you call `ray.get` into the Tasks and Actors that were executed from the dead worker, it raises an exception with one of the following error messages (which indicates the worker is killed unexpectedly).
 
 ```bash
 Worker exit type: UNEXPECTED_SYSTEM_EXIT Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. There are some potential root causes. (1) The process is killed by SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is called. (3) The worker is crashed unexpectedly due to SIGSEGV or other unexpected errors.
@@ -75,29 +65,21 @@ You can also use the [dmesg](https://phoenixnap.com/kb/dmesg-linux#:~:text=The%2
 ```
 
 
-As mentioned above, having the Linux OOM killer trigger before the Ray OOM killer is undesirable.
-In Ray 2.56 and above, enable resource isolation mode by passing `--enable-resource-isolation` when starting Ray
-to ensure that the Ray OOM killer triggers before the Linux OOM killer.
+As mentioned above, having the Linux OOM killer trigger before the Ray OOM killer is undesirable. In Ray 2.56 and above, enable resource isolation mode by passing `--enable-resource-isolation` when starting Ray to ensure that the Ray OOM killer triggers before the Linux OOM killer.
 
-It's still possible for Linux OOM kills to occur if the system overhead consumes more memory than
-what's reserved for it (the default is 10%, with a minimum of 500 MB and a maximum of 10 GB).
-Ray logs something similar to the following example if it detects this scenario.
+It's still possible for Linux OOM kills to occur if the system overhead consumes more memory than what's reserved for it (the default is 10%, with a minimum of 500 MB and a maximum of 10 GB). Ray logs something similar to the following example if it detects this scenario.
 
 ```bash
 System slice memory usage 10869600256 bytes has exceeded the reserved system memory of 10737418240 bytes. This can prevent Ray from being able to provide the proper protection to critical system processes and can lead to node deaths and significant loss of progress. Please consider passing a system reserved memory value that is higher than the current system slice memory usage via the --system-reserved-memory flag when starting the raylet.
 ```
 
-When you see a kernel OOM or this log message with resource isolation enabled, try increasing the memory reserved for system processes
-by setting a higher value than the reported system slice memory usage for the `--system-reserved-memory` flag when starting Ray.
-Try to allocate at least a GiB (depending on host size) of buffer space between the reported/expected system slice memory usage and the system reserved memory.
+When you see a kernel OOM or this log message with resource isolation enabled, try increasing the memory reserved for system processes by setting a higher value than the reported system slice memory usage for the `--system-reserved-memory` flag when starting Ray. Try to allocate at least a GiB (depending on host size) of buffer space between the reported/expected system slice memory usage and the system reserved memory.
 
 :::{note}
 To enable resource isolation, complete the prerequisite steps in {ref}`How to Enable Cgroup v2 for Resource Isolation <enable-cgroupv2>`.
 :::
 
-If Ray's memory monitor kills the worker, Ray retries it automatically (see the {ref}`retry policy <ray-oom-retry-policy>` for details).
-Ray's memory monitor also logs the details of the out-of-memory kill to the `raylet.out` log file.
-An example log is shown below.
+If Ray's memory monitor kills the worker, Ray retries it automatically (see the {ref}`retry policy <ray-oom-retry-policy>` for details). Ray's memory monitor also logs the details of the out-of-memory kill to the `raylet.out` log file. An example log is shown below.
 
 ```bash
 Task hungry_hippo failed due to oom. There are infinite oom retries remaining, so the task will be retried. Error: 2 worker(s) were killed due to the node running low on memory. Memory on the node (IP: <ip address>, ID: 92edc4e97e4dac3cee61126133ee7ab6d0a2ee73803623d24a02979d) was 110.69GB / 124.35GB (0.890161)
@@ -151,8 +133,7 @@ Top 10 memory users: PID  MEM(GB) COMMAND
 Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero. Since 2.56, Ray updated the oom killing policy to enabling killing multiple workers and selecting workers based on the time since the task start executing. To revert to the legacy policy of determining worker to oom kill based on owner group size or only selecting a single worker to kill at a time, set the environment variable `RAY_worker_killing_policy_by_group` to true before starting Ray. If the idle workers have a non-trivial memory footprint at the time of OOM (check OOM log for non-selected idle workers), consider setting the environment variable `RAY_idle_worker_killing_memory_threshold_bytes` to a lower value to consider idle workers with lower memory footprint for killing.
 ```
 
-If Tasks or Actors can't be retried, they raise an exception with
-a similar error message when you call `ray.get` on them.
+If Tasks or Actors can't be retried, they raise an exception with a similar error message when you call `ray.get` on them.
 
 Ray memory monitor also periodically prints the aggregated out-of-memory killer summary to Ray drivers.
 
@@ -172,16 +153,11 @@ Ray dashboard's {ref}`event page <dash-event>` also provides the out-of-memory k
 
 ### Find per Task and Actor Memory Usage
 
-If Tasks or Actors fail because of out-of-memory errors, they are retried based on {ref}`retry policies <ray-oom-retry-policy>`.
-However, it is often preferred to find the root causes of memory issues and fix them instead of relying on fault tolerance mechanisms.
-This section explains how to debug out-of-memory errors in Ray.
+If Tasks or Actors fail because of out-of-memory errors, they are retried based on {ref}`retry policies <ray-oom-retry-policy>`. However, it is often preferred to find the root causes of memory issues and fix them instead of relying on fault tolerance mechanisms. This section explains how to debug out-of-memory errors in Ray.
 
-To view the memory usage of tasks and actors at the time of OOM, see the considered workers in the OOM log above. This information
-helps identify the tasks and actors responsible for the OOM. The OOM log also includes the memory footprint of all idle workers.
-See {ref}`ray-oom-worker-killing-policy` for how Ray considers idle workers for killing.
+To view the memory usage of tasks and actors at the time of OOM, see the considered workers in the OOM log above. This information helps identify the tasks and actors responsible for the OOM. The OOM log also includes the memory footprint of all idle workers. See {ref}`ray-oom-worker-killing-policy` for how Ray considers idle workers for killing.
 
-To view the memory usage of Tasks and Actors based on type over time, view the {ref}`per Task and Actor memory usage graph <dash-workflow-cpu-memory-analysis>` for more details.
-The memory usage from the per component graph uses RSS - SHR. See below for reasoning.
+To view the memory usage of Tasks and Actors based on type over time, view the {ref}`per Task and Actor memory usage graph <dash-workflow-cpu-memory-analysis>` for more details. The memory usage from the per component graph uses RSS - SHR. See below for reasoning.
 
 Alternatively, you can also use the CLI command [htop](https://htop.dev/).
 
@@ -191,30 +167,17 @@ Alternatively, you can also use the CLI command [htop](https://htop.dev/).
 
 See the `allocate_memory` row. See two columns, RSS and SHR.
 
-SHR usage is typically the memory usage from the Ray object store. The Ray object store allocates 30% of host memory to the shared memory (`/dev/shm`, unless you specify `--object-store-memory`).
-If Ray workers access the object inside the object store using `ray.get`, SHR usage increases. Since the Ray object store supports the {ref}`zero-copy <serialization-guide>`
-deserialization, several workers can access the same object without copying them to in-process memory. For example, if
-8 workers access the same object inside the Ray object store, each process' `SHR` usage increases. However, they are not using 8 * SHR memory (there's only 1 copy in the shared memory).
-Also note that Ray object store triggers {ref}`object spilling <object-spilling>` when the object usage goes beyond the limit, which means the memory usage from the shared memory won't exceed 30%
-of the host memory.
+SHR usage is typically the memory usage from the Ray object store. The Ray object store allocates 30% of host memory to the shared memory (`/dev/shm`, unless you specify `--object-store-memory`). If Ray workers access the object inside the object store using `ray.get`, SHR usage increases. Since the Ray object store supports the {ref}`zero-copy <serialization-guide>` deserialization, several workers can access the same object without copying them to in-process memory. For example, if 8 workers access the same object inside the Ray object store, each process' `SHR` usage increases. However, they are not using 8 * SHR memory (there's only 1 copy in the shared memory). Also note that Ray object store triggers {ref}`object spilling <object-spilling>` when the object usage goes beyond the limit, which means the memory usage from the shared memory won't exceed 30% of the host memory.
 
-Out-of-memory issues from a host, are due to RSS usage from each worker. Calculate per
-process memory usage by RSS - SHR because SHR is for Ray object store as explained above. The total memory usage is typically
-`SHR (object store memory usage, 30% of memory) + sum(RSS - SHR from each ray proc) + sum(RSS - SHR from system components. e.g., raylet, GCS. Usually small)`.
+Out-of-memory issues from a host, are due to RSS usage from each worker. Calculate per process memory usage by RSS - SHR because SHR is for Ray object store as explained above. The total memory usage is typically `SHR (object store memory usage, 30% of memory) + sum(RSS - SHR from each ray proc) + sum(RSS - SHR from system components. e.g., raylet, GCS. Usually small)`.
 
 (troubleshooting-out-of-memory-eliminate-worker-oom)=
 
 ### Eliminating worker Out-Of-Memory errors
 
-Most out-of-memory errors come from oversubscribing memory on a node.
-By default, tasks and actors have no memory requirements, so the scheduler is unaware
-of their memory footprint and may schedule too many memory-hungry tasks or actors onto a single node.
+Most out-of-memory errors come from oversubscribing memory on a node. By default, tasks and actors have no memory requirements, so the scheduler is unaware of their memory footprint and may schedule too many memory-hungry tasks or actors onto a single node.
 
-To prevent this oversubscription and eliminate OOM issues, pass a `memory` resource request to tasks or actors
-to reserve memory for them. See {ref}`resource requirements <resource-requirements>` for more details.
-This request doesn't impose any limit on memory usage; it's used for scheduling only.
-As shown in the example OOM log above, the log includes the resource request for each active worker. If the worker memory usage
-exceeds the requested memory at the time of OOM, adjust the resource request accordingly.
+To prevent this oversubscription and eliminate OOM issues, pass a `memory` resource request to tasks or actors to reserve memory for them. See {ref}`resource requirements <resource-requirements>` for more details. This request doesn't impose any limit on memory usage; it's used for scheduling only. As shown in the example OOM log above, the log includes the resource request for each active worker. If the worker memory usage exceeds the requested memory at the time of OOM, adjust the resource request accordingly.
 
 (troubleshooting-out-of-memory-head)=
 
@@ -232,25 +195,17 @@ Then check the memory usage from the head node from the node memory usage view i
 :align: center
 ```
 
-The Ray head node has more memory-demanding system components such as GCS or the dashboard.
-Also, the driver runs from a head node by default. If the head node has the same memory capacity as worker nodes
-and if you execute the same number of Tasks and Actors from a head node, it can easily have out-of-memory problems.
-In this case, do not run any Tasks and Actors on the head node by specifying `--num-cpus=0` when starting a head node by `ray start --head`.
-If you use KubeRay, view {ref}`here <kuberay-num-cpus>`.
+The Ray head node has more memory-demanding system components such as GCS or the dashboard. Also, the driver runs from a head node by default. If the head node has the same memory capacity as worker nodes and if you execute the same number of Tasks and Actors from a head node, it can easily have out-of-memory problems. In this case, do not run any Tasks and Actors on the head node by specifying `--num-cpus=0` when starting a head node by `ray start --head`. If you use KubeRay, view {ref}`here <kuberay-num-cpus>`.
 
 (troubleshooting-out-of-memory-reduce-parallelism)=
 
 ### Reduce Parallelism
 
-High parallelism can trigger out-of-memory errors. For example, if
-you have 8 training workers that perform the data preprocessing -> training.
-If you load too much data into each worker, the total memory usage (`training worker mem usage * 8`) can exceed the
-memory capacity.
+High parallelism can trigger out-of-memory errors. For example, if you have 8 training workers that perform the data preprocessing -> training. If you load too much data into each worker, the total memory usage (`training worker mem usage * 8`) can exceed the memory capacity.
 
 Verify the memory usage by looking at the {ref}`per Task and Actor memory usage graph <dash-workflow-cpu-memory-analysis>` and the Task metrics.
 
-First, see the memory usage of an `allocate_memory` task. The total is 18GB.
-At the same time, verify the 15 concurrent tasks that are running.
+First, see the memory usage of an `allocate_memory` task. The total is 18GB. At the same time, verify the 15 concurrent tasks that are running.
 
 ```{image} ../../images/component-memory.png
 :align: center
@@ -277,8 +232,7 @@ View the instructions below to learn how to memory profile individual actors and
 
 ## Memory Profiling Ray tasks and actors
 
-To memory profile Ray tasks or actors, use [memray](https://bloomberg.github.io/memray/).
-Note that you can also use other memory profiling tools if it supports a similar API.
+To memory profile Ray tasks or actors, use [memray](https://bloomberg.github.io/memray/). Note that you can also use other memory profiling tools if it supports a similar API.
 
 First, install `memray`.
 
@@ -286,9 +240,7 @@ First, install `memray`.
 pip install memray
 ```
 
-`memray` supports a Python context manager to enable memory profiling. You can write the `memray` profiling file wherever you want.
-But in this example, we will write them to `/tmp/ray/session_latest/logs` because Ray dashboard allows you to download files inside the log folder.
-This will allow you to download profiling files from other nodes.
+`memray` supports a Python context manager to enable memory profiling. You can write the `memray` profiling file wherever you want. But in this example, we will write them to `/tmp/ray/session_latest/logs` because Ray dashboard allows you to download files inside the log folder. This will allow you to download profiling files from other nodes.
 
 ::::{tab-set}
 :::{tab-item} Actors

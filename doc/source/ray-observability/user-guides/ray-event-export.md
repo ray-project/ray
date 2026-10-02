@@ -8,44 +8,31 @@ myst:
 
 # Ray Event Export
 
-Starting from 2.49, Ray supports exporting structured events to a configured HTTP
-endpoint. Each node sends events to the endpoint through an HTTP POST request.
+Starting from 2.49, Ray supports exporting structured events to a configured HTTP endpoint. Each node sends events to the endpoint through an HTTP POST request.
 
-Previously, Ray's {ref}`task events <task-events>` were only used internally by the Ray dashboard
-and {ref}`State API <state-api-overview-ref>` for monitoring and debugging. With the new event
-export feature, you can now send these raw events to external systems for custom analytics,
-monitoring, and integration with third-party tools.
+Previously, Ray's {ref}`task events <task-events>` were only used internally by the Ray dashboard and {ref}`State API <state-api-overview-ref>` for monitoring and debugging. With the new event export feature, you can now send these raw events to external systems for custom analytics, monitoring, and integration with third-party tools.
 
 :::{note}
-Ray Event Export is still in alpha. The way to configure event
-reporting and the format of the events is subject to change.
+Ray Event Export is still in alpha. The way to configure event reporting and the format of the events is subject to change.
 :::
 
 ## Enable event reporting
-To enable event reporting, you need to set the `RAY_enable_core_worker_ray_event_to_aggregator` environment
-variable to `1` when starting each Ray worker node.
+To enable event reporting, you need to set the `RAY_enable_core_worker_ray_event_to_aggregator` environment variable to `1` when starting each Ray worker node.
 
-To set the target HTTP endpoint, set the `RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR`
-environment variable to a valid HTTP URL with the `http://` URL scheme.
+To set the target HTTP endpoint, set the `RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR` environment variable to a valid HTTP URL with the `http://` URL scheme.
 
 ## Event format
 
 Events are JSON objects in the POST request body.
 
-All events contain the same base fields and different event specific fields.
-See [src/ray/protobuf/public/events_base_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_base_event.proto) for the base fields.
+All events contain the same base fields and different event specific fields. See [src/ray/protobuf/public/events_base_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_base_event.proto) for the base fields.
 
 ### Task events
 
 For each task, Ray exports two types of events: Task Definition Event and Task Execution Event.
 
-* Each task attempt generates one Task Definition Event which contains the metadata of the task.
-  See [src/ray/protobuf/public/events_task_definition_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_definition_event.proto)
-  and [src/ray/protobuf/public/events_actor_task_definition_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_task_definition_event.proto) for the event formats for normal tasks
-  and actor tasks respectively.
-* Task Execution Events contain task state transition information and metadata
-  generated during task execution.
-  See [src/ray/protobuf/public/events_task_lifecycle_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_lifecycle_event.proto) for the event format.
+* Each task attempt generates one Task Definition Event which contains the metadata of the task. See [src/ray/protobuf/public/events_task_definition_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_definition_event.proto) and [src/ray/protobuf/public/events_actor_task_definition_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_task_definition_event.proto) for the event formats for normal tasks and actor tasks respectively.
+* Task Execution Events contain task state transition information and metadata generated during task execution. See [src/ray/protobuf/public/events_task_lifecycle_event.proto](https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_task_lifecycle_event.proto) for the event format.
 
 An example of a Task Definition Event and a Task Execution Event:
 
@@ -289,6 +276,4 @@ The following diagram shows the high-level architecture of Ray Event Export.
 ```{image} ../images/ray-event-export.png
 ```
 
-All Ray components send events to an aggregator agent through gRPC. There is an aggregator
-agent on each node. The aggregator agent collects all events on that node and sends the
-events to the configured HTTP endpoint.
+All Ray components send events to an aggregator agent through gRPC. There is an aggregator agent on each node. The aggregator agent collects all events on that node and sends the events to the configured HTTP endpoint.

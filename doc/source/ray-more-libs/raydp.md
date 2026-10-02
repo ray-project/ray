@@ -8,9 +8,7 @@ myst:
 
 # Using Spark on Ray (RayDP)
 
-RayDP combines your Spark and Ray clusters, making it easy to do large scale
-data processing using the PySpark API and seamlessly use that data to train
-your models using TensorFlow and PyTorch.
+RayDP combines your Spark and Ray clusters, making it easy to do large scale data processing using the PySpark API and seamlessly use that data to train your models using TensorFlow and PyTorch.
 
 For more information and examples, see the RayDP GitHub page:
 <https://github.com/oap-project/raydp>
@@ -104,8 +102,7 @@ estimator.shutdown()
 
 ### Training a Spark DataFrame with PyTorch
 
-Similarly, `raydp.torch.TorchEstimator` provides an API for training with
-PyTorch.
+Similarly, `raydp.torch.TorchEstimator` provides an API for training with PyTorch.
 
 ```python
 from pyspark.sql.functions import col

@@ -48,8 +48,7 @@ Run `ray start --head` to start a local Ray cluster.
 :::
 
 ::::{tab-item} KubeRay (SSH)
-Follow the instructions in {doc}`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
-You need to connect VS Code to the cluster. For example, add the following to the `ray-head` container and make sure `sshd` is running in the `ray-head` container.
+Follow the instructions in {doc}`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster. You need to connect VS Code to the cluster. For example, add the following to the `ray-head` container and make sure `sshd` is running in the `ray-head` container.
 
 ```yaml
 ports:
@@ -60,8 +59,7 @@ ports:
 
 
 :::{note}
-How to run `sshd` in the `ray-head` container depends on your setup. For example you can use `supervisord`.
-A simple way to run `sshd` interactively for testing is by logging into the head node pod and running:
+How to run `sshd` in the `ray-head` container depends on your setup. For example you can use `supervisord`. A simple way to run `sshd` interactively for testing is by logging into the head node pod and running:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y openssh-server
@@ -76,8 +74,7 @@ You can then connect to the cluster via SSH by running:
 kubectl port-forward service/raycluster-sample-head-svc 2222:22
 ```
 
-After checking that `ssh -p 2222 ray@localhost` works, set up VS Code as described in the
-[VS Code SSH documentation](https://code.visualstudio.com/docs/remote/ssh).
+After checking that `ssh -p 2222 ray@localhost` works, set up VS Code as described in the [VS Code SSH documentation](https://code.visualstudio.com/docs/remote/ssh).
 ::::
 
 :::{tab-item} KubeRay (Code Server, Community Maintained)
@@ -169,9 +166,7 @@ When the debugger hits a breakpoint:
 
 ## Start and stop debugging
 
-Debug your Ray app as you would when developing locally. After you're done debugging this particular
-breakpoint, click the **Disconnect** button in the debugging toolbar so you can join another task
-in the **Paused Tasks** list.
+Debug your Ray app as you would when developing locally. After you're done debugging this particular breakpoint, click the **Disconnect** button in the debugging toolbar so you can join another task in the **Paused Tasks** list.
 
 ```{figure} ./images/debugger-disconnect.gif
 ```

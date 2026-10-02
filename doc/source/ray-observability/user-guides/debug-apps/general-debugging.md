@@ -8,8 +8,7 @@ myst:
 
 # Common Issues
 
-Distributed applications offer great power but also increased complexity.
-Some of Ray's behaviors may initially surprise users, but these design choices serve important purposes in distributed computing environments.
+Distributed applications offer great power but also increased complexity. Some of Ray's behaviors may initially surprise users, but these design choices serve important purposes in distributed computing environments.
 
 This document outlines common issues encountered when running Ray in a cluster, highlighting key differences compared to running Ray locally.
 
@@ -28,8 +27,7 @@ This document outlines common issues encountered when running Ray in a cluster, 
 
 **Expected behavior:** Users may expect that setting environment variables on the Driver sends them to all Worker processes as if running on a single machine, but it doesn't.
 
-**Fix:** Enable Runtime Environments to explicitly pass environment variables. When you call `ray.init(runtime_env=...)`, it sends the specified environment variables to the Workers.
-Alternatively, you can set the environment variables as part of your cluster setup configuration.
+**Fix:** Enable Runtime Environments to explicitly pass environment variables. When you call `ray.init(runtime_env=...)`, it sends the specified environment variables to the Workers. Alternatively, you can set the environment variables as part of your cluster setup configuration.
 
 ```{literalinclude} /ray-observability/doc_code/gotchas.py
 :language: python
@@ -40,8 +38,7 @@ Alternatively, you can set the environment variables as part of your cluster set
 
 ## Filenames work sometimes and not at other times
 
-**Issue:** Referencing a file by its name in a Task or Actor may sometimes succeed and sometimes fail.
-This inconsistency arises because the Task or Actor finds the file when running on the Head Node, but the file might not exist on other machines.
+**Issue:** Referencing a file by its name in a Task or Actor may sometimes succeed and sometimes fail. This inconsistency arises because the Task or Actor finds the file when running on the Head Node, but the file might not exist on other machines.
 
 **Example:** Consider the following scenario:
 
@@ -73,8 +70,7 @@ In this case, you might receive a mixture of True and False. If `check_file()` r
 
 **Fix:**
 
-— Use only shared file paths for such applications. For example, a network file system or S3 storage can provide the required consistency.
-— Avoid relying on local files to be consistent across machines.
+— Use only shared file paths for such applications. For example, a network file system or S3 storage can provide the required consistency. — Avoid relying on local files to be consistent across machines.
 
 
 ## Placement Groups aren't composable
@@ -112,8 +108,7 @@ because the resource request {'CPU': 10} cannot fit into any bundles for the pla
 
 **Expected behavior:** The code executes successfully without resource allocation issues.
 
-**Fix:** Ensure that in the `@ray.remote` declaration of tasks called within `create_task_that_uses_resources()`, you include the parameter
-`scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)`.
+**Fix:** Ensure that in the `@ray.remote` declaration of tasks called within `create_task_that_uses_resources()`, you include the parameter `scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)`.
 
 ```diff
 def create_task_that_uses_resources():
@@ -124,8 +119,7 @@ def create_task_that_uses_resources():
 
 ## Outdated Function Definitions
 
-Because of Python's subtleties, redefining a remote function may not always update Ray to use the latest version.
-For example, suppose you define a remote function `f` and then redefine it; Ray should use the new definition:
+Because of Python's subtleties, redefining a remote function may not always update Ray to use the latest version. For example, suppose you define a remote function `f` and then redefine it; Ray should use the new definition:
 
 ```{testcode}
 import ray
@@ -168,8 +162,7 @@ Ray captures and displays a stack trace when you invoke a task, create an actor,
 
 To enable call site capture, set the environment variable `RAY_record_task_actor_creation_sites=true`. When enabled:
 
-— Ray captures a stack trace when creating tasks, actors, or invoking actor methods.
-— The captured stack trace is available in the Ray dashboard (under task and actor details), output of the state CLI command `ray list task --detail`, and state API responses.
+— Ray captures a stack trace when creating tasks, actors, or invoking actor methods. — The captured stack trace is available in the Ray dashboard (under task and actor details), output of the state CLI command `ray list task --detail`, and state API responses.
 
 Note that Ray turns off stack trace capture by default due to potential performance impacts. Enable it only when you need it for debugging.
 
