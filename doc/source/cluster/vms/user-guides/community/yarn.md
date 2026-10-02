@@ -129,8 +129,8 @@ Putting things together, we have:
 
 ```{literalinclude} /cluster/doc_code/yarn/ray-skein.yaml
 :language: yaml
-:start-after: # Head service
-:end-before: # Worker service
+:start-after: "# Head service"
+:end-before: "# Worker service"
 ```
 
 
@@ -152,7 +152,7 @@ Putting things together, we have:
 
 ```{literalinclude} /cluster/doc_code/yarn/ray-skein.yaml
 :language: yaml
-:start-after: # Worker service
+:start-after: "# Worker service"
 ```
 
 ## Running a Job
