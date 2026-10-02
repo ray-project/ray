@@ -6,20 +6,20 @@ myst:
 
 (fault-tolerance-nodes)=
 
-# Node Fault Tolerance
+# Node fault tolerance
 
-A Ray cluster consists of one or more worker nodes, each of which consists of worker processes and system processes (e.g. raylet). One of the worker nodes is designated as the head node and has extra processes like the GCS.
+A Ray cluster consists of one or more worker nodes. Each worker node consists of worker processes and system processes, such as the raylet. One of the worker nodes is designated as the head node and has extra processes, such as the GCS.
 
-Here, we describe node failures and their impact on tasks, actors, and objects.
+This page describes node failures and their impact on tasks, actors, and objects.
 
 ## Worker node failure
 
-When a worker node fails, all the running tasks and actors will fail and all the objects owned by worker processes of this node will be lost. In this case, the {ref}`tasks <fault-tolerance-tasks>`, {ref}`actors <fault-tolerance-actors>`, {ref}`objects <fault-tolerance-objects>` fault tolerance mechanisms will kick in and try to recover the failures using other worker nodes.
+When a worker node fails, all the tasks and actors running on it fail, and all the objects owned by its worker processes are lost. The {ref}`tasks <fault-tolerance-tasks>`, {ref}`actors <fault-tolerance-actors>`, and {ref}`objects <fault-tolerance-objects>` fault-tolerance mechanisms then try to recover from these failures using other worker nodes.
 
 ## Head node failure
 
-When a head node fails, the entire Ray cluster fails. To tolerate head node failures, we need to make {ref}`GCS fault tolerant <fault-tolerance-gcs>` so that when we start a new head node we still have all the cluster-level data.
+When a head node fails, the entire Ray cluster fails. To tolerate head node failures, make the {ref}`GCS fault tolerant <fault-tolerance-gcs>` so that a new head node still has all the cluster-level data when you start it.
 
 ## Raylet failure
 
-When a raylet process fails, the corresponding node will be marked as dead and is treated the same as a node failure. Each raylet is associated with a unique id, so even if the raylet restarts on the same physical machine, it'll be treated as a new raylet/node to the Ray cluster.
+When a raylet process fails, the corresponding node is marked as dead and treated the same as a node failure. Each raylet has a unique ID, so even if the raylet restarts on the same physical machine, the Ray cluster treats it as a new raylet and a new node.

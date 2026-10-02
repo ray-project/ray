@@ -4,34 +4,34 @@ myst:
     description: "Atomically reserve resources across nodes with placement groups, Ray's gang scheduling primitive, using bundles and placement strategies."
 ---
 
-# Placement Groups
+# Placement groups
 
 (ray-placement-group-doc-ref)=
 
-Placement groups allow users to atomically reserve groups of resources across multiple nodes, a concept commonly known as gang scheduling. After atomically reserving resources, you can use placement groups to schedule Ray tasks and actors packed together for locality (PACK), or spread apart (SPREAD). Placement groups are generally used for gang-scheduling actors, but also support tasks.
+Use placement groups to atomically reserve groups of resources across multiple nodes, a concept commonly known as gang scheduling. After Ray reserves the resources, you can use placement groups to schedule Ray tasks and actors either packed together for locality with the PACK strategy or spread apart with the SPREAD strategy. You typically use placement groups to gang-schedule actors, but they also support tasks.
 
-Here are some real-world use cases:
+Some real-world use cases include the following:
 
-- **Distributed Machine Learning Training**: Distributed Training (e.g., {ref}`Ray Train <train-docs>` and {ref}`Ray Tune <tune-main>`) uses the placement group APIs to enable gang scheduling. In these settings, all resources for a trial must be available at the same time. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training.
-- **Fault tolerance in distributed training**: Placement groups can be used to configure fault tolerance. In Ray Tune, it can be beneficial to pack related resources from a single trial together, so that a node failure impacts a low number of trials. In libraries that support elastic training (e.g., XGBoost-Ray), spreading the resources across multiple nodes can help to ensure that training continues even when a node dies.
+- **Distributed machine learning training**: Distributed training, such as in {ref}`Ray Train <train-docs>` and {ref}`Ray Tune <tune-main>`, uses the placement group APIs for gang scheduling. In these settings, all resources for a trial must be available at the same time. Gang scheduling is a critical technique for all-or-nothing scheduling in deep learning training.
+- **Fault tolerance in distributed training**: You can use placement groups to configure fault tolerance. In Ray Tune, packing the related resources from a single trial together can be beneficial, so that a node failure affects fewer trials. In libraries that support elastic training, such as XGBoost-Ray, spreading the resources across multiple nodes can help ensure that training continues even when a node dies.
 
-## Key Concepts
+## Key concepts
 
 ### Bundles
 
-A **bundle** is a collection of "resources." It could be a single resource, `{"CPU": 1}`, or a group of resources, `{"CPU": 1, "GPU": 4}`. A bundle is a unit of reservation for placement groups. "Scheduling a bundle" means we find a node that fits the bundle and reserve the resources specified by the bundle. A bundle must be able to fit on a single node on the Ray cluster. For example, if you have an 8 CPU node and a 1 CPU node and want to schedule a bundle that requires `{"CPU": 9}`, Ray can't schedule the `{"CPU": 9}`, because there's no single node with 9 CPU's.
+A *bundle* is a collection of resources. It can be a single resource, such as `{"CPU": 1}`, or a group of resources, such as `{"CPU": 1, "GPU": 4}`. A bundle is a unit of reservation for placement groups. Scheduling a bundle means that Ray finds a node that fits the bundle and reserves the resources that the bundle specifies. A bundle must fit on a single node in the Ray cluster. For example, if you have an 8-CPU node and a 1-CPU node and want to schedule a bundle that requires `{"CPU": 9}`, Ray can't schedule the `{"CPU": 9}` bundle, because no single node has 9 CPUs.
 
-### Placement Group
+### Placement group
 
-A **placement group** reserves the resources from the cluster. Tasks or actors must use the {ref}`PlacementGroupSchedulingStrategy <ray-placement-group-schedule-tasks-actors-ref>` to use the reserved resources.
+A *placement group* reserves resources from the cluster. To use the reserved resources, tasks or actors must use the {ref}`PlacementGroupSchedulingStrategy <ray-placement-group-schedule-tasks-actors-ref>`.
 
-- Ray represents placement groups with a list of bundles. For example, `{"CPU": 1} * 4` means you'd like to reserve 4 bundles, each with 1 CPU.
-- Bundles are then placed according to the {ref}`placement strategies <pgroup-strategy>` across nodes on the cluster.
-- After Ray creates the placement group, tasks or actors can be then scheduled according to the placement group and even on individual bundles.
+- Ray represents placement groups with a list of bundles. For example, `{"CPU": 1} * 4` means you want to reserve four bundles, each with 1 CPU.
+- Ray then places the bundles across nodes in the cluster according to the {ref}`placement strategies <pgroup-strategy>`.
+- After Ray creates the placement group, you can schedule tasks or actors according to the placement group, and even on individual bundles.
 
-## Create a Placement Group (Reserve Resources)
+## Create a placement group (reserve resources)
 
-You can create a placement group using {func}`ray.util.placement_group`. Placement groups take in a list of bundles and a {ref}`placement strategy <pgroup-strategy>`.
+Create a placement group with {func}`ray.util.placement_group`. Placement groups take a list of bundles and a {ref}`placement strategy <pgroup-strategy>`.
 
 Bundles are specified by a list of dictionaries, e.g., `[{"CPU": 1}, {"CPU": 1, "GPU": 1}]`).
 
@@ -40,7 +40,7 @@ Bundles are specified by a list of dictionaries, e.g., `[{"CPU": 1}, {"CPU": 1, 
 - `memory` corresponds to `memory` as used in {func}`ray.remote <ray.remote>`
 - Other resources corresponds to `resources` as used in {func}`ray.remote <ray.remote>` (E.g., `ray.init(resources={"disk": 1})` can have a bundle of `{"disk": 1}`).
 
-Placement group scheduling is asynchronous. The `ray.util.placement_group` returns immediately.
+Placement group scheduling is asynchronous. `ray.util.placement_group` returns immediately.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -89,10 +89,10 @@ ray::PlacementGroup pg = ray::CreatePlacementGroup(options);
 :::
 ::::
 
-You can block your program until the placement group is ready using one of two APIs:
+To block your program until the placement group is ready, use one of the following two APIs:
 
-* {func}`ready <ray.util.placement_group.PlacementGroup.ready>`, which is compatible with `ray.get`
-* {func}`wait <ray.util.placement_group.PlacementGroup.wait>`, which blocks the program until the placement group is ready)
+- {func}`ready <ray.util.placement_group.PlacementGroup.ready>`, which is compatible with `ray.get`.
+- {func}`wait <ray.util.placement_group.PlacementGroup.wait>`, which blocks the program until the placement group is ready.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -132,7 +132,7 @@ for (const ray::PlacementGroup &group : all_placement_group) {
 :::
 ::::
 
-Let's verify the placement group is successfully created.
+Verify that Ray successfully created the placement group.
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -151,13 +151,13 @@ Table:
 0  3cd6174711f47c14132155039c0501000000                  01000000  CREATED
 ```
 
-The placement group is successfully created. Out of the `{"CPU": 2, "GPU": 2}` resources, the placement group reserves `{"CPU": 1, "GPU": 1}`. The reserved resources can only be used when you schedule tasks or actors with a placement group. The diagram below demonstrates the "1 CPU and 1 GPU" bundle that the placement group reserved.
+Ray successfully created the placement group. Out of the `{"CPU": 2, "GPU": 2}` resources, the placement group reserves `{"CPU": 1, "GPU": 1}`. You can use the reserved resources only when you schedule tasks or actors with a placement group. The following diagram shows the bundle of 1 CPU and 1 GPU that the placement group reserved.
 
 ```{image} ../images/pg_image_1.png
 :align: center
 ```
 
-Ray creates placement groups atomically. If a bundle can't fit in any of the current nodes, Ray reserves no resources for the placement group. To illustrate this, you can create another placement group with these two bundles `{"CPU":1}, {"GPU": 2}`.
+Ray creates placement groups atomically. If a bundle can't fit in any of the current nodes, Ray reserves no resources for the placement group. To illustrate this, create another placement group with the two bundles `{"CPU":1}, {"GPU": 2}`.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -169,7 +169,7 @@ Ray creates placement groups atomically. If a bundle can't fit in any of the cur
 :::
 ::::
 
-You can verify the new placement group is pending creation.
+Verify that the new placement group is pending creation.
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -189,7 +189,7 @@ Table:
 1  e1b043bebc751c3081bddc24834d01000000                  01000000  PENDING <---- the new placement group.
 ```
 
-You can also verify that the `{"CPU": 1, "GPU": 2}` bundles can't be allocated, using the `ray status` CLI command.
+You can also use the `ray status` CLI command to verify that Ray can't allocate the `{"CPU": 1, "GPU": 2}` bundles.
 
 ```bash
 ray status
@@ -208,27 +208,27 @@ Demands:
 {'CPU': 1.0} * 1, {'GPU': 2.0} * 1 (PACK): 1+ pending placement groups <--- 1 placement group is pending creation.
 ```
 
-The current cluster has `{"CPU": 2, "GPU": 2}`. We already created a `{"CPU": 1, "GPU": 1}` bundle, so the cluster only has 1 CPU and 1 GPU left. If you try to schedule a placement group with these 2 bundles `{"CPU": 1}, {"GPU": 2}`, Ray doesn't create the placement group and doesn't reserve any resources, including the `{"CPU": 1}` bundle.
+This cluster has `{"CPU": 2, "GPU": 2}`. You already created a `{"CPU": 1, "GPU": 1}` bundle, so the cluster has only 1 CPU and 1 GPU left. If you try to schedule a placement group with the two bundles `{"CPU": 1}, {"GPU": 2}`, Ray doesn't create the placement group and doesn't reserve any resources, including the `{"CPU": 1}` bundle.
 
 ```{image} ../images/pg_image_2.png
 :align: center
 ```
 
-When the placement group cannot be scheduled in any way, it is called "infeasible". Imagine you schedule `{"CPU": 4}` bundle, but you only have a single node with 2 CPUs. There's no way to create this bundle in your cluster. The Ray Autoscaler is aware of placement groups, and auto-scales the cluster to ensure pending groups can be placed as needed.
+A placement group that Ray can't schedule in any way is *infeasible*. For example, suppose you schedule a `{"CPU": 4}` bundle, but you have only a single node with 2 CPUs. There's no way to create this bundle in your cluster. The Ray autoscaler is aware of placement groups, and autoscales the cluster to ensure that pending groups can be placed as needed.
 
-If the Autoscaler can't provide resources to schedule a placement group, Ray does *not* print a warning about infeasible groups and tasks and actors that use the groups. You can observe the scheduling state of the placement group from the {ref}`dashboard or state APIs <ray-placement-group-observability-ref>`.
+If the autoscaler can't provide resources to schedule a placement group, Ray doesn't print a warning about infeasible groups or about the tasks and actors that use them. You can observe the scheduling state of the placement group from the {ref}`dashboard or state APIs <ray-placement-group-observability-ref>`.
 
 :::{note}
-When a placement group with GPUs is reserved successfully, the bundles are not necessarily ordered by GPU physical rank. That is, adjacent bundles don't necessarily map to adjacent physical GPUs.
+When Ray successfully reserves a placement group with GPUs, the bundles aren't necessarily ordered by physical GPU rank. Adjacent bundles don't necessarily map to adjacent physical GPUs.
 :::
 
 (ray-placement-group-schedule-tasks-actors-ref)=
 
-## Schedule Tasks and Actors to Placement Groups (Use Reserved Resources)
+## Schedule tasks and actors to placement groups (use reserved resources)
 
-In the previous section, we created a placement group that reserved `{"CPU": 1, "GPU: 1"}` from a 2 CPU and 2 GPU node.
+In the previous section, you created a placement group that reserved `{"CPU": 1, "GPU": 1}` from a node with 2 CPUs and 2 GPUs.
 
-Now let's schedule an actor to the placement group. You can schedule actors or tasks to a placement group using {class}`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy>`.
+Next, schedule an actor to the placement group. To schedule actors or tasks to a placement group, use {class}`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy>`.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -297,12 +297,12 @@ for (int index = 0; index < 1; index++) {
 ::::
 
 :::{note}
-By default, Ray actors require 1 logical CPU at schedule time, but after being scheduled, they do not acquire any CPU resources. In other words, by default, actors cannot get scheduled on a zero-cpu node, but an infinite number of them can run on any non-zero cpu node. Thus, when scheduling an actor with the default resource requirements and a placement group, the placement group has to be created with a bundle containing at least 1 CPU (since the actor requires 1 CPU for scheduling). However, after the actor is created, it doesn't consume any placement group resources.
+By default, Ray actors require 1 logical CPU at schedule time, but after Ray schedules them, they don't acquire any CPU resources. In other words, by default, Ray can't schedule actors on a zero-CPU node, but an infinite number of them can run on any non-zero CPU node. When you schedule an actor with the default resource requirements and a placement group, you must create the placement group with a bundle that contains at least 1 CPU, because the actor requires 1 CPU for scheduling. After Ray creates the actor, the actor doesn't consume any placement group resources.
 
-To avoid any surprises, always specify resource requirements explicitly for actors. If resources are specified explicitly, they are required both at schedule time and at execution time.
+To avoid surprises, always specify resource requirements explicitly for actors. If you specify resources explicitly, they're required both at schedule time and at execution time.
 :::
 
-The actor is scheduled now! One bundle can be used by multiple tasks and actors (i.e., the bundle to task (or actor) is a one-to-many relationship). In this case, since the actor uses 1 CPU, 1 GPU remains from the bundle. You can verify this from the CLI command `ray status`. You can see the 1 CPU is reserved by the placement group, and 1.0 is used (by the actor we created).
+Ray schedules the actor. Multiple tasks and actors can use one bundle, so a bundle has a one-to-many relationship with tasks and actors. In this case, because the actor uses 1 CPU, 1 GPU remains from the bundle. Verify this with the `ray status` CLI command. The output shows that the placement group reserves 1 CPU and that the actor you created uses 1.0 of it.
 
 ```bash
 ray status
@@ -321,7 +321,7 @@ Demands:
 (no resource demands)
 ```
 
-You can also verify the actor is created using `ray list actors`.
+You can also verify that Ray created the actor by using `ray list actors`.
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -346,7 +346,7 @@ ray list actors --detail
     state: ALIVE
 ```
 
-Since 1 GPU remains, let's create a new actor that requires 1 GPU. This time, we also specify the `placement_group_bundle_index`. Each bundle is given an "index" within the placement group. For example, a placement group of 2 bundles `[{"CPU": 1}, {"GPU": 1}]` has index 0 bundle `{"CPU": 1}` and index 1 bundle `{"GPU": 1}`. Since we only have 1 bundle, we only have index 0. If you don't specify a bundle, the actor (or task) is scheduled on a random bundle that has unallocated reserved resources.
+Because 1 GPU remains, create a new actor that requires 1 GPU. This time, also specify the `placement_group_bundle_index`. Each bundle has an index within the placement group. For example, a placement group of two bundles `[{"CPU": 1}, {"GPU": 1}]` has bundle `{"CPU": 1}` at index 0 and bundle `{"GPU": 1}` at index 1. This placement group has only one bundle, so it has only index 0. If you don't specify a bundle, Ray schedules the actor or task on a random bundle that has unallocated reserved resources.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -358,13 +358,13 @@ Since 1 GPU remains, let's create a new actor that requires 1 GPU. This time, we
 :::
 ::::
 
-We succeed to schedule the GPU actor! The below image describes 2 actors scheduled into the placement group.
+Ray successfully schedules the GPU actor. The following image shows the two actors scheduled into the placement group.
 
 ```{image} ../images/pg_image_3.png
 :align: center
 ```
 
-You can also verify that the reserved resources are all used, with the `ray status` command.
+You can also use the `ray status` command to verify that all the reserved resources are in use.
 
 ```bash
 ray status
@@ -382,13 +382,13 @@ Usage:
 
 (pgroup-strategy)=
 
-## Placement Strategy
+## Placement strategy
 
-One of the features the placement group provides is to add placement constraints among bundles.
+Placement groups can add placement constraints among bundles.
 
-For example, you'd like to pack your bundles to the same node or spread out to multiple nodes as much as possible. You can specify the strategy via `strategy` argument. This way, you can make sure your actors and tasks can be scheduled with certain placement constraints.
+For example, you might want to pack your bundles onto the same node, or spread them out across multiple nodes as much as possible. Specify the strategy with the `strategy` argument. This way, you can make sure that Ray schedules your actors and tasks with certain placement constraints.
 
-The example below creates a placement group with 2 bundles with a PACK strategy; both bundles have to be created in the same node. Note that it is a soft policy. If the bundles cannot be packed into a single node, they are spread to other nodes. If you'd like to avoid the problem, you can instead use `STRICT_PACK` policies, which fail to create placement groups if placement requirements cannot be satisfied.
+The following example creates a placement group of two bundles with a PACK strategy, so both bundles have to be created on the same node. PACK is a soft policy. If Ray can't pack the bundles onto a single node, it spreads them to other nodes. To avoid this problem, use the `STRICT_PACK` policy instead, which fails to create the placement group if Ray can't satisfy the placement requirements.
 
 ```{literalinclude} ../doc_code/placement_group_example.py
 :language: python
@@ -396,13 +396,13 @@ The example below creates a placement group with 2 bundles with a PACK strategy;
 :end-before: __strategy_pg_end__
 ```
 
-The image below demonstrates the PACK policy. Three of the `{"CPU": 2}` bundles are located in the same node.
+The following image shows the PACK policy. Three of the `{"CPU": 2}` bundles are on the same node.
 
 ```{image} ../images/pg_image_4.png
 :align: center
 ```
 
-The image below demonstrates the SPREAD policy. Each of three of the `{"CPU": 2}` bundles are located in three different nodes.
+The following image shows the SPREAD policy. Each of the three `{"CPU": 2}` bundles is on a different node.
 
 ```{image} ../images/pg_image_5.png
 :align: center
@@ -412,28 +412,28 @@ Ray supports four placement group strategies. The default scheduling policy is `
 
 **STRICT_PACK**
 
-All bundles must be placed into a single node on the cluster. Use this strategy when you want to maximize the locality.
+All bundles must be placed on a single node in the cluster. Use this strategy when you want to maximize locality.
 
 **PACK**
 
-All provided bundles are packed onto a single node on a best-effort basis. If strict packing is not feasible (i.e., some bundles do not fit on the node), bundles can be placed onto other nodes.
+Ray packs all provided bundles onto a single node on a best-effort basis. If strict packing isn't feasible because some bundles don't fit on the node, Ray can place bundles on other nodes.
 
 **STRICT_SPREAD**
 
-Each bundle must be scheduled in a separate node.
+Each bundle must be scheduled on a separate node.
 
 **SPREAD**
 
-Each bundle is spread onto separate nodes on a best-effort basis. If strict spreading is not feasible, bundles can be placed on overlapping nodes.
+Ray spreads the bundles onto separate nodes on a best-effort basis. If strict spreading isn't feasible, Ray can place bundles on overlapping nodes.
 
-## Remove Placement Groups (Free Reserved Resources)
+## Remove placement groups (free reserved resources)
 
-By default, a placement group's lifetime is scoped to the driver that creates placement groups (unless you make it a {ref}`detached placement group <placement-group-detached>`). When the placement group is created from a {ref}`detached actor <actor-lifetimes>`, the lifetime is scoped to the detached actor. In Ray, the driver is the Python script that calls `ray.init`.
+By default, a placement group's lifetime is scoped to the driver that creates it, unless you make it a {ref}`detached placement group <placement-group-detached>`. When a {ref}`detached actor <actor-lifetimes>` creates the placement group, the lifetime is scoped to the detached actor. In Ray, the driver is the Python script that calls `ray.init`.
 
-Reserved resources (bundles) from the placement group are automatically freed when the driver or detached actor that creates placement group exits. To free the reserved resources manually, remove the placement group using the {func}`remove_placement_group <ray.util.remove_placement_group>` API (which is also an asynchronous API).
+Ray automatically frees the placement group's reserved resources, or bundles, when the driver or detached actor that created the placement group exits. To free the reserved resources manually, remove the placement group with the {func}`remove_placement_group <ray.util.remove_placement_group>` API, which is also asynchronous.
 
 :::{note}
-When you remove the placement group, actors or tasks that still use the reserved resources are forcefully killed.
+When you remove the placement group, Ray forcefully kills the actors or tasks that still use the reserved resources.
 :::
 
 ::::{tab-set}
@@ -466,17 +466,17 @@ assert(removed_placement_group.GetState(), ray::PlacementGroupState::REMOVED);
 
 (ray-placement-group-observability-ref)=
 
-## Observe and Debug Placement Groups
+## Observe and debug placement groups
 
-Ray provides several useful tools to inspect the placement group states and resource usage.
+Use the following tools to inspect placement group states and resource usage:
 
-- **Ray Status** is a CLI tool for viewing the resource usage and scheduling resource requirements of placement groups.
-- **Ray dashboard** is a UI tool for inspecting placement group states.
-- **Ray State API** is a CLI for inspecting placement group states.
+- `ray status` is a CLI tool for viewing the resource usage and scheduling resource requirements of placement groups.
+- The Ray dashboard is a UI tool for inspecting placement group states.
+- The Ray state API is a CLI for inspecting placement group states.
 
 :::::{tab-set}
 :::{tab-item} ray status (CLI)
-The CLI command `ray status` provides the autoscaling status of the cluster. It provides the "resource demands" from unscheduled placement groups as well as the resource reservation status.
+The `ray status` CLI command shows the autoscaling status of the cluster. It shows the resource demands from unscheduled placement groups and the resource reservation status.
 
 ```bash
 Resources
@@ -490,38 +490,38 @@ Usage:
 :::
 
 ::::{tab-item} Dashboard
-The {ref}`dashboard job view <dash-jobs-view>` provides the placement group table that displays the scheduling state and metadata of the placement group.
+The {ref}`dashboard job view <dash-jobs-view>` has a placement group table that displays the scheduling state and metadata of placement groups.
 
 :::{note}
-Ray dashboard is only available when you install Ray is with `pip install "ray[default]"`.
+The Ray dashboard is available only when you install Ray with `pip install "ray[default]"`.
 :::
 ::::
 
 ::::{tab-item} Ray State API
-{ref}`Ray state API <state-api-overview-ref>` is a CLI tool for inspecting the state of Ray resources (tasks, actors, placement groups, etc.).
+The {ref}`Ray state API <state-api-overview-ref>` is a CLI tool for inspecting the state of Ray resources, such as tasks, actors, and placement groups.
 
-`ray list placement-groups` provides the metadata and the scheduling state of the placement group. `ray list placement-groups --detail` provides statistics and scheduling state in a greater detail.
+`ray list placement-groups` shows the metadata and scheduling state of placement groups. `ray list placement-groups --detail` shows statistics and scheduling state in greater detail.
 
 :::{note}
-State API is only available when you install Ray is with `pip install "ray[default]"`
+The state API is available only when you install Ray with `pip install "ray[default]"`.
 :::
 ::::
 :::::
 
-### Inspect Placement Group Scheduling State
+### Inspect placement group scheduling state
 
-With the above tools, you can see the state of the placement group. The definition of states are specified in the following files:
+With the preceding tools, you can see the state of the placement group. The following files define the states:
 
-- [High level state](https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L579)
+- [High-level state](https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L579)
 - [Details](https://github.com/ray-project/ray/blob/03a9d2166988b16b7cbf51dac0e6e586455b28d8/src/ray/protobuf/gcs.proto#L524)
 
 ```{image} ../images/pg_image_6.png
 :align: center
 ```
 
-## [Advanced] Child Tasks and Actors
+## [Advanced] Child tasks and actors
 
-By default, child actors and tasks don't share the same placement group that the parent uses. To automatically schedule child actors or tasks to the same placement group, set `placement_group_capture_child_tasks` to True.
+By default, child actors and tasks don't use the parent's placement group. To automatically schedule child actors or tasks to the same placement group, set `placement_group_capture_child_tasks` to `True`.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -537,7 +537,7 @@ It's not implemented for Java APIs yet.
 :::
 ::::
 
-When `placement_group_capture_child_tasks` is True, but you don't want to schedule child tasks and actors to the same placement group, specify `PlacementGroupSchedulingStrategy(placement_group=None)`.
+If `placement_group_capture_child_tasks` is `True` but you don't want to schedule child tasks and actors to the same placement group, specify `PlacementGroupSchedulingStrategy(placement_group=None)`.
 
 ```{literalinclude} ../doc_code/placement_group_capture_child_tasks_example.py
 :language: python
@@ -546,13 +546,13 @@ When `placement_group_capture_child_tasks` is True, but you don't want to schedu
 ```
 
 
-## [Advanced] Named Placement Group
+## [Advanced] Named placement group
 
-Within a {ref}`namespace <namespaces-guide>`, you can *name* a placement group. You can use the name of a placement group to retrieve the placement group from any job in the Ray cluster, as long as the job is within the same namespace. This is useful if you can't directly pass the placement group handle to the actor or task that needs it, or if you are trying to access a placement group launched by another driver.
+Within a {ref}`namespace <namespaces-guide>`, you can *name* a placement group. Use the name to retrieve the placement group from any job in the Ray cluster, as long as the job is in the same namespace. Naming is useful if you can't pass the placement group handle directly to the actor or task that needs it, or if you're trying to access a placement group that another driver launched.
 
-The placement group is destroyed when the original creation job completes if its lifetime isn't `detached`. You can avoid this by using a {ref}`detached placement group <placement-group-detached>`
+If a placement group's lifetime isn't `detached`, Ray destroys the placement group when the job that created it completes. To avoid this, use a {ref}`detached placement group <placement-group-detached>`.
 
-Note that this feature requires that you specify a {ref}`namespace <namespaces-guide>` associated with it, or else you can't retrieve the placement group across jobs.
+This feature requires that you specify a {ref}`namespace <namespaces-guide>` associated with the placement group. Otherwise, you can't retrieve the placement group across jobs.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -605,7 +605,7 @@ ray::PlacementGroup group = ray::GetGlobalPlacementGroup("global_name");
 assert(!group.Empty());
 ```
 
-We also support non-global named placement group in C++, which means that the placement group name is only valid within the job and cannot be accessed from another job.
+The C++ API also supports non-global named placement groups. A non-global placement group name is valid only within its job, and you can't access the placement group from another job.
 
 ```c++
 // Create a placement group with a job-scope-unique name.
@@ -628,14 +628,14 @@ assert(!group.Empty());
 
 (placement-group-detached)=
 
-## [Advanced] Detached Placement Group
+## [Advanced] Detached placement group
 
-By default, the lifetimes of placement groups belong to the driver and actor.
+By default, a placement group's lifetime belongs to the driver or actor that creates it:
 
-- If the placement group is created from a driver, it is destroyed when the driver is terminated.
-- If it is created from a detached actor, it is killed when the detached actor is killed.
+- If a driver creates the placement group, the placement group is destroyed when the driver terminates.
+- If a detached actor creates the placement group, the placement group is killed when the detached actor is killed.
 
-To keep the placement group alive regardless of its job or detached actor, specify `lifetime="detached"`. For example:
+To keep the placement group alive regardless of its job or detached actor, specify `lifetime="detached"`, as in the following example:
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -651,56 +651,56 @@ The lifetime argument isn't implemented for Java APIs yet.
 :::
 ::::
 
-Let's terminate the current script and start a new Python script. Call `ray list placement-groups`, and you can see the placement group is not removed.
+Stop the script and start a new Python script. Call `ray list placement-groups`, and you can see that the placement group isn't removed.
 
-Note that Ray decouples the lifetime option and the name option. If you only specify the name without specifying `lifetime="detached"`, then you can only retrieve the placement group while the driver where you created the placement group is still running. It's recommended to always specify the name when creating the detached placement group. If you don't, there is no way to retrieve the placement group from another process, and there is no way to kill it once you exit the driver script that created the placement group.
+Ray decouples the lifetime option from the name option. If you specify only the name without `lifetime="detached"`, you can retrieve the placement group only while the driver that created it is still running. Always specify a name when you create a detached placement group. Otherwise, there's no way to retrieve the placement group from another process, and no way to kill it after you exit the driver script that created it.
 
 
 (ray-placement-group-ft-ref)=
 
-## [Advanced] Fault Tolerance
+## [Advanced] Fault tolerance
 
-### Rescheduling Bundles on a Dead Node
+### Rescheduling bundles on a dead node
 
-If nodes that contain some bundles of a placement group die, Ray tries to reschedule the lost bundles on different nodes. This means that the initial creation of placement group is "atomic," but after the initial creation, there could be partial placement groups. Actors or tasks running on bundles on the remaining live nodes continue to run. Note that rescheduling bundles have higher scheduling priority than other placement group scheduling.
+If nodes that contain some bundles of a placement group die, Ray tries to reschedule the lost bundles on different nodes. The initial creation of a placement group is atomic, but after the initial creation, there could be partial placement groups. Actors or tasks running on bundles on the remaining live nodes continue to run. Ray gives the bundles it reschedules higher scheduling priority than other placement group scheduling.
 
-### Provide Resources for Partially Lost Bundles
+### Provide resources for partially lost bundles
 
-If there aren't enough resources to schedule the partially lost bundles, the placement group waits, assuming the Ray Autoscaler starts a new node to satisfy the resource requirements. If the autoscaler can't provide additional resources or if you're not using the autoscaler, the placement group remains in the partially created state indefinitely.
+If there aren't enough resources to schedule the partially lost bundles, the placement group waits, assuming the Ray autoscaler starts a new node to satisfy the resource requirements. If the autoscaler can't provide additional resources or if you're not using the autoscaler, the placement group remains in the partially created state indefinitely.
 
-### Fault Tolerance of Actors and Tasks that Use the Bundle
+### Fault tolerance of actors and tasks that use the bundle
 
-Ray reschedules Actors and tasks that use the bundle (reserved resources) based on their {ref}`fault tolerant policy <fault-tolerance>` once Ray recovers the bundle.
+After Ray recovers the bundle, it reschedules the actors and tasks that use the bundle's reserved resources, based on their {ref}`fault tolerance policy <fault-tolerance>`.
 
 (pgroup-topology-strategy)=
 
 ## [Alpha] Topology strategy scheduling
 
 :::{warning}
-Topology strategy scheduling is an **alpha** feature. It's actively being iterated on and the API surface may change. Ray currently only supports defining one topology label and one node level strategy (described below). For topology labels, Ray currently supports only `STRICT_PACK`. Support for additional strategies and multi-level topologies is planned.
+Topology strategy scheduling is an alpha feature. It is under active development, and the API surface might change. Ray currently supports defining only one topology label and one node-level strategy, as the following sections describe. For topology labels, Ray currently supports only `STRICT_PACK`. Support for additional strategies and multi-level topologies is planned.
 :::
 
 ### Why topology strategy scheduling?
 
-The placement strategies above (PACK, STRICT_PACK, SPREAD, STRICT_SPREAD) operate purely on a per-node basis. For multi-node GPU domains such as GB200 or GB300 NVL racks where nodes share fast interconnects, there's no native way to ensure all bundles land within the same GPU domain.
+The preceding placement strategies, PACK, STRICT_PACK, SPREAD, and STRICT_SPREAD, operate purely on a per-node basis. For multi-node GPU domains, such as GB200 or GB300 NVL racks where nodes share fast interconnects, there's no native way to ensure that all bundles land within the same GPU domain.
 
-For example, consider a cluster with 2 racks of 18 nodes each, where each node has `{"GPU": 4, "CPU": 2}`. You want to schedule `[{"GPU": 4, "CPU": 2}] * 18` within a single rack:
+For example, consider a cluster with two racks of 18 nodes each, where each node has `{"GPU": 4, "CPU": 2}`. You want to schedule `[{"GPU": 4, "CPU": 2}] * 18` within a single rack:
 
-- **STRICT_PACK** tries to place all 18 bundles onto a single *node*, which is infeasible because a single node only has 4 GPUs and 2 CPUs.
-- **PACK** spreads bundles across nodes but it has no concept of racks and bundles may land on nodes across *both* racks.
+- **STRICT_PACK** tries to place all 18 bundles onto a single *node*, which is infeasible because a single node has only 4 GPUs and 2 CPUs.
+- **PACK** spreads bundles across nodes, but it has no concept of racks, and bundles might land on nodes across *both* racks.
 
-You could work around this with static {ref}`label selectors <labels>` (such as `bundle_label_selector=[{"my_custom_gpu_domain_label": "rack-1"}] * 18`), but that approach doesn't support fault tolerance. If all nodes in `rack-1` go down, the placement group can't automatically move to a different rack. Furthermore, you have to manually specify a domain when you really just want any domain and this becomes cumbersome if you have many GPU domains.
+You could work around this with static {ref}`label selectors <labels>`, such as `bundle_label_selector=[{"my_custom_gpu_domain_label": "rack-1"}] * 18`, but that approach doesn't support fault tolerance. If all nodes in `rack-1` go down, the placement group can't automatically move to a different rack. You also have to specify a domain manually when you want any domain, which becomes cumbersome if you have many GPU domains.
 
-Topology strategy scheduling currently solves this by letting you express a topology strategy for the placement group, which allows specifying a topology label within the cluster. Ray picks a value for this topology label that can satisfy all bundles (for example, a specific rack) and then applies your node-level strategy within that value.
+Topology strategy scheduling solves this problem. You express a topology strategy for the placement group, which specifies a topology label within the cluster. Ray picks a value for this topology label that can satisfy all bundles, such as a specific rack, and then applies your node-level strategy within that value.
 
 ### How it works
 
-Pass `topology_strategy=` to {func}`ray.util.placement_group` to enable topology strategy placement. The argument is a dict that maps a label key to the placement strategy used at that level.
+To use topology strategy placement, pass `topology_strategy=` to {func}`ray.util.placement_group`. The argument is a dict that maps a label key to the placement strategy for that level.
 
-Currently, `topology_strategy` is a dictionary that may contain up to two keys:
+Currently, `topology_strategy` is a dictionary that can contain up to two keys:
 
 - The special key `ray.io/node-id` sets the **node-level** strategy and accepts any value in `{"PACK", "STRICT_PACK", "SPREAD", "STRICT_SPREAD"}`. If you omit it, the node-level strategy defaults to `PACK`.
-- Any other key is a **topology label** that nodes have set (via `ray start --labels` or your cluster configuration). Only `STRICT_PACK` is supported for these labels today.
+- Any other key is a **topology label** that you set on nodes through `ray start --labels` or your cluster configuration. Ray currently supports only `STRICT_PACK` for these labels.
 
 ```python
 from ray.util.placement_group import placement_group
@@ -715,13 +715,13 @@ pg = placement_group(
 ray.get(pg.ready())
 ```
 
-With this, Ray accomplishes the following:
+With this configuration, Ray does the following:
 
-1. Groups candidate nodes by the value of the topology label you named (`ray.io/gpu-domain` in the example above).
-2. Selects a value for that label that can satisfy all bundles.
-3. Applies the node-level scheduling strategy within the selected value.
+1. Groups candidate nodes by the value of the topology label you named, which is `ray.io/gpu-domain` in the preceding example.
+1. Selects a value for that label that can satisfy all bundles.
+1. Applies the node-level scheduling strategy within the selected value.
 
-Here is a following example to STRICT_SPREAD bundles across distinct nodes while still STRICT_PACKing them onto a single rack (`ray.io/gpu-domain` is each rack's **topology label**):
+The following example uses STRICT_SPREAD to spread bundles across distinct nodes and STRICT_PACK to keep them on a single rack, where `ray.io/gpu-domain` is each rack's topology label:
 
 ```python
 pg = placement_group(
@@ -733,10 +733,10 @@ pg = placement_group(
 )
 ```
 
-`topology_strategy` is mutually exclusive with the `strategy=` parameter, and passing both raises `ValueError`. To override the default node-level strategy alongside a topology label, put the node-level strategy under `ray.io/node-id` in the same dict, as shown above.
+`topology_strategy` is mutually exclusive with the `strategy=` parameter, and passing both raises `ValueError`. To override the default node-level strategy alongside a topology label, put the node-level strategy under `ray.io/node-id` in the same dict, as the preceding example shows.
 
 :::{note}
-Ray doesn't automatically set topology labels such as `ray.io/gpu-domain` on nodes. Configure these labels through `ray start --labels` or your cluster configuration. For example:
+Ray doesn't automatically set topology labels such as `ray.io/gpu-domain` on nodes. Configure these labels through `ray start --labels` or your cluster configuration, as in the following example:
 
 ```bash
 ray start --labels="ray.io/gpu-domain=rack-1"
@@ -746,7 +746,7 @@ ray start --labels="ray.io/gpu-domain=rack-1"
 
 Many GB200 and GB300 clusters use Kubernetes as their scheduler. The NVIDIA GPU Operator exposes an identifier for each NVLink domain with the node label `nvidia.com/gpu.clique` from GPU Feature Discovery.
 
-If your Ray workers are running within Pods, you can use the Kubernetes Downward API to set an environment variable such as `NVIDIA_GPU_CLIQUE` to the value of the `nvidia.com/gpu.clique` node label, which enables the NVLink domain-aware placement groups feature.
+If your Ray workers run in Pods, you can use the Kubernetes Downward API to set an environment variable such as `NVIDIA_GPU_CLIQUE` to the value of the `nvidia.com/gpu.clique` node label, which enables the NVLink domain-aware placement groups feature.
 
 For example, a Ray worker's start command might look like this:
 
@@ -763,8 +763,8 @@ ray start \
 
 Topology strategy scheduling improves on static label selectors by providing automatic fault tolerance at the topology-label level:
 
-- **Partial failure** (some nodes within the selected value of the topology label die): Ray reschedules the lost bundles onto surviving nodes **within the same value** (for example, the same rack). Actors and tasks on the remaining bundles keep running. If the selected value doesn't have enough resources to reschedule the lost bundles, those bundles stay infeasible and queued until resources free up in the same value. To force the placement group onto a different value, call {func}`ray.util.remove_placement_group <ray.util.remove_placement_group>` and create a new one. Removing the placement group forcefully kills every actor and task still using its bundles and doesn't restart them, so you must re-create them yourself on the new placement group.
-- **Total failure** (all nodes with the selected value die): Ray clears the topology assignment and reschedules the entire placement group onto a different value.
+- **Partial failure**: Some nodes within the selected value of the topology label die. Ray reschedules the lost bundles onto surviving nodes within the same value, such as the same rack. Actors and tasks on the remaining bundles keep running. If the selected value doesn't have enough resources to reschedule the lost bundles, those bundles stay infeasible and queued until resources free up in the same value. To force the placement group onto a different value, call {func}`ray.util.remove_placement_group <ray.util.remove_placement_group>` and create a new one. Removing the placement group forcefully kills every actor and task still using its bundles and doesn't restart them, so you must re-create them yourself on the new placement group.
+- **Total failure**: All nodes with the selected value die. Ray clears the topology assignment and reschedules the entire placement group onto a different value.
 
 ### Observability
 
@@ -804,5 +804,6 @@ The following `ray list placement-groups --detail` output shows the two topology
 
 For placement groups that don't use a topology strategy, `topology_strategy` and `topology_assignments` are both empty lists. Both fields appear only when you pass `--detail`.
 
-## API Reference
-{ref}`Placement Group API reference <ray-placement-group-ref>`
+## API reference
+
+See the {ref}`placement group API reference <ray-placement-group-ref>`.
