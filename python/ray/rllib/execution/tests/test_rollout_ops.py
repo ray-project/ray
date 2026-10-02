@@ -11,8 +11,9 @@ class _FakeLocalEnvRunner:
     def __init__(self):
         self._present_agent_steps = SumStats()
         self._present_agent_steps.push(2)
+        # A known agent with no samples in the current metrics window has an
+        # empty SumStats, whose compiled value is NaN.
         self._missing_agent_steps = SumStats()
-        self._missing_agent_steps.push(float("nan"))
 
     def sample(self, **kwargs):
         return ["sample"]
