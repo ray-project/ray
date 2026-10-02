@@ -1472,8 +1472,8 @@ def test_agent_http_server_disabled(monkeypatch, shutdown_only):
     assert ray.nodes()[0]["DashboardAgentListenPort"] == -1
     listening = {
         c.laddr.port
-        for c in agent_proc.net_connections(kind="tcp")
-        if c.status == psutil.CONN_LISTEN
+        for c in psutil.net_connections(kind="tcp")
+        if c.pid == agent_proc.pid and c.status == psutil.CONN_LISTEN
     }
     assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT not in listening
 

@@ -161,4 +161,5 @@ class HttpServerAgent:
         # Wait for finish signal.
         if self.runner is not None:
             await self.runner.cleanup()
-        await self.http_session.close()
+        if self.http_session is not None:
+            await self.http_session.close()
