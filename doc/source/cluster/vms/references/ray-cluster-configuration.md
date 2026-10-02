@@ -287,10 +287,7 @@ The cluster configuration is defined within a YAML file that will be used by the
 
 The `available_nodes_types` object's keys represent the names of the different node types.
 
-Deleting a node type from `available_node_types` and updating with {ref}`ray up <ray-up-doc>` will cause the autoscaler to scale down all nodes of that type.
-In particular, changing the key of a node type object will
-result in removal of nodes corresponding to the old key; nodes with the new key name will then be
-created according to cluster configuration and Ray resource demands.
+Deleting a node type from `available_node_types` and updating with {ref}`ray up <ray-up-doc>` will cause the autoscaler to scale down all nodes of that type. In particular, changing the key of a node type object will result in removal of nodes corresponding to the old key; nodes with the new key name will then be created according to cluster configuration and Ray resource demands.
 
 ```{eval-rst}
 .. parsed-literal::
@@ -317,8 +314,7 @@ created according to cluster configuration and Ray resource demands.
 
 Cloud-specific configuration for nodes of a given node type.
 
-Modifying the `node_config` and updating with {ref}`ray up <ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
-nodes with the newly applied `node_config` will then be created according to cluster configuration and Ray resource demands.
+Modifying the `node_config` and updating with {ref}`ray up <ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type; nodes with the newly applied `node_config` will then be created according to cluster configuration and Ray resource demands.
 
 ::::{tab-set}
 :::{tab-item} AWS
@@ -418,9 +414,7 @@ The maximum number of workers the cluster will have at any given time.
 * **Minimum:** `0`
 * **Maximum:** Unbounded
 
-For a manually managed Local cluster, `max_workers` defaults to the number of
-entries in `provider.worker_ips` and is capped at that number. For a
-coordinator-managed Local cluster, `max_workers` is required.
+For a manually managed Local cluster, `max_workers` defaults to the number of entries in `provider.worker_ips` and is capped at that number. For a coordinator-managed Local cluster, `max_workers` is required.
 
 (cluster-configuration-upscaling-speed)=
 
@@ -493,11 +487,9 @@ Authentication credentials that Ray will use to launch nodes.
 
 ### `available_node_types`
 
-Tells the autoscaler the allowed node types and the resources they provide.
-Each node type is identified by a user-specified key.
+Tells the autoscaler the allowed node types and the resources they provide. Each node type is identified by a user-specified key.
 
-For Local clusters, omit this field. The Local provider creates and manages a
-single internal node type.
+For Local clusters, omit this field. The Local provider creates and manages a single internal node type.
 
 * **Required:** No
 * **Importance:** High
@@ -533,9 +525,7 @@ available_node_types:
 
 The key for one of the node types in {ref}`available_node_types <cluster-configuration-available-node-types>`. This node type will be used to launch the head node.
 
-If the field `head_node_type` is changed and an update is executed with {ref}`ray up <ray-up-doc>`, the currently running head node will
-be considered outdated. The user will receive a prompt asking to confirm scale-down of the outdated head node, and the cluster will restart with a new
-head node. Changing the {ref}`node_config<cluster-configuration-node-config>` of the {ref}`node_type<cluster-configuration-node-types-type>` with key `head_node_type` will also result in cluster restart after a user prompt.
+If the field `head_node_type` is changed and an update is executed with {ref}`ray up <ray-up-doc>`, the currently running head node will be considered outdated. The user will receive a prompt asking to confirm scale-down of the outdated head node, and the cluster will restart with a new head node. Changing the {ref}`node_config<cluster-configuration-node-config>` of the {ref}`node_type<cluster-configuration-node-types-type>` with key `head_node_type` will also result in cluster restart after a user prompt.
 
 
 
@@ -544,8 +534,7 @@ head node. Changing the {ref}`node_config<cluster-configuration-node-config>` of
 * **Type:** String
 * **Pattern:** `[a-zA-Z0-9_]+`
 
-For Local clusters, omit this field. The Local provider sets it to the internal
-`local.cluster.node` node type.
+For Local clusters, omit this field. The Local provider sets it to the internal `local.cluster.node` node type.
 
 (cluster-configuration-file-mounts)=
 
@@ -815,8 +804,7 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 
 ### `docker.disable_shm_size_detection`
 
-If enabled, Ray will not automatically specify the size `/dev/shm` for the started container and the runtime's default value (64MiB for Docker) will be used.
-If `--shm-size=<>` is manually added to `run_options`, this is *automatically* set to `True`, meaning that Ray will defer to the user-provided value.
+If enabled, Ray will not automatically specify the size `/dev/shm` for the started container and the runtime's default value (64MiB for Docker) will be used. If `--shm-size=<>` is manually added to `run_options`, this is *automatically* set to `True`, meaning that Ray will defer to the user-provided value.
 
 * **Required:** No
 * **Importance:** Low
@@ -870,8 +858,7 @@ Not available. The vSphere provider expects the key to be located at a fixed pat
 :::
 
 :::{tab-item} Local
-The path to an existing private key for Ray to use. If this field is
-omitted, Ray uses the default SSH authentication settings.
+The path to an existing private key for Ray to use. If this field is omitted, Ray uses the default SSH authentication settings.
 
 * **Required:** No
 * **Importance:** Low
@@ -905,8 +892,7 @@ Not available.
 :::
 
 :::{tab-item} Local
-Not available. Configure SSH access on the local nodes before you run
-`ray up`.
+Not available. Configure SSH access on the local nodes before you run `ray up`.
 :::
 ::::
 
@@ -948,12 +934,9 @@ The cloud service provider. For vSphere and VCF, this must be set to `vsphere`.
 :::
 
 :::{tab-item} Local
-The on-premises node provider. For local clusters, this must be set to
-`local`.
+The on-premises node provider. For local clusters, this must be set to `local`.
 
-The Local provider manages `available_node_types` and
-`head_node_type` internally. It doesn't support the top-level
-`head_node` or `worker_nodes` fields.
+The Local provider manages `available_node_types` and `head_node_type` internally. It doesn't support the top-level `head_node` or `worker_nodes` fields.
 
 * **Required:** Yes
 * **Importance:** High
@@ -971,24 +954,19 @@ Not available. The AWS provider obtains the head node IP address from EC2.
 :::
 
 :::{tab-item} Azure
-Not available. The Azure provider obtains the head node IP address from
-Azure APIs.
+Not available. The Azure provider obtains the head node IP address from Azure APIs.
 :::
 
 :::{tab-item} GCP
-Not available. The GCP provider obtains the head node IP address from
-Compute Engine.
+Not available. The GCP provider obtains the head node IP address from Compute Engine.
 :::
 
 :::{tab-item} vSphere
-Not available. The vSphere provider obtains the head node IP address from
-the managed VM.
+Not available. The vSphere provider obtains the head node IP address from the managed VM.
 :::
 
 :::{tab-item} Local
-The hostname or IP address of the head node in a manually managed local
-cluster. If `provider.coordinator_address` is set, Ray uses
-coordinator-managed mode and ignores this field.
+The hostname or IP address of the head node in a manually managed local cluster. If `provider.coordinator_address` is set, Ray uses coordinator-managed mode and ignores this field.
 
 * **Required:** Yes, unless `provider.coordinator_address` is set
 * **Importance:** High
@@ -1002,34 +980,23 @@ coordinator-managed mode and ignores this field.
 
 ::::{tab-set}
 :::{tab-item} AWS
-Not available. The AWS provider obtains node IP addresses from EC2. Use
-{ref}`provider.use_internal_ips <cluster-configuration-use-internal-ips>`
-to choose whether Ray uses private addresses.
+Not available. The AWS provider obtains node IP addresses from EC2. Use {ref}`provider.use_internal_ips <cluster-configuration-use-internal-ips>` to choose whether Ray uses private addresses.
 :::
 
 :::{tab-item} Azure
-Not available. Use
-{ref}`provider.use_external_head_ip <cluster-configuration-use-external-head-ip>`
-to provision and use a public address for the head node.
+Not available. Use {ref}`provider.use_external_head_ip <cluster-configuration-use-external-head-ip>` to provision and use a public address for the head node.
 :::
 
 :::{tab-item} GCP
-Not available. The GCP provider obtains node IP addresses from Compute
-Engine. Use
-{ref}`provider.use_internal_ips <cluster-configuration-use-internal-ips>`
-to choose whether Ray uses private addresses.
+Not available. The GCP provider obtains node IP addresses from Compute Engine. Use {ref}`provider.use_internal_ips <cluster-configuration-use-internal-ips>` to choose whether Ray uses private addresses.
 :::
 
 :::{tab-item} vSphere
-Not available. The vSphere provider obtains the head node IP address from
-the managed VM instead of accepting a static external address in this field.
+Not available. The vSphere provider obtains the head node IP address from the managed VM instead of accepting a static external address in this field.
 :::
 
 :::{tab-item} Local
-The public hostname or IP address used to connect to the head node over
-SSH in a manually managed local cluster. Set this field when you run
-`ray up` from outside the cluster's private network. If
-`provider.coordinator_address` is set, Ray ignores this field.
+The public hostname or IP address used to connect to the head node over SSH in a manually managed local cluster. Set this field when you run `ray up` from outside the cluster's private network. If `provider.coordinator_address` is set, Ray ignores this field.
 
 * **Required:** No
 * **Importance:** Low
@@ -1043,34 +1010,25 @@ SSH in a manually managed local cluster. Set this field when you run
 
 ::::{tab-set}
 :::{tab-item} AWS
-Not available. The AWS provider creates and discovers worker nodes through
-EC2 instead of accepting a static list of addresses.
+Not available. The AWS provider creates and discovers worker nodes through EC2 instead of accepting a static list of addresses.
 :::
 
 :::{tab-item} Azure
-Not available. The Azure provider creates and discovers worker nodes
-through Azure APIs instead of accepting a static list of addresses.
+Not available. The Azure provider creates and discovers worker nodes through Azure APIs instead of accepting a static list of addresses.
 :::
 
 :::{tab-item} GCP
-Not available. The GCP provider creates and discovers worker nodes through
-Compute Engine instead of accepting a static list of addresses.
+Not available. The GCP provider creates and discovers worker nodes through Compute Engine instead of accepting a static list of addresses.
 :::
 
 :::{tab-item} vSphere
-Not available. The vSphere provider creates and discovers worker nodes
-through its VM service instead of accepting a static list of addresses.
+Not available. The vSphere provider creates and discovers worker nodes through its VM service instead of accepting a static list of addresses.
 :::
 
 :::{tab-item} Local
-A list of hostnames or IP addresses for worker nodes in a manually managed
-local cluster. An empty list creates a head-only cluster. If
-`provider.coordinator_address` is set, Ray uses coordinator-managed mode
-and ignores this field.
+A list of hostnames or IP addresses for worker nodes in a manually managed local cluster. An empty list creates a head-only cluster. If `provider.coordinator_address` is set, Ray uses coordinator-managed mode and ignores this field.
 
-In manually managed mode, the top-level `min_workers` and
-`max_workers` fields default to the number of entries in this list.
-Values greater than the number of entries are capped at that number.
+In manually managed mode, the top-level `min_workers` and `max_workers` fields default to the number of entries in this list. Values greater than the number of entries are capped at that number.
 
 * **Required:** Yes, unless `provider.coordinator_address` is set
 * **Importance:** High
@@ -1084,34 +1042,25 @@ Values greater than the number of entries are capped at that number.
 
 ::::{tab-set}
 :::{tab-item} AWS
-Not available. The AWS provider manages cluster capacity through EC2 and
-doesn't use the Local provider's coordinator server.
+Not available. The AWS provider manages cluster capacity through EC2 and doesn't use the Local provider's coordinator server.
 :::
 
 :::{tab-item} Azure
-Not available. The Azure provider manages cluster capacity through Azure
-APIs and doesn't use the Local provider's coordinator server.
+Not available. The Azure provider manages cluster capacity through Azure APIs and doesn't use the Local provider's coordinator server.
 :::
 
 :::{tab-item} GCP
-Not available. The GCP provider manages cluster capacity through Compute
-Engine and doesn't use the Local provider's coordinator server.
+Not available. The GCP provider manages cluster capacity through Compute Engine and doesn't use the Local provider's coordinator server.
 :::
 
 :::{tab-item} vSphere
-Not available. The vSphere provider manages cluster capacity through its
-VM service and doesn't use the Local provider's coordinator server.
+Not available. The vSphere provider manages cluster capacity through its VM service and doesn't use the Local provider's coordinator server.
 :::
 
 :::{tab-item} Local
-The `host:port` address of the coordinator server for an automatically
-managed local cluster. Setting this field selects coordinator-managed
-mode; Ray ignores `provider.head_ip`, `provider.worker_ips`, and
-`provider.external_head_ip` if they are also present. The top-level
-`max_workers` field is required, and `min_workers` defaults to `0`.
+The `host:port` address of the coordinator server for an automatically managed local cluster. Setting this field selects coordinator-managed mode; Ray ignores `provider.head_ip`, `provider.worker_ips`, and `provider.external_head_ip` if they are also present. The top-level `max_workers` field is required, and `min_workers` defaults to `0`.
 
-* **Required:** Yes, unless both `provider.head_ip` and
-  `provider.worker_ips` are set
+* **Required:** Yes, unless both `provider.head_ip` and `provider.worker_ips` are set
 * **Importance:** High
 * **Type:** String
 :::
@@ -1155,9 +1104,7 @@ Not available.
 
 ::::{tab-set}
 :::{tab-item} AWS
-A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
-Nodes will be launched in the first listed availability zone and will be tried in the following availability
-zones if launching fails.
+A string specifying a comma-separated list of availability zone(s) that nodes may be launched in. Nodes will be launched in the first listed availability zone and will be tried in the following availability zones if launching fails.
 
 * **Required:** No
 * **Importance:** Low
@@ -1166,13 +1113,9 @@ zones if launching fails.
 :::
 
 :::{tab-item} Azure
-A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
-This can be specified at the provider level to set defaults for all node types, or at the node level
-to override the provider setting for specific node types.
+A string specifying a comma-separated list of availability zone(s) that nodes may be launched in. This can be specified at the provider level to set defaults for all node types, or at the node level to override the provider setting for specific node types.
 
-For Azure, availability zone availability depends on each specific VM size / location combination.
-Node-level configuration in `available_node_types.<node_type_name>.node_config.azure_arm_parameters.availability_zone`
-takes precedence over provider-level configuration.
+For Azure, availability zone availability depends on each specific VM size / location combination. Node-level configuration in `available_node_types.<node_type_name>.node_config.azure_arm_parameters.availability_zone` takes precedence over provider-level configuration.
 
 * **Required:** No
 * **Importance:** Low
@@ -1384,15 +1327,11 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 
 ### `provider.use_internal_ips`
 
-If enabled, Ray will use private IP addresses for communication between nodes.
-This should be omitted if your network interfaces use public IP addresses.
+If enabled, Ray will use private IP addresses for communication between nodes. This should be omitted if your network interfaces use public IP addresses.
 
-If enabled, Ray CLI commands (e.g. `ray up`) will have to be run from a machine
-that is part of the same VPC as the cluster.
+If enabled, Ray CLI commands (e.g. `ray up`) will have to be run from a machine that is part of the same VPC as the cluster.
 
-This option does not affect the existence of public IP addresses for the nodes, it only
-affects which IP addresses are used by Ray. The existence of public IP addresses is
-controlled by your cloud provider's configuration.
+This option does not affect the existence of public IP addresses for the nodes, it only affects which IP addresses are used by Ray. The existence of public IP addresses is controlled by your cloud provider's configuration.
 
 
 * **Required:** No
@@ -1410,11 +1349,7 @@ Not available.
 :::
 
 :::{tab-item} Azure
-If enabled, Ray will provision and use a public IP address for communication with the head node,
-regardless of the value of `use_internal_ips`. This option can be used in combination with
-`use_internal_ips` to avoid provisioning excess public IPs for worker nodes (i.e., communicate
-among nodes using private IPs, but provision a public IP for head node communication only). If
-`use_internal_ips` is `False`, then this option has no effect.
+If enabled, Ray will provision and use a public IP address for communication with the head node, regardless of the value of `use_internal_ips`. This option can be used in combination with `use_internal_ips` to avoid provisioning excess public IPs for worker nodes (i.e., communicate among nodes using private IPs, but provision a public IP for head node communication only). If `use_internal_ips` is `False`, then this option has no effect.
 
 * **Required:** No
 * **Importance:** Low
@@ -1475,8 +1410,7 @@ Not available.
 :::
 
 :::{tab-item} vSphere
-vSphere configurations used to connect vCenter Server. If not configured,
-the VSPHERE_* environment variables will be used.
+vSphere configurations used to connect vCenter Server. If not configured, the VSPHERE_* environment variables will be used.
 
 * **Required:** No
 * **Importance:** Low
@@ -1637,8 +1571,7 @@ The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
 
 ### `vsphere_config.frozen_vm.cluster`
 
-The vSphere cluster name, only takes effect when `library_item` is set and `resource_pool` is unset.
-Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
+The vSphere cluster name, only takes effect when `library_item` is set and `resource_pool` is unset. Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
 
 * **Required:** No
 * **Importance:** Medium
@@ -1648,8 +1581,7 @@ Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
 
 ### `vsphere_config.frozen_vm.datastore`
 
-The target vSphere datastore name for storing the virtual machine files of the frozen VM to be deployed from OVF template.
-Will take effect only when `library_item` is set. If `resource_pool` is also set, this datastore must be a shared datastore among the ESXi hosts.
+The target vSphere datastore name for storing the virtual machine files of the frozen VM to be deployed from OVF template. Will take effect only when `library_item` is set. If `resource_pool` is also set, this datastore must be a shared datastore among the ESXi hosts.
 
 * **Required:** No
 * **Importance:** Low
@@ -1663,10 +1595,7 @@ Will take effect only when `library_item` is set. If `resource_pool` is also set
 
 ### `vsphere_config.gpu_config.dynamic_pci_passthrough`
 
-The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
-The default value is False, which indicates regular PCI Passthrough.
-If set to True, the Dynamic PCI passthrough (<https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html>) will be enabled for the GPU.
-The VM with Dynamic PCI passthrough GPU can still support vSphere DRS.
+The switch controlling the way for binding the GPU from ESXi host to the Ray node VM. The default value is False, which indicates regular PCI Passthrough. If set to True, the Dynamic PCI passthrough (<https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html>) will be enabled for the GPU. The VM with Dynamic PCI passthrough GPU can still support vSphere DRS.
 
 * **Required:** No
 * **Importance:** Low
@@ -1819,9 +1748,7 @@ The number of GPUs made available by this node.
 
 ::::{tab-set}
 :::{tab-item} AWS
-The memory in bytes allocated for python worker heap memory on the node.
-If not configured, Autoscaler will automatically detect the amount of RAM on
-the node for AWS/Kubernetes and allocate 70% of it for the heap.
+The memory in bytes allocated for python worker heap memory on the node. If not configured, Autoscaler will automatically detect the amount of RAM on the node for AWS/Kubernetes and allocate 70% of it for the heap.
 
 * **Required:** No
 * **Importance:** Low
@@ -1845,8 +1772,7 @@ The memory in bytes allocated for python worker heap memory on the node.
 :::
 
 :::{tab-item} vSphere
-The memory in megabytes allocated for python worker heap memory on the node.
-If not configured, the node will use the same memory settings as the frozen VM.
+The memory in megabytes allocated for python worker heap memory on the node. If not configured, the node will use the same memory settings as the frozen VM.
 
 * **Required:** No
 * **Importance:** High
