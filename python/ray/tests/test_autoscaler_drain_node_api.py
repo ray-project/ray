@@ -65,7 +65,7 @@ def test_drain_api(autoscaler_v2, shutdown_only):
     # Autoscaling cluster with Ray process termination mocked out in the node
     # provider.
     cluster = MockAutoscalingCluster(
-        head_resources={"CPU": 1},
+        head_resources={"CPU": 1, "GPU": 0},
         worker_node_types={
             "gpu_node": {
                 "resources": {

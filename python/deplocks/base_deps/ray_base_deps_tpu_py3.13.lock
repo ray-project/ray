@@ -995,9 +995,14 @@ grpcio==1.78.0 \
     #   google-cloud-storage-control
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   ray
     #   tpu-info
+grpcio-reflection==1.78.0 \
+    --hash=sha256:06fcfde9e6888cdd12e9dd1cf6dc7c440c2e9acf420f696ccbe008672ed05b60 \
+    --hash=sha256:e6e60c0b85dbcdf963b4d4d150c0f1d238ba891d805b575c52c0365d07fc0c40
+    # via ray
 grpcio-status==1.78.0 \
     --hash=sha256:a34cfd28101bfea84b5aa0f936b4b423019e9213882907166af6b3bddc59e189 \
     --hash=sha256:b492b693d4bf27b47a6c32590701724f1d3b9444b36491878fb71f6208857f34
@@ -2202,6 +2207,7 @@ protobuf==6.33.5 \
     #   google-cloud-storage-control
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   opentelemetry-proto
     #   orbax-checkpoint

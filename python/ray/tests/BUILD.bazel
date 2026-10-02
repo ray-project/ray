@@ -604,6 +604,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
@@ -622,6 +623,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
@@ -843,6 +845,7 @@ py_test_module_list(
         "test_client_metadata.py",
         "test_client_terminate.py",
         "test_coordinator_server.py",
+        "test_function_manager_import_error.py",
         "test_monitor.py",
         "test_node_provider_availability_tracker.py",
         "test_response_cache.py",
@@ -1396,6 +1399,7 @@ py_test_module_list(
         "spark/test_basic.py",
         "spark/test_databricks_hook.py",
         "spark/test_multicores_per_task.py",
+        "spark/test_node_provider.py",
         "spark/test_utils.py",
     ],
     tags = [

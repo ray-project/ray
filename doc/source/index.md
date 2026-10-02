@@ -14,7 +14,7 @@ Use Cases <ray-overview/use-cases>
 Examples <ray-overview/examples/index>
 Ecosystem <ray-overview/ray-libraries>
 Ray Core <ray-core/walkthrough>
-Ray Data <data/data>
+Ray Data <data/index>
 Ray Train <train/train>
 Ray Tune <tune/index>
 Ray Serve <serve/index>
