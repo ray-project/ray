@@ -89,7 +89,7 @@ Match the grammatical form of items in a series and avoid redundant conjunctions
 
 ### Use contractions
 
-Contractions read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't. Avoid contractions in a warning or an error message, where the extra weight of the full form helps.
+Always use contractions. They read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't.
 
 Never use "would've," "could've," "should've," "ain't," or "y'all."
 
