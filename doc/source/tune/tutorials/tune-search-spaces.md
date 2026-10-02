@@ -8,8 +8,7 @@ myst:
 
 # Working with Tune Search Spaces
 
-Tune has a native interface for specifying search spaces.
-You can specify the search space via `Tuner(param_space=...)`.
+Tune has a native interface for specifying search spaces. You can specify the search space via `Tuner(param_space=...)`.
 
 Thereby, you can either use the `tune.grid_search` primitive to use grid search:
 
@@ -42,8 +41,7 @@ interface, as some search algorithms may not be compatible.
 :::
 
 
-To sample multiple times/run multiple trials, specify `tune.RunConfig(num_samples=N`.
-If `grid_search` is provided as an argument, the *same* grid will be repeated `N` times.
+To sample multiple times/run multiple trials, specify `tune.RunConfig(num_samples=N`. If `grid_search` is provided as an argument, the *same* grid will be repeated `N` times.
 
 ```python
 # 13 different configs.
@@ -97,8 +95,7 @@ tuner.fit()
 
 
 
-Note that grid search and random search primitives are inter-operable.
-Each can be used independently or in combination with each other.
+Note that grid search and random search primitives are inter-operable. Each can be used independently or in combination with each other.
 
 ```python
 # 6 different configs.
@@ -110,8 +107,7 @@ tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=2), param_
 tuner.fit()
 ```
 
-In the below example, `num_samples=10` repeats the 3x3 grid search 10 times,
-for a total of 90 trials, each with randomly sampled values of `alpha` and `beta`.
+In the below example, `num_samples=10` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of `alpha` and `beta`.
 
 ```{code-block} python
 :emphasize-lines: 12
@@ -137,22 +133,16 @@ for a total of 90 trials, each with randomly sampled values of `alpha` and `beta
 ```
 
 :::{tip}
-Avoid passing large objects as values in the search space, as that will incur a performance overhead.
-Use {func}`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in or load them inside your trainable
-from disk (making sure that all nodes have access to the files) or cloud storage.
-See {ref}`tune-bottlenecks` for more information.
+Avoid passing large objects as values in the search space, as that will incur a performance overhead. Use {func}`tune.with_parameters <ray.tune.with_parameters>` to pass large objects in or load them inside your trainable from disk (making sure that all nodes have access to the files) or cloud storage. See {ref}`tune-bottlenecks` for more information.
 :::
 
 (tune_custom-search)=
 
 ## How to use Custom and Conditional Search Spaces in Tune?
 
-You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another).
-Use `tune.sample_from(func)` to provide a **custom** callable function for generating a search space.
+You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another). Use `tune.sample_from(func)` to provide a **custom** callable function for generating a search space.
 
-The parameter `func` should take in a `config` dict, which contains the values
-already sampled for the trial, letting you access other hyperparameters.
-This is useful for conditional distributions:
+The parameter `func` should take in a `config` dict, which contains the values already sampled for the trial, letting you access other hyperparameters. This is useful for conditional distributions:
 
 ```python
 tuner = tune.Tuner(
@@ -167,11 +157,7 @@ tuner = tune.Tuner(
 tuner.fit()
 ```
 
-Here's an example showing a grid search over two nested parameters combined with random sampling from
-two lambda functions, generating 9 different trials.
-Note that the value of `beta` depends on the value of `alpha`,
-which is represented by referencing `config["alpha"]` in the lambda function.
-This lets you specify conditional parameter distributions.
+Here's an example showing a grid search over two nested parameters combined with random sampling from two lambda functions, generating 9 different trials. Note that the value of `beta` depends on the value of `alpha`, which is represented by referencing `config["alpha"]` in the lambda function. This lets you specify conditional parameter distributions.
 
 ```{code-block} python
 :emphasize-lines: 4-11
@@ -191,11 +177,7 @@ This lets you specify conditional parameter distributions.
 ```
 
 :::{note}
-This format is not supported by every SearchAlgorithm, and only some SearchAlgorithms, like {ref}`HyperOpt <tune-hyperopt>`
-and {ref}`Optuna <tune-optuna>`, handle conditional search spaces at all.
+This format is not supported by every SearchAlgorithm, and only some SearchAlgorithms, like {ref}`HyperOpt <tune-hyperopt>` and {ref}`Optuna <tune-optuna>`, handle conditional search spaces at all.
 
-In order to use conditional search spaces with {ref}`HyperOpt <tune-hyperopt>`,
-a [Hyperopt search space](http://hyperopt.github.io/hyperopt/getting-started/search_spaces/) isnecessary.
-{ref}`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run
-interface ({doc}`/tune/examples/optuna_example`).
+In order to use conditional search spaces with {ref}`HyperOpt <tune-hyperopt>`, a [Hyperopt search space](http://hyperopt.github.io/hyperopt/getting-started/search_spaces/) isnecessary. {ref}`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run interface ({doc}`/tune/examples/optuna_example`).
 :::

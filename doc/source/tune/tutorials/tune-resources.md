@@ -8,11 +8,9 @@ myst:
 
 # A Guide To Parallelism and Resources for Ray Tune
 
-Parallelism is determined by per trial resources (defaulting to 1 CPU, 0 GPU per trial)
-and the resources available to Tune (`ray.cluster_resources()`).
+Parallelism is determined by per trial resources (defaulting to 1 CPU, 0 GPU per trial) and the resources available to Tune (`ray.cluster_resources()`).
 
-By default, Tune automatically runs `N` concurrent trials, where `N` is the number
-of CPUs (cores) on your machine.
+By default, Tune automatically runs `N` concurrent trials, where `N` is the number of CPUs (cores) on your machine.
 
 ```python
 # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
@@ -23,10 +21,7 @@ tuner = tune.Tuner(
 results = tuner.fit()
 ```
 
-You can override this per trial resources with {func}`tune.with_resources <ray.tune.with_resources>`. Here you can
-specify your resource requests using either a dictionary or a
-{class}`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
-object. In either case, Ray Tune will try to start a placement group for each trial.
+You can override this per trial resources with {func}`tune.with_resources <ray.tune.with_resources>`. Here you can specify your resource requests using either a dictionary or a {class}`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>` object. In either case, Ray Tune will try to start a placement group for each trial.
 
 ```python
 # If you have 4 CPUs on your machine, this will run 2 concurrent trials at a time.
@@ -66,30 +61,19 @@ results = tuner.fit()
 ```
 
 
-Tune will allocate the specified GPU and CPU as specified by `tune.with_resources` to each individual trial.
-Even if the trial cannot be scheduled right now, Ray Tune will still try to start the respective placement group. If not enough resources are available, this will trigger
-{ref}`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
+Tune will allocate the specified GPU and CPU as specified by `tune.with_resources` to each individual trial. Even if the trial cannot be scheduled right now, Ray Tune will still try to start the respective placement group. If not enough resources are available, this will trigger {ref}`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
 
 It is also possible to specify memory (`"memory"`, in bytes) and custom resource requirements.
 
-If your trainable function starts more remote workers, you will need to pass so-called placement group
-factory objects to request these resources.
-See the {class}`PlacementGroupFactory documentation <ray.tune.execution.placement_groups.PlacementGroupFactory>`
-for further information.
-This also applies if you are using other libraries making use of Ray, such as Modin.
-Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
+If your trainable function starts more remote workers, you will need to pass so-called placement group factory objects to request these resources. See the {class}`PlacementGroupFactory documentation <ray.tune.execution.placement_groups.PlacementGroupFactory>` for further information. This also applies if you are using other libraries making use of Ray, such as Modin. Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
 
 :::{note}
-The resources specified this way will only be allocated for scheduling Tune trials.
-These resources will not be enforced on your objective function (Tune trainable) automatically.
-You will have to make sure your trainable has enough resources to run (e.g. by setting `n_jobs` for a
-scikit-learn model accordingly).
+The resources specified this way will only be allocated for scheduling Tune trials. These resources will not be enforced on your objective function (Tune trainable) automatically. You will have to make sure your trainable has enough resources to run (e.g. by setting `n_jobs` for a scikit-learn model accordingly).
 :::
 
 ## How to leverage GPUs in Tune?
 
-To leverage GPUs, you must set `gpu` in `tune.with_resources(trainable, resources_per_trial)`.
-This will automatically set `CUDA_VISIBLE_DEVICES` for each trial.
+To leverage GPUs, you must set `gpu` in `tune.with_resources(trainable, resources_per_trial)`. This will automatically set `CUDA_VISIBLE_DEVICES` for each trial.
 
 ```python
 # If you have 8 GPUs, this will run 8 trials at once.
@@ -115,9 +99,7 @@ You can find an example of this in the {doc}`Keras MNIST example </tune/examples
 If `gpu` is not set, `CUDA_VISIBLE_DEVICES` environment variable will be set as empty, disallowing GPU access.
 :::
 
-**Troubleshooting**: Occasionally, you may run into GPU memory issues when running a new trial. This may be
-due to the previous trial not cleaning up its GPU state fast enough. To avoid this,
-you can use {func}`tune.utils.wait_for_gpu <ray.tune.utils.wait_for_gpu>`.
+**Troubleshooting**: Occasionally, you may run into GPU memory issues when running a new trial. This may be due to the previous trial not cleaning up its GPU state fast enough. To avoid this, you can use {func}`tune.utils.wait_for_gpu <ray.tune.utils.wait_for_gpu>`.
 
 (tune-dist-training)=
 
@@ -131,9 +113,7 @@ For more details, see {ref}`Ray Train Hyperparameter Optimization <train-tune>`.
 
 To specifies the max number of trials to run concurrently, set `max_concurrent_trials` in {class}`TuneConfig <ray.tune.tune_config.TuneConfig>`.
 
-Note that actual parallelism can be less than `max_concurrent_trials` and will be determined by how many trials
-can fit in the cluster at once (i.e., if you have a trial that requires 16 GPUs, your cluster has 32 GPUs,
-and `max_concurrent_trials=10`, the `Tuner` can only run 2 trials concurrently).
+Note that actual parallelism can be less than `max_concurrent_trials` and will be determined by how many trials can fit in the cluster at once (i.e., if you have a trial that requires 16 GPUs, your cluster has 32 GPUs, and `max_concurrent_trials=10`, the `Tuner` can only run 2 trials concurrently).
 
 ```python
 from ray.tune import TuneConfig

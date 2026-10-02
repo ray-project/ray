@@ -63,8 +63,7 @@ Note that you can customize the directory of results by specifying: `RunConfig(s
 
 ## Running a Distributed Tune Experiment
 
-Running a distributed (multi-node) experiment requires Ray to be started already.
-You can do this on local machines or on the cloud.
+Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud.
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage `CUDA_VISIBLE_DEVICES`.
 
@@ -104,9 +103,7 @@ ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
 
 ## Storage Options in a Distributed Tune Run
 
-In a distributed experiment, you should try to use {ref}`cloud checkpointing <tune-cloud-checkpointing>` to
-reduce synchronization overhead. For this, you just have to specify a remote `storage_path` in the
-{class}`RunConfig <ray.tune.RunConfig>`.
+In a distributed experiment, you should try to use {ref}`cloud checkpointing <tune-cloud-checkpointing>` to reduce synchronization overhead. For this, you just have to specify a remote `storage_path` in the {class}`RunConfig <ray.tune.RunConfig>`.
 
 `my_trainable` is a user-defined {ref}`Tune Trainable <tune_60_seconds_trainables>` in the following example:
 
@@ -124,16 +121,14 @@ tuner = tune.Tuner(
 tuner.fit()
 ```
 
-For more details or customization, see our
-{ref}`guide on configuring storage in a distributed Tune experiment <tune-storage-options>`.
+For more details or customization, see our {ref}`guide on configuring storage in a distributed Tune experiment <tune-storage-options>`.
 
 
 (tune-distributed-spot)=
 
 ## Tune Runs on preemptible instances
 
-Running on spot instances (or preemptible instances) can reduce the cost of your experiment.
-You can enable spot instances in AWS via the following configuration modification:
+Running on spot instances (or preemptible instances) can reduce the cost of your experiment. You can enable spot instances in AWS via the following configuration modification:
 
 ```yaml
 # Provider-specific config for worker nodes, e.g. instance type.
@@ -167,9 +162,7 @@ worker_nodes:
       - preemptible: true
 ```
 
-Spot instances may be pre-empted suddenly while trials are still running.
-Tune allows you to mitigate the effects of this by preserving the progress of your model training through
-{ref}`checkpointing <tune-trial-checkpoint>`.
+Spot instances may be pre-empted suddenly while trials are still running. Tune allows you to mitigate the effects of this by preserving the progress of your model training through {ref}`checkpointing <tune-trial-checkpoint>`.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -221,20 +214,12 @@ You can also specify `storage_path=...`, as part of `RunConfig`, which is taken 
 
 ## Fault Tolerance of Tune Runs
 
-Tune automatically restarts trials in the case of trial failures (if `max_failures != 0`),
-both in the single node and distributed setting.
+Tune automatically restarts trials in the case of trial failures (if `max_failures != 0`), both in the single node and distributed setting.
 
-For example, let's say a node is pre-empted or crashes while a trial is still executing on that node.
-Assuming that a checkpoint for this trial exists (and in the distributed setting,
-{ref}`some form of persistent storage is configured to access the trial's checkpoint <tune-storage-options>`),
-Tune waits until available resources are available to begin executing the trial again from where it left off.
-If no checkpoint is found, the trial will restart from scratch.
-See {ref}`here for information on checkpointing <tune-trial-checkpoint>`.
+For example, let's say a node is pre-empted or crashes while a trial is still executing on that node. Assuming that a checkpoint for this trial exists (and in the distributed setting, {ref}`some form of persistent storage is configured to access the trial's checkpoint <tune-storage-options>`), Tune waits until available resources are available to begin executing the trial again from where it left off. If no checkpoint is found, the trial will restart from scratch. See {ref}`here for information on checkpointing <tune-trial-checkpoint>`.
 
 
-If the trial or actor is then placed on a different node, Tune automatically pushes the previous checkpoint file
-to that node and restores the remote trial actor state, allowing the trial to resume from the latest checkpoint
-even after failure.
+If the trial or actor is then placed on a different node, Tune automatically pushes the previous checkpoint file to that node and restores the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
 
 ### Recovering From Failures
 
@@ -286,8 +271,7 @@ $ ray up CLUSTER.YAML -n="cluster3"
 
 ## Troubleshooting
 
-Sometimes, your program may freeze.
-Run this to restart the Ray cluster without running any of the installation commands.
+Sometimes, your program may freeze. Run this to restart the Ray cluster without running any of the installation commands.
 
 ```bash
 $ ray up CLUSTER.YAML --restart-only

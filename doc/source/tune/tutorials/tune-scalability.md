@@ -7,17 +7,11 @@ myst:
 
 # Scalability and Overhead Benchmarks for Ray Tune
 
-We conducted a series of micro-benchmarks where we evaluated the scalability of Ray Tune and analyzed the
-performance overhead we observed. The results from these benchmarks are reflected in the documentation,
-e.g. when we make suggestions on {ref}`how to remove performance bottlenecks <tune-bottlenecks>`.
+We conducted a series of micro-benchmarks where we evaluated the scalability of Ray Tune and analyzed the performance overhead we observed. The results from these benchmarks are reflected in the documentation, e.g. when we make suggestions on {ref}`how to remove performance bottlenecks <tune-bottlenecks>`.
 
-This page gives an overview over the experiments we did. For each of these experiments, the goal was to
-examine the total runtime of the experiment and address issues when the observed overhead compared to the
-minimal theoretical time was too high (e.g. more than 20% overhead).
+This page gives an overview over the experiments we did. For each of these experiments, the goal was to examine the total runtime of the experiment and address issues when the observed overhead compared to the minimal theoretical time was too high (e.g. more than 20% overhead).
 
-In some of the experiments we tweaked the default settings for maximum throughput, e.g. by disabling
-trial synchronization or result logging. If this is the case, this is stated in the respective benchmark
-description.
+In some of the experiments we tweaked the default settings for maximum throughput, e.g. by disabling trial synchronization or result logging. If this is the case, this is stated in the respective benchmark description.
 
 
 ```{list-table} Ray Tune scalability benchmarks overview
@@ -83,38 +77,23 @@ Below we discuss some insights on results where we observed much overhead.
 
 ## Result throughput
 
-Result throughput describes the number of results Ray Tune can process in a given timeframe (e.g.
-"results per second").
-The higher the throughput, the more concurrent results can be processed without major delays.
+Result throughput describes the number of results Ray Tune can process in a given timeframe (e.g. "results per second"). The higher the throughput, the more concurrent results can be processed without major delays.
 
-Result throughput is limited by the time it takes to process results. When a trial reports results, it only
-continues training once the trial executor re-triggered the remote training function. If many trials report
-results at the same time, each subsequent remote training call is only triggered after handling that trial's
-results.
+Result throughput is limited by the time it takes to process results. When a trial reports results, it only continues training once the trial executor re-triggered the remote training function. If many trials report results at the same time, each subsequent remote training call is only triggered after handling that trial's results.
 
-To speed the process up, Ray Tune adaptively buffers results, so that trial training is continued earlier if
-many trials are running in parallel and report many results at the same time. Still, processing hundreds of
-results per trial for dozens or hundreds of trials can become a bottleneck.
+To speed the process up, Ray Tune adaptively buffers results, so that trial training is continued earlier if many trials are running in parallel and report many results at the same time. Still, processing hundreds of results per trial for dozens or hundreds of trials can become a bottleneck.
 
-**Main insight**: Ray Tune will throw a warning when trial processing becomes a bottleneck. If you notice
-that this becomes a problem, please follow our guidelines outlined {ref}`in the FAQ <tune-bottlenecks>`.
-Generally, it is advised to not report too many results at the same time. Consider increasing the report
-intervals by a factor of 5-10x.
+**Main insight**: Ray Tune will throw a warning when trial processing becomes a bottleneck. If you notice that this becomes a problem, please follow our guidelines outlined {ref}`in the FAQ <tune-bottlenecks>`. Generally, it is advised to not report too many results at the same time. Consider increasing the report intervals by a factor of 5-10x.
 
 Below we present more detailed results on the result throughput performance.
 
 ### Benchmarking many concurrent Tune trials
 
-In this setup, loggers (CSV, JSON, and TensorBoardX) and trial synchronization are disabled, except when
-explicitly noted.
+In this setup, loggers (CSV, JSON, and TensorBoardX) and trial synchronization are disabled, except when explicitly noted.
 
-In this experiment, we're running many concurrent trials (up to 1,000) on a cluster. We then adjust the
-reporting frequency (number of results per second) of the trials to measure the throughput limits.
+In this experiment, we're running many concurrent trials (up to 1,000) on a cluster. We then adjust the reporting frequency (number of results per second) of the trials to measure the throughput limits.
 
-It seems that around 500 total results/second seem to be the threshold for acceptable performance
-when logging and synchronization are disabled. With logging enabled, around 50-100 results per second
-can still be managed without too much overhead, but after that measures to decrease incoming results
-should be considered.
+It seems that around 500 total results/second seem to be the threshold for acceptable performance when logging and synchronization are disabled. With logging enabled, around 50-100 results per second can still be managed without too much overhead, but after that measures to decrease incoming results should be considered.
 
 ```{list-table}
 :header-rows: 1
@@ -185,15 +164,11 @@ should be considered.
 
 ### Benchmarking many Tune results on a single node
 
-In this setup, loggers (CSV, JSON, and TensorBoardX) are disabled, except when
-explicitly noted.
+In this setup, loggers (CSV, JSON, and TensorBoardX) are disabled, except when explicitly noted.
 
-In this experiment, we're running 96 concurrent trials on a single node. We then adjust the
-reporting frequency (number of results per second) of the trials to find the throughput limits.
-Compared to the cluster experiment setup, we report much more often, as we're running less total trials in parallel.
+In this experiment, we're running 96 concurrent trials on a single node. We then adjust the reporting frequency (number of results per second) of the trials to find the throughput limits. Compared to the cluster experiment setup, we report much more often, as we're running less total trials in parallel.
 
-On a single node, throughput seems to be a bit higher. With logging, handling 1000 results per second
-seems acceptable in terms of overhead, though you should probably still target for a lower number.
+On a single node, throughput seems to be a bit higher. With logging, handling 1000 results per second seems acceptable in terms of overhead, though you should probably still target for a lower number.
 
 ```{list-table}
 :header-rows: 1
@@ -252,20 +227,11 @@ seems acceptable in terms of overhead, though you should probably still target f
 
 ## Network overhead in Ray Tune
 
-Running Ray Tune on a distributed setup leads to network communication overhead. This is mostly due to
-trial synchronization, where results and checkpoints are periodically synchronized and sent via the network.
-Per default this happens via SSH, where connection initialization can take between 1 and 2 seconds each time.
-Since this is a blocking operation that happens on a per-trial basis, running many concurrent trials
-quickly becomes bottlenecked by this synchronization.
+Running Ray Tune on a distributed setup leads to network communication overhead. This is mostly due to trial synchronization, where results and checkpoints are periodically synchronized and sent via the network. Per default this happens via SSH, where connection initialization can take between 1 and 2 seconds each time. Since this is a blocking operation that happens on a per-trial basis, running many concurrent trials quickly becomes bottlenecked by this synchronization.
 
-In this experiment, we ran a number of trials on a cluster. Each trial was run on a separate node. We
-varied the number of concurrent trials (and nodes) to see how much network communication affects
-total runtime.
+In this experiment, we ran a number of trials on a cluster. Each trial was run on a separate node. We varied the number of concurrent trials (and nodes) to see how much network communication affects total runtime.
 
-**Main insight**: When running many concurrent trials in a distributed setup, consider using
-{ref}`cloud checkpointing <tune-cloud-checkpointing>` for checkpoint synchronization instead. Another option would
-be to use a shared storage and disable syncing to driver. The best practices are described
-{ref}`here for Kubernetes setups <tune-kubernetes>` but is applicable for any kind of setup.
+**Main insight**: When running many concurrent trials in a distributed setup, consider using {ref}`cloud checkpointing <tune-cloud-checkpointing>` for checkpoint synchronization instead. Another option would be to use a shared storage and disable syncing to driver. The best practices are described {ref}`here for Kubernetes setups <tune-kubernetes>` but is applicable for any kind of setup.
 
 
 In the table below we present more detailed results on the network communication overhead.

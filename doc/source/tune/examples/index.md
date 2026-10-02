@@ -65,10 +65,7 @@ Aim Example <tune-aim>
 Comet Example <tune-comet>
 ```
 
-Ray Tune integrates with some popular Experiment tracking and management tools,
-such as CometML, or Weights & Biases. For how
-to use Ray Tune with Tensorboard, see
-{ref}`Guide to logging and outputs <tune-logging>`.
+Ray Tune integrates with some popular Experiment tracking and management tools, such as CometML, or Weights & Biases. For how to use Ray Tune with Tensorboard, see {ref}`Guide to logging and outputs <tune-logging>`.
 
 ```{list-table}
 * - {doc}`Using Aim with Ray Tune for experiment management <tune-aim>`
@@ -92,9 +89,7 @@ Nevergrad Example <nevergrad_example>
 Optuna Example <optuna_example>
 ```
 
-Tune integrates with a wide variety of hyperparameter optimization frameworks
-and their respective search algorithms. See the following detailed examples
-for each integration:
+Tune integrates with a wide variety of hyperparameter optimization frameworks and their respective search algorithms. See the following detailed examples for each integration:
 
 ```{list-table}
 * - {doc}`ax_example`
