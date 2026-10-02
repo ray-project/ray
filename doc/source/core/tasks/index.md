@@ -241,7 +241,7 @@ By default, a task returns a single object ref. To return multiple object refs, 
 :::
 ::::
 
-For tasks that return multiple objects, Ray also supports remote generators, which return one object at a time to reduce memory usage on the worker. You can also set the number of return values dynamically, which is useful when the caller doesn't know how many return values to expect. For use cases, see {ref}`Ray generators <generators>`.
+For tasks that return multiple objects, Ray also supports remote generators, which return one object at a time to reduce memory usage on the worker. You can also set the number of return values dynamically, which can be useful when the caller doesn't know how many return values to expect. For use cases, see {ref}`Ray generators <generators>`.
 
 ::::{tab-set}
 :::{tab-item} Python

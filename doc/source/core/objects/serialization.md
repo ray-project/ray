@@ -31,7 +31,7 @@ Each node has its own object store. Ray doesn't automatically broadcast data in 
 Ray optimizes for NumPy arrays by using Pickle protocol 5 with out-of-band data. Ray stores each NumPy array as a read-only object, and all Ray workers on the same node read the array from the object store without copying it. Each NumPy array object in a worker process holds a pointer to the array in shared memory. To write to the read-only object, you must first copy it into the local process memory.
 
 :::{tip}
-You can often avoid serialization issues by using only native types, such as NumPy arrays, lists or dictionaries of NumPy arrays, and other primitive types. For an object that Ray can't serialize, hold it in an actor instead.
+You can often avoid serialization issues by using only native types, such as NumPy arrays, lists or dictionaries of NumPy arrays, and other primitive types. You can also often avoid them by holding objects that Ray can't serialize in an actor.
 :::
 
 ### Fixing "assignment destination is read-only"
@@ -125,7 +125,7 @@ Elapsed time: 7.933729998010676s
 
 ## Customized serialization
 
-Ray's default serializer combines pickle5 and cloudpickle. It might not work for you, because it fails to serialize some objects or is too slow for others. In those cases, customize the serialization process.
+Ray's default serializer combines pickle5 and cloudpickle. It might not work for you, for example because it fails to serialize some objects or is too slow for others. In those cases, customize the serialization process.
 
 You can define a custom serialization process in at least three ways:
 

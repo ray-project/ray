@@ -477,7 +477,7 @@ What's the difference between a worker and an actor?
 
 Each "Ray worker" is a Python process.
 
-Ray treats workers differently for tasks and actors. For tasks, Ray uses one Ray worker to execute multiple tasks. For actors, Ray starts a Ray worker as a dedicated actor.
+Ray treats workers differently for tasks and actors. For tasks, Ray uses a Ray worker to execute multiple tasks. For actors, Ray starts a Ray worker as a dedicated actor.
 
 * **Tasks**: When Ray starts on a machine, a number of Ray workers start automatically, one per CPU by default. Ray uses them to execute tasks, much like a process pool. If the cluster has 16 CPUs, so that `ray.cluster_resources()["CPU"] == 16`, and you execute 8 tasks with `num_cpus=2`, you end up with 8 of your 16 workers idling.
 
