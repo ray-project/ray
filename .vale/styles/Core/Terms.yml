@@ -16,6 +16,12 @@ ignorecase: false
 # `CuPy`, live in the accept list instead of here. The accept list drives `Vale.Terms`,
 # which already flags `AsyncIO` and `GLOO`, so a swap would alert twice.
 vocab: false
+# `action: replace` makes Vale's JSON output carry the replacement text, so a tool
+# can apply these swaps from Vale's own alerts. Every swap here must be safe to
+# apply without judgment. A term that needs a human decision belongs in an
+# existence rule instead.
+action:
+  name: replace
 swap:
   # Lowercase "raylet", the per-node process. The source code uses the lowercase form
   # throughout. The swaps carry a preceding word so a sentence that opens with
