@@ -179,6 +179,13 @@ def _mock_object_locations(node_ids_by_ref):
     return patch("ray.experimental.locations.get_local_object_locations", mock)
 
 
+def _patch_node_loss_version(version: int):
+    return patch(
+        "ray.data._internal.execution.bundle_queue.resident_first.get_node_loss_version",
+        return_value=version,
+    )
+
+
 def test_rotates_missing_bundles():
     lost = _create_bundle("lost")
     resident1 = _create_bundle("resident1")
@@ -192,11 +199,13 @@ def test_rotates_missing_bundles():
     queue = ResidentFirstBundleQueue()
     # Queue more lost instances than there are distinct bundles, so a rotation
     # budget counted in distinct bundles would stop before reaching a resident.
-    for bundle in (lost, lost, lost, lost, resident1, resident2):
-        queue.add(bundle)
+    with _patch_node_loss_version(0):
+        for bundle in (lost, lost, lost, lost, resident1, resident2):
+            queue.add(bundle)
 
-    with _mock_object_locations(node_ids_by_ref), patch(
-        "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
+    # Blocks can only go missing after a node loss, so simulate one.
+    with _mock_object_locations(node_ids_by_ref), _patch_node_loss_version(1), patch(
+        "ray.data._internal.utils.object_utils.get_lost_node_ids", return_value=set()
     ):
         # The lost bundle sits at the front but is rotated behind the resident ones.
         assert queue.peek_next() is resident1
@@ -209,19 +218,71 @@ def test_rotates_missing_bundles():
         assert len(queue) == 0
 
 
+def test_no_lookup_until_node_loss():
+    bundle = _create_bundle("resident")
+    node_ids_by_ref = {bundle.block_refs[0]: ["node1"]}
+    queue = ResidentFirstBundleQueue()
+
+    with _mock_object_locations(node_ids_by_ref) as lookup, patch(
+        "ray.data._internal.utils.object_utils.get_lost_node_ids", return_value=set()
+    ):
+        # No node lost since start: blocks are pinned, nothing to check.
+        with _patch_node_loss_version(0):
+            queue.add(bundle)
+            assert queue.has_resident_next()
+            assert queue.peek_next() is bundle
+        assert lookup.call_count == 0
+
+        # A node loss bumps the version: verify once, then trust it again.
+        with _patch_node_loss_version(1):
+            assert queue.has_resident_next()
+            assert queue.has_resident_next()
+        assert lookup.call_count == 1
+
+
+def test_bundle_added_after_node_loss_is_verified():
+    """A bundle can reach a queue long after its blocks were produced (e.g. via
+    an upstream queue), so once any node has been lost an add is not trusted."""
+    bundle = _create_bundle("resident")
+    node_ids_by_ref = {bundle.block_refs[0]: ["node1"]}
+    queue = ResidentFirstBundleQueue()
+
+    with _mock_object_locations(node_ids_by_ref) as lookup, patch(
+        "ray.data._internal.utils.object_utils.get_lost_node_ids", return_value=set()
+    ), _patch_node_loss_version(1):
+        queue.add(bundle)
+        assert queue.has_resident_next()
+        assert lookup.call_count == 1
+        assert queue.has_resident_next()
+        assert lookup.call_count == 1
+
+
+def test_node_loss_tracker_versions():
+    from ray.data._internal.utils.cached_ray_internals import _NodeLossTracker
+
+    tracker = _NodeLossTracker()
+    # The first observation is the baseline, not a loss.
+    assert tracker.refresh(frozenset({"already-dead"})) == 0
+    assert tracker.refresh(frozenset({"already-dead"})) == 0
+    # Any change to the lost set is one event.
+    assert tracker.refresh(frozenset({"already-dead", "n1"})) == 1
+    assert tracker.refresh(frozenset({"n1"})) == 2
+    assert tracker.refresh(frozenset({"n1"})) == 2
+
+
 def test_has_resident_next():
     lost = _create_bundle("lost")
     resident = _create_bundle("resident")
     node_ids_by_ref = {lost.block_refs[0]: [], resident.block_refs[0]: ["node1"]}
 
     queue = ResidentFirstBundleQueue()
-    with _mock_object_locations(node_ids_by_ref), patch(
-        "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
-    ):
-        assert not queue.has_resident_next()
-
-        # A lost bundle counts as present but not resident.
+    with _patch_node_loss_version(0):
         queue.add(lost)
+    # Blocks can only go missing after a node loss, so simulate one.
+    with _mock_object_locations(node_ids_by_ref), _patch_node_loss_version(1), patch(
+        "ray.data._internal.utils.object_utils.get_lost_node_ids", return_value=set()
+    ):
+        # A lost bundle counts as present but not resident.
         assert queue.has_next()
         assert not queue.has_resident_next()
 
@@ -232,23 +293,6 @@ def test_has_resident_next():
         assert not queue.has_resident_next()
 
 
-def test_refreshes_size():
-    bundle = _create_bundle("test1")
-    # Pulled copies on other nodes don't add to the estimate.
-    node_ids_by_ref = {bundle.block_refs[0]: ["node1", "node2"]}
-
-    queue = ResidentFirstBundleQueue(update_frequency_s=0)
-    queue.add(bundle)
-
-    with _mock_object_locations(node_ids_by_ref):
-        assert queue.estimate_size_bytes() == 2**20
-
-    # Objects lost from the object store no longer count towards the estimate.
-    node_ids_by_ref[bundle.block_refs[0]] = []
-    with _mock_object_locations(node_ids_by_ref):
-        assert queue.estimate_size_bytes() == 0
-
-
 def test_thread_safety():
     mock_locations = MagicMock(
         return_value={"": {"node_ids": ["node1"], "object_size": 100}}
@@ -256,9 +300,9 @@ def test_thread_safety():
     with patch(
         "ray.experimental.locations.get_local_object_locations", mock_locations
     ), patch(
-        "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
+        "ray.data._internal.utils.object_utils.get_lost_node_ids", return_value=set()
     ):
-        queue = ResidentFirstBundleQueue(update_frequency_s=0)
+        queue = ResidentFirstBundleQueue()
         exceptions = []
 
         def add_pop_worker():
@@ -295,11 +339,10 @@ def test_thread_safety():
 
 def test_remove_duplicates():
     bundle = _create_bundle(0)
-    queue = ResidentFirstBundleQueue(update_frequency_s=0)
+    queue = ResidentFirstBundleQueue()
 
     queue.add(bundle)
     queue.add(bundle)
-    # Refreshing sizes between add and remove used to drop the size entry early.
     queue.estimate_size_bytes()
     queue.remove(bundle)
     queue.remove(bundle)
@@ -310,7 +353,7 @@ def test_remove_duplicates():
 
 def test_size_with_duplicates():
     bundle = _create_bundle(0)
-    queue = ResidentFirstBundleQueue(update_frequency_s=0)
+    queue = ResidentFirstBundleQueue()
 
     queue.add(bundle)
     initial_estimate = queue.estimate_size_bytes()

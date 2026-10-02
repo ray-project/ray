@@ -58,6 +58,10 @@ from ray.data._internal.operator_schema_exporter import (
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data._internal.stats_summary_actor import report_stats_summary
+from ray.data._internal.utils.cached_ray_internals import (
+    start_node_loss_polling,
+    stop_node_loss_polling,
+)
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
@@ -339,6 +343,7 @@ class StreamingExecutor(Executor, threading.Thread):
             # Stop the metadata fetcher (after the loop thread that feeds it has
             # been joined). No-op for the inline fetcher.
             self._metadata_fetcher.stop()
+            stop_node_loss_polling()
             self._update_stats_metrics(
                 state=DatasetState.FINISHED.name
                 if exception is None
@@ -434,6 +439,7 @@ class StreamingExecutor(Executor, threading.Thread):
         """
         exc: Optional[Exception] = None
         self._metadata_fetcher.start()
+        start_node_loss_polling()
         try:
             # Run scheduling loop until complete.
             while True:

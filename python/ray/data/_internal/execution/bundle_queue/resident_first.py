@@ -1,19 +1,15 @@
 import threading
-import time
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from typing_extensions import override
 
 from .base import QueueWithRemoval
 from .hash_link import HashLinkedQueue
+from ray.data._internal.utils.cached_ray_internals import get_node_loss_version
 from ray.data._internal.utils.object_utils import all_objects_exist_for_bundle
-from ray.experimental import locations
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
-
-
-DEFAULT_UPDATE_FREQUENCY_S = 30
 
 
 class ResidentFirstBundleQueue(QueueWithRemoval):
@@ -25,18 +21,24 @@ class ResidentFirstBundleQueue(QueueWithRemoval):
     missing is rotated to the back of the queue instead of being dropped, and
     is served once its blocks are back or nothing resident remains.
 
+    Sizes come from block metadata, as in ``HashLinkedQueue``. Deriving them
+    from object locations would cost one core-worker lookup per queued bundle
+    on the scheduler thread; a shuffle input queue can hold hundreds of
+    thousands of bundles.
+
     This class is thread-safe.
     """
 
-    def __init__(self, update_frequency_s: float = DEFAULT_UPDATE_FREQUENCY_S):
+    def __init__(self):
         super().__init__()
-        self._update_frequency_s = update_frequency_s
 
         self._hash_linked = HashLinkedQueue()
-        # Object store bytes per distinct bundle. Seeded from the bundle's own
-        # metadata and periodically refreshed from actual object locations.
+        # Bytes per distinct bundle, so duplicate entries count once.
         self._bundle_nbytes: Dict["RefBundle", int] = {}
-        self._last_size_refresh_ts = time.time()
+        # Node-loss version at which each bundle is known resident. Blocks are
+        # pinned while queued, so they only go missing when a node dies or
+        # drains.
+        self._resident_version: Dict["RefBundle", int] = {}
         self._total_nbytes = 0
         self._lock = threading.RLock()
 
@@ -56,6 +58,8 @@ class ResidentFirstBundleQueue(QueueWithRemoval):
             if bundle not in self._hash_linked:
                 self._bundle_nbytes[bundle] = bundle.size_bytes()
                 self._total_nbytes += self._bundle_nbytes[bundle]
+                if get_node_loss_version() == 0:
+                    self._resident_version[bundle] = 0
             self._hash_linked.add(bundle)
 
     @override
@@ -100,6 +104,7 @@ class ResidentFirstBundleQueue(QueueWithRemoval):
             # Duplicate instances share the same objects, so the size is only
             # released once the last instance is gone.
             if bundle not in self._hash_linked:
+                self._resident_version.pop(bundle, None)
                 nbytes = self._bundle_nbytes.pop(bundle)
                 self._total_nbytes -= nbytes
                 assert self._total_nbytes >= 0, (
@@ -113,18 +118,12 @@ class ResidentFirstBundleQueue(QueueWithRemoval):
         with self._lock:
             self._hash_linked.clear()
             self._bundle_nbytes.clear()
+            self._resident_version.clear()
             self._total_nbytes = 0
 
     @override
     def estimate_size_bytes(self) -> int:
         with self._lock:
-            now = time.time()
-            # Bundle sizes change when Ray loses objects or creates replicas, so
-            # re-derive them from object locations every `_update_frequency_s`.
-            if now - self._last_size_refresh_ts >= self._update_frequency_s:
-                self._refresh_bundle_sizes()
-                self._total_nbytes = sum(self._bundle_nbytes.values())
-                self._last_size_refresh_ts = now
             return self._total_nbytes
 
     def _try_ensure_first_bundle_exists(self) -> bool:
@@ -134,33 +133,23 @@ class ResidentFirstBundleQueue(QueueWithRemoval):
         Returns:
             Whether the bundle now at the front is fully resident.
         """
+        version = get_node_loss_version()
         num_bundles_skipped = 0
         while num_bundles_skipped < len(self._hash_linked):
             first_bundle = self._hash_linked.peek_next()
             if first_bundle is None:
                 return False
 
+            if self._resident_version.get(first_bundle) == version:
+                return True
             if all_objects_exist_for_bundle(first_bundle):
+                self._resident_version[first_bundle] = version
                 return True
 
             self._hash_linked.get_next()
             self._hash_linked.add(first_bundle)
             num_bundles_skipped += 1
         return False
-
-    def _refresh_bundle_sizes(self) -> None:
-        for bundle in self._bundle_nbytes:
-            object_locs = locations.get_local_object_locations(
-                bundle.block_refs  # pyrefly: ignore[bad-argument-type]
-            )
-
-            nbytes = 0
-            for object_info in object_locs.values():
-                if object_info["object_size"] is not None and object_info["node_ids"]:
-                    nbytes += object_info["object_size"]
-
-            assert nbytes >= 0, nbytes
-            self._bundle_nbytes[bundle] = nbytes
 
     @override
     def num_blocks(self) -> int:
