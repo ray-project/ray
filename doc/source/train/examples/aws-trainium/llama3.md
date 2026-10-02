@@ -14,13 +14,9 @@ myst:
 </a>
 ```
 
-This example demonstrates how to fine-tune the [Llama 3.1 8B](https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/) model on [AWS
-Trainium](https://aws.amazon.com/ai/machine-learning/trainium/) instances using Ray Train, PyTorch Lightning, and AWS Neuron SDK.
+This example demonstrates how to fine-tune the [Llama 3.1 8B](https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/) model on [AWS Trainium](https://aws.amazon.com/ai/machine-learning/trainium/) instances using Ray Train, PyTorch Lightning, and AWS Neuron SDK.
 
-AWS Trainium is the machine learning (ML) chip that AWS built for deep
-learning (DL) training of 100B+ parameter models. [AWS Neuron
-SDK](https://aws.amazon.com/machine-learning/neuron/) helps
-developers train models on Trainium accelerators.
+AWS Trainium is the machine learning (ML) chip that AWS built for deep learning (DL) training of 100B+ parameter models. [AWS Neuron SDK](https://aws.amazon.com/machine-learning/neuron/) helps developers train models on Trainium accelerators.
 
 ## Prepare the environment
 
@@ -53,8 +49,7 @@ chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh
 
 4. Enter the zone your cluster is running in, for example: us-east-2.
 
-5. Verify in the AWS console that the Amazon ECR service has the newly
-   created `kuberay_trn1_llama3.1_pytorch2` repository.
+5. Verify in the AWS console that the Amazon ECR service has the newly created `kuberay_trn1_llama3.1_pytorch2` repository.
 
 6. Update the ECR image ARN in the manifest file used for creating the Ray cluster.
 
@@ -70,9 +65,7 @@ sed -i "s/<REGION>/$REGION/g" 1-llama3-finetune-trn1-create-raycluster.yaml
 
 ## Configuring Ray Cluster
 
-The `llama3.1_8B_finetune_ray_ptl_neuron` directory in the AWS Neuron samples repository simplifies the
-Ray configuration. KubeRay provides a manifest that you can apply
-to the cluster to set up the head and worker pods.
+The `llama3.1_8B_finetune_ray_ptl_neuron` directory in the AWS Neuron samples repository simplifies the Ray configuration. KubeRay provides a manifest that you can apply to the cluster to set up the head and worker pods.
 
 Run the following command to set up the Ray cluster:
 
@@ -83,9 +76,7 @@ kubectl apply -f 1-llama3-finetune-trn1-create-raycluster.yaml
 
 
 ## Accessing Ray dashboard
-Port forward from the cluster to see the state of the Ray dashboard and
-then view it on [http://localhost:8265](http://localhost:8265/).
-Run it in the background with the following command:
+Port forward from the cluster to see the state of the Ray dashboard and then view it on [http://localhost:8265](http://localhost:8265/). Run it in the background with the following command:
 
 
 ```

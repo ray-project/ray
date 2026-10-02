@@ -14,8 +14,7 @@ Below we document key performance benchmarks for common Ray Train tasks and work
 
 ## GPU image training
 
-This task uses the TorchTrainer module to train different amounts of data
-using a PyTorch ResNet model.
+This task uses the TorchTrainer module to train different amounts of data using a PyTorch ResNet model.
 
 We test out the performance across different cluster sizes and data sizes.
 
@@ -24,8 +23,7 @@ We test out the performance across different cluster sizes and data sizes.
 - [GPU training large cluster configuration](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml#L5-L25)
 
 :::{note}
-For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC and
-all ports are open in the security group.
+For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC and all ports are open in the security group.
 :::
 
 
@@ -52,14 +50,11 @@ all ports are open in the security group.
 
 ## PyTorch training parity
 
-This task checks the performance parity between native PyTorch Distributed and
-Ray Train's distributed TorchTrainer.
+This task checks the performance parity between native PyTorch Distributed and Ray Train's distributed TorchTrainer.
 
-We demonstrate that the performance is similar (within 2.5\%) between the two frameworks.
-Performance may vary greatly across different model, hardware, and cluster configurations.
+We demonstrate that the performance is similar (within 2.5\%) between the two frameworks. Performance may vary greatly across different model, hardware, and cluster configurations.
 
-The reported times are for the raw training times. There is an unreported constant setup
-overhead of a few seconds for both methods that is negligible for longer training runs.
+The reported times are for the raw training times. There is an unreported constant setup overhead of a few seconds for both methods that is negligible for longer training runs.
 
 - [PyTorch comparison training script](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/torch_benchmark.py)
 - [PyTorch comparison CPU cluster configuration](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_cpu_4_aws.yaml)
@@ -89,14 +84,11 @@ overhead of a few seconds for both methods that is negligible for longer trainin
 
 ## TensorFlow training parity
 
-This task checks the performance parity between native TensorFlow Distributed and
-Ray Train's distributed TensorflowTrainer.
+This task checks the performance parity between native TensorFlow Distributed and Ray Train's distributed TensorflowTrainer.
 
-We demonstrate that the performance is similar (within 1\%) between the two frameworks.
-Performance may vary greatly across different model, hardware, and cluster configurations.
+We demonstrate that the performance is similar (within 1\%) between the two frameworks. Performance may vary greatly across different model, hardware, and cluster configurations.
 
-The reported times are for the raw training times. There is an unreported constant setup
-overhead of a few seconds for both methods that is negligible for longer training runs.
+The reported times are for the raw training times. There is an unreported constant setup overhead of a few seconds for both methods that is negligible for longer training runs.
 
 :::{note}
 The batch size and number of epochs is different for the GPU benchmark, resulting in a longer runtime.
@@ -129,9 +121,7 @@ The batch size and number of epochs is different for the GPU benchmark, resultin
 
 ## XGBoost training
 
-This task uses the XGBoostTrainer module to train on different sizes of data
-with different amounts of parallelism to show near-linear scaling from distributed
-data parallelism.
+This task uses the XGBoostTrainer module to train on different sizes of data with different amounts of parallelism to show near-linear scaling from distributed data parallelism.
 
 XGBoost parameters were kept as defaults for `xgboost==1.7.6` this task.
 

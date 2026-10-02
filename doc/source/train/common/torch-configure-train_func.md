@@ -1,5 +1,4 @@
-First, update your training code to support distributed training.
-Begin by wrapping your code in a {ref}`training function <train-overview-training-function>`:
+First, update your training code to support distributed training. Begin by wrapping your code in a {ref}`training function <train-overview-training-function>`:
 
 ```{testcode}
 :skipif: True
@@ -25,9 +24,7 @@ trainer = ray.train.torch.TorchTrainer(train_func, train_loop_config=config, ...
 ```
 
 :::{warning}
-Avoid passing large data objects through `train_loop_config` to reduce the
-serialization and deserialization overhead. Instead, it's preferred to
-initialize large objects (e.g. datasets, models) directly in `train_func`.
+Avoid passing large data objects through `train_loop_config` to reduce the serialization and deserialization overhead. Instead, it's preferred to initialize large objects (e.g. datasets, models) directly in `train_func`.
 
 ```diff
  def load_dataset():

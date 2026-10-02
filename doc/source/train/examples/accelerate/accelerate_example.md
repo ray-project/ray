@@ -14,9 +14,7 @@ myst:
 </a>
 ```
 
-This example does distributed data parallel training
-with Hugging Face Accelerate, Ray Train, and Ray Data.
-It fine-tunes a BERT model and is adapted from
+This example does distributed data parallel training with Hugging Face Accelerate, Ray Train, and Ray Data. It fine-tunes a BERT model and is adapted from
 <https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py>
 
 

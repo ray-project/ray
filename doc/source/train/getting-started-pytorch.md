@@ -226,8 +226,7 @@ Use the {func}`ray.train.torch.prepare_data_loader` utility function, which:
 1. Adds a {class}`~torch.utils.data.distributed.DistributedSampler` to your {class}`~torch.utils.data.DataLoader`.
 2. Moves the batches to the right device.
 
-Note that this step isn't necessary if you're passing in Ray Data to your Trainer.
-See {ref}`data-ingest-torch`.
+Note that this step isn't necessary if you're passing in Ray Data to your Trainer. See {ref}`data-ingest-torch`.
 
 ```diff
  from torch.utils.data import DataLoader
@@ -254,8 +253,7 @@ See {ref}`data-ingest-torch`.
 ```
 
 :::{tip}
-Keep in mind that `DataLoader` takes in a `batch_size` which is the batch size for each worker.
-The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+Keep in mind that `DataLoader` takes in a `batch_size` which is the batch size for each worker. The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
 ```{testcode}
 :skipif: True
@@ -265,17 +263,11 @@ global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 :::
 
 :::{note}
-If you already manually set up your `DataLoader` with a `DistributedSampler`,
-{meth}`~ray.train.torch.prepare_data_loader` will not add another one, and will
-respect the configuration of the existing sampler.
+If you already manually set up your `DataLoader` with a `DistributedSampler`, {meth}`~ray.train.torch.prepare_data_loader` will not add another one, and will respect the configuration of the existing sampler.
 :::
 
 :::{note}
-{class}`~torch.utils.data.distributed.DistributedSampler` does not work with a
-`DataLoader` that wraps {class}`~torch.utils.data.IterableDataset`.
-If you want to work with an dataset iterator,
-consider using {ref}`Ray Data <data>` instead of PyTorch DataLoader since it
-provides performant streaming data ingestion for large scale datasets.
+{class}`~torch.utils.data.distributed.DistributedSampler` does not work with a `DataLoader` that wraps {class}`~torch.utils.data.IterableDataset`. If you want to work with an dataset iterator, consider using {ref}`Ray Data <data>` instead of PyTorch DataLoader since it provides performant streaming data ingestion for large scale datasets.
 
 See {ref}`data-ingest-torch` for more details.
 :::

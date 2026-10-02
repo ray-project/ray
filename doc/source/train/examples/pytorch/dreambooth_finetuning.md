@@ -14,8 +14,7 @@ myst:
 </a>
 ```
 
-This is an intermediate example that shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray Train.
-It demonstrates how to use {ref}`Ray Data <data>` with PyTorch Lightning in Ray Train.
+This is an intermediate example that shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray Train. It demonstrates how to use {ref}`Ray Data <data>` with PyTorch Lightning in Ray Train.
 
 
 See the original [DreamBooth project homepage](https://dreambooth.github.io/) for more details on what this fine-tuning method achieves.
@@ -25,9 +24,7 @@ See the original [DreamBooth project homepage](https://dreambooth.github.io/) fo
 :alt: DreamBooth fine-tuning overview
 ```
 
-This example builds on [this Hugging Face 🤗 tutorial](https://huggingface.co/docs/diffusers/training/dreambooth).
-See the Hugging Face tutorial for useful explanations and suggestions on hyperparameters.
-**Adapting this example to Ray Train allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
+This example builds on [this Hugging Face 🤗 tutorial](https://huggingface.co/docs/diffusers/training/dreambooth). See the Hugging Face tutorial for useful explanations and suggestions on hyperparameters. **Adapting this example to Ray Train allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
 
 **Compute requirements:**
 
@@ -139,12 +136,9 @@ You can then run this training function with Ray Train's TorchTrainer:
 
 ### Configure the scale
 
-In the TorchTrainer, you can easily configure the scale.
-The preceding example uses the `num_workers` argument to specify the number
-of workers. This argument defaults to 2 workers with 1 GPU each, totalling to 2 GPUs.
+In the TorchTrainer, you can easily configure the scale. The preceding example uses the `num_workers` argument to specify the number of workers. This argument defaults to 2 workers with 1 GPU each, totalling to 2 GPUs.
 
-To run the example on 4 GPUs, set the number of workers to 4 using `--num-workers=4`.
-Or you can change the scaling config directly:
+To run the example on 4 GPUs, set the number of workers to 4 using `--num-workers=4`. Or you can change the scaling config directly:
 
 ```diff
  scaling_config=ScalingConfig(
@@ -154,9 +148,7 @@ Or you can change the scaling config directly:
  )
 ```
 
-If you're running multi-node training, make sure that all nodes have access to a shared
-storage like NFS or EFS. In the following example script, you can adjust the location with the
-`DATA_PREFIX` environment variable.
+If you're running multi-node training, make sure that all nodes have access to a shared storage like NFS or EFS. In the following example script, you can adjust the location with the `DATA_PREFIX` environment variable.
 
 #### Training throughput
 
@@ -171,8 +163,7 @@ Consider the following setup:
 * Training for 4 epochs (local batch size = 2)
 * 3 runs per configuration
 
-You expect that the training time should benefit from scale and decreases when running with
-more workers and GPUs.
+You expect that the training time should benefit from scale and decreases when running with more workers and GPUs.
 
 ```{image} /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
 :alt: DreamBooth training times
@@ -192,12 +183,9 @@ more workers and GPUs.
 ```
 
 
-While the training time decreases linearly with the amount of workers/GPUs, you can observe some penalty.
-Specifically, with double the amount of workers you don't get half of the training time.
+While the training time decreases linearly with the amount of workers/GPUs, you can observe some penalty. Specifically, with double the amount of workers you don't get half of the training time.
 
-This penalty is most likely due to additional communication between processes and the transfer of large model
-weights. You are also only training with a batch size of one because of the GPU memory limitation. On larger
-GPUs with higher batch sizes you would expect a greater benefit from scaling out.
+This penalty is most likely due to additional communication between processes and the transfer of large model weights. You are also only training with a batch size of one because of the GPU memory limitation. On larger GPUs with higher batch sizes you would expect a greater benefit from scaling out.
 
 
 ## Run the example
@@ -208,9 +196,7 @@ Then train this model with a few images of a subject.
 
 To achieve this, choose a non-word as an identifier, such as `unqtkn`. When fine-tuning the model with this subject, you teach the model that the prompt is `A photo of a unqtkn <class>`.
 
-After fine-tuning you can run inference with this specific prompt.
-For instance: `A photo of a unqtkn <class>` creates an image of the subject.
-Similarly, `A photo of a unqtkn <class> at the beach` creates an image of the subject at the beach.
+After fine-tuning you can run inference with this specific prompt. For instance: `A photo of a unqtkn <class>` creates an image of the subject. Similarly, `A photo of a unqtkn <class> at the beach` creates an image of the subject at the beach.
 
 ### Step 0: Preparation
 
@@ -245,8 +231,7 @@ You can access the downloaded model checkpoint at the `$ORIG_MODEL_PATH`.
 
 ### Step 2: Supply images of your subject
 
-Use one of the sample datasets, like `dog` or `lego car`, or provide your own directory
-of images, and specify the directory with the `$INSTANCE_DIR` environment variable.
+Use one of the sample datasets, like `dog` or `lego car`, or provide your own directory of images, and specify the directory with the `$INSTANCE_DIR` environment variable.
 
 Then, copy these images to `$IMAGES_OWN_DIR`.
 
@@ -256,17 +241,11 @@ Then, copy these images to `$IMAGES_OWN_DIR`.
 :end-before: __supply_own_images_end__
 ```
 
-The `$CLASS_NAME` should be the general category of your subject.
-The images produced by the prompt `photo of a unqtkn <class>` should be diverse images
-that are different enough from the subject in order for generated images to clearly
-show the effect of fine-tuning.
+The `$CLASS_NAME` should be the general category of your subject. The images produced by the prompt `photo of a unqtkn <class>` should be diverse images that are different enough from the subject in order for generated images to clearly show the effect of fine-tuning.
 
 ### Step 3: Create the regularization images
 
-Create a regularization image set for a class of subjects using the pre-trained
-Stable Diffusion model. This regularization set ensures that
-the model still produces decent images for random images of the same class,
-rather than just optimize for producing good images of the subject.
+Create a regularization image set for a class of subjects using the pre-trained Stable Diffusion model. This regularization set ensures that the model still produces decent images for random images of the same class, rather than just optimize for producing good images of the subject.
 
 ```{literalinclude} /templates/05_dreambooth_finetuning/dreambooth_run.sh
 :language: bash
@@ -278,8 +257,7 @@ Use Ray Data to do batch inference with 4 workers, to generate more images in pa
 
 ### Step 4: Fine-tune the model
 
-Save a few, like 4 to 5, images of the subject being fine-tuned
-in a local directory. Then launch the training job with:
+Save a few, like 4 to 5, images of the subject being fine-tuned in a local directory. Then launch the training job with:
 
 ```{literalinclude} /templates/05_dreambooth_finetuning/dreambooth_run.sh
 :language: bash
@@ -289,8 +267,7 @@ in a local directory. Then launch the training job with:
 
 ### Step 5: Generate images of the subject
 
-Try your model with the same command line as Step 2, but point
-to your own model this time.
+Try your model with the same command line as Step 2, but point to your own model this time.
 
 ```{literalinclude} /templates/05_dreambooth_finetuning/dreambooth_run.sh
 :language: bash

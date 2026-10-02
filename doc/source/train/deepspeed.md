@@ -8,8 +8,7 @@ myst:
 
 # Get Started with DeepSpeed
 
-The {class}`~ray.train.torch.TorchTrainer` can help you easily launch your [DeepSpeed](https://www.deepspeed.ai/) training across a distributed Ray cluster.
-DeepSpeed is an optimization library that enables efficient large-scale model training through techniques like ZeRO (Zero Redundancy Optimizer).
+The {class}`~ray.train.torch.TorchTrainer` can help you easily launch your [DeepSpeed](https://www.deepspeed.ai/) training across a distributed Ray cluster. DeepSpeed is an optimization library that enables efficient large-scale model training through techniques like ZeRO (Zero Redundancy Optimizer).
 
 ## Benefits of Using Ray Train with DeepSpeed
 
@@ -73,8 +72,7 @@ result = trainer.fit()
 
 ## Complete Examples
 
-Below are complete examples of ZeRO-3 training with DeepSpeed. Each example shows a full implementation of fine-tuning
-a Bidirectional Encoder Representations from Transformers (BERT) model on the Microsoft Research Paraphrase Corpus (MRPC) dataset.
+Below are complete examples of ZeRO-3 training with DeepSpeed. Each example shows a full implementation of fine-tuning a Bidirectional Encoder Representations from Transformers (BERT) model on the Microsoft Research Paraphrase Corpus (MRPC) dataset.
 
 Install the requirements:
 
@@ -105,10 +103,7 @@ pip install deepspeed torch datasets transformers torchmetrics "ray[train]"
 :::::
 
 :::{tip}
-To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities
-like {meth}`~ray.train.torch.prepare_model` or {meth}`~ray.train.torch.prepare_data_loader` in your training function. Instead,
-keep using [deepspeed.initialize()](https://deepspeed.readthedocs.io/en/latest/initialize.html) as usual to prepare everything
-for distributed training.
+To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities like {meth}`~ray.train.torch.prepare_model` or {meth}`~ray.train.torch.prepare_data_loader` in your training function. Instead, keep using [deepspeed.initialize()](https://deepspeed.readthedocs.io/en/latest/initialize.html) as usual to prepare everything for distributed training.
 :::
 
 

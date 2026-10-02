@@ -14,23 +14,15 @@ Please see {ref}`here <train-fault-tolerance-deprecation-info>` for information 
 
 ## Automatically Recover from Train Worker Failures
 
-Ray Train has built-in fault tolerance to recover from worker failures (i.e.
-`RayActorError`s). When a failure is detected, the workers will be shut
-down and new workers will be added in.
+Ray Train has built-in fault tolerance to recover from worker failures (i.e. `RayActorError`s). When a failure is detected, the workers will be shut down and new workers will be added in.
 
-The training function will be restarted, but progress from the previous execution can
-be resumed through checkpointing.
+The training function will be restarted, but progress from the previous execution can be resumed through checkpointing.
 
 :::{tip}
-In order to retain progress when recovery, your training function
-**must** implement logic for both {ref}`saving <train-dl-saving-checkpoints>`
-*and* {ref}`loading checkpoints <train-dl-loading-checkpoints>`.
+In order to retain progress when recovery, your training function **must** implement logic for both {ref}`saving <train-dl-saving-checkpoints>` *and* {ref}`loading checkpoints <train-dl-loading-checkpoints>`.
 :::
 
-Each instance of recovery from a worker failure is considered a retry. The
-number of retries is configurable through the `max_failures` attribute of the
-{class}`~ray.train.FailureConfig` argument set in the {class}`~ray.train.RunConfig`
-passed to the `Trainer`:
+Each instance of recovery from a worker failure is considered a retry. The number of retries is configurable through the `max_failures` attribute of the {class}`~ray.train.FailureConfig` argument set in the {class}`~ray.train.RunConfig` passed to the `Trainer`:
 
 ```{literalinclude} ../doc_code/fault_tolerance.py
 :language: python
@@ -39,16 +31,14 @@ passed to the `Trainer`:
 ```
 
 ### Which checkpoint will be restored?
-Ray Train will automatically resume training from the latest available
-{ref}`checkpoint reported to Ray Train <train-checkpointing>`.
+Ray Train will automatically resume training from the latest available {ref}`checkpoint reported to Ray Train <train-checkpointing>`.
 
 This will be the last checkpoint passed to {func}`train.report() <ray.train.report>`.
 
 
 ## Restore a Ray Train Experiment
 
-At the experiment level, Trainer restoration
-allows you to resume a previously interrupted experiment from where it left off.
+At the experiment level, Trainer restoration allows you to resume a previously interrupted experiment from where it left off.
 
 A Train experiment may be interrupted due to one of the following reasons:
 
@@ -56,15 +46,9 @@ A Train experiment may be interrupted due to one of the following reasons:
 - The head node crashed (e.g., OOM or some other runtime error).
 - The entire cluster went down (e.g., network error affecting all nodes).
 
-Trainer restoration is possible for all of Ray Train's built-in trainers,
-but we use `TorchTrainer` in the examples for demonstration.
-We also use `<Framework>Trainer` to refer to methods that are shared across all
-built-in trainers.
+Trainer restoration is possible for all of Ray Train's built-in trainers, but we use `TorchTrainer` in the examples for demonstration. We also use `<Framework>Trainer` to refer to methods that are shared across all built-in trainers.
 
-Let's say your initial Train experiment is configured as follows.
-The actual training loop is just for demonstration purposes: the important detail is that
-{ref}`saving <train-dl-saving-checkpoints>` *and* {ref}`loading checkpoints <train-dl-loading-checkpoints>`
-has been implemented.
+Let's say your initial Train experiment is configured as follows. The actual training loop is just for demonstration purposes: the important detail is that {ref}`saving <train-dl-saving-checkpoints>` *and* {ref}`loading checkpoints <train-dl-loading-checkpoints>` has been implemented.
 
 ```{literalinclude} ../doc_code/dl_guide.py
 :language: python
@@ -72,8 +56,7 @@ has been implemented.
 :end-before: __ft_initial_run_end__
 ```
 
-The results and checkpoints of the experiment are saved to the path configured by {class}`~ray.train.RunConfig`.
-If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
+The results and checkpoints of the experiment are saved to the path configured by {class}`~ray.train.RunConfig`. If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
 
 ```{literalinclude} ../doc_code/dl_guide.py
 :language: python
@@ -100,24 +83,17 @@ You can also restore from a remote path (e.g., from an experiment directory stor
 :::
 
 :::{note}
-Different trainers may allow more parameters to be optionally re-specified on restore.
-Only **datasets** are required to be re-specified on restore, if they were supplied originally.
+Different trainers may allow more parameters to be optionally re-specified on restore. Only **datasets** are required to be re-specified on restore, if they were supplied originally.
 
-`TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
-can take in the same parameters as their parent class's
-{meth}`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
+`TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore` can take in the same parameters as their parent class's {meth}`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
 
-Unless otherwise specified, other trainers will accept the same parameters as
-{meth}`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
+Unless otherwise specified, other trainers will accept the same parameters as {meth}`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
 :::
 
 
 ### Auto-resume
 
-Adding the branching logic below will allow you to run the same script after the interrupt,
-picking up training from where you left on the previous run. Notice that we use the
-{meth}`<Framework>Trainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method
-to determine the existence and validity of the given experiment directory.
+Adding the branching logic below will allow you to run the same script after the interrupt, picking up training from where you left on the previous run. Notice that we use the {meth}`<Framework>Trainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method to determine the existence and validity of the given experiment directory.
 
 ```{literalinclude} ../doc_code/dl_guide.py
 :language: python
@@ -126,16 +102,11 @@ to determine the existence and validity of the given experiment directory.
 ```
 
 :::{seealso}
-See the {meth}`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>` docstring
-for a full example.
+See the {meth}`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>` docstring for a full example.
 :::
 
 :::{note}
-`<Framework>Trainer.restore` is different from
-{class}`<Framework>Trainer(..., resume_from_checkpoint=...) <ray.train.trainer.BaseTrainer>`.
-`resume_from_checkpoint` is meant to be used to start a *new* Train experiment,
-which writes results to a new directory and starts over from iteration 0.
+`<Framework>Trainer.restore` is different from {class}`<Framework>Trainer(..., resume_from_checkpoint=...) <ray.train.trainer.BaseTrainer>`. `resume_from_checkpoint` is meant to be used to start a *new* Train experiment, which writes results to a new directory and starts over from iteration 0.
 
-`<Framework>Trainer.restore` is used to continue an existing experiment, where
-new results will continue to be appended to existing logs.
+`<Framework>Trainer.restore` is used to continue an existing experiment, where new results will continue to be appended to existing logs.
 :::

@@ -16,8 +16,7 @@ myst:
 </a>
 ```
 
-This basic example of distributed training with Ray Train and Hugging Face (HF) Transformers
-fine-tunes a text classifier on the Yelp review dataset using HF Transformers and Ray Train.
+This basic example of distributed training with Ray Train and Hugging Face (HF) Transformers fine-tunes a text classifier on the Yelp review dataset using HF Transformers and Ray Train.
 
 ## Code example
 

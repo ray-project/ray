@@ -61,10 +61,7 @@ Compare a LightGBM training script with and without Ray Train.
 
 ## Set up a training function
 
-First, update your training code to support distributed training.
-Begin by wrapping your [native](https://lightgbm.readthedocs.io/en/latest/Python-Intro.html)
-or [scikit-learn estimator](https://lightgbm.readthedocs.io/en/latest/Python-API.html#scikit-learn-api)
-LightGBM training code in a {ref}`training function <train-overview-training-function>`:
+First, update your training code to support distributed training. Begin by wrapping your [native](https://lightgbm.readthedocs.io/en/latest/Python-Intro.html) or [scikit-learn estimator](https://lightgbm.readthedocs.io/en/latest/Python-API.html#scikit-learn-api) LightGBM training code in a {ref}`training function <train-overview-training-function>`:
 
 ```{testcode}
 :skipif: True
@@ -92,9 +89,7 @@ trainer = ray.train.lightgbm.LightGBMTrainer(train_func, train_loop_config=confi
 ```
 
 :::{warning}
-Avoid passing large data objects through `train_loop_config` to reduce the
-serialization and deserialization overhead. Instead,
-initialize large objects (e.g. datasets, models) directly in `train_func`.
+Avoid passing large data objects through `train_loop_config` to reduce the serialization and deserialization overhead. Instead, initialize large objects (e.g. datasets, models) directly in `train_func`.
 
 ```diff
  def load_dataset():
@@ -122,8 +117,7 @@ initialize large objects (e.g. datasets, models) directly in `train_func`.
 
 ### Configure distributed training parameters
 
-To enable distributed LightGBM training, add network communication parameters to your training configuration using {func}`ray.train.lightgbm.get_network_params`.
-This function automatically configures the necessary network settings for worker communication:
+To enable distributed LightGBM training, add network communication parameters to your training configuration using {func}`ray.train.lightgbm.get_network_params`. This function automatically configures the necessary network settings for worker communication:
 
 ```diff
  def train_func():
@@ -144,14 +138,12 @@ This function automatically configures the necessary network settings for worker
 ```
 
 :::{note}
-Make sure to set `tree_learner` to enable distributed training. See the [LightGBM documentation](https://lightgbm.readthedocs.io/en/latest/Parallel-Learning-Guide.html#tree-learner) for more details.
-You should also set `pre_partition=True` if using Ray Data to load and shard your dataset, as shown in the quickstart example.
+Make sure to set `tree_learner` to enable distributed training. See the [LightGBM documentation](https://lightgbm.readthedocs.io/en/latest/Parallel-Learning-Guide.html#tree-learner) for more details. You should also set `pre_partition=True` if using Ray Data to load and shard your dataset, as shown in the quickstart example.
 :::
 
 ### Report metrics and save checkpoints
 
-To persist your checkpoints and monitor training progress, add a
-{class}`ray.train.lightgbm.RayTrainReportCallback` utility callback to your Trainer:
+To persist your checkpoints and monitor training progress, add a {class}`ray.train.lightgbm.RayTrainReportCallback` utility callback to your Trainer:
 
 
 ```{testcode} python
@@ -207,8 +199,7 @@ Pre-sharding the dataset is not very flexible to changes in the number of worker
 
 {ref}`Ray Data <data>` is a distributed data processing library that allows you to easily shard and distribute your data across multiple workers.
 
-First, load your **entire** dataset as a Ray Data Dataset.
-Reference the {ref}`data_quickstart` for more details on how to load and preprocess data from different sources.
+First, load your **entire** dataset as a Ray Data Dataset. Reference the {ref}`data_quickstart` for more details on how to load and preprocess data from different sources.
 
 ```{testcode} python
 :skipif: True
@@ -217,8 +208,7 @@ train_dataset = ray.data.read_parquet("s3://path/to/entire/train/dataset/dir")
 eval_dataset = ray.data.read_parquet("s3://path/to/entire/eval/dataset/dir")
 ```
 
-In the training function, you can access the dataset shards for this worker using {meth}`ray.train.get_dataset_shard`.
-Convert this into a native [lightgbm.Dataset](https://lightgbm.readthedocs.io/en/latest/Python-Intro.html#dataset).
+In the training function, you can access the dataset shards for this worker using {meth}`ray.train.get_dataset_shard`. Convert this into a native [lightgbm.Dataset](https://lightgbm.readthedocs.io/en/latest/Python-Intro.html#dataset).
 
 
 ```{testcode} python
@@ -239,17 +229,9 @@ def train_func():
 ```
 
 :::{note}
-Starting in Ray 2.56, Ray Data preserves Arrow-backed pandas dtypes when
-converting Arrow blocks to pandas, for example `int64[pyarrow]`. LightGBM's
-pandas input validation rejects these dtypes, so a pandas DataFrame coming
-from Ray Data must be normalized before being passed to `lightgbm.Dataset`.
+Starting in Ray 2.56, Ray Data preserves Arrow-backed pandas dtypes when converting Arrow blocks to pandas, for example `int64[pyarrow]`. LightGBM's pandas input validation rejects these dtypes, so a pandas DataFrame coming from Ray Data must be normalized before being passed to `lightgbm.Dataset`.
 
-{func}`ray.train.lightgbm.normalize_pandas_for_lightgbm` maps Arrow-backed
-numeric/boolean columns to NumPy-nullable equivalents and leaves all other
-columns untouched. Prefer it over
-`df.convert_dtypes(dtype_backend="numpy_nullable")`, which scans every
-value in every column and also rewrites NumPy-backed columns into nullable
-equivalents even when no Arrow dtypes are present.
+{func}`ray.train.lightgbm.normalize_pandas_for_lightgbm` maps Arrow-backed numeric/boolean columns to NumPy-nullable equivalents and leaves all other columns untouched. Prefer it over `df.convert_dtypes(dtype_backend="numpy_nullable")`, which scans every value in every column and also rewrites NumPy-backed columns into nullable equivalents even when no Arrow dtypes are present.
 :::
 
 
@@ -282,10 +264,7 @@ scaling_config = ScalingConfig(num_workers=4, resources_per_worker={"CPU": 8})
 ```
 
 :::{note}
-When using Ray Data with Ray Train, be careful not to request all available CPUs in your cluster with the `resources_per_worker` parameter.
-Ray Data needs CPU resources to execute data preprocessing operations in parallel.
-If all CPUs are allocated to training workers, Ray Data operations may be bottlenecked, leading to reduced performance.
-A good practice is to leave some portion of CPU resources available for Ray Data operations.
+When using Ray Data with Ray Train, be careful not to request all available CPUs in your cluster with the `resources_per_worker` parameter. Ray Data needs CPU resources to execute data preprocessing operations in parallel. If all CPUs are allocated to training workers, Ray Data operations may be bottlenecked, leading to reduced performance. A good practice is to leave some portion of CPU resources available for Ray Data operations.
 
 For example, if your cluster has 8 CPUs per node, you might allocate 6 CPUs to training workers and leave 2 CPUs for Ray Data:
 
@@ -296,8 +275,7 @@ scaling_config = ScalingConfig(num_workers=4, resources_per_worker={"CPU": 6})
 :::
 
 
-In order to use GPUs, you will need to set the `use_gpu` parameter to `True` in your {class}`~ray.train.ScalingConfig` object.
-This will request and assign a single GPU per worker.
+In order to use GPUs, you will need to set the `use_gpu` parameter to `True` in your {class}`~ray.train.ScalingConfig` object. This will request and assign a single GPU per worker.
 
 ```{testcode}
 # 1 node with 8 CPUs and 4 GPUs each.
@@ -307,9 +285,7 @@ scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
 scaling_config = ScalingConfig(num_workers=16, use_gpu=True)
 ```
 
-When using GPUs, you will also need to update your training function to use the assigned GPU.
-This can be done by setting the `"device"` parameter as `"gpu"`.
-For more details on LightGBM's GPU support, see the [LightGBM GPU documentation](https://lightgbm.readthedocs.io/en/latest/GPU-Tutorial.html).
+When using GPUs, you will also need to update your training function to use the assigned GPU. This can be done by setting the `"device"` parameter as `"gpu"`. For more details on LightGBM's GPU support, see the [LightGBM GPU documentation](https://lightgbm.readthedocs.io/en/latest/GPU-Tutorial.html).
 
 ```diff
   def train_func():
@@ -329,8 +305,7 @@ For more details on LightGBM's GPU support, see the [LightGBM GPU documentation]
 
 ## Configure persistent storage
 
-Create a {class}`~ray.train.RunConfig` object to specify the path where results
-(including checkpoints and artifacts) will be saved.
+Create a {class}`~ray.train.RunConfig` object to specify the path where results (including checkpoints and artifacts) will be saved.
 
 ```{testcode}
 from ray.train import RunConfig
@@ -347,10 +322,7 @@ run_config = RunConfig(storage_path="/mnt/nfs", name="unique_run_name")
 
 
 :::{warning}
-Specifying a *shared storage location* (such as cloud storage or NFS) is
-*optional* for single-node clusters, but it is **required for multi-node clusters.**
-Using a local path will {ref}`raise an error <multinode-local-storage-warning>`
-during checkpointing for multi-node clusters.
+Specifying a *shared storage location* (such as cloud storage or NFS) is *optional* for single-node clusters, but it is **required for multi-node clusters.** Using a local path will {ref}`raise an error <multinode-local-storage-warning>` during checkpointing for multi-node clusters.
 :::
 
 
@@ -381,8 +353,7 @@ result = trainer.fit()
 
 ## Access training results
 
-After training completes, a {class}`~ray.train.Result` object is returned which contains
-information about the training run, including the metrics and checkpoints reported during training.
+After training completes, a {class}`~ray.train.Result` object is returned which contains information about the training run, including the metrics and checkpoints reported during training.
 
 ```{testcode}
 result.metrics     # The metrics reported during training.

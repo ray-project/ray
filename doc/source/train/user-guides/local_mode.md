@@ -9,16 +9,12 @@ myst:
 # Local Mode
 
 :::{important}
-This user guide shows how to use local mode with Ray Train V2 only.
-For information about migrating from Ray Train V1 to V2, see the Train V2 migration guide: <https://github.com/ray-project/ray/issues/49454>
+This user guide shows how to use local mode with Ray Train V2 only. For information about migrating from Ray Train V1 to V2, see the Train V2 migration guide: <https://github.com/ray-project/ray/issues/49454>
 :::
 
 ## What is local mode?
 
-Local mode in Ray Train runs your training function without launching Ray Train worker actors.
-Instead of distributing your training code across multiple Ray actors, local mode executes your
-training function directly in the current process. This provides a simplified debugging environment
-where you can iterate quickly on your training logic.
+Local mode in Ray Train runs your training function without launching Ray Train worker actors. Instead of distributing your training code across multiple Ray actors, local mode executes your training function directly in the current process. This provides a simplified debugging environment where you can iterate quickly on your training logic.
 
 Local mode supports two execution modes:
 
@@ -46,9 +42,7 @@ trainer = TorchTrainer(
 result = trainer.fit()
 ```
 
-Local mode provides the same `ray.train` APIs you use in distributed training, so your
-training code runs without any other modifications. This makes it simple to verify your
-training logic locally before scaling to distributed training.
+Local mode provides the same `ray.train` APIs you use in distributed training, so your training code runs without any other modifications. This makes it simple to verify your training logic locally before scaling to distributed training.
 
 ## When to use local mode
 
@@ -65,8 +59,7 @@ Use multi-process local mode with `torchrun` to:
 * **Debug distributed behavior**: Isolate issues in your distributed training logic using `torchrun`'s process management.
 
 :::{note}
-In local mode, Ray Train doesn't launch worker actors, but your training code can still
-use other Ray features such as Ray Data (in single-process mode) or launch Ray actors if needed.
+In local mode, Ray Train doesn't launch worker actors, but your training code can still use other Ray features such as Ray Data (in single-process mode) or launch Ray actors if needed.
 :::
 
 ## Single-process local mode
@@ -105,8 +98,7 @@ print(f"Final loss: {result.metrics['loss']}")
 ```
 
 :::{note}
-Local mode works with all Ray Train framework integrations, including PyTorch Lightning,
-Hugging Face Transformers, LightGBM, XGBoost, TensorFlow, and others.
+Local mode works with all Ray Train framework integrations, including PyTorch Lightning, Hugging Face Transformers, LightGBM, XGBoost, TensorFlow, and others.
 :::
 
 ### Testing with local mode
@@ -138,9 +130,7 @@ def test_training_runs():
 
 ### Using local mode with Ray Data
 
-Single-process local mode works seamlessly with Ray Data for data loading and preprocessing.
-When you use Ray Data with local mode, Ray Data processes your data and provides it back to your
-training function in the local process.
+Single-process local mode works seamlessly with Ray Data for data loading and preprocessing. When you use Ray Data with local mode, Ray Data processes your data and provides it back to your training function in the local process.
 
 The following example shows how to use Ray Data with single-process local mode:
 
@@ -172,9 +162,7 @@ result = trainer.fit()
 ```
 
 :::{warning}
-Ray Data isn't supported when using `torchrun` for multi-process training in local mode.
-For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader
-with DistributedSampler.
+Ray Data isn't supported when using `torchrun` for multi-process training in local mode. For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader with DistributedSampler.
 :::
 
 ## Multi-process local mode with `torchrun`
@@ -183,10 +171,7 @@ Local mode supports multi-GPU training  through `torchrun`, allowing you to deve
 
 ### Single-node multi-GPU training
 
-The following example shows how to use `torchrun` with local mode for multi-GPU training on a single node.
-This approach is useful when migrating existing PyTorch training code or when you want to debug
-distributed training logic using `torchrun`'s familiar process management. The example uses standard
-PyTorch `DataLoader` for data loading, making it easy to adapt your existing PyTorch training code.
+The following example shows how to use `torchrun` with local mode for multi-GPU training on a single node. This approach is useful when migrating existing PyTorch training code or when you want to debug distributed training logic using `torchrun`'s familiar process management. The example uses standard PyTorch `DataLoader` for data loading, making it easy to adapt your existing PyTorch training code.
 
 First, create your training script (`train_script.py`):
 
@@ -288,8 +273,7 @@ Then, launch training with `torchrun`:
 torchrun --nproc-per-node=4 train_script.py
 ```
 
-Ray Train automatically detects the `torchrun` environment variables and configures the distributed
-training accordingly. You can access distributed training information through {func}`ray.train.get_context()`:
+Ray Train automatically detects the `torchrun` environment variables and configures the distributed training accordingly. You can access distributed training information through {func}`ray.train.get_context()`:
 
 ```{testcode}
 :skipif: True
@@ -303,15 +287,12 @@ print(f"Local rank: {context.get_local_rank()}")
 ```
 
 :::{warning}
-Ray Data isn't supported when using `torchrun` for multi-process training in local mode.
-For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader with
-DistributedSampler.
+Ray Data isn't supported when using `torchrun` for multi-process training in local mode. For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader with DistributedSampler.
 :::
 
 ### Multi-node multi-GPU training
 
-You can also use `torchrun` to launch multi-node training with local mode. The following example shows
-how to launch training across 2 nodes with 4 GPUs each:
+You can also use `torchrun` to launch multi-node training with local mode. The following example shows how to launch training across 2 nodes with 4 GPUs each:
 
 On the master node (`192.168.1.1`):
 
@@ -341,8 +322,7 @@ RAY_TRAIN_V2_ENABLED=1 torchrun \
 
 ## Transitioning from local mode to distributed training
 
-When you're ready to scale from local mode to distributed training, simply change `num_workers`
-to a value greater than 0:
+When you're ready to scale from local mode to distributed training, simply change `num_workers` to a value greater than 0:
 
 ```diff
  trainer = TorchTrainer(

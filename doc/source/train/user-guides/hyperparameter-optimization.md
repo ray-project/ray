@@ -9,17 +9,13 @@ myst:
 # Hyperparameter Tuning with Ray Tune
 
 :::{important}
-This user guide shows how to integrate Ray Train and Ray Tune to tune over distributed hyperparameter runs
-for the revamped Ray Train V2 available starting from Ray 2.43 by enabling the environment variable `RAY_TRAIN_V2_ENABLED=1`.
-**This user guide assumes that the environment variable has been enabled.**
+This user guide shows how to integrate Ray Train and Ray Tune to tune over distributed hyperparameter runs for the revamped Ray Train V2 available starting from Ray 2.43 by enabling the environment variable `RAY_TRAIN_V2_ENABLED=1`. **This user guide assumes that the environment variable has been enabled.**
 
 Please see {ref}`here <train-tune-deprecation>` for information about the deprecation and migration.
 :::
 
 
-Ray Train can be used together with Ray Tune to do hyperparameter sweeps of distributed training runs.
-This is often useful when you want to do a small sweep over critical hyperparameters,
-before launching a run with the best performing hyperparameters on all available cluster resources for a long duration.
+Ray Train can be used together with Ray Tune to do hyperparameter sweeps of distributed training runs. This is often useful when you want to do a small sweep over critical hyperparameters, before launching a run with the best performing hyperparameters on all available cluster resources for a long duration.
 
 ## Quickstart
 
@@ -52,12 +48,9 @@ This user guide only focuses on the integration layer between Ray Train and Ray 
 
 Ray Tune launches multiple trials which {ref}`run a user-defined function in a remote Ray actor <tune-function-api>`, where each trial gets a different sampled hyperparameter configuration.
 
-When using Ray Tune by itself, trials do computation directly inside the Ray actor. For example, each trial could request 1 GPU and do some single-process model
-training within the remote actor itself. When using Ray Train inside Ray Tune functions, the Tune trial is actually not doing extensive computation inside this actor
--- instead it just acts as a driver process to launch and monitor the Ray Train workers running elsewhere.
+When using Ray Tune by itself, trials do computation directly inside the Ray actor. For example, each trial could request 1 GPU and do some single-process model training within the remote actor itself. When using Ray Train inside Ray Tune functions, the Tune trial is actually not doing extensive computation inside this actor -- instead it just acts as a driver process to launch and monitor the Ray Train workers running elsewhere.
 
-Ray Train requests its own resources via the {class}`~ray.train.ScalingConfig`.
-See {ref}`train_scaling_config` for more details.
+Ray Train requests its own resources via the {class}`~ray.train.ScalingConfig`. See {ref}`train_scaling_config` for more details.
 
 ```{figure} ../images/hyperparameter_optimization/train_without_tune.png
 :align: center
@@ -75,12 +68,9 @@ Example of Ray Train runs being launched from within Ray Tune trials.
 
 ### Limit the number of concurrent Ray Train runs
 
-Ray Train runs can only start when resources for all workers can be acquired at once.
-This means that multiple Tune trials spawning Train runs will be competing for the logical resources available in the Ray cluster.
+Ray Train runs can only start when resources for all workers can be acquired at once. This means that multiple Tune trials spawning Train runs will be competing for the logical resources available in the Ray cluster.
 
-If there is a limiting cluster resource such as GPUs, then it won't be possible to run training for all hyperparameter configurations concurrently.
-Since the cluster only has enough resources for a handful of trials to run concurrently,
-set {class}`tune.TuneConfig(max_concurrent_trials) <ray.tune.TuneConfig>` on the Tuner to limit the number of “in-flight” Train runs so that no trial is being starved of resources.
+If there is a limiting cluster resource such as GPUs, then it won't be possible to run training for all hyperparameter configurations concurrently. Since the cluster only has enough resources for a handful of trials to run concurrently, set {class}`tune.TuneConfig(max_concurrent_trials) <ray.tune.TuneConfig>` on the Tuner to limit the number of “in-flight” Train runs so that no trial is being starved of resources.
 
 ```{literalinclude} ../doc_code/train_tune_interop.py
 :language: python
@@ -93,11 +83,8 @@ As a concrete example, consider a fixed sized cluster with 128 CPUs and 8 GPUs.
 
 * The `Tuner(param_space)` sweeps over 4 hyperparameter configurations with a grid search: `param_space={“train_loop_config”: {“batch_size”: tune.grid_search([8, 16, 32, 64])}}`
 * Each Ray Train run is configured to train with 4 GPU workers: `ScalingConfig(num_workers=4, use_gpu=True)`. Since there are only 8 GPUs, only 2 Train runs can acquire their full set of resources at a time.
-* However, since there are many CPUs available in the cluster, the 4 total Ray Tune trials (which default to requesting 1 CPU) can be launched immediately.
-  This results in 2 extra Ray Tune trial processes being launched, even though their inner Ray Train run just waits for resources until one of the other trials finishes.
-  This introduces some spammy log messages when Train waits for resources. There may also be an excessive number of Ray Tune trial processes if the total number of hyperparameter configurations is large.
-* To fix this issue, set `Tuner(tune_config=tune.TuneConfig(max_concurrent_trials=2))`. Now, only two Ray Tune trial processes will be running at a time.
-  This number can be calculated based on the limiting cluster resource and the amount of that resources required by each trial.
+* However, since there are many CPUs available in the cluster, the 4 total Ray Tune trials (which default to requesting 1 CPU) can be launched immediately. This results in 2 extra Ray Tune trial processes being launched, even though their inner Ray Train run just waits for resources until one of the other trials finishes. This introduces some spammy log messages when Train waits for resources. There may also be an excessive number of Ray Tune trial processes if the total number of hyperparameter configurations is large.
+* To fix this issue, set `Tuner(tune_config=tune.TuneConfig(max_concurrent_trials=2))`. Now, only two Ray Tune trial processes will be running at a time. This number can be calculated based on the limiting cluster resource and the amount of that resources required by each trial.
 
 
 ### Advanced: Set Train driver resources
@@ -122,19 +109,16 @@ One way to achieve this behavior is to set custom resources on certain node type
 
 ## Reporting metrics and checkpoints
 
-Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the {func}`ray.train.report <ray.train.report>` and {func}`ray.tune.report <ray.tune.report>` APIs.
-See the {ref}`train-checkpointing` user guide for more details.
+Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the {func}`ray.train.report <ray.train.report>` and {func}`ray.tune.report <ray.tune.report>` APIs. See the {ref}`train-checkpointing` user guide for more details.
 
 If the Ray Train workers report checkpoints, saving another Ray Tune checkpoint at the Train driver level is not needed because it does not hold any extra training state. The Ray Train driver process will already periodically snapshot its status to the configured storage_path, which is further described in the next section on fault tolerance.
 
-In order to access the checkpoints from the Tuner output, you can append the checkpoint path as a metric. The provided {class}`~ray.tune.integration.ray_train.TuneReportCallback`
-does this by propagating reported Ray Train results over to Ray Tune, where the checkpoint path is attached as a separate metric.
+In order to access the checkpoints from the Tuner output, you can append the checkpoint path as a metric. The provided {class}`~ray.tune.integration.ray_train.TuneReportCallback` does this by propagating reported Ray Train results over to Ray Tune, where the checkpoint path is attached as a separate metric.
 
 
 ### Advanced: Fault Tolerance
 
-In the event that the Ray Tune trials running the Ray Train driver process crash, you can enable trial fault tolerance on the Ray Tune side via:
-{class}`ray.tune.Tuner(run_config=ray.tune.RunConfig(failure_config)) <ray.tune.FailureConfig>`.
+In the event that the Ray Tune trials running the Ray Train driver process crash, you can enable trial fault tolerance on the Ray Tune side via: {class}`ray.tune.Tuner(run_config=ray.tune.RunConfig(failure_config)) <ray.tune.FailureConfig>`.
 
 Fault tolerance on the Ray Train side is configured and handled separately. See the {ref}`train-fault-tolerance` user guide for more details.
 
@@ -151,11 +135,9 @@ Fault tolerance on the Ray Train side is configured and handled separately. See 
 
 Ray Tune callbacks should be passed into the {class}`ray.tune.RunConfig(callbacks) <ray.tune.RunConfig>` at the Tuner level.
 
-For Ray Train users that depend on behavior of built-in or custom Ray Tune callbacks, it's possible to use them by running Ray Train as a single trial Tune run
-and passing in the callbacks to the Tuner.
+For Ray Train users that depend on behavior of built-in or custom Ray Tune callbacks, it's possible to use them by running Ray Train as a single trial Tune run and passing in the callbacks to the Tuner.
 
-If any callback functionality depends on reported metrics, make sure to pass the {class}`ray.tune.integration.ray_train.TuneReportCallback` to the trainer callbacks,
-which propagates results to the Tuner.
+If any callback functionality depends on reported metrics, make sure to pass the {class}`ray.tune.integration.ray_train.TuneReportCallback` to the trainer callbacks, which propagates results to the Tuner.
 
 
 ```{testcode}

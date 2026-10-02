@@ -10,9 +10,7 @@ myst:
 
 :::::{tab-set}
 ::::{tab-item} PyTorch
-To limit sources of nondeterministic behavior, add
-{func}`ray.train.torch.enable_reproducibility` to the top of your training
-function.
+To limit sources of nondeterministic behavior, add {func}`ray.train.torch.enable_reproducibility` to the top of your training function.
 
 ```diff
  def train_func():
@@ -27,8 +25,7 @@ function.
 :::{warning}
 {func}`ray.train.torch.enable_reproducibility` can't guarantee
 
-completely reproducible results across executions. To learn more, read
-the [PyTorch notes on randomness](https://pytorch.org/docs/stable/notes/randomness.html).
+completely reproducible results across executions. To learn more, read the [PyTorch notes on randomness](https://pytorch.org/docs/stable/notes/randomness.html).
 :::
 ::::
 :::::

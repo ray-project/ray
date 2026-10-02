@@ -12,42 +12,30 @@ This guide provides an overview of the {class}`~ray.train.v2.jax.JaxTrainer` in 
 
 ## What is JAX?
 
-[JAX](https://github.com/jax-ml/jax) is a Python library for accelerator-oriented array computation and
-program transformation, designed for high-performance numerical computing and large-scale machine learning.
+[JAX](https://github.com/jax-ml/jax) is a Python library for accelerator-oriented array computation and program transformation, designed for high-performance numerical computing and large-scale machine learning.
 
-JAX provides an extensible system for transforming numerical functions such as `jax.grad`, `jax.jit`, and `jax.vmap`,
-utilizing the XLA compiler to create highly optimized code that scales efficiently on accelerators like GPUs and TPUs.
-The core power of JAX lies in its composability, allowing these transformations to be combined to build complex,
-high-performance numerical programs for distributed execution.
+JAX provides an extensible system for transforming numerical functions such as `jax.grad`, `jax.jit`, and `jax.vmap`, utilizing the XLA compiler to create highly optimized code that scales efficiently on accelerators like GPUs and TPUs. The core power of JAX lies in its composability, allowing these transformations to be combined to build complex, high-performance numerical programs for distributed execution.
 
 JAX and {class}`~ray.train.v2.jax.JaxTrainer` support different accelerators such as GPUs and TPUs. For more details, see [JAX Supported platforms](https://docs.jax.dev/en/latest/installation.html#supported-platforms).
 
 
 ## What are TPUs?
 
-Tensor Processing Units (TPUs), are custom-designed accelerators created by Google to optimize machine learning
-workloads. Unlike general-purpose CPUs or parallel-processing GPUs, TPUs are highly specialized for the massive
-matrix and tensor computations involved in deep learning, making them exceptionally efficient.
+Tensor Processing Units (TPUs), are custom-designed accelerators created by Google to optimize machine learning workloads. Unlike general-purpose CPUs or parallel-processing GPUs, TPUs are highly specialized for the massive matrix and tensor computations involved in deep learning, making them exceptionally efficient.
 
-The primary advantage of TPUs is performance at scale because they're designed to be connected into large, multi-host
-configurations called “PodSlices” via a high-speed ICI interconnect, making them ideal for training large models
-that are unable to fit on a single node.
+The primary advantage of TPUs is performance at scale because they're designed to be connected into large, multi-host configurations called “PodSlices” via a high-speed ICI interconnect, making them ideal for training large models that are unable to fit on a single node.
 
 To learn more about configuring TPUs with KubeRay, see {ref}`kuberay-tpu`.
 
 ## JaxTrainer API
 
-The {class}`~ray.train.v2.jax.JaxTrainer` is the core component for orchestrating distributed JAX training in Ray Train.
-It follows the Single-Program, Multi-Data (SPMD) paradigm, where your training code is executed simultaneously
-across multiple workers.
+The {class}`~ray.train.v2.jax.JaxTrainer` is the core component for orchestrating distributed JAX training in Ray Train. It follows the Single-Program, Multi-Data (SPMD) paradigm, where your training code is executed simultaneously across multiple workers.
 
-For TPUs, each worker runs on a separate TPU virtual machine within a TPU slice. Ray Train automatically
-handles atomically reserving TPU slices.
+For TPUs, each worker runs on a separate TPU virtual machine within a TPU slice. Ray Train automatically handles atomically reserving TPU slices.
 
 For GPUs, Ray automatically sets up the JAX distributed system on CUDA devices.
 
-You initialize the `JaxTrainer` with your training logic, defined in a `train_loop_per_worker` function, and a
-`ScalingConfig` that specifies the distributed hardware layout. The `JaxTrainer` supports both **Google Cloud TPUs** and **NVIDIA GPUs**.
+You initialize the `JaxTrainer` with your training logic, defined in a `train_loop_per_worker` function, and a `ScalingConfig` that specifies the distributed hardware layout. The `JaxTrainer` supports both **Google Cloud TPUs** and **NVIDIA GPUs**.
 
 ## Configure scale and accelerators
 
@@ -56,8 +44,7 @@ You initialize the `JaxTrainer` with your training logic, defined in a `train_lo
 For TPU training, use {class}`~ray.train.ScalingConfig` to define your TPU slices configuration. Key fields include:
 
 * {class}`use_tpu <ray.train.ScalingConfig>`: It's a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. This boolean flag tells Ray Train to initialize the JAX backend for TPU execution.
-* {class}`topology <ray.train.ScalingConfig>`: It's a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (for example, "4x4"). It's required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
-  see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology).
+* {class}`topology <ray.train.ScalingConfig>`: It's a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (for example, "4x4"). It's required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology).
 * {class}`num_workers <ray.train.ScalingConfig>`: Set this to the total number of TPU VMs across all slices. For example, one v4-32 slice with a 2x2x4 topology uses 4 VMs, so set `num_workers` to 4. If you use two v4-32 slices, set `num_workers` to 8.
 * {class}`resources_per_worker <ray.train.ScalingConfig>`: A dictionary specifying the resources each worker needs. For TPUs, you typically request the number of chips per VM (for example, `{"TPU": 4}`).
 * {class}`accelerator_type <ray.train.ScalingConfig>`: For TPUs, `accelerator_type` specifies the TPU generation you're using (for example, "TPU-V6E"), ensuring your workload is scheduled on the desired TPU slice.
@@ -71,8 +58,7 @@ tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", 
 
 ### GPU scaling configuration
 
-For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration.
-Each worker is one Ray Train process. By default, this will request one GPU per worker.
+For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. By default, this will request one GPU per worker.
 
 * {class}`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
 * {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU.
@@ -246,9 +232,7 @@ print(f"Learned parameters: w={params['w'].item():.4f}, b={params['b'].item():.4
 
 ## Set up a training function
 
-Ray Train automatically initializes the JAX distributed environment based on the `ScalingConfig` and the `JAX_PLATFORMS` environment variable.
-To adapt your existing JAX code, you simply need to wrap your training logic in a Python function
-that can be passed to the `JaxTrainer`.
+Ray Train automatically initializes the JAX distributed environment based on the `ScalingConfig` and the `JAX_PLATFORMS` environment variable. To adapt your existing JAX code, you simply need to wrap your training logic in a Python function that can be passed to the `JaxTrainer`.
 
 This function is the entry point that Ray will execute on each remote worker.
 
@@ -296,8 +280,7 @@ This function is the entry point that Ray will execute on each remote worker.
 
 ## Configure persistent storage
 
-Create a {class}`~ray.train.RunConfig` object to specify the path where results
-(including checkpoints and artifacts) will be saved.
+Create a {class}`~ray.train.RunConfig` object to specify the path where results (including checkpoints and artifacts) will be saved.
 
 ```{testcode}
 from ray.train import RunConfig
@@ -314,10 +297,7 @@ run_config = RunConfig(storage_path="/mnt/nfs", name="unique_run_name")
 
 
 :::{warning}
-Specifying a *shared storage location* (such as cloud storage or NFS) is
-*optional* for single-node clusters, but it is **required for multi-node clusters.**
-Using a local path will {ref}`raise an error <multinode-local-storage-warning>`
-during checkpointing for multi-node clusters.
+Specifying a *shared storage location* (such as cloud storage or NFS) is *optional* for single-node clusters, but it is **required for multi-node clusters.** Using a local path will {ref}`raise an error <multinode-local-storage-warning>` during checkpointing for multi-node clusters.
 :::
 
 
@@ -353,8 +333,7 @@ result = trainer.fit()
 
 ## Access training results
 
-After training completes, a {class}`~ray.train.Result` object is returned which contains
-information about the training run, including the metrics and checkpoints reported during training.
+After training completes, a {class}`~ray.train.Result` object is returned which contains information about the training run, including the metrics and checkpoints reported during training.
 
 ```{testcode}
 :skipif: True

@@ -19,20 +19,13 @@ A Ray Train run produces {ref}`checkpoints <train-checkpointing>` that can be sa
 An example of multiple workers spread across multiple nodes uploading checkpoints to persistent storage.
 ```
 
-**Ray Train expects all workers to be able to write files to the same persistent storage location.**
-Therefore, Ray Train requires some form of external persistent storage such as
-cloud object storage (for example, S3, GCS, or Azure Blob Storage) or a shared filesystem
-(for example, AWS EFS, Google Cloud Filestore, Azure Files, or HDFS) for multi-node training.
+**Ray Train expects all workers to be able to write files to the same persistent storage location.** Therefore, Ray Train requires some form of external persistent storage such as cloud object storage (for example, S3, GCS, or Azure Blob Storage) or a shared filesystem (for example, AWS EFS, Google Cloud Filestore, Azure Files, or HDFS) for multi-node training.
 
 Here are some capabilities that persistent storage enables:
 
-- **Checkpointing and fault tolerance**: Saving checkpoints to a persistent storage location
-  allows you to resume training from the last checkpoint in case of a node failure.
-  See {ref}`train-checkpointing` for a detailed guide on how to set up checkpointing.
-- **Post-experiment analysis**: A consolidated location storing data such as the best checkpoints and
-  hyperparameter configs after the Ray cluster has already been terminated.
-- **Bridge training/fine-tuning with downstream serving and batch inference tasks**: You can easily access the models
-  and artifacts to share them with others or use them in downstream tasks.
+- **Checkpointing and fault tolerance**: Saving checkpoints to a persistent storage location allows you to resume training from the last checkpoint in case of a node failure. See {ref}`train-checkpointing` for a detailed guide on how to set up checkpointing.
+- **Post-experiment analysis**: A consolidated location storing data such as the best checkpoints and hyperparameter configs after the Ray cluster has already been terminated.
+- **Bridge training/fine-tuning with downstream serving and batch inference tasks**: You can easily access the models and artifacts to share them with others or use them in downstream tasks.
 
 
 ## Cloud object storage
@@ -43,8 +36,7 @@ Use cloud object storage by specifying a storage container URI as the {class}`Ru
 
 ::::{tab-set}
 :::{tab-item} AWS S3
-Specify a URI with the `s3://` scheme. Ray Train uses pyarrow's default
-{class}`S3FileSystem <pyarrow.fs.S3FileSystem>` for upload and download.
+Specify a URI with the `s3://` scheme. Ray Train uses pyarrow's default {class}`S3FileSystem <pyarrow.fs.S3FileSystem>` for upload and download.
 
 ```{testcode}
 :skipif: True
@@ -63,8 +55,7 @@ trainer = TorchTrainer(
 :::
 
 :::{tab-item} Google Cloud Storage
-Specify a URI with the `gs://` scheme. Ray Train uses pyarrow's default
-{class}`GcsFileSystem <pyarrow.fs.GcsFileSystem>` for upload and download.
+Specify a URI with the `gs://` scheme. Ray Train uses pyarrow's default {class}`GcsFileSystem <pyarrow.fs.GcsFileSystem>` for upload and download.
 
 ```{testcode}
 :skipif: True
@@ -83,10 +74,7 @@ trainer = TorchTrainer(
 :::
 
 :::{tab-item} Azure Blob Storage
-Ray Train uses `pyarrow.fs` for storage I/O, so wrap
-`adlfs.AzureBlobFileSystem` in a `pyarrow.fs.PyFileSystem` and pass
-it as {class}`RunConfig(storage_filesystem) <ray.train.RunConfig>`.
-Use the `abfss://` scheme (TLS-enforced) for the URI:
+Ray Train uses `pyarrow.fs` for storage I/O, so wrap `adlfs.AzureBlobFileSystem` in a `pyarrow.fs.PyFileSystem` and pass it as {class}`RunConfig(storage_filesystem) <ray.train.RunConfig>`. Use the `abfss://` scheme (TLS-enforced) for the URI:
 
 ```{testcode}
 :skipif: True
@@ -115,23 +103,18 @@ See {ref}`custom-storage-filesystem` for more on `storage_filesystem`.
 ::::
 
 
-Ensure that all nodes in the Ray cluster have access to the storage container, so outputs from workers can be uploaded to a shared location.
-In the AWS S3 example above, all files are uploaded to shared storage at `s3://bucket-name/sub-path/experiment_name` for further processing.
+Ensure that all nodes in the Ray cluster have access to the storage container, so outputs from workers can be uploaded to a shared location. In the AWS S3 example above, all files are uploaded to shared storage at `s3://bucket-name/sub-path/experiment_name` for further processing.
 
 
 ## Shared filesystem
 
-You can use shared filesystems such as AWS EFS, Google Cloud Filestore, Azure Files, HDFS, or NFS.
-Either mount the filesystem so that it appears at a common path on every node in the Ray cluster, or specify a fully qualified URI.
-In either case, ensure that networking rules and security permissions allow access from all nodes.
+You can use shared filesystems such as AWS EFS, Google Cloud Filestore, Azure Files, HDFS, or NFS. Either mount the filesystem so that it appears at a common path on every node in the Ray cluster, or specify a fully qualified URI. In either case, ensure that networking rules and security permissions allow access from all nodes.
 
 Specify the shared storage location as the {class}`RunConfig(storage_path) <ray.train.RunConfig>`:
 
 :::::{tab-set}
 :::{tab-item} Mounted filesystem
-Mount the filesystem on every node in the cluster, then point
-`storage_path` at the mount. This works for AWS EFS, Google Cloud
-Filestore, Azure Files, and NFS.
+Mount the filesystem on every node in the cluster, then point `storage_path` at the mount. This works for AWS EFS, Google Cloud Filestore, Azure Files, and NFS.
 
 ```{testcode}
 :skipif: True
@@ -170,11 +153,7 @@ trainer = TorchTrainer(
 ```
 
 :::{warning}
-PyArrow HDFS embeds a JVM in the Python process. On Linux, its signal
-handling can conflict with Ray and cause the process to exit with `SIGSEGV`
-or `SIGABRT` and create an `hs_err_pid*.log` file. See
-{ref}`troubleshoot-pyarrow-hdfs-jvm-crashes` for the HotSpot
-signal-chaining configuration and the last-resort fallback.
+PyArrow HDFS embeds a JVM in the Python process. On Linux, its signal handling can conflict with Ray and cause the process to exit with `SIGSEGV` or `SIGABRT` and create an `hs_err_pid*.log` file. See {ref}`troubleshoot-pyarrow-hdfs-jvm-crashes` for the HotSpot signal-chaining configuration and the last-resort fallback.
 :::
 ::::
 :::::
@@ -186,10 +165,7 @@ In the mounted example above, all files are saved to `/mnt/cluster_storage/exper
 
 ### Using local storage for a single-node cluster
 
-If you're just running an experiment on a single node (e.g., on a laptop), Ray Train will use the
-local filesystem as the storage location for checkpoints and other artifacts.
-Results are saved to `~/ray_results` in a sub-directory with a unique auto-generated name by default,
-unless you customize this with `storage_path` and `name` in {class}`~ray.train.RunConfig`.
+If you're just running an experiment on a single node (e.g., on a laptop), Ray Train will use the local filesystem as the storage location for checkpoints and other artifacts. Results are saved to `~/ray_results` in a sub-directory with a unique auto-generated name by default, unless you customize this with `storage_path` and `name` in {class}`~ray.train.RunConfig`.
 
 
 ```{testcode}
@@ -218,13 +194,9 @@ In this example, all experiment results can found locally at `/tmp/custom/storag
 :::{warning}
 When running on multiple nodes, using the local filesystem of the head node as the persistent storage location is no longer supported.
 
-If you save checkpoints with {meth}`ray.train.report(..., checkpoint=...) <ray.train.report>`
-and run on a multi-node cluster, Ray Train will raise an error if NFS or cloud storage is not setup.
-This is because Ray Train expects all workers to be able to write the checkpoint to
-the same persistent storage location.
+If you save checkpoints with {meth}`ray.train.report(..., checkpoint=...) <ray.train.report>` and run on a multi-node cluster, Ray Train will raise an error if NFS or cloud storage is not setup. This is because Ray Train expects all workers to be able to write the checkpoint to the same persistent storage location.
 
-If your training loop does not save checkpoints, the reported metrics will still
-be aggregated to the local storage path on the head node.
+If your training loop does not save checkpoints, the reported metrics will still be aggregated to the local storage path on the head node.
 
 See [this issue](https://github.com/ray-project/ray/issues/37177) for more information.
 :::
@@ -234,24 +206,16 @@ See [this issue](https://github.com/ray-project/ray/issues/37177) for more infor
 
 ## Custom storage
 
-If the cases above don't suit your needs, Ray Train can support custom filesystems and perform custom logic.
-Ray Train standardizes on the `pyarrow.fs.FileSystem` interface to interact with storage
-([see the API reference here](https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html)).
+If the cases above don't suit your needs, Ray Train can support custom filesystems and perform custom logic. Ray Train standardizes on the `pyarrow.fs.FileSystem` interface to interact with storage ([see the API reference here](https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html)).
 
-By default, passing `storage_path=s3://bucket-name/sub-path/` will use pyarrow's
-[default S3 filesystem implementation](https://arrow.apache.org/docs/python/generated/pyarrow.fs.S3FileSystem.html)
-to upload files. ([See the other default implementations.](https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations))
+By default, passing `storage_path=s3://bucket-name/sub-path/` will use pyarrow's [default S3 filesystem implementation](https://arrow.apache.org/docs/python/generated/pyarrow.fs.S3FileSystem.html) to upload files. ([See the other default implementations.](https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations))
 
-Implement custom storage upload and download logic by providing an implementation of
-`pyarrow.fs.FileSystem` to {class}`RunConfig(storage_filesystem) <ray.train.RunConfig>`.
+Implement custom storage upload and download logic by providing an implementation of `pyarrow.fs.FileSystem` to {class}`RunConfig(storage_filesystem) <ray.train.RunConfig>`.
 
 :::{warning}
-When providing a custom filesystem, the associated `storage_path` is expected
-to be a qualified filesystem path *without the protocol prefix*.
+When providing a custom filesystem, the associated `storage_path` is expected to be a qualified filesystem path *without the protocol prefix*.
 
-For example, if you provide a custom S3 filesystem for `s3://bucket-name/sub-path/`,
-then the `storage_path` should be `bucket-name/sub-path/` with the `s3://` stripped.
-See the example below for example usage.
+For example, if you provide a custom S3 filesystem for `s3://bucket-name/sub-path/`, then the `storage_path` should be `bucket-name/sub-path/` with the `s3://` stripped. See the example below for example usage.
 :::
 
 ```{testcode}
@@ -281,8 +245,7 @@ trainer = TorchTrainer(
 
 ### `fsspec` filesystems
 
-[fsspec](https://filesystem-spec.readthedocs.io/en/latest/) offers many filesystem implementations,
-such as `s3fs`, `gcsfs`, etc.
+[fsspec](https://filesystem-spec.readthedocs.io/en/latest/) offers many filesystem implementations, such as `s3fs`, `gcsfs`, etc.
 
 You can use any of these implementations by wrapping the `fsspec` filesystem with a `pyarrow.fs` utility:
 
@@ -314,10 +277,7 @@ See the API references to the `pyarrow.fs` wrapper utilities:
 
 ### S3-compatible storage (Backblaze B2, MinIO, etc.)
 
-For S3-compatible stores like [Backblaze B2](https://www.backblaze.com/cloud-storage)
-or [MinIO](https://min.io/), follow the
-{ref}`custom-filesystem examples above <custom-storage-filesystem>`, or pass
-the endpoint as a query parameter in the `storage_path` URI:
+For S3-compatible stores like [Backblaze B2](https://www.backblaze.com/cloud-storage) or [MinIO](https://min.io/), follow the {ref}`custom-filesystem examples above <custom-storage-filesystem>`, or pass the endpoint as a query parameter in the `storage_path` URI:
 
 ```{testcode}
 :skipif: True
@@ -337,21 +297,14 @@ trainer = TorchTrainer(
 )
 ```
 
-Alternatively, configure the endpoint and credentials through the environment
-variables Arrow reads (see
-[Arrow's S3 environment variables](https://arrow.apache.org/docs/cpp/env_vars.html))
-and use a plain `storage_path="s3://bucket/path"`. For Backblaze B2, set
-`AWS_ENDPOINT_URL_S3` to your bucket's endpoint, and `AWS_ACCESS_KEY_ID` /
-`AWS_SECRET_ACCESS_KEY` to your B2 application key ID and key.
+Alternatively, configure the endpoint and credentials through the environment variables Arrow reads (see [Arrow's S3 environment variables](https://arrow.apache.org/docs/cpp/env_vars.html)) and use a plain `storage_path="s3://bucket/path"`. For Backblaze B2, set `AWS_ENDPOINT_URL_S3` to your bucket's endpoint, and `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` to your B2 application key ID and key.
 
 See [this end-to-end notebook](https://github.com/backblaze-b2-samples/notebooks/tree/main/ray-train-tune-checkpoints) for a worked Backblaze B2 example.
 
 
 ## Overview of Ray Train outputs
 
-So far, we covered how to configure the storage location for Ray Train outputs.
-Let's walk through a concrete example to see what exactly these outputs are,
-and how they're structured in storage.
+So far, we covered how to configure the storage location for Ray Train outputs. Let's walk through a concrete example to see what exactly these outputs are, and how they're structured in storage.
 
 :::{seealso}
 This example includes checkpointing, which is covered in detail in {ref}`train-checkpointing`.
@@ -402,8 +355,7 @@ Here's a rundown of all files that will be persisted to storage:
     └── ...
 ```
 
-The {class}`~ray.train.Result` and {class}`~ray.train.Checkpoint` objects returned by
-`trainer.fit` are the easiest way to access the data in these files:
+The {class}`~ray.train.Result` and {class}`~ray.train.Checkpoint` objects returned by `trainer.fit` are the easiest way to access the data in these files:
 
 ```{testcode}
 :skipif: True
@@ -429,22 +381,16 @@ See {ref}`train-inspect-results` for a full guide on interacting with training {
 
 Ray Train changes the current working directory of each worker to the same path.
 
-By default, this path is a sub-directory of the Ray session directory (e.g., `/tmp/ray/session_latest`),
-which is also where other Ray logs and temporary files are dumped.
-The location of the Ray session directory {ref}`can be customized <temp-dir-log-files>`.
+By default, this path is a sub-directory of the Ray session directory (e.g., `/tmp/ray/session_latest`), which is also where other Ray logs and temporary files are dumped. The location of the Ray session directory {ref}`can be customized <temp-dir-log-files>`.
 
-To disable the default behavior of Ray Train changing the current working directory,
-set the `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable.
+To disable the default behavior of Ray Train changing the current working directory, set the `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable.
 
-This is useful if you want your training workers to access relative paths from the
-directory you launched the training script from.
+This is useful if you want your training workers to access relative paths from the directory you launched the training script from.
 
 :::{tip}
-When running in a distributed cluster, you will need to make sure that all workers
-have a mirrored working directory to access the same relative paths.
+When running in a distributed cluster, you will need to make sure that all workers have a mirrored working directory to access the same relative paths.
 
-One way to achieve this is setting the
-{ref}`working directory in the Ray runtime environment <workflow-local-files>`.
+One way to achieve this is setting the {ref}`working directory in the Ray runtime environment <workflow-local-files>`.
 :::
 
 ```{testcode}
@@ -481,8 +427,7 @@ trainer.fit()
 
 ## Deprecated
 
-The following sections describe behavior that is deprecated as of Ray 2.43 and will not be supported in Ray Train V2,
-which is an overhaul of Ray Train's implementation and select APIs.
+The following sections describe behavior that is deprecated as of Ray 2.43 and will not be supported in Ray Train V2, which is an overhaul of Ray Train's implementation and select APIs.
 
 See the following resources for more information:
 
@@ -492,28 +437,16 @@ See the following resources for more information:
 ### (Deprecated) Persisting training artifacts
 
 :::{note}
-This feature of persisting training worker artifacts is deprecated as of Ray 2.43.
-The feature relied on Ray Tune's local working directory abstraction,
-where the local files of each worker would be copied to storage.
-Ray Train V2 decouples the two libraries, so this API, which already provided limited value, has been deprecated.
+This feature of persisting training worker artifacts is deprecated as of Ray 2.43. The feature relied on Ray Tune's local working directory abstraction, where the local files of each worker would be copied to storage. Ray Train V2 decouples the two libraries, so this API, which already provided limited value, has been deprecated.
 :::
 
-In the example above, we saved some artifacts within the training loop to the worker's
-*current working directory*.
-If you were training a stable diffusion model, you could save
-some sample generated images every so often as a training artifact.
+In the example above, we saved some artifacts within the training loop to the worker's *current working directory*. If you were training a stable diffusion model, you could save some sample generated images every so often as a training artifact.
 
-By default, Ray Train changes the current working directory of each worker to be inside the run's
-{ref}`local staging directory <train-local-staging-dir>`.
-This way, all distributed training workers share the same absolute path as the working directory.
-See {ref}`below <train-working-directory>` for how to disable this default behavior,
-which is useful if you want your training workers to keep their original working directories.
+By default, Ray Train changes the current working directory of each worker to be inside the run's {ref}`local staging directory <train-local-staging-dir>`. This way, all distributed training workers share the same absolute path as the working directory. See {ref}`below <train-working-directory>` for how to disable this default behavior, which is useful if you want your training workers to keep their original working directories.
 
-If {class}`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then
-all artifacts saved in this directory will be persisted to storage.
+If {class}`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then all artifacts saved in this directory will be persisted to storage.
 
-The frequency of artifact syncing can be configured via {class}`SyncConfig <ray.train.SyncConfig>`.
-Note that this behavior is off by default.
+The frequency of artifact syncing can be configured via {class}`SyncConfig <ray.train.SyncConfig>`. Note that this behavior is off by default.
 
 Here's an example of what the Train run output directory looks like, with the worker artifacts:
 
@@ -536,12 +469,9 @@ s3://bucket-name/sub-path (RunConfig.storage_path)
 ```
 
 :::{warning}
-Artifacts saved by *every worker* will be synced to storage. If you have multiple workers
-co-located on the same node, make sure that workers don't delete files within their
-shared working directory.
+Artifacts saved by *every worker* will be synced to storage. If you have multiple workers co-located on the same node, make sure that workers don't delete files within their shared working directory.
 
-A best practice is to only write artifacts from a single worker unless you
-really need artifacts from multiple.
+A best practice is to only write artifacts from a single worker unless you really need artifacts from multiple.
 
 ```{testcode}
 :skipif: True
@@ -567,25 +497,17 @@ This section describes behavior depending on Ray Tune implementation details tha
 :::
 
 :::{warning}
-Prior to 2.10, the `RAY_AIR_LOCAL_CACHE_DIR` environment variable and `RunConfig(local_dir)`
-were ways to configure the local staging directory to be outside of the home directory (`~/ray_results`).
+Prior to 2.10, the `RAY_AIR_LOCAL_CACHE_DIR` environment variable and `RunConfig(local_dir)` were ways to configure the local staging directory to be outside of the home directory (`~/ray_results`).
 
-**These configurations are no longer used to configure the local staging directory.
-Please instead use** `RunConfig(storage_path)` **to configure where your
-run's outputs go.**
+**These configurations are no longer used to configure the local staging directory. Please instead use** `RunConfig(storage_path)` **to configure where your run's outputs go.**
 :::
 
 
-Apart from files such as checkpoints written directly to the `storage_path`,
-Ray Train also writes some logfiles and metadata files to an intermediate
-*local staging directory* before they get persisted (copied/uploaded) to the `storage_path`.
-The current working directory of each worker is set within this local staging directory.
+Apart from files such as checkpoints written directly to the `storage_path`, Ray Train also writes some logfiles and metadata files to an intermediate *local staging directory* before they get persisted (copied/uploaded) to the `storage_path`. The current working directory of each worker is set within this local staging directory.
 
-By default, the local staging directory is a sub-directory of the Ray session
-directory (e.g., `/tmp/ray/session_latest`), which is also where other temporary Ray files are dumped.
+By default, the local staging directory is a sub-directory of the Ray session directory (e.g., `/tmp/ray/session_latest`), which is also where other temporary Ray files are dumped.
 
-Customize the location of the staging directory by {ref}`setting the location of the
-temporary Ray session directory <temp-dir-log-files>`.
+Customize the location of the staging directory by {ref}`setting the location of the temporary Ray session directory <temp-dir-log-files>`.
 
 Here's an example of what the local staging directory looks like:
 
@@ -600,9 +522,7 @@ Here's an example of what the local staging directory looks like:
 ```
 
 :::{warning}
-You should not need to look into the local staging directory.
-The `storage_path` should be the only path that you need to interact with.
+You should not need to look into the local staging directory. The `storage_path` should be the only path that you need to interact with.
 
-The structure of the local staging directory is subject to change
-in future versions of Ray Train -- do not rely on these local staging files in your application.
+The structure of the local staging directory is subject to change in future versions of Ray Train -- do not rely on these local staging files in your application.
 :::

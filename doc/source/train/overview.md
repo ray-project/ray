@@ -26,8 +26,7 @@ To use Ray Train effectively, you need to understand four main concepts:
 
 ## Training function
 
-The training function is a user-defined Python function that contains the end-to-end model training loop logic.
-When launching a distributed training job, each worker executes this training function.
+The training function is a user-defined Python function that contains the end-to-end model training loop logic. When launching a distributed training job, each worker executes this training function.
 
 Ray Train documentation uses the following conventions:
 
@@ -49,16 +48,13 @@ def train_func():
 
 ## Worker
 
-Ray Train distributes model training compute to individual worker processes across the cluster.
-Each worker is a process that executes the `train_func`.
-The number of workers determines the parallelism of the training job and is configured in the {class}`~ray.train.ScalingConfig`.
+Ray Train distributes model training compute to individual worker processes across the cluster. Each worker is a process that executes the `train_func`. The number of workers determines the parallelism of the training job and is configured in the {class}`~ray.train.ScalingConfig`.
 
 (train-overview-scaling-config)=
 
 ## Scaling configuration
 
-The {class}`~ray.train.ScalingConfig` is the mechanism for defining the scale of the training job.
-Specify two basic parameters for worker parallelism and compute resources:
+The {class}`~ray.train.ScalingConfig` is the mechanism for defining the scale of the training job. Specify two basic parameters for worker parallelism and compute resources:
 
 * {class}`num_workers <ray.train.ScalingConfig>`: The number of workers to launch for a distributed training job.
 * {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker should use a GPU.
@@ -80,9 +76,7 @@ scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
 
 ## Trainer
 
-The Trainer ties the previous three concepts together to launch distributed training jobs.
-Ray Train provides {ref}`Trainer classes <train-api>` for different frameworks.
-Calling the {meth}`fit() <ray.train.trainer.BaseTrainer.fit>` method executes the training job by:
+The Trainer ties the previous three concepts together to launch distributed training jobs. Ray Train provides {ref}`Trainer classes <train-api>` for different frameworks. Calling the {meth}`fit() <ray.train.trainer.BaseTrainer.fit>` method executes the training job by:
 
 1. Launching workers as defined by the {ref}`scaling_config <train-overview-scaling-config>`.
 1. Setting up the framework's distributed environment on all workers.

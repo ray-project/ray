@@ -15,8 +15,7 @@ For more details, see {ref}`train_scaling_config`.
 
 ## Configure persistent storage
 
-Create a {class}`~ray.train.RunConfig` object to specify the path where results
-(including checkpoints and artifacts) will be saved.
+Create a {class}`~ray.train.RunConfig` object to specify the path where results (including checkpoints and artifacts) will be saved.
 
 ```{testcode}
 from ray.train import RunConfig
@@ -33,10 +32,7 @@ run_config = RunConfig(storage_path="/mnt/nfs", name="unique_run_name")
 
 
 :::{warning}
-Specifying a *shared storage location* (such as cloud storage or NFS) is
-*optional* for single-node clusters, but it is **required for multi-node clusters.**
-Using a local path will {ref}`raise an error <multinode-local-storage-warning>`
-during checkpointing for multi-node clusters.
+Specifying a *shared storage location* (such as cloud storage or NFS) is *optional* for single-node clusters, but it is **required for multi-node clusters.** Using a local path will {ref}`raise an error <multinode-local-storage-warning>` during checkpointing for multi-node clusters.
 :::
 
 
@@ -45,8 +41,7 @@ For more details, see {ref}`persistent-storage-guide`.
 
 ## Launch a training job
 
-Tying this all together, you can now launch a distributed training job
-with a {class}`~ray.train.torch.TorchTrainer`.
+Tying this all together, you can now launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
 
 ```{testcode}
 :hide:
@@ -70,8 +65,7 @@ result = trainer.fit()
 
 ## Access training results
 
-After training completes, a {class}`~ray.train.Result` object is returned which contains
-information about the training run, including the metrics and checkpoints reported during training.
+After training completes, a {class}`~ray.train.Result` object is returned which contains information about the training run, including the metrics and checkpoints reported during training.
 
 ```{testcode}
 result.metrics     # The metrics reported during training.

@@ -225,24 +225,20 @@ trainer.train()
 ```{include} common/torch-configure-train_func.md
 ```
 
-Ray Train sets up the distributed process group on each worker before entering the training function.
-Put all your logic into this function, including:
+Ray Train sets up the distributed process group on each worker before entering the training function. Put all your logic into this function, including:
 
 - Dataset construction and preprocessing
 - Model initialization
 - Transformers trainer definition
 
 :::{note}
-When using Hugging Face Datasets or Evaluate, always call `datasets.load_dataset` and `evaluate.load`
-inside the training function. Don't pass loaded datasets and metrics from outside the training
-function, as this can cause serialization errors when transferring objects to workers.
+When using Hugging Face Datasets or Evaluate, always call `datasets.load_dataset` and `evaluate.load` inside the training function. Don't pass loaded datasets and metrics from outside the training function, as this can cause serialization errors when transferring objects to workers.
 :::
 
 
 ### Report checkpoints and metrics
 
-To persist checkpoints and monitor training progress, add a
-{class}`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer:
+To persist checkpoints and monitor training progress, add a {class}`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer:
 
 
 ```diff
@@ -257,15 +253,12 @@ To persist checkpoints and monitor training progress, add a
 ```
 
 
-Reporting metrics and checkpoints to Ray Train enables integration with Ray Tune and {ref}`fault-tolerant training <train-fault-tolerance>`.
-The {class}`ray.train.huggingface.transformers.RayTrainReportCallback` provides a basic implementation, and you can {ref}`customize it <train-dl-saving-checkpoints>` to fit your needs.
+Reporting metrics and checkpoints to Ray Train enables integration with Ray Tune and {ref}`fault-tolerant training <train-fault-tolerance>`. The {class}`ray.train.huggingface.transformers.RayTrainReportCallback` provides a basic implementation, and you can {ref}`customize it <train-dl-saving-checkpoints>` to fit your needs.
 
 
 ### Prepare a Transformers Trainer
 
-Pass your Transformers Trainer into
-{meth}`~ray.train.huggingface.transformers.prepare_trainer` to validate
-configurations and enable Ray Data integration:
+Pass your Transformers Trainer into {meth}`~ray.train.huggingface.transformers.prepare_trainer` to validate configurations and enable Ray Data integration:
 
 
 ```diff
@@ -298,13 +291,9 @@ Now that you've converted your Hugging Face Transformers script to use Ray Train
 
 ## TransformersTrainer Migration Guide
 
-Ray 2.1 introduced `TransformersTrainer` with a `trainer_init_per_worker` interface
-to define `transformers.Trainer` and execute a pre-defined training function.
+Ray 2.1 introduced `TransformersTrainer` with a `trainer_init_per_worker` interface to define `transformers.Trainer` and execute a pre-defined training function.
 
-Ray 2.7 introduced the unified {class}`~ray.train.torch.TorchTrainer` API,
-which offers better transparency, flexibility, and simplicity. This API aligns more closely
-with standard Hugging Face Transformers scripts, giving you better control over your
-training code.
+Ray 2.7 introduced the unified {class}`~ray.train.torch.TorchTrainer` API, which offers better transparency, flexibility, and simplicity. This API aligns more closely with standard Hugging Face Transformers scripts, giving you better control over your training code.
 
 
 ::::{tab-set}
