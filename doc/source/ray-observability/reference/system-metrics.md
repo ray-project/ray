@@ -38,7 +38,7 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
   - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See [rpc::TaskState](https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583) for more information. The function/method name is available as the Name label. If the task was retried due to failure or reconstruction, the IsRetry label will be set to "1", otherwise "0".
 * - `ray_actors`
   - `Name`, `State`
-  - Current number of actors in each state described in `rpc::ActorTableData::ActorState <https://github.com/ray-project/ray/blob/b3799a53dcabd8d1a4d20f22faa98e781b0059c7/src/ray/protobuf/gcs.proto#L79>`. ALIVE has two sub-states: ALIVE_IDLE, and ALIVE_RUNNING_TASKS. An actor is considered ALIVE_IDLE if it is not running any tasks.
+  - Current number of actors in each state described in [rpc::ActorTableData::ActorState](https://github.com/ray-project/ray/blob/b3799a53dcabd8d1a4d20f22faa98e781b0059c7/src/ray/protobuf/gcs.proto#L79). ALIVE has two sub-states: ALIVE_IDLE, and ALIVE_RUNNING_TASKS. An actor is considered ALIVE_IDLE if it is not running any tasks.
 * - `ray_resources`
   - `Name`, `State`, `instance`
   - Logical resource usage for each node of the cluster. Each resource has some quantity that's either in the USED or AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).

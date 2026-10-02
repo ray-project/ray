@@ -8,7 +8,7 @@ myst:
 
 # Using the Ray Debugger
 
-Ray has a built in debugger that allows you to debug your distributed applications. It allows to set breakpoints in your Ray tasks and actors and when hitting the breakpoint you can drop into a PDB session that you can then use to:
+Ray has a built in debugger that allows you to debug your distributed applications. It allows you to set breakpoints in your Ray tasks and actors and when hitting the breakpoint you can drop into a PDB session that you can then use to:
 
 - Inspect variables in that context
 - Step within that task or actor

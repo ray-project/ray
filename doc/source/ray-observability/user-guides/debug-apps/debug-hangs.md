@@ -32,7 +32,7 @@ You may run into permission errors when using py-spy in the docker containers. T
 :::{note}
 The following errors are conditional and not signals of failures for your Python programs:
 
-* If you see "No such file or direction", check if your worker process has exited.
+* If you see "No such file or directory", check if your worker process has exited.
 * If you see "No stack counts found", check if your worker process was sleeping and not active in the last 5s.
 :::
 

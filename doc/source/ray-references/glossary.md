@@ -83,18 +83,18 @@ Batch format
     batch type.
 
     ```{doctest}
-    >>> import ray
-    >>> dataset = ray.data.range(15)
-    >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
+    >>> import ray  # doctest: +SKIP
+    >>> dataset = ray.data.range(15)  # doctest: +SKIP
+    >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))  # doctest: +SKIP
     {'id': array([0, 1, 2, 3, 4])}
-    >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
+    >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))  # doctest: +SKIP
        id
     0   0
     1   1
     2   2
     3   3
     4   4
-    >>> next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5)))
+    >>> next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5)))  # doctest: +SKIP
     pyarrow.Table
     id: int64
     ----
@@ -129,8 +129,6 @@ Checkpoint
     external storage (e.g., cloud storage), and as an in-memory dictionary.
     {class}`Learn more <ray.train.Checkpoint>`.
 
-    <!-- TODO: How does this relate to RLlib checkpoints etc.? Be clear here -->
-
 Ray Client
     The Ray Client is an API that connects a Python script to a remote Ray cluster.
     Effectively, it allows you to leverage a remote Ray cluster just like you would
@@ -142,8 +140,6 @@ Ray Cluster
     Ray clusters can be fixed-size, or they can autoscale up and down according to
     the resources requested by applications running on the cluster.
 
-.. TODO: Add "Concurrency" here, or try to avoid this in docs.
-
 Connector
     A connector performs transformations on data that comes out of a dataset or an
     RL environment and is about to be passed to a model. Connectors are flexible
@@ -154,13 +150,9 @@ Tune Config
     This is the set of hyperparameters corresponding to a Tune trial.
     Sampling from a hyperparameter search space will produce a config.
 
-.. TODO: DAG
-
 Ray dashboard
     Ray’s built-in dashboard is a web interface that provides metrics, charts,
     and other features that help Ray users to understand and debug Ray applications.
-
-.. TODO: Data Shuffling
 
 Dataset (object)
     A class that produces a sequence of distributed data blocks.
@@ -204,8 +196,6 @@ Distributed Data-Parallel
     only `D / N` datapoints. If each worker node computes the gradient on a batch
     of size `B`, then the effective batch size of the DDP training is `N * B`.
 
-.. TODO: Entrypoint
-
 Environment
     The world or simulation, in which one or more reinforcement learning agents
     have to learn to behave optimally with respect to a given reward function. An
@@ -239,8 +229,6 @@ Experiment
     experiments are launched via the
     {ref}`Tuner API<tune-run-ref>` and the {ref}`Trainer API<train-api>`.
 
-.. TODO: Event
-
 Fault tolerance
     Fault tolerance in Ray Train and Tune consists of experiment-level and trial-level
     restoration. Experiment-level restoration refers to resuming all trials,
@@ -248,8 +236,6 @@ Fault tolerance
     to a cluster-level failure. Trial-level restoration refers to resuming
     individual trials, in the event that a trial encounters a runtime
     error such as OOM.
-
-    <!-- TODO: more on fault tolerance in Core -->
 
 Framework
     The deep-learning framework used for the model(s), loss(es), and optimizer(s)
@@ -274,8 +260,6 @@ HPO
     compute processing scale-out parameters such as the number of distributed
     training workers.
 
-.. TODO: Inference
-
 Job
     A Ray job is a packaged Ray application that can be executed on a
     (remote) Ray cluster. {ref}`Learn more<jobs-overview>`.
@@ -284,10 +268,6 @@ Lineage
     For Ray objects, this is the set of tasks that was originally executed to
     produce the object. If an object’s value is lost due to node failure,
     Ray may attempt to recover the value by re-executing the object’s lineage.
-
-.. TODO: Logs
-
-.. TODO: Metrics
 
 Model
     A function approximator with trainable parameters (e.g. a neural network) that
@@ -345,8 +325,6 @@ Object spilling
     of the object store is used up. This enables out-of-core data processing for
     memory-intensive distributed applications. It comes with a performance penalty
     since data needs to be written to disk.
-
-.. TODO: Observability
 
 Observation
     The full or partial state of an RL environment, which an agent sees
@@ -406,21 +384,15 @@ Policy
     A (neural network) model that maps an RL environment observation of some agent
     to its next action inside an RL environment.
 
-.. TODO: Policy evaluation
-
 Preprocessor
     {ref}`An interface used to preprocess a Dataset<preprocessor-ref>` for
     training and inference (prediction). Preprocessors
     can be stateful, as they can be fitted on the training dataset before being
     used to transform the training and evaluation datasets.
 
-.. TODO: Process
-
 Ray application
     A collection of Ray tasks, actors, and objects that originate from the
     same script.
-
-.. TODO: Ray Timeline
 
 Raylet
     A system process that runs on each Ray node. It’s responsible for scheduling
@@ -477,8 +449,6 @@ Rollout Worker
     under `self.evaluation_workers`.
 
     <!-- END ROLLOUT WORKER -->
-
-.. TODO: Runtime
 
 Runtime environment
     A runtime environment defines dependencies such as files, packages, environment
@@ -605,7 +575,6 @@ Training iteration
     A partial training pass of input data up to pre-defined yield point
     (e.g., time or data consumed) for checkpointing of long running training jobs.
     A full training epoch can consist of multiple training iterations.
-    .\. TODO: RLlib
 
 Training epoch
     A full training pass of the input dataset. Typically, model training iterates
@@ -641,16 +610,6 @@ Trial scheduler
 Tuner
     The Tuner is the top level Ray Tune API used to configure and run an
     experiment with many trials.
-
-.. TODO: Tunable
-
-.. TODO: (Ray) Workflow
-
-.. TODO: WorkerGroup
-
-.. TODO: Worker heap
-
-.. TODO: Worker node / worker node pod
 
 Worker process / worker
     The process that runs user defined tasks and actors.

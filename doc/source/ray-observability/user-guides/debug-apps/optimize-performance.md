@@ -24,7 +24,7 @@ You just ran an application using Ray, but it wasn't as fast as you expected it 
 
   For many - but not all - libraries, you can diagnose this by opening `top` while your application is running. If one process is using most of the CPUs, and the others are using a small amount, this may be the problem. The most common exception is PyTorch, which will appear to be using all the cores despite needing `torch.set_num_threads(1)` to be called to avoid contention.
 
-If you are still experiencing a slowdown, but none of the above problems apply, we'd really like to know! Create a [GitHub issue](https://github.com/ray-project/ray/issues) and Submit a minimal code example that demonstrates the problem.
+If you are still experiencing a slowdown, but none of the above problems apply, we'd really like to know! Create a [GitHub issue](https://github.com/ray-project/ray/issues) and submit a minimal code example that demonstrates the problem.
 
 
 This document discusses some common problems that people run into when using Ray as well as some known problems. If you encounter other problems, [let us know](https://github.com/ray-project/ray/issues).

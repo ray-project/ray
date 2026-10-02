@@ -52,7 +52,7 @@ Ray distributes users' code to multiple processes across many machines. Applicat
 
 ### Debugger
 
-Many Python developers use a debugger to debug Python programs, and [Python pdb](https://docs.python.org/3/library/pdb.html)) is one of the popular choices. Ray has native integration to `pdb`. You can simply add `breakpoint()` to Actors and Tasks code to enable `pdb`. View {ref}`Ray Debugger <ray-debugger>` for more details.
+Many Python developers use a debugger to debug Python programs, and [Python pdb](https://docs.python.org/3/library/pdb.html) is one of the popular choices. Ray has native integration to `pdb`. You can simply add `breakpoint()` to Actors and Tasks code to enable `pdb`. View {ref}`Ray Debugger <ray-debugger>` for more details.
 
 
 ## Running out of file descriptors (`Too many open files`)
