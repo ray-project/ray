@@ -175,18 +175,41 @@ class TestDeploymentOptions:
         f = f.options(**options)
         assert f._deployment_config.user_configured_option_names == set(options.keys())
 
-    def test_options_prefer_local_node_routing_false(self):
-        """Explicit False via .options() is stored and tracked as user-configured."""
+    @pytest.mark.parametrize(
+        "field_name",
+        ["prefer_local_node_routing", "prefer_local_az_routing"],
+    )
+    @pytest.mark.parametrize("value", [True, False])
+    def test_options_locality_routing(self, field_name, value):
+        """Explicit locality flags via .options() are stored and user-configured."""
 
         @serve.deployment
         def f():
             pass
 
-        f = f.options(prefer_local_node_routing=False)
-        assert f._deployment_config.prefer_local_node_routing is False
-        assert "prefer_local_node_routing" in (
-            f._deployment_config.user_configured_option_names
-        )
+        f = f.options(**{field_name: value})
+        assert getattr(f._deployment_config, field_name) is value
+        assert field_name in f._deployment_config.user_configured_option_names
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["prefer_local_node_routing", "prefer_local_az_routing"],
+    )
+    @pytest.mark.parametrize("value", [True, False])
+    def test_decorator_locality_routing(self, field_name, value):
+        """Locality flags set on @serve.deployment survive proto round-trip."""
+
+        @serve.deployment(**{field_name: value})
+        def f():
+            pass
+
+        assert getattr(f._deployment_config, field_name) is value
+        assert field_name in f._deployment_config.user_configured_option_names
+
+        serialized = f._deployment_config.to_proto_bytes()
+        deserialized = DeploymentConfig.from_proto_bytes(serialized)
+        assert getattr(deserialized, field_name) is value
+        assert field_name in deserialized.user_configured_option_names
 
     def test_deployment_decorator_version_removed(self):
         with pytest.raises(
