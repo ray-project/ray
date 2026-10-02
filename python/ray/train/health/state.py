@@ -8,10 +8,11 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="alpha")
 @dataclass
 class HealthState:
-    """The latest result of each probe, from each worker and node.
+    """The latest result of each probe, from each worker, node and
+    ``ControllerProbe`` key.
 
     Attributes:
-        probe_results: ``{probe name: {world rank or node ID: ProbeResult}}``.
+        probe_results: ``{probe name: {world rank, node ID or key: ProbeResult}}``.
     """
 
     probe_results: Mapping[str, Mapping[Union[int, NodeIdStr], ProbeResult]] = field(
@@ -25,7 +26,8 @@ class HealthState:
             probe: The probe class.
 
         Returns:
-            ``{world rank: ProbeResult}`` for a ``WorkerProbe``, or
-            ``{node ID: ProbeResult}`` for a ``NodeProbe``.
+            ``{world rank: ProbeResult}`` for a ``WorkerProbe``,
+            ``{node ID: ProbeResult}`` for a ``NodeProbe``, or
+            ``{key: ProbeResult}`` for a ``ControllerProbe``.
         """
         return dict(self.probe_results.get(probe.probe_name(), {}))

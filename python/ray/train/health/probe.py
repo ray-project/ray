@@ -28,10 +28,12 @@ class ProbeResult:
 
 @PublicAPI(stability="alpha")
 class Probe(abc.ABC):
-    """Base class for probes. Subclass ``WorkerProbe`` or ``NodeProbe``.
+    """Base class for probes. Subclass ``WorkerProbe``, ``NodeProbe`` or
+    ``ControllerProbe``.
 
-    Ray Train keeps the latest result of each probe from each worker and node,
-    in memory. Results are dropped when a new set of workers starts.
+    Ray Train keeps the latest result of each probe, per worker, node or
+    ``ControllerProbe`` key, in memory. Results are dropped when a new set of
+    workers starts.
 
     Attributes:
         name: The name results are stored under. Defaults to the class name.
@@ -75,5 +77,39 @@ class NodeProbe(Probe):
 
         Returns:
             The result.
+        """
+        raise NotImplementedError
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class ControllerProbeContext:
+    """What a ``ControllerProbe`` is told about the current workers.
+
+    Attributes:
+        rank_to_node: ``{world rank: node ID}`` for every worker.
+    """
+
+    rank_to_node: Dict[int, NodeIdStr] = field(default_factory=dict)
+
+
+@PublicAPI(stability="alpha")
+class ControllerProbe(Probe):
+    """A probe that runs in the Ray Train controller process.
+
+    One instance is used for the whole run, so it can keep state across polls.
+    One poll returns results for several keys the probe chooses, such as one per
+    NCCL communicator.
+    """
+
+    @abc.abstractmethod
+    def poll(self, ctx: ControllerProbeContext) -> Dict[str, ProbeResult]:
+        """Poll once.
+
+        Args:
+            ctx: The current workers.
+
+        Returns:
+            ``{key: ProbeResult}``.
         """
         raise NotImplementedError
