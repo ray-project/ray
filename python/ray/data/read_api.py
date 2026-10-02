@@ -2946,6 +2946,37 @@ def read_orc(
         :class:`~ray.data.Dataset` holding records from the ORC files.
     """
 
+    if DataContext.get_current().use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+            OrcDatasourceV2,
+        )
+
+        datasource = OrcDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
+
     datasource = ORCDatasource(
         paths,
         filesystem=filesystem,

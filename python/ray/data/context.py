@@ -699,13 +699,12 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
-            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
-            driver-side first-file sampling for schema inference,
-            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True;
-            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
-            V2). Parquet is the only reader migrated to V2 so far; the others
-            read through V1 for now regardless of this flag.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
+            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline
+            (``ListFiles → ReadFiles``) with format-specific schema inference,
+            scanners, and readers. Defaults to True; override with
+            ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for V2). Other
+            readers use V1 regardless of this flag.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.

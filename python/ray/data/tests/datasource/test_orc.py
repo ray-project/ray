@@ -162,6 +162,56 @@ def test_read_orc_partitioned(ray_start_regular_shared, tmp_path):
     assert all(row["year"] == "2024" for row in rows)
 
 
+def test_read_orc_v2_unifies_schema_and_hive_partitions(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+
+    for year in ("2023", "2024"):
+        partition_dir = tmp_path / f"year={year}"
+        partition_dir.mkdir()
+    _write_orc(str(tmp_path / "year=2023" / "first.orc"), pa.table({"id": [1]}))
+    _write_orc(
+        str(tmp_path / "year=2024" / "second.orc"),
+        pa.table({"id": [2], "name": ["two"]}),
+    )
+
+    ds = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        include_paths=True,
+        override_num_blocks=1,
+    )
+
+    materialized = ds.materialize()
+    rows = sorted(materialized.take_all(), key=lambda row: row["id"])
+    assert ds.schema().names == ["id", "name", "year", "path"]
+    assert rows[0]["id"] == 1
+    assert rows[0]["name"] is None
+    assert rows[0]["year"] == "2023"
+    assert rows[0]["path"].endswith("first.orc")
+    assert rows[1]["id"] == 2
+    assert rows[1]["name"] == "two"
+    assert rows[1]["year"] == "2024"
+    assert rows[1]["path"].endswith("second.orc")
+    assert materialized.num_blocks() == 1
+
+
+def test_read_orc_v1_fallback(ray_start_regular_shared, tmp_path, monkeypatch):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", False)
+    path = os.path.join(tmp_path, "data.orc")
+    _write_orc(path, pa.table({"id": [1, 2]}))
+
+    ds = ray.data.read_orc(path)
+
+    assert sorted(row["id"] for row in ds.take_all()) == [1, 2]
+
+
 def test_read_orc_partitioned_with_partition_filter(ray_start_regular_shared, tmp_path):
     from ray.data.datasource.partitioning import (
         Partitioning,
