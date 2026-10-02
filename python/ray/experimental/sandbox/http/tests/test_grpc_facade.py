@@ -26,6 +26,7 @@ from ray.experimental.sandbox.http.tests.conftest import (
 try:
     from grpclib.client import Channel
     from grpclib.const import Status
+    from grpclib.events import SendRequest, listen
     from grpclib.exceptions import GRPCError
     from grpclib.server import Server
 
@@ -843,6 +844,53 @@ def test_named_create_retry_boots_a_stuck_sandbox() -> None:
                 await _wait_running(control, sandbox_id)
             finally:
                 channel.close()
+
+    asyncio.run(scenario())
+
+
+def test_configured_token_gates_both_planes(monkeypatch) -> None:
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", "s3cret")
+    port = next(_next_port)
+
+    async def scenario() -> None:
+        resolver = FakeResolver()
+        resolver.next_runtime = FakeSandboxRuntime()
+        async with _Facade(resolver, port):
+            anonymous = Channel("127.0.0.1", port)
+            authed = Channel("127.0.0.1", port)
+            try:
+                with pytest.raises(GRPCError) as exc:
+                    await _make_sandbox(ModalClientStub(anonymous))
+                assert exc.value.status == Status.UNAUTHENTICATED
+                assert resolver.handles == {}
+                with pytest.raises(GRPCError) as exc:
+                    await TaskCommandRouterStub(anonymous).TaskExecStart(
+                        sr_pb2.TaskExecStartRequest(task_id="sb-x", exec_id="e")
+                    )
+                assert exc.value.status == Status.UNAUTHENTICATED
+
+                # Credentials as the client SDK sends them: the token secret
+                # to the control plane, the handed-out jwt to the router.
+                async def _add_secret(event: SendRequest) -> None:
+                    event.metadata["x-modal-token-secret"] = "s3cret"
+
+                listen(authed, SendRequest, _add_secret)
+                control = ModalClientStub(authed)
+                sandbox_id = await _make_sandbox(control)
+                access = await control.TaskGetCommandRouterAccess(
+                    api_pb2.TaskGetCommandRouterAccessRequest()
+                )
+                await _wait_running(control, sandbox_id)
+                router = TaskCommandRouterStub(anonymous)
+                await router.TaskExecStart(
+                    sr_pb2.TaskExecStartRequest(
+                        task_id=sandbox_id, exec_id="e", command_args=["true"]
+                    ),
+                    metadata={"authorization": f"Bearer {access.jwt}"},
+                )
+            finally:
+                anonymous.close()
+                authed.close()
 
     asyncio.run(scenario())
 

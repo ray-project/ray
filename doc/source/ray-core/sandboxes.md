@@ -563,6 +563,8 @@ python -m ray.experimental.sandbox.http.grpc_facade \
   --host 0.0.0.0 --port 50051 --advertise-url http://<facade-host>:50051
 ```
 
+Set `RAY_SANDBOX_API_TOKEN` before starting the facade to require every client to send that value as its SDK token secret. Without it the facade accepts any client, so bind it to `0.0.0.0` only behind a network that already restricts who can reach it.
+
 Keep these limits in mind:
 
 * **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step.

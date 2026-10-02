@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import base64
 import hashlib
+import hmac
 import itertools
 import json
 import logging
@@ -240,11 +241,16 @@ class _FacadeState:
     """State shared between the control-plane and exec-plane servicers."""
 
     def __init__(
-        self, resolver: Any, settings: SandboxAPISettings, advertise_url: str
+        self,
+        resolver: Any,
+        settings: SandboxAPISettings,
+        advertise_url: str,
+        token: Optional[str] = None,
     ) -> None:
         self.resolver = resolver
         self.settings = settings
         self.advertise_url = advertise_url
+        self.token = token
         self.execs: Dict[str, _ExecRecord] = {}
 
     # Resolver calls can wait on a GCS round trip (an actor create, a cache
@@ -403,9 +409,48 @@ def _terminated() -> Any:
     return api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
 
 
+def _carries_token(metadata: Any, token: str) -> bool:
+    # The client SDK sends its token secret to the control plane and
+    # "Bearer <jwt>" to the command router, where the jwt is the one
+    # TaskGetCommandRouterAccess handed out: the token itself.
+    expected = token.encode()
+    secret = metadata.get("x-modal-token-secret", "").encode()
+    bearer = metadata.get("authorization", "").removeprefix("Bearer ").encode()
+    return hmac.compare_digest(secret, expected) or hmac.compare_digest(
+        bearer, expected
+    )
+
+
+class _TokenGuard:
+    """Rejects every RPC that lacks the configured token, if one is set."""
+
+    _state: _FacadeState
+
+    def __mapping__(self) -> Dict[str, Any]:
+        mapping = super().__mapping__()
+        token = self._state.token
+        if token is None:
+            return mapping
+
+        def guard(func: Any) -> Any:
+            async def checked(stream: Any) -> None:
+                if not _carries_token(stream.metadata, token):
+                    raise GRPCError(
+                        Status.UNAUTHENTICATED, "invalid or missing API token"
+                    )
+                await func(stream)
+
+            return checked
+
+        return {
+            path: handler._replace(func=guard(handler.func))
+            for path, handler in mapping.items()
+        }
+
+
 @_fill_unimplemented
 @DeveloperAPI
-class RaySandboxControlServicer(ModalClientBase):
+class RaySandboxControlServicer(_TokenGuard, ModalClientBase):
     """Control-plane RPCs: apps, images, secrets, sandbox lifecycle."""
 
     def __init__(self, state: _FacadeState) -> None:
@@ -697,14 +742,14 @@ class RaySandboxControlServicer(ModalClientBase):
                 url=self._state.advertise_url,
                 # Not a parseable JWT on purpose: the SDK then applies no
                 # client-side expiry and only refreshes on UNAUTHENTICATED.
-                jwt="ray-sandbox-facade",
+                jwt=self._state.token or "ray-sandbox-facade",
             )
         )
 
 
 @_fill_unimplemented
 @DeveloperAPI
-class RaySandboxRouterServicer(TaskCommandRouterBase):
+class RaySandboxRouterServicer(_TokenGuard, TaskCommandRouterBase):
     """Exec-plane RPCs: start, stdio, stdin, poll, and wait.
 
     The client SDK reaches this service at the URL handed out by
@@ -1057,7 +1102,8 @@ def build_servicers(
     """
     settings = settings or SandboxAPISettings()
     resolver = handle_resolver or RayActorHandleResolver(settings)
-    state = _FacadeState(resolver, settings, advertise_url)
+    token = os.environ.get(settings.token_env_var) or None
+    state = _FacadeState(resolver, settings, advertise_url, token)
     return [RaySandboxControlServicer(state), RaySandboxRouterServicer(state)]
 
 
