@@ -19,7 +19,7 @@ rayservice-incremental-upgrade
 observability
 upgrade-guide
 k8s-cluster-setup
-storage
+/cluster/kubernetes/user-guides/storage
 config
 scheduling
 configuring-autoscaling
@@ -42,7 +42,7 @@ k8s-autoscaler
 kubectl-plugin
 auth
 auth-rbac
-reduce-image-pull-latency
+/cluster/kubernetes/user-guides/reduce-image-pull-latency
 uv
 dashboard
 resource-isolation-with-writable-cgroups
