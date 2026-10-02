@@ -780,8 +780,6 @@ class TestPrefixAffinityDirectStreaming:
         """The sequential spread test lets each pick see the previous pick's
         tree insert. With concurrent requests in flight, picks race those
         inserts, and spreading must still hold."""
-        # The production incident saw 100% of requests on one replica at 16
-        # concurrent requests; this is its 1,000 requests scaled down.
         num_prompts, concurrency = 200, 16
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             served = list(
