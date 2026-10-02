@@ -6,12 +6,16 @@ import pyarrow as pa
 import pytest
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.schema import Schema
+from pyiceberg.table.snapshots import ancestors_of
 from pyiceberg.types import LongType, NestedField, StringType
 
 import ray
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.savemode import SaveMode
 from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint._iceberg_checkpoint import (
+    ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY,
+)
 from ray.data.checkpoint._iceberg_checkpoint_state import IcebergCheckpointState
 from ray.data.checkpoint.checkpoint_filter import (
     IdColumnCheckpointManager,
@@ -204,6 +208,84 @@ def test_ambiguous_commit_is_recovered_without_another_snapshot(
     assert len(destination.snapshots()) == 1
     assert [row["id"] for row in _rows(catalog)] == [1, 2, 3]
     assert not _checkpoint_files(checkpoint_path, ".pending.parquet")
+
+
+def test_rolled_back_branch_marker_recomputes_rows(
+    ray_start_10_cpus_shared,
+    tmp_path,
+):
+    catalog, catalog_kwargs = _create_catalog(tmp_path)
+    destination = catalog.load_table(_DESTINATION)
+    destination.append(pa.table({"id": [0], "value": ["control"]}))
+    baseline_snapshot_id = destination.current_snapshot().snapshot_id
+
+    checkpoint_path = tmp_path / "checkpoints"
+    _configure_checkpointing(checkpoint_path)
+    original = IcebergDatasink.on_write_complete
+
+    def commit_then_raise(self, write_result):
+        original(self, write_result)
+        raise RuntimeError("ambiguous catalog response")
+
+    with patch.object(IcebergDatasink, "on_write_complete", commit_then_raise):
+        with pytest.raises(RuntimeError, match="ambiguous catalog response"):
+            _write_input(catalog_kwargs)
+
+    destination = catalog.load_table(_DESTINATION)
+    marked_snapshot = destination.current_snapshot()
+    marked_snapshot_id = marked_snapshot.snapshot_id
+    old_pending = _checkpoint_files(checkpoint_path, ".pending.parquet")
+    old_operation_ids = _operation_ids(old_pending)
+    assert len(old_operation_ids) == 1
+    assert (
+        marked_snapshot.summary.get(ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY)
+        in old_operation_ids
+    )
+
+    destination.manage_snapshots().create_branch(
+        marked_snapshot_id, "retained-operation"
+    ).rollback_to_snapshot(baseline_snapshot_id).commit()
+
+    destination = catalog.load_table(_DESTINATION)
+    assert destination.current_snapshot().snapshot_id == baseline_snapshot_id
+    assert destination.refs()["retained-operation"].snapshot_id == marked_snapshot_id
+    assert marked_snapshot_id not in {
+        snapshot.snapshot_id
+        for snapshot in ancestors_of(
+            destination.current_snapshot(), destination.metadata
+        )
+    }
+
+    _write_input(catalog_kwargs)
+
+    destination = catalog.load_table(_DESTINATION)
+    assert _rows(catalog) == [
+        {"id": 0, "value": "control"},
+        {"id": 1, "value": "a"},
+        {"id": 2, "value": "b"},
+        {"id": 3, "value": "c"},
+    ]
+    assert destination.refs()["retained-operation"].snapshot_id == marked_snapshot_id
+    assert marked_snapshot_id in {
+        snapshot.snapshot_id for snapshot in destination.snapshots()
+    }
+    assert marked_snapshot_id not in {
+        snapshot.snapshot_id
+        for snapshot in ancestors_of(
+            destination.current_snapshot(), destination.metadata
+        )
+    }
+    assert not _checkpoint_files(checkpoint_path, ".pending.parquet")
+    committed = _checkpoint_files(checkpoint_path, ".parquet")
+    committed_operation_ids = _operation_ids(committed)
+    assert len(committed_operation_ids) == 1
+    assert committed_operation_ids.isdisjoint(old_operation_ids)
+    assert (
+        destination.current_snapshot().summary.get(
+            ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY
+        )
+        in committed_operation_ids
+    )
 
 
 def test_retry_completes_partial_checkpoint_promotion(
