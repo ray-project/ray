@@ -622,6 +622,9 @@ doctest(
             "source/ray-contribute/writing-code-snippets.md",
             "source/ray-observability/user-guides/ray-tracing.md",
             "source/ray-observability/user-guides/cli-sdk.md",
+            # Nothing ran the glossary's `doctest` block as .rst, and its elided output
+            # can't pass the stock --doctest-glob parser that reads .md files.
+            "source/ray-references/glossary.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
             "source/ray-core/**/*.md",
             "source/ray-core/**/*.rst",
