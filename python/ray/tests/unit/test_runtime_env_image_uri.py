@@ -13,6 +13,8 @@ TOKEN = "secret-token-value"
 @pytest.fixture
 def auth_env(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
+    # Path.home() reads USERPROFILE on Windows and ignores HOME.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     for var in ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"):
         monkeypatch.delenv(var, raising=False)
     yield monkeypatch
