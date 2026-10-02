@@ -45,13 +45,11 @@ To learn the basics of KubeRay and run your first Ray application with it, see {
 * [RayService Quick Start](kuberay-rayservice-quickstart)
 * [RayCronJob Quick Start](kuberay-raycronjob-quickstart)
 
-For guidance that applies to Ray on Kubernetes in general, such as storage and container image pull latency, see {ref}`ray-on-kubernetes`.
+For guides that don't depend on KubeRay, such as storage and container image pull latency, see {ref}`ray-on-kubernetes`.
 
-Additionally, [Anyscale](https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=deploy-ray-on-k8s) is the managed Ray platform developed by the creators of Ray. It offers an easy path to deploy Ray clusters on your existing Kubernetes infrastructure, including EKS, GKE, AKS, or self-hosted Kubernetes.
+## Learn more
 
-## Learn More
-
-The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
+Use the following guides to deploy, configure, and operate Ray clusters with KubeRay.
 
 ::::{grid} 1 2 2 2
 :gutter: 1
@@ -59,10 +57,10 @@ The Ray docs present all the information you need to start running Ray workloads
 
 :::{grid-item-card}
 
-**Getting Started**
+**Getting started**
 ^^^
 
-Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
+Install the KubeRay operator, create your first Ray cluster, and run a Ray application on it.
 
 +++
 ```{button-ref} kuberay-quickstart
@@ -70,16 +68,16 @@ Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
 :outline:
 :expand:
 
-Get Started with Ray on Kubernetes
+Get started with KubeRay
 ```
 :::
 
 :::{grid-item-card}
 
-**User Guides**
+**User guides**
 ^^^
 
-Learn best practices for configuring Ray clusters on Kubernetes.
+Configure autoscaling, fault tolerance, observability, and security for the Ray clusters KubeRay manages.
 
 +++
 ```{button-ref} kuberay-guides
@@ -87,7 +85,7 @@ Learn best practices for configuring Ray clusters on Kubernetes.
 :outline:
 :expand:
 
-Read the User Guides
+Read the user guides
 ```
 :::
 
@@ -96,7 +94,7 @@ Read the User Guides
 **Examples**
 ^^^
 
-Try example Ray workloads on Kubernetes.
+Run example Ray workloads with KubeRay.
 
 +++
 ```{button-ref} kuberay-examples
@@ -113,7 +111,7 @@ Try example workloads
 **Ecosystem**
 ^^^
 
-Integrate KubeRay with third party Kubernetes ecosystem tools.
+Integrate KubeRay with third-party Kubernetes ecosystem tools.
 
 +++
 ```{button-ref} kuberay-ecosystem-integration
@@ -121,7 +119,7 @@ Integrate KubeRay with third party Kubernetes ecosystem tools.
 :outline:
 :expand:
 
-Ecosystem Guides
+Ecosystem guides
 ```
 :::
 
@@ -159,8 +157,7 @@ Troubleshooting guides
 ```
 :::
 ::::
+
 ## About KubeRay
 
-Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). KubeRay is used by several companies to run production Ray deployments.
-
-- Visit the [KubeRay GitHub repo](https://github.com/ray-project/kuberay) to track progress, report bugs, propose new features, or contribute to the project.
+KubeRay lives in the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). Several companies use KubeRay to run production Ray deployments. To track progress, report bugs, propose new features, or contribute to the project, visit the repository.
