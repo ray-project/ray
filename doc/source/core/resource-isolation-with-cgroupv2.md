@@ -75,7 +75,7 @@ If running Pods in a privileged security context isn't acceptable for your use c
 
 #### Running in a bare container
 
-If you run Ray in a bare container, such as with Docker, [use a privileged container](https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities).
+If you run Ray in a bare container, such as with Docker, [you can use a privileged container](https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities).
 
 (resource-isolation-vm)=
 

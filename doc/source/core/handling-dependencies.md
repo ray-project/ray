@@ -31,7 +31,7 @@ For production or for environments that don't change, install your dependencies 
 
 - **Packages**: External libraries or executables that your Ray application requires, often installed through `pip` or `conda`.
 
-- **Local machine** and **cluster**: Usually, you keep the Ray cluster's compute machines separate from the machine that handles and submits the application. You can submit a Ray job through {ref}`the Ray job submission mechanism <jobs-overview>`, or use `ray attach` to connect to a cluster interactively. The machine that submits the job is your *local machine*.
+- **Local machine** and **cluster**: Usually, you might want to keep the Ray cluster's compute machines or pods separate from the machine or pod that handles and submits the application. You can submit a Ray job through {ref}`the Ray job submission mechanism <jobs-overview>`, or use `ray attach` to connect to a cluster interactively. The machine that submits the job is your *local machine*.
 
 - **Job**: A {ref}`Ray job <cluster-clients-and-jobs>` is a single application. It's the collection of Ray tasks, objects, and actors that originate from the same script.
 
@@ -301,7 +301,7 @@ Ray automatically installs the `ray[default]` package itself in the environment.
 
 #### Using `uv` for package management
 
-To manage packages with `uv` in runtime environments, use `uv run`.
+The recommended way to manage packages with `uv` in runtime environments is `uv run`.
 
 `uv run` keeps dependencies synchronized between your driver and Ray workers, and it fully supports `pyproject.toml`, including editable packages. You can also lock package versions with `uv lock`. For more details, see the [uv scripts documentation](https://docs.astral.sh/uv/guides/scripts/) and the [Anyscale blog post on uv and Ray](https://www.anyscale.com/blog/uv-ray-pain-free-python-dependencies-in-clusters).
 

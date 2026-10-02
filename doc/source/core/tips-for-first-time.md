@@ -6,7 +6,7 @@ myst:
 
 # Tips for first-time users
 
-This page describes four tips that help you avoid common mistakes that can significantly hurt the performance of your first Ray programs. For an in-depth treatment of advanced design patterns, see {ref}`core design patterns <core-patterns>`.
+This page describes four tips that can help you avoid common mistakes that can significantly hurt the performance of your first Ray programs. For an in-depth treatment of advanced design patterns, see {ref}`core design patterns <core-patterns>`.
 
 ```{list-table} Core Ray API that this page uses
 :header-rows: 1
