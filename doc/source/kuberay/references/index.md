@@ -10,7 +10,7 @@ myst:
 ```{toctree}
 :hidden:
 
-references/api
+api
 ```
 
 To learn about RayCluster configuration, we recommend taking a look at the {ref}`configuration guide <kuberay-config>`.

@@ -11,21 +11,21 @@ myst:
 ```{toctree}
 :hidden:
 
-examples/mnist-training-example
-examples/stable-diffusion-rayservice
-examples/tpu-serve-stable-diffusion
-examples/mobilenet-rayservice
-examples/text-summarizer-rayservice
-examples/rayjob-batch-inference-example
-examples/rayjob-kueue-priority-scheduling
-examples/rayjob-kueue-gang-scheduling
-examples/distributed-checkpointing-with-gcsfuse
-examples/rayserve-llm-example
-examples/rayserve-deepseek-example
-examples/verl-post-training
-examples/argocd
-examples/rayjob-agent-sandbox
-examples/ray-sandboxing
+mnist-training-example
+stable-diffusion-rayservice
+tpu-serve-stable-diffusion
+mobilenet-rayservice
+text-summarizer-rayservice
+rayjob-batch-inference-example
+rayjob-kueue-priority-scheduling
+rayjob-kueue-gang-scheduling
+distributed-checkpointing-with-gcsfuse
+rayserve-llm-example
+rayserve-deepseek-example
+verl-post-training
+argocd
+rayjob-agent-sandbox
+ray-sandboxing
 ```
 
 

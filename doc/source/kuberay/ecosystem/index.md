@@ -11,16 +11,16 @@ myst:
 ```{toctree}
 :hidden:
 
-k8s-ecosystem/ingress
-k8s-ecosystem/metrics-references
-k8s-ecosystem/prometheus-grafana
-k8s-ecosystem/pyspy
-k8s-ecosystem/kai-scheduler
-k8s-ecosystem/volcano
-k8s-ecosystem/yunikorn
-k8s-ecosystem/kueue
-k8s-ecosystem/istio
-k8s-ecosystem/scheduler-plugins
+ingress
+metrics-references
+prometheus-grafana
+pyspy
+kai-scheduler
+volcano
+yunikorn
+kueue
+istio
+scheduler-plugins
 ```
 
 * {ref}`kuberay-ingress`

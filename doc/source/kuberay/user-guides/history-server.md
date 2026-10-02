@@ -56,7 +56,7 @@ gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} --region=${REGION}
 
 ## Install the KubeRay operator
 
-Follow [Install KubeRay operator](../getting-started/kuberay-operator-installation.md#step-2-install-kuberay-operator) to install the KubeRay operator from the Helm repository.
+Follow [Install KubeRay operator](../getting-started/operator-installation.md#step-2-install-kuberay-operator) to install the KubeRay operator from the Helm repository.
 
 ## Configure Google Cloud Storage and Workload Identity permissions
 

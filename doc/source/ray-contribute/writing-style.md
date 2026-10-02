@@ -366,7 +366,7 @@ Pick the format that makes the information easiest to extract:
 
 ## Writing Ray on Kubernetes and KubeRay docs
 
-Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/cluster/kubernetes/` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
+Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/kuberay/` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
 
 When two rules conflict in this domain, follow this order:
 

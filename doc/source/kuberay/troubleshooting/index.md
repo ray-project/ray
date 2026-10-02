@@ -11,8 +11,8 @@ myst:
 ```{toctree}
 :hidden:
 
-troubleshooting/troubleshooting
-troubleshooting/rayservice-troubleshooting
+troubleshooting
+rayservice-troubleshooting
 ```
 
 - {ref}`kuberay-troubleshooting-guides`

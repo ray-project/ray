@@ -55,7 +55,7 @@ gcloud container clusters create $CLUSTER \
 
 ### 3. Install the KubeRay operator
 
-Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The Kubernetes `NoSchedule` taint in the example config prevents the KubeRay operator pod from running on a GPU node.
+Install the most recent stable KubeRay operator from the Helm repository by following [Deploy a KubeRay operator](../getting-started/operator-installation.md). The Kubernetes `NoSchedule` taint in the example config prevents the KubeRay operator pod from running on a GPU node.
 
 ### 4. Configure the GPU node pool
 
