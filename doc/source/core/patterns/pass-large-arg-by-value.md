@@ -8,11 +8,11 @@ myst:
 
 # Anti-pattern: Passing the same large argument by value repeatedly harms performance
 
-**TLDR:** Avoid passing the same large argument by value to multiple tasks, use {func}`ray.put() <ray.put>` and pass by reference instead.
+Avoid passing the same large argument by value to multiple tasks. Use {func}`ray.put() <ray.put>` and pass by reference instead.
 
-When passing a large argument (>100KB) by value to a task, Ray will implicitly store the argument in the object store and the worker process will fetch the argument to the local object store from the caller's object store before running the task. If we pass the same large argument to multiple tasks, Ray will end up storing multiple copies of the argument in the object store since Ray doesn't do deduplication.
+When you pass an argument larger than 100 KB by value to a task, Ray implicitly stores the argument in the object store. Before the task runs, the worker process fetches the argument from the caller's object store to the local object store. If you pass the same large argument to multiple tasks, Ray stores multiple copies of the argument in the object store, because Ray doesn't deduplicate them.
 
-Instead of passing the large argument by value to multiple tasks, we should use `ray.put()` to store the argument to the object store once and get an `ObjectRef`, then pass the argument reference to tasks. This way, we make sure all tasks use the same copy of the argument, which is faster and uses less object store memory.
+Instead of passing the large argument by value to multiple tasks, call `ray.put()` once to store the argument in the object store and get an object ref. Then pass that object ref to the tasks. All tasks use the same copy of the argument, which is faster and uses less object store memory.
 
 ## Code example
 
