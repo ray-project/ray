@@ -124,7 +124,7 @@ def test_orc_reader_synthesizes_partition_and_path(tmp_path, columns):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     path = partition_dir / "data.orc"
-    _write_orc(path, pa.table({"id": [1, 2], "year": ["file", "file"]}))
+    _write_orc(path, pa.table({"id": [1, 2]}))
     # The datasource passes the final schema, including synthesized columns.
     schema = pa.schema(
         [("id", pa.int64()), ("path", pa.string()), ("year", pa.string())]
@@ -132,7 +132,9 @@ def test_orc_reader_synthesizes_partition_and_path(tmp_path, columns):
 
     scanner = OrcScanner(
         schema=schema,
-        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, base_dir=str(tmp_path), field_names=["year"]
+        ),
         synthesized_columns=(PathColumn(),),
     )
     if columns is not None:

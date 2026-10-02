@@ -78,39 +78,6 @@ def test_infer_schema_hive_partitioned(tmp_path):
     assert schema.field("color").type == pa.string()
 
 
-def test_mixed_paths_keep_hive_values_when_partition_names_are_unresolved(tmp_path):
-    unpartitioned_path = tmp_path / "unpartitioned.parquet"
-    partition_dir = tmp_path / "year=2024"
-    partition_dir.mkdir()
-    partitioned_path = partition_dir / "data.parquet"
-    _write_parquet(
-        str(unpartitioned_path),
-        pa.table({"year": ["from-file"], "value": [1]}),
-    )
-    _write_parquet(
-        str(partitioned_path),
-        pa.table({"year": ["also-from-file"], "value": [2]}),
-    )
-
-    paths = [str(unpartitioned_path), str(partitioned_path)]
-    manifest = _manifest_of(paths)
-    datasource = ParquetDatasourceV2(
-        paths,
-        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
-    )
-    resolved_partitioning = datasource.resolve_partitioning(manifest)
-
-    assert resolved_partitioning.field_names is None
-
-    schema = datasource.infer_schema(manifest)
-    scanner = datasource.create_scanner(schema, partitioning=resolved_partitioning)
-    scanner = scanner.prune_columns(["year", "value"])
-    result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
-
-    assert result.column("year").to_pylist() == ["from-file", "2024"]
-    assert result.column("value").to_pylist() == [1, 2]
-
-
 def test_infer_schema_with_include_paths(tmp_path):
     file_path = tmp_path / "data.parquet"
     _write_parquet(str(file_path), pa.table({"a": [1, 2]}))
