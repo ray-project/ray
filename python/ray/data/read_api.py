@@ -35,6 +35,11 @@ from ray.data._internal.datasource.databricks_credentials import (
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hive_contract import (
+    HiveAuthMechanism,
+    HiveConnectionOptions,
+    HiveReadSpec,
+)
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -3947,6 +3952,147 @@ def read_binary_files(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI(stability="alpha")
+def read_hive(
+    table: Optional[str] = None,
+    *,
+    host: str,
+    query: Optional[str] = None,
+    schema: Optional["pyarrow.Schema"] = None,
+    port: int = 10000,
+    auth_mechanism: HiveAuthMechanism,
+    user: Optional[str] = None,
+    password: Optional[str] = None,
+    kerberos_service_name: str = "hive",
+    use_ssl: bool = False,
+    ca_cert: Optional[str] = None,
+    timeout: Optional[float] = None,
+    limit: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    resources: Optional[Dict[str, float]] = None,
+    label_selector: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read a HiveServer2 table or trusted SQL query into a Dataset.
+
+    Install the optional ``impyla`` package on the driver and Ray workers.
+    ``GSSAPI`` also requires ``impyla[kerberos]`` and Kerberos credentials on
+    those nodes. TLS certificates are verified when ``use_ssl=True``.
+
+    .. note::
+
+        Each Dataset execution runs one HiveServer2 data query in one Ray task.
+        Failed reads aren't retried. ``override_num_blocks`` repartitions the
+        result in Ray and doesn't parallelize the HiveServer2 query.
+
+    Examples:
+
+        Read a table or a query result:
+
+        .. testcode::
+            :skipif: True
+
+            import pyarrow as pa
+            import ray
+
+            connection = {"host": "hive.example.com", "auth_mechanism": "NOSASL"}
+            table_ds = ray.data.read_hive("analytics.events", **connection)
+            query_ds = ray.data.read_hive(
+                query="SELECT event_id FROM analytics.events",
+                schema=pa.schema([("event_id", pa.int64())]),
+                **connection,
+            )
+
+    Args:
+        table: The Hive table to read, optionally qualified as
+            ``database.table``. Specify exactly one of ``table`` and ``query``.
+        host: The HiveServer2 hostname.
+        query: A trusted, row-producing SQL query. Specify exactly one of
+            ``table`` and ``query``. The query is sent to HiveServer2 as given
+            and must return a result set.
+        schema: The Arrow schema for a query read. Column names must match the
+            result case-insensitively and in order. Table reads infer their
+            schema from HiveServer2 metadata; ``schema`` is only supported for
+            query reads. Field types must use a supported Arrow mapping.
+        port: The HiveServer2 binary protocol port.
+        auth_mechanism: The HiveServer2 authentication profile: ``NOSASL``,
+            ``PLAIN``, or ``GSSAPI``. Choose the profile configured on the
+            server. HiveServer2 mode ``NONE`` uses ``PLAIN`` SASL.
+        user: The HiveServer2 user or proxy user. Required for ``PLAIN``
+            authentication.
+        password: The password for ``PLAIN`` authentication. ``PLAIN`` does
+            not encrypt the password unless TLS is enabled.
+        kerberos_service_name: The Kerberos service principal name. Defaults
+            to ``"hive"``.
+        use_ssl: Whether to use TLS. The server certificate is verified when
+            TLS is enabled.
+        ca_cert: The path to a CA certificate file. It must be accessible on
+            the driver and read worker, and requires ``use_ssl=True``.
+        timeout: The HiveServer2 transport I/O timeout in seconds. It is not a
+            query deadline.
+        limit: The maximum number of rows to read from a table. ``0`` skips
+            the data query. This argument isn't supported for query reads.
+        num_cpus: The number of CPUs to reserve for the read task.
+        memory: The heap memory in bytes to reserve for the read task.
+        resources: Custom resources to reserve for the read task, expressed as
+            a mapping from resource name to quantity.
+        label_selector: Labels required on the node where the read task runs.
+        fallback_strategy: Alternative label requirements that Ray tries in
+            order if ``label_selector`` can't be satisfied.
+        runtime_env: The runtime environment to use for the read task.
+        override_num_blocks: Override the number of output blocks. The single
+            HiveServer2 query runs in one Ray task; Ray repartitions its result
+            into the requested number of blocks.
+
+    Returns:
+        A :class:`Dataset` containing the HiveServer2 read result.
+    """
+    if override_num_blocks is not None and (
+        isinstance(override_num_blocks, bool)
+        or not isinstance(override_num_blocks, int)
+        or override_num_blocks < 1
+    ):
+        raise ValueError("override_num_blocks must be a positive integer")
+
+    from ray.data._internal.datasource_v2.hive_datasource import HiveDatasource
+
+    spec = HiveReadSpec(
+        connection=HiveConnectionOptions(
+            host=host,
+            port=port,
+            auth_mechanism=auth_mechanism,
+            user=user,
+            password=password,
+            kerberos_service_name=kerberos_service_name,
+            use_ssl=use_ssl,
+            ca_cert=ca_cert,
+            timeout=timeout,
+        ),
+        table=table,
+        query=query,
+        schema=schema,
+        limit=limit,
+    )
+    dataset = _read_datasource_v2(
+        HiveDatasource(spec),
+        parallelism=1,
+        num_cpus=num_cpus,
+        memory=memory,
+        resources=resources,
+        label_selector=label_selector,
+        fallback_strategy=fallback_strategy,
+        runtime_env=runtime_env,
+        ray_remote_args={"max_retries": 0},
+    )
+    dataset.context.max_errored_blocks = 0
+    if override_num_blocks is not None:
+        dataset = dataset.repartition(override_num_blocks)
+    return dataset
 
 
 @PublicAPI(stability="alpha")

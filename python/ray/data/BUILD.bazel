@@ -191,6 +191,63 @@ py_test(
 )
 
 py_test(
+    name = "test_hive_contract",
+    size = "small",
+    srcs = ["tests/datasource/test_hive_contract.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_hs2",
+    size = "small",
+    srcs = ["tests/datasource/test_hive_hs2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_no_replay",
+    size = "medium",
+    srcs = ["tests/datasource/test_hive_no_replay.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_integration",
+    size = "medium",
+    srcs = ["tests/datasource/test_hive_integration.py"],
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_snowflake",
     size = "small",
     srcs = ["tests/datasource/test_snowflake.py"],

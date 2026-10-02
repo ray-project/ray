@@ -904,6 +904,51 @@ MaterializedDataset(
 
 Ray Data reads from databases such as MySQL, PostgreSQL, MongoDB, and BigQuery.
 
+### Reading HiveServer2
+
+Install `impyla` on the driver and Ray workers, then call {func}`~ray.data.read_hive`
+with a table name. Table reads infer their Arrow schema from HiveServer2 metadata.
+For a trusted, row-producing SQL query, pass `query` and an explicit
+`pyarrow.Schema`; the query is sent to HiveServer2 as given. Result columns must
+match the schema in count and order; names match case-insensitively, and types
+must use a supported Arrow mapping. Non-nullable fields reject null rows. Table
+reads support scalar boolean values, numbers, strings, binary values, dates, and
+decimals; timestamp and complex types are unsupported.
+Choose `auth_mechanism` explicitly. Use `NOSASL` only with a HiveServer2
+configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple
+Authentication and Security Layer (SASL) mechanism; use a non-sensitive
+placeholder password because the server doesn't check it.
+`PLAIN` doesn't encrypt the password when `use_ssl=False`.
+For the `GSSAPI` mechanism, install `impyla[kerberos]` and configure
+authentication credentials on both the driver and read worker.
+
+```python
+import os
+
+import pyarrow as pa
+import ray
+
+connection = {
+    "host": "hive.example.com",
+    "auth_mechanism": "PLAIN",
+    "user": "reader",
+    "password": os.environ["HIVE_NONE_PLACEHOLDER"],
+}
+dataset = ray.data.read_hive("analytics.events", **connection)
+query_dataset = ray.data.read_hive(
+    query="SELECT event_id FROM analytics.events",
+    schema=pa.schema([("event_id", pa.int64())]),
+    **connection,
+)
+```
+
+Reads use the binary HiveServer2 protocol. Each read runs one data query in one
+Ray task. `override_num_blocks` sets the number of Ray output blocks after that
+query; it doesn't parallelize the HiveServer2 query. Failed reads aren't
+retried, and each Dataset execution starts a new query. Pass only trusted,
+row-producing SQL. The `ca_cert` path
+must be accessible on the driver and read worker.
+
 (reading_sql)=
 (reading-sql-databases)=
 
