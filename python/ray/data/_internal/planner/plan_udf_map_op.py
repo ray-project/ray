@@ -269,7 +269,9 @@ def plan_filter_op(
                 # Select the matching rows directly from the original block so
                 # column types (e.g. Arrow dictionary encoding) are preserved,
                 # rather than rebuilding a block from row values, which loses them.
-                if matching_indices:
+                if len(matching_indices) == block_accessor.num_rows():
+                    yield block
+                elif matching_indices:
                     yield block_accessor.take(matching_indices)
                 else:
                     # `take([])` breaks because indices with no elements are
