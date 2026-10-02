@@ -2310,6 +2310,27 @@
       num_nodes: 9
   alert: default
 
+- name: "mid_epoch_resume_benchmark_{{scale}}"
+  python: "3.10"
+  group: Train tests
+  working_dir: train_tests/mid_epoch_resume_benchmark
+
+  matrix:
+    setup:
+      scale: [10M, 3B]
+
+  frequency: nightly
+  team: data
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+    cluster_compute: "compute_configs/{{scale}}.yaml"
+
+  run:
+    timeout: 2700
+    script: RAY_TRAIN_V2_ENABLED=1 python microbenchmark.py --num_rows={{scale}} --error_at=0.9 --num_epochs=1
+
 - name: train_colocate_trainer
   python: "3.10"
   group: Train tests
