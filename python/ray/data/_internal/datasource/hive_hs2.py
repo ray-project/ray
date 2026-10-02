@@ -2,7 +2,7 @@
 
 import re
 from contextlib import suppress
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 
@@ -83,14 +83,29 @@ def _metadata_pattern(identifier: str) -> str:
 
 def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
     """Use the HS2 metadata operation; never execute a data query."""
-    database, table = spec.table_identifier
+    table_identifier = spec.table_identifier
+    if table_identifier is None:
+        raise ValueError("table schema inference requires a table read")
+    database, table = table_identifier
     connection = _connect(spec.connection)
     cursor = None
     try:
         cursor = connection.cursor(user=spec.connection.user)
-        columns = cursor.get_table_schema(
+        metadata_columns = cursor.get_table_schema(
             _metadata_pattern(table), _metadata_pattern(database)
         )
+        columns: List[Tuple[str, str]] = []
+        for name, type_name in metadata_columns:
+            if (
+                not isinstance(name, str)
+                or not name
+                or not isinstance(type_name, str)
+                or not type_name.strip()
+            ):
+                raise ValueError(
+                    "HiveServer2 returned incomplete table column metadata"
+                )
+            columns.append((name, type_name))
         if any(type_name.strip().casefold() == "decimal" for _, type_name in columns):
             # Impyla's GetColumns wrapper drops DECIMAL precision and scale.
             # Hive's DESCRIBE result preserves them without reading table rows.
@@ -137,7 +152,10 @@ def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
 def _statement(spec: HiveReadSpec) -> str:
     if spec.query is not None:
         return spec.query
-    database, table = spec.table_identifier
+    table_identifier = spec.table_identifier
+    if table_identifier is None:
+        raise ValueError("HiveServer2 statement requires a table or query")
+    database, table = table_identifier
     statement = f"SELECT * FROM `{database}`.`{table}`"
     if spec.limit is not None:
         statement += f" LIMIT {spec.limit}"
@@ -224,9 +242,9 @@ def read_hs2_batches(spec: HiveReadSpec, schema: pa.Schema) -> Iterator[pa.Table
             description = cursor.description
         except Exception as exc:
             raise RuntimeError("HiveServer2 read failed") from exc
-        _check_result_schema(
-            description, schema, spec.table_identifier[1] if spec.table else None
-        )
+        table_identifier = spec.table_identifier
+        table_name = table_identifier[1] if table_identifier is not None else None
+        _check_result_schema(description, schema, table_name)
         while True:
             try:
                 rows = cursor.fetchmany(_FETCH_ROWS)

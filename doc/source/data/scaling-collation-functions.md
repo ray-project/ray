@@ -11,13 +11,15 @@ myst:
 By default, the collate function executes on the training worker when you call {meth}`ray.data.DataIterator.iter_torch_batches`. This approach has two main drawbacks:
 
 - **Low scalability**: The collate function runs sequentially on each training worker, limiting parallelism.
-- **Resource competition**: The collate function consumes CPU and memory resources from the training worker, potentially slowing down model training.
+- **Resource competition**: The collate function uses CPU and memory on the training worker, which can slow down model training.
 
-Scaling out the collate function to Ray Data allows you to scale collation across multiple CPU nodes independently of training workers, improving better overall pipeline throughput, especially with heavy collate functions.
+When you move the collate function into Ray Data, you can scale collation across multiple CPU nodes independently of the training workers. This improves overall pipeline throughput, especially for heavy collate functions.
 
-This optimization is particularly effective when the collate function is computationally expensive (such as tokenization, image augmentation, or complex feature engineering) and you have additional CPU resources available for data preprocessing.
+This optimization is especially effective when the collate function is computationally expensive and you have additional CPU resources available for data preprocessing. Expensive collate functions include tokenization, image augmentation, and complex feature engineering.
 
-## Moving the collate function to Ray Data
+(moving-the-collate-function-to-ray-data)=
+
+## Move the collate function to Ray Data
 
 The following example shows a typical collate function that runs on the training worker:
 
@@ -41,13 +43,14 @@ trainer = TorchTrainer(
 result = trainer.fit()
 ```
 
-If the collate function is time/compute intensive and you'd like to scale it out,you should:
+To scale out a time-intensive or compute-intensive collate function, do the following:
 
-* Create a custom collate function that runs in Ray Data and use {meth}`ray.data.Dataset.map_batches` to scale it out.
-* Use {meth}`ray.data.Dataset.repartition` to ensure the batch size alignment.
+- Create a custom collate function that runs in Ray Data and use {meth}`ray.data.Dataset.map_batches` to scale it out.
+- Use {meth}`ray.data.Dataset.repartition` to ensure batch size alignment.
 
+(creating-a-custom-collate-function-that-runs-in-ray-data)=
 
-## Creating a custom collate function that runs in Ray Data
+## Create a custom collate function that runs in Ray Data
 
 To scale out, move the `collate_fn` into a Ray Data `map_batches` operation:
 
@@ -74,30 +77,32 @@ trainer = TorchTrainer(
 result = trainer.fit()
 ```
 
-A couple of things to note:
+This example has two key details:
 
 - The `collate_fn` returns a dictionary of NumPy arrays, which is a standard Ray Data batch format.
-- The `iter_torch_batches` method uses `collate_fn=None`, which reduces the amount of work is done on the training worker process.
+- The `iter_torch_batches` method uses `collate_fn=None`, which reduces the work that the training worker process does.
 
-## Ensuring batch size alignment
+(ensuring-batch-size-alignment)=
 
-Typically, collate functions are used to create complete batches of data with a target batch size. However, if you move the collate function to Ray Data using {meth}`ray.data.Dataset.map_batches`, it doesn't guarantee the batch size for each function call by default.
+## Ensure batch size alignment
 
-There are two common problems that you may encounter.
+A collate function typically creates complete batches of data with a target batch size. However, by default, {meth}`ray.data.Dataset.map_batches` doesn't guarantee the batch size for each function call, which matters when you move the collate function into Ray Data.
 
-1. The collate function requires a certain number of rows provided as an input to work properly.
-2. You want to avoid any reformatting / rebatching of the data on the training worker process.
+You might encounter two common problems:
 
-To solve these problems, you can use {meth}`ray.data.Dataset.repartition` with `target_num_rows_per_block` to ensure the batch size alignment.
+1. The collate function requires a certain number of input rows to work properly.
+1. You want to avoid reformatting or rebatching the data on the training worker process.
 
-By calling `repartition` before `map_batches`, you ensure that the input blocks contain the desired number of rows.
+To solve these problems, use {meth}`ray.data.Dataset.repartition` with `target_num_rows_per_block` to ensure batch size alignment.
+
+Call `repartition` before `map_batches` to ensure that the input blocks contain the desired number of rows:
 
 ```python
 # Note: If you only use map_batches(batch_size=BATCH_SIZE), you are not guaranteed to get the desired number of rows as an input.
 dataset = dataset.repartition(target_num_rows_per_block=BATCH_SIZE).map_batches(collate_fn, batch_size=BATCH_SIZE)
 ```
 
-By calling `repartition` after `map_batches`, you ensure that the output blocks contain the desired number of rows. This avoids any reformatting / rebatching of the data on the training worker process.
+Call `repartition` after `map_batches` to ensure that the output blocks contain the desired number of rows. This avoids reformatting or rebatching the data on the training worker process.
 
 ```python
 dataset = dataset.map_batches(collate_fn, batch_size=BATCH_SIZE).repartition(target_num_rows_per_block=BATCH_SIZE)
@@ -119,9 +124,11 @@ trainer = TorchTrainer(
 result = trainer.fit()
 ```
 
-## Putting things together
+(putting-things-together)=
 
-This guide uses a mock text dataset to demonstrate the optimization. You can find the implementation of the mock dataset in {ref}`random-text-generator`.
+## Put it all together
+
+The following examples use a mock text dataset to demonstrate the optimization. For the mock dataset implementation, see {ref}`random-text-generator`.
 
 ::::{tab-set}
 
@@ -249,20 +256,18 @@ result = trainer.fit()
 
 ::::
 
-The optimized implementation makes these changes:
+The optimized implementation makes four changes:
 
 - **Preprocessing in Ray Data**: The tokenization logic moves from `train_func` to `CollateFnRayData`, which runs in `map_batches`.
-- **NumPy output**: The collate function returns `Dict[str, np.ndarray]` instead of PyTorch tensors, which Ray Data natively supports.
-- **Batch alignment**: `repartition(target_num_rows_per_block=BATCH_SIZE)` after `map_batches` ensures the collate function receives exact batch sizes and output blocks align with the batch size.
-- **No `collate_fn` in iterator**: `iter_torch_batches` uses `collate_fn=None` because preprocessing already happened in Ray Data.
+- **NumPy output**: The collate function returns `Dict[str, np.ndarray]` instead of PyTorch tensors. Ray Data natively supports this format.
+- **Batch alignment**: `repartition(target_num_rows_per_block=BATCH_SIZE)` after `map_batches` ensures that output blocks align with the batch size.
+- **No `collate_fn` in iterator**: `iter_torch_batches` uses `collate_fn=None` because the preprocessing already ran in Ray Data.
 
 ### Benchmark results
 
-The following benchmarks demonstrate the performance improvement from scaling out the collate function. The test uses text tokenization with a batch size of 10,000 on a dataset of 1 million rows with text lengths between 1,000 and 3,000 characters.
+The following benchmarks show the performance improvement from scaling out the collate function. The benchmark runs text tokenization with a batch size of 10,000 on a dataset of 1 million rows, with text lengths between 1,000 and 3,000 characters.
 
-**Single node (g4dn.12xlarge: 48 vCPU, 4 NVIDIA T4 GPUs, 192 GiB memory)**
-
-```{list-table}
+```{list-table} Single g4dn.12xlarge node with 48 vCPU, 4 NVIDIA T4 GPUs, and 192 GiB memory
 :header-rows: 1
 
 * - Configuration
@@ -273,9 +278,7 @@ The following benchmarks demonstrate the performance improvement from scaling ou
   - 3,437 rows/s
 ```
 
-**With 2 additional CPU nodes (m5.8xlarge: 32 vCPU, 128 GiB memory each)**
-
-```{list-table}
+```{list-table} With 2 additional m5.8xlarge CPU nodes, each with 32 vCPU and 128 GiB memory
 :header-rows: 1
 
 * - Configuration
@@ -286,25 +289,30 @@ The following benchmarks demonstrate the performance improvement from scaling ou
   - 10,717 rows/s
 ```
 
-The results show that scaling out the collate function to Ray Data provides a 2x speedup on a single node and a 6x speedup when adding CPU-only nodes for preprocessing.
+In these benchmarks, scaling out the collate function to Ray Data provides a 2x speedup on a single node and a 6x speedup when you add CPU-only nodes for preprocessing.
 
-## Advanced: Handling custom data types
+(advanced-handling-custom-data-types)=
 
-The preceding optimized implementation returns `Dict[str, np.ndarray]`, which Ray Data natively supports. However, if your collate function needs to return PyTorch tensors or other custom data types that {meth}`ray.data.Dataset.map_batches` doesn't directly support, you need to serialize them.
+## Advanced: Handle custom data types
+
+The preceding optimized implementation returns `Dict[str, np.ndarray]`, which Ray Data natively supports. If your collate function must return PyTorch tensors or other custom data types that {meth}`ray.data.Dataset.map_batches` doesn't directly support, serialize them.
 
 (train-tensor-serialization-utility)=
+(tensor-serialization-utility)=
 
-### Tensor serialization utility
+### What does the tensor serialization utility do?
 
-The following utility serializes PyTorch tensors into PyArrow format. It flattens all tensors in a batch into a single binary buffer, stores metadata about tensor shapes and dtypes, and packs everything into a single-row PyArrow table. On the training side, it deserializes the table back into the original tensor structure.
+The tensor serialization utility serializes PyTorch tensors into PyArrow format. It flattens all tensors in a batch into a single binary buffer, stores metadata about tensor shapes and dtypes, and packs everything into a single-row PyArrow table. On the training side, it deserializes the table back into the original tensor structure.
 
-The serialization and deserialization operations are typically lightweight compared to the actual collate function work (such as tokenization or image processing), so the overhead is minimal relative to the performance gains from scaling the collate function.
+Serialization and deserialization are typically lightweight compared to the collate function's main work, such as tokenization or image processing. The overhead is therefore usually minimal relative to the performance gains from scaling out the collate function.
 
-You can use {ref}`train-collate-utils` as a reference implementation and adapt it to your needs.
+Use {ref}`train-collate-utils` as a reference implementation, and adapt it to your needs.
 
-### Example with tensor serialization
+(example-with-tensor-serialization)=
 
-The following example demonstrates using tensor serialization when your collate function must return PyTorch tensors. This approach requires `repartition` before `map_batches` because the collate function changes the number of output rows (each batch becomes a single serialized row).
+### Serialize tensors in a collate function
+
+The following example uses tensor serialization for a collate function that must return PyTorch tensors. This approach requires `repartition` before `map_batches` because the collate function changes the number of output rows. Each batch becomes a single serialized row.
 
 ```{testcode}
 :skipif: True

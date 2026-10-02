@@ -6,14 +6,17 @@ import pyarrow as pa
 
 from ray.data._internal.datasource.hive_contract import HiveReadSpec
 from ray.data._internal.datasource.hive_hs2 import infer_table_schema, read_hs2_batches
-from ray.data._internal.datasource_v2.datasource_v2 import (
+from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     DataSourceWithMetadata,
 )
-from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer, FileInfo
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.readers.base_reader import Reader
-from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+from ray.data._internal.datasource_v2.interfaces.file_indexer import (
+    FileIndexer,
+    FileInfo,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.reader import Reader
+from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
 
 _READ_UNIT = "hive://read"
 

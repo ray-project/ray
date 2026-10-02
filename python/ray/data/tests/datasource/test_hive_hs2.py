@@ -2,6 +2,7 @@
 
 import sys
 from types import ModuleType, SimpleNamespace
+from typing import Any, Callable, Generator, List, Optional, Sequence, Tuple, cast
 
 import pyarrow as pa
 import pytest
@@ -34,7 +35,7 @@ class _Cursor:
         assert size == hive_hs2._FETCH_ROWS
         return self.batches.pop(0) if self.batches else []
 
-    def get_table_schema(self, table, database):
+    def get_table_schema(self, table, database) -> Sequence[Tuple[str, Optional[str]]]:
         assert (table, database) == ("events", "analytics")
         return [("id", "BIGINT"), ("name", "varchar(20)")]
 
@@ -73,7 +74,7 @@ def test_connection_uses_explicit_single_attempt_and_verifies_tls(monkeypatch):
     calls = []
     impala = ModuleType("impala")
     dbapi = ModuleType("impala.dbapi")
-    dbapi.connect = lambda **kwargs: calls.append(kwargs) or object()
+    dbapi.__dict__["connect"] = lambda **kwargs: calls.append(kwargs) or object()
     monkeypatch.setitem(sys.modules, "impala", impala)
     monkeypatch.setitem(sys.modules, "impala.dbapi", dbapi)
 
@@ -114,6 +115,26 @@ def test_table_schema_uses_metadata_and_closes_session(monkeypatch):
 
     assert schema == pa.schema([("id", pa.int64()), ("name", pa.string())])
     assert cursor.statements == []
+    assert cursor.closed and connection.closed
+
+
+def test_table_schema_rejects_missing_column_type_metadata(monkeypatch):
+    class MissingTypeCursor(_Cursor):
+        def get_table_schema(self, table, database) -> List[Tuple[str, Optional[str]]]:
+            return [("id", None)]
+
+    cursor = MissingTypeCursor()
+    connection = _Connection(cursor)
+    monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
+    spec = HiveReadSpec(
+        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        table="analytics.events",
+    )
+
+    with pytest.raises(RuntimeError, match="table schema lookup failed") as exc:
+        hive_hs2.infer_table_schema(spec)
+
+    assert isinstance(exc.value.__cause__, ValueError)
     assert cursor.closed and connection.closed
 
 
@@ -419,7 +440,10 @@ def test_early_close_cancels_operation(monkeypatch):
     connection = _Connection(cursor)
     monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
     spec = _query_spec()
-    batches = hive_hs2.read_hs2_batches(spec, spec.schema)
+    batches = cast(
+        Generator[pa.Table, None, None],
+        hive_hs2.read_hs2_batches(spec, spec.schema),
+    )
     next(batches)
     batches.close()
     assert cursor.cancelled and cursor.closed and connection.closed
@@ -431,7 +455,9 @@ def test_datasource_has_one_opaque_read_unit(monkeypatch):
     assert datasource.paths == ["hive://read"]
     assert datasource.get_file_partitioner() is None
     assert datasource.infer_schema(None) == spec.schema
-    manifests = list(datasource._get_file_indexer().list_files(datasource.paths))
+    manifests = list(
+        datasource._get_file_indexer().list_files(datasource.paths, filesystem=None)
+    )
     assert len(manifests) == 1
     assert len(manifests[0]) == 1
     monkeypatch.setattr(
@@ -495,7 +521,7 @@ def test_public_api_rejects_invalid_block_counts(block_count):
 
 def test_public_api_requires_authentication_selection():
     with pytest.raises(TypeError, match="auth_mechanism"):
-        read_hive(
+        cast(Callable[..., Any], read_hive)(
             host="hs2",
             query="SELECT id FROM events",
             schema=pa.schema([("id", pa.int64())]),
