@@ -172,7 +172,8 @@ def _estimate_batch_size_from_chunk_stats(
 
     ``ListFiles`` already read each file's footer and recorded the
     projection-scoped uncompressed byte size and row count of the row groups it
-    assigned to this chunk (:class:`ParquetRowGroupChunkMetadata`). Sizing from
+    assigned to this chunk (the ``size_bytes`` and ``num_rows`` of its
+    :class:`FileChunk`). Sizing from
     those avoids the extra footer read that
     :func:`_estimate_batch_size_from_metadata` incurs. Mirrors that function's
     math but over the whole chunk (its row-group average) rather than the first
@@ -293,7 +294,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         subsequent ``read()`` calls on the same instance use the refined value.
 
         The metadata estimate prefers the footer-derived stats ``ListFiles``
-        already recorded on the manifest (:class:`ParquetRowGroupChunkMetadata`),
+        already recorded on the manifest (:class:`FileChunk`),
         so the common footer-chunking path sizes batches without re-reading the
         footer. It falls back to reading the first fragment's metadata only when
         the manifest carries no such stats (e.g. the whole-file path).
@@ -326,9 +327,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         chunk = next(
             (md for md in manifest.file_chunk_metadatas if md is not None), None
         )
-        if chunk is not None and "uncompressed_size" in chunk:
+        if chunk is not None:
             estimated = _estimate_batch_size_from_chunk_stats(
-                chunk["uncompressed_size"],
+                chunk["size_bytes"],
                 chunk["num_rows"],
                 self._target_block_size,
             )
@@ -364,8 +365,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
           row offset of 0. When a synthesized column needs read unit
           boundaries the unit also carries the file's row count, read from
           the footer pyarrow opens to scan the file anyway.
-        - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
-          naming the exact physical row groups the bin assigned to this file
+        - Otherwise the row carries a :class:`FileChunk` whose ``unit_ids``
+          are the exact physical row groups the bin assigned to this file
           (predicate pruning + bin packing already happened in ``ListFiles``);
           we slice the fragment via
           :func:`~ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils._fragments_from_row_group_ids`.
@@ -413,7 +414,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 fragments.extend(
                     _fragments_from_row_group_ids(
                         fragment,
-                        chunk_metadata["row_group_ids"],
+                        chunk_metadata["unit_ids"],
                         per_row_group_offsets=per_row_group_offsets,
                     )
                 )

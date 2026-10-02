@@ -11,7 +11,7 @@ https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_
 method is not sufficient and doesn't allow you to define the algorithm's execution
 logic the way you'd like. See an example here on how to customize the algorithm's
 `training_step()` method:
-https://github.com/ray-project/ray/blob/master/rllib/examples/algorithm/custom_training_step_on_and_off_policy_combined.py  # noqa
+https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/vpg_custom_algorithm.py  # noqa
 
 
 How to run this script
