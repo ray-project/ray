@@ -77,8 +77,6 @@ class OrderedFileResult:
     """File result with its seed-path index, sorted on when preserve_order is True."""
 
     input_path_index: int
-    # The leaf file path.
-    file_path: str
     file_info: FileInfo
 
 
@@ -237,13 +235,12 @@ class NonSamplingFileIndexer(FileIndexer):
             resolved_paths, _ = _resolve_paths_and_filesystem(input_path, filesystem)
             assert len(resolved_paths) == 1
 
-            for path, file_size in _get_file_infos(
+            yield from _get_file_infos(
                 resolved_paths[0],
                 filesystem,
                 self._ignore_missing_paths,
                 self._skip_paths,
-            ):
-                yield FileInfo(path=path, size=file_size)
+            )
 
     def _get_file_info_iterator_threaded(
         self,
@@ -298,14 +295,12 @@ class NonSamplingFileIndexer(FileIndexer):
                 self._skip_paths,
                 root_path=root_path,
             )
-            for file_path, file_size in contents.files:
-                file_info = FileInfo(path=file_path, size=file_size)
+            for file_info in contents.files:
                 if preserve_order:
                     assert input_path_index is not None
                     add_result(
                         OrderedFileResult(
                             input_path_index=input_path_index,
-                            file_path=file_path,
                             file_info=file_info,
                         )
                     )
@@ -326,7 +321,7 @@ class NonSamplingFileIndexer(FileIndexer):
         ) -> Tuple[int, str]:
             # Only called when preserve_order is True, where every result is wrapped.
             assert isinstance(result, OrderedFileResult)
-            return (result.input_path_index, result.file_path)
+            return (result.input_path_index, result.file_info.path)
 
         results = parallel_process_work_stealing(
             seed_items=seed_items,
