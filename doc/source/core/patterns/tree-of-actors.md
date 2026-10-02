@@ -22,7 +22,7 @@ Tree of actors
 You want to do data parallel training and train the same model with different hyperparameters in parallel. For each hyperparameter, you can launch a supervisor actor to orchestrate the training. The supervisor creates worker actors that train on each data shard.
 
 :::{note}
-For data parallel training, use {py:class}`~ray.train.data_parallel_trainer.DataParallelTrainer` from {ref}`Ray Train <train-key-concepts>`. For hyperparameter tuning, use {ref}`Ray Tune's Tuner <tune-main>`. Both apply this pattern.
+For data parallel training and hyperparameter tuning, use {py:class}`~ray.train.data_parallel_trainer.DataParallelTrainer` from {ref}`Ray Train <train-key-concepts>` with {ref}`Ray Tune's Tuner <tune-main>`. Together, they apply this pattern.
 :::
 
 ## Code example
