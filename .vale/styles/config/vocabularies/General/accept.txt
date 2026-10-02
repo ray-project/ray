@@ -191,3 +191,10 @@ autograd
 [Bb]ackport(s|ed)?
 [Ii]nlining
 [Mm]ultithreading
+Perfetto
+GDRCopy
+[Ii]nline[sd]
+[Uu]nlink(s|ed)?
+[Tt]emporality
+[Mm]isconfiguration
+[Mm]icrobenchmarks?
