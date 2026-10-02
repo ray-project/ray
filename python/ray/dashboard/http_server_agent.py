@@ -91,13 +91,24 @@ class HttpServerAgent:
         # If we get here, all retries failed
         raise last_exception
 
-    async def start(self, modules: List) -> None:
+    async def start(self, modules: List, serve: bool = True) -> None:
+        """Create the modules' HTTP client session and, if `serve`, the server.
+
+        With `serve` False, modules can still make HTTP requests, but nothing
+        listens and `http_port` stays None.
+        """
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
         if Version(aiohttp.__version__) < Version("4.0.0"):
             self.http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
+        if not serve:
+            logger.info(
+                "Dashboard agent HTTP server disabled by "
+                "RAY_DASHBOARD_AGENT_HTTP_SERVER_ENABLED=0."
+            )
+            return
 
         # Bind routes for every module so that each module
         # can use decorator-style routes.
@@ -148,5 +159,6 @@ class HttpServerAgent:
 
     async def cleanup(self) -> None:
         # Wait for finish signal.
-        await self.runner.cleanup()
+        if self.runner is not None:
+            await self.runner.cleanup()
         await self.http_session.close()

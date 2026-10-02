@@ -1454,6 +1454,31 @@ def test_agent_port_conflict(shutdown_only):
 
 
 @pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
+)
+def test_agent_http_server_disabled(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_DASHBOARD_AGENT_HTTP_SERVER_ENABLED", "0")
+    ray.init(include_dashboard=True)
+    node = ray._private.worker._global_node
+    raylet_proc_info = node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()), timeout=30)
+    agent_proc = search_agent(raylet_proc.children())
+    check_agent_register(raylet_proc, agent_proc.pid)
+
+    # -1 marks the agent's HTTP service as unavailable.
+    assert ray.nodes()[0]["DashboardAgentListenPort"] == -1
+    listening = {
+        c.laddr.port
+        for c in agent_proc.net_connections(kind="tcp")
+        if c.status == psutil.CONN_LISTEN
+    }
+    assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT not in listening
+
+
+@pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test only works for minimal installation.",
 )
