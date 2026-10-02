@@ -12,6 +12,7 @@ from ray._common.network_utils import build_address, parse_address
 from ray._common.utils import env_float
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
+    DEFAULT_MEGASCALE_PORT,
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     DEFAULT_TPU_PROCESS_PORT,
     GKE_TPU_TOPOLOGY_ENV_VAR,
@@ -255,10 +256,10 @@ def get_tpu_coordinator_env_vars(
     coordinator_address: str,
     num_slices: int,
     slice_id: int,
-    coordinator_port: str = "8081",
+    coordinator_port: str = DEFAULT_MEGASCALE_PORT,
 ) -> Dict[str, str]:
     """
-    Returns the environment variables required for JAX multi-slice coordination.
+    Returns the environment variables required for TPU multi-slice coordination.
 
     Args:
         coordinator_address: The IP address or hostname of the coordinator.
@@ -1687,9 +1688,8 @@ def _discover_and_persist_subslices(
             ) from e
 
         # Bundle i of the full slice runs on tpu-worker-id i. Every discovery
-        # task gets all worker hostnames so PJRT reports global coordinates.
-        worker_hostnames = full_slice.get_worker_addrs()
-        # Exit the worker after the task so it releases the TPU devices JAX opened.
+        # task gets all worker hostnames so PJRT reports global coordinates, and
+        # exits afterwards so it releases the TPU devices JAX opened.
         discover_remote = ray.remote(max_calls=1)(_discover_tpu_node_coords)
         try:
             results = ray.get(
@@ -1700,9 +1700,7 @@ def _discover_and_persist_subslices(
                             placement_group_bundle_index=i,
                         ),
                         runtime_env={
-                            "env_vars": get_jax_env_vars(
-                                worker_hostnames=worker_hostnames, worker_id=i
-                            )
+                            "env_vars": full_slice.get_jax_env_vars(worker_id=i)
                         },
                     ).remote(num_hosts=full_slice.num_hosts)
                     for i in range(full_slice.num_hosts)
@@ -2211,10 +2209,9 @@ def _slice_head_available(
     worker-bundle placement, or a leaked head PG). Reserving such a slice
     would then block on the head and time out.
 
-    Conservative: returns ``False`` only when worker 0 declares the head
-    resource and none of it is available (Ray's sparse resource map omits
-    exhausted resources), so an unreported head never causes a genuinely
-    idle slice to be skipped.
+    Conservative: only returns ``False`` when the head resource is explicitly
+    reported as unavailable, so an unknown/unreported head never causes a
+    genuinely idle slice to be skipped.
     """
     if head_resource is None:
         return True

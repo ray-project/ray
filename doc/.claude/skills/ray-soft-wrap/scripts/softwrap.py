@@ -72,6 +72,12 @@ MARKER_FENCE_RE = re.compile(r"^(\s*([-*+]|\d+[.)])\s+)(`{3,}|~{3,})")
 # prose silently drops the card header -- and the CommonMark render oracle can't
 # see it, because sphinx-design directives aren't part of the oracle's grammar.
 CARD_SEP_RE = re.compile(r"^\s*(\^{3,}|\+{3,})\s*$")
+# A MyST line comment. Every line starting with % is its own comment, so joining
+# a run of them folds a commented-out block, such as a Mermaid source, onto one
+# unreadable line. Comments don't render, so verify.py's oracle can't see this.
+# Any indentation counts: MyST still parses a % line nested four or more spaces
+# deep in a list item as a comment, and joining it would render it as text.
+MYST_COMMENT_RE = re.compile(r"^\s*%")
 HARDBREAK_RE = re.compile(r"(\S  +|\\)$")
 # CommonMark indented code block: four spaces (or a tab) opens a code block
 # anywhere a paragraph isn't already open, and it runs until the next non-blank
@@ -253,6 +259,7 @@ def reflow(text):
             or H_RE.match(ln)
             or HTML_RE.match(ln)
             or TARGET_RE.match(ln)
+            or MYST_COMMENT_RE.match(ln)
             or COLON_RE.match(ln)
             or TBREAK_RE.match(ln)
             or OPT_RE.match(ln)
@@ -366,6 +373,16 @@ SELFTEST_CASES = [
         "a multi-line HTML comment keeps its lines",
         "<!-- DJS: this note\nspans two lines. -->\n\nProse that\njoins.\n",
         "<!-- DJS: this note\nspans two lines. -->\n\nProse that joins.\n",
+    ),
+    (
+        "MyST % comment lines keep their lines",
+        "% flowchart TD\n%     A --> B\n\nProse that\njoins.\n",
+        "% flowchart TD\n%     A --> B\n\nProse that joins.\n",
+    ),
+    (
+        "a nested MyST % comment line keeps its line",
+        "* Item 1\n    % comment line\n",
+        "* Item 1\n    % comment line\n",
     ),
 ]
 
