@@ -8,6 +8,7 @@ from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
 )
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
+    FileFormat,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
@@ -70,6 +71,7 @@ class OrcScanner(ArrowFileScanner):
             else list(self.read_schema().names)
         )
         return OrcFileReader(
+            format=FileFormat.ORC,
             batch_size=batch_size,
             columns=columns,
             predicate=self.predicate,

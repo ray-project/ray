@@ -7,6 +7,7 @@ import pytest
 from pyarrow import orc
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
@@ -170,7 +171,7 @@ def test_orc_reader_rejects_pickle_object_columns(monkeypatch):
     storage = pa.array([b"payload"], type=pa.large_binary())
     extension = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
     table = pa.table({"object": extension})
-    reader = OrcFileReader()
+    reader = OrcFileReader(format=FileFormat.ORC)
 
     with pytest.raises(ValueError, match="arrow_pickled_object"):
         reader._on_batch_read(table)
