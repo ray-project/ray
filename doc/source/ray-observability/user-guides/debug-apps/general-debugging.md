@@ -72,7 +72,8 @@ In this case, you might receive a mixture of True and False. If `check_file()` r
 
 **Fix:**
 
-— Use only shared file paths for such applications. For example, a network file system or S3 storage can provide the required consistency. — Avoid relying on local files to be consistent across machines.
+- Use only shared file paths for such applications. For example, a network file system or S3 storage can provide the required consistency.
+- Avoid relying on local files to be consistent across machines.
 
 
 (placement-groups-aren-t-composable)=
@@ -166,7 +167,8 @@ Ray captures and displays a stack trace when you invoke a task, create an actor,
 
 To enable call site capture, set the environment variable `RAY_record_task_actor_creation_sites=true`. When enabled:
 
-— Ray captures a stack trace when creating tasks, actors, or invoking actor methods. — The captured stack trace is available in the Ray dashboard (under task and actor details), output of the state CLI command `ray list task --detail`, and state API responses.
+- Ray captures a stack trace when creating tasks, actors, or invoking actor methods.
+- The captured stack trace is available in the Ray dashboard (under task and actor details), output of the state CLI command `ray list task --detail`, and state API responses.
 
 Note that Ray turns off stack trace capture by default due to potential performance impacts. Enable it only when you need it for debugging.
 
