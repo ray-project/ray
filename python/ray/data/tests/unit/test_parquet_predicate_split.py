@@ -10,7 +10,7 @@ from typing import Optional, Set
 
 import pytest
 
-from ray.data._internal.datasource_v2.logical_optimizers import (
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
 )
 from ray.data.expressions import Expr, col

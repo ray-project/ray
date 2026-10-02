@@ -6,11 +6,14 @@ import sys
 
 import pytest
 
+from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.runtime_env.agent.runtime_env_agent import (
     _create_image_uri_plugin,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.image_uri import ImageURIPlugin, _modify_context_impl
+
+TOKEN = "secret-token-value"
 
 
 class LegacyImageURIPlugin(ImageURIPlugin):
@@ -194,6 +197,87 @@ def test_image_uri_plugin_constructor_type_error_is_not_hidden():
             "/var/log/ray",
             logging.getLogger(__name__),
         )
+
+
+@pytest.fixture
+def auth_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for var in ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"):
+        monkeypatch.delenv(var, raising=False)
+    yield monkeypatch
+    monkeypatch.undo()
+    reset_auth_token_state()
+
+
+def _container_command(logs_dir=None) -> str:
+    context = RuntimeEnvContext()
+    _modify_context_impl(
+        "fake-image",
+        "/fake/default_worker.py",
+        [],
+        context,
+        logging.getLogger(__name__),
+        "/tmp/ray",
+        logs_dir=logs_dir,
+    )
+    return context.py_executable
+
+
+@pytest.mark.parametrize("external_logs", [False, True])
+def test_mounts_default_token_file(auth_env, tmp_path, external_logs):
+    token_path = tmp_path / ".ray" / "auth_token"
+    token_path.parent.mkdir()
+    token_path.write_text(TOKEN)
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    reset_auth_token_state()
+
+    logs_dir = str(tmp_path.resolve() / "logs") if external_logs else None
+    command = _container_command(logs_dir=logs_dir)
+
+    assert f"-v {token_path}:{token_path}:ro" in command
+    assert f"--env RAY_AUTH_TOKEN_PATH='{token_path}'" in command
+    assert TOKEN not in command
+    if logs_dir is not None:
+        assert f"{logs_dir}:{logs_dir}" in shlex.split(command)
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_mounts_token_path_from_env(auth_env, tmp_path, relative):
+    token_path = tmp_path / "custom_token"
+    token_path.write_text(TOKEN)
+    auth_env.chdir(tmp_path)
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    auth_env.setenv(
+        "RAY_AUTH_TOKEN_PATH", token_path.name if relative else str(token_path)
+    )
+    reset_auth_token_state()
+
+    command = _container_command()
+
+    assert f"-v {token_path}:{token_path}:ro" in command
+    assert f"--env RAY_AUTH_TOKEN_PATH='{token_path}'" in command
+    assert TOKEN not in command
+
+
+def test_no_mount_when_token_passed_by_env(auth_env):
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
+    reset_auth_token_state()
+
+    assert ":ro" not in _container_command()
+
+
+def test_no_mount_when_auth_disabled(auth_env, tmp_path):
+    token_path = tmp_path / ".ray" / "auth_token"
+    token_path.parent.mkdir()
+    token_path.write_text(TOKEN)
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+
+    command = _container_command()
+
+    assert ":ro" not in command
+    assert "RAY_AUTH_TOKEN_PATH" not in command
 
 
 if __name__ == "__main__":
