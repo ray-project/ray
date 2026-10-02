@@ -50,7 +50,7 @@ The following environment variables control the memory monitor:
 
 When resource isolation is enabled, the following flag, which you pass to `ray start` or `ray.init`, controls the memory monitor:
 
-- `--system-reserved-memory` sets the amount of memory reserved for critical Ray system processes and other system processes outside Ray's userspace. By default, this value is 10% of the system's total memory, bounded by a minimum of 500 MB and a maximum of 10 GB. The memory monitor enforces that the workload processes' memory footprint doesn't exceed `total_memory - system_reserved_memory` bytes.
+- `--system-reserved-memory` sets the amount of memory reserved for critical Ray system processes and other system processes outside Ray's userspace. By default, this value is 10% of the system's total memory, bounded by a minimum of 500 MiB and a maximum of 10 GiB. The memory monitor enforces that the workload processes' memory footprint doesn't exceed `total_memory - system_reserved_memory` bytes.
 
 ## Using the memory monitor
 
@@ -75,7 +75,7 @@ As the preceding diagram shows, the worker killing policy prioritizes idle worke
 
 **Idle worker policy:**
 
-1. The memory monitor always considers all workers that have previously executed tasks or actors for killing, regardless of the idle-worker killing memory threshold. It considers workers that have never executed any tasks or actors, called cold-start idle workers, for killing only if their memory footprint exceeds the idle-worker killing memory threshold. Cold-start idle workers should have a small memory footprint. In the unlikely case that the OOM logs show the policy selecting active workers over idle workers while a large idle-worker memory footprint remains, the dependencies that new processes in Ray's userspace inherit at startup are likely too expensive. In that case, reduce the memory footprint of new processes in Ray's userspace, or lower the idle-worker killing memory threshold with the environment variable `RAY_idle_worker_killing_memory_threshold_bytes`, which defaults to 1 GiB.
+1. The memory monitor always considers all workers that have previously executed tasks or actors for killing, regardless of the idle-worker killing memory threshold. It considers workers that have never executed any tasks or actors, called cold-start idle workers, for killing only if their memory footprint exceeds the idle-worker killing memory threshold. Cold-start idle workers should have a small memory footprint. In the unlikely case that the OOM logs show the policy selecting active workers over idle workers while a large idle-worker memory footprint remains, the dependencies that new processes in Ray's userspace inherit at startup are likely too expensive. In that case, consider reducing the memory footprint of new processes in Ray's userspace, or lowering the idle-worker killing memory threshold with the environment variable `RAY_idle_worker_killing_memory_threshold_bytes`, which defaults to 1 GiB.
 1. Among the workers eligible for killing, the policy selects the worker with the largest memory footprint first.
 
 **Active worker policy:**
