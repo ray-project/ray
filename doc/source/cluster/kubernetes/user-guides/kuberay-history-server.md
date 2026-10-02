@@ -32,7 +32,7 @@ This guide requires the following:
 * A Kubernetes cluster. This guide uses GKE and `gcloud`, but the steps apply to other Kubernetes distributions.
 * [Helm](https://helm.sh/docs/intro/install/), installed and updated.
 * KubeRay v1.7 or later.
-* Ray 2.58 or later. With earlier versions, the task detail page doesn't show task logs.
+* Ray 2.58 or later.
 
 ## Create a GKE cluster with Workload Identity enabled
 
