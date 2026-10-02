@@ -59,7 +59,7 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
   - Number of logical Redis commands accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Batches count per chunk and table scans per HSCAN command; retries are not counted again, so this is not a count of network round trips. All three metrics exclude connection-establishment commands sent through synchronous or raw connection paths, such as `AUTH`, `SENTINEL MASTERS`, and `INFO CLUSTER`; they do not measure total Redis network traffic. Divide the byte metrics by this for mean bytes per logical command. Set `RAY_gcs_redis_payload_metrics_enabled=false` to stop recording all three metrics. Ray's `Sum` instrument is exposed as an OpenTelemetry up-down counter even though these byte metrics only record positive deltas, which is why its Prometheus name has no `_total` suffix on that backend.
 * - `ray_memory_manager_worker_eviction_total`
   - `Type`, `Name`
-  - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).
+  - The number of tasks and actors killed by the Ray Out of Memory killer (<https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html>) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).
 * - `ray_node_cpu_utilization`
   - `instance`
   - The CPU utilization per node as a percentage quantity (0.\.100). This should be scaled by the number of cores per node to convert the units into cores.

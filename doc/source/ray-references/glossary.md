@@ -605,7 +605,7 @@ Training iteration
     A partial training pass of input data up to pre-defined yield point
     (e.g., time or data consumed) for checkpointing of long running training jobs.
     A full training epoch can consist of multiple training iterations.
-    <!-- TODO: RLlib -->
+    .\. TODO: RLlib
 
 Training epoch
     A full training pass of the input dataset. Typically, model training iterates

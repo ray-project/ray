@@ -156,6 +156,8 @@ spec:
 
 Verify the path in the image you build. The path above is an example, not a standard location. If the library is missing, signal chaining isn't enabled and the dynamic loader might report an error. Preserve any other libraries that your environment already lists in `LD_PRELOAD`.
 
+(last-resort-disable-ray-s-failure-signal-handler)=
+
 ### Last resort: disable Ray's failure-signal handler
 
 If `libjsig.so` isn't available, the environment doesn't permit `LD_PRELOAD`, and the conflict persists, you can disable Ray's failure-signal handler as a last resort. Set the variable before you import Ray:

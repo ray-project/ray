@@ -22,6 +22,8 @@ Before reading this section, familiarize yourself with the Ray {ref}`Memory Mana
 - If your memory usage is high due to high parallelism, view {ref}`Reduce Parallelism <troubleshooting-out-of-memory-reduce-parallelism>`.
 - If you want to profile per Task and Actor memory usage, view {ref}`Profile Task and Actor Memory Usage <troubleshooting-out-of-memory-profile>`.
 
+(what-s-the-out-of-memory-error)=
+
 ### What's the Out-of-Memory Error?
 
 Memory is a limited resource. When a process requests memory and the OS fails to allocate it, the OS executes a routine to free up memory by killing a process that has high memory usage (via SIGKILL) to avoid the OS becoming unstable. This routine is called the [Linux Out of Memory killer](https://www.kernel.org/doc/gorman/html/understand/understand016.html).

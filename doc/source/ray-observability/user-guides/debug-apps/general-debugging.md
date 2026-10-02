@@ -12,6 +12,8 @@ Distributed applications offer great power but also increased complexity. Some o
 
 This document outlines common issues encountered when running Ray in a cluster, highlighting key differences compared to running Ray locally.
 
+(environment-variables-aren-t-passed-from-the-driver-process-to-worker-processes)=
+
 ## Environment variables aren't passed from the Driver process to Worker processes
 
 **Issue:** When you set an environment variable on your Driver, it isn't propagated to the Worker processes.
@@ -72,6 +74,8 @@ In this case, you might receive a mixture of True and False. If `check_file()` r
 
 — Use only shared file paths for such applications. For example, a network file system or S3 storage can provide the required consistency. — Avoid relying on local files to be consistent across machines.
 
+
+(placement-groups-aren-t-composable)=
 
 ## Placement Groups aren't composable
 

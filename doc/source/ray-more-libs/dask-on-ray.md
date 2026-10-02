@@ -171,7 +171,7 @@ Here's an example that measures and logs the execution time of each task using t
 The following Ray-specific callbacks are provided:
 
 > 1. {code}`ray_presubmit(task, key, deps)`: Run before submitting a Ray
->    task. If this callback returns a non-`None` value, a Ray task will _not_
+>    task. If this callback returns a non-`None` value, a Ray task will \_not\_
 >    be created and this value will be used as the would-be task's result
 >    value.
 > 2. {code}`ray_postsubmit(task, key, deps, object_ref)`: Run after submitting

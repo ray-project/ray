@@ -8,7 +8,7 @@ myst:
 
 # Using Pandas on Ray (Modin)
 
-Modin_, previously Pandas on Ray, is a dataframe manipulation library that allows users to speed up their pandas workloads by acting as a drop-in replacement. Modin also provides support for other APIs (e.g. spreadsheet) and libraries, like xgboost.
+[Modin](https://github.com/modin-project/modin), previously Pandas on Ray, is a dataframe manipulation library that allows users to speed up their pandas workloads by acting as a drop-in replacement. Modin also provides support for other APIs (e.g. spreadsheet) and libraries, like xgboost.
 
 ```python
 import modin.pandas as pd
@@ -23,6 +23,8 @@ You can use Modin on Ray with your laptop or cluster. In this document, we show 
 :::{note}
 In previous versions of Modin, you had to initialize Ray before importing Modin. As of Modin 0.9.0, this is no longer the case.
 :::
+
+(using-modin-with-ray-s-autoscaler)=
 
 ## Using Modin with Ray's autoscaler
 
@@ -40,7 +42,7 @@ As long as Ray is initialized before any dataframes are created, Modin will be a
 
 ## How Modin uses Ray
 
-Modin has a layered architecture, and the core abstraction for data manipulation is the Modin Dataframe, which implements a novel algebra that enables Modin to handle all of pandas (see Modin's documentation_ for more on the architecture). Modin's internal dataframe object has a scheduling layer that is able to partition and operate on data with Ray.
+Modin has a layered architecture, and the core abstraction for data manipulation is the Modin Dataframe, which implements a novel algebra that enables Modin to handle all of pandas (see Modin's [documentation](https://modin.readthedocs.io/en/latest/development/architecture.html) for more on the architecture). Modin's internal dataframe object has a scheduling layer that is able to partition and operate on data with Ray.
 
 ### Dataframe operations
 

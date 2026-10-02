@@ -25,7 +25,7 @@ To access the dashboard, use `ray[default]` or {ref}`other installation commands
 pip install -U "ray[default]"
 ```
 
-When you start a single-node Ray Cluster on your laptop, access the dashboard with the URL that Ray prints when it initializes (the default URL is **<http://localhost:8265**>) or with the context object returned by `ray.init`.
+When you start a single-node Ray Cluster on your laptop, access the dashboard with the URL that Ray prints when it initializes (the default URL is **http://localhost:8265**) or with the context object returned by `ray.init`.
 
 ```{testcode}
 :hide:
