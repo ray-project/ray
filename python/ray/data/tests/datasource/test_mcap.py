@@ -886,6 +886,74 @@ def test_read_mcap_count_from_statistics(
         assert not isinstance(optimized_count_plan(ranged), MapBatches)
 
 
+def test_read_mcap_attachment_and_metadata_granularity(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """Attachment and Metadata records come out one per row, counted from statistics."""
+    from mcap.writer import CompressionType, Writer
+
+    paths = []
+    for i in range(2):
+        path = os.path.join(tmp_path, f"run{i}.mcap")
+        with open(path, "wb") as stream:
+            writer = Writer(stream, chunk_size=1, compression=CompressionType.ZSTD)
+            writer.start(profile="", library="ray-test")
+            writer.add_metadata("recorder", {"version": "1.2", "run": str(i)})
+            schema_id = writer.register_schema(
+                name="test_schema", encoding="jsonschema", data=b"{}"
+            )
+            channel = writer.register_channel(
+                schema_id=schema_id, topic="/t", message_encoding="json"
+            )
+            writer.add_message(
+                channel_id=channel, log_time=1_000, publish_time=1_000, data=b"{}"
+            )
+            writer.add_attachment(
+                create_time=900,
+                log_time=1_000 + i,
+                name=f"calib{i}.yaml",
+                media_type="text/yaml",
+                data=f"fx: {i}\n".encode(),
+            )
+            writer.finish()
+        paths.append(path)
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="read_granularity"):
+            ray.data.read_mcap(paths, read_granularity="attachment")
+        return
+
+    attachments = ray.data.read_mcap(
+        paths, read_granularity="attachment", include_row_id=True
+    )
+    assert attachments.schema().names == [
+        "path",
+        "row_id",
+        "name",
+        "media_type",
+        "log_time",
+        "create_time",
+        "data",
+    ]
+    rows = sorted(attachments.take_all(), key=lambda row: row["name"])
+    assert [row["name"] for row in rows] == ["calib0.yaml", "calib1.yaml"]
+    assert [row["data"] for row in rows] == [b"fx: 0\n", b"fx: 1\n"]
+    assert attachments.count() == 2
+    assert (
+        ray.data.read_mcap(
+            paths, read_granularity="attachment", time_range=(1_001, 1_002)
+        ).count()
+        == 1
+    )
+
+    metadata = ray.data.read_mcap(paths, read_granularity="metadata")
+    rows = sorted(metadata.take_all(), key=lambda row: row["path"])
+    assert [dict(row["metadata"])["run"] for row in rows] == ["0", "1"]
+    assert metadata.count() == 2
+    with pytest.raises(ValueError, match="do not apply"):
+        ray.data.read_mcap(paths, read_granularity="metadata", topics=["/t"])
+
+
 if __name__ == "__main__":
     import sys
 
