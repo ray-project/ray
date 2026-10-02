@@ -256,6 +256,17 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-ray-repo-links
+        name: Check that links to files on Ray's master branch resolve
+        entry: python ci/lint/check_ray_repo_links.py
+        language: python
+        # Scans the whole tree, because moving a file breaks links in files the
+        # change never touched.
+        pass_filenames: false
+        always_run: true
+
+  - repo: local
+    hooks:
       - id: check-cpp-files-inclusion
         name: Check ray core C++ files inclusion violations
         entry: ci/lint/check_cpp_files_inclusion.py
