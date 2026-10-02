@@ -97,7 +97,6 @@ It seems that around 500 total results/second seem to be the threshold for accep
 
 ```{list-table}
 :header-rows: 1
-:widths: 13 26 9 15 18 9
 
 * - \# of trials
   - Results / second / trial
@@ -172,7 +171,6 @@ On a single node, throughput seems to be a bit higher. With logging, handling 10
 
 ```{list-table}
 :header-rows: 1
-:widths: 13 26 9 15 18 9
 
 * - \# of trials
   - Results / second / trial
@@ -238,7 +236,6 @@ In the table below we present more detailed results on the network communication
 
 ```{list-table}
 :header-rows: 1
-:widths: 13 26 9 15 18 9
 
 * - \# of trials
   - Results / second / trial

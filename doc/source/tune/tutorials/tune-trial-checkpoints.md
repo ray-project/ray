@@ -30,7 +30,7 @@ In the above code snippet:
 - The saved checkpoint during training iteration `epoch` is saved to the path `<storage_path>/<exp_name>/<trial_name>/checkpoint_<epoch>` on the node on which training happens and can be further synced to a consolidated storage location depending on the {ref}`storage configuration <tune-storage-options>`.
 - We implement *checkpoint loading* with {meth}`tune.get_checkpoint() <ray.tune.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: {doc}`PBT </tune/examples/pbt_guide>`).
 
-  <!-- TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide. -->
+  % TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide.
 
 :::{note}
 `checkpoint_frequency` and `checkpoint_at_end` will not work with Function API checkpointing. These are configured manually with Function Trainable. For example, if you want to checkpoint every three epochs, you can do so through:

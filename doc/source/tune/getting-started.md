@@ -4,9 +4,9 @@ myst:
     description: "Tutorial tuning a PyTorch CNN with the Tuner API, ASHAScheduler for early stopping, and HyperOpt for Bayesian search."
 ---
 
-(tune-tutorial)=
-
 <!-- TODO: make this an executable notebook later on. -->
+
+(tune-tutorial)=
 
 # Getting Started with Ray Tune
 
