@@ -6,8 +6,16 @@ from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
-from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
-from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import MCAPReader
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    MESSAGE_GRANULARITY,
+    MCAPSelection,
+    VideoOptions,
+    WindowSpec,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
+    DEFAULT_MAX_ROW_BYTES,
+    MCAPReader,
+)
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
     SupportsLimitPushdown,
@@ -23,20 +31,24 @@ from ray.util.annotations import DeveloperAPI
 class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     """Scanner for MCAP files on Datasource V2.
 
-    Carries the message selection fixed by ``read_mcap`` and the pushdowns the
-    optimizer applies: column pruning (a pruned read skips building, and for
-    JSON channels decoding, the columns it will not return) and a per-task row
-    limit. Partition pruning comes from :class:`FileScanner`. Filter pushdown
-    is not offered yet; a ``Filter`` above the read applies ``ds.filter``.
+    Carries the message selection and row granularity fixed by ``read_mcap``
+    and the pushdowns the optimizer applies: column pruning (a pruned read
+    skips building, and for JSON channels decoding, the columns it will not
+    return) and a per-task row limit. Partition pruning comes from
+    :class:`FileScanner`. Filter pushdown is not offered yet; a ``Filter``
+    above the read applies ``ds.filter``.
 
-    The planned ``schema`` also fixes what ``data`` holds: decoded JSON values
-    when the datasource found every selected channel of its sample to be
-    JSON-encoded, the payload bytes otherwise. Every reader follows that one
-    decision, so no block mixes the two.
+    The planned ``schema`` also fixes what ``data`` holds at ``message``
+    granularity: decoded JSON values when the datasource found every selected
+    channel of its sample to be JSON-encoded, the payload bytes otherwise.
+    Every reader follows that one decision, so no block mixes the two.
     """
 
     schema: pa.Schema
     selection: MCAPSelection = MCAPSelection()
+    granularity: str = MESSAGE_GRANULARITY
+    window: Optional[WindowSpec] = None
+    video: Optional[VideoOptions] = None
     include_metadata: bool = True
     include_row_id: bool = False
     log_time_order: bool = True
@@ -45,6 +57,7 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     limit: Optional[int] = None
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     target_block_size: Optional[int] = None
+    max_row_bytes: int = DEFAULT_MAX_ROW_BYTES
 
     def read_schema(self) -> pa.Schema:
         """The dataset schema after column pruning.
@@ -92,6 +105,9 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     def create_reader(self) -> MCAPReader:
         return MCAPReader(
             selection=self.selection,
+            granularity=self.granularity,
+            window=self.window,
+            video=self.video,
             include_metadata=self.include_metadata,
             include_row_id=self.include_row_id,
             log_time_order=self.log_time_order,
@@ -103,4 +119,5 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
             target_block_size=self.target_block_size,
             schema=self.schema,
             decode_json=self.decodes_json(),
+            max_row_bytes=self.max_row_bytes,
         )

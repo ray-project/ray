@@ -71,6 +71,10 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    VideoOptions,
+    WindowSpec,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -3233,6 +3237,9 @@ def read_mcap(
     include_metadata: bool = True,
     log_time_order: bool = True,
     include_row_id: bool = False,
+    read_granularity: Literal["message", "window", "topic", "file"] = "message",
+    window: Optional[WindowSpec] = None,
+    video: Optional[VideoOptions] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -3301,6 +3308,16 @@ def read_mcap(
         ...     include_paths=True # doctest: +SKIP
         ... ) # doctest: +SKIP
 
+        Read ten-second windows of two camera topics, each row a decodable clip.
+
+        >>> from ray.data.datasource import WindowSpec  # doctest: +SKIP
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "s3://bucket/recordings/", # doctest: +SKIP
+        ...     topics={"/cam_front/compressed", "/cam_wrist/compressed"}, # doctest: +SKIP
+        ...     read_granularity="window", # doctest: +SKIP
+        ...     window=WindowSpec(length_s=10), # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
         Read with topic filtering and metadata inclusion.
 
         >>> ds = ray.data.read_mcap( # doctest: +SKIP
@@ -3335,6 +3352,27 @@ def read_mcap(
             :class:`~ray.data.checkpoint.CheckpointConfig`. It is turned on
             automatically when the current checkpoint config names ``row_id``.
             Requires the V2 datasource (``DataContext.use_datasource_v2``).
+        read_granularity: What one row is. ``"message"`` (the default) is one
+            message per row. ``"window"`` packs every selected message of one time
+            window of one file into a row; ``"topic"`` every message of one topic
+            of one file; ``"file"`` every selected message of one file. The three
+            coarser rows carry the messages as parallel list columns (``topic``,
+            ``channel_id``, ``log_time``, ``publish_time``, ``sequence``, ``data``;
+            entry *i* of each is the same message, in log-time order) plus a
+            ``channels`` column describing each channel in the row, so a row can be
+            decoded on its own and resumed on by ``row_id``. Payloads stay encoded.
+            A topic or file row over 1 GiB of payload fails the read
+            (``RAY_DATA_MCAP_MAX_ROW_BYTES``). Requires the V2 datasource.
+        window: Required with ``read_granularity="window"``: a
+            :class:`~ray.data.datasource.WindowSpec` giving the window length,
+            stride and anchor. Window rows also carry ``window_start``,
+            ``window_end`` (nanoseconds, end exclusive), ``num_messages`` and
+            ``num_lead_in``, the number of leading entries that precede
+            ``window_start`` because a video topic needs them to decode.
+        video: A :class:`~ray.data.datasource.VideoOptions` that forces topics to
+            be treated as video, sets a fixed lead-in for codecs whose keyframes
+            cannot be detected, or caps how far back a window looks for a
+            keyframe. Only with ``read_granularity="window"`` or ``"topic"``.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -3416,6 +3454,9 @@ def read_mcap(
             log_time_order=log_time_order,
             include_row_id=include_row_id,
             include_paths=include_paths,
+            read_granularity=read_granularity,
+            window=window,
+            video=video,
             filesystem=filesystem,
             partitioning=partitioning,
             file_extensions=file_extensions,
@@ -3439,10 +3480,11 @@ def read_mcap(
             partition_filter=partition_filter,
         )
 
-    if include_row_id:
+    if include_row_id or read_granularity != "message" or window or video:
         raise NotImplementedError(
-            "`include_row_id` on `read_mcap` requires the V2 datasource. Enable it "
-            "with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "`include_row_id`, `read_granularity`, `window` and `video` on "
+            "`read_mcap` require the V2 datasource. Enable it with "
+            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
             "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
         )
 

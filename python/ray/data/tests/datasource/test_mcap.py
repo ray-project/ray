@@ -652,6 +652,153 @@ def test_read_mcap_v2_schema_matches_rows(
     assert block.schema.types == planned.types
 
 
+def _write_video_recording(path, seconds=3):
+    """A 10 fps camera with a keyframe every ten frames (synthetic H.264 Annex-B)
+    and a 50 Hz IMU, in small chunks."""
+    from mcap.writer import CompressionType, Writer
+
+    start = b"\x00\x00\x00\x01"
+    keyframe = (
+        (
+            start
+            + bytes([0x67, 0x42, 0x00, 0x1F])
+            + start
+            + bytes([0x68, 0xCE, 0x38, 0x80])
+        )
+        + start
+        + bytes([0x65, 0x88, 0x84, 0x00])
+    )
+    pframe = start + bytes([0x41, 0x9A, 0x02, 0x04])
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=600, compression=CompressionType.ZSTD)
+        writer.start(profile="ros2", library="ray-test")
+        cam_schema = writer.register_schema(
+            name="foxglove_msgs/msg/CompressedVideo", encoding="ros2msg", data=b""
+        )
+        imu_schema = writer.register_schema(
+            name="sensor_msgs/msg/Imu", encoding="ros2msg", data=b""
+        )
+        cam = writer.register_channel(
+            schema_id=cam_schema, topic="/cam", message_encoding="cdr"
+        )
+        imu = writer.register_channel(
+            schema_id=imu_schema, topic="/imu", message_encoding="cdr"
+        )
+        messages = []
+        for frame in range(10 * seconds):
+            payload = (keyframe if frame % 10 == 0 else pframe) + frame.to_bytes(
+                4, "big"
+            )
+            messages.append((frame * 100_000_000, cam, payload))
+        for i in range(50 * seconds):
+            messages.append((i * 20_000_000, imu, i.to_bytes(8, "big")))
+        for log_time, channel_id, payload in sorted(messages):
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+            )
+        writer.finish()
+
+
+def test_read_mcap_window_granularity(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """Window rows: one decodable clip per row, with the video lead-in."""
+    from ray.data.datasource import WindowSpec
+
+    path = os.path.join(tmp_path, "video.mcap")
+    _write_video_recording(path)
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="read_granularity"):
+            ray.data.read_mcap(
+                path, read_granularity="window", window=WindowSpec(length_s=1.0)
+            )
+        return
+
+    ds = ray.data.read_mcap(
+        path,
+        read_granularity="window",
+        window=WindowSpec(length_s=1.0, anchor=550_000_000),
+        include_row_id=True,
+    )
+    rows = sorted(ds.take_all(), key=lambda row: row["window_start"])
+    assert [row["window_start"] for row in rows] == [
+        -450_000_000,
+        550_000_000,
+        1_550_000_000,
+        2_550_000_000,
+    ]
+    clip = rows[1]
+    assert clip["num_lead_in"] == 6  # frames at 0.0 .. 0.5 s back to the keyframe
+    assert clip["num_messages"] == 6 + 10 + 50
+    assert clip["log_time"] == sorted(clip["log_time"])
+    assert {c["topic"] for c in clip["channels"]} == {"/cam", "/imu"}
+    assert clip["row_id"].startswith(f"{path}#[550000000,1550000000)@")
+    assert ds.schema().names == [
+        "path",
+        "row_id",
+        "window_start",
+        "window_end",
+        "num_messages",
+        "num_lead_in",
+        "topic",
+        "channel_id",
+        "log_time",
+        "publish_time",
+        "sequence",
+        "data",
+        "channels",
+    ]
+
+
+def test_read_mcap_topic_and_file_granularity(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """Topic rows: one row and one task per (file, topic). File rows: one per file."""
+    if not datasource_v2:
+        pytest.skip("coarse granularities are V2 only")
+    paths = []
+    for i in range(2):
+        path = os.path.join(tmp_path, f"run{i}.mcap")
+        _write_video_recording(path, seconds=2)
+        paths.append(path)
+
+    topics = ray.data.read_mcap(paths, read_granularity="topic").materialize()
+    assert topics.count() == 4
+    assert topics.num_blocks() == 4
+    by_key = {(row["path"], row["topic"]): row for row in topics.take_all()}
+    assert set(by_key) == {(p, t) for p in paths for t in ("/cam", "/imu")}
+    assert by_key[(paths[0], "/cam")]["num_messages"] == 20
+    assert by_key[(paths[0], "/imu")]["num_messages"] == 100
+
+    files = ray.data.read_mcap(paths, read_granularity="file", include_row_id=True)
+    rows = sorted(files.take_all(), key=lambda row: row["path"])
+    assert [row["path"] for row in rows] == paths
+    assert all(row["num_messages"] == 120 for row in rows)
+    assert all(set(row["topic"]) == {"/cam", "/imu"} for row in rows)
+    assert len({row["row_id"] for row in rows}) == 2
+
+
+def test_read_mcap_granularity_validation(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2
+):
+    from ray.data.datasource import VideoOptions, WindowSpec
+
+    if not datasource_v2:
+        pytest.skip("validated on the V2 path")
+    with pytest.raises(ValueError, match="needs a WindowSpec"):
+        ray.data.read_mcap(simple_mcap_file, read_granularity="window")
+    with pytest.raises(ValueError, match="window applies to"):
+        ray.data.read_mcap(simple_mcap_file, window=WindowSpec(length_s=1))
+    with pytest.raises(ValueError, match="video applies to"):
+        ray.data.read_mcap(simple_mcap_file, video=VideoOptions())
+    with pytest.raises(ValueError, match="read_granularity must be one of"):
+        ray.data.read_mcap(simple_mcap_file, read_granularity="clip")
+
+
 if __name__ == "__main__":
     import sys
 
