@@ -1,0 +1,21 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.2xlarge
+    resources:
+      CPU: 0
+
+worker_nodes:
+    # m5.8xlarge, 32 vCPU, 128 GiB memory
+    - instance_type: m5.8xlarge
+      min_nodes: 50
+      max_nodes: 50
+      market_type: ON_DEMAND
+      # New SDK's `resources` is a full override (not a merge), so we must
+      # include `CPU: 32` explicitly to preserve the m5.8xlarge's natural
+      # vCPU count alongside the custom MOCK_GPU resource.
+      resources:
+        CPU: 32
+        MOCK_GPU: 4
+        # Larger object store memory make the test run faster.
+        object_store_memory: 64000000000
