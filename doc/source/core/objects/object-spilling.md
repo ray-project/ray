@@ -4,14 +4,15 @@ myst:
     description: "Configure where Ray spills objects once the object store fills up, including custom spill directories and spill statistics."
 ---
 
-# Object Spilling
+# Object spilling
 (object-spilling)=
 
-Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray spills objects to the temporary directory (for example, `/tmp/ray/session_2025-03-28_00-05-20_204810_2814690`).
+Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray spills objects to the temporary directory, such as `/tmp/ray/session_2025-03-28_00-05-20_204810_2814690`.
 
-## Spilling to a custom directory
+(spilling-to-a-custom-directory)=
+## Spill to a custom directory
 
-You can specify a custom directory for spilling objects by setting the `object_spilling_directory` parameter in the `ray.init` function or the `--object-spilling-directory` command line option in the `ray start` command.
+To spill objects to a custom directory, set the `object_spilling_directory` parameter of `ray.init` or the `--object-spilling-directory` option of `ray start`:
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -27,18 +28,18 @@ ray start --object-spilling-directory=/path/to/spill/dir
 :::
 ::::
 
-For advanced usage and customizations, reach out to the [Ray team](https://www.ray.io/community).
+For advanced usage and customizations, contact the [Ray team](https://www.ray.io/community).
 
-## Stats
+## View spill statistics
 
-When spilling is happening, the following INFO level messages are printed to the Raylet logs. For example, `/tmp/ray/session_latest/logs/raylet.out`:
+During spilling, the raylet writes `INFO`-level messages such as the following to its logs, for example, `/tmp/ray/session_latest/logs/raylet.out`:
 
 ```
 local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
 local_object_manager.cc:334: Restored 50 MiB, 1 objects, read throughput 505 MiB/s
 ```
 
-You can also view cluster-wide spill stats by using the `ray memory` command:
+To view cluster-wide spill statistics, run `ray memory`:
 
 ```
 --- Aggregate object store stats across all nodes ---
@@ -47,4 +48,4 @@ Spilled 200 MiB, 4 objects, avg write throughput 570 MiB/s
 Restored 150 MiB, 3 objects, avg read throughput 1361 MiB/s
 ```
 
-If you only want to display cluster-wide spill stats, use `ray memory --stats-only`.
+To display only the cluster-wide spill statistics, run `ray memory --stats-only`.

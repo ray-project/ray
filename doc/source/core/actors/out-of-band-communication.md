@@ -1,21 +1,21 @@
 ---
 myst:
   html_meta:
-    description: "Communicate between actors outside method calls: wrapping library processes, Ray Collective, and running an HTTP server in an actor."
+    description: "Communicate between actors outside method calls by wrapping library processes, using Ray Collective, or running an HTTP server in an actor."
 ---
 
-# Out-of-band Communication
+# Out-of-band communication
 
-Typically, Ray actor communication is done through actor method calls and data is shared through the distributed object store. However, in some use cases out-of-band communication can be useful.
+Ray actors typically communicate through actor method calls and share data through the distributed object store. In some use cases, out-of-band communication can be useful instead.
 
-## Wrapping Library Processes
-Many libraries already have mature, high-performance internal communication stacks and they leverage Ray as a language-integrated actor scheduler. The actual communication between actors is mostly done out-of-band using existing communication stacks. For example, Horovod-on-Ray uses NCCL or MPI-based collective communications, and RayDP uses Spark's internal RPC and object manager. See [Ray Distributed Library Patterns](https://www.anyscale.com/blog/ray-distributed-library-patterns) for more details.
+## Wrapping library processes
+Many libraries have mature, high-performance internal communication stacks and use Ray as a language-integrated actor scheduler. These libraries handle most communication between actors out-of-band, through their existing communication stacks. For example, Horovod-on-Ray uses collective communication based on NCCL or the Message Passing Interface (MPI), and RayDP uses Spark's internal RPC and object manager. See [Ray Distributed Library Patterns](https://www.anyscale.com/blog/ray-distributed-library-patterns) for more details.
 
 ## Ray Collective
-Ray's collective communication library (`ray.util.collective`) allows efficient out-of-band collective and point-to-point communication between distributed CPUs or GPUs. See {ref}`Ray Collective <ray-collective>` for more details.
+The Ray collective communication library, `ray.util.collective`, provides efficient out-of-band collective and point-to-point communication between distributed CPUs or GPUs. See {ref}`Ray Collective <ray-collective>` for more details.
 
-## HTTP Server
-You can start an HTTP server inside the actor and expose HTTP endpoints to clients so users outside of the Ray cluster can communicate with the actor.
+## HTTP server
+You can start an HTTP server inside an actor and expose HTTP endpoints, so clients outside the Ray cluster can communicate with the actor.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -24,8 +24,8 @@ You can start an HTTP server inside the actor and expose HTTP endpoints to clien
 :::
 ::::
 
-Similarly, you can expose other types of servers as well (e.g., gRPC servers).
+You can expose other types of servers the same way, such as gRPC servers.
 
 ## Limitations
 
-When using out-of-band communication with Ray actors, keep in mind that Ray does not manage the calls between actors. This means that functionality like distributed reference counting will not work with out-of-band communication, so you should take care not to pass object references in this way.
+Ray doesn't manage calls between actors that use out-of-band communication. As a result, features such as distributed reference counting don't work with out-of-band communication, so don't pass object refs this way.
