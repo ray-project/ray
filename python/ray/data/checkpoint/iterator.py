@@ -8,7 +8,6 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.data_iterator_checkpointer import (
-    BatchMetadataWithRowIDs,
     RowIDBasedDataIteratorCheckpointer,
 )
 
@@ -39,16 +38,9 @@ class CheckpointingBatchIterator(BatchIterator):
         assert isinstance(block_accessor, TableBlockAccessor)
         row_ids = block_accessor.select(columns=[self._checkpointer._id_column])
 
-        # Carry over the existing metadata fields (e.g., stage timings).
-        metadata_fields = {
-            f.name: getattr(batch.metadata, f.name)
-            for f in dataclasses.fields(batch.metadata)
-        }
-        batch = dataclasses.replace(
-            batch,
-            metadata=BatchMetadataWithRowIDs(**metadata_fields, row_ids=row_ids),
+        return dataclasses.replace(
+            batch, metadata=dataclasses.replace(batch.metadata, row_ids=row_ids)
         )
-        return batch
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         for batch in super()._blocks_to_batches(blocks):

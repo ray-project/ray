@@ -3,7 +3,7 @@ import logging
 import os
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from queue import Queue
 from typing import Any, ClassVar, Dict, List, Optional
 
@@ -13,7 +13,7 @@ import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import deepcopy_array
-from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
+from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.interfaces import TrainingIngestCheckpointConfig
@@ -102,22 +102,6 @@ class DataIteratorCheckpointer(abc.ABC):
         """The world size of the current distributed setting.
         Defaults to 1 if not running in a distributed setting."""
         return self._world_size
-
-
-@dataclass
-class BatchMetadataWithRowIDs(BatchMetadata):
-    """Metadata for a batch with the corresponding row IDs.
-
-    The row ids will be written to checkpoint files to record
-    which rows were seen by the iterator consumer.
-
-    Attributes:
-        row_ids: The row IDs of the batch.
-    """
-
-    # Keyword-only so this required field can follow the defaulted fields
-    # inherited from OSS ``BatchMetadata`` (``num_rows``, ``stage_timings``)
-    row_ids: Block = field(kw_only=True)
 
 
 @dataclass
@@ -484,7 +468,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
 
         self._raise_if_flush_failed()
 
-        assert isinstance(batch.metadata, BatchMetadataWithRowIDs), batch.metadata
+        assert batch.metadata.row_ids is not None, batch.metadata
 
         self._should_update_state_dict = True
         self._row_ids_staging_queue.put(batch.metadata.row_ids)

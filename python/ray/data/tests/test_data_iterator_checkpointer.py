@@ -9,9 +9,8 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data import FileShuffleConfig
-from ray.data._internal.block_batching.interfaces import Batch
+from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
 from ray.data.checkpoint.data_iterator_checkpointer import (
-    BatchMetadataWithRowIDs,
     RowIDBasedDataIteratorCheckpointer,
     RowIDBasedStateDict,
 )
@@ -23,7 +22,7 @@ from ray.tests.conftest import *  # noqa
 def _create_batch(row_ids: List[int]) -> Batch:
     table = pa.table({"id": pa.array(row_ids, type=pa.int64())})
     return Batch(
-        metadata=BatchMetadataWithRowIDs(batch_idx=0, row_ids=table),
+        metadata=BatchMetadata(batch_idx=0, row_ids=table),
         data=table,
     )
 
