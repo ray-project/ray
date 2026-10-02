@@ -9,13 +9,13 @@ myst:
 ```{toctree}
 :hidden:
 
-getting-started
-user-guides
-examples
-k8s-ecosystem
-benchmarks
-troubleshooting
-references
+getting-started/index
+user-guides/index
+examples/index
+ecosystem/index
+benchmarks/index
+troubleshooting/index
+references/index
 ```
 
 (kuberay-index)=

@@ -26,7 +26,7 @@ Enabling TLS incurs a performance overhead from encryption and decryption of int
 
 ## Install the KubeRay operator
 
-Install the KubeRay operator by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterMTLS` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
+Install the KubeRay operator by following [Deploy a KubeRay operator](../getting-started/operator-installation.md). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterMTLS` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
