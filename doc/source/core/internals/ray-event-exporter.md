@@ -299,7 +299,7 @@ See [ray_actor_definition_event.cc](https://github.com/ray-project/ray/blob/4ebd
 
 ### Step 4: Update exposable event types (if needed)
 
-To expose your event to external HTTP services, add it to [DEFAULT_EXPOSABLE_EVENT_TYPES](https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/dashboard/modules/aggregator/aggregator_agent.py#L56) in `aggregator_agent.py`. Alternatively, configure it through the `RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES` environment variable.
+To expose your event to external HTTP services, add it to [DEFAULT_EXPOSABLE_EVENT_TYPES](https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/dashboard/modules/aggregator/aggregator_agent.py#L56) in `aggregator_agent.py`. Alternatively, users can enable it through the `RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES` environment variable.
 
 ### Step 5: Update RayEventRecorder to publish your new event type
 
