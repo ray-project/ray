@@ -168,6 +168,34 @@ ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
 
 ::::
 
+::::{tab-item} Iceberg
+
+To create a {class}`~ray.data.dataset.Dataset` from an [Iceberg table](https://iceberg.apache.org), call {func}`~ray.data.read_iceberg`. This function creates a `Dataset` backed by the distributed files that underlie the Iceberg table.
+
+```{testcode}
+:skipif: True
+
+import ray
+from pyiceberg.expressions import EqualTo
+
+ds = ray.data.read_iceberg(
+    table_identifier="db_name.table_name",
+    row_filter=EqualTo("column_name", "literal_value"),
+    catalog_kwargs={"name": "default", "type": "glue"}
+)
+ds.show(3)
+```
+
+```{testoutput}
+:options: +MOCK
+
+{'col1': 0, 'col2': '0'}
+{'col1': 1, 'col2': '1'}
+{'col1': 2, 'col2': '2'}
+```
+
+::::
+
 :::::
 
 (reading-files-from-shared-local-storage)=
@@ -651,34 +679,6 @@ ds.show(3)
 
 :::
 
-:::{tab-item} Iceberg
-
-To create a {class}`~ray.data.dataset.Dataset` from an [Iceberg table](https://iceberg.apache.org), call {func}`~ray.data.read_iceberg`. This function creates a `Dataset` backed by the distributed files that underlie the Iceberg table.
-
-```{testcode}
-:skipif: True
-
-import ray
-from pyiceberg.expressions import EqualTo
-
-ds = ray.data.read_iceberg(
-    table_identifier="db_name.table_name",
-    row_filter=EqualTo("column_name", "literal_value"),
-    catalog_kwargs={"name": "default", "type": "glue"}
-)
-ds.show(3)
-```
-
-```{testoutput}
-:options: +MOCK
-
-{'col1': 0, 'col2': '0'}
-{'col1': 1, 'col2': '1'}
-{'col1': 2, 'col2': '2'}
-```
-
-:::
-
 :::{tab-item} Modin
 
 To create a {class}`~ray.data.dataset.Dataset` from a Modin DataFrame, call {func}`~ray.data.from_modin`. This function constructs a `Dataset` backed by the distributed pandas DataFrame partitions that underlie the Modin DataFrame.
@@ -749,11 +749,13 @@ First, install the required dependencies:
 pip install huggingface_hub
 ```
 
-Set your Hugging Face token to authenticate. You can read public datasets without a token, but Hugging Face rate limits are more aggressive without one. To read Hugging Face datasets without a token, set the filesystem argument to `HfFileSystem()`.
+To authenticate, set the `HF_TOKEN` environment variable to your Hugging Face token. The Parquet example later in this section reads the variable and passes the token to `HfFileSystem`.
 
 ```console
 export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
 ```
+
+For public datasets, you can read without a token by setting the filesystem argument to `HfFileSystem()`. Hugging Face rate limits are more aggressive without a token.
 
 Most Hugging Face datasets store their data in Parquet files, so you can read directly from the dataset path:
 
@@ -952,7 +954,7 @@ dataset = ray.data.read_sql(
 
 :::{tab-item} PostgreSQL
 
-To read from PostgreSQL, install [Psycopg 2](https://www.psycopg.org/docs). It's the most popular PostgreSQL database connector.
+To read from PostgreSQL, install [Psycopg 2](https://www.psycopg.org/docs).
 
 ```console
 pip install psycopg2-binary
@@ -1136,12 +1138,11 @@ ds.write_mongo(
 ```
 
 (reading-from-kafka)=
+(reading_kafka)=
 
 ## Read from Kafka
 
 Ray Data reads from message queues such as Kafka.
-
-(reading_kafka)=
 
 To read data from Kafka topics, call {func}`~ray.data.read_kafka` and specify the topic names and broker addresses. Ray Data performs bounded reads between a start and end offset. You can specify each offset as an integer, as a `datetime` object for a time-based range, or as a dictionary of per-partition offsets that maps `{topic: {partition_id: offset}}`. The start offset also accepts `"earliest"`, and the end offset also accepts `"latest"`. Partitions that a per-partition dictionary doesn't list fall back to `"earliest"` for the start offset and `"latest"` for the end offset.
 
