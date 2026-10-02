@@ -106,7 +106,14 @@ class _NodeLossTracker:
     def start(self) -> None:
         with self._lock:
             self._active_executors += 1
-            if self._poller is None:
+            if self._poller is not None:
+                return
+        # Take the baseline before any queue can ask for the version, so a node
+        # that dies after this point is counted rather than folded into the
+        # baseline. One GCS round trip, once per executor start.
+        self._poll_once()
+        with self._lock:
+            if self._poller is None and self._active_executors > 0:
                 self._stop.clear()
                 self._poller = threading.Thread(
                     target=self._poll_until_stopped,
@@ -118,17 +125,24 @@ class _NodeLossTracker:
     def stop(self) -> None:
         with self._lock:
             self._active_executors = max(0, self._active_executors - 1)
-            if self._active_executors == 0 and self._poller is not None:
-                self._stop.set()
-                self._poller = None
+            if self._active_executors > 0 or self._poller is None:
+                return
+            poller, self._poller = self._poller, None
+            self._stop.set()
+        # Wait for an in-flight poll, so no GCS call outlives the executor and a
+        # later start() can't leave two pollers running.
+        poller.join()
+
+    def _poll_once(self) -> None:
+        try:
+            if ray.is_initialized():
+                self.refresh(get_lost_node_ids())
+        except Exception as e:
+            logger.debug(f"Node-loss poll failed: {e!r}")
 
     def _poll_until_stopped(self) -> None:
         while not self._stop.wait(self.POLL_INTERVAL_S):
-            try:
-                if ray.is_initialized():
-                    self.refresh(get_lost_node_ids())
-            except Exception as e:
-                logger.debug(f"Node-loss poll failed: {e!r}")
+            self._poll_once()
 
     def refresh(self, lost: FrozenSet[str]) -> int:
         """Record the current lost-node set; bumps the version if it changed."""

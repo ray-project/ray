@@ -270,6 +270,36 @@ def test_node_loss_tracker_versions():
     assert tracker.refresh(frozenset({"n1"})) == 2
 
 
+def test_node_loss_tracker_lifecycle():
+    import threading
+
+    from ray.data._internal.utils import cached_ray_internals as cri
+
+    tracker = cri._NodeLossTracker()
+    with patch.object(cri, "get_lost_node_ids", return_value=frozenset()):
+        tracker.start()
+        # start() takes the baseline synchronously, before the poller exists.
+        assert tracker._lost == frozenset()
+        first = tracker._poller
+        assert first is not None and first.is_alive()
+        # Refcounted: a second executor doesn't start a second poller.
+        tracker.start()
+        assert tracker._poller is first
+        tracker.stop()
+        assert first.is_alive()
+        # Last stop joins the thread; a restart gets a fresh one.
+        tracker.stop()
+        assert not first.is_alive()
+        assert tracker._poller is None
+        tracker.start()
+        assert tracker._poller is not first and tracker._poller.is_alive()
+        tracker.stop()
+        assert not any(
+            t.name == "ray-data-node-loss" and t.is_alive()
+            for t in threading.enumerate()
+        )
+
+
 def test_has_resident_next():
     lost = _create_bundle("lost")
     resident = _create_bundle("resident")
