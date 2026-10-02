@@ -133,19 +133,18 @@ FAKE_MA_EPISODES_WO_P1[0].to_numpy()
 NO_DATA = MultiAgentBatch(policy_batches={}, env_steps=0)
 
 
-def fake_batch(num_timesteps, *, env_steps=None):
+def fake_batch(num_timesteps, *, env_steps=None, seq_lens=None):
     rng = np.random.default_rng(0)
+    columns = {
+        Columns.OBS: rng.standard_normal((num_timesteps, 4), dtype=np.float32),
+        Columns.ACTIONS: rng.integers(0, 2, size=(num_timesteps,)),
+    }
+    if seq_lens is not None:
+        # Cut the timesteps into sequences, as for a recurrent module. The Learner
+        # then slices the batch, and counts its minibatches, in sequences.
+        columns[SampleBatch.SEQ_LENS] = np.array(seq_lens)
     return MultiAgentBatch(
-        {
-            DEFAULT_MODULE_ID: SampleBatch(
-                {
-                    Columns.OBS: rng.standard_normal(
-                        (num_timesteps, 4), dtype=np.float32
-                    ),
-                    Columns.ACTIONS: rng.integers(0, 2, size=(num_timesteps,)),
-                }
-            )
-        },
+        {DEFAULT_MODULE_ID: SampleBatch(columns)},
         env_steps=num_timesteps if env_steps is None else env_steps,
     )
 
@@ -443,6 +442,50 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             # ... so their collectives still line up, and the next update trains. (The
             # actor manager takes a Learner that raised out of service, as for any
             # error; put both back first.)
+            learner_group.foreach_learner(
+                lambda learner: None, healthy_only=False, mark_healthy=True
+            )
+            learner_group.update(batches=[fake_batch(64), fake_batch(64)])
+            learner_0_weights, learner_1_weights = [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[DEFAULT_MODULE_ID].get_state()
+                    )
+                )
+            ]
+            check(learner_0_weights, learner_1_weights)
+        finally:
+            learner_group.shutdown()
+
+    def test_a_learner_that_cannot_form_minibatches_fails_the_group(self):
+        """A batch that cannot be split into minibatches fails every Learner.
+
+        A minibatch of a sequence batch must hold at least one sequence, so a
+        `minibatch_size` below the batch's average sequence length is an error.
+        That can hold for one shard and not for another: here, sequences of 20
+        timesteps against 5. The first Learner must not raise before the group
+        agreement, or its peer waits in that collective forever -- as this test
+        then does, rather than fail.
+        """
+        config = BaseTestingAlgorithmConfig().update_from_dict(
+            REMOTE_CONFIGS["multi-cpu-ddp"]
+        )
+        learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+        try:
+            with self.assertRaisesRegex(Exception, "minibatch"):
+                learner_group.update(
+                    batches=[
+                        fake_batch(40, seq_lens=[20, 20]),
+                        fake_batch(20, seq_lens=[5, 5, 5, 5]),
+                    ],
+                    minibatch_size=10,
+                    num_epochs=1,
+                )
+            # Both Learners left `update()` right after the agreement, so their
+            # collectives still line up, and the next update trains. (The actor
+            # manager takes a Learner that raised out of service, as for any error;
+            # put both back first.)
             learner_group.foreach_learner(
                 lambda learner: None, healthy_only=False, mark_healthy=True
             )

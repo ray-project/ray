@@ -540,19 +540,21 @@ class TorchLearner(Learner):
         ):
             return plan
         summed = torch.tensor(
-            [int(plan.skip), plan.num_minibatches],
+            [int(plan.skip), plan.num_minibatches, int(plan.abort)],
             dtype=torch.int64,
             device=self._device,
         )
         torch.distributed.all_reduce(summed)
-        num_skipping, total_minibatches = summed.tolist()
-        # Skip if anyone wants to. Steps: the average proposal. Every non-empty
-        # Learner proposes at least 1 when there is minibatching, so the floor is
-        # >= 1 then; a single pass over the batch proposes 0 on every Learner, and 0
-        # ("uncapped") is the right answer -- there is only ever one step to take.
+        num_skipping, total_minibatches, num_aborting = summed.tolist()
+        # Skip if anyone wants to, abort if anyone must. Steps: the average proposal.
+        # Every non-empty Learner proposes at least 1 when there is minibatching, so
+        # the floor is >= 1 then; a single pass over the batch proposes 0 on every
+        # Learner, and 0 ("uncapped") is the right answer -- there is only ever one
+        # step to take.
         return UpdatePlan(
             skip=num_skipping > 0,
             num_minibatches=total_minibatches // torch.distributed.get_world_size(),
+            abort=num_aborting > 0,
         )
 
     @OverrideToImplementCustomLogic

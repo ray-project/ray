@@ -129,6 +129,9 @@ class UpdatePlan(NamedTuple):
     # Number of minibatches to step through; 0 means "as many as the data yields",
     # which is only safe when it is the same on every Learner (no minibatching).
     num_minibatches: int
+    # Fail this update on every Learner: one of them cannot carry it out (e.g. its
+    # batch cannot be split into minibatches).
+    abort: bool = False
 
 
 @PublicAPI(stability="alpha")
@@ -1311,17 +1314,38 @@ class Learner(Checkpointable):
             # proposes the count its own data implies and the group settles on
             # one. A single Learner proposes the very count it would have derived
             # anyway -- it is only the group that needs to be told.
+            count_error = None
             if not wants_to_skip and not num_total_minibatches and minibatch_size:
-                num_total_minibatches = MiniBatchCyclicIterator.num_minibatches(
-                    batch, minibatch_size=minibatch_size, num_epochs=num_epochs
-                )
+                try:
+                    num_total_minibatches = MiniBatchCyclicIterator.num_minibatches(
+                        batch, minibatch_size=minibatch_size, num_epochs=num_epochs
+                    )
+                except Exception as e:
+                    # E.g. `minibatch_size` below the average sequence length of a
+                    # sequence batch, which can hold for one shard and not for
+                    # another. Raised here, it would leave the other Learners waiting
+                    # in the agreement below forever, so it is raised after it, on
+                    # every Learner.
+                    count_error = e
             # Make the group follow one plan: all Learners skip together (a
             # Learner that skips alone drops out of the collective sequence and
             # deadlocks the others) and step the same number of times.
             plan = self._sync_update_plan(
-                UpdatePlan(skip=wants_to_skip, num_minibatches=num_total_minibatches)
+                UpdatePlan(
+                    skip=wants_to_skip,
+                    num_minibatches=num_total_minibatches,
+                    abort=count_error is not None,
+                )
             )
             num_total_minibatches = plan.num_minibatches
+            if plan.abort:
+                if count_error is not None:
+                    raise count_error
+                raise ValueError(
+                    "Another Learner of the group could not split its train batch into "
+                    "minibatches, so this update fails on every Learner. That "
+                    "Learner's error names the cause."
+                )
             if plan.skip and self.config.never_skip_update:
                 raise ValueError(
                     (
@@ -1454,8 +1478,9 @@ class Learner(Checkpointable):
         under `config.never_skip_update`; in multi-Learner setups it is a collective
         operation and must stay one.
 
-        The plans are combined as follows: the group skips if ANY Learner wants to;
-        the number of minibatches is the average of the Learners' proposals.
+        The plans are combined as follows: the group skips if ANY Learner wants to,
+        and aborts if ANY Learner must; the number of minibatches is the average of
+        the Learners' proposals.
 
         Args:
             plan: This Learner's own proposal, derived from its own train batch.
