@@ -153,8 +153,12 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
             )
 
     def _marked_operation_ids(self) -> set[str]:
+        from pyiceberg.table.snapshots import ancestors_of
+
         operation_ids = set()
-        for snapshot in self._sink._table.snapshots():
+        for snapshot in ancestors_of(
+            self._sink._table.current_snapshot(), self._sink._table.metadata
+        ):
             if snapshot.summary is None:
                 continue
             operation_id = snapshot.summary.get(

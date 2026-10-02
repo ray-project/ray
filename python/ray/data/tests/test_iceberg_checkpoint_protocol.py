@@ -42,14 +42,47 @@ _OLD_OPERATION_2 = "b" * 32
 
 
 class _FakeSnapshot:
-    def __init__(self, summary):
+    def __init__(self, snapshot_id, parent_snapshot_id, summary):
+        self.snapshot_id = snapshot_id
+        self.parent_snapshot_id = parent_snapshot_id
         self.summary = summary
 
 
 class _FakeTable:
     def __init__(self, table_uuid):
-        self.metadata = SimpleNamespace(table_uuid=table_uuid)
         self._snapshots = []
+        self._current_snapshot_id = None
+        self.metadata = SimpleNamespace(
+            table_uuid=table_uuid,
+            snapshot_by_id=self.snapshot_by_id,
+        )
+
+    def add_snapshot(self, summary, *, make_current=True):
+        current_snapshot = self.current_snapshot()
+        snapshot = _FakeSnapshot(
+            snapshot_id=len(self._snapshots) + 1,
+            parent_snapshot_id=(
+                current_snapshot.snapshot_id if current_snapshot is not None else None
+            ),
+            summary=summary,
+        )
+        self._snapshots.append(snapshot)
+        if make_current:
+            self._current_snapshot_id = snapshot.snapshot_id
+        return snapshot
+
+    def current_snapshot(self):
+        return self.snapshot_by_id(self._current_snapshot_id)
+
+    def snapshot_by_id(self, snapshot_id):
+        return next(
+            (
+                snapshot
+                for snapshot in self._snapshots
+                if snapshot.snapshot_id == snapshot_id
+            ),
+            None,
+        )
 
     def snapshots(self):
         return list(self._snapshots)
@@ -97,7 +130,7 @@ class _FakeIcebergSink:
             raise RuntimeError("catalog commit failed")
         if self.commit_behavior == "missing_marker":
             properties.pop(ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY, None)
-        self._table._snapshots.append(_FakeSnapshot(properties))
+        self._table.add_snapshot(properties)
         if self.commit_behavior == "commit_then_raise":
             raise RuntimeError("ambiguous catalog response")
 
@@ -211,14 +244,19 @@ def test_enable_checkpointing_rejects_namespace_identity_mismatch(tmp_path):
         second.enable_checkpointing()
 
 
-def test_enable_checkpointing_resolves_all_pending_operations(tmp_path):
+def test_enable_checkpointing_resolves_only_current_ancestor_operations(tmp_path):
     config = _checkpoint_config(tmp_path)
     sink = _FakeIcebergSink()
     _initialize_namespace(config, sink)
     committed_operation = _write_pending(config, _OLD_OPERATION_1, 0)
     discarded_operation = _write_pending(config, _OLD_OPERATION_2, 0)
-    sink._table._snapshots.append(
-        _FakeSnapshot({ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY: _OLD_OPERATION_1})
+    ancestor_snapshot = sink._table.add_snapshot(
+        {ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY: _OLD_OPERATION_1}
+    )
+    sink._table.add_snapshot({})
+    unreachable_snapshot = sink._table.add_snapshot(
+        {ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY: _OLD_OPERATION_2},
+        make_current=False,
     )
 
     wrapper = IcebergCheckpointDatasink(sink, config)
@@ -236,7 +274,38 @@ def test_enable_checkpointing_resolves_all_pending_operations(tmp_path):
         config.filesystem.get_file_info(discarded_operation.pending_path).type
         == FileType.NotFound
     )
+    assert (
+        config.filesystem.get_file_info(discarded_operation.committed_path).type
+        == FileType.NotFound
+    )
     assert wrapper.operation_id not in {_OLD_OPERATION_1, _OLD_OPERATION_2}
+    assert ancestor_snapshot is not sink._table.current_snapshot()
+    assert unreachable_snapshot in sink._table.snapshots()
+    assert unreachable_snapshot is not sink._table.current_snapshot()
+
+
+def test_enable_checkpointing_discards_pending_without_current_snapshot(tmp_path):
+    config = _checkpoint_config(tmp_path)
+    sink = _FakeIcebergSink()
+    _initialize_namespace(config, sink)
+    pending = _write_pending(config, _OLD_OPERATION_1, 0)
+    retained_snapshot = sink._table.add_snapshot(
+        {ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY: _OLD_OPERATION_1},
+        make_current=False,
+    )
+
+    wrapper = IcebergCheckpointDatasink(sink, config)
+    wrapper.enable_checkpointing()
+
+    assert retained_snapshot in sink._table.snapshots()
+    assert sink._table.current_snapshot() is None
+    assert (
+        config.filesystem.get_file_info(pending.pending_path).type == FileType.NotFound
+    )
+    assert (
+        config.filesystem.get_file_info(pending.committed_path).type
+        == FileType.NotFound
+    )
 
 
 def test_successful_commit_marks_snapshot_then_promotes_rows(tmp_path):
@@ -324,8 +393,8 @@ def test_retry_completes_partial_operation_promotion(tmp_path):
     config.filesystem.move(
         already_committed.pending_path, already_committed.committed_path
     )
-    sink._table._snapshots.append(
-        _FakeSnapshot({ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY: _OLD_OPERATION_1})
+    sink._table.add_snapshot(
+        {ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY: _OLD_OPERATION_1}
     )
 
     wrapper = IcebergCheckpointDatasink(sink, config)
