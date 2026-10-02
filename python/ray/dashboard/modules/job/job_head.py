@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import traceback
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncIterator, Dict, Optional, Tuple
 
@@ -43,6 +44,7 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
     http_uri_components_to_uri,
 )
+from ray.dashboard.modules.job.job_log_storage_client import JOB_LOG_CHUNK_SIZE
 from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import (
     find_job_by_ids,
@@ -123,6 +125,7 @@ class JobAgentSubmissionClient:
     ):
         self._agent_address = dashboard_agent_address
         self._session = aiohttp.ClientSession()
+        self._stream_session = aiohttp.ClientSession()
 
     def _get_headers(self):
         """Get auth headers if token authentication is enabled."""
@@ -184,6 +187,24 @@ class JobAgentSubmissionClient:
             else:
                 await self._raise_error(resp)
 
+    @asynccontextmanager
+    async def stream_job_logs_internal(
+        self, job_id: str
+    ) -> AsyncIterator[ClientResponse]:
+        async with self._stream_session.get(
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs",
+            headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(
+                total=None,
+                connect=30,
+                sock_connect=30,
+                sock_read=60,
+            ),
+        ) as resp:
+            if resp.status != 200:
+                await self._raise_error(resp)
+            yield resp
+
     async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Get an iterator that follows the logs of a job."""
         ws = await self._session.ws_connect(
@@ -211,7 +232,10 @@ class JobAgentSubmissionClient:
 
     async def close(self, ignore_error=True):
         try:
-            await self._session.close()
+            await asyncio.gather(
+                self._session.close(),
+                self._stream_session.close(),
+            )
         except Exception:
             if not ignore_error:
                 raise
@@ -565,8 +589,8 @@ class JobHead(SubprocessModule):
             content_type="application/json",
         )
 
-    @routes.get("/api/jobs/{job_or_submission_id}/logs")
-    async def get_job_logs(self, req: Request) -> Response:
+    @routes.get("/api/jobs/{job_or_submission_id}/logs", resp_type=ResponseType.STREAM)
+    async def get_job_logs(self, req: Request) -> StreamResponse:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self.gcs_client,
@@ -585,18 +609,38 @@ class JobHead(SubprocessModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
+        response = None
         try:
             job_agent_client = self.get_job_driver_agent_client(job)
-            payload = (
-                await job_agent_client.get_job_logs_internal(job.submission_id)
-                if job_agent_client
-                else JobLogsResponse("")
-            )
-            return Response(
-                text=json.dumps(dataclasses.asdict(payload)),
-                content_type="application/json",
-            )
+            if not job_agent_client:
+                return Response(
+                    text=json.dumps(dataclasses.asdict(JobLogsResponse(""))),
+                    content_type="application/json",
+                )
+
+            async with job_agent_client.stream_job_logs_internal(
+                job.submission_id
+            ) as agent_response:
+                response = StreamResponse()
+                response.content_type = "application/json"
+                response.charset = "utf-8"
+                await response.prepare(req)
+
+                async for chunk in agent_response.content.iter_chunked(
+                    JOB_LOG_CHUNK_SIZE
+                ):
+                    await response.write(chunk)
+                await response.write_eof()
+                return response
+        except asyncio.CancelledError:
+            if response is not None:
+                response.force_close()
+            raise
         except Exception:
+            if response is not None and response.prepared:
+                logger.exception("Error while streaming job logs")
+                response.force_close()
+                raise
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
