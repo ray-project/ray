@@ -9,7 +9,7 @@ myst:
 
 # Actors
 
-Actors extend the Ray API from functions (tasks) to classes. An actor is essentially a stateful worker (or a service). When you instantiate a new actor, Ray creates a new worker and schedules methods of the actor on that specific worker. The methods can access and mutate the state of that worker.
+Actors extend the Ray API from functions, which run as tasks, to classes. An actor is a stateful worker or service. When you instantiate an actor, Ray creates a new worker and schedules the actor's methods on that worker. The methods can access and mutate the worker's state.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -36,7 +36,7 @@ counter = Counter.remote()
 :::
 
 :::{tab-item} Java
-`Ray.actor` is used to create actors from regular Java classes.
+Use `Ray.actor` to create actors from regular Java classes.
 
 ```java
 // A regular Java class.
@@ -59,7 +59,7 @@ ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
 :::
 
 :::{tab-item} C++
-`ray::Actor` is used to create actors from regular C++ classes.
+Use `ray::Actor` to create actors from regular C++ classes.
 
 ```c++
 // A regular C++ class.
@@ -93,7 +93,7 @@ auto counter = ray::Actor(CreateCounter).Remote();
 
 
 
-Use `ray list actors` from {ref}`State API <state-api-overview-ref>` to see actors states:
+To see the states of your actors, run `ray list actors` from the {ref}`State API <state-api-overview-ref>`:
 
 ```bash
 # This API is only available when you install Ray with `pip install "ray[default]"`.
@@ -117,7 +117,7 @@ Table:
 
 (actor-resource-guide)=
 
-Specify resource requirements in actors. See {ref}`resource-requirements` for more details.
+Specify an actor's resource requirements as the following examples show. See {ref}`resource-requirements` for details.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -147,7 +147,7 @@ ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote
 
 ## Calling the actor
 
-You can interact with the actor by calling its methods with the `remote` operator. You can then call `get` on the object ref to retrieve the actual value.
+To interact with an actor, call its methods with the `remote` operator. Then call `get` on the returned object ref to retrieve the value.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -179,10 +179,10 @@ assert(*object_ref.Get() == 1);
 :::
 ::::
 
-Methods called on different actors execute in parallel, and methods called on the same actor execute serially in the order you call them. Methods on the same actor share state with one another, as shown below.
+Methods on different actors execute in parallel, and methods on the same actor execute serially in the order you call them. Methods on the same actor share state with one another, as the following example shows.
 
 :::{note}
-Actor state is per actor instance. Each actor runs in its own process, so class variables and static fields aren't shared across actor instances. Mutations to class-level state stay local to that actor process. To share mutable state across actors, store it in another actor and pass that actor handle where it is needed. See {doc}`../patterns/global-variables` for an anti-pattern and a replacement pattern.
+Actor state is per actor instance. Each actor runs in its own process, so class variables and static fields aren't shared across actor instances. Mutations to class-level state stay local to that actor process. To share mutable state across actors, store it in another actor and pass that actor's handle to the code that needs it. See {doc}`../patterns/global-variables` for an anti-pattern and a replacement pattern.
 :::
 
 ::::{tab-set}
@@ -314,7 +314,7 @@ void Foo(ray::ActorHandle<Counter> counter) {
 :::
 ::::
 
-If you instantiate an actor, you can pass the handle around to various tasks.
+After you instantiate an actor, you can pass its handle to multiple tasks.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -384,15 +384,15 @@ for (int i = 0; i < 10; i++) {
 
 ## Type hints and static typing for actors
 
-Ray supports Python type hints for both remote functions and actors, enabling better IDE support and static type checking. To get the best type inference and pass type checkers when working with actors, follow these patterns:
+Ray supports Python type hints for remote functions and actors, which improves IDE support and static type checking. To get the best type inference and pass type checkers with actors, follow these patterns:
 
-- **Prefer** `ray.remote(MyClass)` **over** `@ray.remote` **for actors**: Instead of decorating your class with `@ray.remote`, use `ActorClass = ray.remote(MyClass)`. This preserves the original class type and allows type checkers and IDEs to infer the correct types.
+- Prefer `ray.remote(MyClass)` over `@ray.remote` for actors. Instead of decorating your class with `@ray.remote`, use `ActorClass = ray.remote(MyClass)`. This form preserves the original class type, so type checkers and IDEs can infer the correct types.
 
-- **Use** `@ray.method` **for actor methods**: Decorate actor methods with `@ray.method` to enable type hints for remote method calls on actor handles.
+- Use `@ray.method` for actor methods. Decorate actor methods with `@ray.method` to get type hints for remote method calls on actor handles.
 
-- **Use the** `ActorClass` **and** `ActorProxy` **types**: When you instantiate an actor, annotate the handle as `ActorProxy[MyClass]` to get type hints for remote methods.
+- Use the `ActorClass` and `ActorProxy` types. When you instantiate an actor, annotate the handle as `ActorProxy[MyClass]` to get type hints for remote methods.
 
-**Example:**
+The following example applies all three patterns:
 
 ```{testcode}
 import ray
@@ -415,15 +415,15 @@ obj_ref: ray.ObjectRef[int] = counter.increment.remote()
 print(ray.get(obj_ref))
 ```
 
-For more details and advanced patterns, see {ref}`Type hints in Ray <core-type-hint>`.
+For details and advanced patterns, see {ref}`Type hints in Ray <core-type-hint>`.
 
 
 ## Generators
-Ray is compatible with Python generator syntax. See {ref}`Ray Generators <generators>` for more details.
+Ray is compatible with Python generator syntax. See {ref}`Ray generators <generators>` for details.
 
 ## Cancelling actor tasks
 
-Cancel Actor Tasks by calling {func}`ray.cancel() <ray.cancel>` on the returned `ObjectRef`.
+Cancel actor tasks by calling {func}`ray.cancel() <ray.cancel>` on the returned object ref.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -436,21 +436,17 @@ Cancel Actor Tasks by calling {func}`ray.cancel() <ray.cancel>` on the returned 
 ::::
 
 
-In Ray, Task cancellation behavior is contingent on the Task's current state:
+Cancellation behavior depends on the task's current state:
 
-**Unscheduled tasks**: If Ray hasn't scheduled an Actor Task yet, Ray attempts to cancel the scheduling. When Ray successfully cancels at this stage, it invokes `ray.get(actor_task_ref)` which produces a {class}`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
-
-**Running actor tasks (regular actor, threaded actor)**: For tasks classified as a single-threaded Actor or a multi-threaded Actor, Ray sets a cancellation flag that can be checked via `ray.get_runtime_context().is_canceled()`. This allows for graceful cancellation by periodically checking the cancellation status within the task.
-
-**Running async actor tasks**: For Tasks classified as {ref}`async Actors <async-actors>`, Ray seeks to cancel the associated `asyncio.Task`. This cancellation approach aligns with the standards presented in [asyncio task cancellation](https://docs.python.org/3/library/asyncio-task.html#task-cancellation). Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function. Note: `ray.get_runtime_context().is_canceled()` is not supported for async actors and will raise a `RuntimeError`.
-
-**Cancellation guarantee**: Ray attempts to cancel Tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed. For example, if the cancellation request doesn't get through to the executor, the Task might not be cancelled. You can check if a Task was successfully cancelled using `ray.get(actor_task_ref)`.
-
-**Recursive cancellation**: Ray tracks all child and Actor Tasks. When the `recursive=True` argument is given, it cancels all child and Actor Tasks.
+- **Unscheduled tasks**: If Ray hasn't scheduled an actor task yet, Ray attempts to cancel the scheduling. If the cancellation succeeds at this stage, calling `ray.get(actor_task_ref)` raises a {class}`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
+- **Running tasks on regular or threaded actors**: For tasks on a single-threaded or multi-threaded actor, Ray sets a cancellation flag that you can check with `ray.get_runtime_context().is_canceled()`. To cancel gracefully, check the cancellation status periodically within the task.
+- **Running async actor tasks**: For tasks on {ref}`async actors <async-actors>`, Ray tries to cancel the associated `asyncio.Task`. This cancellation follows the semantics of [asyncio task cancellation](https://docs.python.org/3/library/asyncio-task.html#task-cancellation). If the async function doesn't `await`, the `asyncio.Task` isn't interrupted in the middle of execution. Async actors don't support `ray.get_runtime_context().is_canceled()`, and calling it raises a `RuntimeError`.
+- **Cancellation guarantee**: Ray attempts to cancel tasks on a *best-effort* basis, so cancellation isn't always guaranteed. For example, if the cancellation request doesn't reach the executor, Ray might not cancel the task. To check whether Ray cancelled the task, call `ray.get(actor_task_ref)`.
+- **Recursive cancellation**: Ray tracks all child tasks and actor tasks. When you pass `recursive=True`, Ray cancels all child tasks and actor tasks.
 
 ### Detecting cancellation in running actor tasks
 
-For non-async actor tasks, you can periodically check whether a cancellation has been requested by calling `ray.get_runtime_context().is_canceled()`. This allows tasks to detect cancellation and perform cleanup operations before exiting gracefully.
+In a non-async actor task, call `ray.get_runtime_context().is_canceled()` periodically to check for a cancellation request. When the task detects cancellation, it can run cleanup operations and exit gracefully.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -462,40 +458,40 @@ For non-async actor tasks, you can periodically check whether a cancellation has
 :::
 ::::
 
-**Important notes:**
-
-- For **non-async actor tasks**, direct interruption is not supported. You need to check `is_canceled()` periodically to detect cancellation requests.
-- `is_canceled()` is **not supported** for async actor tasks and will raise a `RuntimeError`.
+:::{note}
+- Ray doesn't support direct interruption of non-async actor tasks. Check `is_canceled()` periodically to detect cancellation requests.
+- Async actor tasks don't support `is_canceled()`, and calling it raises a `RuntimeError`.
+:::
 
 ## Scheduling
 
-For each actor, Ray chooses a node to run it on, and bases the scheduling decision on a few factors like {ref}`the actor's resource requirements <ray-scheduling-resources>` and {ref}`the specified scheduling strategy <ray-scheduling-strategies>`. See {ref}`Ray scheduling <ray-scheduling>` for more details.
+For each actor, Ray chooses a node to run it on. Ray bases the scheduling decision on factors such as {ref}`the actor's resource requirements <ray-scheduling-resources>` and {ref}`the specified scheduling strategy <ray-scheduling-strategies>`. See {ref}`Ray scheduling <ray-scheduling>` for details.
 
-## Fault Tolerance
+## Fault tolerance
 
-By default, Ray actors won't be {ref}`restarted <fault-tolerance-actors>` and actor tasks won't be retried when actors crash unexpectedly. You can change this behavior by setting `max_restarts` and `max_task_retries` options in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`. See {ref}`Ray fault tolerance <fault-tolerance>` for more details.
+By default, Ray doesn't {ref}`restart <fault-tolerance-actors>` actors or retry actor tasks when actors crash unexpectedly. To change this behavior, set the `max_restarts` and `max_task_retries` options in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`. See {ref}`Ray fault tolerance <fault-tolerance>` for details.
 
-## FAQ: Actors, Workers and Resources
+## FAQ: Actors, workers, and resources
 
 What's the difference between a worker and an actor?
 
-Each "Ray worker" is a python process.
+Each "Ray worker" is a Python process.
 
-Ray treats a worker differently for tasks and actors. For tasks, Ray uses a "Ray worker" to execute multiple Ray tasks. For actors, Ray starts a "Ray worker" as a dedicated Ray actor.
+Ray treats workers differently for tasks and actors. For tasks, Ray uses a Ray worker to execute multiple tasks. For actors, Ray starts a Ray worker as a dedicated actor.
 
-* **Tasks**: When Ray starts on a machine, a number of Ray workers start automatically (1 per CPU by default). Ray uses them to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you end up with 8 of your 16 workers idling.
+* **Tasks**: When Ray starts on a machine, a number of Ray workers start automatically, one per CPU by default. Ray uses them to execute tasks, much like a process pool. If the cluster has 16 CPUs, so that `ray.cluster_resources()["CPU"] == 16`, and you execute 8 tasks with `num_cpus=2`, you end up with 8 of your 16 workers idling.
 
-* **Actor**: A Ray Actor is also a "Ray worker" but you instantiate it at runtime with `actor_cls.remote()`. All of its methods run on the same process, using the same resources Ray designates when you define the Actor. Note that unlike tasks, Ray doesn't reuse the Python processes that run Ray Actors. Ray terminates them when you delete the Actor.
+* **Actors**: An actor is also a Ray worker, but you instantiate it at runtime with `actor_cls.remote()`. All of its methods run in the same process and use the same resources that Ray designates when you define the actor. Unlike with tasks, Ray doesn't reuse the Python processes that run actors. Ray terminates them when you delete the actor.
 
-To maximally utilize your resources, you want to maximize the time that your workers work. You also want to allocate enough cluster resources so Ray can run all of your needed actors and any other tasks you define. This also implies that Ray schedules tasks more flexibly, and that if you don't need the stateful part of an actor, it's better to use tasks.
+To make the most of your resources, maximize the time your workers spend working. Allocate enough cluster resources for Ray to run all the actors you need and any other tasks you define. Ray schedules tasks more flexibly than actors, so if you don't need an actor's state, use tasks.
 
-## Task Events
+## Task events
 
-By default, Ray traces the execution of actor tasks, reporting task status events and profiling events that Ray dashboard and {ref}`State API <state-api-overview-ref>` use.
+By default, Ray traces the execution of actor tasks, reporting task status events and profiling events that the Ray dashboard and the {ref}`State API <state-api-overview-ref>` use.
 
-You can disable task event reporting for the actor by setting the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`. This setting reduces the overhead of task execution by reducing the amount of data Ray sends to the Ray dashboard.
+To disable task event reporting for an actor, set the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`. This setting reduces task execution overhead by reducing the amount of data Ray sends to the Ray dashboard.
 
-You can also disable task event reporting for some actor methods by setting the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>` on the actor method. Method settings override the actor setting:
+To disable task event reporting for individual actor methods, set the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>` on the actor method. Method settings override the actor setting:
 
 ```{literalinclude} ../doc_code/actors.py
 :language: python
@@ -504,7 +500,7 @@ You can also disable task event reporting for some actor methods by setting the 
 ```
 
 
-## More about Ray Actors
+## More about Ray actors
 
 ```{toctree}
 :maxdepth: 1
