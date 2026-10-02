@@ -192,6 +192,7 @@ def main(args):
                 placement_strategy="SPREAD",
             ),
             datasets={"train": mixed},
+            dataset_config=ray.train.DataConfig(enable_shard_locality=False),
             run_config=RunConfig(storage_path="/mnt/cluster_storage"),
         )
 
