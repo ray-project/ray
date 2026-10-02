@@ -289,7 +289,7 @@ The entry point is [SpillObjectUptoMaxThroughput](https://github.com/ray-project
 
 ### Batch construction
 
-[TryToSpillObjects](https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L186) constructs a single spill batch. It iterates through `pinned_objects_` and skips objects that aren't spillable. `is_plasma_object_spillable_` checks that a worker process isn't actively using the object. `TryToSpillObjects` accumulates candidates until it reaches one of the following limits:
+[TryToSpillObjects](https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L186) constructs a single spill batch. It iterates through `pinned_objects_` and skips objects that aren't currently spillable. `is_plasma_object_spillable_` checks that a worker process isn't actively using the object. `TryToSpillObjects` accumulates candidates until it reaches one of the following limits:
 
 - It has collected `max_fused_object_count_` objects.
 - Adding the next object would exceed `max_spilling_file_size_bytes_`. This limit applies only when it's enabled, meaning greater than 0. The first object is always included, even if it alone exceeds the limit.
@@ -351,7 +351,7 @@ When the operation completes, the worker is returned to its pool through `PushSp
 
 ### Object fusion format
 
-Rather than writing each object to its own file, Ray *fuses* multiple objects from a single spill batch into a single file. Fusion reduces filesystem fragmentation and I/O overhead, because it needs fewer `open` and `close` syscalls. The [_write_multiple_objects](https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L133) method writes objects sequentially, each prefixed with a 24-byte header:
+Rather than writing each object to its own file, Ray *fuses* multiple objects from a single spill batch into a single file. Fusion reduces I/O overhead, because it needs fewer `open` and `close` syscalls, and it reduces filesystem fragmentation. The [_write_multiple_objects](https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L133) method writes objects sequentially, each prefixed with a 24-byte header:
 
 ```text
 ┌──────────────────────────────────────────────────────┐

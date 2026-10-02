@@ -54,7 +54,7 @@ Source Actor                    Owner Process                 Destination Actor
 ```
 
 
-Ray doesn't call `send_multiple_tensors` for one-sided transports. One-sided transports support the `ray.put` and `ray.get` case. The following diagram shows where Ray calls each method in that case:
+Ray doesn't call `send_multiple_tensors` for one-sided transports. Only one-sided transports support the `ray.put` and `ray.get` case. The following diagram shows where Ray calls each method in that case:
 
 ```text
 Source Actor                                                  Destination Actor

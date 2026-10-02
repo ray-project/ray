@@ -219,7 +219,7 @@ Ray automatically selects the NIXL transport backend based on the available hard
 - **AWS instances with EFA**: Ray detects EFA devices and validates that a realistic-size CUDA memory registration succeeds before it selects the `LIBFABRIC` backend. If validation fails, GPUDirect is usually misconfigured, for example because `nvidia-peermem` or dmabuf support is missing. To detect EFA both on bare hosts and inside containers, Ray checks for the EFA network device at `/sys/class/net/efa*` and for rdma-verbs devices under `/sys/class/infiniband` that are bound to the kernel `efa` driver. The host network device isn't visible inside a pod, so the verbs check is what makes detection work under Kubernetes. Ordinary InfiniBand or RoCE NICs also expose verbs devices, so Ray confirms the `efa` driver binding to avoid treating them as EFA.
 - **All other environments**: Ray uses the `UCX` backend.
 
-This selection requires no configuration. On AWS EFA instances, make sure you've run the [EFA installer](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html), which installs both the EFA driver and libfabric. If libfabric validation fails at startup, see the [NIXL libfabric plugin documentation](https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md) for troubleshooting.
+This selection requires no configuration. On AWS EFA instances, make sure you've run the [EFA installer](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html), which installs both the EFA driver and libfabric. If LIBFABRIC validation fails at startup, see the [NIXL libfabric plugin documentation](https://github.com/ai-dynamo/nixl/blob/main/src/plugins/libfabric/README.md) for troubleshooting.
 
 #### Walkthrough
 
@@ -298,7 +298,7 @@ The collective-based, two-sided tensor transports, Gloo and NCCL, have the follo
 * No support for out-of-order actors such as async actors or actors with `max_concurrency` greater than 1.
 
 
-Because of a known issue, NIXL doesn't currently support storing different GPU objects at the same actor when the objects contain an overlapping but not equal set of tensors. To support this pattern, make sure the first `ObjectRef` has gone out of scope before you store the same tensors again in a second object.
+Because of a known issue, Ray doesn't currently support storing different GPU objects at the same actor with NIXL when the objects contain an overlapping but not equal set of tensors. To support this pattern, make sure the first `ObjectRef` has gone out of scope before you store the same tensors again in a second object.
 
 ```{literalinclude} ../doc_code/direct_transport_nixl.py
 :language: python

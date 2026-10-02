@@ -113,5 +113,5 @@ The IP table blackout approach connects to each node over SSH and blacks out the
 [PR #58868](https://github.com/ray-project/ray/pull/58868) added the IP table blackout approach to all existing chaos release tests for Ray Core.
 
 :::{note}
-Amazon FIS was considered first. However, it has a 60-second minimum, which caused node death because of configuration settings and was hard to debug. The IP table approach was simpler and more flexible to use.
+Amazon FIS was considered first. However, it has a 60-second minimum, which caused node death because of configuration settings. That node death was hard to debug. The IP table approach was simpler and more flexible to use.
 :::

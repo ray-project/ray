@@ -71,7 +71,7 @@ Because the system knows the task graph ahead of time, Ray Compiled Graph can pr
 
 Currently, the DAG tasks run on a background thread of the involved actors. An actor can only participate in one DAG at a time. Normal tasks can still execute on the actors while the actors participate in a Compiled Graph, but these tasks execute on the main thread.
 
-When you're done, tear down the Compiled Graph by deleting it or by calling `dag.teardown()` explicitly. After teardown, you can reuse the actors in a new Compiled Graph.
+When you're done, you can tear down the Compiled Graph by deleting it or by calling `dag.teardown()` explicitly. After teardown, you can reuse the actors in a new Compiled Graph.
 
 ```{literalinclude} ../doc_code/cgraph_quickstart.py
 :language: python
@@ -221,7 +221,7 @@ To support GPU-to-GPU communication with NCCL, wrap the DAG node that contains t
 :end-before: __cgraph_nccl_exec_end__
 ```
 
-GPU-to-GPU communication currently has the following limitations:
+GPU-to-GPU communication currently has limitations that include the following:
 
 - It supports only `torch.Tensor` and NVIDIA NCCL.
 - It supports peer-to-peer transfers. Collective communication operations are coming soon.
