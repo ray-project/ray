@@ -407,6 +407,22 @@ py_test(
 )
 
 py_test(
+    name = "test_health_node_monitor",
+    size = "medium",
+    srcs = ["tests/test_health_node_monitor.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_jax_elastic_e2e",
     size = "medium",
     srcs = ["tests/test_jax_elastic_e2e.py"],
