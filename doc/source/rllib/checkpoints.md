@@ -303,7 +303,7 @@ print(results)
 See this [example of how to run policy inference after training](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py) and this [example of how to run policy inference with an LSTM](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training_w_connector.py).
 
 :::{hint}
-Because your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` is also a [PyTorch Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module), you can export your model to [ONNX](https://onnx.ai/), [IREE](https://iree.dev/), or other deployment-friendly formats. See this [example script supporting ONNX](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py) for details.
+Because your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` is also a [PyTorch Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module), you can export your model to [ONNX](https://onnx.ai/), [IREE](https://iree.dev/), or other deployment-friendly formats. See this [example script supporting ONNX](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py) for details.
 :::
 
 

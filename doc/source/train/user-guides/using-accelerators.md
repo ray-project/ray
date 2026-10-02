@@ -237,7 +237,7 @@ ScalingConfig(
 
 ### (PyTorch) Setting the communication backend
 
-PyTorch Distributed supports multiple [backends](https://pytorch.org/docs/stable/distributed.html#backends) for communicating tensors across workers. By default Ray Train uses NCCL when `use_gpu=True` and Gloo otherwise.
+PyTorch Distributed supports multiple [backends](https://docs.pytorch.org/docs/stable/distributed.html#backends) for communicating tensors across workers. By default Ray Train uses NCCL when `use_gpu=True` and Gloo otherwise.
 
 If you explicitly want to override this setting, you can configure a {class}`~ray.train.torch.TorchConfig` and pass it into the {class}`~ray.train.torch.TorchTrainer`.
 

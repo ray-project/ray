@@ -32,7 +32,7 @@ class DifferentiableTorchRLModule(TorchRLModule):
         Note, it is important that the `RLModule.forward` method contains the
         logic to be used for training forward pass b/c otherwise the functional
         call via `torch.func.functional_call` will not work. See for reference
-        https://pytorch.org/docs/stable/generated/torch.func.functional_call.html.
+        https://docs.pytorch.org/docs/stable/generated/torch.func.functional_call.html.
         """
         outs = {}
         outs["y_pred"] = self.net(batch[Columns.OBS])

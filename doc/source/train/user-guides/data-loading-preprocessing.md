@@ -274,10 +274,10 @@ At a high level, you can compare these concepts as follows:
 * - PyTorch API
   - HuggingFace API
   - Ray Data API
-* - [torch.utils.data.Dataset](https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset)
+* - [torch.utils.data.Dataset](https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.Dataset)
   - [datasets.Dataset](https://huggingface.co/docs/datasets/main/en/package_reference/main_classes#datasets.Dataset)
   - {class}`ray.data.Dataset`
-* - [torch.utils.data.DataLoader](https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader)
+* - [torch.utils.data.DataLoader](https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader)
   - n/a
   - {meth}`ray.data.Dataset.iter_torch_batches`
 ```
@@ -478,7 +478,7 @@ ds = ray.data.read_text(
 * `seed` argument to {meth}`randomize_block_order <ray.data.Dataset.randomize_block_order>`
 * `local_shuffle_seed` argument to {meth}`iter_batches <ray.data.DataIterator.iter_batches>`
 
-**Step 3:** Follow the best practices for enabling reproducibility for your training framework of choice. For example, see the [Pytorch reproducibility guide](https://pytorch.org/docs/stable/notes/randomness.html).
+**Step 3:** Follow the best practices for enabling reproducibility for your training framework of choice. For example, see the [Pytorch reproducibility guide](https://docs.pytorch.org/docs/stable/notes/randomness.html).
 
 
 
