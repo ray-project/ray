@@ -28,4 +28,4 @@ You can expose other types of servers the same way, such as gRPC servers.
 
 ## Limitations
 
-Ray doesn't manage calls between actors that use out-of-band communication. As a result, features such as distributed reference counting don't work with out-of-band communication, so don't pass object refs this way.
+Ray doesn't manage out-of-band calls between actors. As a result, features such as distributed reference counting don't work with out-of-band communication, so don't pass object refs this way.
