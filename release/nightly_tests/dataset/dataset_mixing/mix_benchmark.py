@@ -194,8 +194,8 @@ def main(args):
             datasets={"train": mixed},
             # Shard locality buffers up to 2 blocks per worker in the object
             # store. With many mixed datasets, each operator's share of the
-            # object store is small enough that this can stall ingestion, and
-            # this benchmark doesn't measure locality.
+            # object store is small enough that this can stall ingestion, so
+            # disable for this test.
             dataset_config=ray.train.DataConfig(enable_shard_locality=False),
             run_config=RunConfig(storage_path="/mnt/cluster_storage"),
         )
