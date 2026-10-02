@@ -102,7 +102,7 @@ The recovery model is identical to Redis-backed fault tolerance. When the GCS re
   - Alpha
 ```
 
-Choose the embedded RocksDB backend when you want GCS fault tolerance without running Redis, and you can attach a durable volume that you can reattach to whichever node runs the GCS, such as a Kubernetes `PersistentVolume`.
+Choose the embedded RocksDB backend when you want GCS fault tolerance without running Redis, and you can attach a durable volume, such as a Kubernetes `PersistentVolume`, that you can reattach to whichever node runs the GCS.
 
 ### Enabling it
 
@@ -118,7 +118,7 @@ RAY_gcs_storage=rocksdb RAY_gcs_storage_path=/mnt/ray-gcs ray start --head
 The directory must live on storage that survives a restart of the GCS or the head node, and that you can reattach to the node running the recovered GCS. HA Redis satisfies the same durability requirement for the Redis backend.
 
 :::{note}
-The GCS process embeds the RocksDB database, which is single-writer. Only one GCS can open the storage path at a time. Point every restart of a cluster's head node at the same path, and never share a path between clusters.
+The GCS process embeds the RocksDB database, which is single-writer. Make sure that only one GCS opens the storage path at a time. Point every restart of a cluster's head node at the same path, and never share a path between clusters.
 :::
 
 For a step-by-step Kubernetes walkthrough, see {ref}`kuberay-gcs-rocksdb-ft`.

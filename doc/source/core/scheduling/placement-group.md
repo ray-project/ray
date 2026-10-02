@@ -346,7 +346,7 @@ ray list actors --detail
     state: ALIVE
 ```
 
-Because 1 GPU remains, create a new actor that requires 1 GPU. This time, also specify the `placement_group_bundle_index`. Each bundle has an index within the placement group. For example, a placement group of two bundles `[{"CPU": 1}, {"GPU": 1}]` has bundle `{"CPU": 1}` at index 0 and bundle `{"GPU": 1}` at index 1. This placement group has only one bundle, so it has only index 0. If you don't specify a bundle, Ray schedules the actor or task on a random bundle that has unallocated reserved resources.
+Because 1 GPU remains, create a new actor that requires 1 GPU. This time, also specify the `placement_group_bundle_index`. Each bundle has an index within the placement group. For example, a placement group of two bundles `[{"CPU": 1}, {"GPU": 1}]` has bundle `{"CPU": 1}` at index 0 and bundle `{"GPU": 1}` at index 1. The placement group you created earlier has only one bundle, so it has only index 0. If you don't specify a bundle, Ray schedules the actor or task on a random bundle that has unallocated reserved resources.
 
 ::::{tab-set}
 :::{tab-item} Python

@@ -33,7 +33,7 @@ Lineage reconstruction currently has the following limitations:
 * Ray re-executes a task only up to its maximum number of retries. By default, Ray can retry a non-actor task up to three times and can't retry an actor task. To override these defaults, use the `max_retries` parameter for {ref}`remote functions <fault-tolerance-tasks>` and the `max_task_retries` parameter for {ref}`actors <fault-tolerance-actors>`.
 * The owner of the object must still be alive. See {ref}`Recovering from owner failure <fault-tolerance-ownership>`.
 
-Lineage reconstruction can cause higher-than-usual driver memory usage because the driver keeps the descriptions of any tasks that might be re-executed in case of failure. To limit the memory that lineage uses, set the `RAY_max_lineage_bytes` environment variable, which defaults to 1 GB. Ray evicts lineage when it exceeds this threshold.
+Lineage reconstruction can cause higher-than-usual driver memory usage because the driver keeps the descriptions of any tasks that might be re-executed in case of failure. To limit the memory that lineage uses, set the `RAY_max_lineage_bytes` environment variable, which defaults to 1 GiB. Ray evicts lineage when it exceeds this threshold.
 
 To disable lineage reconstruction entirely, set the environment variable `RAY_TASK_MAX_RETRIES=0` when you run `ray start` or call `ray.init`. With this setting, Ray raises an `ObjectLostError` if no copies of an object remain.
 
