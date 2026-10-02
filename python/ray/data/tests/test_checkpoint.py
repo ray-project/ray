@@ -1569,11 +1569,11 @@ def test_restore_only_first_execution(
     generate_sample_data_parquet,
     tmp_path,
 ):
-    """Test that `_restore_only_first_execution=True` disables restoration after
-    the first successful execution of a dataset.
+    """Test that restoration is disabled after the first successful execution
+    of a dataset.
 
-    Training ingest sets this flag so that only the first epoch after resuming
-    skips the checkpointed rows, and subsequent epochs read all rows.
+    For training ingest, only the first epoch after resuming should skip the
+    checkpointed rows, and subsequent epochs should read all rows.
     """
     ctx = DataContext.get_current()
     ckpt_path = str(tmp_path / "checkpoints")
@@ -1587,13 +1587,11 @@ def test_restore_only_first_execution(
     )
     ray.data.read_parquet(parquet_dir).write_parquet(str(tmp_path / "output"))
 
-    checkpoint_config = CheckpointConfig(
+    ctx.checkpoint_config = CheckpointConfig(
         id_column=ID_COL,
         checkpoint_path=ckpt_path,
         delete_checkpoint_on_success=False,
     )
-    checkpoint_config._restore_only_first_execution = True
-    ctx.checkpoint_config = checkpoint_config
 
     # Each epoch re-executes the same dataset, like training ingest does.
     ds = ray.data.read_parquet(parquet_dir)

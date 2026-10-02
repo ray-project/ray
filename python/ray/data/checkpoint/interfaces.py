@@ -188,11 +188,10 @@ class CheckpointConfig:
         # Internal flags used by training ingest mid-epoch resumption.
         # If False, skip loading checkpoint data and filtering rows during
         # planning, but still plan the checkpoint writer.
+        # This is set to False after the first successful execution, so that
+        # subsequent executions of the same dataset (e.g., later epochs)
+        # read all rows.
         self._should_restore: bool = True
-        # If True, disable restoration (set `_should_restore=False`) after the
-        # first successful execution, so that subsequent executions of the same
-        # dataset (e.g., later epochs) read all rows.
-        self._restore_only_first_execution: bool = False
 
     def _get_default_checkpoint_path(self) -> str:
         artifact_storage = os.environ.get(self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR)
