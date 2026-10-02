@@ -14,7 +14,7 @@ import traceback
 import warnings
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import wraps
 from importlib import import_module
 from typing import (
@@ -4386,6 +4386,13 @@ class UserCallableWrapper:
         else:
             # Non-FastAPI HTTP handlers take only the starlette `Request`.
             request_args = (starlette.requests.Request(scope, receive, send),)
+        if not user_method_info.is_asgi_app:
+            # Its calls wait for its step to end, so one it returns can be forwarded.
+            ray.serve.context._serve_request_context.set(
+                replace(  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+                    ray.serve.context._get_serve_request_context(), _forwardable=True
+                )
+            )
 
         receive_task = None
         try:
