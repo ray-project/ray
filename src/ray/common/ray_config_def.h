@@ -320,6 +320,8 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 /// batching requests when getting objects.
 RAY_CONFIG(int64_t, get_check_signal_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+/// Whether blocking Plasma gets should use the control client for compatibility.
+RAY_CONFIG(bool, plasma_get_client_fallback_to_control, false)
 
 /// How long to wait for a fetch to complete during ray.get before warning the
 /// user.
