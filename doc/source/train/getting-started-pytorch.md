@@ -307,6 +307,7 @@ For more details, see {ref}`train-monitoring-and-logging` and {ref}`train-checkp
 
 
 ```{include} common/torch-configure-run.md
+:heading-offset: 1
 ```
 
 

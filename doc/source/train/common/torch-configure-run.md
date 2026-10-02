@@ -1,4 +1,4 @@
-## Configure scale and GPUs
+# Configure scale and GPUs
 
 Outside of your training function, create a {class}`~ray.train.ScalingConfig` object to configure:
 
@@ -13,7 +13,7 @@ scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 
 For more details, see {ref}`train_scaling_config`.
 
-## Configure persistent storage
+# Configure persistent storage
 
 Create a {class}`~ray.train.RunConfig` object to specify the path where results (including checkpoints and artifacts) will be saved.
 
@@ -39,7 +39,7 @@ Specifying a *shared storage location* (such as cloud storage or NFS) is *option
 For more details, see {ref}`persistent-storage-guide`.
 
 
-## Launch a training job
+# Launch a training job
 
 Tying this all together, you can now launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
 
@@ -63,7 +63,7 @@ result = trainer.fit()
 ```
 
 
-## Access training results
+# Access training results
 
 After training completes, a {class}`~ray.train.Result` object is returned which contains information about the training run, including the metrics and checkpoints reported during training.
 

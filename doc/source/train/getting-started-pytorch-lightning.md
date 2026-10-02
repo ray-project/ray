@@ -358,6 +358,7 @@ Finally, pass your Lightning Trainer into {meth}`~ray.train.lightning.prepare_tr
 
 
 ```{include} common/torch-configure-run.md
+:heading-offset: 1
 ```
 
 

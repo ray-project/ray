@@ -275,6 +275,7 @@ Pass your Transformers Trainer into {meth}`~ray.train.huggingface.transformers.p
 
 
 ```{include} common/torch-configure-run.md
+:heading-offset: 1
 ```
 
 
