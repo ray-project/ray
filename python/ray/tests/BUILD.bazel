@@ -133,6 +133,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_joblib_autoscale",
+    size = "medium",
+    srcs = ["test_joblib_autoscale.py"],
+    tags = [
+        "exclusive",
+        "medium_size_python_tests_shard_0",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 ##### Begin Ray Client tests #####
 
 py_test_module_list(
