@@ -12,11 +12,9 @@ This document describes a couple high-level steps to run Ray clusters on [Spark 
 
 ## Running a basic example
 
-This is a spark application example code that starts Ray cluster on spark,
-and then execute ray application code, then shut down initiated ray cluster.
+This is a spark application example code that starts Ray cluster on spark, and then execute ray application code, then shut down initiated ray cluster.
 
-1\) Create a python file that contains a spark application code,
-Assuming the python file name is 'ray-on-spark-example1.py'.
+1\) Create a python file that contains a spark application code, Assuming the python file name is 'ray-on-spark-example1.py'.
 
 ```python
 from pyspark.sql import SparkSession
@@ -59,11 +57,9 @@ spark-submit \
 
 ## Creating a long running ray cluster on spark cluster
 
-This is a spark application example code that starts a long running Ray cluster on spark.
-The created ray cluster can be accessed by remote python processes.
+This is a spark application example code that starts a long running Ray cluster on spark. The created ray cluster can be accessed by remote python processes.
 
-1\) Create a python file that contains a spark application code,
-Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
+1\) Create a python file that contains a spark application code, Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
 
 ```python
 from pyspark.sql import SparkSession

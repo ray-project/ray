@@ -9,35 +9,24 @@ myst:
 # Deploying on YARN
 
 :::{warning}
-Running Ray on YARN is still a work in progress. If you have a
-suggestion for how to improve this documentation or want to request
-a missing feature, please feel free to create a pull request or get in touch
-using one of the channels in the [Questions or Issues?](#questions-or-issues) section below.
+Running Ray on YARN is still a work in progress. If you have a suggestion for how to improve this documentation or want to request a missing feature, please feel free to create a pull request or get in touch using one of the channels in the [Questions or Issues?](#questions-or-issues) section below.
 :::
 
-This document assumes that you have access to a YARN cluster and will walk
-you through using [Skein](https://jcrist.github.io/skein/) to deploy a YARN job that starts a Ray cluster and
-runs an example script on it.
+This document assumes that you have access to a YARN cluster and will walk you through using [Skein](https://jcrist.github.io/skein/) to deploy a YARN job that starts a Ray cluster and runs an example script on it.
 
 Skein uses a declarative specification (either written as a yaml file or using the Python API) and allows users to launch jobs and scale applications without the need to write Java code.
 
 You will first need to install Skein: `pip install skein`.
 
-The Skein `yaml` file and example Ray program used here are provided in the
-[Ray repository](https://github.com/ray-project/ray/tree/master/doc/yarn) to get you started. Refer to the provided `yaml`
-files to be sure that you maintain important configuration options for Ray to
-function properly.
+The Skein `yaml` file and example Ray program used here are provided in the [Ray repository](https://github.com/ray-project/ray/tree/master/doc/yarn) to get you started. Refer to the provided `yaml` files to be sure that you maintain important configuration options for Ray to function properly.
 
 
 ## Skein Configuration
 
 A Ray job is configured to run as two `Skein services`:
 
-1. The `ray-head` service that starts the Ray head node and then runs the
-   application.
-2. The `ray-worker` service that starts worker nodes that join the Ray cluster.
-   You can change the number of instances in this configuration or at runtime
-   using `skein container scale` to scale the cluster up/down.
+1. The `ray-head` service that starts the Ray head node and then runs the application.
+2. The `ray-worker` service that starts worker nodes that join the Ray cluster. You can change the number of instances in this configuration or at runtime using `skein container scale` to scale the cluster up/down.
 
 The specification for each service consists of necessary files and commands that will be run to start the service.
 
@@ -111,8 +100,7 @@ Register the Ray head address needed by the workers in the Skein key-value store
 skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) current
 ```
 
-Start all the processes needed on the ray head node. By default, we set object store memory
-and heap memory to roughly 200 MB. This is conservative and should be set according to application needs.
+Start all the processes needed on the ray head node. By default, we set object store memory and heap memory to roughly 200 MB. This is conservative and should be set according to application needs.
 
 ```bash
 ray start --head --port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1

@@ -64,8 +64,7 @@ Important: To ensure that each Ray worker runtime will run on a separate node, s
 #SBATCH --tasks-per-node=1
 ```
 
-Since we've set `tasks-per-node = 1`, this will be used to guarantee that each Ray worker runtime will obtain the
-proper resources. In this example, we ask for at least 5 CPUs and 5 GB of memory per node.
+Since we've set `tasks-per-node = 1`, this will be used to guarantee that each Ray worker runtime will obtain the proper resources. In this example, we ask for at least 5 CPUs and 5 GB of memory per node.
 
 ```bash
 ### Modify this according to your Ray workload.
@@ -117,10 +116,7 @@ In Ray 2.49 and above, you can use IPv6 addresses/hostnames.
 
 Now, we'll use `ray symmetric-run` to start Ray on all nodes with given CPU and GPU resources and run your entrypoint script ONLY the head node.
 
-Below, you'll see that we explicitly specify the number of CPUs (`num-cpus`)
-and number of GPUs (`num-gpus`) to Ray, as this will prevent Ray from using
-more resources than allocated. We also need to explicitly
-indicate the `address` parameter for the head node to identify itself and other nodes to connect to:
+Below, you'll see that we explicitly specify the number of CPUs (`num-cpus`) and number of GPUs (`num-gpus`) to Ray, as this will prevent Ray from using more resources than allocated. We also need to explicitly indicate the `address` parameter for the head node to identify itself and other nodes to connect to:
 
 ```{literalinclude} /cluster/doc_code/slurm-basic.sh
 :language: bash
@@ -138,24 +134,15 @@ The -u argument tells python to print to stdout unbuffered, which is important w
 
 ### SLURM networking caveats
 
-There are two important networking aspects to keep in mind when working with
-SLURM and Ray:
+There are two important networking aspects to keep in mind when working with SLURM and Ray:
 
 1. Ports binding.
 2. IP binding.
 
-One common use of a SLURM cluster is to have multiple users running concurrent
-jobs on the same infrastructure. This can easily conflict with Ray due to the
-way the head node communicates with its workers.
+One common use of a SLURM cluster is to have multiple users running concurrent jobs on the same infrastructure. This can easily conflict with Ray due to the way the head node communicates with its workers.
 
 
-Considering 2 users, if they both schedule a SLURM job using Ray
-at the same time, they are both creating a head node. In the backend, Ray will
-assign some internal ports to a few services. The issue is that as soon as the
-first head node is created, it will bind some ports and prevent them to be
-used by another head node. To prevent any conflicts, users have to manually
-specify non overlapping ranges of ports. The following ports are to be
-adjusted. For an explanation on ports, see {ref}`here <ray-ports>`:
+Considering 2 users, if they both schedule a SLURM job using Ray at the same time, they are both creating a head node. In the backend, Ray will assign some internal ports to a few services. The issue is that as soon as the first head node is created, it will bind some ports and prevent them to be used by another head node. To prevent any conflicts, users have to manually specify non overlapping ranges of ports. The following ports are to be adjusted. For an explanation on ports, see {ref}`here <ray-ports>`:
 
 ```
 # used for all ports
@@ -169,8 +156,7 @@ adjusted. For an explanation on ports, see {ref}`here <ray-ports>`:
 --redis-shard-ports
 ```
 
-For instance, again with 2 users, they would run the following commands. Note that we don't use symmetric-run here
-because it does not currently work in multi-tenant environments:
+For instance, again with 2 users, they would run the following commands. Note that we don't use symmetric-run here because it does not currently work in multi-tenant environments:
 
 ```bash
 # user 1
@@ -204,17 +190,12 @@ srun --nodes=1 --ntasks=1 -w "$head_node" \
   python -u your_script.py
 ```
 
-As for the IP binding, on some cluster architecture the network interfaces
-do not allow to use external IPs between nodes. Instead, there are internal
-network interfaces (`eth0`, `eth1`, etc.). Currently, it's difficult to
-set an internal IP
-(see the open [issue](https://github.com/ray-project/ray/issues/22732)).
+As for the IP binding, on some cluster architecture the network interfaces do not allow to use external IPs between nodes. Instead, there are internal network interfaces (`eth0`, `eth1`, etc.). Currently, it's difficult to set an internal IP (see the open [issue](https://github.com/ray-project/ray/issues/22732)).
 
 
 ## Python-interface SLURM scripts
 
-[Contributed by @pengzhenghao] Below, we provide a helper utility ({ref}`slurm-launch.py <slurm-launch>`) to auto-generate SLURM scripts and launch.
-`slurm-launch.py` uses an underlying template ({ref}`slurm-template.sh <slurm-template>`) and fills out placeholders given user input.
+[Contributed by @pengzhenghao] Below, we provide a helper utility ({ref}`slurm-launch.py <slurm-launch>`) to auto-generate SLURM scripts and launch. `slurm-launch.py` uses an underlying template ({ref}`slurm-template.sh <slurm-template>`) and fills out placeholders given user input.
 
 You can feel free to copy both files into your cluster for use. Feel free to also open any PRs for contributions to improve this script!
 

@@ -35,8 +35,7 @@ spark
 
 # Using a custom cloud or cluster manager
 
-The Ray cluster launcher currently supports AWS, Azure, GCP, Aliyun, vSphere and KubeRay out of the box. To use the Ray cluster launcher and Autoscaler on other cloud providers or cluster managers, you can implement the [node_provider.py](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/node_provider.py) interface (100 LOC).
-Once the node provider is implemented, you can register it in the [provider section](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/local/example-full.yaml#L18) of the cluster launcher config.
+The Ray cluster launcher currently supports AWS, Azure, GCP, Aliyun, vSphere and KubeRay out of the box. To use the Ray cluster launcher and Autoscaler on other cloud providers or cluster managers, you can implement the [node_provider.py](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/node_provider.py) interface (100 LOC). Once the node provider is implemented, you can register it in the [provider section](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/local/example-full.yaml#L18) of the cluster launcher config.
 
 ```yaml
 provider:
