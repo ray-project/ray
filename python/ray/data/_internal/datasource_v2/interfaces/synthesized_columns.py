@@ -61,7 +61,9 @@ class SynthesizedColumn(ABC):
     the schema, excludes the name from what pyarrow reads, skips the column
     when a projection dropped it, and replaces any same-named column that
     the file happens to contain. An implementation sets the three class
-    attributes and says how to build the column.
+    attributes and says how to build the column. Subclass for a column
+    computed per batch rather than decoded, such as each row's file path
+    (``PathColumn``) or a file modification time.
 
     Attributes:
         name: Column name as it appears in the output schema.

@@ -33,7 +33,8 @@ class Scanner(ABC, Generic[InputSplit]):
     def read_schema(self) -> pa.Schema:
         """Return the schema that will be produced by this scanner.
 
-        This reflects the schema after all column pruning has been applied.
+        This reflects the schema after all column pruning has been applied
+        and includes any column the reader synthesizes rather than decodes.
 
         Returns:
             PyArrow Schema describing the output data.
@@ -49,7 +50,9 @@ class Scanner(ABC, Generic[InputSplit]):
         answer ``True`` under that filter; for most sources it collapses to "no
         row-reducing pushdown is set".
 
-        Default ``False``: over-claiming makes ``count()`` return a wrong number
+        Default ``False``. Override to return ``True`` when the reader mixes
+        in ``SupportsMetadata`` and no pushdown on this scanner reduces rows.
+        Over-claiming makes ``count()`` return a wrong number
         silently, while declining only costs a real read. Account for every
         row-reducing knob, including ones set at construction
         (``read_iceberg(row_filter=...)``) rather than pushed down. The reader
@@ -64,7 +67,8 @@ class Scanner(ABC, Generic[InputSplit]):
         Called per split by ``plan_read_files_op.do_read`` before
         ``create_reader().read()``. Default: return it unchanged.
         ``FileScanner`` overrides it to drop files whose partition values
-        fail a pushed-down predicate.
+        fail a pushed-down predicate. Override when a non-file scanner has its
+        own notion of partitions to prune by.
         """
         return input_split
 

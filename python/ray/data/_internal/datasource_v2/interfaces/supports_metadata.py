@@ -24,6 +24,9 @@ class SupportsMetadata(abc.ABC):
     Unlike V1 datasources, a V2 :class:`FileReader` already owns the
     ``filesystem`` (and any pushdowns), so ``read_metadata`` takes only the
     manifest.
+
+    Mix in when the format stores exact row counts in metadata (Parquet
+    footers), and override ``Scanner.metadata_row_count_is_exact`` alongside.
     """
 
     @abc.abstractmethod

@@ -161,9 +161,11 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         ``FileManifest`` blocks.
 
         Abstract rather than defaulted, because a default would commit a new
-        format to per-file listing without anyone choosing it. Formats without
-        usable file metadata return ``NonSamplingFileIndexer``; Parquet returns
-        ``FooterFileIndexer``.
+        format to per-file listing without anyone choosing it. Return
+        ``NonSamplingFileIndexer(...)`` unless the format has per-piece
+        metadata worth reading while listing (row groups, stripes); then
+        subclass it and override ``list_files`` the way ``FooterFileIndexer``
+        does for Parquet footers.
         """
         ...
 
@@ -176,10 +178,11 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         Each listing task holds its own pickled copy of the partitioner, so
         anything it carries (such as an ``InMemorySizeEstimator``) must pickle
         cheaply; any I/O the estimator does runs once per listing task.
-        ``RoundRobinPartitioner(estimator, hints=hints)`` fits most formats;
-        return something else when the listing rows carry metadata worth
-        grouping on (Parquet row-group stats), and ``None`` to emit each
-        listing block as one read unit.
+        ``RoundRobinPartitioner(estimator, hints=hints)`` fits most formats.
+        Return ``OnlineBinPacker`` when the decoded size of every listing row
+        is known up front (Parquet footers), so tasks land close to the cap;
+        ``None`` to emit each listing block as one read task; your own
+        ``FilePartitioner`` when neither grouping fits.
 
         Args:
             hints: Sizing hints derived from ``DataContext`` and
@@ -235,6 +238,11 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     ) -> Scanner[InputSplit]:
         """Create a Scanner for reading data.
 
+        Pass ``partitioning=`` to the scanner (and from it to the reader) when
+        partition values live in the path, such as ``year=2024/``; nothing is
+        parsed from paths without it. Return a scanner carrying only the
+        ``Supports*`` pushdown mixins its reader enforces.
+
         Args:
             schema: Schema for the data to read.
             filesystem: :attr:`FileDataSourceV2.filesystem`, or ``None`` for
@@ -283,7 +291,10 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
 
     @property
     def file_extensions(self) -> Optional[List[str]]:
-        """File extensions to keep while listing; ``None`` keeps every file."""
+        """File extensions to keep while listing; ``None`` keeps every file.
+
+        Override when the format's directories mix in files it cannot read.
+        """
         return None
 
     @property
@@ -291,7 +302,8 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         """File-level shuffle the user asked for; ``None`` means no shuffle.
 
         ``"files"`` shuffles with a seed drawn per execution; a
-        :class:`FileShuffleConfig` pins the seed.
+        :class:`FileShuffleConfig` pins the seed. Override to forward the
+        ``shuffle`` argument of your ``read_*`` function.
         """
         return None
 

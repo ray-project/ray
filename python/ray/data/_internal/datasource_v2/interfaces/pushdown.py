@@ -16,6 +16,9 @@ class SupportsFilterPushdown(ABC):
 
     Filter pushdown allows predicates to be evaluated at the data source level,
     reducing the amount of data that needs to be read and transferred.
+
+    Mix in only when the reader filters rows itself: the optimizer drops the
+    ``Filter`` operator on the strength of this promise.
     """
 
     @abstractmethod
@@ -30,6 +33,8 @@ class SupportsFilterPushdown(ABC):
             - new_scanner: New Scanner instance with the filter applied
             - residual_predicate: Any part of the predicate that couldn't be
               pushed down and must be applied post-scan. None if fully pushed.
+              Return a residual when the decoder cannot evaluate some
+              expressions; a ``Filter`` stays above the read for it.
         """
         ...
 

@@ -36,7 +36,9 @@ class FileIndexer(ABC):
 
         Default ``None`` means "cannot provide it", so such consumers decline
         and fall back to a real read. Fail-closed on purpose: a wrong ``count()``
-        is silent, a declined optimization is merely slower.
+        is silent, a declined optimization is merely slower. Override when your
+        indexer does any of those things but can still hand out a plain
+        one-row-per-file listing, as ``NonSamplingFileIndexer`` does.
         """
         return None
 
@@ -56,6 +58,10 @@ class FileIndexer(ABC):
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
+
+        Implement directly only for a source that finds its own data (catalog,
+        database); file formats start from ``NonSamplingFileIndexer`` and
+        override its ``list_files`` when per-piece metadata is worth reading.
 
         Args:
             paths: A column of paths pointing to files or directories.

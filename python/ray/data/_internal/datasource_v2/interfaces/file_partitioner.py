@@ -33,6 +33,11 @@ class FilePartitioner(ABC):
 
     Implementations must be deterministic to ensure consistent partitioning across
     retries.
+
+    ``RoundRobinPartitioner`` (estimated sizes, whole files) and
+    ``OnlineBinPacker`` (exact sizes, splits files at read-unit boundaries) in
+    ``common/`` cover most formats. Implement this class only when neither
+    grouping fits, for example one read task per hive partition.
     """
 
     @property
