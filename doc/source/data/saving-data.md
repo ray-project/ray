@@ -78,6 +78,7 @@ Then, create a `GCSFileSystem` and specify a URI with the `gcs://` scheme.
 ```{testcode}
 :skipif: True
 
+import gcsfs
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -102,6 +103,7 @@ Then, create an `AzureBlobFileSystem` and specify a URI with the `az://` scheme.
 ```{testcode}
 :skipif: True
 
+import adlfs
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
