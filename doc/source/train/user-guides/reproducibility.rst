@@ -26,7 +26,7 @@ Reproducibility
 
         .. warning:: :func:`ray.train.torch.enable_reproducibility` can't guarantee
             completely reproducible results across executions. To learn more, read
-            the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+            the `PyTorch notes on randomness <https://docs.pytorch.org/docs/stable/notes/randomness.html>`_.
 
 ..
     import ray
