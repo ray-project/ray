@@ -23,6 +23,7 @@ decodable on its own.
 
 import bisect
 import heapq
+import itertools
 import json
 import logging
 from dataclasses import dataclass
@@ -45,6 +46,10 @@ from pyarrow.fs import FileSystem, LocalFileSystem
 from typing_extensions import override
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource_v2.formats.mcap.mcap_decode import (
+    FrameDecoder,
+    FrameThinner,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     ATTACHMENT_GRANULARITY,
     MESSAGE_GRANULARITY,
@@ -71,6 +76,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_video import (
     VideoCodec,
+    carries_picture,
     detect_codec,
     is_keyframe,
     is_video_schema,
@@ -139,6 +145,7 @@ def message_schema(
     include_metadata: bool,
     include_row_id: bool,
     data_type: Optional[pa.DataType] = None,
+    frame_type: Optional[pa.DataType] = None,
 ) -> pa.Schema:
     """The Arrow schema of message rows, before partition and synthesized columns.
 
@@ -155,12 +162,16 @@ def message_schema(
         data_type: Type of the ``data`` column: ``binary``, or the type of the
             decoded JSON values when every selected channel is JSON-encoded (the
             caller sampled one message for it).
+        frame_type: With ``VideoOptions.decode``, the tensor type of the ``frame``
+            column that replaces ``data``.
 
     Returns:
         The schema, columns in output order.
     """
     fields = [
-        pa.field("data", data_type if data_type is not None else pa.binary()),
+        pa.field("frame", frame_type)
+        if frame_type is not None
+        else pa.field("data", data_type if data_type is not None else pa.binary()),
         pa.field("topic", pa.string()),
         pa.field("log_time", pa.int64()),
         pa.field("publish_time", pa.int64()),
@@ -233,6 +244,7 @@ class _MessageTableBuilder:
         include_metadata: bool,
         include_row_id: bool,
         decode_json: bool,
+        decoded: bool = False,
     ):
         # ``None`` means every column. The set decides what is accumulated, so a
         # pruned read never decodes a JSON payload it will not return.
@@ -244,6 +256,9 @@ class _MessageTableBuilder:
         # Fixed by the planned schema: ``data`` is decoded JSON values or bytes
         # for every row of the dataset, never a mix.
         self._decode_json = decode_json
+        # With ``VideoOptions.decode`` a row is a decoded frame: ``frame``
+        # replaces ``data``.
+        self._decoded = decoded
         self.reset()
 
     def reset(self) -> None:
@@ -251,17 +266,23 @@ class _MessageTableBuilder:
         self.estimated_bytes = 0
         self._columns: Dict[str, List[Any]] = {}
 
-    def add(self, selected: _Selected) -> None:
+    def add(self, selected: _Selected, frame: Any = None) -> None:
         schema, channel, message, row_id = selected
         self.num_rows += 1
-        self.estimated_bytes += len(message.data) + _ROW_OVERHEAD_BYTES
+        self.estimated_bytes += _ROW_OVERHEAD_BYTES
         put = self._columns.setdefault
-        if self._want("data"):
-            put("data", []).append(
-                decode_payload(channel, message.data, row_id)
-                if self._decode_json
-                else message.data
-            )
+        if self._decoded:
+            if frame is not None and self._want("frame"):
+                self.estimated_bytes += frame.nbytes
+                put("frame", []).append(frame)
+        else:
+            self.estimated_bytes += len(message.data)
+            if self._want("data"):
+                put("data", []).append(
+                    decode_payload(channel, message.data, row_id)
+                    if self._decode_json
+                    else message.data
+                )
         if self._want("topic"):
             put("topic", []).append(channel.topic)
         if self._want("log_time"):
@@ -290,6 +311,10 @@ class _MessageTableBuilder:
         n = self.num_rows
         cols = self._columns
         arrays: Dict[str, pa.Array] = {}
+        if "frame" in cols:
+            # Same-shaped frames become one fixed-shape tensor column; a block
+            # mixing resolutions falls back to the variable-shaped tensor type.
+            arrays["frame"] = convert_to_pyarrow_array(cols["frame"], "frame")
         if "data" in cols:
             if self._decode_json:
                 # JSON payloads decoded to Python values: let Ray's converter
@@ -326,6 +351,21 @@ class _MessageTableBuilder:
             # the row count through a stub column, as ``FileReader`` does.
             return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(n)})
         return pa.table(arrays)
+
+
+def _take_pending(
+    waiting: Dict[int, List[_Selected]], log_time: Optional[int]
+) -> Optional[_Selected]:
+    """Pop the oldest message still owed a frame at ``log_time``, if any."""
+    if log_time is None:
+        return None
+    queue = waiting.get(log_time)
+    if not queue:
+        return None
+    item = queue.pop(0)
+    if not queue:
+        del waiting[log_time]
+    return item
 
 
 @dataclass(frozen=True)
@@ -528,12 +568,14 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
     @override
     def available_metadata(self) -> Set[MetadataType]:
         # A time range cannot be counted from statistics; a coarse row is not a
-        # message, so nothing counts it. Metadata records carry no time.
+        # message, so nothing counts it. Metadata records carry no time. A
+        # decoded read emits frames, which ``fps`` thins and a decoder may drop.
         if self._granularity == METADATA_GRANULARITY:
             return {MetadataType.NUM_ROWS}
         if (
             self._granularity not in (MESSAGE_GRANULARITY, ATTACHMENT_GRANULARITY)
             or self._selection.time_range is not None
+            or (self._video is not None and self._video.decode)
         ):
             return set()
         return {MetadataType.NUM_ROWS}
@@ -557,6 +599,9 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
             if summary is not None and not summary.chunk_indexes:
                 summary = None
             if self._granularity == MESSAGE_GRANULARITY:
+                if self._video is not None and self._video.decode:
+                    yield from self._decoded_tables(f, assignment, summary)
+                    return
                 if summary is None:
                     messages = self._iter_unindexed(f, assignment.path)
                 else:
@@ -599,8 +644,12 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         selected: Optional[Set[int]] = None,
         time_bounds: Optional[Tuple[Optional[int], Optional[int]]] = None,
         log_time_order: Optional[bool] = None,
-    ) -> Iterator[_Selected]:
+        with_offsets: bool = False,
+    ) -> Iterator[Any]:
         """Yield the selected messages of the owned chunks of an indexed file.
+
+        With ``with_offsets`` every item is ``(chunk offset, message)``, for a
+        consumer that must notice when a channel's stream jumps between chunks.
 
         With log-time order the chunks are merged through one heap holding
         chunk indexes (keyed by their first log time) and messages (keyed by
@@ -628,9 +677,13 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
             log_time_order = self._log_time_order
         if not log_time_order:
             for chunk_index in chunk_indexes:
-                yield from self._read_chunk(
+                for item in self._read_chunk(
                     f, path, summary, chunk_index, selected, time_bounds
-                )
+                ):
+                    yield (
+                        chunk_index.chunk_start_offset,
+                        item,
+                    ) if with_offsets else item
             return
 
         # Heap entries: (log time, kind, chunk offset, index in chunk, item).
@@ -657,7 +710,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
                         ),
                     )
             else:
-                yield item
+                yield (offset, item) if with_offsets else item
 
     def _read_chunk(
         self,
@@ -797,6 +850,344 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
                 builder.reset()
         if builder.num_rows > 0:
             yield self._finish(builder.build(), assignment, rows_before)
+
+    # -- decoded frame rows --------------------------------------------------
+
+    def _decoded_tables(
+        self, f: Any, assignment: _Assignment, summary: Optional["Summary"]
+    ) -> Iterator[pa.Table]:
+        """One row per decoded frame of the task's messages.
+
+        The task's first message on a channel is rarely a keyframe, so when a
+        channel's first owned message comes up its decoder is primed with that
+        channel's frames back to the previous keyframe (the "lead-in": its
+        messages before that one, within ``max_lead_in_s``, read from whichever
+        chunks hold them), whose output is discarded. Each channel has its own
+        cutoff, since a task's channels start at different times, and the same
+        happens again wherever a channel's owned chunks are not consecutive
+        (a chunk between them belongs to another task, or was excluded by a
+        checkpoint): the skipped messages are fed to the decoder before the
+        next owned one. The lead-in also seeds the ``fps`` thinning, so the
+        frames that survive do not depend on where the task starts. If a
+        projection dropped ``frame``, nothing is decoded and a row is a
+        message, thinned the same way: a message without picture data
+        (parameter sets written on their own) is no row, and a channel that
+        starts without a keyframe in reach yields no row until its next
+        keyframe, exactly as the decoder would. Only a payload the codec
+        rejects outright still counts as a row when ``frame`` is not read.
+
+        Streams are taken to be free of B-frames, as the robotics recorders
+        that write MCAP video require (each message decodes to one frame, in
+        log-time order), so frames come out of the decoder in log-time order.
+        """
+        assert self._video is not None
+        video = self._video
+        path = assignment.path
+        wanted = set(self._columns) if self._columns is not None else None
+        decode = wanted is None or "frame" in wanted
+        start_time, end_time = self._selection.start_time, self._selection.end_time
+        lead_ns = video.max_lead_in_ns
+
+        unindexed_lead: Dict[int, List[_Selected]] = {}
+        if summary is None:
+            # A file without an index is one task and is read front to back; the
+            # lead-in is whatever precedes the time range, per channel.
+            low = max(0, start_time - lead_ns) if start_time is not None else None
+            items = sorted(
+                self._iter_unindexed(f, path, time_bounds=(low, end_time)),
+                key=lambda item: item[2].log_time,
+            )
+            if start_time is not None:
+                for item in items:
+                    if item[2].log_time < start_time:
+                        unindexed_lead.setdefault(item[1].id, []).append(item)
+                items = [m for m in items if m[2].log_time >= start_time]
+            owned: Iterator[Tuple[Optional[int], _Selected]] = (
+                (None, item) for item in items
+            )
+        else:
+            owned = self._iter_chunks(
+                f,
+                path,
+                summary,
+                assignment.offsets,
+                selected=self._selection.selected_channel_ids(
+                    summary.channels, summary.schemas
+                ),
+                log_time_order=True,
+                with_offsets=True,
+            )
+
+        def channel_messages(
+            channel_id: int,
+            low: int,
+            high: int,
+            skip_offsets: Optional[Set[int]] = None,
+        ) -> List[_Selected]:
+            """The channel's messages with ``low <= log_time < high`` of an indexed file.
+
+            Read from every chunk that may hold the channel in that span except
+            ``skip_offsets``: an owned chunk can hold messages before the time
+            range too, and a channel's previous keyframe may sit in a chunk the
+            listing never considered.
+            """
+            assert summary is not None
+            chunks = sorted(
+                (
+                    c
+                    for c in summary.chunk_indexes
+                    if c.message_end_time >= low
+                    and c.message_start_time < high
+                    and (
+                        skip_offsets is None or c.chunk_start_offset not in skip_offsets
+                    )
+                    and (
+                        not c.message_index_offsets
+                        or channel_id in c.message_index_offsets
+                    )
+                ),
+                key=lambda c: c.chunk_start_offset,
+            )
+            if not chunks:
+                return []
+            return list(
+                self._iter_chunks(
+                    f,
+                    path,
+                    summary,
+                    None,
+                    chunk_indexes=chunks,
+                    selected={channel_id},
+                    time_bounds=(low, high),
+                    log_time_order=True,
+                )
+            )
+
+        def lead_in_for(channel_id: int, first_time: int) -> List[_Selected]:
+            """The channel's messages in the lead-in span before its first owned one."""
+            if summary is None:
+                return unindexed_lead.get(channel_id, [])
+            if not lead_ns:
+                return []
+            return channel_messages(
+                channel_id, max(0, first_time - lead_ns), first_time
+            )
+
+        def gap_for(
+            channel_id: int, last_time: int, next_time: int
+        ) -> Tuple[List[_Selected], bool]:
+            """The channel's messages another task owns between two of ours, and
+            whether the gap was longer than ``max_lead_in_s`` and so clipped."""
+            if summary is None or not lead_ns or next_time <= last_time + 1:
+                return [], False
+            low = max(last_time + 1, next_time - lead_ns)
+            return (
+                channel_messages(
+                    channel_id, low, next_time, skip_offsets=assignment.offsets
+                ),
+                low > last_time + 1,
+            )
+
+        decoders: Dict[int, FrameDecoder] = {}
+        thinners: Dict[int, FrameThinner] = {}
+        # Without ``frame``: each channel's codec, and whether a decoder would
+        # have a keyframe to work from at this point of the stream.
+        codecs: Dict[int, VideoCodec] = {}
+        decodable: Dict[int, bool] = {}
+        # Per channel: the task's messages whose frames have not come out yet,
+        # by log time (a list, since two messages may share one), and the log
+        # times of the primed lead-in, whose frames are dropped if the decoder
+        # releases them late.
+        pending: Dict[int, Dict[int, List[_Selected]]] = {}
+        primed: Dict[int, Set[int]] = {}
+
+        def decoder_for(item: _Selected) -> FrameDecoder:
+            _, channel, message, _ = item
+            decoder = decoders.get(channel.id)
+            if decoder is None:
+                codec = detect_codec(message.data)
+                if codec is None:
+                    raise ValueError(
+                        f"Cannot decode topic {channel.topic!r} in {path!r}: its "
+                        "payload is not JPEG, PNG or H.264/H.265 Annex-B. Pass "
+                        "topics=[...] to select only the video topics."
+                    )
+                decoder = FrameDecoder(
+                    codec, resize=video.resize, min_interval_ns=video.fps_interval_ns
+                )
+                decoders[channel.id] = decoder
+            return decoder
+
+        def thinner_for(channel_id: int) -> FrameThinner:
+            thinner = thinners.get(channel_id)
+            if thinner is None:
+                thinner = thinners[channel_id] = FrameThinner(video.fps_interval_ns)
+            return thinner
+
+        def codec_for(item: _Selected) -> VideoCodec:
+            _, channel, message, _ = item
+            codec = codecs.get(channel.id)
+            if codec is None:
+                codec = detect_codec(message.data)
+                if codec is None:
+                    raise ValueError(
+                        f"Cannot decode topic {channel.topic!r} in {path!r}: its "
+                        "payload is not JPEG, PNG or H.264/H.265 Annex-B. Pass "
+                        "topics=[...] to select only the video topics."
+                    )
+                codecs[channel.id] = codec
+            return codec
+
+        def emit(
+            channel_id: int, log_time: int, frame: Any, fallback: Optional[_Selected]
+        ) -> None:
+            """Attribute a decoded frame to the message that held it, if it is ours.
+
+            A frame stamped with a pending message's log time is that message's;
+            one stamped with a primed (lead-in or gap) time belongs to another
+            task's row and is dropped; anything else goes to ``fallback``, the
+            message being decoded, or is dropped while priming.
+            """
+            waiting = pending.setdefault(channel_id, {})
+            source = _take_pending(waiting, log_time)
+            if source is None:
+                if log_time in primed.get(channel_id, ()) or fallback is None:
+                    return
+                source = fallback
+            # Frames come out in log-time order, so a message older than this
+            # frame will not be given one: stop holding it.
+            for stale in list(itertools.takewhile(lambda t: t < log_time, waiting)):
+                del waiting[stale]
+            builder.add(source, frame)
+
+        def prime_channel(
+            item: _Selected, items: List[_Selected], gap: bool, clipped: bool = False
+        ) -> None:
+            """Feed a channel's decoder and thinning the messages before ``item``.
+
+            For a lead-in, decoding starts at the last keyframe among them; a
+            channel without one is cold, and stays cold until its next keyframe
+            (its frames are neither decoded nor rows: without a reference the
+            codec would either reject them or conceal, and a concealed frame
+            is not the recording). For a gap between two owned chunks every
+            skipped message is fed when no keyframe lies among them, so the
+            decoder's references stay continuous; a gap longer than
+            ``max_lead_in_s`` cannot be fed whole, so without a keyframe in its
+            tail the channel goes cold instead. The fed messages' own frames
+            are dropped, but a frame of ours the decoder was still holding back
+            comes out first and is kept, so the frame just before a gap is not
+            lost.
+            """
+            channel_id = item[1].id
+            codec = codec_for(item)
+            keyframe_at = None
+            for index in range(len(items) - 1, -1, -1):
+                if is_keyframe(items[index][2].data, codec):
+                    keyframe_at = index
+                    break
+            if keyframe_at is not None or codec.every_frame_is_a_keyframe:
+                decodable[channel_id] = True
+            elif not gap or clipped:
+                decodable[channel_id] = False
+            if decode:
+                decoder = decoder_for(item)
+                if keyframe_at is not None:
+                    start: Optional[int] = keyframe_at
+                elif gap and not clipped:
+                    start = 0
+                else:
+                    start = None
+                # Parameter sets written on their own are fed whatever the
+                # start, so the keyframe that follows has them.
+                fed = [
+                    m
+                    for index, m in enumerate(items)
+                    if (start is not None and index >= start)
+                    or not carries_picture(m[2].data, codec)
+                ]
+                primed.setdefault(channel_id, set()).update(m[2].log_time for m in fed)
+                for m in fed:
+                    for log_time, frame in decoder.decode(m[2]):
+                        emit(channel_id, log_time, frame, None)
+                thinner = decoder.thinner
+            else:
+                thinner = thinner_for(channel_id)
+            # After the feed: a held-back frame of ours must meet the thinning
+            # state it was recorded under, not one the lead-in moved forward.
+            # Only messages that are frames hold an interval.
+            for m in items:
+                if carries_picture(m[2].data, codec):
+                    thinner.observe(m[2].log_time)
+
+        builder = _MessageTableBuilder(
+            columns=wanted,
+            include_metadata=self._include_metadata,
+            include_row_id=self._include_row_id,
+            decode_json=False,
+            decoded=True,
+        )
+        rows_before = 0
+
+        def flush_rows() -> Iterator[pa.Table]:
+            nonlocal rows_before
+            if builder.num_rows > 0:
+                yield self._finish(builder.build(), assignment, rows_before)
+                rows_before += builder.num_rows
+                builder.reset()
+
+        # Per channel: the chunk and log time of the last owned message, to
+        # notice a jump to a non-consecutive chunk.
+        last_seen: Dict[int, Tuple[Optional[int], int]] = {}
+        for offset, item in owned:
+            channel_id, message = item[1].id, item[2]
+            seen = last_seen.get(channel_id)
+            if seen is None:
+                prime_channel(
+                    item, lead_in_for(channel_id, message.log_time), gap=False
+                )
+            elif offset is not None and offset != seen[0]:
+                skipped, clipped = gap_for(channel_id, seen[1], message.log_time)
+                if skipped or clipped:
+                    prime_channel(item, skipped, gap=True, clipped=clipped)
+            last_seen[channel_id] = (offset, message.log_time)
+            # Parameter sets written on their own yield no picture: no row,
+            # and no claim on the frame of a keyframe stamped alike. A cold
+            # channel (no keyframe in reach) yields nothing until its next
+            # keyframe; its parameter sets are still fed to the decoder.
+            codec = codec_for(item)
+            has_picture = carries_picture(message.data, codec)
+            if has_picture and not decodable.get(channel_id, False):
+                if not is_keyframe(message.data, codec):
+                    continue
+                decodable[channel_id] = True
+            if not decode:
+                if has_picture and thinner_for(channel_id).keep(message.log_time):
+                    builder.add(item)
+            else:
+                decoder = decoder_for(item)
+                if has_picture:
+                    pending.setdefault(channel_id, {}).setdefault(
+                        message.log_time, []
+                    ).append(item)
+                for log_time, frame in decoder.decode(message):
+                    emit(channel_id, log_time, frame, item if has_picture else None)
+            if (
+                self._target_block_size is not None
+                and builder.estimated_bytes >= self._target_block_size
+            ):
+                yield from flush_rows()
+        for channel_id, decoder in decoders.items():
+            waiting = pending.get(channel_id, {})
+            for log_time, frame in decoder.flush():
+                source = _take_pending(waiting, log_time)
+                if source is None:
+                    if log_time in primed.get(channel_id, ()) or not waiting:
+                        continue
+                    # An unstamped frame belongs to the last message still owed one.
+                    source = _take_pending(waiting, max(waiting))
+                    assert source is not None
+                builder.add(source, frame)
+        yield from flush_rows()
 
     # -- coarse rows -------------------------------------------------------
 

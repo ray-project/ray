@@ -3379,7 +3379,12 @@ def read_mcap(
         video: A :class:`~ray.data.datasource.VideoOptions` that forces topics to
             be treated as video, sets a fixed lead-in for codecs whose keyframes
             cannot be detected, or caps how far back a window looks for a
-            keyframe. Only with ``read_granularity="window"`` or ``"topic"``.
+            keyframe, with ``read_granularity="window"`` or ``"topic"``. With
+            ``VideoOptions(decode=True)`` at ``read_granularity="message"`` the read
+            task decodes every selected topic (all of which must be video) and each
+            row is one RGB frame in a ``frame`` column, ``uint8`` of shape
+            ``(height, width, 3)``, in place of ``data``; ``fps`` thins frames by
+            log time and ``resize`` scales them. Requires ``av`` and ``Pillow``.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
