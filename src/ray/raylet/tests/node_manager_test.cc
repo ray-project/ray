@@ -812,6 +812,73 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
             kTestTotalCpuResource);
 }
 
+class NodeManagerDeadResourceSyncTest : public NodeManagerTest,
+                                        public ::testing::WithParamInterface<bool> {};
+
+TEST_P(NodeManagerDeadResourceSyncTest, IgnoreResourceViewsAfterNodeDeath) {
+  rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness> on_node_change;
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
+      .WillOnce(
+          [&](const auto &subscribe, const auto &done) { on_node_change = subscribe; });
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailures(_, _));
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
+  node_manager_->RegisterGcs();
+  ASSERT_TRUE(on_node_change);
+
+  auto &resources = cluster_resource_scheduler_->GetClusterResourceManager();
+  const auto initial_node_count = resources.NumNodes();
+  const auto node_id = NodeID::FromRandom();
+  const scheduling::NodeID scheduling_id(node_id.Binary());
+  syncer::ResourceViewSyncMessage payload;
+  (*payload.mutable_resources_total())["CPU"] = kTestTotalCpuResource;
+  (*payload.mutable_resources_available())["CPU"] = kTestTotalCpuResource;
+  (*payload.mutable_resources_total())["GPU"] = 1;
+  (*payload.mutable_resources_available())["GPU"] = 1;
+  (*payload.mutable_labels())["ray.io/accelerator-type"] = "H20";
+  auto msg = std::make_shared<syncer::RaySyncMessage>();
+  msg->set_node_id(node_id.Binary());
+  msg->set_message_type(syncer::MessageType::RESOURCE_VIEW);
+  ASSERT_TRUE(payload.SerializeToString(msg->mutable_sync_message()));
+
+  // Cover both an existing resource view and DEAD arriving before the first view.
+  if (GetParam()) {
+    node_manager_->ConsumeSyncMessage(msg);
+    ASSERT_EQ(resources.NumNodes(), initial_node_count + 1);
+  }
+  EXPECT_CALL(*mock_object_directory_, HandleNodeRemoved(node_id)).Times(1);
+  EXPECT_CALL(*mock_object_manager_, HandleNodeRemoved(node_id)).Times(1);
+  rpc::GcsNodeAddressAndLiveness dead_node;
+  dead_node.set_node_id(node_id.Binary());
+  dead_node.set_state(GcsNodeInfo::DEAD);
+  on_node_change(node_id, std::move(dead_node));
+  ASSERT_EQ(resources.NumNodes(), initial_node_count);
+
+  for (int64_t version = 1; version <= 3; ++version) {
+    msg->set_version(version);
+    node_manager_->ConsumeSyncMessage(msg);
+    EXPECT_EQ(resources.NumNodes(), initial_node_count);
+    EXPECT_FALSE(resources.GetResourceView().contains(scheduling_id));
+  }
+
+  // A restarted/new node has a new NodeID. Even without an ALIVE notification,
+  // its resource view must still be accepted (unlike the old dead NodeID).
+  const auto new_node_id = NodeID::FromRandom();
+  msg->set_node_id(new_node_id.Binary());
+  node_manager_->ConsumeSyncMessage(msg);
+  EXPECT_EQ(resources.NumNodes(), initial_node_count + 1);
+  const scheduling::NodeID new_scheduling_id(new_node_id.Binary());
+  ASSERT_TRUE(resources.GetResourceView().contains(new_scheduling_id));
+  const auto &node_resources = resources.GetNodeResources(new_scheduling_id);
+  EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("GPU")).Double(), 1);
+  EXPECT_EQ(node_resources.labels.at("ray.io/accelerator-type"), "H20");
+}
+
+INSTANTIATE_TEST_SUITE_P(ResourceViewOrdering,
+                         NodeManagerDeadResourceSyncTest,
+                         ::testing::Bool());
+
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
   // Test 1: Up scaling (increasing resource capacity)
   rpc::ResizeLocalResourceInstancesRequest request;
