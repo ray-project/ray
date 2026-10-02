@@ -44,6 +44,7 @@
 /doc/source/ray-more-libs/ @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
 
 /doc/source/cluster/kubernetes/ @ray-project/kuberay @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
+/doc/source/kuberay/ @ray-project/kuberay @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
 
 # Public protobuf files.
 /src/ray/protobuf/public/ @edoakes @MengjinYan

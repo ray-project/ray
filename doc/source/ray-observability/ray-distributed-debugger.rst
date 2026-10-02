@@ -49,7 +49,7 @@ Start a Ray cluster
 
   .. tab-item:: KubeRay (SSH)
 
-    Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
+    Follow the instructions in :doc:`the RayCluster quickstart <../kuberay/getting-started/raycluster-quick-start>` to set up a cluster.
     You need to connect VS Code to the cluster. For example, add the following to the `ray-head` container and make sure `sshd` is running in the `ray-head` container.
 
     .. code-block:: yaml
@@ -82,7 +82,7 @@ Start a Ray cluster
 
   .. tab-item:: KubeRay (Code Server, Community Maintained)
 
-    Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
+    Follow the instructions in :doc:`the RayCluster quickstart <../kuberay/getting-started/raycluster-quick-start>` to set up a cluster.
     
     A simpler approach is to run a browser-based VS Code (Code Server) as a sidecar container in the Ray head pod. This eliminates network connectivity issues by placing VS Code inside the Kubernetes cluster.
 
