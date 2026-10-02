@@ -145,7 +145,7 @@ class WindowSpec:
 @PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class VideoOptions:
-    """How ``read_mcap`` finds the bytes a video window needs to decode.
+    """How ``read_mcap`` handles video topics.
 
     A compressed video stream can only be decoded from a keyframe, and a
     window rarely starts on one. For every video topic a window row therefore
@@ -153,6 +153,13 @@ class VideoOptions:
     "lead-in"), counted by ``num_lead_in``. Without these options, video topics
     are recognised from the channel's schema name and keyframes are detected
     from the payload bytes (JPEG, PNG, H.264 and H.265 Annex-B).
+
+    With ``decode=True`` (message granularity only) the read task decodes the
+    frames itself: every row is one decoded RGB frame in a ``frame`` column,
+    ``uint8`` of shape ``(height, width, 3)``, in place of the encoded ``data``.
+    A task that starts mid-stream first decodes the frames back to the previous
+    keyframe, so the frames it emits are complete. Requires ``av`` for H.264 and
+    H.265 and ``Pillow`` for JPEG and PNG, and every selected topic must be video.
 
     Attributes:
         topics: Topics to treat as video whatever their schema says. Any
@@ -162,11 +169,21 @@ class VideoOptions:
             video topic.
         max_lead_in_s: How far back a window looks for a keyframe. Bounds how
             much a read task may have to read before a window.
+        decode: Decode video payloads into frames inside the read task.
+        fps: With ``decode``, keep at most one frame per ``1/fps`` seconds of
+            log time per topic. The intervals are aligned to the epoch, not to
+            where a read task starts, so the surviving frames do not depend on
+            how the read is split. Measured against ``log_time`` since a topic
+            has no fixed frame rate.
+        resize: With ``decode``, scale frames to this ``(height, width)``.
     """
 
     topics: Optional[Iterable[str]] = None
     lead_in_s: Optional[float] = None
     max_lead_in_s: float = 10.0
+    decode: bool = False
+    fps: Optional[float] = None
+    resize: Optional[Tuple[int, int]] = None
 
     def __post_init__(self):
         if self.topics is not None:
@@ -177,6 +194,25 @@ class VideoOptions:
             raise ValueError(
                 f"max_lead_in_s must be non-negative, got {self.max_lead_in_s}"
             )
+        if self.fps is not None and (isinstance(self.fps, bool) or self.fps <= 0):
+            raise ValueError(f"fps must be a positive number, got {self.fps!r}")
+        if self.resize is not None:
+            if len(self.resize) != 2 or any(
+                isinstance(v, bool) or not isinstance(v, int) or v <= 0
+                for v in self.resize
+            ):
+                raise ValueError(
+                    "resize must be a (height, width) pair of positive integers, "
+                    f"got {self.resize!r}"
+                )
+            object.__setattr__(self, "resize", tuple(self.resize))
+        if (self.fps is not None or self.resize is not None) and not self.decode:
+            raise ValueError("fps and resize only apply with decode=True")
+
+    @property
+    def fps_interval_ns(self) -> Optional[int]:
+        """Minimum log-time distance between two emitted frames of a topic."""
+        return int(round(_NS_PER_S / self.fps)) if self.fps is not None else None
 
     @property
     def lead_in_ns(self) -> Optional[int]:

@@ -954,6 +954,71 @@ def test_read_mcap_attachment_and_metadata_granularity(
         ray.data.read_mcap(paths, read_granularity="metadata", topics=["/t"])
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("av") is None,
+    reason="av not available. Install with: pip install av",
+)
+def test_read_mcap_decode_video(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """``VideoOptions(decode=True)`` returns one decoded frame per row, across task cuts."""
+    import io
+
+    import av
+    import numpy as np
+    from mcap.writer import CompressionType, Writer
+
+    from ray.data.datasource import VideoOptions
+
+    container = av.open(io.BytesIO(), mode="w", format="h264")
+    stream = container.add_stream(
+        "libx264",
+        rate=30,
+        options={"g": "10", "bf": "0", "sc_threshold": "0", "tune": "zerolatency"},
+    )
+    stream.width, stream.height, stream.pix_fmt = 64, 48, "yuv420p"
+    packets = []
+    for i in range(30):
+        frame = av.VideoFrame.from_ndarray(
+            np.full((48, 64, 3), i * 8 % 256, dtype=np.uint8), format="rgb24"
+        )
+        packets.extend(bytes(p) for p in stream.encode(frame))
+    packets.extend(bytes(p) for p in stream.encode())
+
+    path = os.path.join(tmp_path, "h264.mcap")
+    with open(path, "wb") as f:
+        writer = Writer(f, chunk_size=400, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo", encoding="ros2msg", data=b""
+        )
+        channel = writer.register_channel(
+            schema_id=schema_id, topic="/camera", message_encoding="cdr"
+        )
+        for i, payload in enumerate(packets):
+            writer.add_message(
+                channel_id=channel,
+                log_time=i * 33_000_000,
+                publish_time=i * 33_000_000,
+                data=payload,
+                sequence=i,
+            )
+        writer.finish()
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="video"):
+            ray.data.read_mcap(path, video=VideoOptions(decode=True))
+        return
+
+    # One task per chunk, so most tasks start inside a group of pictures.
+    monkeypatch.setenv("RAY_DATA_MCAP_BIN_PACKING_BYTES", "1")
+    ds = ray.data.read_mcap(path, video=VideoOptions(decode=True, resize=(24, 32)))
+    assert "frame" in ds.schema().names and "data" not in ds.schema().names
+    rows = sorted(ds.take_all(), key=lambda row: row["sequence"])
+    assert [row["sequence"] for row in rows] == list(range(30))
+    assert all(row["frame"].shape == (24, 32, 3) for row in rows)
+
+
 if __name__ == "__main__":
     import sys
 

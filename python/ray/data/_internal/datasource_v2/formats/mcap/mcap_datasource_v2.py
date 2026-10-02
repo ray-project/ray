@@ -30,6 +30,7 @@ from typing import (
     Literal,
     Optional,
     Set,
+    Tuple,
     Union,
 )
 
@@ -38,6 +39,7 @@ from typing_extensions import override
 
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
+from ray.data._internal.datasource_v2.formats.mcap.mcap_decode import decode_one
 from ray.data._internal.datasource_v2.formats.mcap.mcap_file_indexer import (
     MCAPSummaryIndexer,
 )
@@ -63,7 +65,11 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_records import record_schema
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summary
-from ray.data._internal.datasource_v2.formats.mcap.mcap_video import detect_codec
+from ray.data._internal.datasource_v2.formats.mcap.mcap_video import (
+    VideoCodec,
+    detect_codec,
+    is_keyframe,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_windows import (
     coarse_row_schema,
 )
@@ -76,7 +82,11 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
+    convert_to_pyarrow_array,
+)
 from ray.data._internal.util import MiB, _check_import, _is_local_scheme
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
@@ -257,10 +267,16 @@ class MCAPDatasourceV2(FileDataSourceV2):
         assert sample is not None, "MCAP always receives a sample"
         sample_paths = sample.paths.tolist()[:_SCHEMA_SAMPLE_FILES]
         if self._granularity == MESSAGE_GRANULARITY:
+            decode = self._video is not None and self._video.decode
             schema = message_schema(
                 include_metadata=self._include_metadata,
                 include_row_id=self._include_row_id,
-                data_type=self._infer_data_type(sample_paths) if sample_paths else None,
+                data_type=(
+                    self._infer_data_type(sample_paths)
+                    if sample_paths and not decode
+                    else None
+                ),
+                frame_type=self._infer_frame_type(sample_paths) if decode else None,
             )
         elif self._granularity in RECORD_GRANULARITIES:
             schema = record_schema(
@@ -471,6 +487,106 @@ class MCAPDatasourceV2(FileDataSourceV2):
                         "before each window instead."
                     )
 
+    def _infer_frame_type(self, paths: List[str]) -> pa.DataType:
+        """The tensor type of decoded frames, from the sample files.
+
+        Every selected channel of every sample file must be a video topic with
+        a recognisable codec whose decoder is importable, or the read fails
+        here naming the topic; only then is the shape settled. With ``resize``
+        the shape is known; otherwise the first keyframe of the first video
+        channel found is decoded for it. Falls back to a variable-shaped tensor
+        when the sample holds no decodable keyframe.
+        """
+        assert self._video is not None
+        sample: Optional[Tuple[str, int, VideoCodec]] = None
+        for path in paths:
+            for channel, schema, message in self._first_messages(path, None):
+                if not is_video_channel(channel, schema, self._video):
+                    raise ValueError(
+                        f"Cannot decode topic {channel.topic!r} in {path!r}: it is "
+                        f"not a video topic (schema {schema.name if schema else None!r}). "
+                        "Pass topics=[...] to select only the video topics, or "
+                        "VideoOptions(topics=[...]) to force one."
+                    )
+                codec = detect_codec(message.data)
+                if codec is None:
+                    raise ValueError(
+                        f"Cannot decode topic {channel.topic!r} in {path!r}: its "
+                        "payload is not JPEG, PNG or H.264/H.265 Annex-B."
+                    )
+                if codec.every_frame_is_a_keyframe:
+                    _check_import(self, module="PIL", package="Pillow")
+                else:
+                    _check_import(self, module="av", package="av")
+                if sample is None:
+                    sample = (path, channel.id, codec)
+        if self._video.resize is not None:
+            height, width = self._video.resize
+            return ArrowTensorTypeV2((height, width, 3), pa.uint8())
+        if sample is not None:
+            path, channel_id, codec = sample
+            head = self._stream_head(path, channel_id, codec)
+            frame = decode_one(head, codec, None) if head else None
+            if frame is not None:
+                return ArrowTensorTypeV2(tuple(frame.shape), pa.uint8())
+        return ArrowVariableShapedTensorType(pa.uint8(), 3)
+
+    # How far ``_stream_head`` looks: messages of the channel, and records of
+    # any kind, so a sparse or absent channel in an unindexed file does not turn
+    # planning into a scan of the whole file.
+    _KEYFRAME_SCAN_MESSAGES = 1_000
+    _KEYFRAME_SCAN_RECORDS = 50_000
+
+    def _stream_head(
+        self, path: str, channel_id: int, codec: VideoCodec
+    ) -> List[bytes]:
+        """The channel's payloads from its first message through its first keyframe.
+
+        Empty when no keyframe is found within the scan budget. The messages
+        before the keyframe matter: a recorder may write the parameter sets in
+        a message of their own.
+        """
+        from mcap.data_stream import ReadDataStream
+        from mcap.records import Chunk, Message
+        from mcap.stream_reader import StreamReader, breakup_chunk
+
+        summary = read_summary(self._filesystem, path)
+        head: List[bytes] = []
+        records_left = self._KEYFRAME_SCAN_RECORDS
+
+        def consider(record: Any) -> Optional[bool]:
+            """``True`` once the keyframe is found, ``False`` when the budget is spent."""
+            nonlocal records_left
+            records_left -= 1
+            if isinstance(record, Message) and record.channel_id == channel_id:
+                head.append(record.data)
+                if is_keyframe(record.data, codec):
+                    return True
+                if len(head) >= self._KEYFRAME_SCAN_MESSAGES:
+                    return False
+            return False if records_left <= 0 else None
+
+        with self._filesystem.open_input_file(path) as f:
+            if summary is None or not summary.chunk_indexes:
+                f.seek(0)
+                records: Any = StreamReader(f).records
+                for record in records:
+                    verdict = consider(record)
+                    if verdict is not None:
+                        return head if verdict else []
+                return []
+            for chunk_index in summary.chunk_indexes:
+                if chunk_index.message_index_offsets and channel_id not in (
+                    chunk_index.message_index_offsets
+                ):
+                    continue
+                f.seek(chunk_index.chunk_start_offset + 1 + 8)
+                for record in breakup_chunk(Chunk.read(ReadDataStream(f))):
+                    verdict = consider(record)
+                    if verdict is not None:
+                        return head if verdict else []
+        return []
+
     def create_scanner(
         self,
         schema: pa.Schema,
@@ -530,8 +646,18 @@ def _validate_granularity(
         raise ValueError(
             f"window applies to read_granularity='window', not {granularity!r}"
         )
-    if video is not None and granularity not in (WINDOW_GRANULARITY, TOPIC_GRANULARITY):
-        raise ValueError(
-            "video applies to read_granularity='window' and 'topic', not "
-            f"{granularity!r}"
-        )
+    if video is not None:
+        if video.decode and granularity != MESSAGE_GRANULARITY:
+            raise ValueError(
+                "VideoOptions(decode=True) decodes one frame per row and applies to "
+                f"read_granularity='message', not {granularity!r}; window rows keep "
+                "their payloads encoded for decoding downstream"
+            )
+        if not video.decode and granularity not in (
+            WINDOW_GRANULARITY,
+            TOPIC_GRANULARITY,
+        ):
+            raise ValueError(
+                "video applies to read_granularity='window' and 'topic' (or to "
+                f"'message' with decode=True), not {granularity!r}"
+            )

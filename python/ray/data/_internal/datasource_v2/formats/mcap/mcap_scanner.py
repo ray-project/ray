@@ -104,6 +104,10 @@ class MCAPScanner(
         if self.granularity == METADATA_GRANULARITY:
             return True
         if self.granularity in (MESSAGE_GRANULARITY, ATTACHMENT_GRANULARITY):
+            if self.video is not None and self.video.decode:
+                # Rows are decoded frames: ``fps`` thins them and a decoder may
+                # drop what it cannot decode.
+                return False
             return self.selection.time_range is None
         return False
 
