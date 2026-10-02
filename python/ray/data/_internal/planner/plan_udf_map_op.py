@@ -279,7 +279,6 @@ def plan_filter_op(
 
         transform_fn = BlockMapTransformFn(
             filter_udf_block_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
