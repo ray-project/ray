@@ -4,7 +4,7 @@
 job_id
 [Aa]utoscaler
 ANSI
-PID
+PID(s)?
 tqdm
 maxBytes
 backupCount
@@ -16,8 +16,9 @@ Gloo
 GPUDirect
 libfabric
 dmabuf
-[Rr]eparented
+[Rr]eparent(ed|s)?
 [Rr]etryable
 runsc
 netstack
 [Ss]ubreaper
+PPID

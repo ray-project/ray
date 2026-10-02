@@ -6,11 +6,11 @@ myst:
 
 (namespaces-guide)=
 
-# Using Namespaces
+# Use namespaces
 
-A namespace is a logical grouping of jobs and named actors. When an actor is named, its name must be unique within the namespace.
+A namespace is a logical grouping of jobs and named actors. When you name an actor, its name must be unique within the namespace.
 
-In order to set your applications namespace, it should be specified when you first connect to the cluster.
+Set your application's namespace when you first connect to the cluster.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -37,9 +37,9 @@ ray::Init(config);
 :::
 ::::
 
-Please refer to {ref}`Driver Options <java-driver-options>` for ways of configuring a Java application.
+See {ref}`Driver options <java-driver-options>` for ways to configure a Java application.
 
-Named actors are only accessible within their namespaces.
+You can access a named actor only within its namespace.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -130,9 +130,11 @@ ray::Shutdown();
 :::
 ::::
 
-## Specifying namespace for named actors
+(specifying-namespace-for-named-actors)=
 
-You can specify a namespace for a named actor while creating it. The created actor belongs to the specified namespace, no matter what namespace of the current job is.
+## Specify a namespace for a named actor
+
+You can specify a namespace for a named actor when you create it. The actor belongs to that namespace, regardless of the current job's namespace.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -179,7 +181,7 @@ ray::Shutdown();
 
 ## Anonymous namespaces
 
-When a namespace is not specified, Ray will place your job in an anonymous namespace. In an anonymous namespace, your job will have its own namespace and will not have access to actors in other namespaces.
+When you don't specify a namespace, Ray places your job in an anonymous namespace. In an anonymous namespace, your job has its own namespace and can't access actors in other namespaces.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -236,12 +238,15 @@ ray::Shutdown();
 ::::
 
 :::{note}
-Anonymous namespaces are implemented as UUID's. This makes it possible for a future job to manually connect to an existing anonymous namespace, but it is not recommended.
+Ray implements each anonymous namespace as a UUID, so a future job can manually connect to an existing anonymous namespace. Avoid doing this.
 :::
 
 
-## Getting the current namespace
-You can access to the current namespace using {ref}`runtime_context APIs <runtime-context-apis>`.
+(getting-the-current-namespace)=
+
+## Get the current namespace
+
+Get the current namespace with the {ref}`runtime_context APIs <runtime-context-apis>`.
 
 ::::{tab-set}
 :::{tab-item} Python

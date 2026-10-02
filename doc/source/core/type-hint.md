@@ -1,18 +1,18 @@
 ---
 myst:
   html_meta:
-    description: "Python type hints for Ray remote functions and actors, enabling IDE support and static type checking via ray.remote and @ray.method."
+    description: "Use Python type hints with Ray remote functions and actors for IDE support and static type checking through ray.remote and @ray.method."
 ---
 
 (core-type-hint)=
 
 # Type hints in Ray
 
-As of Ray 2.48, Ray provides comprehensive support for Python type hints with both remote functions and actors. This enables better IDE support, static type checking, and improved code maintainability in distributed Ray applications.
+As of Ray 2.48, Ray supports Python type hints for both remote functions and actors. Type hints give you better IDE support, static type checking, and more maintainable code in distributed Ray applications.
 
 ## Overview
 
-In most cases, Ray applications can use type hints without any modifications to existing code. Ray automatically handles type inference for standard remote functions and basic actor usage patterns. For example, remote functions support standard Python type annotations without additional configuration. The `@ray.remote` decorator preserves the original function signature and type information.
+In most cases, type hints work in Ray applications without changes to existing code. Ray handles type inference automatically for standard remote functions and basic actor usage patterns. For example, remote functions support standard Python type annotations without extra configuration. The `@ray.remote` decorator preserves the original function signature and type information.
 
 ```python
 import ray
@@ -26,11 +26,11 @@ a = add_numbers.remote(5, 3)
 print(ray.get(a))
 ```
 
-However, certain patterns, especially when working with actors, require specific approaches to ensure proper type annotation.
+Some patterns, especially with actors, need a specific approach for type annotations to work correctly.
 
 ## Pattern 1: Use `ray.remote` as a function to build an actor
 
-Use the `ray.remote` function directly to create an actor class, instead of using the `@ray.remote` decorator. This will preserve the original class type and allow type inference to work correctly. For example, in this case, the original class type is `DemoRay`, and the actor class type is `ActorClass[DemoRay]`.
+To create an actor class, call `ray.remote` as a function instead of using the `@ray.remote` decorator. Calling it as a function preserves the original class type, so type inference works correctly. In the following example, the original class type is `DemoRay`, and the actor class type is `ActorClass[DemoRay]`.
 
 ```python
 import ray
@@ -48,9 +48,9 @@ ActorDemoRay: ActorClass[DemoRay] = ray.remote(DemoRay)
 # DemoRay is the original class type, ActorDemoRay is the ActorClass[DemoRay] type
 ```
 
-After creating the `ActorClass[DemoRay]` type, we can use it to instantiate an actor by calling `ActorDemoRay.remote(1)`. It returns an `ActorProxy[DemoRay]` type, which represents an actor handle.
+To instantiate an actor from the `ActorClass[DemoRay]` type, call `ActorDemoRay.remote(1)`. The call returns an `ActorProxy[DemoRay]` type, which represents an actor handle.
 
-This handle will provide type hints for the actor methods, including their arguments and return types.
+The handle provides type hints for the actor methods, including their arguments and return types.
 
 ```python
 
@@ -64,15 +64,15 @@ a = func.remote()
 print(ray.get(a))
 ```
 
-**Why do we need to do this?**
+### Why is this pattern necessary?
 
-In Ray, the `@ray.remote` decorator indicates that instances of the class `T` are actors, with each actor running in its own Python process. However, the `@ray.remote` decorator will transform the class `T` into a `ActorClass[T]` type, which is not the original class type.
+In Ray, the `@ray.remote` decorator indicates that instances of class `T` are actors, each running in its own Python process. The decorator also transforms class `T` into an `ActorClass[T]` type, which isn't the original class type.
 
-Unfortunately, IDE and static type checkers will not be able to infer the original type `T` of the `ActorClass[T]`. To solve this problem, using `ray.remote(T)` will explicitly return a new generic class `ActorClass[T]` type while preserving the original class type.
+IDEs and static type checkers can't infer the original type `T` from `ActorClass[T]`. Calling `ray.remote(T)` solves this problem because it explicitly returns a generic `ActorClass[T]` type while preserving the original class type.
 
 ## Pattern 2: Use `@ray.method` decorator for remote methods
 
-Add the `@ray.method` decorator to the actor methods in order to obtain type hints for the remote methods of the actor through `ActorProxy[T]` type, including their arguments and return types.
+Add the `@ray.method` decorator to actor methods to get type hints for them through the `ActorProxy[T]` type, including their arguments and return types.
 
 ```python
 from ray.actor import ActorClass, ActorProxy
@@ -94,5 +94,5 @@ print(ray.get(a))
 ```
 
 :::{note}
-We would love to make the typing of remote methods work without `@ray.method` decorator. If any community member has an idea, we welcome PRs.
+The Ray project would like typing for remote methods to work without the `@ray.method` decorator. If you have an idea for how, open a PR.
 :::

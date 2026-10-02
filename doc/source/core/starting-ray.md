@@ -8,35 +8,38 @@ myst:
 
 # Starting Ray
 
-This page covers how to start Ray on your single machine or cluster of machines.
+This page describes how to start Ray on a single machine or on a cluster of machines.
 
 :::{tip}
-Be sure to have {ref}`installed Ray <installation>` before following the instructions on this page.
+{ref}`Install Ray <installation>` before you follow the instructions on this page.
 :::
 
+(what-is-the-ray-runtime)=
 
-## What is the Ray runtime?
+## What's the Ray runtime?
 
-Ray programs are able to parallelize and distribute by leveraging an underlying *Ray runtime*. The Ray runtime consists of multiple services/processes started in the background for communication, data transfer, scheduling, and more. The Ray runtime can be started on a laptop, a single server, or multiple servers.
+Ray programs parallelize and distribute work through an underlying *Ray runtime*. The Ray runtime consists of multiple services and processes that run in the background and handle communication, data transfer, scheduling, and more. You can start the Ray runtime on a laptop, a single server, or multiple servers.
 
-There are three ways of starting the Ray runtime:
+You can start the Ray runtime in three ways:
 
-* Implicitly via `ray.init()` ({ref}`start-ray-init`)
-* Explicitly via CLI ({ref}`start-ray-cli`)
-* Explicitly via the cluster launcher ({ref}`start-ray-up`)
+* Implicitly through `ray.init()`. See {ref}`start-ray-init`.
+* Explicitly through the CLI. See {ref}`start-ray-cli`.
+* Explicitly through the cluster launcher. See {ref}`start-ray-up`.
 
-In all cases, `ray.init()` will try to automatically find a Ray instance to connect to. It checks, in order: 1\. The `RAY_ADDRESS` OS environment variable.
-2. The concrete address passed to `ray.init(address=<address>)`.
-3. If no address is provided, the latest Ray instance that was started on the same machine using `ray start`.
+In all cases, `ray.init()` tries to automatically find a Ray instance to connect to. It checks the following, in order:
+
+1. The concrete address that you pass to `ray.init(address=<address>)`.
+1. If you don't pass an address, or pass `"auto"`, the `RAY_ADDRESS` OS environment variable.
+1. If `RAY_ADDRESS` isn't set, the latest Ray instance that `ray start` started on the same machine.
 
 (start-ray-init)=
 
 ## Starting Ray on a single machine
 
-Calling `ray.init()` starts a local Ray instance on your laptop/machine. This laptop/machine becomes the  "head node".
+Calling `ray.init()` starts a local Ray instance on your laptop or machine. This machine becomes the *head node*.
 
 :::{note}
-In recent versions of Ray (>=1.5), `ray.init()` will automatically be called on the first use of a Ray remote API.
+As of Ray 1.5, Ray calls `ray.init()` automatically the first time you use a Ray remote API.
 :::
 
 ::::{tab-set}
@@ -79,13 +82,13 @@ ray::Init()
 :::
 ::::
 
-When the process calling `ray.init()` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
+When the process that calls `ray.init()` exits, the Ray runtime also stops. To stop or restart Ray explicitly, use the shutdown API.
 
 :::{note}
-The behavior of `ray.shutdown()` depends on how the cluster was initialized:
+The behavior of `ray.shutdown()` depends on whether `ray.init()` started a new cluster or connected to an existing one:
 
-* If `ray.init()` started a new local cluster, `ray.shutdown()` will terminate all the local Ray processes.
-* If you connected to an existing cluster (e.g., via `ray.init(address="auto")` or `ray.init(address="ray://<ip>:<port>")`), `ray.shutdown()` only disconnects the client -- it does **not** shut down the remote cluster.
+* If `ray.init()` started a new local cluster, `ray.shutdown()` stops all the local Ray processes.
+* If you connected to an existing cluster, for example with `ray.init(address="auto")` or `ray.init(address="ray://<ip>:<port>")`, `ray.shutdown()` only disconnects the client. It doesn't shut down the remote cluster.
 :::
 
 ::::{tab-set}
@@ -129,7 +132,7 @@ ray::Shutdown()
 :::
 ::::
 
-To check if Ray is initialized, use the `is_initialized` API.
+To check whether Ray is initialized, use the `is_initialized` API.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -174,13 +177,15 @@ int main(int argc, char **argv) {
 :::
 ::::
 
-See the {doc}`Configuration <configure>` documentation for the various ways to configure Ray.
+For the ways to configure Ray, see the {doc}`Configuration <configure>` documentation.
 
 (start-ray-cli)=
 
-## Starting Ray via the CLI (`ray start`)
+(starting-ray-via-the-cli-ray-start)=
 
-Use `ray start` from the CLI to start a 1 node ray runtime on a machine. This machine becomes the "head node".
+## Starting Ray through the CLI (`ray start`)
+
+Run `ray start` from the CLI to start a single-node Ray runtime on a machine. This machine becomes the head node.
 
 ```bash
 $ ray start --head --port=6379
@@ -195,8 +200,7 @@ Ray runtime started.
 ...
 ```
 
-
-You can connect to this Ray instance by starting a driver process on the same node as where you ran `ray start`. `ray.init()` will now automatically connect to the latest Ray instance.
+To connect to this Ray instance, start a driver process on the same node where you ran `ray start`. `ray.init()` automatically connects to the latest Ray instance.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -206,7 +210,7 @@ ray.init()
 ```
 :::
 
-:::{tab-item} java
+:::{tab-item} Java
 ```java
 import io.ray.api.Ray;
 
@@ -242,18 +246,17 @@ RAY_ADDRESS=<address> ./<binary> <args>
 :::
 ::::
 
-
-You can connect other nodes to the head node, creating a Ray cluster by also calling `ray start` on those nodes. See {ref}`on-prem` for more details. Calling `ray.init()` on any of the cluster machines will connect to the same Ray cluster.
+To create a Ray cluster, connect other nodes to the head node by calling `ray start` on those nodes as well. For more details, see {ref}`on-prem`. Calling `ray.init()` on any machine in the cluster connects to the same Ray cluster.
 
 (start-ray-up)=
 
 ## Launching a Ray cluster (`ray up`)
 
-Ray clusters can be launched with the {ref}`Cluster Launcher <cluster-index>`. The `ray up` command uses the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. Underneath the hood, it automatically calls `ray start` to create a Ray cluster.
+You can launch Ray clusters with the {ref}`cluster launcher <cluster-index>`. The `ray up` command uses the Ray cluster launcher to start a cluster on the cloud, which creates a designated head node and worker nodes. `ray up` calls `ray start` to create the Ray cluster.
 
-Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about {ref}`running programs on a Ray cluster <cluster-index>`.
+Your code needs to run on only one machine in the cluster, usually the head node.
 
-To connect to the Ray cluster, call `ray.init` from one of the machines in the cluster. This will connect to the latest Ray cluster:
+To connect to the Ray cluster, call `ray.init` from one of the machines in the cluster. `ray.init` connects to the latest Ray cluster:
 
 ```{testcode}
 :hide:
@@ -265,8 +268,8 @@ ray.shutdown()
 ray.init()
 ```
 
-Note that the machine calling `ray up` will not be considered as part of the Ray cluster, and therefore calling `ray.init` on that same machine will not attach to the cluster.
+The machine that calls `ray up` isn't part of the Ray cluster, so calling `ray.init` on that machine doesn't attach to the cluster.
 
 ## What's next?
 
-Check out our {doc}`Deployment section <../cluster/getting-started>` for more information on deploying Ray in different settings, including {doc}`Kubernetes <../cluster/kubernetes/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, and {doc}`SLURM <../cluster/vms/user-guides/community/slurm>`.
+To deploy Ray in different settings, including {doc}`Kubernetes <../cluster/kubernetes/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, and {doc}`SLURM <../cluster/vms/user-guides/community/slurm>`, see the {doc}`deployment section <../cluster/getting-started>`.

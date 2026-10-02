@@ -4,19 +4,19 @@ myst:
     description: "Assorted Ray Core topics: dynamic remote parameters, overloaded functions, inspecting cluster state, and OS tuning for large clusters."
 ---
 
-# Miscellaneous Topics
+# Miscellaneous topics
 
-This page will cover some miscellaneous topics in Ray.
+This page covers assorted Ray Core topics that range from dynamic remote parameters to operating system tuning for large clusters.
 
 ```{contents}
 :local:
 ```
 
-## Dynamic Remote Parameters
+## Dynamic remote parameters
 
-You can dynamically adjust resource requirements or return values of `ray.remote` during execution with `.options`.
+To adjust the resource requirements or return values of `ray.remote` dynamically during execution, use `.options`.
 
-For example, here we instantiate many copies of the same actor with varying resource requirements. Note that to create these actors successfully, Ray will need to be started with sufficient CPU resources and the relevant custom resources:
+For example, the following code instantiates multiple copies of the same actor with varying resource requirements. To create these actors successfully, start Ray with sufficient CPU resources and the relevant custom resources:
 
 ```{testcode}
 import ray
@@ -35,7 +35,7 @@ a2 = Counter.options(num_cpus=2, resources={"Custom2": 1}).remote()
 a3 = Counter.options(num_cpus=3, resources={"Custom3": 1}).remote()
 ```
 
-You can specify different resource requirements for tasks (but not for actor methods):
+You can specify different resource requirements for tasks, but not for actor methods:
 
 ```{testcode}
 :hide:
@@ -57,7 +57,7 @@ dynamic_object_gpu_ids = g.options(num_cpus=1, num_gpus=1).remote()
 assert ray.get(dynamic_object_gpu_ids) == [0]
 ```
 
-And vary the number of return values for tasks (and actor methods too):
+You can also vary the number of return values for tasks and actor methods:
 
 ```{testcode}
 @ray.remote
@@ -69,7 +69,7 @@ assert ray.get(id1) == 0
 assert ray.get(id2) == 1
 ```
 
-And specify a name for tasks (and actor methods too) at task submission time:
+You can also specify a name for tasks and actor methods at task submission time:
 
 ```{testcode}
 import psutil
@@ -83,16 +83,17 @@ obj = f.options(name="special_f").remote(3)
 assert ray.get(obj) == 4
 ```
 
-This name will appear as the task name in the machine view of the dashboard, will appear as the worker process name when this task is executing (if a Python task), and will appear as the task name in the logs.
+This name appears as the task name in the machine view of the dashboard and in the logs. For a Python task, it also appears as the worker process name while the task runs.
 
 ```{image} images/task_name_dashboard.png
+:alt: Machine view of the Ray dashboard, listing the worker processes on one host with the task name of each.
 ```
 
 
-## Overloaded Functions
-Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
+## Overloaded functions
+The Ray Java API supports calling overloaded Java functions remotely. Because of a limitation in Java compiler type inference, you must explicitly cast the method reference to the correct function type.
 
-Overloaded normal task call:
+The following example calls an overloaded function as a normal task:
 
 ```java
 public static class MyRayApp {
@@ -111,7 +112,7 @@ Assert.assertEquals((int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunctio
 Assert.assertEquals((int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(), 2);
 ```
 
-Overloaded actor task call:
+The following example calls overloaded methods of an actor:
 
 ```java
 public static class Counter {
@@ -147,19 +148,19 @@ a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloade
 Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
 ```
 
-## Inspecting Cluster State
+## Inspecting cluster state
 
-Applications written on top of Ray will often want to have some information or diagnostics about the cluster. Some common questions include:
+Applications built on Ray often need information or diagnostics about the cluster. Common questions include the following:
 
-> 1. How many nodes are in my autoscaling cluster?
-> 2. What resources are currently available in my cluster, both used and total?
-> 3. What are the objects currently in my cluster?
+1. How many nodes are in your autoscaling cluster?
+1. What resources are available in your cluster, both used and total?
+1. What objects are in your cluster?
 
-For this, you can use the global state API.
+To answer these questions, use the global state API.
 
-### Node Information
+### Node information
 
-To get information about the current nodes in your cluster, you can use `ray.nodes()`:
+To get information about the current nodes in your cluster, use `ray.nodes()`:
 
 ```{eval-rst}
 .. autofunction:: ray.nodes
@@ -195,17 +196,17 @@ print(ray.nodes())
     'Resources': {'CPU': 16.0, 'memory': 100.0, 'object_store_memory': 34.0, 'node:192.168.1.82': 1.0}}]
 ```
 
-The above information includes:
+The preceding output includes the following fields:
 
-> - `NodeID`: A unique identifier for the raylet.
-> - `alive`: Whether the node is still alive.
-> - `NodeManagerAddress`: PrivateIP of the node that the raylet is on.
-> - `Resources`: The total resource capacity on the node.
-> - `MetricsExportPort`: The port number at which metrics are exposed to through a {ref}`Prometheus endpoint <collect-metrics>`.
+- `NodeID`: A unique identifier for the raylet.
+- `alive`: Whether the node is alive.
+- `NodeManagerAddress`: The private IP address of the node that the raylet runs on.
+- `Resources`: The total resource capacity on the node.
+- `MetricsExportPort`: The port number that serves metrics through a {ref}`Prometheus endpoint <collect-metrics>`.
 
-### Resource Information
+### Resource information
 
-To get information about the current total resource capacity of your cluster, you can use `ray.cluster_resources()`.
+To get the current total resource capacity of your cluster, use `ray.cluster_resources()`.
 
 ```{eval-rst}
 .. autofunction:: ray.cluster_resources
@@ -213,54 +214,54 @@ To get information about the current total resource capacity of your cluster, yo
 ```
 
 
-To get information about the current available resource capacity of your cluster, you can use `ray.available_resources()`.
+To get the current available resource capacity of your cluster, use `ray.available_resources()`.
 
 ```{eval-rst}
 .. autofunction:: ray.available_resources
    :noindex:
 ```
 
-## Running Large Ray Clusters
+## Running large Ray clusters
 
-Here are some tips to run Ray with more than 1k nodes. When running Ray with such a large number of nodes, several system settings may need to be tuned to enable communication between such a large number of machines.
+The following tips help you run Ray on more than 1,000 nodes. At that scale, you might need to tune several system settings so that the machines can communicate with each other.
 
-### Tuning Operating System Settings
+### Tuning operating system settings
 
-Because all nodes and workers connect to the GCS, many network connections will be created and the operating system has to support that number of connections.
+All nodes and workers connect to the GCS, so the operating system (OS) has to support a large number of network connections.
 
 #### Maximum open files
 
-The OS has to be configured to support opening many TCP connections since every worker and raylet connects to the GCS. In POSIX systems, the current limit can be checked by `ulimit -n` and if it's small, it should be increased according to the OS manual.
+Every worker and raylet connects to the GCS, so configure the OS to support opening many TCP connections. On POSIX systems, check the current limit with `ulimit -n`. If the limit is small, increase it as your OS manual describes.
 
 #### ARP cache
 
-Another thing that needs to be configured is the ARP cache. In a large cluster, all the worker nodes connect to the head node, which adds a lot of entries to the ARP table. Ensure that the ARP cache size is large enough to handle this many nodes. Failure to do this will result in the head node hanging. When this happens, `dmesg` will show errors like `neighbor table overflow message`.
+You also need to configure the Address Resolution Protocol (ARP) cache. In a large cluster, all the worker nodes connect to the head node, which adds many entries to the ARP table. Make sure the ARP cache is large enough to handle that many nodes. Otherwise, the head node hangs, and `dmesg` shows errors such as `neighbor table overflow message`.
 
-In Ubuntu, the ARP cache size can be tuned in `/etc/sysctl.conf` by increasing the value of `net.ipv4.neigh.default.gc_thresh1` - `net.ipv4.neigh.default.gc_thresh3`. For more details, please refer to the OS manual.
+On Ubuntu, tune the ARP cache size in `/etc/sysctl.conf` by increasing the values of `net.ipv4.neigh.default.gc_thresh1` through `net.ipv4.neigh.default.gc_thresh3`. For more details, see your OS manual.
 
 ### Benchmark
 
-The machine setup:
+The benchmark uses the following machines:
 
-- 1 head node: m5.4xlarge (16 vCPUs/64GB mem)
-- 2000 worker nodes: m5.large (2 vCPUs/8GB mem)
+- One head node: m5.4xlarge, with 16 vCPUs and 64 GB of memory
+- 2,000 worker nodes: m5.large, with 2 vCPUs and 8 GB of memory
 
-The OS setup:
+The benchmark uses the following OS settings:
 
-- Set the maximum number of opening files to 1048576
+- Set the maximum number of open files to 1048576.
 - Increase the ARP cache size:
     - `net.ipv4.neigh.default.gc_thresh1=2048`
     - `net.ipv4.neigh.default.gc_thresh2=4096`
     - `net.ipv4.neigh.default.gc_thresh3=8192`
 
 
-The Ray setup:
+The benchmark uses the following Ray setting:
 
 - `RAY_event_stats=false`
 
-Test workload:
+The test workload runs the following script:
 
-- Test script: [code](https://github.com/ray-project/ray/blob/master/release/benchmarks/distributed/many_nodes_tests/actor_test.py)
+- [`actor_test.py`](https://github.com/ray-project/ray/blob/master/release/benchmarks/distributed/many_nodes_tests/actor_test.py)
 
 
 
@@ -271,7 +272,7 @@ Test workload:
   - Actor launch time
   - Actor ready time
   - Total time
-* - 20k (10 actors / node)
+* - 20k, at 10 actors per node
   - 14.5s
   - 136.1s
   - 150.7s
