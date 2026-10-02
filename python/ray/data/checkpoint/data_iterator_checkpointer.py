@@ -260,6 +260,13 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
     ):
         super().__init__(world_rank=world_rank, world_size=world_size)
 
+        if not checkpoint_config.checkpoint_path:
+            raise ValueError(
+                "`checkpoint_path` must be set to enable data iterator "
+                "checkpointing. Ray Train sets it by default to "
+                "`{RunConfig.storage_path}/{RunConfig.name}/ray_data_checkpoints`."
+            )
+
         self._checkpoint_config = checkpoint_config
         self._id_column = checkpoint_config.id_column
         if checkpoint_config.override_filesystem:

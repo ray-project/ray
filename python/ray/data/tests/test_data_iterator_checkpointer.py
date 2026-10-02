@@ -62,6 +62,16 @@ def test_generate_id_column_not_implemented():
         TrainingIngestCheckpointConfig(id_column="id", generate_id_column=True)
 
 
+@pytest.mark.parametrize("checkpoint_path", [None, ""])
+def test_checkpoint_path_not_set(checkpoint_path):
+    with pytest.raises(ValueError, match="`checkpoint_path` must be set"):
+        RowIDBasedDataIteratorCheckpointer(
+            checkpoint_config=TrainingIngestCheckpointConfig(
+                id_column="id", checkpoint_path=checkpoint_path
+            )
+        )
+
+
 def test_basic(tmp_path):
     checkpointer = RowIDBasedDataIteratorCheckpointer(
         checkpoint_config=TrainingIngestCheckpointConfig(
