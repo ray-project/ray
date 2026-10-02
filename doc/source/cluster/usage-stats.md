@@ -8,8 +8,7 @@ myst:
 
 # Usage Stats Collection
 
-Starting in Ray 1.13, Ray collects usage stats data by default (guarded by an opt-out prompt).
-This data will be used by the open-source Ray engineering team to better understand how to improve our libraries and core APIs, and how to prioritize bug fixes and enhancements.
+Starting in Ray 1.13, Ray collects usage stats data by default (guarded by an opt-out prompt). This data will be used by the open-source Ray engineering team to better understand how to improve our libraries and core APIs, and how to prioritize bug fixes and enhancements.
 
 Here are the guiding principles of our collection policy:
 
@@ -26,8 +25,7 @@ For more context, please refer to this [RFC](https://github.com/ray-project/ray/
 
 ## What data is collected?
 
-We collect non-sensitive data that helps us understand how Ray is used (e.g., which Ray libraries are used).
-**Personally identifiable data will never be collected.** Please check the UsageStatsToReport class to see the data we collect.
+We collect non-sensitive data that helps us understand how Ray is used (e.g., which Ray libraries are used). **Personally identifiable data will never be collected.** Please check the UsageStatsToReport class to see the data we collect.
 
 (usage-disable)=
 
@@ -46,8 +44,7 @@ Currently there is no way to enable or disable collection for a running cluster;
 
 ## How does it work?
 
-When a Ray cluster is started via {ref}`ray start --head <ray-start-doc>`, {ref}`ray up <ray-up-doc>`, {ref}`ray submit --start <ray-submit-doc>` or {ref}`ray exec --start <ray-exec-doc>`,
-Ray will decide whether usage stats collection should be enabled or not by considering the following factors in order:
+When a Ray cluster is started via {ref}`ray start --head <ray-start-doc>`, {ref}`ray up <ray-up-doc>`, {ref}`ray submit --start <ray-submit-doc>` or {ref}`ray exec --start <ray-exec-doc>`, Ray will decide whether usage stats collection should be enabled or not by considering the following factors in order:
 
 1. It checks whether the environment variable `RAY_USAGE_STATS_ENABLED` is set: 1 means enabled and 0 means disabled.
 
@@ -57,9 +54,7 @@ Ray will decide whether usage stats collection should be enabled or not by consi
 
 Note: usage stats collection is not enabled when using local dev clusters started via `ray.init()` unless it's a nightly wheel. This means that Ray will never collect data from third-party library users not using Ray directly.
 
-If usage stats collection is enabled, a background process on the head node will collect the usage stats
-and report to `https://usage-stats.ray.io/` every hour. The reported usage stats will also be saved to
-`/tmp/ray/session_xxx/usage_stats.json` on the head node for inspection. You can check the existence of this file to see if collection is enabled.
+If usage stats collection is enabled, a background process on the head node will collect the usage stats and report to `https://usage-stats.ray.io/` every hour. The reported usage stats will also be saved to `/tmp/ray/session_xxx/usage_stats.json` on the head node for inspection. You can check the existence of this file to see if collection is enabled.
 
 Usage stats collection is very lightweight and should have no impact on your workload in any way.
 

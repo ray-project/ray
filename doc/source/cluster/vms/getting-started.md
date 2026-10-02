@@ -113,8 +113,7 @@ Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable as described in [t
 :sync: Aliyun
 Obtain and set the AccessKey pair of the Aliyun account as described in [the docs](https://www.alibabacloud.com/help/en/doc-detail/175967.htm).
 
-Make sure to grant the necessary permissions to the RAM user and set the AccessKey pair in your cluster config file.
-Refer to the provided [aliyun/example-full.yaml](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aliyun/example-full.yaml) for a sample cluster config.
+Make sure to grant the necessary permissions to the RAM user and set the AccessKey pair in your cluster config file. Refer to the provided [aliyun/example-full.yaml](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aliyun/example-full.yaml) for a sample cluster config.
 :::
 
 :::{tab-item} vSphere
@@ -297,8 +296,7 @@ $ ray up -y config.yaml
 
 ## Running applications on a Ray Cluster
 
-We are now ready to execute an application on our Ray Cluster.
-`ray.init()` will now automatically connect to the newly created cluster.
+We are now ready to execute an application on our Ray Cluster. `ray.init()` will now automatically connect to the newly created cluster.
 
 As a quick example, we execute a Python command on the Ray Cluster that connects to Ray and exits:
 
