@@ -145,5 +145,9 @@ class NsightPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
+        if not self.nsight_cmd:
+            return
         logger.info("Running nsight profiler")
-        context.py_executable = " ".join(self.nsight_cmd) + " python"
+        # wrap the py_executable selected by earlier plugins (uv/pip/conda)
+        # instead of hardcoding "python", which may not be on PATH
+        context.py_executable = " ".join(self.nsight_cmd) + f" {context.py_executable}"
