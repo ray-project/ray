@@ -153,12 +153,13 @@ def _arrow_table_reduce(t: "pyarrow.Table"):
         try:
             # Delegate to ChunkedArray reducer.
             reduced_column = _arrow_chunked_array_reduce(column)
-        except Exception as e:
-            if not _is_dense_union(column.type) and is_in_test():
-                # If running in a test and the column is not a dense union array
-                # (which we expect to need a fallback), we want to raise the error,
-                # not fall back.
-                raise e from None
+        except Exception:
+            if is_in_test():
+                # In tests, surface optimized serialization failures instead of
+                # silently falling back to IPC serialization.
+                # Re-raise with original traceback so the failing serializer
+                # function and line are preserved for debugging.
+                raise
             if type(column.type) not in _serialization_fallback_set:
                 logger.warning(
                     "Failed to complete optimized serialization of Arrow Table, "
@@ -299,14 +300,6 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     type.
     """
     import pyarrow as pa
-
-    if _is_dense_union(a.type):
-        # Dense unions are not supported.
-        # TODO(Clark): Support dense unions.
-        raise NotImplementedError(
-            "Custom slice view serialization of dense union arrays is not yet "
-            "supported."
-        )
 
     # Dispatch to handler for array type.
     if pa.types.is_null(a.type):
@@ -536,8 +529,6 @@ def _union_array_to_array_payload(a: "pyarrow.UnionArray") -> "PicklableArrayPay
     # Dedicated path for UnionArrays.
     # UnionArrays have a top-level bitmap buffer and type code buffer, and one or
     # more children arrays.
-    # Buffer scheme: [None, typecodes, child_bitmap, child_data, ...]
-    assert not _is_dense_union(a.type)
     buffers = a.buffers()
     assert len(buffers) > 1, len(buffers)
 
@@ -548,14 +539,72 @@ def _union_array_to_array_payload(a: "pyarrow.UnionArray") -> "PicklableArrayPay
     type_code_buf = buffers[1]
     type_code_buf = _copy_buffer_if_needed(type_code_buf, pa.int8(), a.offset, len(a))
 
-    # Get field children payload.
-    # Offsets and truncations are already propagated to the field arrays, so we can
-    # serialize them as-is.
-    children = [_array_to_array_payload(a.field(i)) for i in range(a.type.num_fields)]
+    if _is_dense_union(a.type):
+        import numpy as np
+
+        # Dense unions include an additional value offsets buffer that indexes into
+        # child arrays.
+        assert len(buffers) > 2, len(buffers)
+        value_offset_buf = buffers[2]
+        value_offset_buf = _copy_buffer_if_needed(
+            value_offset_buf, pa.int32(), a.offset, len(a)
+        )
+        type_codes = np.frombuffer(type_code_buf, dtype=np.int8, count=len(a))
+        value_offsets = np.frombuffer(
+            value_offset_buf, dtype=np.int32, count=len(a)
+        ).copy()
+
+        # Propagate slice truncation to children and rewrite value offsets so they
+        # index into the new child slices.
+        # Dense union optimization:
+        # - Build row -> child index mapping once.
+        # - Compute per-child min/max offsets in one pass via numpy indexed
+        #   reductions (`minimum.at` / `maximum.at`), instead of scanning all rows
+        #   per type code.
+        # This avoids O(k * n) mask scans and brings the hot path to O(n + k).
+        num_fields = a.type.num_fields
+        type_code_to_child_idx = np.full(256, -1, dtype=np.int16)
+        for i, type_code in enumerate(a.type.type_codes):
+            type_code_to_child_idx[np.uint8(type_code)] = i
+
+        child_indices = type_code_to_child_idx[type_codes.view(np.uint8)]
+        if (child_indices < 0).any():
+            raise ValueError("Dense union array contains unknown type code.")
+
+        sentinel_min = np.iinfo(np.int32).max
+        sentinel_max = np.iinfo(np.int32).min
+        child_min_offsets = np.full(num_fields, sentinel_min, dtype=np.int32)
+        child_max_offsets = np.full(num_fields, sentinel_max, dtype=np.int32)
+        np.minimum.at(child_min_offsets, child_indices, value_offsets)
+        np.maximum.at(child_max_offsets, child_indices, value_offsets)
+
+        child_present = child_min_offsets != sentinel_min
+        child_offsets = np.zeros(num_fields, dtype=np.int32)
+        child_lengths = np.zeros(num_fields, dtype=np.int32)
+        child_offsets[child_present] = child_min_offsets[child_present]
+        child_lengths[child_present] = (
+            child_max_offsets[child_present] - child_min_offsets[child_present] + 1
+        )
+
+        value_offsets -= child_offsets[child_indices]
+
+        children = []
+        for i in range(num_fields):
+            child = a.field(i).slice(int(child_offsets[i]), int(child_lengths[i]))
+            children.append(_array_to_array_payload(child))
+        value_offset_buf = pa.py_buffer(value_offsets)
+        new_buffers = [bitmap_buf, type_code_buf, value_offset_buf]
+    else:
+        # Sparse union children are already aligned with parent offsets.
+        children = [
+            _array_to_array_payload(a.field(i)) for i in range(a.type.num_fields)
+        ]
+        new_buffers = [bitmap_buf, type_code_buf]
+
     return PicklableArrayPayload(
         type=a.type,
         length=len(a),
-        buffers=[bitmap_buf, type_code_buf],
+        buffers=new_buffers,
         null_count=a.null_count,
         offset=0,
         children=children,
