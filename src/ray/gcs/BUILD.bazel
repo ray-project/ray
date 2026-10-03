@@ -208,7 +208,7 @@ ray_cc_library(
         "//src/ray/util:clock",
         "//src/ray/util:thread_checker",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_cc_grpc",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
