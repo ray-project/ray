@@ -27,7 +27,13 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
 )
+from ray.train.v2._internal.metrics import base as metrics_base
+from ray.train.v2._internal.metrics.nccl_hang_detector import (
+    NCCLHangDetectorMetrics,
+    NCCLHangDetectorState,
+)
 from ray.train.v2.api.exceptions import NCCLHangError
+from ray.train.v2.tests.util import create_dummy_run_context
 
 HEALTHY_RAS_JSON = """{
   "nccl_version": "2.28.9",
@@ -1419,6 +1425,114 @@ def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
     with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
         assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
     assert "worker stack traces" in caplog.text
+
+
+class MockGauge:
+    """Stand-in for ``ray.util.metrics.Gauge`` that keeps the values set."""
+
+    def __init__(self, name: str, description: str, tag_keys: tuple = ()):
+        self.values: Dict[frozenset, float] = {}
+
+    def set(self, value: float, tags: Dict[str, str]):
+        self.values[frozenset(tags.items())] = value
+
+
+@pytest.fixture
+def mock_gauge(monkeypatch):
+    monkeypatch.setattr(metrics_base, "Gauge", MockGauge)
+
+
+def recorded_detector_metrics(callback):
+    """The detector's ``(state, stall duration)`` metrics as last recorded."""
+    return (
+        callback._metrics[NCCLHangDetectorMetrics.STATE].get_value(),
+        callback._metrics[NCCLHangDetectorMetrics.STALL_DURATION_S].get_value(),
+    )
+
+
+def test_detector_metrics_follow_suspicion_confirmation_and_recovery(
+    monkeypatch, mock_gauge
+):
+    # A communicator freezes until confirmed (observe mode, so no raise), then
+    # recovers. The state follows the log thresholds: suspected from the first
+    # suspicion warning, confirmed at the confirm duration. The stall duration
+    # counts from the first frozen poll.
+    frozen = create_single_comm_report({1: 5, 2: 4})
+    reports = [frozen] * 4 + [create_healthy_report()]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=3,
+        reports=reports,
+        first_suspicion_polls=2,
+    )
+    callback.after_controller_start(create_dummy_run_context())
+
+    recorded = []
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+        recorded.append(recorded_detector_metrics(callback))
+
+    assert recorded == [
+        (NCCLHangDetectorState.HEALTHY, 0.0),  # baseline, nothing to diff against
+        (NCCLHangDetectorState.HEALTHY, 1.0),  # frozen, below first suspicion
+        (NCCLHangDetectorState.SUSPECTED, 2.0),
+        (NCCLHangDetectorState.CONFIRMED, 3.0),
+        (NCCLHangDetectorState.HEALTHY, 0.0),  # recovered
+    ]
+
+
+def test_detector_metrics_record_confirmation_before_raising(monkeypatch, mock_gauge):
+    # In fail mode the confirmation raises, so the confirmed state must already
+    # be recorded by then or it would never reach Grafana.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+
+    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(MagicMock())
+    with pytest.raises(NCCLHangError):
+        callback.after_worker_group_poll_status(MagicMock())
+    assert recorded_detector_metrics(callback) == (
+        NCCLHangDetectorState.CONFIRMED,
+        2.0,
+    )
+
+
+def test_detector_metrics_tagged_with_the_run(monkeypatch, mock_gauge):
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=2,
+        reports=[create_healthy_report()],
+    )
+    run_context = create_dummy_run_context()
+    callback.after_controller_start(run_context)
+    callback.after_worker_group_poll_status(MagicMock())
+
+    expected_tags = frozenset(
+        {
+            "ray_train_run_name": run_context.get_run_config().name,
+            "ray_train_run_id": run_context.run_id,
+        }.items()
+    )
+    for metric in callback._metrics.values():
+        assert metric._gauge.values == {expected_tags: 0.0}
+
+
+def test_detector_metrics_skipped_before_controller_start(monkeypatch):
+    # Without a run context there is nothing to tag the metrics with, so
+    # detection runs without recording them.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 2
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=reports
+    )
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+    assert callback._metrics is None
+    assert callback.comm_deadlock_count == {_COMM_A: 1}
 
 
 if __name__ == "__main__":
