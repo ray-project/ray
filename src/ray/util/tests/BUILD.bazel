@@ -361,3 +361,14 @@ ray_cc_test(
         "//src/ray/util:string_utils",
     ],
 )
+
+ray_cc_test(
+    name = "port_persistence_test",
+    size = "small",
+    srcs = ["port_persistence_test.cc"],
+    tags = ["team:core"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/util:port_persistence",
+    ],
+)
