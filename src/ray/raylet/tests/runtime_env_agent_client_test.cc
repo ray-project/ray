@@ -14,6 +14,7 @@
 #include "ray/raylet/runtime_env_agent_client.h"
 
 #include <algorithm>
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -22,6 +23,8 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/thread.hpp>
 #include <cstdlib>
+#include <functional>
+#include <future>
 #include <memory>
 #include <string>
 #include <thread>
@@ -83,6 +86,11 @@ class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
   beast::flat_buffer buffer_{8192};
   http::request<http::string_body> request_;
   http::response<http::string_body> response_;
+  // Set by a handler to simulate the agent reaping an idle connection: the socket is
+  // closed right after the response is written, instead of waiting for the next request.
+  bool close_after_response_ = false;
+  // Invoked once the socket is closed because of `close_after_response_`.
+  std::function<void()> on_closed_;
 
   // Asynchronously receive a complete request message.
   void read_request() {
@@ -116,6 +124,24 @@ class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
     response_.content_length(response_.body().size());
 
     http::async_write(socket_, response_, [self](beast::error_code ec, std::size_t) {
+      if (ec) {
+        RAY_LOG(WARNING) << "http connection error in write_response: " << ec.message();
+        return;
+      }
+      if (self->close_after_response_) {
+        self->socket_.shutdown(tcp::socket::shutdown_both, ec);
+        self->socket_.close(ec);
+        if (self->on_closed_) {
+          self->on_closed_();
+        }
+        return;
+      }
+      if (self->response_.keep_alive()) {
+        self->request_ = {};
+        self->response_ = {};
+        self->read_request();
+        return;
+      }
       self->socket_.shutdown(tcp::socket::shutdown_send, ec);
     });
   }
@@ -159,6 +185,7 @@ class HttpServerThread {
       if (ec) {
         RAY_LOG(WARNING) << "http server thread can not accept: " << ec.message();
       } else {
+        accepts_ += 1;
         conn->start();
       }
       accept_one();
@@ -171,11 +198,15 @@ class HttpServerThread {
       thread_.join();
     }
   }
+  // Number of TCP connections the client has opened so far.
+  int accepts() const { return accepts_; }
+
   net::io_context ioc_;
   AsyncHandler handler_;
   tcp::acceptor acceptor_;
   tcp::endpoint endpoint_;
   std::thread thread_;
+  std::atomic<int> accepts_{0};
 };
 
 std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
@@ -686,6 +717,157 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   EXPECT_EQ(seen_failures, 100 - expected_succs());
   EXPECT_EQ(concurrency, 0);
   EXPECT_EQ(max_concurrency, 10);
+}
+
+// Replies OK to /delete_runtime_env_if_possible, and keeps the connection open so the
+// client may send the next request on it.
+void ReplyOkKeepingAlive(const http::request<http::string_body> &request,
+                         http::response<http::string_body> &response) {
+  rpc::DeleteRuntimeEnvIfPossibleRequest req;
+  ASSERT_TRUE(req.ParseFromString(request.body()));
+  rpc::DeleteRuntimeEnvIfPossibleReply reply;
+  reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+  response.body() = reply.SerializeAsString();
+  response.content_length(response.body().size());
+  response.result(http::status::ok);
+  response.keep_alive(true);
+}
+
+std::unique_ptr<raylet::RuntimeEnvAgentClient> MakeClient(instrumented_io_context &ioc,
+                                                          int port) {
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
+  ray::UnsetEnv("RAY_AUTH_TOKEN");
+  rpc::AuthenticationTokenLoader::instance().ResetCache();
+  return raylet::RuntimeEnvAgentClient::Create(ioc,
+                                               "127.0.0.1",
+                                               port,
+                                               delay_after(ioc),
+                                               dummy_shutdown_raylet_gracefully,
+                                               clock,
+                                               /*agent_register_timeout_ms=*/10000,
+                                               /*agent_manager_retry_interval_ms=*/100);
+}
+
+TEST(RuntimeEnvAgentClientTest, ReusesConnectionForSequentialRequests) {
+  int port = GetFreePort();
+  HttpServerThread http_server_thread(ReplyOkKeepingAlive, "127.0.0.1", port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+  auto client = MakeClient(ioc, port);
+
+  constexpr int kRequests = 5;
+  int succeeded = 0;
+  std::function<void()> issue_one;
+  issue_one = [&]() {
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
+      ASSERT_TRUE(successful);
+      succeeded += 1;
+      if (succeeded < kRequests) {
+        issue_one();
+      }
+    });
+  };
+  issue_one();
+
+  ioc.run();
+  EXPECT_EQ(succeeded, kRequests);
+  EXPECT_EQ(http_server_thread.accepts(), 1);
+}
+
+TEST(RuntimeEnvAgentClientTest, OpensNewConnectionWhenServerSaysClose) {
+  int port = GetFreePort();
+  HttpServerThread http_server_thread(
+      [](const http::request<http::string_body> &request,
+         http::response<http::string_body> &response) {
+        ReplyOkKeepingAlive(request, response);
+        response.keep_alive(false);
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+  auto client = MakeClient(ioc, port);
+
+  constexpr int kRequests = 3;
+  int succeeded = 0;
+  std::function<void()> issue_one;
+  issue_one = [&]() {
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
+      ASSERT_TRUE(successful);
+      succeeded += 1;
+      if (succeeded < kRequests) {
+        issue_one();
+      }
+    });
+  };
+  issue_one();
+
+  ioc.run();
+  EXPECT_EQ(succeeded, kRequests);
+  EXPECT_EQ(http_server_thread.accepts(), kRequests);
+}
+
+// The agent reaps connections that have been idle for a while. The next request on such
+// a connection must transparently reconnect rather than surface an error.
+TEST(RuntimeEnvAgentClientTest, RetriesOnConnectionClosedWhileIdle) {
+  int port = GetFreePort();
+  std::promise<void> first_connection_closed;
+  std::atomic<int> requests_served = 0;
+  HttpServerThread http_server_thread(
+      [&](std::shared_ptr<HttpConnection> conn) {
+        ReplyOkKeepingAlive(conn->request_, conn->response_);
+        if (requests_served++ == 0) {
+          conn->close_after_response_ = true;
+          conn->on_closed_ = [&]() { first_connection_closed.set_value(); };
+        }
+        conn->write_response();
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+  auto client = MakeClient(ioc, port);
+
+  int succeeded = 0;
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
+    ASSERT_TRUE(successful);
+    succeeded += 1;
+    first_connection_closed.get_future().wait();
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful2) {
+      ASSERT_TRUE(successful2);
+      succeeded += 1;
+    });
+  });
+
+  ioc.run();
+  EXPECT_EQ(succeeded, 2);
+  EXPECT_EQ(http_server_thread.accepts(), 2);
+}
+
+// The whole point of reusing connections: many requests must not cost many ports.
+TEST(RuntimeEnvAgentClientTest, BoundsConnectionsUnderLoad) {
+  int port = GetFreePort();
+  HttpServerThread http_server_thread(ReplyOkKeepingAlive, "127.0.0.1", port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+  auto client = MakeClient(ioc, port);
+
+  constexpr int kRequests = 100;
+  std::atomic<int> succeeded = 0;
+  for (int i = 0; i < kRequests; ++i) {
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
+      ASSERT_TRUE(successful);
+      succeeded += 1;
+    });
+  }
+
+  ioc.run();
+  EXPECT_EQ(succeeded, kRequests);
+  EXPECT_EQ(http_server_thread.accepts(), 10);
 }
 
 }  // namespace ray
