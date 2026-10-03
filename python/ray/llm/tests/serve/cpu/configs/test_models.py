@@ -558,6 +558,71 @@ class TestAcceleratorConfigLogic:
                 accelerator_config={"kind": "tpu", "topology": "4x4"},
             )
 
+
+
+    def test_vllm_engine_config_accelerator_type_with_cpu_only_bundles_raises_error(self):
+        """Test that VLLMEngineConfig raises when accelerator_type is set but
+        placement_group_config bundles contain no GPU resources.
+        
+        Regression test for: https://github.com/ray-project/ray/issues/62138
+        """
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' is set, but the placement_group_config bundles contain no GPU resources",
+        ):
+            VLLMEngineConfig(
+                model_id="test-model",
+                accelerator_type="L4",
+                placement_group_config={
+                    "bundles": [{"CPU": 4}],
+                },
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_gpu_bundles_succeeds(self):
+        """Test that VLLMEngineConfig accepts accelerator_type when bundles contain GPU resources."""
+        engine_config = VLLMEngineConfig(
+            model_id="test-model",
+            accelerator_type="L4",
+            placement_group_config={
+                "bundles": [{"CPU": 4, "GPU": 1}],
+            },
+        )
+        assert engine_config.accelerator_type == "L4"
+        # Verify placement_bundles includes the accelerator hint
+        bundles = engine_config.placement_bundles
+        assert len(bundles) == 1
+        assert "accelerator:L4" in bundles[0]
+
+    def test_vllm_engine_config_bundle_per_worker_cpu_only_raises(self):
+        """Test that VLLMEngineConfig raises when accelerator_type is set but
+        bundle_per_worker has no GPU resources."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' is set, but the placement_group_config bundles contain no GPU resources",
+        ):
+            VLLMEngineConfig(
+                model_id="test-model",
+                accelerator_type="L4",
+                placement_group_config={
+                    "bundle_per_worker": {"CPU": 4},
+                },
+            )
+
+    def test_vllm_engine_config_bundle_per_worker_with_gpu_injects_accelerator(self):
+        """Test that bundle_per_worker with GPU resources correctly injects accelerator hint."""
+        engine_config = VLLMEngineConfig(
+            model_id="test-model",
+            accelerator_type="L4",
+            placement_group_config={
+                "bundle_per_worker": {"CPU": 4, "GPU": 1},
+            },
+        )
+        bundles = engine_config.placement_bundles
+        for bundle in bundles:
+            assert "accelerator:L4" in bundle
+            assert bundle["GPU"] == 1
+
+
     def test_engine_config_infers_tpu_from_accelerator_type_string(self):
         """Test that the engine config infers a TPU backend directly from the accelerator_type string."""
         llm_config = LLMConfig(
