@@ -16,14 +16,18 @@
 
 #include <stdarg.h>
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind/bind.hpp>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 
 #include "absl/functional/function_ref.h"
+#include "absl/time/time.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 
@@ -69,6 +73,8 @@ class RedisAsyncContext {
       instrumented_io_context &io_service,
       std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
 
+  ~RedisAsyncContext();
+
   /// Get the raw 'redisAsyncContext' pointer.
   ///
   /// \return redisAsyncContext *
@@ -76,6 +82,63 @@ class RedisAsyncContext {
 
   /// Reset the raw 'redisAsyncContext' pointer to nullptr.
   void ResetRawRedisAsyncContext();
+
+  /// Rebind this object to a freshly connected raw 'redisAsyncContext'.
+  ///
+  /// The object's own address is preserved, which matters because in-flight
+  /// `RedisRequestContext`s hold a raw pointer to it. Recreating the
+  /// `RedisAsyncContext` instead (as `RedisContext::Connect` does) would leave
+  /// those pointers dangling.
+  ///
+  /// The caller must have finished every mutation of the raw context (its
+  /// `data` pointer, connect/disconnect callbacks, queued commands) before
+  /// calling this: once published here, other threads may submit commands on
+  /// it. Because hiredis arms its first write while those callbacks are being
+  /// registered, before our event hooks exist, Reset() arms it again itself.
+  ///
+  /// \param redis_async_context A raw context to adopt, typically with its
+  /// non-blocking connect still in progress.
+  void Reset(std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
+
+  /// Set a handler invoked when hiredis reports the connection was lost.
+  ///
+  /// The handler runs on the io_service thread from inside hiredis' teardown,
+  /// so it must not reconnect synchronously.
+  void SetDisconnectHandler(std::function<void()> handler);
+
+  /// Invoke the disconnect handler, if one is set. Called by the hiredis
+  /// disconnect callback after the raw context has been released.
+  void NotifyDisconnected();
+
+  /// Set a handler invoked when hiredis reports the connection came up.
+  ///
+  /// `redisAsyncConnect` is non-blocking, so a context that looks healthy may
+  /// still be mid-handshake. Only this handler proves the connection works.
+  void SetConnectHandler(std::function<void()> handler);
+
+  /// Invoke the connect handler, if one is set.
+  void NotifyConnected();
+
+  /// Token that expires when this object is destroyed. Freeing the raw
+  /// context flushes its pending callbacks, and by then the event loop
+  /// itself may be mid-destruction: a callback that would schedule more
+  /// work checks this first and gives up instead.
+  std::weak_ptr<bool> GetAliveToken() const { return alive_; }
+
+  /// Deadline until which a command that failed without reaching Redis may be
+  /// retried for free during the current outage. The first caller of an outage
+  /// stamps it at `now + grace`; everyone after sees the same deadline, so
+  /// every in-flight command expires together no matter when it was issued.
+  /// Thread-safe.
+  ///
+  /// \param now The current time.
+  /// \param grace The grace period, used only by the call that stamps it.
+  /// \return The deadline of the current outage.
+  absl::Time OutageDeadline(absl::Time now, absl::Duration grace);
+
+  /// End the current outage, so the next one gets its own deadline.
+  /// Thread-safe.
+  void ClearOutage();
 
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
   ///
@@ -115,8 +178,19 @@ class RedisAsyncContext {
   std::mutex mutex_;
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context_;
 
+  /// Adopt `redis_async_context` and wire it up to `socket_` and the hiredis
+  /// event hooks. `mutex_` must be held.
+  void AttachLocked(
+      std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
+
   instrumented_io_context &io_service_;
   boost::asio::ip::tcp::socket socket_;
+  /// Invoked when hiredis reports the connection was lost. Set once at
+  /// construction time by RedisContext, so it needs no lock.
+  std::function<void()> disconnect_handler_;
+  /// Invoked when hiredis reports the connection is up. Set once at
+  /// construction time by RedisContext, so it needs no lock.
+  std::function<void()> connect_handler_;
   // Hiredis wanted to add a read operation to the event loop
   // but the read might not have happened yet
   bool read_requested_{false};
@@ -127,6 +201,19 @@ class RedisAsyncContext {
   bool read_in_progress_{false};
   // A write is currently in progress
   bool write_in_progress_{false};
+  /// Bumped every time a new raw context, and with it a new socket, is
+  /// adopted. A socket operation queued against an earlier socket must not
+  /// touch the flags above once they describe a different connection.
+  /// Atomic because the socket handler reads it before taking `mutex_`.
+  std::atomic<uint64_t> socket_generation_{0};
+  /// See OutageDeadline(). `kNoOutage` means no outage is in progress.
+  static constexpr int64_t kNoOutage = INT64_MIN;
+  std::atomic<int64_t> outage_deadline_ns_{kNoOutage};
+  /// Sentinel letting a queued socket operation notice that this object was
+  /// destroyed before its handler ran. Registering a hiredis connect callback
+  /// arms a write wait immediately, and RedisContext::Connect tears the
+  /// context down again as soon as it learns it was talking to a Sentinel.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 
   /// Issue async socket operations depending on the state of the redis async context.
   void Operate();
