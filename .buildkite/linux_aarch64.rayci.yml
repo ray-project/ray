@@ -87,6 +87,7 @@ steps:
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -114,6 +115,7 @@ steps:
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -344,6 +346,7 @@ steps:
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -376,6 +379,7 @@ steps:
         --platform cu12.8.1-cudnn
         --platform cu12.9.1-cudnn
         --platform cu13.0.0-cudnn
+        --platform cu13.3.1-cudnn
         --image-type ray
         --architecture aarch64
     array:
@@ -438,6 +442,7 @@ steps:
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -470,6 +475,7 @@ steps:
         --platform cu12.8.1-cudnn
         --platform cu12.9.1-cudnn
         --platform cu13.0.0-cudnn
+        --platform cu13.3.1-cudnn
         --image-type ray-extra
         --architecture aarch64
     array:
