@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/functional/hash.hpp>
 #include <deque>
 #include <list>
@@ -197,6 +198,13 @@ class IOWorkerPoolInterface {
 /// Used for new scheduler unit tests.
 class WorkerPoolInterface : public IOWorkerPoolInterface {
  public:
+  /// Own group cleanup for a registered Nsight worker; defer only graceful exits.
+  virtual bool DeferProfilerCleanup(const WorkerID &, bool graceful) { return false; }
+  /// Run before Stop, with the main event loop still serving disconnect replies.
+  virtual void PrepareProfilerShutdown(std::function<void()> done) { done(); }
+  /// Drain exited workers' launchers; force-finish live workers without an IPC wait.
+  virtual void DrainProfilerProcesses() {}
+
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///
@@ -322,6 +330,10 @@ inline std::ostream &operator<<(std::ostream &os,
 /// is a container for a unit of work.
 class WorkerPool : public WorkerPoolInterface {
  public:
+  bool DeferProfilerCleanup(const WorkerID &worker_id, bool graceful) override;
+  void PrepareProfilerShutdown(std::function<void()> done) override;
+  void DrainProfilerProcesses() override;
+
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
   /// Once each worker process has registered with an external server, the
@@ -371,7 +383,8 @@ class WorkerPool : public WorkerPoolInterface {
       int ray_debugger_external,
       ClockInterface &clock,
       WorkerPoolMetrics &worker_pool_metrics,
-      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
+      AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {},
+      std::string profiler_shutdown_marker_path = "");
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() override;
@@ -682,8 +695,8 @@ class WorkerPool : public WorkerPoolInterface {
     bool is_pending_registration = true;
     /// The type of the worker.
     rpc::WorkerType worker_type;
-    /// The worker process instance.
-    std::unique_ptr<ProcessInterface> proc;
+    /// Retained by profiler_processes_ until post-worker-exit export completes.
+    std::shared_ptr<ProcessInterface> proc;
     /// The worker process start time (monotonic, for measuring startup latency).
     SteadyTimePoint start_time;
     /// The runtime env Info.
@@ -692,6 +705,8 @@ class WorkerPool : public WorkerPoolInterface {
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
+    /// Profiler cleanup owns this group, even after completion, until disconnect.
+    bool profiler_cleanup_owned = false;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -746,6 +761,35 @@ class WorkerPool : public WorkerPoolInterface {
   std::list<IdleWorkerEntry> idle_of_all_languages_;
 
  private:
+#if defined(__linux__)
+  enum class ProfilerState { waiting_for_worker_exit, flushing, finished };
+  struct ProfilerProcess {
+    std::shared_ptr<ProcessInterface> launcher;
+    std::shared_ptr<WorkerInterface> worker;
+    pid_t pgid;
+    ProfilerState state = ProfilerState::waiting_for_worker_exit;
+    bool cleanup_requested = false;
+    bool worker_kill_sent = false;
+    std::optional<SteadyTimePoint> flush_deadline = std::nullopt;
+  };
+  // All access, including destruction, is serialized with the main executor.
+  // Retains launcher ownership after DisconnectWorker removes the process record.
+  absl::flat_hash_map<WorkerID, ProfilerProcess> profiler_processes_;
+  std::unique_ptr<boost::asio::steady_timer> profiler_timer_;
+  // Cancellation alone does not invalidate an already queued successful callback.
+  std::shared_ptr<int> profiler_lifetime_ = std::make_shared<int>(0);
+  bool profiler_timer_pending_ = false;
+  std::optional<SteadyTimePoint> profiler_worker_exit_deadline_;
+  std::optional<SteadyTimePoint> profiler_shutdown_deadline_;
+  std::function<void()> profiler_shutdown_done_;
+  bool TryFinishProfiler(ProfilerProcess &profiler, bool force);
+  void PollProfilerProcesses();
+  void ScheduleProfilerPoll();
+  void UpdateProfilerShutdownMarker();
+#endif
+  bool profiler_shutdown_started_ = false;
+  const std::string profiler_shutdown_marker_path_;
+
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
@@ -975,6 +1019,7 @@ class WorkerPool : public WorkerPoolInterface {
   static inline const ProcessInterface &kNullProcess = Process();
 
   friend class WorkerPoolTest;
+  friend class WorkerPoolProfilerTest;
   friend class WorkerPoolDriverRegisteredTest;
 };
 
