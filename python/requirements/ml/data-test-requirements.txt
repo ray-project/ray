@@ -13,7 +13,7 @@ google-cloud-bigquery-storage
 google-api-core
 webdataset
 raydp==1.7.0b20250423.dev0
-pylance
+pylance==6.0.1
 delta-sharing
 deltalake==1.5.0
 pytest-mock
