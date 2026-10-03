@@ -109,6 +109,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_deployment_actor_name,
     get_random_string,
+    maybe_crash_for_testing,
     msgpack_deserialize,
     msgpack_serialize,
     override_runtime_envs_except_env_vars,
@@ -6624,6 +6625,7 @@ class DeploymentStateManager:
             CHECKPOINT_KEY,
             cloudpickle.dumps(deployment_state_info),
         )
+        maybe_crash_for_testing()
 
     def get_running_replica_infos(
         self,
@@ -7012,6 +7014,8 @@ class DeploymentStateManager:
                     ): tombstone,
                 }
             )
+            # Routers hold the tombstone but the deletion is not checkpointed yet.
+            maybe_crash_for_testing()
             self._long_poll_host.remove_keys(
                 # pyrefly: ignore[bad-argument-type]
                 [(LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id)]  # type: ignore[list-item]
