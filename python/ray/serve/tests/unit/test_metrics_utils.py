@@ -11,6 +11,7 @@ from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
     TimeStampedValue,
+    push_freshness_window_s,
 )
 from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
@@ -1606,6 +1607,19 @@ class TestReplicaHealthVerdict:
         r._user_callable_wrapper = Mock()
         r._user_callable_wrapper.call_user_health_check.return_value = None
         return r
+
+    @pytest.mark.asyncio
+    async def test_the_cache_expires_before_the_controller_stops_trusting_a_push(self):
+        """The controller only probes once it has stopped trusting the push, so a probe
+        arriving then has to run the user check. Answering it from cache restarts the
+        probe clock, which hides a hung check for a further period and makes detection
+        slower than pull probing alone."""
+        r = self._replica()
+        r._healthy = True
+        window = push_freshness_window_s(r._deployment_config.health_check_period_s)
+        r._self_health_evaluated_at = time.time() - window
+        await r.check_health()
+        r._user_callable_wrapper.call_user_health_check.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_a_fresh_healthy_verdict_skips_the_user_check(self):

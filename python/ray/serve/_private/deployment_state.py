@@ -56,6 +56,7 @@ from ray.serve._private.common import (
     ReplicaState,
     RequestRoutingInfo,
     RunningReplicaInfo,
+    push_freshness_window_s,
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
@@ -743,16 +744,6 @@ def print_verbose_scaling_log():
     logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
-def _push_freshness_window_s(health_check_period_s: float) -> float:
-    """How long a pushed result stands in for a probe.
-
-    Shorter than one period: a crashed replica stops pushing, and nothing notices
-    until this expires and a probe is armed, so a wider window would spot a crash
-    later than pull probing alone.
-    """
-    return max(health_check_period_s * 0.75, 1.0)
-
-
 class PushedHealth(NamedTuple):
     """One replica's self-health as the controller received it.
 
@@ -837,7 +828,7 @@ class PushedHealthTracker:
         """
         pending = self._pushed.received_at if self._pushed is not None else 0.0
         newest = max(self._applied_push_received_at, pending)
-        window_s = _push_freshness_window_s(health_check_period_s)
+        window_s = push_freshness_window_s(health_check_period_s)
         return self._timer.time() - newest < window_s
 
     def _take_fresh_push(self, health_check_period_s: float) -> Optional[PushedHealth]:
@@ -847,7 +838,7 @@ class PushedHealthTracker:
         pushed = self._pushed
         self._pushed = None
         self._consumed_push_checked_at = pushed.checked_at
-        window_s = _push_freshness_window_s(health_check_period_s)
+        window_s = push_freshness_window_s(health_check_period_s)
         if self._timer.time() - pushed.received_at > window_s:
             return None  # stale; the pull path stays the fallback
         if pushed.received_at < self._applied_probe_started_at:

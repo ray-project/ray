@@ -67,6 +67,7 @@ from ray.serve._private.common import (
     TimeSeries,
     gRPCRequest,
     gRPCStreamingRequest,
+    push_freshness_window_s,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -2417,7 +2418,7 @@ class Replica:
             and (
                 not self._healthy
                 or time.time() - self._self_health_evaluated_at
-                < self._deployment_config.health_check_period_s
+                < push_freshness_window_s(self._deployment_config.health_check_period_s)
             )
         ):
             if not self._healthy:
