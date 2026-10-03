@@ -212,6 +212,9 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
         if op_metrics is not None:
             op_metrics.completed = opstate.op.metrics.row_outputs_taken
             total = opstate.op.num_output_rows_total()
+            if total is None and opstate.op.has_completed():
+                # Resolve an unknown total to the actual output count once the operator is done.
+                total = op_metrics.completed
             if total is not None:
                 op_metrics.total = total
             op_metrics.desc = format_op_state_summary(opstate, resource_manager)
