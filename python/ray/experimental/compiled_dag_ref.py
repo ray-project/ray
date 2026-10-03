@@ -38,6 +38,12 @@ class CompiledDAGRef:
     """
     A reference to a compiled DAG execution result.
 
+    .. deprecated::
+        Ray Compiled Graph is deprecated and will be removed in a future
+        release. For direct GPU-to-GPU tensor transfer between actors, use
+        Ray Direct Transport (RDT) instead:
+        https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html
+
     This is a subclass of ObjectRef and resembles ObjectRef.  For example,
     similar to ObjectRef, ray.get() can be called on it to retrieve the result.
     However, there are several major differences:

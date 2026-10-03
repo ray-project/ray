@@ -39,6 +39,12 @@ DEFAULT_OVERLAP_GPU_COMMUNICATION = env_bool(
 class DAGContext:
     """Global settings for Ray DAG.
 
+    .. deprecated::
+        Ray Compiled Graph is deprecated and will be removed in a future
+        release. For direct GPU-to-GPU tensor transfer between actors, use
+        Ray Direct Transport (RDT) instead:
+        https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html
+
     You can configure parameters in the DAGContext by setting the environment
     variables, `RAY_CGRAPH_<param>` (e.g., `RAY_CGRAPH_buffer_size_bytes`) or Python.
 

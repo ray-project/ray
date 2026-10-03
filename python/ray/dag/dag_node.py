@@ -292,6 +292,12 @@ class DAGNode(DAGNodeBase):
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
+        .. deprecated::
+            Ray Compiled Graph is deprecated and will be removed in a future
+            release. For direct GPU-to-GPU tensor transfer between actors, use
+            Ray Direct Transport (RDT) instead:
+            https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html
+
         Args:
             _submit_timeout: The maximum time in seconds to wait for execute() calls.
                 None means using default timeout, 0 means immediate timeout
@@ -338,6 +344,14 @@ class DAGNode(DAGNodeBase):
         Returns:
             A compiled DAG.
         """
+        warnings.warn(
+            "Ray Compiled Graph is deprecated and will be removed in a future "
+            "release. For direct GPU-to-GPU tensor transfer between actors, use "
+            "Ray Direct Transport (RDT) instead: "
+            "https://docs.ray.io/en/latest/ray-core/direct-transport/direct-transport.html",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         from ray.dag import DAGContext
 
         ctx = DAGContext.get_current()
