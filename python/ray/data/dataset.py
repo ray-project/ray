@@ -2344,9 +2344,10 @@ class Dataset:
 
         .. tip::
 
-            Repartitioning with ``keys`` hash-shuffles the whole dataset. If the
-            dataset is much larger than the cluster's aggregate object-store
-            memory, enable :ref:`disk-based shuffle <disk-based-shuffle>` by
+            Repartitioning with ``keys`` or ``shuffle=True`` shuffles the whole dataset.
+            Under ``ShuffleStrategy.SHUFFLE_V2``, if the dataset is much larger than
+            the cluster's aggregate object-store memory, enable
+            :ref:`disk-based shuffle <disk-based-shuffle>` by
             setting ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
             environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
@@ -2383,7 +2384,10 @@ class Dataset:
                 contains a subset of data rows from each input block, which
                 requires all-to-all data movement. When shuffle is disabled,
                 output blocks are created from adjacent input blocks,
-                minimizing data movement.
+                minimizing data movement. When shuffle is enabled with
+                ``ShuffleStrategy.SHUFFLE_V2`` and no keys, rows within each input
+                block are assigned round-robin to output partitions, starting
+                at a randomly selected partition for each block.
             keys: List of key columns repartitioning will use to determine which
                 partition will row belong to after repartitioning (by applying
                 hash-partitioning algorithm to the whole dataset). Note that, this
@@ -2394,8 +2398,8 @@ class Dataset:
 
         Note that you must set either `num_blocks` or `target_num_rows_per_block`
         but not both.
-        Additionally note that this operation materializes the entire dataset in memory
-        when you set shuffle to True.
+        Additionally note that this operation materializes the entire dataset
+        when you set shuffle to True, using disk when disk-based shuffle is enabled.
 
         Returns:
             The repartitioned :class:`Dataset`.
