@@ -471,6 +471,20 @@ class VLLMEngine(LLMEngine):
             state, "openai_serving_tokenization", None
         )
 
+        from ray.serve._private.constants import RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
+
+        if RAY_SERVE_ENABLE_LLM_STREAMING_METRICS:
+            from ray.llm._internal.serve.observability.metrics.llm_metrics import (
+                enable_stream_metrics_token_counts,
+            )
+
+            for serving, chat in (
+                (self._oai_serving_chat, True),
+                (self._oai_serving_completion, False),
+            ):
+                if serving is not None:
+                    enable_stream_metrics_token_counts(serving, chat=chat)
+
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
