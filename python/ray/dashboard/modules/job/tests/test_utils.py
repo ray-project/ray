@@ -1,10 +1,13 @@
+import concurrent.futures
 import os
 import sys
+import threading
 from tempfile import NamedTemporaryFile
 
 import pytest
 
 from ray.dashboard.modules.job.common import JobSubmitRequest
+from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.utils import (
     fast_tail_last_n_lines,
     file_tail_iterator,
@@ -136,6 +139,48 @@ class TestIterLine:
         assert await anext(it) is None
 
     @pytest.mark.asyncio
+    async def test_recovers_after_external_truncate(self, tmp):
+        """If the file is truncated externally (e.g. copytruncate log
+        rotation) while being tailed, the iterator should detect that its
+        read position is now past the file's actual size and seek back to
+        the start, rather than silently returning corrupted/truncated
+        lines read from a stale position.
+        """
+        it = file_tail_iterator(tmp)
+        assert await anext(it) is None
+
+        f = open(tmp, "a")
+        f.write("line0\n")
+        f.write("line1\n")
+        f.flush()
+        assert await anext(it) == ["line0\n", "line1\n"]
+
+        # Reader is now positioned at EOF, offset == len("line0\nline1\n").
+        # Trigger one more anext() call so the iterator's internal
+        # readline() hits EOF and its position is recorded relative to
+        # the file as it stood before truncation.
+        # (We don't await this one to completion since it would sleep on
+        # EOF; instead we truncate first, then write, then confirm the
+        # next real chunk read is correct.)
+
+        # Simulate external copytruncate rotation.
+        with open(tmp, "r+") as trunc_f:
+            trunc_f.truncate(0)
+
+        f.write("line2\n")
+        f.flush()
+
+        # Our truncation check now runs before every read (not only
+        # after hitting EOF), so recovery happens on the very next call
+        # rather than needing an extra call to first flush an empty
+        # in-flight chunk from before rotation.
+        result = await anext(it)
+        assert result == ["line2\n"], (
+            "Expected clean recovery after truncation, got possibly "
+            f"corrupted result: {result!r}"
+        )
+
+    @pytest.mark.asyncio
     async def test_batching(self, tmp):
         it = file_tail_iterator(tmp)
         assert await anext(it) is None
@@ -216,6 +261,183 @@ class TestIterLine:
 
         # Calls should continue returning None after file deleted.
         assert await anext(it) is None
+
+
+class TestJobLogStorageClientRotation:
+    """Tests for JobLogStorageClient's handling of rotated backup log
+    files, added alongside job driver log rotation support. Uses a
+    real JobLogStorageClient instance with get_log_file_path patched to
+    point at a plain tmp_path, avoiding the need for a running Ray
+    cluster to exercise this pure file I/O logic."""
+
+    @pytest.fixture
+    def log_client(self, tmp_path, monkeypatch):
+        client = JobLogStorageClient()
+        log_path = str(tmp_path / "job-driver-test_job.log")
+        monkeypatch.setattr(client, "get_log_file_path", lambda job_id: log_path)
+        return client, log_path
+
+    def test_get_rotated_backup_paths_none_exist(self, log_client):
+        client, log_path = log_client
+        assert client._get_rotated_backup_paths(log_path) == []
+
+    def test_get_rotated_backup_paths_ordering(self, log_client):
+        client, log_path = log_client
+        # Create backups out of numeric order to make sure the method
+        # sorts by the actual .N suffix, not creation/discovery order.
+        with open(f"{log_path}.2", "w") as f:
+            f.write("older\n")
+        with open(f"{log_path}.1", "w") as f:
+            f.write("newer\n")
+
+        result = client._get_rotated_backup_paths(log_path)
+        assert result == [f"{log_path}.2", f"{log_path}.1"], (
+            "Expected oldest-to-newest order (.2 before .1), got: " f"{result!r}"
+        )
+
+    def test_get_logs_with_no_rotation(self, log_client):
+        client, log_path = log_client
+        with open(log_path, "w") as f:
+            f.write("line1\nline2\n")
+
+        assert client.get_logs("test_job") == "line1\nline2\n"
+
+    def test_get_logs_concatenates_backups_and_active_file(self, log_client):
+        client, log_path = log_client
+        with open(f"{log_path}.2", "w") as f:
+            f.write("oldest content\n")
+        with open(f"{log_path}.1", "w") as f:
+            f.write("middle content\n")
+        with open(log_path, "w") as f:
+            f.write("newest content\n")
+
+        result = client.get_logs("test_job")
+        assert result == "oldest content\nmiddle content\nnewest content\n", (
+            "Expected backups concatenated oldest first, then the "
+            f"active file last. Got: {result!r}"
+        )
+
+    def test_get_logs_missing_active_file_still_returns_backups(self, log_client):
+        client, log_path = log_client
+        with open(f"{log_path}.1", "w") as f:
+            f.write("backup only\n")
+        # Active file was never created (e.g. driver hasn't started
+        # writing yet, or was cleaned up), get_logs should not raise.
+        result = client.get_logs("test_job")
+        assert result == "backup only\n"
+
+    def test_get_logs_no_files_at_all_returns_empty_string(self, log_client):
+        client, _ = log_client
+        assert client.get_logs("test_job") == ""
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_empty_active_file_reads_backup(
+        self, log_client
+    ):
+        """Regression test: an active file that is empty because
+        rotation just truncated it should not be treated the same as
+        "job has produced no output at all". If a backup with real
+        content exists, it should be read.
+        """
+        client, log_path = log_client
+        with open(f"{log_path}.1", "w") as f:
+            f.write("line1\nline2\nline3\n")
+        # Active file exists but is empty, exactly what copytruncate
+        # rotation leaves behind immediately after firing.
+        with open(log_path, "w"):
+            pass
+
+        result = await client.get_last_n_log_lines("test_job", num_log_lines=10)
+        assert result == "line1\nline2\nline3\n", (
+            "Expected backup content to be returned when the active "
+            f"file is empty but a backup exists. Got: {result!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_empty_active_no_backup_returns_empty(
+        self, log_client
+    ):
+        """An active file that is empty with no backups at all should
+        still return an empty string, this is the genuine "job has not
+        produced output yet" case, distinct from the rotation case
+        above.
+        """
+        client, log_path = log_client
+        with open(log_path, "w"):
+            pass
+
+        result = await client.get_last_n_log_lines("test_job", num_log_lines=10)
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_active_file_alone_sufficient(self, log_client):
+        """When the active file alone already has enough lines, backups
+        should not be consulted at all, even if they exist (they would
+        represent older, already-superseded history).
+        """
+        client, log_path = log_client
+        with open(f"{log_path}.1", "w") as f:
+            f.write("should not appear\n")
+        with open(log_path, "w") as f:
+            f.write("a\nb\nc\n")
+
+        result = await client.get_last_n_log_lines("test_job", num_log_lines=2)
+        assert "should not appear" not in result
+        assert result.endswith("b\nc\n")
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_runs_on_supplied_executor(self, log_client):
+        """When an executor is supplied, get_last_n_log_lines must
+        actually run its synchronous file I/O on that executor rather
+        than inline on the calling thread, and still return the correct
+        result. This is what makes the failure-path read in
+        JobSupervisor.run() non-blocking for its event loop, see the
+        PR #64528 discussion on Cursor's "full-file scan before log
+        tail" comment.
+        """
+        client, log_path = log_client
+        with open(log_path, "w") as f:
+            f.write("a\nb\nc\n")
+
+        seen_thread_names = []
+
+        def tracking_initializer():
+            seen_thread_names.append(threading.current_thread().name)
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="test-log-read",
+            initializer=tracking_initializer,
+        ) as executor:
+            result = await client.get_last_n_log_lines(
+                "test_job", num_log_lines=2, executor=executor
+            )
+
+        assert result.endswith("b\nc\n")
+        assert len(seen_thread_names) == 1
+        assert seen_thread_names[0].startswith("test-log-read")
+        assert seen_thread_names[0] != threading.current_thread().name
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_no_executor_runs_inline(self, log_client):
+        """Explicitly confirms the executor=None default still runs
+        inline on the calling thread, preserving the exact behavior
+        this method had before it became executor-aware.
+        """
+        client, log_path = log_client
+        with open(log_path, "w") as f:
+            f.write("a\nb\nc\n")
+
+        calling_thread_name = threading.current_thread().name
+        result = await client.get_last_n_log_lines(
+            "test_job", num_log_lines=2, executor=None
+        )
+        assert result.endswith("b\nc\n")
+        # No executor was involved, so nothing to assert about a
+        # different thread here, this test's real purpose is simply to
+        # confirm executor=None still works end to end after the
+        # rewrite in job_log_storage_client.py.
+        assert threading.current_thread().name == calling_thread_name
 
 
 class TestFastTailLastNLines:
