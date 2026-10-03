@@ -10,6 +10,7 @@ from typing import (
     Awaitable,
     Callable,
     Dict,
+    Iterable,
     List,
     Optional,
     Type,
@@ -55,7 +56,9 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TranscriptionRequest,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (
+    VLLM_API_KEY_ENV_VAR,
     SetRequestIdMiddleware,
+    add_auth_middleware,
     add_exception_handling_middleware,
 )
 from ray.llm._internal.serve.core.ingress.utils import (
@@ -134,7 +137,11 @@ DEFAULT_ENDPOINTS = {
 }
 
 
-def init() -> FastAPI:
+def init(
+    *,
+    api_key: Optional[str] = None,
+    exempt_paths: Optional[Iterable[str]] = None,
+) -> FastAPI:
     _fastapi_router_app = FastAPI(lifespan=metrics_lifespan)
 
     # NOTE: PLEASE READ CAREFULLY BEFORE MODIFYING
@@ -149,6 +156,27 @@ def init() -> FastAPI:
     #       exceptions from the handlers, avoiding them propagating to other
     #       middleware (for ex, telemetry)
     add_exception_handling_middleware(_fastapi_router_app)
+
+    # Enforce bearer-token authentication when a key is configured.
+    #
+    # NOTE: Added right after the exception handler so it is INNER to the CORS,
+    # metrics and request-id middleware (LIFO: earlier-added runs later/inner).
+    # This is deliberate:
+    #   - inner to CORS   -> a 401 short-circuit still passes back out through
+    #     CORSMiddleware, so cross-origin clients get CORS headers on rejections;
+    #   - inner to metrics -> rejected requests are still recorded, and since the
+    #     metrics middleware reads `request.state.user_id` on the way out (after
+    #     the inner app returns), authenticated-user tagging still works;
+    #   - inner to request-id -> a rejected request still carries a request id.
+    # A no-op when no key is configured (open endpoint, preserving prior
+    # behavior).
+    add_auth_middleware(
+        _fastapi_router_app,
+        api_key=api_key,
+        api_key_env_var=VLLM_API_KEY_ENV_VAR,
+        exempt_paths=exempt_paths or (),
+    )
+
     # Configure CORS middleware
     _fastapi_router_app.add_middleware(
         CORSMiddleware,
@@ -174,6 +202,8 @@ def make_fastapi_ingress(
     *,
     endpoint_map: Optional[Dict[str, Callable[[FastAPI], Callable]]] = None,
     app: Optional[FastAPI] = None,
+    api_key: Optional[str] = None,
+    exempt_paths: Optional[Iterable[str]] = None,
 ):
     """
     Create a Ray Serve ingress deployment from a class and endpoint mapping.
@@ -185,6 +215,12 @@ def make_fastapi_ingress(
             returns a route decorator.
         app: Optional FastAPI app to use for the ingress deployment. If not
             provided, a new FastAPI app will be created.
+        api_key: Optional explicit bearer key to enforce on the ingress. Only
+            used when ``app`` is not provided (a new app is created via
+            ``init``). Takes precedence over the ``VLLM_API_KEY`` environment
+            variable.
+        exempt_paths: Optional request paths that bypass authentication (e.g.
+            health checks). Only used when ``app`` is not provided.
 
     Returns:
         A class decorated with @serve.ingress
@@ -203,7 +239,7 @@ def make_fastapi_ingress(
     """
 
     if app is None:
-        app = init()
+        app = init(api_key=api_key, exempt_paths=exempt_paths)
 
     if endpoint_map is None:
         endpoint_map = DEFAULT_ENDPOINTS
