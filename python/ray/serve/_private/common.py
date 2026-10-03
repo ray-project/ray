@@ -57,6 +57,15 @@ class DeploymentID:
 
 
 @PublicAPI(stability="alpha")
+def push_freshness_window_s(health_check_period_s: float) -> float:
+    """How long a pushed self-health result stands in for a probe.
+
+    Both ends hold to it: the controller probes once a push is older than this, and
+    the replica stops serving its cached verdict, so that probe runs a real check.
+    """
+    return max(health_check_period_s * 0.75, 1.0)
+
+
 @dataclass(frozen=True)
 class ReplicaID:
     """A unique identifier for a replica."""
