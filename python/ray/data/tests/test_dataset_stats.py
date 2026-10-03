@@ -396,6 +396,22 @@ class TestDatasetSummary:
         # Median of [1, 0, 1].
         assert stats["approx_quantile[0]"] == pytest.approx(1.0)
 
+    def test_zero_percentage_on_pandas_boolean_block(self):
+        """ZeroPercentage must handle pandas blocks, whose column accessor
+        returns a plain Python list rather than an Arrow container, including
+        boolean columns (treated as 0/1)."""
+        from ray.data.aggregate import ZeroPercentage
+
+        block = pd.DataFrame({"flag": [True, False, True, None]})
+        zp = ZeroPercentage(on="flag")
+        zero_count, non_null_count = zp.aggregate_block(block)
+        assert (zero_count, non_null_count) == (1, 3)
+
+        # Non-boolean pandas columns keep working.
+        block_num = pd.DataFrame({"v": [0, 1, 0, None]})
+        zero_count, non_null_count = ZeroPercentage(on="v").aggregate_block(block_num)
+        assert (zero_count, non_null_count) == (2, 3)
+
     def test_summary_with_column_filter(self):
         """Test summary with specific columns."""
         ds = ray.data.from_items(
