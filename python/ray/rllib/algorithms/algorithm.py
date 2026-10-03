@@ -2532,6 +2532,7 @@ class Algorithm(Checkpointable, Trainable):
         module_id: ModuleID,
         module_spec: RLModuleSpec,
         *,
+        module_state: Optional[StateDict] = None,
         config_overrides: Optional[Dict] = None,
         new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
@@ -2553,6 +2554,11 @@ class Algorithm(Checkpointable, Trainable):
                 or a dot, space or backslash at the end of the ID.
             module_spec: The SingleAgentRLModuleSpec to use for constructing the new
                 RLModule.
+            module_state: Optional initial state to apply to the new RLModule on the
+                LearnerGroup before the module is synchronized to EnvRunners. This
+                allows cloned/frozen modules to become visible atomically instead of
+                exposing their default initialization for one sampling iteration.
+                Requires `add_to_learners=True`.
             config_overrides: The `AlgorithmConfig` overrides that should apply to
                 the new Module, if any.
             new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
@@ -2593,6 +2599,11 @@ class Algorithm(Checkpointable, Trainable):
                 "At least one of `add_to_learners`, `add_to_env_runners`, or "
                 "`add_to_eval_env_runners` must be set to True!"
             )
+        if module_state is not None and not add_to_learners:
+            raise ValueError(
+                "`module_state` requires `add_to_learners=True` so the state has "
+                "one authoritative source before EnvRunner synchronization."
+            )
 
         # Add to Learners and sync weights.
         if add_to_learners:
@@ -2602,6 +2613,16 @@ class Algorithm(Checkpointable, Trainable):
                 config_overrides=config_overrides,
                 new_should_module_be_updated=new_should_module_be_updated,
             )
+            if module_state is not None:
+                self.learner_group.set_state(
+                    {
+                        COMPONENT_LEARNER: {
+                            COMPONENT_RL_MODULE: {
+                                module_id: module_state,
+                            }
+                        }
+                    }
+                )
 
         # Change our config (AlgorithmConfig) to contain the new Module.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
@@ -2645,8 +2666,13 @@ class Algorithm(Checkpointable, Trainable):
             else:
                 self.env_runner_group.foreach_env_runner(_add)
             self.env_runner_group.sync_weights(
+                policies=[module_id],
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
+                # EnvRunners may already have the same global weight sequence number
+                # as the LearnerGroup. Force this structural first sync so the newly
+                # created module cannot keep an independently initialized state.
+                force=add_to_learners,
             )
         # Add to eval EnvRunners and sync weights.
         if add_to_eval_env_runners is True and self.eval_env_runner_group is not None:
@@ -2657,8 +2683,10 @@ class Algorithm(Checkpointable, Trainable):
             else:
                 self.eval_env_runner_group.foreach_env_runner(_add)
             self.eval_env_runner_group.sync_weights(
+                policies=[module_id],
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
+                force=add_to_learners,
             )
 
         return multi_rl_module_spec

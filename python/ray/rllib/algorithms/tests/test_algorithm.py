@@ -12,6 +12,7 @@ import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -28,6 +29,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.test_utils import check
 from ray.tune import register_env
 
 
@@ -203,6 +205,117 @@ class TestAlgorithm(unittest.TestCase):
                 not_mapped=[i, i + 1],
             )
 
+        algo.stop()
+
+    def test_add_module_initial_state_is_immediately_visible_everywhere(self):
+        """A cloned module must not expose default weights for one iteration."""
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env="multi_cart",
+                env_config={"num_agents": 2},
+            )
+            .env_runners(num_env_runners=1, num_cpus_per_env_runner=0.1)
+            .training(
+                train_batch_size=100,
+                minibatch_size=50,
+                num_epochs=1,
+            )
+            .rl_module(
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[5], fcnet_activation="linear"
+                ),
+            )
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
+            )
+            .evaluation(
+                evaluation_num_env_runners=1,
+                evaluation_config=ppo.PPOConfig.overrides(
+                    num_cpus_per_env_runner=0.1
+                ),
+            )
+        )
+
+        algo = config.build()
+        # Reproduce the reported condition: after a real learner update, existing
+        # EnvRunners and the LearnerGroup already share a non-zero global weight
+        # sequence number.
+        algo.train()
+        self.assertGreater(algo.env_runner._weights_seq_no, 0)
+        local_seq_no_before = algo.env_runner._weights_seq_no
+        remote_seq_nos_before = algo.env_runner_group.foreach_env_runner(
+            lambda env_runner: env_runner._weights_seq_no,
+            local_env_runner=False,
+        )
+
+        source_env_module = algo.get_module("p0")
+        inference_source_state = source_env_module.get_state()
+        learner_source_state = algo.learner_group.get_state(
+            components=[f"{COMPONENT_LEARNER}/{COMPONENT_RL_MODULE}/p0"]
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]["p0"]
+
+        # No further train() call is allowed between creation and these assertions.
+        algo.add_module(
+            module_id="p1",
+            module_spec=RLModuleSpec.from_module(source_env_module),
+            module_state=learner_source_state,
+            new_agent_to_module_mapping_fn=lambda *a, **kw: "p1",
+            new_should_module_be_updated=["p1"],
+        )
+
+        learner_state = algo.learner_group.get_state(
+            components=[f"{COMPONENT_LEARNER}/{COMPONENT_RL_MODULE}/p1"]
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]["p1"]
+        check(learner_state, learner_source_state)
+
+        # Local, remote training, and evaluation EnvRunners must all see the clone
+        # immediately, even though their global WEIGHTS_SEQ_NO did not advance.
+        check(algo.get_module("p1").get_state(), inference_source_state)
+        for state in algo.env_runner_group.foreach_env_runner(
+            lambda env_runner: env_runner.module["p1"].get_state(),
+            local_env_runner=False,
+        ):
+            check(state, inference_source_state)
+        for state in algo.eval_env_runner_group.foreach_env_runner(
+            lambda env_runner: env_runner.module["p1"].get_state(),
+            local_env_runner=False,
+        ):
+            check(state, inference_source_state)
+
+        # Force mode uses WEIGHTS_SEQ_NO=0 only as a one-shot application signal.
+        # It must not rewind or advance the runners' global version counters.
+        self.assertEqual(algo.env_runner._weights_seq_no, local_seq_no_before)
+        self.assertEqual(
+            algo.env_runner_group.foreach_env_runner(
+                lambda env_runner: env_runner._weights_seq_no,
+                local_env_runner=False,
+            ),
+            remote_seq_nos_before,
+        )
+
+        algo.stop()
+
+    def test_add_module_initial_state_requires_learner_authority(self):
+        config = (
+            ppo.PPOConfig()
+            .environment(env="multi_cart", env_config={"num_agents": 2})
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
+            )
+        )
+        algo = config.build()
+        source = algo.get_module("p0")
+        with self.assertRaisesRegex(ValueError, "module_state"):
+            algo.add_module(
+                module_id="p1",
+                module_spec=RLModuleSpec.from_module(source),
+                module_state=source.get_state(),
+                add_to_learners=False,
+                add_to_eval_env_runners=False,
+            )
         algo.stop()
 
     @OldAPIStack

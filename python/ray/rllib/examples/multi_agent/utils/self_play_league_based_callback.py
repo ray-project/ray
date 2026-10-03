@@ -236,22 +236,7 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
                     algorithm.add_module(
                         module_id=new_mod_id,
                         module_spec=RLModuleSpec.from_module(main_module),
-                    )
-                    # TODO (sven): Maybe we should move this convenience step back into
-                    #  `Algorithm.add_module()`? Would be less explicit, but also
-                    #  easier.
-                    algorithm.set_state(
-                        {
-                            "learner_group": {
-                                "learner": {
-                                    "rl_module": {
-                                        new_mod_id: multi_rl_module[
-                                            module_id
-                                        ].get_state(),
-                                    }
-                                }
-                            }
-                        }
+                        module_state=multi_rl_module[module_id].get_state(),
                     )
 
                 algorithm.env_runner_group.foreach_env_runner(

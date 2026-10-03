@@ -700,6 +700,7 @@ class EnvRunnerGroup:
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[float] = 0.0,
         inference_only: Optional[bool] = False,
+        force: bool = False,
     ) -> None:
         """Syncs model weights from the given weight source to all remote workers.
 
@@ -725,6 +726,9 @@ class EnvRunnerGroup:
                 modules. This is needed for algorithms in the new stack that
                 use inference-only modules. In this case only a part of the
                 parameters are synced to the workers. Default is False.
+            force: Whether to force the RLModule state update even when the source and
+                destination report the same weight sequence number. This is needed for
+                structural changes such as adding a new module between learner updates.
         """
         if self.local_env_runner is None and from_worker_or_learner_group is None:
             raise TypeError(
@@ -796,6 +800,11 @@ class EnvRunnerGroup:
                     for k, v in rl_module_state.items()
                     if k in [COMPONENT_RL_MODULE, WEIGHTS_SEQ_NO]
                 }
+                if force:
+                    # A missing/zero sequence number means "force update" to
+                    # EnvRunner.set_state(). Keep the runner's global sequence number
+                    # unchanged while still applying newly introduced module state.
+                    rl_module_state[WEIGHTS_SEQ_NO] = 0
 
                 # Move weights to the object store to avoid having to make n pickled
                 # copies of the weights dict for each worker.
