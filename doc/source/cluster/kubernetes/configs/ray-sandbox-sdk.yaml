@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ray-sandbox-sdk
+---
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: sandbox-sdk
+  namespace: ray-sandbox-sdk
+spec:
+  rayVersion: '2.58.0'
+  headGroupSpec:
+    rayStartParams:
+      num-cpus: '0'
+      dashboard-host: '0.0.0.0'
+      object-store-memory: '134217728'
+    template:
+      spec:
+        shareProcessNamespace: true
+        containers:
+        - name: ray-head
+          image: ray-sandbox-sdk:dev
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: '1'
+              memory: 2Gi
+            limits:
+              cpu: '2'
+              memory: 2Gi
+          volumeMounts:
+          - name: ray-session
+            mountPath: /tmp/ray
+        - name: facade
+          image: ray-sandbox-sdk:dev
+          imagePullPolicy: IfNotPresent
+          command: [python, -m, ray.experimental.sandbox.http.grpc_facade]
+          args:
+          - --host=0.0.0.0
+          - --port=50051
+          - --advertise-url=http://127.0.0.1:50051
+          env:
+          - name: RAY_ADDRESS
+            value: 127.0.0.1:6379
+          ports:
+          - name: grpc
+            containerPort: 50051
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: '1'
+              memory: 1Gi
+            limits:
+              cpu: '1'
+              memory: 1Gi
+          volumeMounts:
+          - name: ray-session
+            mountPath: /tmp/ray
+        volumes:
+        - name: ray-session
+          emptyDir: {}
+  workerGroupSpecs:
+  - groupName: sandbox-workers
+    replicas: 1
+    minReplicas: 1
+    maxReplicas: 1
+    rayStartParams:
+      num-cpus: '2'
+      resources: '"{\"gvisor\": 2}"'
+      object-store-memory: '134217728'
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: ray-sandbox-sdk:dev
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+            appArmorProfile:
+              type: Unconfined
+          resources:
+            requests:
+              cpu: '2'
+              memory: 3Gi
+            limits:
+              cpu: '2'
+              memory: 3Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-grpc
+  namespace: ray-sandbox-sdk
+spec:
+  type: ClusterIP
+  selector:
+    ray.io/cluster: sandbox-sdk
+    ray.io/node-type: head
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: grpc
