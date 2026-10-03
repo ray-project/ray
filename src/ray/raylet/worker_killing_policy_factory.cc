@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/common/ray_config.h"
@@ -33,23 +34,38 @@ std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create
     return std::make_unique<GroupByOwnerIdWorkerKillingPolicy>();
   }
 
-  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                                   MemoryMonitorInterface::kDefaultCgroupPath)
-                                   .total_bytes;
-  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-      total_memory_bytes,
-      RayConfig::instance().memory_usage_threshold(),
-      RayConfig::instance().min_memory_free_bytes(),
-      resource_isolation_enabled,
-      cgroup_manager);
+  float usage_threshold = RayConfig::instance().memory_usage_threshold();
+  int64_t min_memory_free_bytes = RayConfig::instance().min_memory_free_bytes();
+  MemoryMonitorUtils::ValidateMemoryThresholdConfig(usage_threshold,
+                                                    min_memory_free_bytes);
 
-  int64_t kill_memory_buffer_bytes =
-      std::min(static_cast<int64_t>(
-                   total_memory_bytes *
-                   WorkerKillingPolicyInterface::kDefaultKillMemoryBufferProportion),
-               RayConfig::instance().max_kill_memory_buffer_bytes());
-  return std::make_unique<TimeBasedWorkerKillingPolicy>(memory_usage_threshold_bytes,
-                                                        kill_memory_buffer_bytes);
+  auto memory_threshold_bytes_getter =
+      [resource_isolation_enabled,
+       &cgroup_manager,
+       usage_threshold,
+       min_memory_free_bytes](int64_t total_memory_bytes) {
+        return MemoryMonitorUtils::GetMemoryThresholdOrNull(total_memory_bytes,
+                                                            usage_threshold,
+                                                            min_memory_free_bytes,
+                                                            resource_isolation_enabled,
+                                                            cgroup_manager);
+      };
+
+  auto kill_buffer_bytes_getter = [](int64_t total_memory_bytes) {
+    int64_t kill_memory_buffer_bytes =
+        RayConfig::instance().max_kill_memory_buffer_bytes();
+    if (total_memory_bytes != MemoryMonitorInterface::kNull) {
+      kill_memory_buffer_bytes =
+          std::min(static_cast<int64_t>(
+                       total_memory_bytes *
+                       WorkerKillingPolicyInterface::kDefaultKillMemoryBufferProportion),
+                   kill_memory_buffer_bytes);
+    }
+    return kill_memory_buffer_bytes;
+  };
+
+  return std::make_unique<TimeBasedWorkerKillingPolicy>(
+      std::move(memory_threshold_bytes_getter), std::move(kill_buffer_bytes_getter));
 }
 
 }  // namespace raylet
