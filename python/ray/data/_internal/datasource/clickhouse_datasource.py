@@ -2,7 +2,6 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -250,9 +249,6 @@ class ClickHouseDatasource(Datasource):
             raise RuntimeError(f"Failed to execute block query: {e}")
         finally:
             client.close()
-        # Unpickling untrusted data can execute arbitrary code. Reject object
-        # columns unless the user has explicitly opted in.
-        raise_on_pickle_object_columns(table)
         return table
 
     def estimate_inmemory_data_size(self) -> Optional[int]:

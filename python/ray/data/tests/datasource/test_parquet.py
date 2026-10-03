@@ -87,9 +87,11 @@ def test_read_parquet_rejects_pickle_object_columns(
     table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
     pq.write_table(table, str(tmp_path / "data.parquet"))
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    # The driver reads the first footer when the datasource is constructed, so
+    # the column is refused at ``read_parquet()`` time; a file that isn't sampled
+    # is refused in the read task instead. Both land inside this block.
     with pytest.raises(Exception, match="arrow_pickled_object"):
-        ds.take_all()
+        ray.data.read_parquet(str(tmp_path)).take_all()
 
     assert not marker.exists(), "pickle.load executed attacker code"
 
@@ -114,9 +116,11 @@ def test_read_parquet_rejects_nested_pickle_object_columns(
     table = pa.table({"col": list_array})
     pq.write_table(table, str(tmp_path / "data.parquet"))
 
-    ds = ray.data.read_parquet(str(tmp_path))
+    # The driver reads the first footer when the datasource is constructed, so
+    # the column is refused at ``read_parquet()`` time; a file that isn't sampled
+    # is refused in the read task instead. Both land inside this block.
     with pytest.raises(Exception, match="arrow_pickled_object"):
-        ds.take_all()
+        ray.data.read_parquet(str(tmp_path)).take_all()
 
     assert not marker.exists(), "pickle.load executed attacker code"
 

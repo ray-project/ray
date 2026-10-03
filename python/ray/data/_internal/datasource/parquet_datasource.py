@@ -37,7 +37,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     check_for_legacy_tensor_type,
 )
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
@@ -996,10 +995,6 @@ def read_fragments(
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:
-                # When you unpickle untrusted data, attackers can execute arbitrary
-                # code. To avoid exposing our users, raise unless the user has
-                # explicitly opted in.
-                raise_on_pickle_object_columns(table)
                 if block_udf is not None:
                     yield block_udf(table)
                 else:
