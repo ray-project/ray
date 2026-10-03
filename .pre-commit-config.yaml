@@ -149,6 +149,7 @@ repos:
           (?x)^(
             python/ray/serve/_private/.*\.py|
             python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_deployment_typing.py|
             python/ray/serve/tests/typing_files/check_handle_typing.py
           )$
         exclude: |
@@ -174,6 +175,7 @@ repos:
           (?x)^(
             python/ray/serve/_private/.*\.py|
             python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_deployment_typing.py|
             python/ray/serve/tests/typing_files/check_handle_typing.py
           )$
         exclude: |
