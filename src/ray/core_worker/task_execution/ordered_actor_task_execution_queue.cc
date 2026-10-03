@@ -51,7 +51,8 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     while (!group_state.pending_tasks.empty()) {
       auto head = group_state.pending_tasks.begin();
       cancel_task_(head->second, status);
-      pending_task_id_to_is_canceled.erase(head->second.TaskID());
+      EraseTaskAttemptLocked(head->second.TaskID(),
+                             head->second.TaskSpec().AttemptNumber());
       group_state.pending_tasks.erase(head);
     }
 
@@ -59,7 +60,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     while (!group_state.pending_retry_tasks.empty()) {
       auto &req = group_state.pending_retry_tasks.front();
       cancel_task_(req, status);
-      pending_task_id_to_is_canceled.erase(req.TaskID());
+      EraseTaskAttemptLocked(req.TaskID(), req.TaskSpec().AttemptNumber());
       group_state.pending_retry_tasks.pop_front();
     }
   }
@@ -110,7 +111,11 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
   {
     absl::MutexLock lock(&mu_);
-    pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
+    // A cancel that arrived while another attempt of this task was pending applies to
+    // this attempt too, which the shared entry used to give for free.
+    bool is_canceled = IsTaskCanceledLocked(task_spec.TaskId());
+    pending_task_attempt_to_is_canceled[task_spec.TaskId()].emplace(
+        task_spec.AttemptNumber(), is_canceled);
   }
 
   // Set the OnArgsReady callback. In the general case, this should be called
@@ -204,16 +209,43 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   ExecuteQueuedTasks();
 }
 
-bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
-  absl::MutexLock lock(&mu_);
-  if (pending_task_id_to_is_canceled.find(task_id) !=
-      pending_task_id_to_is_canceled.end()) {
-    // Mark the task is canceled.
-    pending_task_id_to_is_canceled[task_id] = true;
-    return true;
-  } else {
+bool OrderedActorTaskExecutionQueue::IsTaskCanceledLocked(const TaskID &task_id) const {
+  auto it = pending_task_attempt_to_is_canceled.find(task_id);
+  if (it == pending_task_attempt_to_is_canceled.end()) {
     return false;
   }
+  for (const auto &[attempt_number, is_canceled] : it->second) {
+    if (is_canceled) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void OrderedActorTaskExecutionQueue::EraseTaskAttemptLocked(const TaskID &task_id,
+                                                            int32_t attempt_number) {
+  auto it = pending_task_attempt_to_is_canceled.find(task_id);
+  if (it == pending_task_attempt_to_is_canceled.end()) {
+    return;
+  }
+  it->second.erase(attempt_number);
+  if (it->second.empty()) {
+    pending_task_attempt_to_is_canceled.erase(it);
+  }
+}
+
+bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = pending_task_attempt_to_is_canceled.find(task_id);
+  if (it == pending_task_attempt_to_is_canceled.end()) {
+    return false;
+  }
+  // Cancel every attempt of the task that is still queued or running: another attempt
+  // can be pending while one has already finished.
+  for (auto &[attempt_number, is_canceled] : it->second) {
+    is_canceled = true;
+  }
+  return true;
 }
 
 void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
@@ -234,7 +266,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
                           "intentionally discarded this task."));
       {
         absl::MutexLock lock(&mu_);
-        pending_task_id_to_is_canceled.erase(head->second.TaskID());
+        EraseTaskAttemptLocked(head->second.TaskID(),
+                               head->second.TaskSpec().AttemptNumber());
       }
       group_state.pending_tasks.erase(head);
     }
@@ -318,7 +351,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
                     std::max(group_state_in.next_seq_no, head->first + 1);
                 {
                   absl::MutexLock lock(&mu_);
-                  pending_task_id_to_is_canceled.erase(head->second.TaskID());
+                  EraseTaskAttemptLocked(head->second.TaskID(),
+                                         head->second.TaskSpec().AttemptNumber());
                 }
                 group_state_in.pending_tasks.erase(head);
               }
@@ -333,26 +367,29 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
 }
 
 void OrderedActorTaskExecutionQueue::ExecuteRequest(TaskToExecute &&request) {
-  auto task_id = request.TaskID();
+  TaskAttempt task_attempt{request.TaskID(), request.TaskSpec().AttemptNumber()};
   auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                          request.FunctionDescriptor());
   if (pool == nullptr) {
-    AcceptRequestOrRejectIfCanceled(task_id, request);
+    AcceptRequestOrRejectIfCanceled(task_attempt, request);
   } else {
-    pool->Post([this, request = std::move(request), task_id]() mutable {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
+    pool->Post([this, request = std::move(request), task_attempt]() mutable {
+      AcceptRequestOrRejectIfCanceled(task_attempt, request);
     });
   }
 }
 
 void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    const TaskAttempt &task_attempt, TaskToExecute &request) {
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
-    auto it = pending_task_id_to_is_canceled.find(task_id);
-    if (it != pending_task_id_to_is_canceled.end()) {
-      is_canceled = it->second;
+    auto it = pending_task_attempt_to_is_canceled.find(task_attempt.first);
+    if (it != pending_task_attempt_to_is_canceled.end()) {
+      auto attempt_it = it->second.find(task_attempt.second);
+      if (attempt_it != it->second.end()) {
+        is_canceled = attempt_it->second;
+      }
     }
   }
 
@@ -365,7 +402,7 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   }
 
   absl::MutexLock lock(&mu_);
-  pending_task_id_to_is_canceled.erase(task_id);
+  EraseTaskAttemptLocked(task_attempt.first, task_attempt.second);
 }
 
 }  // namespace core
