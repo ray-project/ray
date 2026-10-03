@@ -51,6 +51,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.protocol import ProtocolsProvider
+from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -59,6 +60,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_get,
     _internal_kv_reset,
 )
+from ray.runtime_env import RuntimeEnv
 
 TOP_LEVEL_DIR_NAME = "top_level"
 ARCHIVE_NAME = "archive.zip"
@@ -1795,6 +1797,98 @@ def test_get_top_level_dir_from_tar_package_no_top_level(tmp_path):
         tar.addfile(info, io.BytesIO(file_content))
 
     assert get_top_level_dir_from_tar_package(str(tar_path)) is None
+
+
+def test_py_modules_plugin_uses_whl_filename_as_cache_key(tmp_path):
+    plugin = PyModulesPlugin(str(tmp_path), gcs_client=None)
+    runtime_env = RuntimeEnv(
+        py_modules=[
+            "s3://bucket/path1/package-0.1-py3-none-any.whl",
+            "s3://bucket/path2/package-0.1-py3-none-any.whl",
+            "s3://bucket/path3/other-0.1-py3-none-any.whl",
+            "s3://bucket/path4/package.zip",
+        ]
+    )
+
+    assert plugin.get_uris(runtime_env) == [
+        "gcs://package-0.1-py3-none-any.whl",
+        "gcs://other-0.1-py3-none-any.whl",
+        "s3://bucket/path4/package.zip",
+    ]
+    assert plugin.get_uris(
+        RuntimeEnv(py_modules=["s3://other-bucket/package-0.1-py3-none-any.whl"])
+    ) == ["gcs://package-0.1-py3-none-any.whl"]
+
+
+@pytest.mark.asyncio
+async def test_py_modules_plugin_reuses_installed_whl_from_different_uri(
+    tmp_path, monkeypatch
+):
+    plugin = PyModulesPlugin(str(tmp_path), gcs_client=None)
+
+    installed_dir = plugin._get_local_dir_from_uri(
+        "s3://bucket/path1/package-0.1-py3-none-any.whl"
+    )
+    installed_dir.mkdir()
+
+    async def fail_install(*args, **kwargs):
+        raise AssertionError("wheel package should not be installed again")
+
+    monkeypatch.setattr(
+        "ray._private.runtime_env.py_modules.install_wheel_package", fail_install
+    )
+
+    assert (
+        await plugin.create(
+            "gcs://package-0.1-py3-none-any.whl",
+            runtime_env=None,
+            context=None,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_py_modules_plugin_downloads_whl_from_runtime_env_uri(
+    tmp_path, monkeypatch
+):
+    runtime_env = RuntimeEnv(
+        py_modules=[
+            "local:///app/lib",
+            "s3://bucket/path1/package.zip",
+            "s3://bucket/path1/other-0.1-py3-none-any.whl",
+            "s3://bucket/path2/package-0.1-py3-none-any.whl",
+            "s3://bucket/path3/package-0.1-py3-none-any.whl",
+        ]
+    )
+    plugin = PyModulesPlugin(str(tmp_path), gcs_client=None)
+    downloaded_uri = None
+
+    async def fake_download(uri, *args, **kwargs):
+        nonlocal downloaded_uri
+        downloaded_uri = uri
+        wheel_path = tmp_path / "package-0.1-py3-none-any.whl"
+        wheel_path.touch()
+        return str(wheel_path)
+
+    async def fake_install(wheel_uri, target_dir, logger):
+        Path(target_dir).mkdir()
+
+    monkeypatch.setattr(
+        "ray._private.runtime_env.py_modules.download_and_unpack_package",
+        fake_download,
+    )
+    monkeypatch.setattr(
+        "ray._private.runtime_env.py_modules.install_wheel_package", fake_install
+    )
+
+    await plugin.create(
+        "gcs://package-0.1-py3-none-any.whl",
+        runtime_env=runtime_env,
+        context=None,
+    )
+
+    assert downloaded_uri == "s3://bucket/path2/package-0.1-py3-none-any.whl"
 
 
 if __name__ == "__main__":
