@@ -792,5 +792,26 @@ NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
     "RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 1000
 )
 
+# Comma-separated list of NIXL backends to create for the RDT NIXL agent,
+# e.g. "UCX" or "UCX,GDS". When empty (the default), the backend is
+# auto-detected from the hardware (LIBFABRIC on EFA, UCX otherwise).
+NIXL_AGENT_BACKENDS = os.environ.get("RAY_NIXL_BACKENDS", "")
+
+# Number of threads used by the NIXL agent for transfers. For the UCX backend,
+# each thread gets its own UCX worker (and its own set of QPs), which can
+# significantly improve transfer throughput on high-bandwidth NICs. Requires a
+# NIXL version whose nixl_agent_config supports `num_threads`; ignored (with a
+# warning) on older versions. Set to 0 to fall back to the NIXL default
+# (a single worker). Default: 8, since a single worker/QP cannot saturate
+# modern RDMA NICs.
+NIXL_AGENT_NUM_THREADS = env_integer("RAY_NIXL_NUM_THREADS", 8)
+
+# JSON dict mapping a NIXL backend name to its init params, e.g.
+# '{"UCX": {"num_workers": "8"}}'. Backends listed here are created via
+# nixl_agent.create_backend(backend, init_params) instead of through
+# nixl_agent_config, which also works on older NIXL versions that don't
+# support `num_threads` in nixl_agent_config.
+NIXL_AGENT_BACKEND_INIT_PARAMS = os.environ.get("RAY_NIXL_BACKEND_INIT_PARAMS", "")
+
 # Name of the environment variable for the Redis password.
 RAY_REDIS_PASSWORD_ENV = "RAY_REDIS_PASSWORD"
