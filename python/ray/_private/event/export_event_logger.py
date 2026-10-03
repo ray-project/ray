@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import pathlib
 import random
 import string
@@ -10,6 +11,9 @@ from typing import Union
 
 from ray._private import ray_constants
 from ray._private.protobuf_compat import message_to_dict
+from ray.core.generated.export_annotation_event_pb2 import (
+    ExportAnnotationEventData,
+)
 from ray.core.generated.export_dataset_metadata_pb2 import (
     ExportDatasetMetadata,
 )
@@ -39,6 +43,7 @@ ExportEventDataType = Union[
     ExportDatasetMetadata,
     ExportDatasetOperatorEventData,
     ExportDatasetOperatorSchema,
+    ExportAnnotationEventData,
 ]
 
 
@@ -53,6 +58,7 @@ class EventLogType(Enum):
         DATASET_METADATA: Export events related to dataset metadata.
         DATASET_OPERATOR_EVENT: Export events related to Ray Data operator.
         DATASET_OPERATOR_SCHEMA: Export schema related to Ray Data operator.
+        ANNOTATION: Dashboard annotation events, emitted from any process.
     """
 
     TRAIN_STATE = (
@@ -69,17 +75,29 @@ class EventLogType(Enum):
         "EXPORT_DATASET_OPERATOR_SCHEMA",
         {ExportDatasetOperatorSchema},
     )
+    ANNOTATION = ("EXPORT_ANNOTATION", {ExportAnnotationEventData}, True)
 
-    def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
+    def __init__(
+        self,
+        log_type_name: str,
+        event_types: set[ExportEventDataType],
+        per_process: bool = False,
+    ):
         """Initialize an EventLogType enum value.
 
         Args:
             log_type_name: String identifier for the log type. This name is used to construct the log file name.
                 See `_build_export_event_file_logger` for more details.
             event_types: Set of event data types that this log type supports.
+            per_process: Whether every process writing this log type gets its own
+                file. The default, one shared file per node, only holds for a log
+                type whose producer is a per-node singleton: several processes
+                rotating one file race with each other and lose lines. This
+                mirrors what C++ does in ``LogEventReporter``.
         """
         self.log_type_name = log_type_name
         self.event_types = event_types
+        self.per_process = per_process
 
     def supports_event_type(self, event_type: ExportEventDataType) -> bool:
         """Check if this log type supports the given event data type.
@@ -147,6 +165,9 @@ class ExportEventLoggerAdapter:
         elif isinstance(event_data, ExportDatasetOperatorSchema):
             event.dataset_operator_schema.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_DATASET_OPERATOR_SCHEMA
+        elif isinstance(event_data, ExportAnnotationEventData):
+            event.annotation_event_data.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_ANNOTATION
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")
         if not self.log_type.supports_event_type(event_data):
@@ -189,13 +210,20 @@ class ExportEventLoggerAdapter:
 
 
 def _build_export_event_file_logger(
-    log_type_name: str, sink_dir: str
+    log_type: EventLogType, sink_dir: str
 ) -> logging.Logger:
-    logger = logging.getLogger("_ray_export_event_logger_" + log_type_name)
+    log_type_name = log_type.log_type_name
+    file_stem = f"event_{log_type_name}"
+    if log_type.per_process:
+        file_stem += f"_{os.getpid()}"
+    # The logger is named after the file it writes so that a process writing the
+    # same log type into two session dirs, across a shutdown and restart, gets a
+    # fresh logger rather than a second handler on the first session's file.
+    logger = logging.getLogger(f"_ray_export_event_logger_{file_stem}_{sink_dir}")
     logger.setLevel(logging.INFO)
     dir_path = pathlib.Path(sink_dir) / "export_events"
-    filepath = dir_path / f"event_{log_type_name}.log"
-    dir_path.mkdir(exist_ok=True)
+    filepath = dir_path / f"{file_stem}.log"
+    dir_path.mkdir(parents=True, exist_ok=True)
     filepath.touch(exist_ok=True)
     # Configure the logger.
     # Default is 100 MB max file size
@@ -203,6 +231,9 @@ def _build_export_event_file_logger(
         filepath,
         maxBytes=(ray_constants.RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES),
         backupCount=ray_constants.RAY_EXPORT_EVENT_MAX_BACKUP_COUNT,
+        # Events carry user-supplied text, which the platform default encoding
+        # cannot always write under a `C`/`POSIX` locale.
+        encoding="utf-8",
     )
     logger.addHandler(handler)
     logger.propagate = False
@@ -228,14 +259,22 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
     """
     with _export_event_logger_lock:
         global _export_event_logger
-        log_type_name = log_type.log_type_name
-        if log_type_name not in _export_event_logger:
-            logger = _build_export_event_file_logger(log_type.log_type_name, sink_dir)
-            _export_event_logger[log_type_name] = ExportEventLoggerAdapter(
-                log_type, logger
-            )
+        # Keyed by sink dir as well as log type: a process that outlives a Ray
+        # session, such as one that calls `ray.shutdown()` and `ray.init()`
+        # again, must write into the new session's logs dir rather than keep
+        # appending to the previous, now stale, one. A per-process log type is
+        # also keyed by pid, so that a process forked after the first emit gets
+        # a file of its own rather than inheriting its parent's.
+        key = (
+            log_type.log_type_name,
+            sink_dir,
+            os.getpid() if log_type.per_process else None,
+        )
+        if key not in _export_event_logger:
+            logger = _build_export_event_file_logger(log_type, sink_dir)
+            _export_event_logger[key] = ExportEventLoggerAdapter(log_type, logger)
 
-        return _export_event_logger[log_type_name]
+        return _export_event_logger[key]
 
 
 def check_export_api_enabled(

@@ -2,6 +2,11 @@ from contextlib import contextmanager
 from typing import Dict, Optional
 
 import ray
+from ray._common.observability.annotation import Annotation
+from ray.train.v2._internal.constants import (
+    TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
+    TRAIN_ANNOTATION_SOURCE,
+)
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     TrainContextCallback,
@@ -13,7 +18,7 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
 )
-from ray.train.v2._internal.metrics.base import Metric
+from ray.train.v2._internal.metrics.base import RUN_ID_TAG_KEY, RUN_NAME_TAG_KEY, Metric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2._internal.util import time_monotonic
@@ -29,9 +34,20 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._metrics: Dict[str, Metric] = ControllerMetrics.get_controller_metrics(
             self._run_name, self._run_id
         )
+        self._annotation = Annotation(
+            source=TRAIN_ANNOTATION_SOURCE,
+            base_tags={
+                RUN_NAME_TAG_KEY: self._run_name,
+                RUN_ID_TAG_KEY: self._run_id,
+            },
+        )
         # Record initial state
         self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
             TrainControllerStateType.INITIALIZING
+        )
+        self._annotation.annotate(
+            event=TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
+            message=f"Controller started: {TrainControllerStateType.INITIALIZING.name}",
         )
 
     async def before_controller_shutdown(self):
@@ -48,6 +64,11 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
             current_state._state_type
         )
+        if previous_state._state_type is not current_state._state_type:
+            self._annotation.annotate(
+                event=TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
+                message=f"Controller: {previous_state._state_type.name} → {current_state._state_type.name}",
+            )
 
     @contextmanager
     def on_worker_group_start(self):

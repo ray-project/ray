@@ -21,6 +21,7 @@ import "src/ray/protobuf/export_node_data.proto";
 import "src/ray/protobuf/export_actor_data.proto";
 import "src/ray/protobuf/export_driver_job_event.proto";
 import "src/ray/protobuf/export_submission_job_event.proto";
+import "src/ray/protobuf/export_annotation_event.proto";
 
 import "src/ray/protobuf/export_train_state.proto";
 import "src/ray/protobuf/export_dataset_operator_event.proto";
@@ -41,6 +42,7 @@ message ExportEvent {
     EXPORT_DATASET_METADATA = 7;
     EXPORT_DATASET_OPERATOR_EVENT = 8;
     EXPORT_DATASET_OPERATOR_SCHEMA = 9;
+    EXPORT_ANNOTATION = 10;
   }
 
   // event_id is the unique ID of this event
@@ -62,5 +64,6 @@ message ExportEvent {
     ExportDatasetMetadata dataset_metadata = 11;
     ExportDatasetOperatorEventData dataset_operator_event_data = 12;
     ExportDatasetOperatorSchema dataset_operator_schema = 13;
+    ExportAnnotationEventData annotation_event_data = 14;
   }
 }
