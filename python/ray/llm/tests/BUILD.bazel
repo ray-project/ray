@@ -63,7 +63,10 @@ py_test_module_list(
     # which sets the direct-streaming + HAProxy env they require.
     files = glob(
         ["serve/cpu/**/test_*.py"],
-        exclude = ["serve/cpu/**/*_direct_streaming.py"],
+        exclude = [
+            "serve/cpu/**/*_direct_streaming.py",
+            "serve/cpu/observability/test_haproxy_stream_metrics.py",
+        ],
     ),
     tags = [
         "cpu",
@@ -94,6 +97,31 @@ py_test_module_list(
     tags = [
         "cpu",
         "exclusive",
+        "team:llm",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+# Full-path streaming metrics use the observer bundled in ray-haproxy.
+# Missing native artifacts fail the test; these targets run in CPU CI.
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+        "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY": "1",
+    },
+    files = [
+        "serve/cpu/observability/test_haproxy_stream_metrics.py",
+        "serve/cpu/observability/test_llm_stream_metrics_direct_streaming.py",
+    ],
+    tags = [
+        "cpu",
+        "exclusive",
+        "stream_metrics",
         "team:llm",
     ],
     deps = [

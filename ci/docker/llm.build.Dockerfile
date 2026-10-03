@@ -19,6 +19,10 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
+# The observer is built/tested in ray-haproxy's binary distribution pipeline.
+# Upgrade the binary package until dependency locks are regenerated after its
+# companion release; missing modules fail the streaming-metrics CI job.
+pip install --no-deps "ray-haproxy>=2.8.25.post1,<2.9.0"
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.

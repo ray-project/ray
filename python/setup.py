@@ -287,7 +287,7 @@ if setup_spec.type == SetupType.RAY:
             # Used by the HAProxy ingress controller to render its config.
             "jinja2",
             "grpcio-reflection",
-            "ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'",
+            "ray-haproxy>=2.8.25.post1,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
@@ -782,6 +782,7 @@ if __name__ == "__main__":
                 "serve/_private/ingress_request_router.lua.tmpl",
                 "serve/_private/request_router_common.lua.tmpl",
                 "serve/_private/router_application.lua.tmpl",
+                "serve/_private/stream_metrics.lua",
             ],
         },
         include_package_data=True,

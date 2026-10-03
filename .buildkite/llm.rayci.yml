@@ -24,5 +24,18 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --python-version 3.12 --build-name llmbuild
-        --except-tags gpu
+        --except-tags gpu,stream_metrics
+    depends_on: llmbuild
+
+  # Native sanitizer tests run when the matching ray-haproxy wheel is built.
+  # This required CPU job owns real HAProxy, Ray reporter and reload coverage.
+  - label: "llm streaming metrics tests"
+    key: "llm-streaming-metrics-tests"
+    tags:
+      - llm
+      - cpu
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... llm
+        --python-version 3.12 --build-name llmbuild --only-tags stream_metrics
     depends_on: llmbuild

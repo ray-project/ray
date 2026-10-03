@@ -19,4 +19,4 @@ aioboto3
 tf_keras; python_version < '3.14'
 numexpr
 taskiq-redis
-ray-haproxy>=2.8.25,<2.9.0
+ray-haproxy>=2.8.25.post1,<2.9.0
