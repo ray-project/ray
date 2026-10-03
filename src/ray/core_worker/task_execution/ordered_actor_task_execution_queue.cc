@@ -98,9 +98,8 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
 
   const bool is_retry = task_spec.IsRetry();
 
-  TaskToExecute *retry_task = nullptr;
   if (is_retry) {
-    retry_task = &group_state.pending_retry_tasks.emplace_back(std::move(task));
+    group_state.pending_retry_tasks.emplace_back(std::move(task));
   } else {
     RAY_CHECK(group_state.pending_tasks.emplace(seq_no, std::move(task)).second);
   }
@@ -138,20 +137,30 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         /*include_task_info=*/false);
     waiter_.OnArgsReady(
         TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()},
-        [this, seq_no, is_retry, retry_task, group]() {
+        [this,
+         seq_no,
+         is_retry,
+         task_id = task_spec.TaskId(),
+         attempt_number = task_spec.AttemptNumber(),
+         group]() {
+          // The queued task may already be gone by the time its args arrive, and
+          // nothing deregisters this callback.
+          auto &group_state_in = group_states_.at(group);
           TaskToExecute *ready_task = nullptr;
           if (is_retry) {
-            // retry_task is guaranteed to be a valid pointer for retries
-            // because it won't be erased from the retry list until its
-            // dependencies are fetched and ExecuteRequest happens.
-            ready_task = retry_task;
+            auto it =
+                std::find_if(group_state_in.pending_retry_tasks.begin(),
+                             group_state_in.pending_retry_tasks.end(),
+                             [&task_id, attempt_number](const TaskToExecute &queued) {
+                               return queued.TaskID() == task_id &&
+                                      queued.TaskSpec().AttemptNumber() == attempt_number;
+                             });
+            if (it != group_state_in.pending_retry_tasks.end()) {
+              ready_task = &*it;
+            }
           } else {
-            auto &group_state_in = group_states_.at(group);
             auto it = group_state_in.pending_tasks.find(seq_no);
             if (it != group_state_in.pending_tasks.end()) {
-              // For non-retry tasks, we need to check if the task is
-              // still in the map because it can be erased due to being
-              // canceled via a higher `client_processed_up_to`.
               ready_task = &it->second;
             }
           }
