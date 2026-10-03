@@ -218,9 +218,7 @@ class TestPPO(unittest.TestCase):
         self.assertAlmostEqual(policy.config["lr"], target_lr)
         self.assertAlmostEqual(policy.config["clip_param"], target_clip)
         self.assertAlmostEqual(policy.config["lambda"], target_lambda)
-        self.assertAlmostEqual(
-            policy._optimizers[0].param_groups[0]["lr"], target_lr
-        )
+        self.assertAlmostEqual(policy._optimizers[0].param_groups[0]["lr"], target_lr)
         check(policy.get_weights(), donor_weights)
 
         target_optimizer_state = policy.get_state()["_optimizer_variables"]
