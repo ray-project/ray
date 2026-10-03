@@ -52,6 +52,8 @@ Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Po
             ...
 ```
 
+To create this worker group with the kubectl plugin instead of YAML, see {ref}`Create a TPU worker group <kubectl-plugin-tpu>`.
+
 ## TPU workload scheduling
 
 After Ray deploys a Pod with TPU resources, the Pod can execute tasks and actors annotated with TPU requests. Ray supports TPUs as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources). Tasks or actors request TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
