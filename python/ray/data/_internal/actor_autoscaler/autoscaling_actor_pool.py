@@ -7,6 +7,7 @@ from ray.actor import ActorHandle
 from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.execution.interfaces.resource_request import ResourceRequest
 from ray.util.annotations import DeveloperAPI
 
 
@@ -243,6 +244,10 @@ class AutoscalingActorPool(ABC):
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
         return self._config.per_actor_resource_usage
+
+    def get_resource_requests(self) -> List[ResourceRequest]:
+        """Return exact resource requests for actors in this pool."""
+        return []
 
     def max_actor_concurrency(self) -> int:
         """Returns max number of tasks single actor could run concurrently."""

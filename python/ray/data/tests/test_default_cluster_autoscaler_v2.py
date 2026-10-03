@@ -1,4 +1,6 @@
 import logging
+import time
+from typing import Callable, List, Optional
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -10,10 +12,18 @@ from ray.data._internal.cluster_autoscaler import (
     CLUSTER_AUTOSCALER_ENV_KEY,
     create_cluster_autoscaler,
 )
+from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    ResourceDict,
+)
+from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+    NodeResources,
+)
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
+    _get_resource_requests_from_topology,
     _NodeResourceSpec,
+    _ResourceRequestUtilizationCalculator,
 )
 from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
     FakeAutoscalingCoordinator,
@@ -21,6 +31,7 @@ from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
 from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
     ResourceUtilizationGauge,
 )
+from ray.data._internal.execution.interfaces import ResourceRequest
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.util import GiB
 
@@ -40,6 +51,25 @@ _IS_AUTOSCALING_ENABLED_PATH = (
     "ray.data._internal.cluster_autoscaler."
     "default_cluster_autoscaler_v2.is_autoscaling_enabled"
 )
+
+
+def _make_autoscaler(
+    coordinator: FakeAutoscalingCoordinator,
+    *,
+    utilization: Optional[ExecutionResources] = None,
+    **kwargs,
+) -> DefaultClusterAutoscalerV2:
+    """Construct a DefaultClusterAutoscalerV2 with the common test defaults."""
+    if utilization is None:
+        utilization = ExecutionResources(gpu=0.9)
+    kwargs.setdefault("resource_manager", MagicMock())
+    kwargs.setdefault("min_gap_between_autoscaling_requests_s", 0)
+    with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+        return DefaultClusterAutoscalerV2(
+            autoscaling_coordinator=coordinator,
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            **kwargs,
+        )
 
 
 class TestClusterAutoscaling:
@@ -993,6 +1023,399 @@ def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
         execution_id="exec-1",
     )
     assert captured["label_selector"] == {"ray-subcluster": "training"}
+
+
+def test_create_cluster_autoscaler_forwards_topology(monkeypatch):
+    """V2 always runs the exact path, so the topology must reach the autoscaler."""
+    monkeypatch.setenv(CLUSTER_AUTOSCALER_ENV_KEY, "V2")
+
+    captured = {}
+
+    class _StubV2:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(ca_pkg, "DefaultClusterAutoscalerV2", _StubV2)
+
+    data_context = Mock()
+    data_context.execution_options.resource_limits = Mock()
+    data_context.execution_options.label_selector = {}
+
+    topology = Mock()
+    create_cluster_autoscaler(
+        topology=topology,
+        resource_manager=Mock(),
+        data_context=data_context,
+        execution_id="exec-1",
+    )
+
+    assert captured["topology"] is topology
+
+
+def test_topology_exact_request_collection():
+    actor_pool_operator = MagicMock()
+    actor_pool_operator.get_extra_resource_usage.return_value = (
+        ExecutionResources.zero()
+    )
+    actor_pool_operator.get_resource_requests.return_value = [
+        ResourceRequest(resources={"GPU": 1})
+    ]
+
+    regular_operator = MagicMock()
+    regular_operator.get_extra_resource_usage.return_value = ExecutionResources.zero()
+    regular_operator.get_resource_requests.return_value = []
+
+    requests = _get_resource_requests_from_topology(
+        {
+            actor_pool_operator: MagicMock(input_queues=[]),
+            regular_operator: MagicMock(input_queues=[]),
+        }
+    )
+
+    assert requests == [ResourceRequest(resources={"GPU": 1})]
+
+
+def test_v2_exact_path_preserves_custom_resources():
+    request = ResourceRequest(resources={"GPU": 1, "worker_group_a": 1})
+    actor_pool_operator = MagicMock()
+    actor_pool_operator.get_extra_resource_usage.return_value = (
+        ExecutionResources.zero()
+    )
+    actor_pool_operator.get_resource_requests.return_value = [request]
+
+    coordinator = FakeAutoscalingCoordinator(
+        # No node can host ``worker_group_a``, so the shape is infeasible.
+        initial_cluster_resources=[{"CPU": 100, "GPU": 100}]
+    )
+    autoscaler = _make_autoscaler(
+        coordinator,
+        execution_id="actor-pool-topology",
+        topology={actor_pool_operator: MagicMock(input_queues=[])},
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    assert coordinator._allocation.resources == [
+        {"GPU": 1, "worker_group_a": 1},
+        {"GPU": 1, "worker_group_a": 1},
+    ]
+
+
+def test_exact_path_uses_matching_custom_resource_capacity():
+    node_resources = {
+        "node_a": {"CPU": 4, "GPU": 1, "worker_group_a": 1},
+        "node_b": {"CPU": 8, "GPU": 8, "worker_group_b": 1},
+        "node_head": {
+            "CPU": 8,
+            "GPU": 8,
+            "node:__internal_head__": 1,
+        },
+    }
+    request = ResourceRequest(resources={"GPU": 1, "worker_group_a": 1})
+    shape = (("GPU", 1), ("worker_group_a", 1))
+
+    assert _ResourceRequestUtilizationCalculator(
+        node_resources
+    ).select_resource_shapes_to_scale([request], 0.75) == [shape]
+
+
+def test_custom_resource_utilization_can_trigger_scaling():
+    node_resources = {"node_a": {"CPU": 100, "worker_group_a": 4}}
+    request = ResourceRequest(resources={"CPU": 1, "worker_group_a": 1})
+    shape = (("CPU", 1), ("worker_group_a", 1))
+
+    assert _ResourceRequestUtilizationCalculator(
+        node_resources
+    ).select_resource_shapes_to_scale([request] * 3, 0.75) == [shape]
+
+
+def test_v2_exact_path_scales_active_custom_resource_group():
+    actor_pool_operator = MagicMock()
+    request = ResourceRequest(resources={"GPU": 1, "worker_group_a": 1})
+    actor_pool_operator.get_extra_resource_usage.return_value = (
+        ExecutionResources.zero()
+    )
+    actor_pool_operator.get_resource_requests.return_value = [request]
+
+    coordinator = FakeAutoscalingCoordinator(
+        # No node can host ``worker_group_a``, so the shape is infeasible.
+        initial_cluster_resources=[{"CPU": 100, "GPU": 100}]
+    )
+    autoscaler = _make_autoscaler(
+        coordinator,
+        execution_id="actor-pool-custom-resource-group",
+        topology={actor_pool_operator: MagicMock(input_queues=[])},
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    assert coordinator._allocation.resources == [
+        {"GPU": 1, "worker_group_a": 1},
+        {"GPU": 1, "worker_group_a": 1},
+    ]
+
+
+def test_v2_uses_exact_path_for_mixed_resource_topology():
+    actor_pool_operator = MagicMock()
+    actor_pool_operator.get_extra_resource_usage.return_value = (
+        ExecutionResources.zero()
+    )
+    actor_pool_operator.get_resource_requests.return_value = []
+
+    regular_operator = MagicMock()
+    regular_operator.get_extra_resource_usage.return_value = ExecutionResources.zero()
+    regular_operator.get_resource_requests.return_value = [
+        ResourceRequest(resources={"CPU": 1})
+    ]
+
+    coordinator = FakeAutoscalingCoordinator(
+        # Exactly 1 CPU of capacity, so the active request is at 100%.
+        initial_cluster_resources=[{"CPU": 1}]
+    )
+    autoscaler = _make_autoscaler(
+        coordinator,
+        execution_id="mixed-topology",
+        topology={
+            actor_pool_operator: MagicMock(input_queues=[]),
+            regular_operator: MagicMock(input_queues=[]),
+        },
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    assert coordinator._allocation.resources == [{"CPU": 1}, {"CPU": 1}]
+
+
+def test_v2_exact_path_skips_scale_up_while_reservations_are_unknown():
+    """No scaling decision is made while the reservation view is unknown.
+
+    Treating the not-yet-populated view as "no capacity" would request an extra
+    copy of every active shape on the first tick after construction.
+    """
+    coordinator, autoscaler, _ = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"CPU": 1})]
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    # Only the active request is sent; no scale-up copy is added.
+    assert coordinator._allocation.resources == [{"CPU": 1}]
+
+
+def test_v2_exact_path_scales_up_when_no_node_can_host_shape():
+    """A known-but-infeasible shape (no node can host it) is still scaled up."""
+    coordinator, autoscaler, _ = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"CPU": 1})],
+        initial_cluster_resources=[{"GPU": 8}],
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    assert coordinator._allocation.resources == [{"CPU": 1}, {"CPU": 1}]
+
+
+def test_v2_exact_path_scales_up_when_utilization_exceeds_threshold():
+    """A known capacity at 100% utilization for the shape triggers a scale-up."""
+    coordinator, autoscaler, _ = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"CPU": 1})],
+        initial_cluster_resources=[{"CPU": 1}],
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    assert coordinator._allocation.resources == [{"CPU": 1}, {"CPU": 1}]
+
+
+def test_v2_exact_path_does_not_scale_up_below_threshold():
+    """Below the threshold, only the active requests are sent."""
+    coordinator, autoscaler, _ = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"CPU": 1})],
+        initial_cluster_resources=[{"CPU": 100}],
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    assert coordinator._allocation.resources == [{"CPU": 1}]
+
+
+class _RecordingCoordinator(FakeAutoscalingCoordinator):
+    """Records every request the autoscaler sends to the coordinator."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.requests: List[ResourceDict] = []
+
+    def request_resources(self, resources, **kwargs):
+        self.requests.append(resources)
+        super().request_resources(resources, **kwargs)
+
+
+class _ScriptedClusterCoordinator(_RecordingCoordinator):
+    """Records requests and reports a cluster view that can be scripted.
+
+    The fake's cluster view normally follows whatever was requested last, which
+    makes it impossible to model "the scale-up landed and freed up capacity".
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.cluster_resources = list(self._initial_cluster_resources)
+
+    def get_reserved_resources(self) -> NodeResources:
+        return {f"node_{i}": dict(r) for i, r in enumerate(self.cluster_resources)}
+
+
+def _make_exact_path_autoscaler(
+    requests: List[ResourceRequest],
+    *,
+    initial_cluster_resources: Optional[List[ResourceDict]] = None,
+    get_time: Optional[Callable[[], float]] = None,
+    coordinator_cls=FakeAutoscalingCoordinator,
+):
+    """Build a V2 autoscaler on the exact path with one operator.
+
+    Returns the coordinator, the autoscaler, and the operator (its reported
+    requests can be changed mid-test to simulate tasks finishing).
+    """
+    operator = MagicMock()
+    operator.get_extra_resource_usage.return_value = ExecutionResources.zero()
+    operator.get_resource_requests.return_value = requests
+    operator.get_extra_resource_usage.return_value = ExecutionResources.zero()
+    # Both fakes default to ``time.time``; pass it through so a test can supply
+    # a controllable clock.
+    get_time = get_time or time.time
+    coordinator = coordinator_cls(
+        initial_cluster_resources=initial_cluster_resources, get_time=get_time
+    )
+    autoscaler = _make_autoscaler(
+        coordinator,
+        execution_id="exact-path",
+        topology={operator: MagicMock(input_queues=[])},
+        get_time=get_time,
+    )
+    return coordinator, autoscaler, operator
+
+
+def test_v2_exact_path_does_not_hold_demand_for_finished_tasks():
+    """Active requests must not be recorded as explicit autoscaler demand.
+
+    Recording them would keep requesting resources for tasks that already
+    finished until ``low_util_request_release_delay_s`` expires.
+    """
+    current_time = {"t": 0.0}
+
+    def get_time() -> float:
+        return current_time["t"]
+
+    coordinator, autoscaler, operator = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"CPU": 1})],
+        initial_cluster_resources=[{"CPU": 100}],
+        get_time=get_time,
+        coordinator_cls=_RecordingCoordinator,
+    )
+    autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
+
+    # Tick 1: an active request below the scale-up threshold.
+    current_time["t"] = 10.0
+    autoscaler.try_trigger_scaling()
+    assert coordinator._allocation.resources == [{"CPU": 1}]
+
+    # Tick 2 (inside the release delay window): the task finished, so nothing may
+    # be requested on its behalf anymore.
+    operator.get_extra_resource_usage.return_value = ExecutionResources.zero()
+    operator.get_resource_requests.return_value = []
+    current_time["t"] = 11.0
+    autoscaler.try_trigger_scaling()
+    assert coordinator.requests[-1] == []
+
+
+def test_v2_exact_path_reports_new_shapes_during_release_delay():
+    """A shape appearing inside the release-delay window must still be reported.
+
+    The keep-alive snapshot used to *replace* the current demand, so a shape
+    that first appeared while a previous scale-up was still being held never
+    reached the coordinator until the window expired.
+    """
+    current_time = {"t": 0.0}
+
+    def get_time() -> float:
+        return current_time["t"]
+
+    coordinator, autoscaler, operator = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"CPU": 1})],
+        initial_cluster_resources=[{"CPU": 1}],
+        get_time=get_time,
+        coordinator_cls=_ScriptedClusterCoordinator,
+    )
+
+    # Tick 1: the only known CPU is fully used, so the shape is scaled up and
+    # the release-delay window opens.
+    current_time["t"] = 10.0
+    autoscaler.try_trigger_scaling()
+    assert coordinator.requests[-1] == [{"CPU": 1}, {"CPU": 1}]
+
+    # The scale-up landed, so there is spare capacity now.
+    coordinator.cluster_resources = [{"CPU": 100}]
+
+    # Tick 2 (inside the window): the old task finished and a different shape
+    # showed up. The held scale-up copy must be *added* to the current demand,
+    # not sent in its place.
+    operator.get_extra_resource_usage.return_value = ExecutionResources.zero()
+    operator.get_resource_requests.return_value = [
+        ResourceRequest(resources={"CPU": 2})
+    ]
+    current_time["t"] = 11.0
+    autoscaler.try_trigger_scaling()
+    assert coordinator.requests[-1] == [{"CPU": 2}, {"CPU": 1}]
+
+
+def test_v2_exact_path_reports_node_level_usage_as_its_own_bundle():
+    """Node-level usage must not be folded into task shapes.
+
+    Folding it in would corrupt the shape and let a node-level shortage make
+    the shape unhostable, which scales up node types that are not short.
+    """
+    coordinator, autoscaler, operator = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"GPU": 1})],
+        initial_cluster_resources=[{"GPU": 100}],
+        coordinator_cls=_RecordingCoordinator,
+    )
+    operator.get_extra_resource_usage.return_value = ExecutionResources(
+        object_store_memory=4 * GiB
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    # The task keeps its exact shape; the usage rides along as its own bundle.
+    assert coordinator.requests[-1] == [
+        {"GPU": 1},
+        {"object_store_memory": 4 * GiB},
+    ]
+
+
+def test_v2_exact_path_node_level_usage_does_not_make_shapes_unhostable():
+    """A node-level shortage must not scale up shapes that fit fine.
+
+    With the usage folded into the shape, no node could host it once the
+    object store ran out, and every shape would be scaled up.
+    """
+    coordinator, autoscaler, operator = _make_exact_path_autoscaler(
+        [ResourceRequest(resources={"GPU": 1})],
+        # Plenty of GPU capacity, and no object store to report at all.
+        initial_cluster_resources=[{"GPU": 100}],
+        coordinator_cls=_RecordingCoordinator,
+    )
+    operator.get_extra_resource_usage.return_value = ExecutionResources(
+        object_store_memory=100 * GiB
+    )
+
+    autoscaler.try_trigger_scaling()
+
+    # Below the threshold on the shape's own resources, so no scale-up copy.
+    assert coordinator.requests[-1] == [
+        {"GPU": 1},
+        {"object_store_memory": 100 * GiB},
+    ]
 
 
 if __name__ == "__main__":

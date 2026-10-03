@@ -52,6 +52,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ResourceRequest,
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
@@ -266,6 +267,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
         self._data_tasks: Dict[int, DataOpTask] = {}
+        self._resource_requests: Dict[int, ResourceRequest] = {}
         self._next_data_task_idx = 0
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
@@ -608,6 +610,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_resource_request: Optional[ResourceRequest] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -658,6 +661,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             )
 
             self._data_tasks.pop(task_index)
+            self._resource_requests.pop(task_index, None)
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
             if task_done_callback:
@@ -678,6 +682,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             task_index, inputs, task_id=data_task.get_task_id()
         )
         self._data_tasks[task_index] = data_task
+        if task_resource_request is not None and task_resource_request.resources:
+            self._resource_requests[task_index] = task_resource_request
 
     def _submit_metadata_task(
         self, result_ref: ObjectRef, task_done_callback: Callable[[], None]
@@ -741,6 +747,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def _extra_metrics(self) -> Dict[str, Any]:
         return {"ray_remote_args": dict(sorted(self._remote_args_for_metrics.items()))}
 
+    def get_resource_requests(self) -> List[ResourceRequest]:
+        return list(self._resource_requests.values()) + (
+            self._lineage_reconstruction_requests()
+        )
+
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_blocks_stats}
 
@@ -752,6 +763,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         super()._do_shutdown(force)
         # Release refs
         self._data_tasks.clear()
+        self._resource_requests.clear()
         self._metadata_tasks.clear()
 
     @abstractmethod

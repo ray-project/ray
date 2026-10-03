@@ -3,6 +3,7 @@ from .execution_options import ExecutionOptions, ExecutionResources
 from .executor import Executor, OutputIterator
 from .physical_operator import PhysicalOperator, ReportsExtraResourceUsage
 from .ref_bundle import BlockEntry, BlockSlice, RefBundle
+from .resource_request import ResourceRequest
 from .task_context import TaskContext
 from .transform_fn import AllToAllTransformFn
 
@@ -18,5 +19,6 @@ __all__ = [
     "PhysicalOperator",
     "RefBundle",
     "ReportsExtraResourceUsage",
+    "ResourceRequest",
     "TaskContext",
 ]

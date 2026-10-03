@@ -14,6 +14,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    NamedTuple,
     Optional,
     Tuple,
     Union,
@@ -50,6 +51,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     ReportsExtraResourceUsage,
+    ResourceRequest,
     TaskContext,
 )
 from ray.data._internal.execution.node_trackers.actor_location import (
@@ -84,6 +86,13 @@ _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
 
 # Type alias for the logical identifier of an actor (used in labels and actor-to-id maps).
 LogicalActorId = str
+
+
+class _ActorResources(NamedTuple):
+    """Per-actor accounting usage and the exact request reported to the autoscaler."""
+
+    usage: ExecutionResources
+    request: ResourceRequest
 
 
 def get_map_worker_cls_name(op_name: str) -> str:
@@ -339,7 +348,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
     def _start_actor(
         self, labels: Dict[str, str], logical_actor_id: LogicalActorId
-    ) -> Tuple[ActorHandle, ObjectRef, ExecutionResources]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources, ResourceRequest]:
         """Start a new actor and add it to the actor pool as a pending actor.
 
         Args:
@@ -348,11 +357,13 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
         Returns:
             A tuple of the actor handle, the object ref to the actor's location,
-            and the actual resource usage for this actor.
+            the actual resource usage for this actor and the exact Ray resource
+            request used to create it.
         """
         assert self._actor_cls is not None
         actual_remote_args = dict(self._merge_ray_remote_args())
         extra_labels = actual_remote_args.pop("_labels", {})
+        actor_resource_request = ResourceRequest.from_actor_options(actual_remote_args)
         actor_resource_usage = ExecutionResources(
             cpu=actual_remote_args.get("num_cpus", 0),
             gpu=actual_remote_args.get("num_gpus", 0),
@@ -393,7 +404,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             res_ref,
             lambda: _task_done_callback(res_ref),
         )
-        return actor, res_ref, actor_resource_usage
+        return actor, res_ref, actor_resource_usage, actor_resource_request
 
     def _on_actor_init_death(self, error: Exception) -> None:
         """Handle an actor that died during initialization.
@@ -508,6 +519,29 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 self._locality_misses += 1
 
         return num_submitted_tasks
+
+    def get_resource_requests(self) -> List[ResourceRequest]:
+        return self._actor_pool.get_resource_requests() + (
+            self._lineage_reconstruction_requests()
+        )
+
+    def _lineage_reconstruction_requests(self) -> List[ResourceRequest]:
+        """Actors recreated to lineage reconstruct an object.
+
+        They carry this pool's actor shape, so they are reported as extra
+        requests rather than folded into the running actors' requests.
+
+        Returns:
+            List[ResourceRequest]: One request per reconstructed actor, empty
+                when nothing is being reconstructed.
+        """
+        num_actors = self._num_lineage_reconstructed_actors(self._actor_pool)
+        if num_actors <= 0:
+            return []
+        actual_remote_args = dict(self._merge_ray_remote_args())
+        actual_remote_args.pop("_labels", None)
+        request = ResourceRequest.from_actor_options(actual_remote_args)
+        return [request] * num_actors
 
     def _merge_ray_remote_args(self) -> Dict[str, Any]:
         """When `self._ray_remote_args_fn` is specified, this method should
@@ -841,7 +875,10 @@ class _ActorPool(AutoscalingActorPool):
 
     def __init__(
         self,
-        create_actor_fn: "Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]]",
+        create_actor_fn: Callable[
+            [Dict[str, str], LogicalActorId],
+            Tuple[ActorHandle, ObjectRef[Any], ExecutionResources, ResourceRequest],
+        ],
         config: AutoscalingActorConfig,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
@@ -850,8 +887,9 @@ class _ActorPool(AutoscalingActorPool):
 
         Args:
             create_actor_fn: Callable that takes key-value labels as input and
-                creates an actor with those labels. Returns the actor handle, a
-                reference to the actor's node ID, and the actor's resource usage.
+                creates an actor with those labels. It returns the actor handle, a
+                reference to the actor's node ID, the actor's resource usage, and
+                the exact Ray resource request used for actor creation.
             config: Configuration for the autoscaling actor pool, including
                 min/max/initial pool sizes, concurrency, and resource usage.
             map_worker_cls_name: Name of the map worker class for logging
@@ -875,7 +913,7 @@ class _ActorPool(AutoscalingActorPool):
         self._actor_to_logical_id: Dict[ActorHandle, LogicalActorId] = {}
         # Per-actor resource usage, needed because ray_remote_args_fn can
         # produce different resources for each actor.
-        self._actor_resource_usage: Dict[ActorHandle, ExecutionResources] = {}
+        self._actor_resources: Dict[ActorHandle, _ActorResources] = {}
         # Cached aggregate resource counters.
         self._total_usage = ExecutionResources.zero()
         self._pending_or_restarting_usage = ExecutionResources.zero()
@@ -944,8 +982,18 @@ class _ActorPool(AutoscalingActorPool):
             )
 
             for _ in range(target_num_actors):
-                actor, ready_ref, resource_usage = self._create_actor()
-                self._add_pending_actor(actor, ready_ref, resource_usage)
+                (
+                    actor,
+                    ready_ref,
+                    resource_usage,
+                    resource_request,
+                ) = self._create_actor()
+                self._add_pending_actor(
+                    actor,
+                    ready_ref,
+                    resource_usage,
+                    resource_request,
+                )
 
             # Capture last scale up timestamp
             self._last_upscaled_at = time.time()
@@ -1043,7 +1091,7 @@ class _ActorPool(AutoscalingActorPool):
             # Actor init failed - clean up the actor from _actor_to_logical_id
             # This must happen for all exceptions, not just RayError, to prevent
             # memory leaks where dead actor handles remain in _actor_to_logical_id.
-            usage = self._actor_resource_usage.pop(actor)
+            usage = self._actor_resources.pop(actor).usage
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1057,7 +1105,7 @@ class _ActorPool(AutoscalingActorPool):
         )
         # Actor is no longer pending — subtract from pending usage.
         self._pending_or_restarting_usage = self._pending_or_restarting_usage.subtract(
-            self._actor_resource_usage[actor]
+            self._actor_resources[actor].usage
         )
         # NOTE: We assume any actor that goes from pending to running is ALIVE
         self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(0)
@@ -1067,6 +1115,10 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
+
+    @override
+    def get_resource_requests(self) -> List[ResourceRequest]:
+        return [resources.request for resources in self._actor_resources.values()]
 
     @override
     def select_actors(
@@ -1175,14 +1227,17 @@ class _ActorPool(AutoscalingActorPool):
 
     def _create_actor(
         self,
-    ) -> Tuple[ActorHandle, ObjectRef, ExecutionResources]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources, ResourceRequest]:
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
-        actor, ready_ref, resource_usage = self._create_actor_fn(
-            labels, logical_actor_id
-        )
+        (
+            actor,
+            ready_ref,
+            resource_usage,
+            resource_request,
+        ) = self._create_actor_fn(labels, logical_actor_id)
         self._actor_to_logical_id[actor] = logical_actor_id
-        return actor, ready_ref, resource_usage
+        return actor, ready_ref, resource_usage, resource_request
 
     def _update_running_actor_state(self, actor: ActorHandle) -> bool:
         """Update running actor state. This is called for every actor
@@ -1211,7 +1266,7 @@ class _ActorPool(AutoscalingActorPool):
                 self._num_restarting_actors += 1
                 self._pending_or_restarting_usage = (
                     self._pending_or_restarting_usage.add(
-                        self._actor_resource_usage[actor]
+                        self._actor_resources[actor].usage
                     )
                 )
                 running_actor_state.is_restarting = True
@@ -1220,7 +1275,7 @@ class _ActorPool(AutoscalingActorPool):
                 self._num_restarting_actors -= 1
                 self._pending_or_restarting_usage = (
                     self._pending_or_restarting_usage.subtract(
-                        self._actor_resource_usage[actor]
+                        self._actor_resources[actor].usage
                     )
                 )
                 running_actor_state.is_restarting = False
@@ -1258,6 +1313,7 @@ class _ActorPool(AutoscalingActorPool):
         actor: ActorHandle,
         ready_ref: ObjectRef,
         resource_usage: ExecutionResources,
+        resource_request: ResourceRequest,
     ):
         """Adds a pending actor to the pool.
 
@@ -1268,9 +1324,11 @@ class _ActorPool(AutoscalingActorPool):
             actor: The not-yet-ready actor to add as pending to the pool.
             ready_ref: The ready future for the actor.
             resource_usage: The actual resource usage for this actor.
+            resource_request: The exact Ray resource request used to create the
+                actor, reported to the cluster autoscaler as active demand.
         """
         self._pending_actors[ready_ref] = actor
-        self._actor_resource_usage[actor] = resource_usage
+        self._actor_resources[actor] = _ActorResources(resource_usage, resource_request)
         self._total_usage = self._total_usage.add(resource_usage)
         self._pending_or_restarting_usage = self._pending_or_restarting_usage.add(
             resource_usage
@@ -1303,7 +1361,7 @@ class _ActorPool(AutoscalingActorPool):
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
             actor = self._pending_actors.pop(ready_ref)
-            usage = self._actor_resource_usage.pop(actor)
+            usage = self._actor_resources.pop(actor).usage
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1328,7 +1386,7 @@ class _ActorPool(AutoscalingActorPool):
         pending = dict(self._pending_actors)
         self._pending_actors.clear()
         for actor in pending.values():
-            usage = self._actor_resource_usage.pop(actor)
+            usage = self._actor_resources.pop(actor).usage
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1388,7 +1446,7 @@ class _ActorPool(AutoscalingActorPool):
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
 
-        usage = self._actor_resource_usage.pop(actor)
+        usage = self._actor_resources.pop(actor).usage
         self._total_usage = self._total_usage.subtract(usage)
         if actor_state.is_restarting:
             self._pending_or_restarting_usage = (

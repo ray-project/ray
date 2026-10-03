@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ResourceRequest,
     TaskContext,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
@@ -315,6 +316,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
                 self._handle_reduce_done, partition_id, bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
+            task_resource_request=ResourceRequest.from_task_options(reduce_options),
             operator_name=self.name,
         )
 

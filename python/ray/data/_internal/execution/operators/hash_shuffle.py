@@ -48,6 +48,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ResourceRequest,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -833,6 +834,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 task_resource_bundle=ExecutionResources.from_resource_dict(
                     shuffle_task_resource_bundle
                 ),
+                task_resource_request=ResourceRequest.from_task_options(
+                    shuffle_task_resource_bundle
+                ),
             )
             if task.get_requested_resource_bundle() is not None:
                 self._shuffling_resource_usage = self._shuffling_resource_usage.add(
@@ -1037,6 +1041,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         return shuffling_tasks + finalizing_tasks
 
+    def get_resource_requests(self) -> List[ResourceRequest]:
+        requests = self._get_base_resource_requests()
+        if self._aggregator_pool is not None:
+            # Report aggregator demand even before ``AggregatorPool.start()`` has
+            # issued the ``.remote()`` calls, so a capacity-starved shuffle can
+            # already trigger scale-up (mirrors the GPU shuffle path).
+            aggregator_request = self._aggregator_pool.get_resource_request()
+            requests.extend(
+                ResourceRequest(resources=aggregator_request.resources)
+                for _ in range(self._aggregator_pool.num_aggregators)
+            )
+        return requests
+
     def _get_active_shuffling_tasks(self) -> List[MetadataOpTask]:
         return list(
             itertools.chain.from_iterable(
@@ -1201,6 +1218,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 ),
                 task_resource_bundle=(
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
+                ),
+                task_resource_request=ResourceRequest.from_task_options(
+                    finalize_task_resource_bundle
                 ),
                 operator_name=self.name,
                 block_ref_counter=self._block_ref_counter,
@@ -1832,6 +1852,10 @@ class AggregatorPool:
     @property
     def num_aggregators(self):
         return self._num_aggregators
+
+    def get_resource_request(self) -> ResourceRequest:
+        """Return the exact resource request used to create each aggregator."""
+        return ResourceRequest.from_actor_options(self._aggregator_ray_remote_args)
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]

@@ -24,6 +24,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ResourceRequest,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -213,6 +214,10 @@ class GPUShuffleActor:
 # GPURankPool — lifecycle manager for a set of GPUShuffleActors
 # ---------------------------------------------------------------------------
 
+# Resource options for every rank actor, shared by ``GPURankPool.start`` and the
+# autoscaler demand report so the two cannot disagree.
+_RANK_ACTOR_RESOURCE_OPTIONS: Dict[str, Any] = {"num_gpus": 1}
+
 
 class GPURankPool:
     """Manages the lifecycle of ``GPUShuffleActor`` instances.
@@ -266,7 +271,7 @@ class GPURankPool:
         )
         actor_cls = self._actor_cls_factory()
         actor_options: Dict[str, typing.Any] = {
-            "num_gpus": 1,
+            **_RANK_ACTOR_RESOURCE_OPTIONS,
             "scheduling_strategy": "SPREAD",
         }
         if self._label_selector:
@@ -659,6 +664,18 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def get_active_tasks(self) -> List[OpTask]:
         return list(self._insert_tasks.values()) + list(self._extraction_tasks.values())
+
+    def get_resource_requests(self) -> List[ResourceRequest]:
+        requests = self._get_base_resource_requests()
+        if not self._rank_pool.is_shutdown:
+            rank_request = ResourceRequest.from_actor_options(
+                _RANK_ACTOR_RESOURCE_OPTIONS
+            )
+            requests.extend(
+                ResourceRequest(resources=rank_request.resources)
+                for _ in range(len(self._rank_pool.actors) or self._rank_pool.nranks)
+            )
+        return requests
 
     def has_completed(self) -> bool:
         return (

@@ -31,6 +31,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.interfaces.resource_request import ResourceRequest
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
@@ -71,9 +72,11 @@ class OpTask(ABC):
         self,
         task_index: int,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional["ResourceRequest"] = None,
     ):
         self._task_index: int = task_index
         self._task_resource_bundle: Optional[ExecutionResources] = task_resource_bundle
+        self._task_resource_request: Optional["ResourceRequest"] = task_resource_request
 
     def task_index(self) -> int:
         """Return the index of the task."""
@@ -81,6 +84,9 @@ class OpTask(ABC):
 
     def get_requested_resource_bundle(self) -> Optional[ExecutionResources]:
         return self._task_resource_bundle
+
+    def get_requested_resource_request(self) -> Optional["ResourceRequest"]:
+        return self._task_resource_request
 
     @abstractmethod
     def get_waitable(self) -> Waitable:
@@ -169,6 +175,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[Block], int], None
         ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional["ResourceRequest"] = None,
         operator_name: str = "Unknown",
     ):
         """Create a DataOpTask
@@ -190,10 +197,11 @@ class DataOpTask(OpTask):
                 size is resolved (before the pair is emitted/deferred). Exposed
                 as a seam for testing the metadata-fetch branches.
             task_resource_bundle: The execution resources of this task.
+            task_resource_request: The exact scheduling resource request for this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
         """
-        super().__init__(task_index, task_resource_bundle)
+        super().__init__(task_index, task_resource_bundle, task_resource_request)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -497,6 +505,7 @@ class MetadataOpTask(OpTask):
         object_ref: ray.ObjectRef,
         task_done_callback: Callable[[], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional["ResourceRequest"] = None,
     ):
         """Initialize a metadata-only OpTask.
 
@@ -505,8 +514,10 @@ class MetadataOpTask(OpTask):
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
             task_resource_bundle: Optional resource bundle reserved for this task.
+            task_resource_request: Optional exact scheduling resource request for
+                this task.
         """
-        super().__init__(task_index, task_resource_bundle)
+        super().__init__(task_index, task_resource_bundle, task_resource_request)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
@@ -1138,6 +1149,67 @@ class PhysicalOperator(Operator):
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
+        return []
+
+    def _get_base_resource_requests(self) -> List["ResourceRequest"]:
+        """Return exact requests before adding non-scheduling resource usage."""
+        requests = []
+        for task in self.get_active_tasks():
+            request = task.get_requested_resource_request()
+            if request is not None and request.resources:
+                requests.append(request)
+                continue
+            resources = task.get_requested_resource_bundle()
+            if resources is not None and not resources.is_zero():
+                requests.append(ResourceRequest.from_execution_resources(resources))
+        return requests
+
+    def get_resource_requests(self) -> List["ResourceRequest"]:
+        """Return exact per-worker resource requests for this operator.
+
+        Every request is a schedulable Ray resource request: the shape a node
+        must have to run that one task or actor. Usage that is not tied to a
+        single task is reported by ``get_extra_resource_usage`` instead, so it
+        can never turn a task shape into one no node can host.
+        """
+        return self._get_base_resource_requests()
+
+    def get_extra_resource_usage(self) -> ExecutionResources:
+        """Return node-level usage that is not attached to a single task.
+
+        Object store memory is pooled per node, so folding it into a task's
+        request would corrupt that task's shape and let a node-level shortage
+        make every shape look unhostable. It is reported on its own and must
+        not take part in shape decisions.
+
+        Returns:
+            ExecutionResources: Usage that belongs to the node rather than to
+                any single task, zero before the operator has started.
+        """
+        # The counter only exists once the executor has started this operator,
+        # and an operator that hasn't started holds no blocks either.
+        if not self._started:
+            return ExecutionResources.zero()
+        return ExecutionResources(
+            object_store_memory=(
+                self.estimate_object_store_usage()
+                + (self.metrics.obj_store_mem_pending_task_outputs or 0)
+            )
+        )
+
+    def _lineage_reconstruction_requests(self) -> List["ResourceRequest"]:
+        """Return requests for tasks Ray Core re-runs on this operator's behalf.
+
+        Lineage-reconstruction tasks are real demand carrying this operator's
+        own shape, so they are reported as extra requests to keep that demand
+        exact. Folding their resources into the in-flight requests instead
+        would produce shapes no real task has -- e.g. a 1-GPU task reported as
+        2 GPUs while one of its outputs is being reconstructed.
+
+        Returns:
+            List[ResourceRequest]: One request per reconstructed task, empty
+                when this operator has no reconstruction accounting.
+        """
         return []
 
     def supports_fusion(self) -> bool:
