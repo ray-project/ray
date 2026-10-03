@@ -3,6 +3,7 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
+from ray._common.utils import env_bool
 from ray.data._internal.average_calculator import TimeWindowAverageCalculator
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.util.metrics import Gauge
@@ -41,15 +42,23 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
 
+    # Ignore usage of ops in task output backpressure when deciding to scale up.
+    # Their tasks are paused on downstream consumers, so more nodes won't help.
+    EXCLUDE_OUTPUT_BACKPRESSURED_USAGE: bool = env_bool(
+        "RAY_DATA_AUTOSCALING_EXCLUDE_OUTPUT_BACKPRESSURED_USAGE", True
+    )
+
     def __init__(
         self,
         resource_manager: ResourceManager,
         *,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         execution_id: Optional[str] = None,
+        exclude_output_backpressured_usage: bool = EXCLUDE_OUTPUT_BACKPRESSURED_USAGE,
     ):
         self._resource_manager = resource_manager
         self._execution_id = execution_id
+        self._exclude_output_backpressured_usage = exclude_output_backpressured_usage
 
         self._cluster_cpu_util_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
@@ -92,7 +101,11 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
             )
 
     def observe(self):
-        """Report the cluster utilization based on global usage / global limits."""
+        """Report the cluster utilization based on global usage / global limits.
+
+        Exported metrics use the raw usage; the rolling averages used for
+        autoscaling may exclude output-backpressured ops.
+        """
 
         def save_div(numerator, denominator):
             if not denominator:
@@ -110,10 +123,26 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
             global_usage.object_store_memory, global_limits.object_store_memory
         )
 
-        self._cluster_cpu_util_calculator.report(cpu_util)
-        self._cluster_gpu_util_calculator.report(gpu_util)
-        self._cluster_mem_util_calculator.report(mem_util)
-        self._cluster_obj_mem_util_calculator.report(obj_store_mem_util)
+        scaling_usage = (
+            self._resource_manager.get_global_usage_excluding_output_backpressure()
+            if self._exclude_output_backpressured_usage
+            else global_usage
+        )
+
+        self._cluster_cpu_util_calculator.report(
+            save_div(scaling_usage.cpu, global_limits.cpu)
+        )
+        self._cluster_gpu_util_calculator.report(
+            save_div(scaling_usage.gpu, global_limits.gpu)
+        )
+        self._cluster_mem_util_calculator.report(
+            save_div(scaling_usage.memory, global_limits.memory)
+        )
+        self._cluster_obj_mem_util_calculator.report(
+            save_div(
+                scaling_usage.object_store_memory, global_limits.object_store_memory
+            )
+        )
 
         if self._execution_id is not None:
             tags = {"dataset": self._execution_id}

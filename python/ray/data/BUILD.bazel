@@ -2375,6 +2375,20 @@ py_test(
 )
 
 py_test(
+    name = "test_autoscaler_iteration_backpressure",
+    size = "medium",
+    srcs = ["tests/test_autoscaler_iteration_backpressure.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_delta_sharing",
     size = "small",
     srcs = ["tests/datasource/test_delta_sharing.py"],

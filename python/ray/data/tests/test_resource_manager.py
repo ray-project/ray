@@ -546,6 +546,47 @@ class TestResourceManager:
         total_obj_store = resource_manager.get_global_usage().object_store_memory
         assert total_obj_store == 300
 
+    def test_global_usage_excluding_output_backpressure(self, restore_data_context):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        cpu_op = mock_map_op(o1, name="CpuMap")
+        gpu_op = mock_map_op(cpu_op, name="GpuMap")
+        limit_op = LimitOperator(100, gpu_op, DataContext.get_current())
+        for op, usage in [
+            (cpu_op, ExecutionResources(cpu=4)),
+            (gpu_op, ExecutionResources(gpu=2)),
+        ]:
+            op.current_logical_usage = MagicMock(return_value=usage)
+            op.running_logical_usage = MagicMock(return_value=usage)
+
+        counter = StubBlockRefCounter()
+        topo = build_streaming_topology(limit_op, ExecutionOptions(), counter)
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
+            counter,
+        )
+        counter.on_block_produced(None, 100, cpu_op.id)
+        counter.on_block_produced(None, 200, gpu_op.id)
+        counter.on_block_produced(None, 50, limit_op.id)
+        resource_manager.update_usages()
+
+        def usage():
+            u = resource_manager.get_global_usage_excluding_output_backpressure()
+            return u.cpu, u.gpu, u.object_store_memory
+
+        assert usage() == (4, 2, 350)
+
+        # Slow consumer: the GPU op and its downstream ineligible Limit are excluded.
+        gpu_op.notify_in_task_output_backpressure(True)
+        assert usage() == (4, 0, 100)
+
+        # GPU-bound: the CPU op waits on the GPU op, whose usage still counts.
+        gpu_op.notify_in_task_output_backpressure(False)
+        cpu_op.notify_in_task_output_backpressure(True)
+        assert usage() == (0, 2, 250)
+
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
