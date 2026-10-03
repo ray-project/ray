@@ -741,11 +741,11 @@ def print_verbose_scaling_log():
 
 
 def _push_freshness_window_s(health_check_period_s: float) -> float:
-    """How long a pushed health result stays fresh enough to stand in for a probe.
+    """How long a pushed result stands in for a probe.
 
-    Keyed on the push cadence, which is twice the probe cadence, rather than on the
-    period itself: a crash is invisible until this expires and a probe is armed, so a
-    wider window would detect one later than pull probing alone did.
+    Shorter than one period: a crashed replica stops pushing, and nothing notices
+    until this expires and a probe is armed, so a wider window would spot a crash
+    later than pull probing alone.
     """
     return max(health_check_period_s * 0.75, 1.0)
 
@@ -775,7 +775,8 @@ class HealthSource(Enum):
 class ResolvedHealth(NamedTuple):
     """The verdict a health check tick should apply.
 
-    consecutive_failures is a pre-chain override, or None to leave the count alone.
+    consecutive_failures is the count to apply, or None when nothing reported one
+    and a failure should be counted by the caller.
     """
 
     source: HealthSource
@@ -799,26 +800,23 @@ class PushedHealthTracker:
         # superseded started. The two settle which observation is newer.
         self._applied_push_received_at: float = 0.0
         self._applied_probe_started_at: float = 0.0
-        # The replica's own failure count as last mirrored, so the same count
-        # arriving twice does not advance the controller's.
-        self._mirrored_failures: Optional[int] = None
 
     def record(
         self,
         checked_at: float,
-        received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
         """Stash the newest pushed result.
 
-        checked_at is replica-clock and orders pushes from one replica; received_at
-        is controller-clock, so freshness is immune to replica skew.
+        checked_at is replica-clock and only orders pushes from one replica. Arrival
+        is stamped here instead, on the controller clock, so freshness does not
+        depend on the replica's.
         """
         stashed = self._pushed.checked_at if self._pushed is not None else 0.0
         if checked_at > max(self._consumed_push_checked_at, stashed):
             self._pushed = PushedHealth(
-                checked_at, received_at, healthy, consecutive_failures
+                checked_at, self._timer.time(), healthy, consecutive_failures
             )
 
     def should_defer_probe(self, health_check_period_s: float) -> bool:
@@ -847,21 +845,18 @@ class PushedHealthTracker:
         self._applied_push_received_at = pushed.received_at
         return pushed
 
-    def _mirror_failures(self, pushed: PushedHealth, probed_failures: int) -> int:
-        """The failure count to set before the caller's chain increments it.
+    @staticmethod
+    def _mirror_failures(pushed: PushedHealth, probed_failures: int) -> Optional[int]:
+        """The count to apply for a pushed failure, or None to let the caller count.
 
-        The replica owns the count: it advances once per health-check period even
-        though it pushes twice, so the controller mirrors rather than recomputes.
+        The replica owns the count, so the controller copies it rather than adding a
+        strike of its own; the same count arriving twice is then simply the same
+        count. max() stops a push stream that starts mid-run from lowering what the
+        controller already probed.
         """
         if pushed.consecutive_failures is None:
-            return probed_failures
-        if pushed.consecutive_failures == self._mirrored_failures:
-            # The same count arriving again, so cancel the caller's increment or the
-            # threshold is reached in half the configured time.
-            return probed_failures - 1
-        # max() keeps a push stream that starts mid-failure-run from lowering what
-        # the controller already probed.
-        return max(probed_failures, pushed.consecutive_failures - 1)
+            return None
+        return max(probed_failures, pushed.consecutive_failures)
 
     def resolve(
         self,
@@ -890,8 +885,6 @@ class PushedHealthTracker:
             # Watermark by when this probe started: a push that arrived before that
             # is strictly older information and must not overwrite the result.
             self._applied_probe_started_at = probe_started_at
-            if probe_response is ReplicaHealthCheckResponse.SUCCEEDED:
-                self._mirrored_failures = None  # the caller's chain resets the count
             return ResolvedHealth(HealthSource.PROBE, probe_response, None)
 
         # No probe resolved this tick, so a fresh push is never discarded in favour
@@ -902,14 +895,13 @@ class PushedHealthTracker:
                 HealthSource.NOTHING, ReplicaHealthCheckResponse.NONE, None
             )
         if pushed.healthy:
-            self._mirrored_failures = None
             return ResolvedHealth(
                 HealthSource.PUSH, ReplicaHealthCheckResponse.SUCCEEDED, None
             )
-        failures = self._mirror_failures(pushed, probed_failures)
-        self._mirrored_failures = pushed.consecutive_failures
         return ResolvedHealth(
-            HealthSource.PUSH, ReplicaHealthCheckResponse.APP_FAILURE, failures
+            HealthSource.PUSH,
+            ReplicaHealthCheckResponse.APP_FAILURE,
+            self._mirror_failures(pushed, probed_failures),
         )
 
 
@@ -1897,14 +1889,11 @@ class ActorReplicaWrapper:
     def record_pushed_health(
         self,
         checked_at: float,
-        received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
         """Stash the replica's latest pushed self-health observation."""
-        self._pushed_health_tracker.record(
-            checked_at, received_at, healthy, consecutive_failures
-        )
+        self._pushed_health_tracker.record(checked_at, healthy, consecutive_failures)
 
     def _should_start_new_probe(self) -> bool:
         """Determines if a new health check should be kicked off.
@@ -2012,16 +2001,13 @@ class ActorReplicaWrapper:
                     f"{self._consecutive_health_check_failures} consecutive failures."
                 )
             self._consecutive_health_check_failures = 0
-            # The replica's own counter restarts here too, so a later failure reports
-            # count 1 again. Keeping the old watermark would read that as a repeat and
-            # drop the strike, and a fail-recover-fail cycle would never reach the
-            # threshold.
-            self._last_mirrored_push_failures = None
             self._healthy = True
         elif response is ReplicaHealthCheckResponse.APP_FAILURE:
             # Health check failed. If it has failed more than N times in a row,
-            # mark the replica unhealthy.
-            self._consecutive_health_check_failures += 1
+            # mark the replica unhealthy. A pushed failure carries the replica's own
+            # count, already applied above, so only an unreported one adds a strike.
+            if resolved.consecutive_failures is None:
+                self._consecutive_health_check_failures += 1
             if (
                 self._consecutive_health_check_failures
                 >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
@@ -2430,14 +2416,11 @@ class DeploymentReplica:
     def record_pushed_health(
         self,
         checked_at: float,
-        received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
         """Stash the replica's pushed self-health for the next health check."""
-        self._actor.record_pushed_health(
-            checked_at, received_at, healthy, consecutive_failures
-        )
+        self._actor.record_pushed_health(checked_at, healthy, consecutive_failures)
 
     def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
         """Get the latest response from the routing stats on the replica.
@@ -5507,7 +5490,6 @@ class DeploymentState:
         self,
         replica_id: ReplicaID,
         checked_at: float,
-        received_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
@@ -5518,9 +5500,7 @@ class DeploymentState:
         """
         replica = self._replicas.get_by_id(replica_id)
         if replica is not None:
-            replica.record_pushed_health(
-                checked_at, received_at, healthy, consecutive_failures
-            )
+            replica.record_pushed_health(checked_at, healthy, consecutive_failures)
 
     def check_and_update_replicas(self):
         """
@@ -6533,18 +6513,14 @@ class DeploymentStateManager:
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ) -> None:
-        """Route a replica's pushed self-health to the replica itself.
-
-        received_at is stamped here, on the controller clock, so freshness does
-        not depend on the replica's.
-        """
+        """Route a replica's pushed self-health to the replica itself."""
         deployment_state = self._deployment_states.get(replica_id.deployment_id)
         if deployment_state is None:
             # A deployment this controller no longer tracks; the push has nowhere
             # to land and the replica is on its way out.
             return
         deployment_state.record_pushed_health(
-            replica_id, checked_at, time.time(), healthy, consecutive_failures
+            replica_id, checked_at, healthy, consecutive_failures
         )
 
     def _map_actor_names_to_deployment(

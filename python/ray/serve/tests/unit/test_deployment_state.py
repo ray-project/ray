@@ -11806,11 +11806,12 @@ class TestPushedHealthTracker:
         timer = MockTimer(start_time=1000.0)
         return PushedHealthTracker(timer=timer), timer
 
-    PERIOD = 10.0
-
     def _resolve(self, t, probe=None, started_at=0.0, failures=0):
         return t.resolve(
-            probe or ReplicaHealthCheckResponse.NONE, started_at, failures, self.PERIOD
+            probe or ReplicaHealthCheckResponse.NONE,
+            started_at,
+            failures,
+            health_check_period_s=10.0,
         )
 
     # -- recording and dedupe -------------------------------------------------
@@ -11823,47 +11824,47 @@ class TestPushedHealthTracker:
 
     def test_a_push_resolves_once(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), True)
+        t.record(timer.time(), True)
         assert self._resolve(t).source is HealthSource.PUSH
         assert self._resolve(t).source is HealthSource.NOTHING  # consumed
 
     def test_an_older_push_does_not_replace_a_newer_stash(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), False, 5)
-        t.record(timer.time() - 1, timer.time() - 1, True)  # delayed, older
+        t.record(timer.time(), False, 5)
+        t.record(timer.time() - 1, True)  # delayed, older
         r = self._resolve(t)
         assert r.response is ReplicaHealthCheckResponse.APP_FAILURE
 
     def test_a_repeat_of_a_consumed_push_is_not_applied_again(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), True)
+        t.record(timer.time(), True)
         self._resolve(t)
-        t.record(timer.time(), timer.time(), True)  # same checked_at
+        t.record(timer.time(), True)  # same checked_at
         assert self._resolve(t).source is HealthSource.NOTHING
 
     # -- freshness ------------------------------------------------------------
 
     def test_a_stale_push_is_dropped(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), True)
-        timer.advance(_push_freshness_window_s(self.PERIOD) + 1)
+        t.record(timer.time(), True)
+        timer.advance(_push_freshness_window_s(10.0) + 1)
         assert self._resolve(t).source is HealthSource.NOTHING
 
     def test_a_fresh_push_defers_the_probe_and_a_stale_one_does_not(self):
         t, timer = self._tracker()
-        assert not t.should_defer_probe(self.PERIOD)  # nothing in hand
-        t.record(timer.time(), timer.time(), True)
-        assert t.should_defer_probe(self.PERIOD)  # stashed, not yet consumed
+        assert not t.should_defer_probe(10.0)  # nothing in hand
+        t.record(timer.time(), True)
+        assert t.should_defer_probe(10.0)  # stashed, not yet consumed
         self._resolve(t)
-        assert t.should_defer_probe(self.PERIOD)  # applied
-        timer.advance(_push_freshness_window_s(self.PERIOD) + 1)
-        assert not t.should_defer_probe(self.PERIOD)
+        assert t.should_defer_probe(10.0)  # applied
+        timer.advance(_push_freshness_window_s(10.0) + 1)
+        assert not t.should_defer_probe(10.0)
 
     # -- probe against push ---------------------------------------------------
 
     def test_a_probe_that_resolves_wins_its_own_tick(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), False, 1)
+        t.record(timer.time(), False, 1)
         r = self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
         assert r.source is HealthSource.PROBE
         # ...and the push it beat is still in hand for the next tick.
@@ -11873,7 +11874,7 @@ class TestPushedHealthTracker:
         t, timer = self._tracker()
         probe_started = timer.time()
         timer.advance(1)
-        t.record(timer.time(), timer.time(), True)
+        t.record(timer.time(), True)
         self._resolve(t)  # the push is applied
         r = self._resolve(t, ReplicaHealthCheckResponse.APP_FAILURE, probe_started)
         assert r.source is HealthSource.SUPERSEDED_PROBE
@@ -11883,66 +11884,67 @@ class TestPushedHealthTracker:
         t, timer = self._tracker()
         probe_started = timer.time()
         timer.advance(1)
-        t.record(timer.time(), timer.time(), True)
+        t.record(timer.time(), True)
         self._resolve(t)
         r = self._resolve(t, ReplicaHealthCheckResponse.ACTOR_CRASHED, probe_started)
         assert r.response is ReplicaHealthCheckResponse.ACTOR_CRASHED
 
     def test_a_push_older_than_an_applied_probe_is_dropped(self):
         t, timer = self._tracker()
-        stale_push_at = timer.time()
+        t.record(timer.time(), False, 2)  # arrives first, before any probe resolves
         timer.advance(5)
+        # A probe started after it resolves first, so the push is older information.
         self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
-        t.record(stale_push_at, stale_push_at, False, 2)
         assert self._resolve(t).source is HealthSource.NOTHING
 
     # -- mirroring the replica's failure count --------------------------------
 
-    def test_the_first_pushed_failure_mirrors(self):
+    def test_the_first_pushed_failure_is_copied(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), False, 1)
-        # One less than the replica's count, because the caller's chain adds one.
-        assert self._resolve(t).consecutive_failures == 0
+        t.record(timer.time(), False, 1)
+        assert self._resolve(t).consecutive_failures == 1
 
-    def test_the_same_count_arriving_again_cancels_the_increment(self):
+    def test_the_same_count_arriving_again_is_still_that_count(self):
+        """Replicas heartbeat twice per period but advance the count once, so the
+        second heartbeat of a period repeats it."""
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), False, 1)
-        assert self._resolve(t, failures=0).consecutive_failures == 0
+        t.record(timer.time(), False, 1)
+        assert self._resolve(t, failures=0).consecutive_failures == 1
         timer.advance(1)
-        t.record(timer.time(), timer.time(), False, 1)  # same count, second heartbeat
-        assert self._resolve(t, failures=1).consecutive_failures == 0
+        t.record(timer.time(), False, 1)  # same count, second heartbeat
+        assert self._resolve(t, failures=1).consecutive_failures == 1
+
+    def test_a_push_without_a_count_leaves_the_counting_to_the_caller(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), False, None)
+        assert self._resolve(t, failures=2).consecutive_failures is None
 
     def test_a_push_stream_starting_mid_run_does_not_lower_the_count(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), False, 1)
+        t.record(timer.time(), False, 1)
         # The controller already probed two failures.
         assert self._resolve(t, failures=2).consecutive_failures == 2
 
     def test_recovery_lets_the_next_failure_count_again(self):
         t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), False, 1)
-        assert self._resolve(t, failures=0).consecutive_failures == 0
+        t.record(timer.time(), False, 1)
+        assert self._resolve(t, failures=0).consecutive_failures == 1
         timer.advance(1)
-        t.record(timer.time(), timer.time(), True, 0)  # recovers
+        t.record(timer.time(), True, 0)  # recovers
         assert self._resolve(t, failures=1).source is HealthSource.PUSH
         timer.advance(1)
-        t.record(timer.time(), timer.time(), False, 1)  # fails again, count restarts
-        assert self._resolve(t, failures=0).consecutive_failures == 0
-
-    def test_a_healthy_probe_also_clears_the_mirror(self):
-        t, timer = self._tracker()
-        t.record(timer.time(), timer.time(), False, 1)
-        self._resolve(t, failures=0)
-        timer.advance(1)
-        self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
-        timer.advance(1)
-        t.record(timer.time(), timer.time(), False, 1)  # same count, but after a reset
-        assert self._resolve(t, failures=0).consecutive_failures == 0
+        t.record(timer.time(), False, 1)  # fails again, count restarts
+        assert self._resolve(t, failures=0).consecutive_failures == 1
 
 
-class TestPushedHealth:
-    """Replica-pushed self-health short-circuits the pull probe; stale or absent
-    pushes fall back to the pull path unchanged."""
+class TestPushedHealthWrapper:
+    """The glue in ActorReplicaWrapper.check_health: the probe gate, the failure
+    chain and the metrics flags.
+
+    Driven against a real wrapper because conftest patches ActorReplicaWrapper out
+    of mock_deployment_state_manager, so no end-to-end test reaches this code. The
+    arbitration itself is covered in TestPushedHealthTracker.
+    """
 
     def _wrapper(self):
         w = ActorReplicaWrapper.__new__(ActorReplicaWrapper)
@@ -11953,9 +11955,6 @@ class TestPushedHealth:
         w._consecutive_health_check_failures = 0
         w._healthy = True
         w._replica_id = "test_replica"
-        w._pushed_health = None
-        w._last_consumed_push_ts = 0.0
-        w._last_applied_push_received_at = 0.0
         w._pushed_health_tracker = PushedHealthTracker()
         w._version = SimpleNamespace(
             deployment_config=SimpleNamespace(
@@ -11968,136 +11967,103 @@ class TestPushedHealth:
         w = self._wrapper()
         w._probe_started_at = 0.0  # probe would fire without the push
         now = time.time()
-        w.record_pushed_health(now, now, True)
+        w.record_pushed_health(now, True)
         assert w.check_health() is True
         w._actor_handle.check_health.remote.assert_not_called()
         assert w._probe_ref is None
 
-    def test_stale_push_cannot_clear_probe_failures(self):
+    def test_without_a_push_in_hand_the_probe_is_armed(self):
+        """The other half of the gate. Invert the deferral and this one fails while
+        test_fresh_healthy_push_defers_pull_probe passes, so both are needed."""
         w = self._wrapper()
-        w._consecutive_health_check_failures = 2  # accumulated from pull probes
-        stale = time.time() - 60.0
-        w.record_pushed_health(stale, stale, True)
-        w.check_health()
-        # A stale healthy observation must not be applied as a verdict, or it
-        # silently erases failures the probe path counted.
-        assert w._consecutive_health_check_failures == 2
-
-    def test_stale_push_falls_back_to_pull_probe(self):
-        w = self._wrapper()
-        w._probe_started_at = 0.0
-        w.record_pushed_health(time.time() - 60.0, time.time() - 60.0, True)
+        w._probe_started_at = 0.0  # the cadence is overdue
         assert w.check_health() is True
         w._actor_handle.check_health.remote.assert_called_once()
+
+    def test_stashed_push_defers_a_new_probe(self, monkeypatch):
+        w = self._wrapper()
+        # A probe outstanding longer than the period resolves this tick, so the push
+        # that landed meanwhile cannot be consumed yet...
+        w._probe_ref = "probe_ref"
+        w._probe_started_at = time.time() - 20.0
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
+        now = time.time()
+        w.record_pushed_health(now, False, 3)
+        w.check_health()
+        # ...but it is fresh and in hand, so no new probe is armed against it.
+        assert w._probe_ref is None
+        w._actor_handle.check_health.remote.assert_not_called()
+
+    def test_probe_gate_follows_arrival_not_consumption(self):
+        w = self._wrapper()
+        w._probe_started_at = 0.0  # a probe would fire but for the push
+        window = ds_mod._push_freshness_window_s(w.health_check_period_s)
+        arrived = time.time() - window + 1.0  # nearly a window old on arrival
+        w.record_pushed_health(arrived, True)
+        assert w.check_health() is True
+        # Anchored to arrival, so the gate has ~1s left, not a fresh window.
+        assert not w._should_start_new_probe()
+
+    def test_healthy_push_resets_failure_count(self):
+        w = self._wrapper()
+        w.record_pushed_health(time.time(), False)
+        w.check_health()
+        assert w._consecutive_health_check_failures == 1
+        w.record_pushed_health(time.time() + 1e-3, True)
+        assert w.check_health() is True
+        assert w._consecutive_health_check_failures == 0
+
+    def test_pushed_count_is_mirrored(self):
+        w = self._wrapper()
+        w.record_pushed_health(time.time(), False, 7)
+        w.check_health()
+        assert w._consecutive_health_check_failures == 7
+        assert w._healthy is False
 
     def test_unhealthy_pushes_count_toward_threshold(self):
         w = self._wrapper()
         threshold = ds_mod.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
         for i in range(threshold):
-            w.record_pushed_health(time.time() + i * 1e-3, time.time(), False)
+            w.record_pushed_health(time.time() + i * 1e-3, False)
             w.check_health()
         assert w._healthy is False
         assert w._consecutive_health_check_failures == threshold
 
-    def test_stash_keeps_the_newest_of_two_pushes(self):
+    def test_repeated_pushes_in_a_period_do_not_double_count(self):
+        """The replica counts a failure once per period but heartbeats twice, so the
+        same count arrives twice. Advancing on both would replace a replica in half the
+        configured time."""
         w = self._wrapper()
-        now = time.time()
-        w.record_pushed_health(now, now, False, 5)
-        w.record_pushed_health(now - 1.0, now - 1.0, True)  # delayed older push
-        w.check_health()
-        assert w._consecutive_health_check_failures == 5
-
-    def test_push_deduped_by_timestamp(self):
-        w = self._wrapper()
+        threshold = ds_mod.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
         ts = time.time()
-        w.record_pushed_health(ts, ts, False)
-        w.check_health()
-        w.record_pushed_health(ts, ts, False)  # same observation again
-        w.check_health()
-        assert w._consecutive_health_check_failures == 1
-
-    def test_pushed_count_is_mirrored(self):
-        w = self._wrapper()
-        w.record_pushed_health(time.time(), time.time(), False, 7)
-        w.check_health()
-        assert w._consecutive_health_check_failures == 7
-        assert w._healthy is False
-
-    def test_healthy_push_resets_failure_count(self):
-        w = self._wrapper()
-        w.record_pushed_health(time.time(), time.time(), False)
-        w.check_health()
-        assert w._consecutive_health_check_failures == 1
-        w.record_pushed_health(time.time() + 1e-3, time.time(), True)
-        assert w.check_health() is True
-        assert w._consecutive_health_check_failures == 0
-
-
-def test_deployment_replica_forwards_pushed_health():
-    """The DeploymentReplica hop must hand the wrapper the tuple unreordered."""
-    rep = DeploymentReplica.__new__(DeploymentReplica)
-    rep._actor = Mock()
-    rep.record_pushed_health(1.0, 2.0, False, 3)
-    rep._actor.record_pushed_health.assert_called_once_with(1.0, 2.0, False, 3)
-
-
-class TestPushedHealthRegressions:
-    """The push/probe arbitration cases, each of which cost a review round."""
-
-    def test_in_flight_probe_does_not_overwrite_a_newer_push(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        # A probe is in flight when an unhealthy push lands...
-        w._probe_ref = "probe_ref"
-        now = time.time()
-        # Pin both instants: the drop is gated on a strict <, and two adjacent
-        # time.time() reads tie on a coarse clock (Windows is ~15.6ms).
-        w._probe_started_at = now - 1.0
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
-        w.record_pushed_health(now, now, False, 2)
-        assert w.check_health() is True  # applied, still under the threshold
-        assert w._consecutive_health_check_failures == 2
-        # ...and resolves SUCCEEDED afterwards, carrying the older observation.
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
-        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
-        assert w.check_health() is True
-        assert w._consecutive_health_check_failures == 2  # not reset by a stale probe
-
-    def test_in_flight_probe_still_reports_an_actor_crash(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        w._probe_ref = "probe_ref"
-        w._probe_started_at = time.time()
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
-        now = time.time()
-        w.record_pushed_health(now, now, True)
-        assert w.check_health() is True
-        # A crash is authoritative even though a healthy push was just applied.
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
-
-        def _crashed(ref):
-            raise ds_mod.RayActorError()
-
-        monkeypatch.setattr(ds_mod.ray, "get", _crashed)
-        assert w.check_health() is False
+        for period in range(1, threshold + 1):
+            for _eval in range(2):  # two evals per period, one counted failure
+                ts += 1e-3
+                w.record_pushed_health(ts, False, period)
+                w.check_health()
+                assert w._consecutive_health_check_failures == period
+        assert w._healthy is False  # only after a full threshold of periods
 
     def test_push_failure_feeds_the_health_check_metrics(self):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w = self._wrapper()
         now = time.time()
-        w.record_pushed_health(now, now, False, 1)
+        w.record_pushed_health(now, False, 1)
         assert w.check_health() is True  # under the threshold, still counted
         assert w.last_health_check_failed is True
         assert w.last_health_check_latency_ms is None  # no controller round trip
-        w.record_pushed_health(now + 1, now + 1, True)
+        w.record_pushed_health(now + 1, True)
         assert w.check_health() is True
         assert w.last_health_check_failed is False
 
     def test_dropped_probe_is_not_counted_as_a_failure(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w = self._wrapper()
         w._probe_ref = "probe_ref"
         now = time.time()
         # Pin both instants: see test_in_flight_probe_does_not_overwrite_a_newer_push.
         w._probe_started_at = now - 1.0
         monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
-        w.record_pushed_health(now, now, True)
+        w.record_pushed_health(now, True)
         assert w.check_health() is True
         # The in-flight probe resolves failed, but its result is dropped as stale --
         # the counter must not see a failure the controller ignored.
@@ -12110,110 +12076,15 @@ class TestPushedHealthRegressions:
         assert w.check_health() is True
         assert not w.last_health_check_failed
 
-    def test_push_does_not_lower_probed_failure_count(self):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        # Two probe failures are already counted when the pusher comes online and
-        # reports its own first failure; mirroring must not walk the count back.
-        w._consecutive_health_check_failures = 2
-        now = time.time()
-        w.record_pushed_health(now, now, False, 1)
-        assert w.check_health() is False
-        assert w._consecutive_health_check_failures == 3
 
-    def test_probe_applied_beats_a_push_stashed_before_it(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        now = time.time()
-        w.record_pushed_health(now - 5, now - 5, False, 2)  # stashed first...
-        w._probe_ref = "probe_ref"
-        w._probe_started_at = now - 1  # ...before this probe even started
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
-        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
-        assert w.check_health() is True  # ...probe resolves this tick and wins
-        assert w._consecutive_health_check_failures == 0
-        # Next tick the stash must not resurrect the older observation.
-        w._probe_ref = None
-        assert w.check_health() is True
-        assert w._consecutive_health_check_failures == 0
-
-    def test_probe_gate_follows_arrival_not_consumption(self):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        w._probe_started_at = 0.0  # a probe would fire but for the push
-        window = ds_mod._push_freshness_window_s(w.health_check_period_s)
-        arrived = time.time() - window + 1.0  # nearly a window old on arrival
-        w.record_pushed_health(arrived, arrived, True)
-        assert w.check_health() is True
-        # Anchored to arrival, so the gate has ~1s left, not a fresh window.
-        assert not w._should_start_new_probe()
-
-    def test_stashed_push_defers_a_new_probe(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        # A probe outstanding longer than the period resolves this tick, so the push
-        # that landed meanwhile cannot be consumed yet...
-        w._probe_ref = "probe_ref"
-        w._probe_started_at = time.time() - 20.0
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
-        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
-        now = time.time()
-        w.record_pushed_health(now, now, False, 3)
-        w.check_health()
-        # ...but it is fresh and in hand, so no new probe is armed against it.
-        assert w._probe_ref is None
-        w._actor_handle.check_health.remote.assert_not_called()
-
-    def test_the_window_stays_under_the_probe_cadence(self):
-        """A crash is invisible until the window expires and a probe is armed, so the
-        window has to stay under the cadence it replaces or push detects crashes later
-        than pull probing did. Absolute values, so a change here has to be deliberate."""
-        for period in (2.0, 10.0, 30.0):
-            assert ds_mod._push_freshness_window_s(period) < period
-        assert ds_mod._push_freshness_window_s(10.0) == 7.5
-        assert ds_mod._push_freshness_window_s(0.5) == 1.0  # the floor still applies
-
-    def test_a_recovered_replica_can_fail_again(self):
-        """Recovery restarts the replica's own counter, so a later failure reports
-        count 1 again. A stale watermark would read that as a repeat and drop every
-        strike, and a fail-recover-fail cycle would never reach the threshold."""
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        threshold = ds_mod.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-        ts = time.time()
-        for _cycle in range(threshold):
-            ts += 1e-3
-            w.record_pushed_health(ts, ts, False, 1)  # fails, its first failure
-            w.check_health()
-            assert w._consecutive_health_check_failures == 1
-            ts += 1e-3
-            w.record_pushed_health(ts, ts, True, 0)  # then recovers
-            w.check_health()
-            assert w._consecutive_health_check_failures == 0
-        assert w._healthy is True  # flapping never accrues, but strikes do land
-
-    def test_repeated_pushes_in_a_period_do_not_double_count(self):
-        """The replica counts a failure once per period but heartbeats twice, so the
-        same count arrives twice. Advancing on both would replace a replica in half the
-        configured time."""
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        threshold = ds_mod.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-        ts = time.time()
-        for period in range(1, threshold + 1):
-            for _eval in range(2):  # two evals per period, one counted failure
-                ts += 1e-3
-                w.record_pushed_health(ts, ts, False, period)
-                w.check_health()
-                assert w._consecutive_health_check_failures == period
-        assert w._healthy is False  # only after a full threshold of periods
-
-    def test_resolved_probe_does_not_discard_fresh_push(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
-        # An in-flight probe resolves SUCCEEDED this tick...
-        w._probe_ref = "probe_ref"
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
-        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
-        now = time.time()
-        w.record_pushed_health(now, now, False, 1)
-        assert w.check_health() is True  # probe result wins this tick
-        # Next tick (no probe): the push is consumed.
-        assert w.check_health() is True
-        assert w._consecutive_health_check_failures == 1
+def test_the_push_window_stays_under_the_probe_cadence():
+    """A crash is invisible until the window expires and a probe is armed, so the
+    window has to stay under the cadence it replaces or push detects crashes later
+    than pull probing did. Absolute values, so a change here has to be deliberate."""
+    for period in (2.0, 10.0, 30.0):
+        assert ds_mod._push_freshness_window_s(period) < period
+    assert ds_mod._push_freshness_window_s(10.0) == 7.5
+    assert ds_mod._push_freshness_window_s(0.5) == 1.0  # the floor still applies
 
 
 if __name__ == "__main__":
