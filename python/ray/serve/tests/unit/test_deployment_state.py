@@ -12627,6 +12627,26 @@ class TestPushedHealthTracker:
         assert self._resolve(t, failures=0).consecutive_failures == 1
 
 
+def _push_health_wrapper():
+    """A real ActorReplicaWrapper with the collaborators check_health touches."""
+    w = ActorReplicaWrapper.__new__(ActorReplicaWrapper)
+    w._actor_handle = Mock()
+    w._actor_handle.check_health.remote.return_value = "probe_ref"
+    w._probe_ref = None
+    w._probe_started_at = time.time()
+    w._consecutive_health_check_failures = 0
+    w._suppressed_probe_timeouts = 0
+    w._healthy = True
+    w._replica_id = "test_replica"
+    w._pushed_health_tracker = PushedHealthTracker()
+    w._version = SimpleNamespace(
+        deployment_config=SimpleNamespace(
+            health_check_period_s=10.0, health_check_timeout_s=30.0
+        )
+    )
+    return w
+
+
 class TestPushedHealthWrapper:
     """What ActorReplicaWrapper.check_health does with a resolved push: the probe
     gate, the failure chain and the metrics flag.
@@ -12891,7 +12911,7 @@ class TestIngestLagGate:
         assert ds.expected_push_rate() == 0.0
 
     def _timed_out_probe(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w = _push_health_wrapper()
         w._probe_ref = "probe_ref"
         w._probe_started_at = time.time() - 60.0  # well past the timeout
         monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
@@ -12909,7 +12929,7 @@ class TestIngestLagGate:
         assert w._consecutive_health_check_failures == 1
 
     def test_application_failure_is_counted_even_while_behind(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w = _push_health_wrapper()
         w._probe_ref = "probe_ref"
         w._probe_started_at = time.time()
         monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
@@ -12923,7 +12943,7 @@ class TestIngestLagGate:
         assert w._consecutive_health_check_failures == 1
 
     def test_actor_crash_is_reported_even_while_behind(self, monkeypatch):
-        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w = _push_health_wrapper()
         w._probe_ref = "probe_ref"
         w._probe_started_at = time.time()
         monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
