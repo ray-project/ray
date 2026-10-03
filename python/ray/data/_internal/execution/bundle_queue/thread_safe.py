@@ -65,6 +65,10 @@ class ThreadSafeBundleQueue(BundleQueue):
         with self._lock:
             return self._inner.has_next()
 
+    def has_resident_next(self) -> bool:
+        with self._lock:
+            return self._inner.has_resident_next()
+
     def clear(self):
         with self._lock:
             self._inner.clear()

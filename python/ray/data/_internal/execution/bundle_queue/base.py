@@ -97,6 +97,12 @@ class BundleQueue(abc.ABC):
         """Check if the queue has a valid bundle."""
         ...
 
+    def has_resident_next(self) -> bool:
+        """Whether the next bundle's blocks are all in the object store, so it
+        can be consumed without waiting on lineage reconstruction. Queues that
+        don't track residency treat every bundle as resident."""
+        return self.has_next()
+
     @abc.abstractmethod
     def clear(self):
         """Remove all bundles from the queue."""
