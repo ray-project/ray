@@ -3172,6 +3172,7 @@ class TestAsyncioRouterBackoffConfig:
                 initial_backoff_s=custom_initial_backoff,
                 backoff_multiplier=custom_multiplier,
                 max_backoff_s=custom_max_backoff,
+                request_routing_timeout_s=1.5,
             )
         )
 
@@ -3187,6 +3188,7 @@ class TestAsyncioRouterBackoffConfig:
         assert fake_request_router.initial_backoff_s == custom_initial_backoff
         assert fake_request_router.backoff_multiplier == custom_multiplier
         assert fake_request_router.max_backoff_s == custom_max_backoff
+        assert fake_request_router.request_routing_timeout_s == 1.5
 
 
 class TestOnRequestCompleted:

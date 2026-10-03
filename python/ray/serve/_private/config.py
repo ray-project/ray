@@ -370,6 +370,9 @@ class DeploymentConfig(BaseModel):
                 **data["autoscaling_config"]
             )
         if data.get("request_router_config"):
+            if data["request_router_config"].get("request_routing_timeout_s") is None:
+                # Leave the `optional` proto field unset rather than passing None.
+                data["request_router_config"].pop("request_routing_timeout_s", None)
             router_kwargs = data["request_router_config"].get("request_router_kwargs")
             if router_kwargs is not None:
                 if not router_kwargs:

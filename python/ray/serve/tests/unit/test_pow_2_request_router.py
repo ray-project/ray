@@ -2232,5 +2232,71 @@ def test_compute_backoff_s_does_not_overflow():
     assert router._compute_backoff_s(2048) == router.max_backoff_s
 
 
+@pytest.mark.asyncio
+async def test_request_routing_timeout_no_replicas(pow_2_router):
+    """A request that isn't assigned a replica within the timeout fails."""
+    s = pow_2_router
+    s.request_routing_timeout_s = 0.05
+    loop = get_or_create_event_loop()
+
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    with pytest.raises(TimeoutError, match="Failed to route request to a replica"):
+        await asyncio.wait_for(task, timeout=10)
+
+    assert s.num_pending_requests == 0
+    assert len(s._pending_requests_to_route) == 0
+
+
+@pytest.mark.asyncio
+async def test_request_routing_timeout_behind_pending_request(pow_2_router):
+    """A timed-out request queued behind a still-pending one is dropped."""
+    s = pow_2_router
+    loop = get_or_create_event_loop()
+
+    # Head request enqueued before the timeout was set: it waits indefinitely.
+    head = fake_pending_request()
+    head_task = loop.create_task(s._choose_replica_for_request(head))
+    await asyncio.sleep(0)
+
+    s.request_routing_timeout_s = 0.05
+    expired = fake_pending_request()
+    task = loop.create_task(s._choose_replica_for_request(expired))
+    with pytest.raises(TimeoutError, match="Failed to route request to a replica"):
+        await asyncio.wait_for(task, timeout=10)
+
+    assert expired.future.cancelled()
+    assert list(s._pending_requests_to_fulfill) == [head]
+    assert list(s._pending_requests_to_route) == [head]
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    assert (await head_task) == r1
+    assert s.curr_num_routing_tasks == 0
+    assert s.num_pending_requests == 0
+
+
+@pytest.mark.asyncio
+async def test_request_routing_timeout_when_replicas_maxed(pow_2_router):
+    """A request that times out stops its routing task."""
+    s = pow_2_router
+    s.request_routing_timeout_s = 0.05
+    loop = get_or_create_event_loop()
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+    s.update_replicas([r1])
+
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    with pytest.raises(TimeoutError, match="Failed to route request to a replica"):
+        await asyncio.wait_for(task, timeout=10)
+
+    await async_wait_for_condition(
+        lambda: s.curr_num_routing_tasks == 0, retry_interval_ms=1
+    )
+    assert s.num_pending_requests == 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
