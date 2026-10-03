@@ -76,15 +76,19 @@ class LocalNode : public ray::syncer::ReporterInterface {
 class RemoteNodes : public ray::syncer::ReceiverInterface {
  public:
   RemoteNodes() {}
-  void ConsumeSyncMessage(
-      std::shared_ptr<const ray::rpc::syncer::RaySyncMessage> msg) override {
-    auto version = msg->version();
-    int state = *reinterpret_cast<const int *>(msg->sync_message().data());
-    auto iter = infos_.find(msg->node_id());
-    if (iter == infos_.end() || iter->second.second < version) {
-      RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg->node_id()).Hex()
-                    << " to (" << state << ", v:" << version << ")";
-      infos_[msg->node_id()] = std::make_pair(state, version);
+  void ConsumeSyncMessages(
+      ray::rpc::syncer::MessageType /*message_type*/,
+      std::vector<std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>> msgs)
+      override {
+    for (const auto &msg : msgs) {
+      auto version = msg->version();
+      int state = *reinterpret_cast<const int *>(msg->sync_message().data());
+      auto iter = infos_.find(msg->node_id());
+      if (iter == infos_.end() || iter->second.second < version) {
+        RAY_LOG(INFO) << "Update node " << ray::NodeID::FromBinary(msg->node_id()).Hex()
+                      << " to (" << state << ", v:" << version << ")";
+        infos_[msg->node_id()] = std::make_pair(state, version);
+      }
     }
   }
 

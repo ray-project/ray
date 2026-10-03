@@ -15,6 +15,9 @@
 syntax = "proto3";
 package ray.rpc.syncer;
 
+// Messages are coalesced per (node_id, message_type) on both the sending and the
+// receiving side, so a channel must tolerate losing intermediate versions: every message
+// carries the full state (RESOURCE_VIEW) or is idempotent (COMMANDS).
 enum MessageType {
   RESOURCE_VIEW = 0;
   COMMANDS = 1;
