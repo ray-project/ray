@@ -1,8 +1,10 @@
 import asyncio
 import pickle
 import sys
+import threading
 from types import SimpleNamespace
 from typing import Union
+from unittest.mock import Mock
 
 import pytest
 
@@ -12,6 +14,7 @@ from ray._common.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError, TaskCancelledError
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
     ReplicaQueueLengthInfo,
@@ -19,6 +22,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
@@ -229,8 +233,30 @@ def test_backend_http_endpoint_requires_host_and_port(setup_fake_replica):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
-async def test_send_request_without_rejection(setup_fake_replica, is_streaming: bool):
-    replica = RunningReplica(setup_fake_replica)
+@pytest.mark.parametrize("resolve_in_router", [False, True])
+async def test_send_request_without_rejection(
+    setup_fake_replica, is_streaming: bool, resolve_in_router: bool, monkeypatch
+):
+    if resolve_in_router:
+        loop_thread = threading.get_ident()
+        get_actor = ray.get_actor
+
+        def lookup(*args, **kwargs):
+            assert threading.get_ident() != loop_thread
+            return get_actor(*args, **kwargs)
+
+        lookup = Mock(side_effect=lookup)
+        monkeypatch.setattr(ray, "get_actor", lookup)
+        router = PowerOfTwoChoicesRequestRouter(
+            deployment_id=setup_fake_replica.replica_id.deployment_id,
+            handle_source=DeploymentHandleSource.REPLICA,
+        )
+        replica = await router._resolve_replica(setup_fake_replica)
+        lookup.assert_called_once_with(
+            setup_fake_replica.actor_name, namespace=SERVE_NAMESPACE
+        )
+    else:
+        replica = RunningReplica(setup_fake_replica)
 
     pr = PendingRequest(
         args=["Hello"],
