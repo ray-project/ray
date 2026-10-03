@@ -537,6 +537,45 @@ def test_filter_expr_rejects_actor_pool(ray_start_regular_shared):
         ds.filter(expr=col("id") > 5, compute=ActorPoolStrategy(size=2))
 
 
+# https://github.com/ray-project/ray/issues/51217
+def test_filter_udf_preserves_dictionary_encoded_column_type(
+    ray_start_regular_shared, tmp_path
+):
+    """Filtering with a UDF (``fn=``) was silently converting Arrow
+    ``dictionary``-encoded columns to plain ``string``, changing the column's
+    on-disk type even though the values themselves were unchanged.
+
+    NOTE: ``Dataset.schema()`` doesn't catch this: ``Filter`` is tagged
+    ``LogicalOperatorPreservesSchema``, so ``schema()`` just echoes the input
+    schema instead of reflecting the materialized block. That makes ``schema()``
+    report the *original* (correct) type even if the physical block's type
+    has changed, so this test reads the actual output block's Arrow type
+    instead.
+    """
+    table = pa.table(
+        {
+            "id": pa.array([1, 2, 3], type=pa.int64()),
+            "category": pa.array(["a", "b", "a"]).dictionary_encode(),
+        }
+    )
+    parquet_file = tmp_path / "dictionary_data.parquet"
+    pq.write_table(table, parquet_file)
+
+    ds = ray.data.read_parquet(str(parquet_file))
+    original_type = ray.get(ds.to_arrow_refs()[0]).schema.field("category").type
+    assert pa.types.is_dictionary(original_type)
+
+    filtered_ds = ds.filter(lambda row: True)
+    filtered_type = (
+        ray.get(filtered_ds.to_arrow_refs()[0]).schema.field("category").type
+    )
+
+    assert filtered_type == original_type, (
+        f"filter() changed the on-disk type of 'category' from {original_type} "
+        f"to {filtered_type}"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
