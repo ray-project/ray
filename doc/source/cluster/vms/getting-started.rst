@@ -25,7 +25,7 @@ Requirements
 To run this demo, you will need:
 
 * Python installed on your development machine (typically your laptop), and
-* an account at your preferred cloud provider (AWS, GCP, Azure, Aliyun, or vSphere).
+* an account at your preferred cloud provider (AWS, GCP, Azure, Aliyun, OCI, or vSphere).
 
 Setup
 ~~~~~
@@ -74,6 +74,15 @@ Before we start, you will need to install some Python dependencies as follows:
 
             Aliyun Cluster Launcher Maintainers (GitHub handles): @zhuangzhuang131419, @chenk008
 
+         .. tab-item:: OCI
+            :sync: OCI
+
+            .. code-block:: shell
+
+                $ pip install -U "ray[default]" oci
+
+            OCI Cluster Launcher Maintainers (GitHub handles): @fede-kamel
+
          .. tab-item:: vSphere
             :sync: vSphere
 
@@ -120,6 +129,11 @@ Next, if you're not set up to use your cloud provider from the command line, you
 
             Make sure to grant the necessary permissions to the RAM user and set the AccessKey pair in your cluster config file.
             Refer to the provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ for a sample cluster config.
+
+         .. tab-item:: OCI
+            :sync: OCI
+
+            Configure an OCI config file profile with ``oci setup config`` (API key) or ``oci session authenticate`` (session token) as described in `the OCI SDK docs <https://docs.oracle.com/iaas/Content/API/Concepts/sdkconfig.htm>`__, and set ``provider.compartment_id`` in your cluster config file.
 
          .. tab-item:: vSphere
             :sync: vSphere
@@ -278,6 +292,12 @@ A minimal sample cluster configuration file looks as follows:
             Please refer to `example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__.
 
             Make sure your account balance is not less than 100 RMB, otherwise you will receive the error `InvalidAccountStatus.NotEnoughBalance`.
+
+         .. tab-item:: OCI
+            :sync: OCI
+
+            .. literalinclude:: ../../../../python/ray/autoscaler/oci/example-minimal.yaml
+               :language: yaml
 
          .. tab-item:: vSphere
             :sync: vSphere
