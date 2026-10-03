@@ -35,6 +35,23 @@ void InMemoryStoreClient::AsyncPut(const std::string &table_name,
   std::move(callback).Post("GcsInMemoryStore.Put", inserted);
 }
 
+void InMemoryStoreClient::AsyncPutIfMatch(const std::string &table_name,
+                                          const std::string &key,
+                                          std::string expected_value,
+                                          std::string data,
+                                          Postable<void(bool)> callback) {
+  auto &table = GetOrCreateMutableTable(table_name);
+  bool updated = false;
+  table.WriteVisit(absl::MakeSpan(&key, 1),
+                   [&](const std::string &, std::string &stored_value) {
+                     if (stored_value == expected_value) {
+                       stored_value = std::move(data);
+                       updated = true;
+                     }
+                   });
+  std::move(callback).Post("GcsInMemoryStore.PutIfMatch", updated);
+}
+
 void InMemoryStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,

@@ -158,6 +158,8 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
 TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
 
+TEST_F(RedisStoreClientTest, AsyncPutIfMatchTest) { TestAsyncPutIfMatch(); }
+
 TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }

@@ -42,6 +42,26 @@ void ObservableStoreClient::AsyncPut(const std::string &table_name,
                       }));
 }
 
+void ObservableStoreClient::AsyncPutIfMatch(const std::string &table_name,
+                                            const std::string &key,
+                                            std::string expected_value,
+                                            std::string data,
+                                            Postable<void(bool)> callback) {
+  auto start = clock_.NowUnixNanos();
+  storage_operation_count_counter_.Record(1, {{"Operation", "PutIfMatch"}});
+  delegate_->AsyncPutIfMatch(
+      table_name,
+      key,
+      std::move(expected_value),
+      std::move(data),
+      std::move(callback).OnInvocation([this, start]() {
+        auto end = clock_.NowUnixNanos();
+        storage_operation_latency_in_ms_histogram_.Record(
+            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+            {{"Operation", "PutIfMatch"}});
+      }));
+}
+
 void ObservableStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,

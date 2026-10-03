@@ -32,6 +32,8 @@ class InMemoryStoreClientTest : public StoreClientTestBase {
 
 TEST_F(InMemoryStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
 
+TEST_F(InMemoryStoreClientTest, AsyncPutIfMatchTest) { TestAsyncPutIfMatch(); }
+
 TEST_F(InMemoryStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }

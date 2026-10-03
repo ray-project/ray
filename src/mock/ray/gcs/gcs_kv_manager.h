@@ -46,6 +46,14 @@ class MockInternalKVInterface : public InternalKVInterface {
                Postable<void(bool)> callback),
               (override));
   MOCK_METHOD(void,
+              PutIfMatch,
+              (const std::string &ns,
+               const std::string &key,
+               std::string expected_value,
+               std::string value,
+               Postable<void(bool)> callback),
+              (override));
+  MOCK_METHOD(void,
               Del,
               (const std::string &ns,
                const std::string &key,
@@ -117,6 +125,19 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
       kv_store_[full_key] = value;
       std::move(callback).Post("FakeInternalKVInterface.Put.true", true);
     }
+  }
+
+  void PutIfMatch(const std::string &ns,
+                  const std::string &key,
+                  std::string expected_value,
+                  std::string value,
+                  Postable<void(bool)> callback) override {
+    auto it = kv_store_.find(ns + key);
+    bool updated = it != kv_store_.end() && it->second == expected_value;
+    if (updated) {
+      it->second = std::move(value);
+    }
+    std::move(callback).Post("FakeInternalKVInterface.PutIfMatch", updated);
   }
 
   void Del(const std::string &ns,

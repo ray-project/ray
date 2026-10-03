@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_kv_manager.h"
 
+#include <functional>
+#include <future>
 #include <memory>
 #include <set>
 #include <string>
@@ -89,6 +91,19 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
     return p.get_future().get();
   }
 
+  bool SyncPutIfMatch(const std::string &ns,
+                      const std::string &key,
+                      std::string expected,
+                      std::string value) {
+    std::promise<bool> p;
+    kv_instance->PutIfMatch(ns,
+                            key,
+                            std::move(expected),
+                            std::move(value),
+                            {[&p](bool updated) { p.set_value(updated); }, io_service});
+    return p.get_future().get();
+  }
+
   /// Synchronous version of Del
   int64_t SyncDel(const std::string &ns, const std::string &key, bool del_by_prefix) {
     std::promise<int64_t> p;
@@ -152,6 +167,45 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   // Make sure keys are deleted
   ASSERT_FALSE(SyncGet("N1", "A_1").has_value());
   ASSERT_EQ(0, SyncMultiGet("N1", {"A_1", "A_2", "A_3"}).size());
+}
+
+TEST_P(GcsKVManagerTest, TestPutIfMatch) {
+  ASSERT_FALSE(SyncPutIfMatch("jobs", "id", "", "failed"));
+  ASSERT_TRUE(SyncPut("jobs", "id", "pending", false));
+  ASSERT_FALSE(SyncPutIfMatch("jobs", "id", "running", "failed"));
+  ASSERT_TRUE(SyncPutIfMatch("jobs", "id", "pending", "failed"));
+  ASSERT_EQ("failed", *SyncGet("jobs", "id"));
+  ASSERT_EQ(1, SyncDel("jobs", "id", false));
+  ASSERT_FALSE(SyncPutIfMatch("jobs", "id", "failed", "resurrected"));
+  ASSERT_FALSE(SyncGet("jobs", "id").has_value());
+}
+
+TEST_P(GcsKVManagerTest, TestConditionalPutRequest) {
+  ASSERT_TRUE(SyncPut("jobs", "rpc-id", "pending", false));
+  ray::gcs::GcsInternalKVManager manager(std::move(kv_instance), "", io_service);
+
+  auto update = [&manager](const std::string &expected, const std::string &value) {
+    ray::rpc::InternalKVPutRequest request;
+    request.set_namespace_("jobs");
+    request.set_key("rpc-id");
+    request.set_expected_value(expected);
+    request.set_value(value);
+    ray::rpc::InternalKVPutReply reply;
+    std::promise<ray::Status> result;
+    auto future = result.get_future();
+    manager.HandleInternalKVPut(
+        std::move(request),
+        &reply,
+        [&result](ray::Status status, std::function<void()>, std::function<void()>) {
+          result.set_value(status);
+        });
+    EXPECT_TRUE(future.get().ok());
+    return reply.updated();
+  };
+
+  EXPECT_FALSE(update("", "unexpected"));
+  EXPECT_TRUE(update("pending", "failed"));
+  EXPECT_FALSE(update("pending", "stale"));
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
