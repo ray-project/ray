@@ -87,6 +87,9 @@ class RayletClient : public RayletClientInterface {
       const std::vector<WorkerID> &workers_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override;
 
+  void CancelStaleActorLeases(
+      const rpc::ClientCallback<rpc::CancelStaleActorLeasesReply> &callback) override;
+
   void CancelWorkerLease(
       const LeaseID &lease_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;

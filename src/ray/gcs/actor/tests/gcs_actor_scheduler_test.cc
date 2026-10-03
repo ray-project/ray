@@ -722,9 +722,10 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   ASSERT_EQ(2, success_actors_.size());
 }
 
-TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
-  // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
-  // if there is still a pending `ReleaseUnusedActorWorkers` request.
+TEST_F(GcsActorSchedulerTest, TestReconcileRayletsAfterGcsRestart) {
+  // Test that, after a GCS restart, GCS cancels the stale actor creation leases before
+  // releasing the unused workers, and that it won't send `RequestWorkerLease` request
+  // to the raylet until both requests have finished.
 
   // Add a node to the cluster.
   auto node = GenNodeInfo();
@@ -732,18 +733,18 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  // Send a `ReleaseUnusedActorWorkers` request to the node.
+  // Reconcile the raylet. Only the `CancelStaleActorLeases` request is sent, the
+  // `ReleaseUnusedActorWorkers` request waits for its reply.
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   node_to_workers[node_id].push_back({WorkerID::FromRandom()});
-  gcs_actor_scheduler_->ReleaseUnusedActorWorkers(node_to_workers);
-  ASSERT_EQ(1, raylet_client_->num_release_unused_workers);
-  ASSERT_EQ(1, raylet_client_->release_callbacks.size());
+  gcs_actor_scheduler_->ReconcileRayletsAfterGcsRestart(node_to_workers);
+  ASSERT_EQ(1, raylet_client_->num_cancel_stale_actor_leases);
+  ASSERT_EQ(0, raylet_client_->num_release_unused_workers);
 
   // Schedule an actor which is not tied to a worker, this should invoke the
-  // `LeaseWorkerFromNode` method.
-  // But since the `ReleaseUnusedActorWorkers` request hasn't finished,
-  // `GcsActorScheduler` won't send `RequestWorkerLease` request to node immediately. But
-  // instead, it will invoke the `RetryLeasingWorkerFromNode` to retry later.
+  // `LeaseWorkerFromNode` method. Since the node is still being reconciled,
+  // `GcsActorScheduler` won't send `RequestWorkerLease` request to the node, but
+  // instead it will invoke the `RetryLeasingWorkerFromNode` to retry later.
   auto job_id = JobID::FromInt(1);
   auto request = GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(
@@ -752,8 +753,16 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
 
-  // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
-  // out the `RequestWorkerLease` request.
+  // When `GcsActorScheduler` receives the `CancelStaleActorLeases` reply, it sends the
+  // `ReleaseUnusedActorWorkers` request. The node is still being reconciled, so the
+  // lease is still not sent.
+  ASSERT_TRUE(raylet_client_->ReplyCancelStaleActorLeases());
+  ASSERT_EQ(1, raylet_client_->num_release_unused_workers);
+  gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
+  ASSERT_EQ(raylet_client_->num_workers_requested, 0);
+
+  // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, the node
+  // is reconciled and it sends out the `RequestWorkerLease` request.
   ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
   gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
