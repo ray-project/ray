@@ -26,6 +26,12 @@ from ray._common.ray_constants import (
 )
 from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    del_kv_passive_safe,
+    is_refused_by_passive_gcs,
+    put_kv_passive_safe,
+)
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -46,7 +52,6 @@ from ray.core.generated.autoscaler_pb2 import NodeStatus
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
-    _internal_kv_del,
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_put,
@@ -158,11 +163,19 @@ class Monitor:
 
         _initialize_internal_kv(self.gcs_client)
 
-        if monitor_ip:
-            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
+        self._autoscaler_passive_latch = PassiveLatch(
+            "Autoscaling",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode. Autoscaling stays paused until this head is "
+                "promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Resuming autoscaling.",
+        )
+        self._metrics_address = (
+            build_address(monitor_ip, AUTOSCALER_METRIC_PORT) if monitor_ip else None
+        )
+        self._publish_metrics_address()
         self._session_name = self.get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
@@ -224,6 +237,37 @@ class Monitor:
             )
 
         logger.info("Monitor: Started")
+
+    def _publish_metrics_address(self):
+        if self._metrics_address is None:
+            return
+        put_kv_passive_safe(
+            self.gcs_client,
+            b"AutoscalerMetricsAddress",
+            self._metrics_address,
+            overwrite=True,
+            latch=self._autoscaler_passive_latch,
+        )
+
+    def _clear_previous_autoscaling_error(self):
+        if not _internal_kv_initialized():
+            return
+        del_kv_passive_safe(
+            self.gcs_client,
+            ray_constants.DEBUG_AUTOSCALING_ERROR,
+            latch=self._autoscaler_passive_latch,
+        )
+
+    def _resume_after_promotion(self):
+        """Take over the keys this head could not write while it was passive.
+
+        The metrics address names the current leader's endpoint, so every promotion
+        rewrites it. Both writes get one attempt, as they do at startup.
+        """
+        if not self._autoscaler_passive_latch.promoted():
+            return
+        self._publish_metrics_address()
+        self._clear_previous_autoscaling_error()
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
@@ -387,70 +431,83 @@ class Monitor:
 
         while True:
             try:
-                gcs_request_start_time = time.time()
-                self.update_load_metrics()
-                gcs_request_time = time.time() - gcs_request_start_time
-                self.update_resource_requests()
-                self.update_event_summary()
-                load_metrics_summary = self.load_metrics.summary()
-                status = {
-                    "gcs_request_time": gcs_request_time,
-                    "time": time.time(),
-                    "monitor_pid": os.getpid(),
-                }
+                # The cloud provider is not leader-gated, so ask rather than wait
+                # for a refused RPC.
+                if (
+                    ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
+                    and not self.gcs_client.is_gcs_leader()
+                ):
+                    self._autoscaler_passive_latch.note_passive()
+                else:
+                    self._resume_after_promotion()
+                    gcs_request_start_time = time.time()
+                    self.update_load_metrics()
+                    gcs_request_time = time.time() - gcs_request_start_time
+                    self.update_resource_requests()
+                    self.update_event_summary()
+                    load_metrics_summary = self.load_metrics.summary()
+                    status = {
+                        "gcs_request_time": gcs_request_time,
+                        "time": time.time(),
+                        "monitor_pid": os.getpid(),
+                    }
 
-                if self.autoscaler and not self.load_metrics:
-                    # load_metrics is Falsey iff we haven't collected any
-                    # resource messages from the GCS, which can happen at startup if
-                    # the GCS hasn't yet received data from the Raylets.
-                    # In this case, do not do an autoscaler update.
-                    # Wait to get load metrics.
-                    logger.info(
-                        "Autoscaler has not yet received load metrics. Waiting."
-                    )
-                elif self.autoscaler:
-                    # Process autoscaling actions
-                    update_start_time = time.time()
-                    self.autoscaler.update()
-                    status["autoscaler_update_time"] = time.time() - update_start_time
-                    autoscaler_summary = self.autoscaler.summary()
-                    try:
-                        self.emit_metrics(
-                            load_metrics_summary,
-                            autoscaler_summary,
-                            self.autoscaler.all_node_types,
+                    if self.autoscaler and not self.load_metrics:
+                        # load_metrics is Falsey iff we haven't collected any
+                        # resource messages from the GCS, which can happen at startup
+                        # if the GCS hasn't yet received data from the Raylets.
+                        # In this case, do not do an autoscaler update.
+                        # Wait to get load metrics.
+                        logger.info(
+                            "Autoscaler has not yet received load metrics. Waiting."
                         )
-                    except Exception:
-                        logger.exception("Error emitting metrics")
-
-                    if autoscaler_summary:
-                        status["autoscaler_report"] = asdict(autoscaler_summary)
-                        status[
-                            "non_terminated_nodes_time"
-                        ] = (
-                            self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
+                    elif self.autoscaler:
+                        # Process autoscaling actions
+                        update_start_time = time.time()
+                        self.autoscaler.update()
+                        status["autoscaler_update_time"] = (
+                            time.time() - update_start_time
                         )
-
-                    for msg in self.event_summarizer.summary():
-                        # Need to prefix each line of the message for the lines to
-                        # get pushed to the driver logs.
-                        for line in msg.split("\n"):
-                            logger.info(
-                                "{}{}".format(
-                                    ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
-                                )
+                        autoscaler_summary = self.autoscaler.summary()
+                        try:
+                            self.emit_metrics(
+                                load_metrics_summary,
+                                autoscaler_summary,
+                                self.autoscaler.all_node_types,
                             )
-                            if self.event_logger:
-                                self.event_logger.info(line)
+                        except Exception:
+                            logger.exception("Error emitting metrics")
 
-                    self.event_summarizer.clear()
+                        if autoscaler_summary:
+                            status["autoscaler_report"] = asdict(autoscaler_summary)
+                            status[
+                                "non_terminated_nodes_time"
+                            ] = (
+                                self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
+                            )
 
-                status["load_metrics_report"] = asdict(load_metrics_summary)
-                as_json = json.dumps(status)
-                if _internal_kv_initialized():
-                    _internal_kv_put(
-                        ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True
-                    )
+                        for msg in self.event_summarizer.summary():
+                            # Need to prefix each line of the message for the lines
+                            # to get pushed to the driver logs.
+                            for line in msg.split("\n"):
+                                logger.info(
+                                    "{}{}".format(
+                                        ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
+                                    )
+                                )
+                                if self.event_logger:
+                                    self.event_logger.info(line)
+
+                        self.event_summarizer.clear()
+
+                    status["load_metrics_report"] = asdict(load_metrics_summary)
+                    as_json = json.dumps(status)
+                    if _internal_kv_initialized():
+                        _internal_kv_put(  # passive-ok: loop body runs only when active leader
+                            ray_constants.DEBUG_AUTOSCALING_STATUS,
+                            as_json,
+                            overwrite=True,
+                        )
             except Exception:
                 # By default, do not exit the monitor on failure.
                 if self.retry_on_failure:
@@ -564,6 +621,8 @@ class Monitor:
     def _handle_failure(self, error):
         if (
             self.autoscaler is not None
+            # Those workers belong to the head that is leading, not to this one.
+            and not self._autoscaler_passive_latch.waiting_for_promotion
             and os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1"
         ):
             self.autoscaler.kill_workers()
@@ -574,8 +633,12 @@ class Monitor:
         # drivers.
         message = f"The autoscaler failed with the following error:\n{error}"
         if _internal_kv_initialized():
-            _internal_kv_put(
-                ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
+            put_kv_passive_safe(
+                self.gcs_client,
+                ray_constants.DEBUG_AUTOSCALING_ERROR,
+                message,
+                overwrite=True,
+                latch=self._autoscaler_passive_latch,
             )
         from ray._private.utils import publish_error_to_driver
 
@@ -601,14 +664,17 @@ class Monitor:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         try:
-            if _internal_kv_initialized():
-                # Delete any previous autoscaling errors.
-                _internal_kv_del(ray_constants.DEBUG_AUTOSCALING_ERROR)
+            # Delete any previous autoscaling errors.
+            self._clear_previous_autoscaling_error()
             self._initialize_autoscaler()
             self._run()
-        except Exception:
+        except Exception as e:
             logger.exception("Error in monitor loop")
-            self._handle_failure(traceback.format_exc())
+            # Nothing above is expected to leak a passive rejection, but if one
+            # does: a standby head's autoscaler is parked, not dead, and saying
+            # otherwise would tell every driver the cluster lost its autoscaler.
+            if not is_refused_by_passive_gcs(e, latch=self._autoscaler_passive_latch):
+                self._handle_failure(traceback.format_exc())
             raise
 
 

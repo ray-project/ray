@@ -278,7 +278,7 @@ class JobInfoStorageClient:
         Returns:
             True if a new key is added.
         """
-        added_num = await self._gcs_client.async_internal_kv_put(
+        added_num = await self._gcs_client.async_internal_kv_put(  # passive-ok: job submission only on active leader
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             json.dumps(job_info.to_json()).encode(),
             overwrite,
@@ -345,7 +345,7 @@ class JobInfoStorageClient:
             return JobInfo.from_json(json.loads(serialized_info))
 
     async def delete_info(self, job_id: str, timeout: int = 30):
-        await self._gcs_client.async_internal_kv_del(
+        await self._gcs_client.async_internal_kv_del(  # passive-ok: job deletion only on active leader
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             False,
             namespace=ray_constants.KV_NAMESPACE_JOB,

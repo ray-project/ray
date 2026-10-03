@@ -41,6 +41,7 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
+import asyncio
 import json
 import logging
 import os
@@ -65,6 +66,7 @@ from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
+    internal_kv_get_gcs_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -268,6 +270,26 @@ def _put_extra_usage_tag(key: str, value: str, gcs_client: Optional[GcsClient] =
         logger.debug(f"Failed to put extra usage tag, {e}")
 
 
+async def _async_put_extra_usage_tag(
+    key: str, value: str, gcs_client: Optional[GcsClient] = None
+):
+    try:
+        key_bytes = f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode()
+        val_bytes = value.encode()
+        namespace = usage_constant.USAGE_STATS_NAMESPACE.encode()
+        client = gcs_client if gcs_client is not None else internal_kv_get_gcs_client()
+        if client is not None:
+            await client.async_internal_kv_put(
+                key_bytes, val_bytes, True, namespace=namespace
+            )
+        else:
+            logger.debug(
+                f"Failed to put extra usage tag, no gcs client available: {key}"
+            )
+    except Exception as e:
+        logger.debug(f"Failed to put extra usage tag, {e}")
+
+
 def record_hardware_usage(hardware_usage: str):
     """Record hardware usage (e.g. which CPU model is used)"""
     assert _internal_kv_initialized()
@@ -315,6 +337,48 @@ def _put_pre_init_extra_usage_tags():
     assert _internal_kv_initialized()
     for k, v in _recorded_extra_usage_tags.items():
         _put_extra_usage_tag(k, v)
+
+
+def put_recorded_extra_usage_tags(gcs_client: Optional[GcsClient] = None) -> None:
+    """Re-attempt the KV write of every tag this process has recorded.
+
+    It should be called after the current head node is promoted.
+    Library usages are deliberately not replayed: their recording sites gate on
+    the worker mode, so a head process never publishes them in the first place.
+
+    Params:
+        gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
+            When None, it will try to get the global client from the internal_kv.
+    """
+    with _recorded_extra_usage_tags_lock:
+        recorded = list(_recorded_extra_usage_tags.items())
+    for key, value in recorded:
+        _put_extra_usage_tag(key, value, gcs_client)
+
+
+async def async_put_recorded_extra_usage_tags(
+    gcs_client: Optional[GcsClient] = None,
+) -> None:
+    """Async version of `put_recorded_extra_usage_tags` for asyncio event loops.
+
+    Re-attempt the KV write of every tag this process has recorded.
+    It should be called after the current head node is promoted.
+    Library usages are deliberately not replayed: their recording sites gate on
+    the worker mode, so a head process never publishes them in the first place.
+
+    Params:
+        gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
+            When None, it will try to get the global client from the internal_kv.
+    """
+    with _recorded_extra_usage_tags_lock:
+        recorded = list(_recorded_extra_usage_tags.items())
+    if recorded:
+        await asyncio.gather(
+            *[
+                _async_put_extra_usage_tag(key, value, gcs_client)
+                for key, value in recorded
+            ]
+        )
 
 
 def put_pre_init_usage_stats():
@@ -539,6 +603,31 @@ def put_cluster_metadata(gcs_client: GcsClient, *, ray_init_cluster: bool) -> di
         usage_constant.CLUSTER_METADATA_KEY,
         json.dumps(metadata).encode(),
         overwrite=True,
+        namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+    )
+    return metadata
+
+
+async def async_put_cluster_metadata(
+    gcs_client: GcsClient, *, ray_init_cluster: bool
+) -> dict:
+    """Async version of `put_cluster_metadata`.
+
+    Params:
+        gcs_client: The GCS client to perform KV operation PUT.
+        ray_init_cluster: Whether the cluster is started by ray.init()
+
+    Raises:
+        gRPC exceptions: If PUT fails.
+
+    Returns:
+        The cluster metadata.
+    """
+    metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
+    await gcs_client.async_internal_kv_put(
+        usage_constant.CLUSTER_METADATA_KEY,
+        json.dumps(metadata).encode(),
+        True,
         namespace=ray_constants.KV_NAMESPACE_CLUSTER,
     )
     return metadata
@@ -840,7 +929,7 @@ def get_cluster_config_to_report(
         return ClusterConfigToReport()
 
 
-def get_cluster_metadata(gcs_client: GcsClient) -> dict:
+def get_cluster_metadata(gcs_client: GcsClient) -> Optional[dict]:
     """Get the cluster metadata from GCS.
 
     It is a blocking API.
@@ -856,17 +945,22 @@ def get_cluster_metadata(gcs_client: GcsClient) -> dict:
     Raises:
         RuntimeError: If it fails to obtain cluster metadata from GCS.
     """
-    return json.loads(
-        gcs_client.internal_kv_get(
-            usage_constant.CLUSTER_METADATA_KEY,
-            namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        ).decode("utf-8")
+    metadata = gcs_client.internal_kv_get(
+        usage_constant.CLUSTER_METADATA_KEY,
+        namespace=ray_constants.KV_NAMESPACE_CLUSTER,
     )
+    if metadata is None:
+        return None
+    return json.loads(metadata.decode("utf-8"))
 
 
 def is_ray_init_cluster(gcs_client: ray._raylet.GcsClient) -> bool:
     """Return whether the cluster is started by ray.init()"""
     cluster_metadata = get_cluster_metadata(gcs_client)
+    # No head has stored the metadata yet, and a ray.init() cluster always has
+    # one that did.
+    if cluster_metadata is None:
+        return False
     return cluster_metadata["ray_init_cluster"]
 
 
@@ -912,7 +1006,7 @@ def generate_report_data(
 
     gcs_client = ray._raylet.GcsClient(address=gcs_address, cluster_id=cluster_id)
 
-    cluster_metadata = get_cluster_metadata(gcs_client)
+    cluster_metadata = get_cluster_metadata(gcs_client) or {}
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
 
     data = UsageStatsToReport(
@@ -925,12 +1019,12 @@ def generate_report_data(
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
-        ray_version=cluster_metadata["ray_version"],
-        python_version=cluster_metadata["python_version"],
+        ray_version=cluster_metadata.get("ray_version"),
+        python_version=cluster_metadata.get("python_version"),
         session_id=cluster_id,
-        git_commit=cluster_metadata["git_commit"],
-        os=cluster_metadata["os"],
-        session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],
+        git_commit=cluster_metadata.get("git_commit"),
+        os=cluster_metadata.get("os"),
+        session_start_timestamp_ms=cluster_metadata.get("session_start_timestamp_ms"),
         cloud_provider=cluster_config_to_report.cloud_provider,
         min_workers=cluster_config_to_report.min_workers,
         max_workers=cluster_config_to_report.max_workers,
