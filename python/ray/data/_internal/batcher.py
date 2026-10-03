@@ -510,6 +510,7 @@ class ShufflingBatcher(BatcherInterface):
         if self._num_uncompacted_rows() > 0 and (
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
+            or self._num_compacted_rows() < self._batch_size
         ):
             self._start_new_shuffle_generation()
 
