@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from ray.train.v2._internal.execution.callback import (
+    ControllerCallback,
     ReportCallback,
     WorkerGroupCallback,
 )
@@ -9,8 +10,11 @@ from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 from ray.train.v2.api.callback import UserCallback
 
+if TYPE_CHECKING:
+    from ray.train.health import HealthDecision
 
-class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
+
+class UserCallbackHandler(WorkerGroupCallback, ReportCallback, ControllerCallback):
     """Responsible for calling methods of subscribers implementing
     the `UserCallback` interface.
     """
@@ -35,6 +39,16 @@ class UserCallbackHandler(WorkerGroupCallback, ReportCallback):
                 run_context=self._train_run_context,
                 metrics=metrics,
                 checkpoint=training_report.checkpoint,
+            )
+
+    # --------------------------
+    # ControllerCallback
+    # --------------------------
+
+    def after_health_decision(self, health_decision: "HealthDecision"):
+        for user_callback in self._user_callbacks:
+            user_callback.after_health_decision(
+                run_context=self._train_run_context, health_decision=health_decision
             )
 
     # --------------------------
