@@ -35,6 +35,9 @@ if is_v2_enabled():
             "`ray.train.v2` requires the pydantic package, which is missing. "
             "Run the following command to fix this: `pip install pydantic`"
         ) from exc
+    from ray.data.checkpoint.interfaces import (  # noqa: F401, F811
+        TrainingIngestCheckpointConfig as DatasetCheckpointConfig,
+    )
     from ray.train.v2.api.callback import UserCallback  # noqa: F811
     from ray.train.v2.api.config import (  # noqa: F811
         CheckpointConfig,
@@ -118,6 +121,7 @@ if is_v2_enabled():
             "CheckpointUploadMode",
             "CheckpointConsistencyMode",
             "ControllerError",
+            "DatasetCheckpointConfig",
             "NCCLHangError",
             "LoggingConfig",
             "PreemptionError",

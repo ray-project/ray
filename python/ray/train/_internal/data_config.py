@@ -6,6 +6,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+    from ray.data.checkpoint.interfaces import TrainingIngestCheckpointConfig
 
 
 @PublicAPI(stability="stable")
@@ -23,6 +24,9 @@ class DataConfig:
             Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
         ] = None,
         enable_shard_locality: bool = True,
+        dataset_checkpoint_configs: Optional[
+            Dict[str, "TrainingIngestCheckpointConfig"]
+        ] = None,
     ):
         """Construct a DataConfig.
 
@@ -45,6 +49,11 @@ class DataConfig:
                 from data's reservation, *not* train's reservation.
             enable_shard_locality: If true, dataset sharding across Train workers will
                 consider locality to minimize cross-node data transfer. Enabled by default.
+            dataset_checkpoint_configs: [Experimental] A dictionary of dataset names to
+                :class:`~ray.train.DatasetCheckpointConfig`. Providing the configs
+                enables checkpointing the data iterator state and mid-epoch
+                resumption for the specified datasets. Only supported with
+                Ray Train V2.
         """
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
@@ -57,6 +66,24 @@ class DataConfig:
 
         self._user_execution_options = execution_options
         self._enable_shard_locality = enable_shard_locality
+        self.dataset_checkpoint_configs: Dict[str, "TrainingIngestCheckpointConfig"] = (
+            dataset_checkpoint_configs or {}
+        )
+
+        # TODO: [unsharded-data-ckpt] Checkpointing only supports sharded datasets
+        # for now because _supports_checkpointing only returns True for
+        # datasets ending in a `streaming_split` operator.
+        if self._datasets_to_split != "all":
+            unsharded_datasets = set(self.dataset_checkpoint_configs.keys()) - set(
+                self._datasets_to_split
+            )
+            if unsharded_datasets:
+                raise NotImplementedError(
+                    "Dataset checkpointing is not currently supported for unsharded datasets. "
+                    f"Please add {unsharded_datasets} to `DataConfig.datasets_to_split` "
+                    "or remove the `DataConfig.dataset_checkpoint_configs` key for "
+                    "these unsharded datasets. "
+                )
 
     def _get_user_execution_options(
         self, dataset_name: str
