@@ -241,35 +241,36 @@ class LogMonitor:
 
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
+        # The configured directory is a literal path, even when it contains
+        # glob metacharacters. Only the filename patterns should expand.
+        logs_dir = glob.escape(self.logs_dir)
         monitor_log_paths = []
         # output of user code is written here
-        monitor_log_paths += glob.glob(
-            f"{self.logs_dir}/worker*[.out|.err]"
-        ) + glob.glob(f"{self.logs_dir}/java-worker*.log")
+        monitor_log_paths += glob.glob(f"{logs_dir}/worker*[.out|.err]") + glob.glob(
+            f"{logs_dir}/java-worker*.log"
+        )
         # segfaults and other serious errors are logged here
-        monitor_log_paths += glob.glob(f"{self.logs_dir}/raylet*.err")
+        monitor_log_paths += glob.glob(f"{logs_dir}/raylet*.err")
         # monitor logs are needed to report autoscaler events
         # TODO(rickyx): remove this after migration.
         if not self.is_autoscaler_v2:
             # We publish monitor logs in autoscaler v1
-            monitor_log_paths += glob.glob(f"{self.logs_dir}/monitor.log")
+            monitor_log_paths += glob.glob(f"{logs_dir}/monitor.log")
         else:
             # We publish autoscaler events directly in autoscaler v2
-            monitor_log_paths += glob.glob(
-                f"{self.logs_dir}/events/event_AUTOSCALER.log"
-            )
+            monitor_log_paths += glob.glob(f"{logs_dir}/events/event_AUTOSCALER.log")
 
         # If gcs server restarts, there can be multiple log files.
-        monitor_log_paths += glob.glob(f"{self.logs_dir}/gcs_server*.err")
+        monitor_log_paths += glob.glob(f"{logs_dir}/gcs_server*.err")
 
         # Add libtpu logs if they exist in the Ray container.
         tpu_log_dir = f"{self.logs_dir}/tpu_logs"
         if os.path.isdir(tpu_log_dir):
-            monitor_log_paths += glob.glob(f"{self.logs_dir}/tpu_logs/**")
+            monitor_log_paths += glob.glob(f"{logs_dir}/tpu_logs/**")
 
         # runtime_env setup process is logged here
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
-            monitor_log_paths += glob.glob(f"{self.logs_dir}/runtime_env*.log")
+            monitor_log_paths += glob.glob(f"{logs_dir}/runtime_env*.log")
         for file_path in monitor_log_paths:
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 worker_match = WORKER_LOG_PATTERN.match(file_path)
