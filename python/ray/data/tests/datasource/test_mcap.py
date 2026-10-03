@@ -388,6 +388,105 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
     assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
 
 
+# Roughly the size of a real ROS 2 schema definition. `sensor_msgs/msg/Imu` in
+# the FAST-LIVO recordings this was sized against is 2,581 bytes.
+SCHEMA_HEAVY_DEFINITION = b"# msgdef\n" + b"float64[9] covariance\nstring frame\n" * 70
+
+
+def create_schema_heavy_mcap_file(
+    file_path: str, num_messages: int, payload_size: int = 128
+) -> None:
+    """Write a file whose schema definition dwarfs its per-message payload.
+
+    That is the shape of a high-rate sensor topic -- IMU, odometry, transforms --
+    where `schema_data` repeated per row dominates the block.
+    """
+    from mcap.writer import Writer
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="sensor_msgs/msg/Imu",
+            encoding="ros2msg",
+            data=SCHEMA_HEAVY_DEFINITION,
+        )
+        channel_id = writer.register_channel(
+            schema_id=schema_id, topic="/imu", message_encoding="cdr"
+        )
+        for i in range(num_messages):
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=1000000000 + i * 5000000,
+                publish_time=1000000000 + i * 5000000,
+                data=bytes([i % 256]) * payload_size,
+                sequence=i,
+            )
+        writer.finish()
+
+
+@pytest.fixture
+def schema_heavy_mcap_file(tmp_path):
+    """An MCAP file with 400 messages sharing one large schema."""
+    path = os.path.join(tmp_path, "schema_heavy.mcap")
+    create_schema_heavy_mcap_file(path, 400)
+    return path
+
+
+def test_read_mcap_dictionary_encodes_schema_data(
+    ray_start_regular_shared, schema_heavy_mcap_file
+):
+    """`schema_data` must be dictionary-encoded, and read back unchanged.
+
+    A schema is a per-channel attribute; repeating its definition on every row
+    stores one value hundreds of times. Encoding keeps a single copy and gives
+    each row an index into it.
+    """
+    import pyarrow as pa
+
+    ds = ray.data.read_mcap(schema_heavy_mcap_file).materialize()
+
+    dtype = dict(zip(ds.schema().names, ds.schema().types))["schema_data"]
+    assert pa.types.is_dictionary(dtype), dtype
+
+    rows = ds.take_all()
+    assert len(rows) == 400
+    # The value each row reads back is unchanged by the encoding.
+    assert {bytes(r["schema_data"]) for r in rows} == {SCHEMA_HEAVY_DEFINITION}
+
+
+def test_read_mcap_schema_data_encoding_shrinks_block(
+    ray_start_regular_shared, tmp_path
+):
+    """Encoding must actually reduce the block, not just change its type.
+
+    Compares a schema-heavy file against one with the same rows and a trivial
+    schema: the two differ only in how much the repeated column costs, so the
+    encoded sizes should converge.
+    """
+    heavy = os.path.join(tmp_path, "heavy.mcap")
+    create_schema_heavy_mcap_file(heavy, 400)
+
+    heavy_size = ray.data.read_mcap(heavy).materialize().size_bytes()
+
+    # Without encoding this file would carry 400 * len(SCHEMA_HEAVY_DEFINITION)
+    # bytes of schema alone.
+    unencoded_schema_bytes = 400 * len(SCHEMA_HEAVY_DEFINITION)
+    assert heavy_size < unencoded_schema_bytes
+
+
+def test_read_mcap_without_metadata_has_no_schema_data(
+    ray_start_regular_shared, schema_heavy_mcap_file
+):
+    """`include_metadata=False` omits the column, and encoding must no-op."""
+    ds = ray.data.read_mcap(
+        schema_heavy_mcap_file, include_metadata=False
+    ).materialize()
+
+    assert "schema_data" not in ds.schema().names
+    assert ds.count() == 400
+
+
 if __name__ == "__main__":
     import sys
 
