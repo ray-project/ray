@@ -96,24 +96,32 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     // This is the default value so there is no need to store it.
     resources_.erase(resource_id);
   } else {
-    resources_[resource_id] = std::move(instances);
+    auto it = resources_.find(resource_id);
+    const bool is_new_key = (it == resources_.end());
+    if (is_new_key) {
+      it = resources_.emplace(resource_id, std::move(instances)).first;
+    } else {
+      it->second = std::move(instances);
+    }
 
-    // Popluate the pg_indexed_resources_map_
-    // TODO(myan): The parsing of the resource_id String can be costly and impact the
-    // task creation throughput if the parting is required every time we allocate
-    // resources for a task and updating the available resources. The current benchmark
-    // shows no observable impact for now. But in the future, ideas of improvement are:
-    // (1) to add the placement group id as well as the bundle index inside the
-    // ResourceID class. And instead of parse the String, leveraging the fields in the
-    // ResourceID class directly; (2) to update the pg resource id format to start with
-    // a special prefix so that we can do "startwith" instead of regex match which is
-    // less costly
-    auto data = ParsePgFormattedResource(resource_id.Binary(),
-                                         /*for_wildcard_resource=*/false,
-                                         /*for_indexed_resource=*/true);
-    if (data) {
-      pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id].emplace(
-          resource_id);
+    if (is_new_key) {
+      // Popluate the pg_indexed_resources_map_
+      // TODO(myan): The parsing of the resource_id String can be costly and impact the
+      // task creation throughput if the parting is required every time we allocate
+      // resources for a task and updating the available resources. The current benchmark
+      // shows no observable impact for now. But in the future, ideas of improvement are:
+      // (1) to add the placement group id as well as the bundle index inside the
+      // ResourceID class. And instead of parse the String, leveraging the fields in the
+      // ResourceID class directly; (2) to update the pg resource id format to start with
+      // a special prefix so that we can do "startwith" instead of regex match which is
+      // less costly
+      auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/false,
+                                           /*for_indexed_resource=*/true);
+      if (data) {
+        pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id]
+            .emplace(resource_id);
+      }
     }
   }
   return *this;
