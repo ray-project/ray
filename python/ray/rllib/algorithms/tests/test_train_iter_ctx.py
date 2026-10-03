@@ -118,9 +118,7 @@ def test_train_iter_ctx_new_api_resets_watchdog_on_lifetime_counter_progress():
         assert ctx.should_stop(False) is False
         assert ctx.should_stop(True) is False
 
-        algo.metrics.values[
-            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
-        ] = 1
+        algo.metrics.values[(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)] = 1
         assert ctx.should_stop(True) is False
         assert ctx.sample_progress_failures == 0
 
@@ -157,17 +155,17 @@ def test_train_iter_ctx_new_api_agent_steps_watchdog_tracks_lifetime_progress():
     )
     algo.config.enable_env_runner_and_connector_v2 = True
     algo.metrics = _FakeMetrics()
-    algo.metrics.values[
-        (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME)
-    ] = {"agent-0": 0}
+    algo.metrics.values[(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME)] = {
+        "agent-0": 0
+    }
 
     with TrainIterCtx(algo) as ctx:
         assert ctx.should_stop(False) is False
         assert ctx.should_stop(True) is False
 
-        algo.metrics.values[
-            (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME)
-        ] = {"agent-0": 1}
+        algo.metrics.values[(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME)] = {
+            "agent-0": 1
+        }
         assert ctx.should_stop(True) is False
         assert ctx.sample_progress_failures == 0
 
