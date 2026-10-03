@@ -39,7 +39,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
@@ -47,12 +46,11 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import (
         MapTransformer,
     )
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
 
-class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
+class DiskHashShuffleReduceOp(PhysicalOperator):
     """Disk-shuffle reduce operator.
 
     Structurally mirrors ``ShuffleReduceOp``: one wrapper bundle per partition
@@ -81,6 +79,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "DiskHashShuffleReduce",
         should_emit_empty_partitions: bool = True,
+        preserves_row_count: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
@@ -103,6 +102,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
         self._emit_empty_partitions: bool = should_emit_empty_partitions
+        # False when reduce_fn (aggregation) or a fused map can change the row
+        # count, so num_output_rows_total() can't borrow the map op's total.
+        self._preserves_row_count: bool = preserves_row_count
         self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Reduce task config & tracking -----------------------------------
@@ -129,9 +131,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
-
-        # -- Sub-progress bars -----------------------------------------------
-        self._reduce_bar: Optional["BaseProgressBar"] = None
 
         # =====================================================================
         # Disk-shuffle-specific state below.
@@ -316,8 +315,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(increment=0, total=self.num_output_rows_total())
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
@@ -343,11 +340,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(
-                increment=bundle.num_rows() or 0,
-                total=self.num_output_rows_total(),
-            )
 
     def _handle_reduce_done(
         self,
@@ -400,10 +392,10 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         return {self._name: self._output_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:
-        # Multi-input reduces (e.g. join) can grow or shrink the row count, so
-        # it is unknown until the reducers run; a single-input reduce preserves
-        # it.
-        if self._num_inputs > 1:
+        # Multi-input reduces (e.g. join) and non-row-preserving reduces
+        # (aggregation, fused map) can grow or shrink the row count, so it is
+        # unknown until the reducers run.
+        if self._num_inputs > 1 or not self._preserves_row_count:
             return None
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, DiskHashShuffleMapOp)
@@ -439,10 +431,3 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         submitted = self._num_reduce_tasks_submitted
         done = submitted - len(self._shuffle_reduce_tasks)
         return f"reduce: {done}/{submitted}"
-
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return ["Reduce"]
-
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "Reduce":
-            self._reduce_bar = pg

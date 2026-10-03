@@ -280,8 +280,8 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
                         pg.complete()
                 if self._start_time is None:
                     self._start_time = time.time()
-                for tid, progress, _ in self._op_display.values():
-                    completed = progress.tasks[tid].completed or 0
+                for op_state, (tid, progress, _) in self._op_display.items():
+                    completed = op_state.op.metrics.row_outputs_taken
                     metrics = _get_progress_metrics(
                         self._start_time, completed, completed
                     )
