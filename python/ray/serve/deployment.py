@@ -259,13 +259,68 @@ class Deployment:
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
+        max_surge_percent: Default[int] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
 
-        Refer to the `@serve.deployment` decorator docs for available arguments.
+        See the `@serve.deployment` decorator docs for details on each option.
+
+        Args:
+            func_or_class: The class or function to run as this deployment.
+            name: Unique name for this deployment within the application.
+            version: Removed. Specifying this argument raises a ValueError.
+            num_replicas: Number of replicas handling requests, or "auto" to
+                autoscale.
+            ray_actor_options: Options for the replica actor, such as resources and
+                runtime environment.
+            placement_group_bundles: Placement group bundles scheduled for each
+                replica. Cannot be combined with `max_replicas_per_node`.
+            placement_group_strategy: Scheduling strategy for those bundles.
+            placement_group_bundle_label_selector: Label selectors applied to the
+                placement group, either one for all bundles or one per bundle.
+            max_replicas_per_node: Maximum replicas of this deployment on one node.
+                Cannot be combined with `placement_group_bundles`.
+            user_config: Config passed to the replica's `reconfigure` method without
+                restarting replicas.
+            max_ongoing_requests: Maximum number of requests a replica can handle
+                at once.
+            max_queued_requests: Maximum number of requests queued at each caller.
+                Additional requests are rejected when the queue is full.
+            backpressure_config: HTTP response settings for requests rejected
+                because the queue is full.
+            autoscaling_config: Autoscaling parameters. Set `num_replicas` to "auto"
+                or leave it unset when using this.
+            graceful_shutdown_wait_loop_s: Seconds between checks for unfinished
+                requests during shutdown.
+            graceful_shutdown_timeout_s: Seconds allowed for a graceful shutdown
+                before the replica is forcibly stopped.
+            health_check_period_s: Seconds between health checks on a replica.
+            health_check_timeout_s: Seconds allowed for a health check to finish
+                before it is considered failed.
+            logging_config: Logging options for this deployment's replicas.
+            request_router_config: Request routing options for this deployment.
+            _init_args: Internal. Positional arguments for the deployment
+                constructor; use `.bind()` instead.
+            _init_kwargs: Internal. Keyword arguments for the deployment
+                constructor; use `.bind()` instead.
+            _internal: Internal. Set by Serve when it calls this method.
+            max_constructor_retry_count: Maximum retries of the deployment
+                constructor before the deployment is marked failed.
+            gang_scheduling_config: Options for scheduling replicas together in
+                groups called gangs.
+            deployment_actors: Actors shared by all replicas of this deployment.
+            max_surge_percent: Extra replicas allowed during a rolling restart,
+                as a percentage of the target count. Must be in ``[0, 100]``.
+                The allowance rounds up to whole replicas or gangs. When positive,
+                replacements start before old replicas stop. If the cluster lacks
+                capacity, old replicas keep serving while replacements wait.
+                Setting this to ``0`` stops old replicas before starting replacements.
+
+        Returns:
+            A copy of this deployment with the given options applied.
         """
         if not _internal and version is not DEFAULT.VALUE:
             raise ValueError(
@@ -337,6 +392,9 @@ class Deployment:
             new_deployment_config.max_constructor_retry_count = (
                 max_constructor_retry_count
             )
+
+        if max_surge_percent is not DEFAULT.VALUE:
+            new_deployment_config.max_surge_percent = max_surge_percent
 
         if func_or_class is None:
             func_or_class = self._replica_config.deployment_def
@@ -515,6 +573,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
         "deployment_actors": d._deployment_config.deployment_actors,
         "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
+        "max_surge_percent": d._deployment_config.max_surge_percent,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -580,6 +639,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         gang_scheduling_config=s.gang_scheduling_config,
         deployment_actors=s.deployment_actors,
         rolling_update_percentage=s.rolling_update_percentage,
+        max_surge_percent=s.max_surge_percent,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

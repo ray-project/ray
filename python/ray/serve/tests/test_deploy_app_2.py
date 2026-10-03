@@ -3,9 +3,11 @@ import re
 import sys
 import threading
 import time
+from collections import Counter
+from contextlib import contextmanager
 from copy import copy
 from functools import partial
-from typing import List, Tuple
+from typing import Dict, Iterator, List, Tuple
 
 import httpx
 import pytest
@@ -14,7 +16,7 @@ import ray
 import ray.actor
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID, ReplicaState
 from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     SERVE_DEFAULT_APP_NAME,
@@ -55,6 +57,152 @@ def check_deployments_dead(deployment_ids: List[DeploymentID]):
         actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
     ]
     return all(f"ServeReplica::{p}" not in actor_names for p in prefixes)
+
+
+FAIL_ON_FLAG_IMPORT_PATH = "ray.serve.tests.test_config_files.fail_on_flag.build"
+
+
+SURGE_DEPLOYMENT = {"name": "FailOnFlag", "num_replicas": 3, "max_surge_percent": 34}
+
+
+def _deployment_details(
+    client, deployment: str = "FailOnFlag", app_name: str = SERVE_DEFAULT_APP_NAME
+):
+    details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    return details.applications[app_name].deployments[deployment]
+
+
+def _running_replica_pids(
+    client, deployment: str = "FailOnFlag", app_name: str = SERVE_DEFAULT_APP_NAME
+) -> List[int]:
+    replicas = _deployment_details(client, deployment, app_name).replicas
+    return sorted(r.pid for r in replicas if r.state == "RUNNING")
+
+
+def _replica_states(
+    deployment: str = "FailOnFlag", app_name: str = SERVE_DEFAULT_APP_NAME
+) -> Dict[str, int]:
+    return serve.status().applications[app_name].deployments[deployment].replica_states
+
+
+def _app_running(app_name: str = SERVE_DEFAULT_APP_NAME) -> bool:
+    return serve.status().applications[app_name].status == ApplicationStatus.RUNNING
+
+
+@contextmanager
+def _background_traffic(url: str = "http://localhost:8000/") -> Iterator[List[int]]:
+    """Send requests from a thread until the block exits.
+
+    Yields the status codes seen so far. When the block exits without an
+    exception, every request must have returned 200.
+    """
+    stop = threading.Event()
+    started = threading.Event()
+    status_codes: List[int] = []
+    errors: List[str] = []
+
+    def send_requests():
+        with httpx.Client(timeout=10) as http:
+            while not stop.is_set():
+                try:
+                    status_codes.append(http.get(url).status_code)
+                except Exception as exc:
+                    errors.append(repr(exc))
+                finally:
+                    started.set()
+                stop.wait(0.005)
+
+    traffic = threading.Thread(target=send_requests, daemon=True)
+    traffic.start()
+    try:
+        assert started.wait(timeout=15)
+        yield status_codes
+    finally:
+        stop.set()
+        traffic.join(timeout=30)
+    assert not traffic.is_alive()
+    assert not errors, errors
+    assert status_codes and set(status_codes) == {200}, Counter(status_codes)
+
+
+def _rolling_update_config(
+    *deployments: dict, import_path: str = FAIL_ON_FLAG_IMPORT_PATH
+) -> ServeDeploySchema:
+    """Config for the default app; no deployments means no config overrides."""
+    app = {"name": SERVE_DEFAULT_APP_NAME, "import_path": import_path}
+    if deployments:
+        app["deployments"] = list(deployments)
+    return ServeDeploySchema(applications=[app])
+
+
+def _env_override(deployment: dict, **env: str) -> dict:
+    """Return a deployment config with new environment variables."""
+    ray_actor_options = {
+        **deployment.get("ray_actor_options", {}),
+        "runtime_env": {"env_vars": env},
+    }
+    return {**deployment, "ray_actor_options": ray_actor_options}
+
+
+def _config_options(client, deployment: str = "FailOnFlag") -> Tuple[int, int]:
+    config = _deployment_details(client, deployment).deployment_config
+    return config.num_replicas, config.max_ongoing_requests
+
+
+def _autoscaling_config(client, deployment: str = "FailOnFlag"):
+    config = _deployment_details(client, deployment).deployment_config
+    # Details report an unset option as the DEFAULT sentinel rather than None.
+    return (
+        None
+        if config.autoscaling_config is DEFAULT.VALUE
+        else config.autoscaling_config
+    )
+
+
+def _check_terminal_rolling_update(client, running=None):
+    app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+    assert app.status == ApplicationStatus.DEPLOY_FAILED
+    deployment = _deployment_details(client)
+    assert deployment.status == "DEPLOY_FAILED"
+    # Health failures can report DEPLOY_FAILED before the retry budget is spent.
+    assert "The update is stopped" in deployment.message
+    if running is not None:
+        assert len(deployment.replicas) == running
+        assert all(r.state == "RUNNING" for r in deployment.replicas)
+    return True
+
+
+def _assert_rollout_stays_stopped(client, old_pids: List[int], seconds: float = 10):
+    """Check that only old_pids serve requests, with no replacements, for seconds."""
+    deadline = time.monotonic() + seconds
+
+    def check_stays_stopped():
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        replica_states = status.deployments["FailOnFlag"].replica_states
+        assert "STARTING" not in replica_states, replica_states
+        assert "STOPPING" not in replica_states, replica_states
+        assert _running_replica_pids(client) == old_pids
+        r = httpx.get("http://localhost:8000/", timeout=10)
+        assert r.status_code == 200 and r.text == "ok"
+        return time.monotonic() >= deadline
+
+    # Observe the full interval and fail immediately if any invariant breaks.
+    wait_for_condition(
+        check_stays_stopped,
+        timeout=seconds + 15,
+        retry_interval_ms=500,
+        raise_exceptions=True,
+    )
+
+
+def _check_surged(client, states: Dict[str, int], old_pids: List[int]):
+    """Replacements use the surge allowance while every old replica keeps running."""
+    assert _replica_states() == states, _replica_states()
+    assert _running_replica_pids(client) == old_pids
+    return True
 
 
 class TestDeploywithLoggingConfig:
@@ -1000,42 +1148,6 @@ def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
     assert "v3" not in responses
 
 
-def _deployment_details(client, deployment: str = "FailOnFlag"):
-    details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
-    )
-    return details.applications["default"].deployments[deployment]
-
-
-def _running_replica_pids(client, deployment: str = "FailOnFlag") -> List[int]:
-    replicas = _deployment_details(client, deployment).replicas
-    return sorted(r.pid for r in replicas if r.state == "RUNNING")
-
-
-def _assert_rollout_stays_stopped(client, old_pids: List[int], seconds: float = 10):
-    """Check that only old_pids serve requests, with no replacements, for seconds."""
-    deadline = time.monotonic() + seconds
-
-    def check_stays_stopped():
-        status = serve.status().applications["default"]
-        assert status.status == ApplicationStatus.DEPLOY_FAILED
-        replica_states = status.deployments["FailOnFlag"].replica_states
-        assert "STARTING" not in replica_states, replica_states
-        assert "STOPPING" not in replica_states, replica_states
-        assert _running_replica_pids(client) == old_pids
-        r = httpx.get("http://localhost:8000/", timeout=10)
-        assert r.status_code == 200 and r.text == "ok"
-        return time.monotonic() >= deadline
-
-    # Observe the full interval and fail immediately if any invariant breaks.
-    wait_for_condition(
-        check_stays_stopped,
-        timeout=seconds + 15,
-        retry_interval_ms=500,
-        raise_exceptions=True,
-    )
-
-
 def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
     """Health check failures stop a rolling update before it replaces all old replicas."""
     client = serve_instance
@@ -1146,45 +1258,6 @@ def test_terminally_failed_rolling_update_survives_controller_restart(
     # The restarted controller never retried the failed version: the dead
     # replica list (in memory, empty after the restart) stays empty.
     assert _deployment_details(client).recent_dead_replicas == []
-
-
-def _rolling_update_config(
-    *deployments: dict,
-    import_path: str = "ray.serve.tests.test_config_files.fail_on_flag.build",
-) -> ServeDeploySchema:
-    """Config for the default app; no deployments means no config overrides."""
-    app = {"name": SERVE_DEFAULT_APP_NAME, "import_path": import_path}
-    if deployments:
-        app["deployments"] = list(deployments)
-    return ServeDeploySchema(applications=[app])
-
-
-def _config_options(client, deployment: str = "FailOnFlag") -> Tuple[int, int]:
-    config = _deployment_details(client, deployment).deployment_config
-    return config.num_replicas, config.max_ongoing_requests
-
-
-def _autoscaling_config(client, deployment: str = "FailOnFlag"):
-    config = _deployment_details(client, deployment).deployment_config
-    # Details report an unset option as the DEFAULT sentinel rather than None.
-    return (
-        None
-        if config.autoscaling_config is DEFAULT.VALUE
-        else config.autoscaling_config
-    )
-
-
-def _check_terminal_rolling_update(client, running=None):
-    app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-    assert app.status == ApplicationStatus.DEPLOY_FAILED
-    deployment = _deployment_details(client)
-    assert deployment.status == "DEPLOY_FAILED"
-    # Health failures can report DEPLOY_FAILED before the retry budget is spent.
-    assert "The update is stopped" in deployment.message
-    if running is not None:
-        assert len(deployment.replicas) == running
-        assert all(r.state == "RUNNING" for r in deployment.replicas)
-    return True
 
 
 def test_delete_app_with_terminally_failed_rolling_update(serve_instance):
@@ -1444,22 +1517,6 @@ def test_sparse_config_rollback_restores_code_defined_options(
     assert len(initial_pids) == 2
     assert _config_options(client) == (2, 7)
 
-    stop = threading.Event()
-    started = threading.Event()
-    status_codes = []
-    errors = []
-
-    def send_requests():
-        with httpx.Client(timeout=10) as http:
-            while not stop.is_set():
-                try:
-                    status_codes.append(http.get("http://localhost:8000/").status_code)
-                except Exception as exc:
-                    errors.append(repr(exc))
-                finally:
-                    started.set()
-                stop.wait(0.005)
-
     def check_deploy_failed():
         status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         assert status.status == ApplicationStatus.DEPLOY_FAILED
@@ -1468,10 +1525,7 @@ def test_sparse_config_rollback_restores_code_defined_options(
         assert set(deployment.replica_states) == {"RUNNING"}
         return True
 
-    traffic = threading.Thread(target=send_requests, daemon=True)
-    traffic.start()
-    try:
-        assert started.wait(timeout=15)
+    with _background_traffic() as status_codes:
         # The runtime environment override makes new replicas fail to start.
         client.deploy_apps(
             _rolling_update_config(
@@ -1506,15 +1560,6 @@ def test_sparse_config_rollback_restores_code_defined_options(
         assert _config_options(client) == (2, 7)
         served_before_rollback = len(status_codes)
         wait_for_condition(lambda: len(status_codes) > served_before_rollback + 10)
-    finally:
-        stop.set()
-        traffic.join(timeout=15)
-
-    assert not traffic.is_alive()
-    assert not errors, errors
-    assert set(status_codes) == {200}, {
-        code: status_codes.count(code) for code in set(status_codes)
-    }
 
 
 def test_new_config_restores_only_the_overrides_it_drops(serve_instance):
@@ -1615,6 +1660,534 @@ def test_multi_deployment_overrides_revert_independently(serve_instance):
         _rolling_update_config(d1_override, import_path=chain), _blocking=True
     )
     check({"D1": (2, 3), "D2": code_defined["D2"]})
+
+
+@pytest.mark.parametrize("restart_controller", [False, True])
+def test_surge_rolling_update_keeps_capacity_and_replaces(
+    serve_instance_with_signal, restart_controller
+):
+    """Keep capacity and serve traffic through failure, rollback, and replacement."""
+    client, signal = serve_instance_with_signal
+    client.deploy_apps(_rolling_update_config(SURGE_DEPLOYMENT))
+    wait_for_condition(check_running, timeout=60)
+    initial_pids = _running_replica_pids(client)
+    assert len(initial_pids) == 3
+    surged = {"RUNNING": 3, "STARTING": 2}
+
+    with _background_traffic():
+        client.deploy_apps(
+            _rolling_update_config(
+                _env_override(
+                    SURGE_DEPLOYMENT, BLOCK_INIT_ON_SIGNAL="1", FAIL_ON_INIT="1"
+                )
+            )
+        )
+        wait_for_condition(
+            _check_surged, client=client, states=surged, old_pids=initial_pids
+        )
+        ray.get(signal.send.remote())
+
+        def check_failed_keeping_capacity():
+            assert _running_replica_pids(client) == initial_pids
+            states = _replica_states()
+            assert states["RUNNING"] == 3 and states.get("STARTING", 0) <= 2, states
+            app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+            return app.status == ApplicationStatus.DEPLOY_FAILED and states == {
+                "RUNNING": 3
+            }
+
+        wait_for_condition(
+            check_failed_keeping_capacity, raise_exceptions=True, timeout=60
+        )
+        _check_terminal_rolling_update(client, running=3)
+        assert _deployment_details(client).status_trigger == "REPLICA_STARTUP_FAILED"
+        _assert_rollout_stays_stopped(client, initial_pids)
+
+        # The old replicas already match the rolled-back version: no restarts.
+        client.deploy_apps(_rolling_update_config(SURGE_DEPLOYMENT))
+
+        def check_rolled_back():
+            assert _running_replica_pids(client) == initial_pids
+            return _app_running() and _replica_states() == {"RUNNING": 3}
+
+        wait_for_condition(check_rolled_back, raise_exceptions=True, timeout=60)
+
+        # Hold the working replacements' constructors so the surge is observable.
+        ray.get(signal.send.remote(clear=True))
+        blocked = _env_override(SURGE_DEPLOYMENT, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2")
+        client.deploy_apps(_rolling_update_config(blocked))
+        wait_for_condition(
+            _check_surged, client=client, states=surged, old_pids=initial_pids
+        )
+        # Nothing stops while the replacements are still starting.
+        deadline = time.monotonic() + 3
+        wait_for_condition(
+            lambda: _check_surged(client, surged, initial_pids)
+            and time.monotonic() >= deadline,
+            raise_exceptions=True,
+            timeout=15,
+        )
+
+        if restart_controller:
+            old_pid = ray.get(client._controller.get_pid.remote())
+            ray.kill(client._controller, no_restart=False)
+            wait_for_condition(
+                lambda: ray.get(client._controller.get_pid.remote()) != old_pid
+            )
+
+            def check_recovered():
+                states = _replica_states()
+                assert states["RUNNING"] == 3 and sum(states.values()) == 5, states
+                assert set(states) <= {"RUNNING", "RECOVERING", "STARTING"}, states
+                assert _running_replica_pids(client) == initial_pids
+                return "STARTING" not in states or states == surged
+
+            wait_for_condition(check_recovered, timeout=60)
+
+        ray.get(signal.send.remote())
+
+        def check_replaced():
+            states = _replica_states()
+            assert states.get("RUNNING", 0) >= 3, states
+            assert states.get("RUNNING", 0) + states.get("STARTING", 0) <= 5, states
+            running = _running_replica_pids(client)
+            return (
+                _app_running()
+                and len(running) == 3
+                and not set(running) & set(initial_pids)
+            )
+
+        wait_for_condition(check_replaced, raise_exceptions=True, timeout=60)
+        replaced_pids = _running_replica_pids(client)
+
+        # A lightweight change reconfigures the replicas without any surge.
+        client.deploy_apps(
+            _rolling_update_config({**blocked, "max_ongoing_requests": 3})
+        )
+        wait_for_condition(lambda: _config_options(client) == (3, 3))
+        wait_for_condition(check_running, timeout=60)
+        assert _running_replica_pids(client) == replaced_pids
+        assert _replica_states() == {"RUNNING": 3}
+
+
+def test_surge_rolling_updates_roll_apps_independently(serve_instance_with_signal):
+    """One app fails and rolls back while another rolls forward, both with surge."""
+    client, signal = serve_instance_with_signal
+    deployment = {"name": "FailOnFlag", "num_replicas": 2, "max_surge_percent": 50}
+
+    def config(a: dict, b: dict) -> ServeDeploySchema:
+        return ServeDeploySchema(
+            applications=[
+                {
+                    "name": name,
+                    "route_prefix": f"/{name}",
+                    "import_path": FAIL_ON_FLAG_IMPORT_PATH,
+                    "deployments": [spec],
+                }
+                for name, spec in (("a", a), ("b", b))
+            ]
+        )
+
+    client.deploy_apps(config(deployment, deployment))
+    wait_for_condition(lambda: check_running("a") and check_running("b"), timeout=60)
+    pids = {app: _running_replica_pids(client, app_name=app) for app in ("a", "b")}
+    forward_b = _env_override(deployment, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2")
+
+    with _background_traffic("http://localhost:8000/a"), _background_traffic(
+        "http://localhost:8000/b"
+    ):
+        client.deploy_apps(
+            config(
+                _env_override(deployment, BLOCK_INIT_ON_SIGNAL="1", FAIL_ON_INIT="1"),
+                forward_b,
+            )
+        )
+
+        def check_both_surged():
+            for app in ("a", "b"):
+                states = _replica_states(app_name=app)
+                assert states == {"RUNNING": 2, "STARTING": 1}, (app, states)
+                assert _running_replica_pids(client, app_name=app) == pids[app]
+            return True
+
+        wait_for_condition(check_both_surged, timeout=60)
+        ray.get(signal.send.remote())
+
+        def check_a_failed_and_b_replaced():
+            assert _running_replica_pids(client, app_name="a") == pids["a"]
+            apps = serve.status().applications
+            running_b = _running_replica_pids(client, app_name="b")
+            return (
+                apps["a"].status == ApplicationStatus.DEPLOY_FAILED
+                and _replica_states(app_name="a") == {"RUNNING": 2}
+                and apps["b"].status == ApplicationStatus.RUNNING
+                and len(running_b) == 2
+                and not set(running_b) & set(pids["b"])
+            )
+
+        wait_for_condition(
+            check_a_failed_and_b_replaced, raise_exceptions=True, timeout=90
+        )
+        replaced_b = _running_replica_pids(client, app_name="b")
+
+        # Rolling back a leaves b on its new replicas.
+        client.deploy_apps(config(deployment, forward_b))
+        wait_for_condition(check_running, app_name="a", timeout=60)
+        assert _running_replica_pids(client, app_name="a") == pids["a"]
+        assert check_running("b")
+        assert _running_replica_pids(client, app_name="b") == replaced_b
+
+
+def test_surge_rolling_update_with_autoscaling(serve_instance_with_signal):
+    """Surge follows the autoscaled target, and failure and rollback work from zero."""
+    client, signal = serve_instance_with_signal
+    healthy = {
+        "name": "FailOnFlag",
+        "max_surge_percent": 50,
+        "autoscaling_config": {
+            "min_replicas": 0,
+            "max_replicas": 4,
+            "target_ongoing_requests": 1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 5,
+            "downscale_to_zero_delay_s": 5,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
+        },
+        "graceful_shutdown_timeout_s": 60,
+        "ray_actor_options": {"runtime_env": {"env_vars": {"BLOCK_ON_SIGNAL": "1"}}},
+    }
+    client.deploy_apps(_rolling_update_config(healthy))
+    wait_for_condition(check_running, timeout=60)
+    assert _running_replica_pids(client) == []
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    responses = [handle.remote() for _ in range(8)]
+    try:
+        # Blocked requests scale the deployment from zero up to its maximum.
+        wait_for_condition(lambda: len(_running_replica_pids(client)) == 4, timeout=60)
+        scaled_pids = _running_replica_pids(client)
+
+        forward = _env_override(healthy, BLOCK_ON_SIGNAL="1", MARKER="v2")
+        client.deploy_apps(_rolling_update_config(forward))
+
+        def check_surge_at_autoscaled_target():
+            details = _deployment_details(client)
+            assert details.target_num_replicas == 4
+            states = [r.state for r in details.replicas]
+            assert sum(state != "STOPPING" for state in states) <= 6, states
+            running = [r.pid for r in details.replicas if r.state == "RUNNING"]
+            assert len(running) >= 4, states
+            # Old replicas drain their requests instead of being killed.
+            assert all(
+                r.state in ("RUNNING", "STOPPING")
+                for r in details.replicas
+                if r.pid in scaled_pids
+            ), states
+            return bool(set(running) - set(scaled_pids))
+
+        wait_for_condition(
+            check_surge_at_autoscaled_target, raise_exceptions=True, timeout=60
+        )
+        ray.get(signal.send.remote())
+        assert [r.result(timeout_s=60) for r in responses] == ["ok"] * 8
+
+        # With the requests done, the rollout finishes and the deployment scales
+        # to zero.
+        def check_replaced():
+            running = _running_replica_pids(client)
+            assert len(running) <= 6, running
+            return not set(running) & set(scaled_pids)
+
+        wait_for_condition(check_replaced, raise_exceptions=True, timeout=90)
+        wait_for_condition(
+            lambda: _deployment_details(client).target_num_replicas == 0
+            and _replica_states() == {}
+            and _app_running(),
+            timeout=90,
+        )
+
+        # A request wakes the deployment from zero, so a failing version fails there.
+        client.deploy_apps(
+            _rolling_update_config(
+                _env_override(healthy, BLOCK_ON_SIGNAL="1", FAIL_ON_INIT="1")
+            )
+        )
+        pending = handle.remote()
+
+        def check_failed_from_zero():
+            # The empty deployment reports HEALTHY until the request scales it up,
+            # so the startup failures surface as DEPLOY_FAILED or UNHEALTHY
+            # depending on whether the request arrived before it settled.
+            app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+            assert app.status in (
+                ApplicationStatus.DEPLOY_FAILED,
+                ApplicationStatus.UNHEALTHY,
+            ), app.status
+            assert _deployment_details(client).status_trigger == (
+                "REPLICA_STARTUP_FAILED"
+            )
+            return _replica_states() == {}
+
+        wait_for_condition(check_failed_from_zero, timeout=60)
+
+        # Rolling back to the working version scales up from zero again and
+        # serves the request that was waiting.
+        client.deploy_apps(_rolling_update_config(forward))
+        assert pending.result(timeout_s=60) == "ok"
+        wait_for_condition(check_running, timeout=60)
+        assert _running_replica_pids(client)
+    finally:
+        ray.get(signal.send.remote())
+        for response in responses:
+            response.cancel()
+
+
+def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
+    """Surge replaces whole gangs; a failed update keeps the old gangs for rollback."""
+    client, signal = serve_instance_with_signal
+    failures = Accumulator.options(name="failed-gangs").remote()
+    healthy = {
+        "name": "FailOnFlag",
+        "num_replicas": 4,
+        "max_surge_percent": 25,
+        "gang_scheduling_config": {"gang_size": 2},
+        "ray_actor_options": {"num_cpus": 0.1},
+    }
+    deployment_id = DeploymentID(name="FailOnFlag", app_name=SERVE_DEFAULT_APP_NAME)
+
+    def running_gang_sizes() -> Dict[str, int]:
+        replicas = ray.get(
+            client._controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+        return dict(
+            Counter(
+                r.gang_context.gang_id for r in replicas.get([ReplicaState.RUNNING])
+            )
+        )
+
+    try:
+        client.deploy_apps(_rolling_update_config(healthy))
+        wait_for_condition(check_running, timeout=60)
+        initial_pids = _running_replica_pids(client)
+        initial_gangs = running_gang_sizes()
+        assert len(initial_gangs) == 2 and set(initial_gangs.values()) == {2}
+
+        with _background_traffic():
+            client.deploy_apps(
+                _rolling_update_config(
+                    _env_override(
+                        healthy,
+                        BLOCK_INIT_ON_SIGNAL="1",
+                        FAIL_ON_INIT="1",
+                        RECORD_FAILED_GANGS="failed-gangs",
+                    )
+                )
+            )
+            # The one replica allowance rounds up to a whole replacement gang.
+            wait_for_condition(
+                _check_surged,
+                client=client,
+                states={"RUNNING": 4, "STARTING": 2},
+                old_pids=initial_pids,
+            )
+            ray.get(signal.send.remote())
+
+            def check_failed_keeping_gangs():
+                assert _running_replica_pids(client) == initial_pids
+                assert running_gang_sizes() == initial_gangs
+                app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+                return (
+                    app.status == ApplicationStatus.DEPLOY_FAILED
+                    and _replica_states() == {"RUNNING": 4}
+                )
+
+            wait_for_condition(
+                check_failed_keeping_gangs, raise_exceptions=True, timeout=90
+            )
+            _check_terminal_rolling_update(client, running=4)
+            # Every retry used a fresh replacement gang; the budget is per gang.
+            assert len(set(ray.get(failures.get.remote()))) == 3
+
+            # Rolling back reuses the old gangs as they are.
+            client.deploy_apps(_rolling_update_config(healthy))
+            wait_for_condition(check_running, timeout=60)
+            assert _running_replica_pids(client) == initial_pids
+            assert running_gang_sizes() == initial_gangs
+
+            # A working version replaces one whole gang at a time.
+            client.deploy_apps(
+                _rolling_update_config(_env_override(healthy, MARKER="v2"))
+            )
+
+            def check_gangs_replaced():
+                gangs = running_gang_sizes()
+                assert sum(gangs.values()) >= 4, gangs
+                assert all(
+                    size == 2 for gang, size in gangs.items() if gang in initial_gangs
+                ), gangs
+                running = _running_replica_pids(client)
+                return (
+                    _app_running()
+                    and len(running) == 4
+                    and not set(running) & set(initial_pids)
+                )
+
+            wait_for_condition(check_gangs_replaced, raise_exceptions=True, timeout=90)
+            assert set(running_gang_sizes().values()) == {2}
+    finally:
+        client.delete_apps([SERVE_DEFAULT_APP_NAME])
+        ray.kill(failures)
+
+
+def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signal):
+    """Surge bounds a code change that also scales the deployment up or down.
+
+    The running count never drops below the smaller target, and old replicas are
+    all replaced.
+    """
+    client, signal = serve_instance_with_signal
+    # Old replicas stop on consecutive ticks here. Under HAProxy the CI drain
+    # window is 0.01s, shorter than a reload, so keep replicas reachable long
+    # enough to be deregistered first.
+    drain = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "5"}
+    v1 = {
+        **SURGE_DEPLOYMENT,
+        "max_surge_percent": 50,
+        "ray_actor_options": {"runtime_env": {"env_vars": drain}},
+    }
+    client.deploy_apps(_rolling_update_config(v1))
+    wait_for_condition(check_running, timeout=60)
+    v1_pids = _running_replica_pids(client)
+
+    def check_replaced(target: int, old_pids: List[int], min_running: int):
+        states = _replica_states()
+        assert states.get("RUNNING", 0) >= min_running, states
+        running = _running_replica_pids(client)
+        return (
+            _app_running()
+            and len(running) == target
+            and not set(running) & set(old_pids)
+        )
+
+    with _background_traffic():
+        # Scale 3 -> 5 with new code: five replacements fit within 5 + ceil(2.5).
+        v2 = _env_override(v1, **drain, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2")
+        client.deploy_apps(_rolling_update_config({**v2, "num_replicas": 5}))
+        wait_for_condition(
+            _check_surged,
+            client=client,
+            states={"RUNNING": 3, "STARTING": 5},
+            old_pids=v1_pids,
+        )
+        ray.get(signal.send.remote())
+        wait_for_condition(
+            check_replaced,
+            target=5,
+            old_pids=v1_pids,
+            min_running=3,
+            raise_exceptions=True,
+            timeout=90,
+        )
+        v2_pids = _running_replica_pids(client)
+
+        # Scale 5 -> 2 with new code: extra old replicas stop first, then one
+        # replacement at a time fits within 2 + ceil(1).
+        ray.get(signal.send.remote(clear=True))
+        v3 = _env_override(v1, **drain, BLOCK_INIT_ON_SIGNAL="1", MARKER="v3")
+        client.deploy_apps(_rolling_update_config({**v3, "num_replicas": 2}))
+
+        def check_scaled_down_then_surged():
+            states = _replica_states()
+            assert states.get("RUNNING", 0) >= 2, states
+            assert set(_running_replica_pids(client)) <= set(v2_pids)
+            return states == {"RUNNING": 2, "STARTING": 1}
+
+        wait_for_condition(
+            check_scaled_down_then_surged, raise_exceptions=True, timeout=60
+        )
+        ray.get(signal.send.remote())
+        wait_for_condition(
+            check_replaced,
+            target=2,
+            old_pids=v2_pids,
+            min_running=2,
+            raise_exceptions=True,
+            timeout=90,
+        )
+
+
+def test_surge_rolling_update_stops_after_health_check_failures(serve_instance):
+    """Replacements that start and then fail health checks end the update; rollback
+    reuses the surviving old replicas."""
+    client = serve_instance
+    healthy = {**SURGE_DEPLOYMENT, "health_check_period_s": 0.1}
+    client.deploy_apps(_rolling_update_config(healthy))
+    wait_for_condition(check_running, timeout=60)
+    initial_pids = _running_replica_pids(client)
+
+    client.deploy_apps(
+        _rolling_update_config(_env_override(healthy, FAIL_HEALTH_CHECK="1"))
+    )
+    wait_for_condition(_check_terminal_rolling_update, client=client, timeout=60)
+
+    # Flapping replacements pass their first health check, so each one running at
+    # once lets an old replica stop before the failure budget is spent. Once the
+    # update is terminal, no replacement is running or started again.
+    def check_settled():
+        assert set(_replica_states()) <= {"RUNNING"}, _replica_states()
+        assert set(_running_replica_pids(client)) <= set(initial_pids)
+        return True
+
+    wait_for_condition(check_settled, timeout=60)
+    survivors = _running_replica_pids(client)
+    deadline = time.monotonic() + 5
+    wait_for_condition(
+        lambda: _check_terminal_rolling_update(client, running=len(survivors))
+        and time.monotonic() >= deadline,
+        raise_exceptions=True,
+        timeout=15,
+    )
+
+    client.deploy_apps(_rolling_update_config(healthy))
+    wait_for_condition(check_running, timeout=60)
+    wait_for_condition(lambda: len(_running_replica_pids(client)) == 3, timeout=60)
+    assert set(survivors) <= set(_running_replica_pids(client))
+
+
+def test_surge_replacements_wait_for_capacity(serve_instance):
+    """Unplaceable replacements leave the old replicas serving until rollback."""
+    client = serve_instance
+    # Three replicas hold 33 of the 36 CPUs, so no replacement can be placed.
+    healthy = {**SURGE_DEPLOYMENT, "ray_actor_options": {"num_cpus": 11}}
+    client.deploy_apps(_rolling_update_config(healthy))
+    wait_for_condition(check_running, timeout=60)
+    initial_pids = _running_replica_pids(client)
+
+    with _background_traffic():
+        client.deploy_apps(_rolling_update_config(_env_override(healthy, MARKER="v2")))
+        surged = {"RUNNING": 3, "STARTING": 2}
+        wait_for_condition(
+            _check_surged, client=client, states=surged, old_pids=initial_pids
+        )
+        deadline = time.monotonic() + 10
+
+        def check_replacements_wait():
+            _check_surged(client, surged, initial_pids)
+            app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+            assert app.status == ApplicationStatus.DEPLOYING, app.status
+            assert app.deployments["FailOnFlag"].status == "UPDATING"
+            return time.monotonic() >= deadline
+
+        wait_for_condition(check_replacements_wait, raise_exceptions=True, timeout=30)
+
+        # Rolling back drops the pending replacements and keeps the old replicas.
+        client.deploy_apps(_rolling_update_config(healthy))
+
+        def check_rolled_back():
+            assert _running_replica_pids(client) == initial_pids
+            return _app_running() and _replica_states() == {"RUNNING": 3}
+
+        wait_for_condition(check_rolled_back, raise_exceptions=True, timeout=60)
 
 
 if __name__ == "__main__":
