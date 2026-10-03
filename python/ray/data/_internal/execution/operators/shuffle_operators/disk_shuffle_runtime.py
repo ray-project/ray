@@ -32,6 +32,7 @@ import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.util import MiB
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
+from ray.data.block import BlockExecStats
 from ray.exceptions import (
     ActorDiedError,
     ActorUnavailableError,
@@ -158,6 +159,7 @@ class ShuffleHandle(TypedDict, total=False):
     num_partitions: int
     total_bytes: int
     compression: Optional[str]
+    exec_stats: Optional["BlockExecStats"]
 
 
 class _Endpoint(NamedTuple):

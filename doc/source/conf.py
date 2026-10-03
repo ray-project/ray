@@ -868,7 +868,6 @@ _intersphinx_targets = {
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
-    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": (
         "https://pandas.pydata.org/pandas-docs/stable/",
@@ -884,11 +883,15 @@ _intersphinx_targets = {
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
     ),
     "torch": (
-        "https://docs.pytorch.org/docs/stable/",
-        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt
-        # so cross-references only resolve to symbols that version ships. Bump this
-        # with that pin, then re-run _intersphinx/refresh.py torch.
-        "https://docs.pytorch.org/docs/2.9/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt.
+        # The inventory is derived from this base, so cross-references resolve only
+        # to symbols that version ships and link to that version's pages. Don't
+        # pair a pinned inventory with docs/stable/: stable serves the newest
+        # release, and PyTorch renames pages between releases, so the emitted links
+        # would 404. Bump this with the requirements pin, then re-run
+        # _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.10/",
+        None,
     ),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
