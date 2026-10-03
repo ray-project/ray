@@ -1869,14 +1869,14 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         gcs_table_storage_->ActorTable().Put(
             actor_id,
             observability_data,
-            {[this, actor_id = actor_id, observability_data = observability_data](
+            {[this, dead_actor_id = actor_id, observability_data](
                  Status status) {
                gcs_publisher_->PublishActor(
-                   actor_id, GenActorDataOnlyWithStates(observability_data));
+                   dead_actor_id, GenActorDataOnlyWithStates(observability_data));
                // Delete the task spec only after the DEAD row is persisted, so a
                // crash in between cannot resurrect the missing-spec landmine.
                gcs_table_storage_->ActorTaskSpecTable().Delete(
-                   actor_id, {[](auto) {}, io_context_});
+                   dead_actor_id, {[](auto) {}, io_context_});
              },
              io_context_});
       } else {
