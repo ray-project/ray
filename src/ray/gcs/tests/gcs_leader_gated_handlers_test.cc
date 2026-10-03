@@ -503,6 +503,12 @@ class MockActorInfoGcsServiceHandler : public rpc::ActorInfoGcsServiceHandler {
     called_ = true;
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+  void HandleRegisterActorBatch(rpc::RegisterActorBatchRequest request,
+                                rpc::RegisterActorBatchReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override {
+    called_ = true;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
   void HandleRestartActorForLineageReconstruction(
       rpc::RestartActorForLineageReconstructionRequest request,
       rpc::RestartActorForLineageReconstructionReply *reply,

@@ -358,6 +358,78 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
   ++counts_[CountType::REGISTER_ACTOR_REQUEST];
 }
 
+void GcsActorManager::HandleRegisterActorBatch(
+    rpc::RegisterActorBatchRequest request,
+    rpc::RegisterActorBatchReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const int total_tasks = request.task_specs_size();
+  RAY_LOG(INFO) << "Registering actor batch of size " << total_tasks;
+  if (total_tasks == 0) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    return;
+  }
+
+  // Pre-validate actor names across the batch and existing registry so batch
+  // registration is atomic and does not partially register actors on name conflict.
+  absl::flat_hash_set<std::pair<std::string, std::string>> batch_named_actors;
+  for (int i = 0; i < total_tasks; ++i) {
+    const auto &task_spec = request.task_specs(i);
+    RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
+    const auto &actor_creation_spec = task_spec.actor_creation_task_spec();
+    const auto &name = actor_creation_spec.name();
+    if (!name.empty()) {
+      const auto &ray_namespace = actor_creation_spec.ray_namespace();
+      auto actor_id = ActorID::FromBinary(actor_creation_spec.actor_id());
+      auto existing_id = GetActorIDByName(name, ray_namespace);
+      if ((!existing_id.IsNil() && existing_id != actor_id) ||
+          !batch_named_actors.emplace(ray_namespace, name).second) {
+        std::stringstream stream;
+        stream << "Actor with name '" << name << "' already exists in the namespace "
+               << ray_namespace;
+        GCS_RPC_SEND_REPLY(
+            send_reply_callback, reply, Status::AlreadyExists(stream.str()));
+        return;
+      }
+    }
+  }
+
+  auto pending_count = std::make_shared<size_t>(total_tasks);
+  auto first_error = std::make_shared<Status>(Status::OK());
+
+  for (int i = 0; i < total_tasks; ++i) {
+    rpc::RegisterActorRequest single_request;
+    single_request.mutable_task_spec()->Swap(request.mutable_task_specs(i));
+    RAY_CHECK(single_request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
+    auto actor_id = ActorID::FromBinary(
+        single_request.task_spec().actor_creation_task_spec().actor_id());
+
+    auto on_done = [reply, send_reply_callback, pending_count, first_error, actor_id](
+                       const Status &status) {
+      if (!status.ok()) {
+        RAY_LOG(WARNING).WithField(actor_id.JobId()).WithField(actor_id)
+            << "Failed to register actor in batch: " << status.ToString();
+        if (first_error->ok()) {
+          *first_error = status;
+        }
+      } else {
+        RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
+            << "Registered actor in batch";
+      }
+      (*pending_count)--;
+      if (*pending_count == 0) {
+        const auto &reply_status = *first_error;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, reply_status);
+      }
+    };
+
+    Status status = RegisterActor(single_request, on_done);
+    if (!status.ok()) {
+      on_done(status);
+    }
+  }
+  counts_[CountType::REGISTER_ACTOR_REQUEST] += total_tasks;
+}
+
 void GcsActorManager::HandleRestartActorForLineageReconstruction(
     rpc::RestartActorForLineageReconstructionRequest request,
     rpc::RestartActorForLineageReconstructionReply *reply,

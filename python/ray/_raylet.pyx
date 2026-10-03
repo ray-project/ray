@@ -4134,6 +4134,17 @@ cdef class CoreWorker:
 
             return ActorID(c_actor_id.Binary())
 
+    def enter_actor_batch(self):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().EnterActorBatch()
+
+    def exit_actor_batch(self):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().ExitActorBatch()
+
+    def is_in_actor_batch(self):
+        return CCoreWorkerProcess.GetCoreWorker().IsInActorBatch()
+
     def create_placement_group(
                             self,
                             c_string name,
