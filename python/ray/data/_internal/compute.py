@@ -72,7 +72,9 @@ class ActorPoolStrategy(ComputeStrategy):
     For a fixed-sized pool of size ``n``, use ``ActorPoolStrategy(size=n)``.
 
     To autoscale from ``m`` to ``n`` actors, use
-    ``ActorPoolStrategy(min_size=m, max_size=n)``.
+    ``ActorPoolStrategy(min_size=m, max_size=n)``. Set ``min_size=0`` to
+    allow the pool to release all actors while idle and start them again when work
+    becomes available.
 
     To autoscale from ``m`` to ``n`` actors, with an initial size of ``initial``, use
     ``ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)``.
@@ -122,8 +124,9 @@ class ActorPoolStrategy(ComputeStrategy):
         Args:
             size: Specify a fixed size actor pool of this size. It is an error to
                 specify both `size` and `min_size` or `max_size`.
-            min_size: The minimum size of the actor pool.
-            max_size: The maximum size of the actor pool.
+            min_size: The minimum size of the actor pool. Set to 0 to allow
+                the pool to scale to zero actors. Defaults to 1.
+            max_size: The maximum size of the actor pool. Must be at least 1.
             initial_size: The initial number of actors to start with. If not specified,
                 defaults to min_size. Must be between min_size and max_size.
             max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
@@ -148,9 +151,11 @@ class ActorPoolStrategy(ComputeStrategy):
             min_size = size
             max_size = size
             initial_size = size
-        if min_size is not None and min_size < 1:
-            raise ValueError("min_size must be >= 1", min_size)
+        if min_size is not None and min_size < 0:
+            raise ValueError("min_size must be >= 0", min_size)
         if max_size is not None:
+            if max_size < 1:
+                raise ValueError("max_size must be >= 1", max_size)
             if min_size is None:
                 min_size = 1  # Legacy default.
             if min_size > max_size:
@@ -172,8 +177,8 @@ class ActorPoolStrategy(ComputeStrategy):
                 max_concurrent_calls_per_actor,
             )
 
-        self.min_size = min_size or 1
-        self.max_size = max_size or float("inf")
+        self.min_size = 1 if min_size is None else min_size
+        self.max_size = float("inf") if max_size is None else max_size
 
         # Validate and set initial_size
         if initial_size is not None:
@@ -186,7 +191,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     f"initial_size ({initial_size}) must be <= max_size ({self.max_size})"
                 )
 
-        self.initial_size = initial_size or self.min_size
+        self.initial_size = self.min_size if initial_size is None else initial_size
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         self.max_concurrent_calls_per_actor = max_concurrent_calls_per_actor
         self.num_workers = 0
