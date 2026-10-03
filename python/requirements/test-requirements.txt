@@ -44,14 +44,14 @@ mypy==1.7.0
 pyright==1.1.408
 numba==0.61.2
 openpyxl==3.0.10
-opentelemetry-api==1.39.0
-opentelemetry-sdk==1.39.0
+opentelemetry-api==1.40.0
+opentelemetry-sdk==1.40.0
 # proto and exporter-otlp-proto-grpc must match sdk/proto version or vllm
 # (rayllm depset) can't satisfy opentelemetry-exporter-otlp's in-family pins.
-opentelemetry-proto==1.39.0
-opentelemetry-exporter-otlp-proto-grpc==1.39.0
-opentelemetry-exporter-prometheus==0.60b0
-opentelemetry-semantic-conventions==0.60b0
+opentelemetry-proto==1.40.0
+opentelemetry-exporter-otlp-proto-grpc==1.40.0
+opentelemetry-exporter-prometheus==0.61b0
+opentelemetry-semantic-conventions==0.61b0
 pexpect==4.8.0
 Pillow>=10.4.0; platform_system != "Windows"
 proxy.py==2.4.3
@@ -99,7 +99,7 @@ jupytext>1.13.6
 jinja2>=3.1.6
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
-opentelemetry-instrumentation-fastapi==0.60b0
+opentelemetry-instrumentation-fastapi==0.61b0
 mlflow>=3.0.0
 # databricks-sdk 0.73+ excludes protobuf 5.27.
 databricks-sdk==0.72.0; python_version < '3.12'
