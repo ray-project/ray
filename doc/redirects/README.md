@@ -75,9 +75,11 @@ the directory rule, so it sits ahead of it and matches first. Left on the old
 path, it would catch moved pages before the directory rule could send them to
 their new location.
 
-`rtd-redirects validate` reports each two-hop path as a chain warning. Chain
-warnings from a move are expected. They don't block CI, which fails only on
-error-level findings.
+`rtd-redirects validate` reports each two-hop path as an info-level chain
+note. It counts these notes and lists them only with `--show-info`. Chain notes
+from a move are expected. A chain is a warning only when the second rule sets
+`force: true`, because that chain happens on every version. Neither blocks CI,
+which fails only on error-level findings.
 
 ## Auditing drift
 

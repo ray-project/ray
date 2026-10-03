@@ -44,7 +44,7 @@ Put your finished notebook under `content/`. Sphinx discovers `.ipynb`, `.md`, a
 * - Ray Serve, Ray Data, Ray Train
   - Add an entry to the library's `examples.yml`, which generates the gallery and its `toctree`.
 * - Ray Tune
-  - Add the page to the category `toctree` and the matching `list-table` in `doc/source/tune/examples/index.rst`.
+  - Add the page to the category `toctree` and the matching `list-table` in `doc/source/tune/examples/index.md`.
 :::
 
 If your notebook uses IPython syntax such as `!pip install`, set its lexer so the build can parse it. In the notebook's `metadata.language_info`, set `pygments_lexer` to `ipython3`. Otherwise the default `python3` lexer fails the build on those cells.

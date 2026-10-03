@@ -70,7 +70,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the weight/kernel matrices in the
     #: stack configured by `fcnet_hiddens`. Supported values are the initializer names
     #: (str), classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     fcnet_kernel_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -79,7 +79,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the bias vectors in the stack
     #: configured by `fcnet_hiddens`. Supported values are the initializer names (str),
     #: classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     fcnet_bias_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -108,7 +108,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the weight/kernel matrices in the
     #: stack configured by `conv_filters`. Supported values are the initializer names
     #: (str), classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     conv_kernel_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -117,7 +117,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the bias vectors in the stack
     #: configured by `conv_filters`. Supported values are the initializer names (str),
     #: classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     conv_bias_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -139,7 +139,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the weight/kernel matrices in the
     #: stack configured by `head_fcnet_hiddens`. Supported values are the initializer
     #: names (str), classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     head_fcnet_kernel_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -148,7 +148,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the bias vectors in the stack
     #: configured by `head_fcnet_hiddens`. Supported values are the initializer names
     #: (str), classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     head_fcnet_bias_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -193,7 +193,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the weight/kernel matrices in the
     #: LSTM layer. Supported values are the initializer names (str), classes or
     #: functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     lstm_kernel_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -202,7 +202,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the bias vectors in the stack
     #: configured by the LSTM layer. Supported values are the initializer names (str),
     #: classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     lstm_bias_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -235,7 +235,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the weight/kernel matrices in the
     #: stack configured by `fusionnet_hiddens`. Supported values are the initializer names
     #: (str), classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     fusionnet_kernel_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through
@@ -244,7 +244,7 @@ class DefaultModelConfig:
     #: Initializer function or class descriptor for the bias vectors in the stack
     #: configured by `fusionnet_hiddens`. Supported values are the initializer names (str),
     #: classes or functions listed by the frameworks (`torch`). See
-    #: https://pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
+    #: https://docs.pytorch.org/docs/stable/nn.init.html for `torch`. If `None` (default),
     #: the default initializer defined by `torch` is used.
     fusionnet_bias_initializer: Optional[Union[str, Callable]] = None
     #: Kwargs passed into the initializer function defined through

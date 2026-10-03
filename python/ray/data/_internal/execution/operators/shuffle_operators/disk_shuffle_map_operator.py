@@ -325,10 +325,9 @@ class DiskHashShuffleMapOp(
         if self._output_schema is None:
             self._output_schema = handle.get("schema")
 
-        # Synthetic per-mapper output bundle for metric bookkeeping only
-        # — not pushed to the output queue (downstream sees the N
-        # partition wrappers built at all_inputs_done).
-        exec_stats = BlockExecStats.builder().build(block_ser_time_s=0.0)
+        exec_stats = handle.get("exec_stats") or BlockExecStats.builder().build(
+            block_ser_time_s=0.0
+        )
         out_meta = BlockMetadata(
             num_rows=0,
             size_bytes=0,
@@ -350,7 +349,7 @@ class DiskHashShuffleMapOp(
         input_meta = BlockMetadata(
             num_rows=input_rows,
             size_bytes=input_bytes,
-            exec_stats=None,
+            exec_stats=handle.get("exec_stats"),
             input_files=None,
         )
         self._map_blocks_stats.append(input_meta.to_stats())
