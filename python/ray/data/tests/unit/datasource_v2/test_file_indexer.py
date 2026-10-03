@@ -5,11 +5,21 @@ import pytest
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.common.file_pruners import FileExtensionPruner
+from ray.data._internal.datasource_v2.common.listing_utils import (
+    list_files_for_each_block,
+    sample_files,
+)
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data._internal.datasource_v2.interfaces.read_units import (
+    EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
+)
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
+from ray.data.datasource.partitioning import PathPartitionFilter
 
 
 def _list_all(indexer, paths, **kwargs):
@@ -469,6 +479,33 @@ class TestFileShuffle:
 class TestFooterIndexerFileShuffle:
     """Footer indexer shuffles files before footer-read batches."""
 
+    def test_prelisted_infos_shuffle_before_footer_processing(self, monkeypatch):
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        infos = [FileInfo(path=f"file-{i}.parquet", size=i + 1) for i in range(8)]
+        indexer = FooterFileIndexer(ignore_missing_paths=False)
+        received = []
+
+        def capture(file_infos, **kwargs):
+            received.extend(file_infos)
+            return iter(())
+
+        monkeypatch.setattr(indexer, "_process_file_infos", capture)
+        shuffle = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        list(
+            indexer.list_files_from_file_infos(
+                iter(infos),
+                filesystem=LocalFileSystem(),
+                shuffle_config=shuffle,
+            )
+        )
+
+        assert [info.path for info in received] == [
+            info.path for info in _shuffle_file_infos(infos, seed=42)
+        ]
+
     def test_shuffled_file_infos_drive_footer_batches(self, tmp_path):
         from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
             FooterFileIndexer,
@@ -519,6 +556,144 @@ def test_list_file_infos_rejects_missing_filesystem():
     indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
     with pytest.raises(ValueError, match="NonSamplingFileIndexer.*filesystem=None"):
         list(indexer.list_file_infos(pa.array(["a.csv"]), filesystem=None))
+
+
+def test_prelisted_files_skip_checkpointed_whole_file():
+    block = pa.table(
+        {
+            "__path": ["keep.parquet", "done.parquet"],
+            "__file_size": [10, 20],
+        }
+    )
+    context = TaskContext(
+        task_idx=0,
+        op_name="ListFiles",
+        kwargs={EXCLUDED_READ_UNIT_IDS_KWARG_NAME: {"done.parquet"}},
+    )
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+
+    manifests = list(
+        list_files_for_each_block(
+            [block],
+            context,
+            indexer=indexer,
+            filesystem=LocalFileSystem(),
+            prelisted_file_infos=True,
+        )
+    )
+
+    assert [str(path) for manifest in manifests for path in manifest["__path"]] == [
+        "keep.parquet"
+    ]
+
+
+def test_prelisted_footer_indexer_passes_row_group_exclusions(monkeypatch):
+    from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+        FooterFileIndexer,
+    )
+
+    infos = [
+        FileInfo(path="done.parquet", size=10),
+        FileInfo(path="keep.parquet", size=20),
+    ]
+    excluded = {"done.parquet", "keep.parquet#rg0"}
+    indexer = FooterFileIndexer(ignore_missing_paths=False)
+    captured = {}
+
+    def capture(file_infos, **kwargs):
+        captured["paths"] = [info.path for info in file_infos]
+        captured["excluded"] = kwargs["excluded_read_unit_ids"]
+        return iter(())
+
+    monkeypatch.setattr(indexer, "_process_file_infos", capture)
+    list(
+        indexer.list_files_from_file_infos(
+            infos,
+            filesystem=LocalFileSystem(),
+            excluded_read_unit_ids=excluded,
+        )
+    )
+
+    assert captured["paths"] == ["keep.parquet"]
+    assert captured["excluded"] == excluded
+
+
+def test_sample_files_can_discover_all_files(tmp_path):
+    for i in range(18):
+        (tmp_path / f"f{i:02d}.parquet").write_bytes(b"data")
+
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+    roots = [str(tmp_path)]
+    filesystem = LocalFileSystem()
+    bounded = sample_files(indexer, roots, filesystem)
+    complete = sample_files(indexer, roots, filesystem, max_files=None)
+
+    assert len(bounded) == 16
+    assert len(complete) == 18
+    assert {str(path) for path in complete.paths} == {
+        str(tmp_path / f"f{i:02d}.parquet") for i in range(18)
+    }
+
+
+def test_prelisted_file_infos_shuffle_across_blocks_without_relisting(monkeypatch):
+    infos = [FileInfo(path=f"file-{i}.parquet", size=i + 1) for i in range(8)]
+    blocks = [
+        pa.table(
+            {
+                "__path": [info.path for info in group],
+                "__file_size": [info.size for info in group],
+            }
+        )
+        for group in (infos[:4], infos[4:])
+    ]
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+
+    def fail_relisting(*args, **kwargs):
+        raise AssertionError("prelisted files must not be listed again")
+
+    monkeypatch.setattr(indexer, "list_file_infos", fail_relisting)
+    shuffle = FileShuffleConfig(seed=42, reseed_after_execution=False)
+    manifests = list(
+        list_files_for_each_block(
+            blocks,
+            TaskContext(task_idx=0, op_name="ListFiles"),
+            indexer=indexer,
+            filesystem=LocalFileSystem(),
+            shuffle_config=shuffle,
+            prelisted_file_infos=True,
+        )
+    )
+    actual = [str(path) for manifest in manifests for path in manifest["__path"]]
+    expected = [info.path for info in _shuffle_file_infos(infos, seed=42)]
+    assert actual == expected
+
+
+def test_prelisted_files_apply_only_later_partition_pruner():
+    paths = ["keep.parquet", "drop.parquet"]
+    block = pa.table({"__path": paths, "__file_size": [10, 20]})
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+
+    def fail_initial_filter(_):
+        raise AssertionError("the initial filter already ran during discovery")
+
+    class KeepOnly:
+        def should_include(self, path):
+            return path == "keep.parquet"
+
+    manifests = list(
+        list_files_for_each_block(
+            [block],
+            TaskContext(task_idx=0, op_name="ListFiles"),
+            indexer=indexer,
+            filesystem=LocalFileSystem(),
+            partition_filter=PathPartitionFilter.of(fail_initial_filter),
+            partition_pruner=KeepOnly(),
+            prelisted_file_infos=True,
+        )
+    )
+    assert [str(path) for manifest in manifests for path in manifest["__path"]] == [
+        "keep.parquet"
+    ]
 
 
 if __name__ == "__main__":

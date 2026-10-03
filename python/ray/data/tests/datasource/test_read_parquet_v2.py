@@ -7,6 +7,7 @@ triggers Ray auto-init, so they live alongside the other datasource
 integration tests rather than under ``tests/unit/``.
 """
 
+import logging
 from dataclasses import dataclass
 
 import pyarrow as pa
@@ -668,6 +669,381 @@ def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx)
     ds = ray.data.read_parquet([str(a), missing], skip_paths=[missing])
 
     assert ds.count() == 2
+
+
+def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ctx):
+    for i in range(17):
+        data = {"id": [i]}
+        if i == 16:
+            data["new_feature"] = ["latest"]
+        table = pa.table(data)
+        if i == 16:
+            table = table.cast(
+                pa.schema(
+                    [
+                        pa.field("id", pa.int64()),
+                        pa.field("new_feature", pa.string(), nullable=False),
+                    ]
+                )
+            )
+        _write(tmp_path / f"f{i:02d}.parquet", table)
+
+    restore_ctx.use_datasource_v2 = True
+    bounded = ray.data.read_parquet(str(tmp_path))
+    merged = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+
+    assert "new_feature" not in bounded.schema().names
+    assert "new_feature" in merged.schema().names
+    list_files = merged._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files, ListFiles)
+    assert sum(len(block) for block in list_files.prelisted_file_infos) == 17
+
+    rows = sorted(merged.take_all(), key=lambda row: row["id"])
+    assert all(row["new_feature"] is None for row in rows[:16])
+    assert rows[16]["new_feature"] == "latest"
+
+
+def test_merge_schema_warns_for_large_candidate_set(
+    tmp_path, restore_ctx, monkeypatch, caplog
+):
+    import importlib
+
+    first = tmp_path / "a.parquet"
+    second = tmp_path / "b.parquet"
+    _write(first, pa.table({"id": [1]}))
+    _write(second, pa.table({"id": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    read_api = importlib.import_module("ray.data.read_api")
+    monkeypatch.setattr(read_api, "_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT", 1)
+
+    with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
+        ray.data.read_parquet([str(first), str(second)], merge_schema=True)
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "ray.data.read_api"
+        and "candidate files" in record.getMessage()
+    ]
+    assert len(messages) == 1
+    assert "2 candidate files" in messages[0]
+
+
+def test_merge_schema_null_fills_nested_struct_field(tmp_path, restore_ctx):
+    old_schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field(
+                "nested",
+                pa.struct([pa.field("a", pa.int64(), nullable=False)]),
+                nullable=False,
+            ),
+        ]
+    )
+    new_schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field(
+                "nested",
+                pa.struct(
+                    [
+                        pa.field("a", pa.int64(), nullable=False),
+                        pa.field("late", pa.string(), nullable=True),
+                    ]
+                ),
+                nullable=False,
+            ),
+        ]
+    )
+    _write(
+        tmp_path / "a.parquet",
+        pa.Table.from_pylist([{"id": 1, "nested": {"a": 1}}], schema=old_schema),
+    )
+    _write(
+        tmp_path / "b.parquet",
+        pa.Table.from_pylist(
+            [{"id": 2, "nested": {"a": 2, "late": "value"}}],
+            schema=new_schema,
+        ),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+
+    bounded = ray.data.read_parquet(str(tmp_path))
+    assert ds.schema().base_schema == bounded.schema().base_schema
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    assert rows[0]["nested"]["late"] is None
+    assert rows[1]["nested"]["late"] == "value"
+
+
+def test_merge_schema_fails_on_incompatible_file_outside_sample(tmp_path, restore_ctx):
+    for i in range(16):
+        _write(tmp_path / f"f{i:02d}.parquet", pa.table({"id": [i]}))
+    _write(
+        tmp_path / "f16.parquet",
+        pa.table({"id": pa.array([["bad"]], type=pa.list_(pa.string()))}),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    assert ray.data.read_parquet(str(tmp_path)).schema().names == ["id"]
+    with pytest.raises(pa.ArrowTypeError, match="f16.parquet"):
+        ray.data.read_parquet(str(tmp_path), merge_schema=True)
+
+
+def test_merge_schema_prelisted_blocks_feed_one_listing_task(
+    tmp_path, restore_ctx, monkeypatch
+):
+    from ray.data._internal.datasource_v2.common import listing_utils
+
+    monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
+    _write(tmp_path / "a.parquet", pa.table({"id": [1]}))
+    _write(tmp_path / "b.parquet", pa.table({"id": [2], "later": [3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+    list_files = ds._logical_plan.dag.input_dependencies[0]
+
+    assert len(list_files.prelisted_file_infos) == 2
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    assert rows[0]["later"] is None
+    assert rows[1]["later"] == 3
+
+
+def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
+    tmp_path, restore_ctx, monkeypatch
+):
+    from ray.data._internal.datasource_v2.common import listing_utils
+
+    monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
+    first = tmp_path / "a.parquet"
+    second = tmp_path / "b.parquet"
+    _write(first, pa.table({"id": [1]}))
+    _write(second, pa.table({"id": [2], "later": [3]}))
+
+    original_sample_files = listing_utils.sample_files
+    discovered_file_info_tables = []
+
+    def capture_discovered_file_infos(*args, **kwargs):
+        manifest = original_sample_files(*args, **kwargs)
+        if kwargs.get("max_files") is None:
+            discovered_file_info_tables.append(
+                manifest.as_block().select(["__path", "__file_size"])
+            )
+        return manifest
+
+    monkeypatch.setattr(listing_utils, "sample_files", capture_discovered_file_infos)
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([str(first), str(second)], merge_schema=True)
+    list_files = ds._logical_plan.dag.input_dependencies[0]
+    blocks = list_files.prelisted_file_infos
+    source = discovered_file_info_tables[0]
+
+    assert len(blocks) == 2
+    assert all(block.schema == source.schema for block in blocks)
+    assert [path for block in blocks for path in block["__path"].to_pylist()] == source[
+        "__path"
+    ].to_pylist()
+
+    def buffer_addresses(table):
+        return {
+            buffer.address
+            for column in table.columns
+            for chunk in column.chunks
+            for buffer in chunk.buffers()
+            if buffer is not None
+        }
+
+    retained_buffer_addresses = set().union(
+        *(buffer_addresses(block) for block in blocks)
+    )
+    assert buffer_addresses(source).isdisjoint(retained_buffer_addresses)
+
+
+def test_merge_schema_prelisted_listing_skips_checkpointed_row_group(
+    tmp_path, restore_ctx
+):
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.common.listing_utils import (
+        list_files_for_each_block,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+    from ray.data._internal.datasource_v2.read_units import (
+        EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
+    )
+    from ray.data._internal.execution.interfaces.task_context import TaskContext
+
+    path = tmp_path / "data.parquet"
+    pq.write_table(pa.table({"id": [1, 2, 3, 4]}), path, row_group_size=2)
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(path), merge_schema=True)
+    list_files = ds._logical_plan.dag.input_dependencies[0]
+    context = TaskContext(
+        task_idx=0,
+        op_name="ListFiles",
+        kwargs={EXCLUDED_READ_UNIT_IDS_KWARG_NAME: {f"{path}#rg0"}},
+    )
+
+    blocks = list(
+        list_files_for_each_block(
+            list_files.prelisted_file_infos,
+            context,
+            indexer=list_files.file_indexer,
+            filesystem=LocalFileSystem(),
+            prelisted_file_infos=True,
+            preserve_order=True,
+        )
+    )
+    remaining = [
+        row_group_id
+        for block in blocks
+        for metadata in FileManifest(block).file_chunk_metadatas
+        for row_group_id in metadata["row_group_ids"]
+    ]
+
+    assert remaining == [1]
+
+
+def test_merge_schema_null_fills_with_extension_column(tmp_path, restore_ctx):
+    import numpy as np
+
+    if not hasattr(pa, "FixedShapeTensorArray"):
+        pytest.skip("PyArrow fixed-shape tensor extension is unavailable")
+
+    for i in range(17):
+        data = {
+            "id": pa.array([i]),
+            "tensor": pa.FixedShapeTensorArray.from_numpy_ndarray(
+                np.array([[i]], dtype=np.int64)
+            ),
+        }
+        if i == 16:
+            data["new_feature"] = pa.array(["latest"])
+        _write(tmp_path / f"f{i:02d}.parquet", pa.table(data))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+
+    assert "new_feature" in ds.schema().names
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    assert all(row["new_feature"] is None for row in rows[:16])
+    assert rows[16]["new_feature"] == "latest"
+
+
+@pytest.mark.parametrize("tensor_kind", ["native", "ray_v2"])
+def test_merge_schema_arrow_null_fills_new_extension_column(
+    tmp_path, restore_ctx, tensor_kind
+):
+    import numpy as np
+
+    for i in range(17):
+        data = {"id": pa.array([i])}
+        if i == 16:
+            if tensor_kind == "native":
+                if not hasattr(pa, "FixedShapeTensorArray"):
+                    pytest.skip("PyArrow fixed-shape tensor extension is unavailable")
+                data["tensor"] = pa.FixedShapeTensorArray.from_numpy_ndarray(
+                    np.array([[i]], dtype=np.int64)
+                )
+            else:
+                from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
+
+                data["tensor"] = pa.ExtensionArray.from_storage(
+                    ArrowTensorTypeV2((1,), pa.int64()),
+                    pa.array([[i]], type=pa.large_list(pa.int64())),
+                )
+        _write(tmp_path / f"f{i:02d}.parquet", pa.table(data))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+
+    assert isinstance(
+        ds.schema().base_schema.field("tensor").type, pa.BaseExtensionType
+    )
+    id_is_null = []
+    for batch in ds.iter_batches(batch_format="pyarrow"):
+        id_is_null.extend(
+            zip(
+                batch.column("id").to_pylist(),
+                batch.column("tensor").is_null().to_pylist(),
+            )
+        )
+    assert sorted(id_is_null) == [(i, i < 16) for i in range(17)]
+
+
+def test_merge_schema_excludes_files_appended_after_planning(tmp_path, restore_ctx):
+    _write(tmp_path / "a.parquet", pa.table({"id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+    _write(tmp_path / "b.parquet", pa.table({"id": [2], "later": [3]}))
+
+    assert ds.schema().names == ["id"]
+    assert [row["id"] for row in ds.take_all()] == [1]
+    assert ds.count() == 1
+
+
+def test_merge_schema_applies_initial_path_filters(tmp_path, restore_ctx):
+    keep = tmp_path / "keep.parquet"
+    skip = tmp_path / "skip.parquet"
+    missing = tmp_path / "missing.parquet"
+    _write(keep, pa.table({"id": [1]}))
+    _write(skip, pa.table({"id": [2], "skipped_column": [3]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        [str(keep), str(skip), str(missing)],
+        merge_schema=True,
+        skip_paths=[str(skip)],
+        ignore_missing_paths=True,
+    )
+
+    assert ds.schema().names == ["id"]
+    assert [row["id"] for row in ds.take_all()] == [1]
+
+
+def test_merge_schema_partition_filtered_count(tmp_path, restore_ctx):
+    from ray.data.expressions import col
+
+    for year, count in (("2024", 2), ("2025", 3)):
+        part = tmp_path / f"year={year}"
+        part.mkdir()
+        _write(part / "data.parquet", pa.table({"id": list(range(count))}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+    assert ds.count() == 5
+    assert ds.filter(expr=col("year") == "2025").count() == 3
+
+
+def test_merge_schema_lineage_retains_candidates(tmp_path, restore_ctx):
+    _write(tmp_path / "a.parquet", pa.table({"id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
+    restored = ray.data.Dataset.deserialize_lineage(ds.serialize_lineage())
+    _write(tmp_path / "b.parquet", pa.table({"id": [2]}))
+
+    assert [row["id"] for row in restored.take_all()] == [1]
+
+
+def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):
+    path = tmp_path / "a.parquet"
+    _write(path, pa.table({"id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ray.data.read_parquet(
+            str(path), schema=pa.schema([("id", pa.int64())]), merge_schema=True
+        )
+
+    restore_ctx.use_datasource_v2 = False
+    with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
+        ray.data.read_parquet(str(path), merge_schema=True)
 
 
 if __name__ == "__main__":
