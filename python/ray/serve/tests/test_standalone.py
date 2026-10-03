@@ -54,6 +54,12 @@ from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema, TracingC
 from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
 
+# Worker processes start slowest on Windows CI, so waits spanning replica, controller
+# or proxy startup can outlast wait_for_condition's 10s default.
+WAIT_TIMEOUT_S = 60
+# Explicit so no request inherits httpx's 5s default read timeout.
+HTTP_TIMEOUT_S = 30
+
 
 @pytest.fixture
 def ray_cluster():
@@ -95,6 +101,12 @@ def lower_slow_startup_threshold_and_reset():
         ] = original_slow_startup_warning_period_s
 
 
+def _app_returns(expected: str, app_name: str = SERVE_DEFAULT_APP_NAME) -> bool:
+    # Retried by callers: a route can 404 until the proxy learns it over long poll.
+    url = get_application_url("HTTP", app_name=app_name)
+    return httpx.get(url, timeout=HTTP_TIMEOUT_S).text == expected
+
+
 def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -112,7 +124,9 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
     assert handle.remote().result() == "from_f"
-    assert httpx.get(get_application_url("HTTP", app_name="f")).text == "from_f"
+    wait_for_condition(
+        _app_returns, expected="from_f", app_name="f", timeout=WAIT_TIMEOUT_S
+    )
 
     serve.context._global_client = None
     ray.shutdown()
@@ -127,8 +141,12 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
     assert handle.remote().result() == "from_g"
-    assert httpx.get(get_application_url("HTTP", app_name="g")).text == "from_g"
-    assert httpx.get(get_application_url("HTTP", app_name="f")).text == "from_f"
+    wait_for_condition(
+        _app_returns, expected="from_g", app_name="g", timeout=WAIT_TIMEOUT_S
+    )
+    wait_for_condition(
+        _app_returns, expected="from_f", app_name="f", timeout=WAIT_TIMEOUT_S
+    )
 
 
 def test_connect(ray_shutdown):
@@ -209,7 +227,7 @@ def test_multiple_routers(ray_cluster):
             )
         return proxy_names
 
-    wait_for_condition(lambda: len(get_proxy_names()) == 2)
+    wait_for_condition(lambda: len(get_proxy_names()) == 2, timeout=WAIT_TIMEOUT_S)
     original_proxy_names = get_proxy_names()
 
     # Two actors should be started.
@@ -221,7 +239,7 @@ def test_multiple_routers(ray_cluster):
         except ValueError:
             return False
 
-    wait_for_condition(get_first_two_actors)
+    wait_for_condition(get_first_two_actors, timeout=WAIT_TIMEOUT_S)
 
     # Wait for the actors to come up.
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
@@ -237,7 +255,7 @@ def test_multiple_routers(ray_cluster):
     new_node = cluster.add_node(num_cpus=4)
     cluster_node_info_cache.update()
 
-    wait_for_condition(lambda: len(get_proxy_names()) == 3)
+    wait_for_condition(lambda: len(get_proxy_names()) == 3, timeout=WAIT_TIMEOUT_S)
     (third_proxy,) = set(get_proxy_names()) - set(original_proxy_names)
 
     serve.run(A.options(num_replicas=3).bind())
@@ -250,7 +268,7 @@ def test_multiple_routers(ray_cluster):
         except (IndexError, ValueError):
             return False
 
-    wait_for_condition(get_third_actor)
+    wait_for_condition(get_third_actor, timeout=WAIT_TIMEOUT_S)
 
     # Remove the newly-added node from the cluster. The corresponding actor
     # should be removed as well.
@@ -265,7 +283,7 @@ def test_multiple_routers(ray_cluster):
             return True
 
     # Check that the actor is gone and the HTTP server still functions.
-    wait_for_condition(third_actor_removed)
+    wait_for_condition(third_actor_removed, timeout=WAIT_TIMEOUT_S)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
@@ -349,7 +367,7 @@ def test_http_root_path(ray_shutdown, root_path: str):
 
     for url in _all_ingress_urls():
         # The app sees the full path; raw_path keeps the percent-encoding.
-        resp = httpx.get(f"{url}/hello/items/a%20b")
+        resp = httpx.get(f"{url}/hello/items/a%20b", timeout=HTTP_TIMEOUT_S)
         assert resp.status_code == 200, (url, resp.text)
         assert resp.json() == {
             "path": f"{mount}/items/a b",
@@ -360,12 +378,13 @@ def test_http_root_path(ray_shutdown, root_path: str):
 
         # A request that includes root_path is outside the mount.
         if root_path:
-            resp = httpx.get(f"{url}{root_path}/hello/items/1")
+            resp = httpx.get(f"{url}{root_path}/hello/items/1", timeout=HTTP_TIMEOUT_S)
             assert resp.status_code == 404, url
 
         # Serve's own endpoints are served without root_path.
-        assert httpx.get(f"{url}/-/healthz").status_code == 200, url
-        resp = httpx.get(f"{url}/-/routes")
+        resp = httpx.get(f"{url}/-/healthz", timeout=HTTP_TIMEOUT_S)
+        assert resp.status_code == 200, url
+        resp = httpx.get(f"{url}/-/routes", timeout=HTTP_TIMEOUT_S)
         assert resp.status_code == 200, url
         assert resp.json() == {"/hello": "default"}, url
 
@@ -440,7 +459,7 @@ def test_http_head_only(ray_cluster):
         assert all(actor.node_id == head_node.node_id for actor in actors)
         return True
 
-    wait_for_condition(check_head_only_actors)
+    wait_for_condition(check_head_only_actors, timeout=WAIT_TIMEOUT_S)
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
@@ -505,7 +524,7 @@ def test_serve_start_different_http_checkpoint_options_warning(
             assert test_msg in msg
 
 
-def test_recovering_controller_no_redeploy():
+def test_recovering_controller_no_redeploy(ray_shutdown):
     """Ensure controller doesn't redeploy running deployments when recovering."""
     ray_context = ray.init(namespace="x")
     address = ray_context.address_info["address"]
@@ -525,7 +544,10 @@ def test_recovering_controller_no_redeploy():
 
     ray.kill(client._controller, no_restart=False)
 
-    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+    wait_for_condition(
+        lambda: ray.get(client._controller.get_pid.remote()) != pid,
+        timeout=WAIT_TIMEOUT_S,
+    )
 
     # Confirm that no new deployment is deployed over the next 5 seconds
     with pytest.raises(RuntimeError):
@@ -560,7 +582,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
             message_substring in deployment_status.message
         )
 
-    wait_for_condition(updating_message, timeout=20)
+    wait_for_condition(updating_message, timeout=WAIT_TIMEOUT_S)
 
 
 def test_gang_updating_status_message(lower_slow_startup_threshold_and_reset):
@@ -583,7 +605,7 @@ def test_gang_updating_status_message(lower_slow_startup_threshold_and_reset):
             message_substring in deployment_status.message
         )
 
-    wait_for_condition(updating_message, timeout=20)
+    wait_for_condition(updating_message, timeout=WAIT_TIMEOUT_S)
 
 
 def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_reset):
@@ -609,7 +631,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         .deployments["f"]
         .status
         == "DEPLOY_FAILED",
-        timeout=20,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     with pytest.raises(RuntimeError):
@@ -654,8 +676,7 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
 
     # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: httpx.get(get_application_url("HTTP")).text == "May I take your order?",
-        timeout=60,
+        _app_returns, expected="May I take your order?", timeout=WAIT_TIMEOUT_S
     )
 
     serve.shutdown()
@@ -688,7 +709,7 @@ def test_build_app_retries_until_success(ray_shutdown, tmp_path):
         _deploy_flaky_app(counter_file, fail_count=3)
         wait_for_condition(
             lambda: serve.status().applications["flaky_app"].status == "RUNNING",
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
         )
         assert int(counter_file.read_text()) == 4
     finally:
@@ -703,7 +724,7 @@ def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
         _deploy_flaky_app(counter_file, fail_count=10)
         wait_for_condition(
             lambda: serve.status().applications["flaky_app"].status == "DEPLOY_FAILED",
-            timeout=60,
+            timeout=WAIT_TIMEOUT_S,
         )
         assert "flaky build failure" in serve.status().applications["flaky_app"].message
         assert int(counter_file.read_text()) == 4
@@ -808,7 +829,10 @@ def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     serve.run(Model.bind())
 
     url = get_application_url("HTTP")
-    assert httpx.post(f"{url}/").text == "hello"
+    wait_for_condition(
+        lambda: httpx.post(f"{url}/", timeout=HTTP_TIMEOUT_S).text == "hello",
+        timeout=WAIT_TIMEOUT_S,
+    )
 
     serve.shutdown()
 
