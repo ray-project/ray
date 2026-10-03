@@ -37,7 +37,13 @@ TEAM_API_CONFIGS = {
         # resolves under _mock_uninstalled_backends, which mocks the backends the
         # docbuild image lacks. Its surface is documented in doc/source/data/api/llm.rst
         # (reachable from api.rst's toctree).
-        "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
+        "head_modules": {
+            "ray.data",
+            # Public extension utilities aren't imported by ray.data.__init__.
+            "ray.data.extensions",
+            "ray.data.grouped_data",
+            "ray.data.llm",
+        },
         "head_doc_file": "doc/source/data/api/api.md",
         "white_list_apis": set(),
         "tracked_doc_debt": {
