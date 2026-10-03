@@ -19,7 +19,11 @@ from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
-from ray._private.runtime_env.image_uri import ContainerPlugin
+from ray._private.runtime_env.image_uri import (
+    ContainerPlugin,
+    apply_worker_resource_limits,
+    validate_worker_resource_limits_support,
+)
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
 from ray._private.runtime_env.pip import PipPlugin
@@ -56,6 +60,29 @@ class CreatedEnvResult:
     result: str
     # The time to create a runtime env in ms.
     creation_time_ms: int
+
+
+def _apply_worker_resource_limits(request, serialized_context: str) -> str:
+    limits = request.worker_resource_limits
+    validation_error = getattr(limits, "validation_error", "")
+    if validation_error:
+        raise ValueError(validation_error)
+    if (
+        limits.cpu_period_us == 0
+        and limits.cpu_quota_us == 0
+        and limits.memory_bytes == 0
+    ):
+        return serialized_context
+
+    validate_worker_resource_limits_support()
+    context = RuntimeEnvContext.deserialize(serialized_context)
+    apply_worker_resource_limits(
+        context,
+        limits.cpu_period_us,
+        limits.cpu_quota_us,
+        limits.memory_bytes,
+    )
+    return context.serialize()
 
 
 # e.g., "working_dir"
@@ -625,10 +652,24 @@ class RuntimeEnvAgent:
 
         async with self._env_locks[serialized_env]:
             if serialized_env in self._env_cache:
-                serialized_context = self._env_cache[serialized_env]
                 result = self._env_cache[serialized_env]
                 if result.success:
-                    context = result.result
+                    try:
+                        context = _apply_worker_resource_limits(request, result.result)
+                    except Exception as e:
+                        self._logger.exception(
+                            "Failed to apply per-worker container resource limits."
+                        )
+                        self._reference_table.decrease_reference(
+                            runtime_env, serialized_env, request.source_process
+                        )
+                        error_message = "".join(
+                            traceback.format_exception(type(e), e, e.__traceback__)
+                        )
+                        return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                            status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
+                            error_message=f"{self._node_prefix}{error_message}",
+                        )
                     self._logger.info(
                         "Runtime env already created "
                         f"successfully. Env: {serialized_env}, "
@@ -690,12 +731,28 @@ class RuntimeEnvAgent:
                 serialized_context if successful else error_message,
                 creation_time_ms,
             )
+            if successful:
+                try:
+                    serialized_context = _apply_worker_resource_limits(
+                        request, serialized_context
+                    )
+                except Exception as e:
+                    self._logger.exception(
+                        "Failed to apply per-worker container resource limits."
+                    )
+                    self._reference_table.decrease_reference(
+                        runtime_env, serialized_env, request.source_process
+                    )
+                    error_message = "".join(
+                        traceback.format_exception(type(e), e, e.__traceback__)
+                    )
+                    successful = False
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
                 if successful
                 else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                serialized_runtime_env_context=serialized_context,
+                serialized_runtime_env_context=serialized_context if successful else "",
                 error_message=f"{self._node_prefix}{error_message}"
                 if not successful
                 else "",
