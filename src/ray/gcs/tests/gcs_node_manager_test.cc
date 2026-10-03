@@ -295,6 +295,58 @@ TEST_F(GcsNodeManagerTest, TestUnregisterNodePublishesDeathBeforePersist) {
   ASSERT_FALSE(fake_ray_event_recorder_->FlushBuffer().empty());
 }
 
+TEST_F(GcsNodeManagerTest, TestUnregisterNodeAlwaysReplies) {
+  // The raylet gates its whole graceful shutdown on this reply, and the RPC has
+  // no client-side deadline: unregistering an already-removed node (e.g. the
+  // health check marked it dead mid-drain) must still send exactly one reply.
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+
+  rpc::UnregisterNodeRequest unregister_request;
+  unregister_request.set_node_id(node->node_id());
+  unregister_request.mutable_node_death_info()->set_reason(
+      rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+
+  int first_replies = 0;
+  rpc::UnregisterNodeReply first_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request,
+      &first_reply,
+      [&first_replies](ray::Status, std::function<void()>, std::function<void()>) {
+        first_replies++;
+      },
+      "");
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_EQ(first_replies, 1);
+
+  // Unregistering again: the node is already removed, but the reply must still
+  // be sent or the raylet waits forever.
+  int second_replies = 0;
+  rpc::UnregisterNodeReply second_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request,
+      &second_reply,
+      [&second_replies](ray::Status, std::function<void()>, std::function<void()>) {
+        second_replies++;
+      },
+      "");
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_EQ(second_replies, 1);
+}
+
 TEST_F(GcsNodeManagerTest, TestManagement) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
