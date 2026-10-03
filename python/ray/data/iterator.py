@@ -377,6 +377,39 @@ class DataIterator(abc.ABC):
         ...
 
     @PublicAPI
+    def count(self) -> int:
+        """Return the number of rows that this iterator will yield.
+
+        This is useful for configuring things like learning rate schedulers,
+        progress bars, or the maximum number of training steps, without having
+        to first consume the iterator.
+
+        For iterators created with :meth:`Dataset.iterator() <ray.data.Dataset.iterator>`,
+        this returns the number of rows in the underlying dataset. For a shard
+        obtained from :meth:`Dataset.streaming_split()
+        <ray.data.Dataset.streaming_split>` with ``equal=True``, this returns the
+        number of rows in that shard (``total_rows // num_splits``).
+
+        For a shard obtained with ``equal=False``, the per-split count can't be
+        determined ahead of execution, so this raises ``RuntimeError``;
+        call ``count()`` on the source :class:`Dataset <ray.data.Dataset>` instead.
+
+        Note that computing the count may trigger execution for datasets whose
+        row count can't be determined from metadata alone (e.g. datasets that
+        were filtered). Datasets that only read Parquet files can determine the
+        count from file metadata without reading the actual data.
+
+        Examples:
+            >>> import ray
+            >>> ray.data.range(100).iterator().count()
+            100
+
+        Returns:
+            The number of rows this iterator will yield over one full pass.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
     def iter_torch_batches(
         self,
         *,
