@@ -305,8 +305,9 @@ class RDTManager:
     ) -> Optional["TensorTransportMetadata"]:
         with self._tensor_transport_meta_cv:
             if self._tensor_transport_meta_cv.wait_for(
-                lambda: self._managed_rdt_metadata[obj_id].tensor_transport_meta
-                is not None,
+                lambda: (
+                    self._managed_rdt_metadata[obj_id].tensor_transport_meta is not None
+                ),
                 timeout=timeout,
             ):
                 return self._managed_rdt_metadata[obj_id].tensor_transport_meta
@@ -959,9 +960,9 @@ class RDTManager:
         for object_id in object_ids:
             if object_id in result:
                 continue
-            assert self.is_managed_object(
-                object_id
-            ), f"No metadata found for {object_id}"
+            assert self.is_managed_object(object_id), (
+                f"No metadata found for {object_id}"
+            )
 
             fetch_requests[object_id] = self._trigger_fetch(object_id, use_object_store)
 
