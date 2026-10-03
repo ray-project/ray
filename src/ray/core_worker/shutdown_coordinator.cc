@@ -26,6 +26,14 @@ namespace ray {
 
 namespace core {
 
+namespace {
+
+bool IsIdleExitReason(ShutdownReason reason) {
+  return reason == ShutdownReason::kIdleTimeout || reason == ShutdownReason::kJobFinished;
+}
+
+}  // namespace
+
 ShutdownCoordinator::ShutdownCoordinator(
     std::unique_ptr<ShutdownExecutorInterface> executor, rpc::WorkerType worker_type)
     : executor_(std::move(executor)), worker_type_(worker_type) {
@@ -42,6 +50,13 @@ bool ShutdownCoordinator::RequestShutdown(
     std::string_view detail,
     std::chrono::milliseconds timeout_ms,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  // An idle exit is declined when the worker turns out not to be idle, and the state
+  // machine has no way back to kRunning, so ask before recording that shutdown started.
+  if (!force_shutdown && IsIdleExitReason(reason) && !executor_->ShouldWorkerIdleExit()) {
+    RAY_LOG(INFO) << "Declining idle exit request, worker is not idle: " << detail;
+    return false;
+  }
+
   bool should_execute = false;
   bool execute_force = force_shutdown;
   {
@@ -225,8 +240,7 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(
     TryTransitionToDisconnecting();
     executor_->ExecuteExit(
         GetExitTypeString(), detail, timeout_ms, creation_task_exception_pb_bytes);
-  } else if (reason == ShutdownReason::kIdleTimeout ||
-             reason == ShutdownReason::kJobFinished) {
+  } else if (IsIdleExitReason(reason)) {
     TryTransitionToDisconnecting();
     executor_->ExecuteExitIfIdle(GetExitTypeString(), detail, timeout_ms);
   } else {
