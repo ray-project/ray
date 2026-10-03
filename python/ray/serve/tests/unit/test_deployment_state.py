@@ -81,7 +81,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
-from ray.serve.schema import LoggingConfig, ReplicaRank
+from ray.serve.schema import DeploymentDetails, LoggingConfig, ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
@@ -12375,6 +12375,383 @@ class TestRollingUpdateTerminalFailure:
         assert restored.version == target_state.version
         assert restored.rolling_update is True
         assert restored.rolling_update_failed is True
+
+
+def _drive_to_version(dsm, ds, version, num_replicas, max_ticks=20):
+    """Finish starts and stops until only the requested version and count remain."""
+    for _ in range(max_ticks):
+        if ds._replicas.count() == num_replicas and (
+            ds._replicas.count(version=version, states=[ReplicaState.RUNNING])
+            == num_replicas
+        ):
+            return
+        _finish_stopping(dsm)
+        for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+            r._actor.set_ready()
+        dsm.update()
+    raise AssertionError(f"{version} did not settle at {num_replicas} replicas")
+
+
+class TestRolloutComplete:
+    """Check rollout readiness during config updates and autoscaling."""
+
+    AUTOSCALING = {
+        "min_replicas": 1,
+        "max_replicas": 10,
+        "initial_replicas": 3,
+        "upscale_delay_s": 0,
+        "downscale_delay_s": 0,
+    }
+
+    def test_fixed_size_rollout(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+        assert ds.rollout_complete()
+
+        info, v2 = deployment_info(num_replicas=2, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        assert not ds.rollout_complete()
+        for _ in range(20):
+            dsm.update()
+            if ds._replicas.count(version=v2, states=[ReplicaState.RUNNING]) == 2:
+                break
+            # Old replicas remain or a replacement is still starting.
+            assert not ds.rollout_complete()
+            _finish_stopping(dsm)
+            for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+                r._actor.set_ready()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds.rollout_complete()
+
+    def test_replacement_still_starting(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=1, version="1")
+        v1 = ds.target_version
+        info, v2 = deployment_info(num_replicas=1, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v2)],
+        )
+        assert not ds.rollout_complete()
+
+        _finish_stopping(dsm)
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v2)])
+        # The old version is gone but nothing runs the new one yet.
+        assert not ds.rollout_complete()
+
+        ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds.rollout_complete()
+
+    def test_reconfigure_in_flight(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(
+            dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1", user_config="1"
+        )
+        v1 = ds.target_version
+        info, v2 = deployment_info(num_replicas=2, version="1", user_config="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.RUNNING, 1, v1), (ReplicaState.UPDATING, 1, v2)],
+        )
+        assert not ds.rollout_complete()
+
+        ds._replicas.get(states=[ReplicaState.UPDATING])[0]._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.RUNNING, 1, v2), (ReplicaState.UPDATING, 1, v2)],
+        )
+        # Versions match before the last reconfigure finishes.
+        assert ds._replicas.count(exclude_version=v2) == 0
+        assert not ds.rollout_complete()
+
+        ds._replicas.get(states=[ReplicaState.UPDATING])[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds.rollout_complete()
+
+    def test_autoscaling_capacity_does_not_reset(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(
+            dsm,
+            TEST_DEPLOYMENT_ID,
+            num_replicas=3,
+            version="1",
+            autoscaling_config=self.AUTOSCALING,
+        )
+        v1 = ds.target_version
+        assert ds.rollout_complete()
+
+        assert dsm.autoscale(TEST_DEPLOYMENT_ID, 5)
+        dsm.update()
+        check_counts(
+            ds,
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 3, v1), (ReplicaState.STARTING, 2, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+        assert ds.rollout_complete()
+
+        _drive_to_version(dsm, ds, v1, 5)
+        assert dsm.autoscale(TEST_DEPLOYMENT_ID, 1)
+        dsm.update()
+        assert ds._replicas.count(version=v1, states=[ReplicaState.RUNNING]) == 1
+        assert ds.curr_status_info.status == DeploymentStatus.DOWNSCALING
+        assert ds.rollout_complete()
+
+    def test_autoscale_during_rollout(self, mock_deployment_state_manager):
+        """Autoscaling must not hide old replicas still running."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(
+            dsm,
+            TEST_DEPLOYMENT_ID,
+            num_replicas=3,
+            version="1",
+            autoscaling_config=self.AUTOSCALING,
+        )
+        v1 = ds.target_version
+        info, v2 = deployment_info(
+            num_replicas=3, version="2", autoscaling_config=self.AUTOSCALING
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        _finish_stopping(dsm)
+        for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+            r._actor.set_ready()
+        dsm.update()
+        assert ds._replicas.count(version=v2, states=[ReplicaState.RUNNING]) >= 1
+        assert ds._replicas.count(version=v1, states=[ReplicaState.RUNNING]) >= 1
+
+        assert dsm.autoscale(TEST_DEPLOYMENT_ID, 6)
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.UPSCALING
+        assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.AUTOSCALING
+        assert ds._replicas.count(version=v1, states=[ReplicaState.RUNNING]) >= 1
+        assert not ds.rollout_complete()
+
+        _drive_to_version(dsm, ds, v2, 6)
+        assert ds.rollout_complete()
+
+    def test_outside_autoscaling_bounds(self, mock_deployment_state_manager):
+        """Capacity changes must satisfy the new bounds, even at the same version."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        config = {**self.AUTOSCALING, "min_replicas": 4, "initial_replicas": 4}
+        info, v1 = deployment_info(
+            num_replicas=4, version="1", autoscaling_config=config
+        )
+        # Bounds are [1, 3] at a quarter of the capacity.
+        info.set_target_capacity(25, TargetCapacityDirection.UP)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        _drive_to_version(dsm, ds, v1, 3)
+        assert ds.rollout_complete()
+
+        full = deepcopy(info)
+        full.set_target_capacity(100, TargetCapacityDirection.UP)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, full)
+        assert ds.target_version == v1
+        # Three replicas run below the new lower bound of four.
+        assert not ds.rollout_complete()
+        _drive_to_version(dsm, ds, v1, 4)
+        assert ds.rollout_complete()
+
+        quarter = deepcopy(info)
+        quarter.set_target_capacity(25, TargetCapacityDirection.DOWN)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, quarter)
+        # Four replicas run above the new upper bound of three.
+        assert not ds.rollout_complete()
+        dsm.update()
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 3
+        assert ds.rollout_complete()
+
+    def test_zero_running_only_when_zero_is_the_target(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        config = {**self.AUTOSCALING, "min_replicas": 0, "initial_replicas": 1}
+        ds = _deploy_running(
+            dsm,
+            TEST_DEPLOYMENT_ID,
+            num_replicas=1,
+            version="1",
+            autoscaling_config=config,
+        )
+        info, v2 = deployment_info(
+            num_replicas=1, version="2", autoscaling_config=config
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        _finish_stopping(dsm)
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v2)])
+        # Zero is within bounds, but the target requires a running replica.
+        assert not ds.rollout_complete()
+
+        ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        dsm.update()
+        assert ds.rollout_complete()
+
+        assert dsm.autoscale(TEST_DEPLOYMENT_ID, 0)
+        dsm.update()
+        _finish_stopping(dsm)
+        dsm.update()
+        check_counts(ds, total=0)
+        assert ds.rollout_complete()
+
+        # A restart preserves readiness at zero capacity.
+        dsm.save_checkpoint()
+        new_ds = create_dsm([])._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        assert new_ds.rollout_complete()
+
+    def test_recovering_replicas_block(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=1, version="1")
+        v1 = ds.target_version
+        dsm.save_checkpoint()
+
+        replica = ds._replicas.get()[0]
+        new_dsm = create_dsm([replica.replica_id.to_full_id_str()])
+        new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
+        assert not new_ds.rollout_complete()
+
+        new_ds._replicas.get()[0]._actor.set_ready(v1)
+        new_dsm.update()
+        check_counts(new_ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+        assert new_ds.rollout_complete()
+
+    def test_deployment_actors_for_target_version(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        info, _ = deployment_info(
+            version="1", num_replicas=1, deployment_actors=_deployment_actors_config()
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        assert not ds.rollout_complete()
+
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        for r in ds._replicas.get():
+            r._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds.rollout_complete()
+
+        info, v2 = deployment_info(
+            version="2", num_replicas=1, deployment_actors=_deployment_actors_config()
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        # The new version's actor is still starting.
+        assert not ds.rollout_complete()
+
+        _get_deployment_actor_wrapper(ds, "2").set_ready()
+        _drive_to_version(dsm, ds, v2, 1)
+        _advance_until(
+            dsm, lambda: ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        )
+        assert ds.rollout_complete()
+
+    def test_details_payload_and_legacy_default(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=1, version="1")
+        payload = dsm.get_deployment_details(TEST_DEPLOYMENT_ID).model_dump(
+            mode="json", exclude_unset=True
+        )
+        assert payload["rollout_complete"] is True
+        assert DeploymentDetails.model_validate(payload).rollout_complete is True
+        # A Serve that does not report the field reads as None.
+        payload.pop("rollout_complete")
+        assert DeploymentDetails.model_validate(payload).rollout_complete is None
+
+        info, _ = deployment_info(num_replicas=1, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        assert dsm.get_deployment_details(TEST_DEPLOYMENT_ID).rollout_complete is False
+
+    def test_fresh_zero_target(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        config = {**self.AUTOSCALING, "min_replicas": 0, "initial_replicas": 0}
+        info, _ = deployment_info(version="1", autoscaling_config=config)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        assert ds.target_num_replicas == 0
+        assert ds.rollout_complete()
+
+    def test_fixed_size_downscale_waits_for_stop(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+        info, _ = deployment_info(num_replicas=1, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 1
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
+        assert not ds.rollout_complete()
+        _finish_stopping(dsm)
+        dsm.update()
+        assert ds.rollout_complete()
+
+    def test_orphaned_deployment_actor_blocks(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=1, version="2")
+        orphan = _mock_deployment_actor_wrapper(TEST_DEPLOYMENT_ID, "1", "orphan")
+        ds._deployment_actors.add(DeploymentActorState.RUNNING, orphan)
+        assert not ds.rollout_complete()
+        ds.stop_deployment_actors_if_needed()
+        assert ds.rollout_complete()
+
+    def test_mixed_version_recovery(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+        v1 = ds.target_version
+        info, v2 = deployment_info(num_replicas=2, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        dsm.save_checkpoint()
+
+        names = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+        new_dsm = create_dsm(names)
+        new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        assert not new_ds.rollout_complete()
+        for index, replica in enumerate(new_ds._replicas.get()):
+            replica._actor.set_ready(v1 if index == 0 else v2)
+        new_dsm.update()
+        assert new_ds._replicas.count(exclude_version=v2) > 0
+        assert not new_ds.rollout_complete()
+
+    def test_deleting(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=1, version="1")
+        assert ds.rollout_complete()
+        dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+        assert not ds.rollout_complete()
 
 
 if __name__ == "__main__":

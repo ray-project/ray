@@ -1486,6 +1486,18 @@ class DeploymentDetails(BaseModel):
             "the dashboard after they die. Not part of `replicas` or the live count."
         ),
     )
+    rollout_complete: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether the deployment is ready with the target config. "
+            "Old replicas must be gone, and reconfiguration, recovery, and "
+            "deployment actor setup and cleanup must be finished. "
+            "Fixed-size deployments must settle at the target replica count. "
+            "Autoscaling deployments can keep scaling within their configured bounds. "
+            "Zero running replicas are allowed only when the target is zero. "
+            "None means this field was not reported."
+        ),
+    )
 
     autoscaling_detail: Optional[DeploymentAutoscalingDetail] = Field(
         default=None,
