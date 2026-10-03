@@ -911,6 +911,17 @@ def test_field_types(partition_value, expected_type):
     assert isinstance(partitions["key"], expected_type)
 
 
+def test_path_partition_parser_missing_field_type_raises():
+    # A field declared in `field_types` but absent from the path used to raise a
+    # bare KeyError; it now names the field and the path.
+    parser = PathPartitionParser(
+        Partitioning(style="hive", field_types={"year": int, "month": int})
+    )
+
+    with pytest.raises(ValueError, match="partition field"):
+        parser("year=2020/data.parquet")
+
+
 @pytest.mark.parametrize(
     "path,predicate,expected_result,description",
     [
