@@ -25,9 +25,13 @@ message CommandsSyncMessage {
   bool should_global_gc = 1;
 }
 
+// Per-instance available values for a single resource (e.g., [0.4, 0.6] for
+// a 2-GPU node where GPU 0 has 0.4 free and GPU 1 has 0.6 free).
+message ResourceInstances {
+  repeated double values = 1;
+}
+
 message ResourceViewSyncMessage {
-  // Resource capacity currently available on this node manager.
-  map<string, double> resources_available = 1;
   // Total resource capacity configured for this node manager.
   map<string, double> resources_total = 2;
   // Whether this node has object pulls queued. This can happen if
@@ -45,6 +49,11 @@ message ResourceViewSyncMessage {
   repeated string node_activity = 7;
   // The key-value labels of this node.
   map<string, string> labels = 8;
+  // Per-instance available resources. For unit instance resources like GPU,
+  // each element is one instance (e.g., {"GPU": [0.4, 0.6]} means
+  // GPU 0 has 0.4 free, GPU 1 has 0.6 free). For scalar resources like CPU,
+  // a single element with the aggregate value (e.g., {"CPU": [8.0]}).
+  map<string, ResourceInstances> resources_available_instances = 9;
 }
 
 message RaySyncMessage {
