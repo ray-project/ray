@@ -423,14 +423,15 @@ def test_matches_error(pattern, error_message, expected):
 
 
 def test_unify_block_metadata_schema_all_empty_blocks():
-    """All-empty blocks still carry a valid schema (issue #59946)."""
+    """Blocks are not filtered on num_rows when unifying schemas: an empty
+    block still carries a valid schema (issue #59946)."""
     from ray.data.block import BlockMetadataWithSchema
 
     empty = pa.table({"apples": pa.array([], pa.int32())})
     empty_meta = BlockMetadataWithSchema.from_block(empty)
     assert unify_block_metadata_schema([empty_meta]) == empty.schema
 
-    # Non-empty blocks still take precedence over empty ones.
+    # Empty-block schemas participate in unification (int32 promotes to int64).
     non_empty = pa.table({"apples": pa.array([1], pa.int64())})
     non_empty_meta = BlockMetadataWithSchema.from_block(non_empty)
     assert unify_block_metadata_schema([empty_meta, non_empty_meta]) == non_empty.schema

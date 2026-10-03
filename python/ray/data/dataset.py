@@ -7717,7 +7717,7 @@ class Dataset:
 
             schema = self.schema(fetch_if_missing=True)
             if schema is not None and schema.names:
-                base_schema = getattr(schema, "base_schema", None)
+                base_schema = schema.base_schema
                 if isinstance(base_schema, pa.Schema):
                     # Route the empty Arrow table through the same
                     # `BlockAccessor.to_pandas()` path used for non-empty blocks
@@ -7727,28 +7727,26 @@ class Dataset:
                 else:
                     import pandas
 
-                    # Pandas-backed schema: preserve per-column dtypes when known.
-                    types = getattr(base_schema, "types", None)
-                    if types is not None and len(types) == len(schema.names):
-                        try:
-                            empty_block = pandas.DataFrame(
-                                {
-                                    name: pandas.Series([], dtype=dtype)
-                                    for name, dtype in zip(schema.names, types)
-                                }
-                            )
-                        except (TypeError, ValueError):
-                            # A dtype that can't back an empty Series (e.g. an
-                            # exotic extension type): keep the columns at least.
-                            df = pandas.DataFrame(columns=list(schema.names))
-                        else:
-                            # Route through the same `BlockAccessor.to_pandas()`
-                            # conversion used for non-empty blocks so internal
-                            # extension dtypes (e.g. TensorDtype) are converted
-                            # identically.
-                            df = BlockAccessor.for_block(empty_block).to_pandas()
-                    else:
+                    # Pandas-backed schema: preserve per-column dtypes.
+                    types = base_schema.types
+                    assert len(types) == len(schema.names), (types, schema.names)
+                    try:
+                        empty_block = pandas.DataFrame(
+                            {
+                                name: pandas.Series([], dtype=dtype)
+                                for name, dtype in zip(schema.names, types)
+                            }
+                        )
+                    except (TypeError, ValueError):
+                        # A dtype that can't back an empty Series (e.g. an
+                        # exotic extension type): keep the columns at least.
                         df = pandas.DataFrame(columns=list(schema.names))
+                    else:
+                        # Route through the same `BlockAccessor.to_pandas()`
+                        # conversion used for non-empty blocks so internal
+                        # extension dtypes (e.g. TensorDtype) are converted
+                        # identically.
+                        df = BlockAccessor.for_block(empty_block).to_pandas()
 
         return df
 
