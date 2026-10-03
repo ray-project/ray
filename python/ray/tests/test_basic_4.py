@@ -1,5 +1,6 @@
 # coding: utf-8
 import logging
+import math
 import os
 import subprocess
 import sys
@@ -141,6 +142,28 @@ def test_fork_support(shutdown_only):
         return ray.get(pool_factorial.remote())
 
     assert ray.get(g.remote()) == 5914
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="fork is not relevant on Windows.",
+)
+def test_driver_fork_after_init(shutdown_only):
+    """Test that fork() in the driver process works after ray.init().
+
+    ray.init() initializes gRPC, which spawns background threads. Without
+    GRPC_ENABLE_FORK_SUPPORT and GRPC_POLL_STRATEGY=poll set before gRPC
+    init, fork() in the driver deadlocks because the child inherits locked
+    mutexes from gRPC threads that don't exist in the child. See #59661.
+    """
+    ray.init()
+
+    import multiprocessing
+
+    ctx = multiprocessing.get_context("fork")
+    with ctx.Pool(1) as pool:
+        result = pool.apply(math.factorial, (6,))
+    assert result == 720
 
 
 @pytest.mark.skipif(
