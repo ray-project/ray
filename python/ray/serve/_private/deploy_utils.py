@@ -33,6 +33,7 @@ def get_deploy_args(
     serialized_request_router_cls: Optional[bytes] = None,
     serialized_deployment_actors: Optional[Dict[str, bytes]] = None,
     uses_multiplexing: bool = False,
+    router_application: bool = False,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -60,6 +61,7 @@ def get_deploy_args(
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
         "uses_multiplexing": uses_multiplexing,
+        "router_application": router_application,
     }
 
     return controller_deploy_args
@@ -75,6 +77,7 @@ def deploy_args_to_deployment_info(
     ingress_request_router: bool = False,
     route_prefix: Optional[str] = None,
     uses_multiplexing: bool = False,
+    router_application: bool = False,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -152,6 +155,7 @@ def deploy_args_to_deployment_info(
         route_prefix=route_prefix,
         ingress=ingress,
         ingress_request_router=ingress_request_router,
+        router_application=router_application,
     )
 
 
