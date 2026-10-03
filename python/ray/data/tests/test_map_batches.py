@@ -136,6 +136,36 @@ def test_map_batches_basic(
         ).take()
 
 
+@pytest.mark.parametrize("variable_shape", [False, True])
+def test_map_batches_public_take_table(ray_start_regular_shared, variable_shape):
+    from ray.data.extensions import ArrowTensorArray, take_table
+
+    values = [
+        np.full((2 + i % 2 if variable_shape else 2, 2), i, dtype=np.float32)
+        for i in range(6)
+    ]
+    tensors = ArrowTensorArray.from_numpy(values)
+    table = pa.table(
+        {
+            "id": range(6),
+            "tensor": pa.chunked_array([tensors.slice(0, 3), tensors.slice(3)]),
+        }
+    )
+
+    def select_rows(batch: pa.Table) -> pa.Table:
+        return take_table(batch, [5, 0, 5, 2])
+
+    result = (
+        ray.data.from_arrow(table)
+        .map_batches(select_rows, batch_size=None, batch_format="pyarrow")
+        .take_all()
+    )
+
+    assert [row["id"] for row in result] == [5, 0, 5, 2]
+    for row in result:
+        np.testing.assert_array_equal(row["tensor"], values[row["id"]])
+
+
 def test_map_batches_extra_args(
     shutdown_only, tmp_path, target_max_block_size_infinite_or_default
 ):
