@@ -69,7 +69,7 @@ class SGLangSleepConfig(BaseModel):
     - "kv_cache": Discard KV cache
     - "weights": Offload to CPU RAM
     - "cuda_graph": Discard CUDA graph
-    - None: Discard/Offload everything
+    - None or []: Discard/Offload everything
     """
 
 
@@ -81,7 +81,7 @@ class SGLangWakeupConfig(BaseModel):
     - "kv_cache": Restore KV cache only
     - "weights": Restore weights only
     - "cuda_graph": Restore CUDA graph only
-    - None: Restore everything
+    - None or []: Restore everything
     """
 
 
@@ -834,7 +834,8 @@ class SGLangServer:
         obj = ResumeMemoryOccupationReqInput(tags=config.tags)
         await self.engine.tokenizer_manager.resume_memory_occupation(obj, None)
 
-        if config.tags is None:
+        # SGLang treats both omitted tags and an empty list as all components.
+        if not config.tags:
             self._sleeping_tags.clear()
         else:
             self._sleeping_tags -= set(config.tags)
