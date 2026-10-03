@@ -543,21 +543,33 @@ class PrefixTree:
 
             return total_chars_removed
 
-    def get_smallest_tenants(self) -> Optional[List[str]]:
+    def get_smallest_tenants(
+        self, available_tenants: Optional[List[str]] = None
+    ) -> Optional[List[str]]:
         """
         Get the tenants with the smallest total character count.
+
+        Args:
+            available_tenants: List of tenants to choose from (or None for all)
 
         Returns:
             Tenants with smallest character count, or None if no tenants
         """
         with self.lock:
-            if not self.tenant_to_char_count:
+            tenant_to_char_count = self.tenant_to_char_count
+            if available_tenants is not None:
+                tenant_to_char_count = {
+                    tenant: tenant_to_char_count[tenant]
+                    for tenant in available_tenants
+                    if tenant in tenant_to_char_count
+                }
+            if not tenant_to_char_count:
                 return None
 
-            min_count = min(self.tenant_to_char_count.values())
+            min_count = min(tenant_to_char_count.values())
             return [
                 tenant
-                for tenant, count in self.tenant_to_char_count.items()
+                for tenant, count in tenant_to_char_count.items()
                 if count == min_count
             ]
 
