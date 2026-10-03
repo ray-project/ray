@@ -458,6 +458,7 @@ proto_library(
     srcs = ["autoscaler.proto"],
     deps = [
         ":common_proto",
+        ":gcs_proto",
     ],
 )
 
