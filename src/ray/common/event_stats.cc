@@ -33,7 +33,7 @@ GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
   return GlobalStats(stats->stats);
 }
 
-/// A helper for creating a snapshot view of the stats for a event.
+/// A helper for creating a snapshot view of the stats for an event.
 /// This acquires a lock on the provided guarded event stats, and creates a
 /// lockless copy of the stats.
 EventStats to_event_stats_view(std::shared_ptr<GuardedEventStats> stats) {
