@@ -40,6 +40,9 @@ The accelerators natively supported by Ray Core are:
 * - Huawei Ascend
   - NPU
   - Experimental, supported by the community
+* - Cambricon MLU
+  - MLU
+  - Experimental, supported by the community
 * - Rebellions RBLN
   - RBLN
   - Experimental, supported by the community
@@ -107,6 +110,13 @@ You can set the `HABANA_VISIBLE_MODULES` environment variable before starting a 
 :sync: Huawei Ascend
 :::{tip}
 You can set the `ASCEND_RT_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Huawei Ascend NPUs that are visible to Ray. For example, `ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} Cambricon MLU
+:sync: Cambricon MLU
+:::{tip}
+You can set the `CN_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Cambricon MLUs that are visible to Ray. For example, `CN_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MLU": 2}'` lets Ray only see devices 1 and 3.
 :::
 ::::
 
@@ -440,6 +450,47 @@ ray.get(npu_task.remote())
 (NPUActor pid=52420) ASCEND_RT_VISIBLE_DEVICES: 0
 (npu_task pid=51830) NPU IDs: [1]
 (npu_task pid=51830) ASCEND_RT_VISIBLE_DEVICES: 1
+```
+:::
+
+:::{tab-item} Cambricon MLU
+:sync: Cambricon MLU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"MLU": 2})
+
+@ray.remote(resources={"MLU": 1})
+class MLUActor:
+    def ping(self):
+        print("MLU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MLU"]))
+        print("CN_VISIBLE_DEVICES: {}".format(os.environ["CN_VISIBLE_DEVICES"]))
+
+@ray.remote(resources={"MLU": 1})
+def mlu_task():
+    print("MLU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MLU"]))
+    print("CN_VISIBLE_DEVICES: {}".format(os.environ["CN_VISIBLE_DEVICES"]))
+
+mlu_actor = MLUActor.remote()
+ray.get(mlu_actor.ping.remote())
+# The actor uses the first MLU so the task uses the second one.
+ray.get(mlu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(MLUActor pid=52420) MLU IDs: ['0']
+(MLUActor pid=52420) CN_VISIBLE_DEVICES: 0
+(mlu_task pid=51830) MLU IDs: ['1']
+(mlu_task pid=51830) CN_VISIBLE_DEVICES: 1
 ```
 :::
 
