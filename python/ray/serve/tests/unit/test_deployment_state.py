@@ -8273,6 +8273,70 @@ def test_broadcasted_replicas_set_changed_flag_set_on_lightweight_broadcast_conf
         mock_get_infos.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "field_name,initial_value,new_value",
+    [
+        ("prefer_local_node_routing", False, True),
+        ("prefer_local_az_routing", False, True),
+    ],
+)
+def test_locality_routing_flags_lightweight_config_broadcast(
+    mock_deployment_state_manager, field_name, initial_value, new_value
+):
+    """Flipping locality routing flags updates deployment config via long poll
+    without restarting or reconfiguring replicas."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    b_info_1, v1 = deployment_info(version="1", **{field_name: initial_value})
+    dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    ds.broadcast_deployment_config_if_changed()
+
+    reconfigure_calls = []
+    original_reconfigure = replica._actor.reconfigure
+
+    def tracking_reconfigure(version, rank=None):
+        reconfigure_calls.append(version)
+        return original_reconfigure(version, rank=rank)
+
+    replica._actor.reconfigure = tracking_reconfigure
+
+    b_info_2, v2 = deployment_info(version="1", **{field_name: new_value})
+    assert v1 == v2
+    assert not v1.requires_actor_reconfigure(v2)
+    assert not v1.requires_long_poll_broadcast(v2)
+
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    assert reconfigure_calls == []
+
+    ds._long_poll_host.notify_changed.reset_mock()
+    ds.broadcast_deployment_config_if_changed()
+    ds._long_poll_host.notify_changed.assert_called_once()
+    notified = ds._long_poll_host.notify_changed.call_args[0][0]
+    config_key = (LongPollNamespace.DEPLOYMENT_CONFIG, TEST_DEPLOYMENT_ID)
+    assert config_key in notified
+    assert getattr(notified[config_key], field_name) == new_value
+
+    ds._long_poll_host.notify_changed.reset_mock()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert reconfigure_calls == []
+    assert getattr(ds._target_state.info.deployment_config, field_name) == new_value
+    for call in ds._long_poll_host.notify_changed.call_args_list:
+        notified_keys = call[0][0]
+        assert config_key not in notified_keys
+
+
 def test_redeploy_onto_deleting_state_republishes(mock_deployment_state_manager):
     """A redeploy reusing a deleting DeploymentState must republish its snapshots.
 
