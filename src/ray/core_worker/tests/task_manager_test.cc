@@ -101,6 +101,24 @@ TaskSpecification CreateActorStreamingGeneratorTaskHelper(
   return task;
 }
 
+TaskSpecification CreateActorTaskHelper(uint64_t num_returns) {
+  TaskSpecification task;
+  const JobID job_id = JobID::FromInt(1);
+  const ActorID actor_id = ActorID::FromHex("e4ce02420592ca68c1738a0d01000000");
+  const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
+  task.GetMutableMessage().set_task_id(
+      TaskID::ForActorTask(job_id, TaskID::Nil(), /*parent_counter=*/0, actor_id)
+          .Binary());
+  task.GetMutableMessage().set_job_id(job_id.Binary());
+  task.GetMutableMessage().set_num_returns(num_returns);
+  task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  auto *actor_spec = task.GetMutableMessage().mutable_actor_task_spec();
+  actor_spec->set_actor_id(actor_id.Binary());
+  actor_spec->set_actor_creation_dummy_object_id(
+      ObjectID::FromIndex(actor_creation_task_id, /*index=*/1).Binary());
+  return task;
+}
+
 rpc::Address GetRandomWorkerAddr() {
   rpc::Address addr;
   addr.set_worker_id(WorkerID::FromRandom().Binary());
@@ -378,6 +396,22 @@ TEST_F(TaskManagerTest, TestRecordMetricsReEmitsAcrossTicksWithoutTransitions) {
     }
   }
   ASSERT_EQ(pending_args_avail, 0) << "gauge must be retracted to 0 after the task fails";
+}
+
+TEST_F(TaskManagerTest, TestConsumeOnceReturnsAreMovable) {
+  auto spec = CreateActorTaskHelper(/*num_returns=*/2);
+  manager_.AddPendingTask(
+      rpc::Address(), spec, "", /*max_retries=*/0, /*consume_once=*/true);
+  ASSERT_EQ(reference_counter_->GetMoveState(spec.ReturnId(0)), MoveState::MOVABLE);
+  ASSERT_EQ(reference_counter_->GetMoveState(spec.ReturnId(1)), MoveState::MOVABLE);
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+
+TEST_F(TaskManagerTest, TestReturnsAreNotMovableByDefault) {
+  auto spec = CreateActorTaskHelper(/*num_returns=*/1);
+  manager_.AddPendingTask(rpc::Address(), spec, "");
+  ASSERT_EQ(reference_counter_->GetMoveState(spec.ReturnId(0)), MoveState::NOT_MOVABLE);
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {

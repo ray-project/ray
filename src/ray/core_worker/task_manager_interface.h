@@ -43,12 +43,15 @@ class TaskManagerInterface {
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
+  /// \param[in] consume_once Whether the returns are created MOVABLE. Only valid for
+  /// actor tasks that are neither streaming nor dynamic generators.
   /// \return ObjectRefs returned by this task.
   virtual std::vector<rpc::ObjectReference> AddPendingTask(
       const rpc::Address &caller_address,
       const TaskSpecification &spec,
       const std::string &call_site,
-      int max_retries = 0) = 0;
+      int max_retries = 0,
+      bool consume_once = false) = 0;
 
   /// Write return objects for a pending task to the memory store.
   ///

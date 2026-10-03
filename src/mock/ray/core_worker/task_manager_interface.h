@@ -26,7 +26,8 @@ class MockTaskManagerInterface : public TaskManagerInterface {
               (const rpc::Address &caller_address,
                const TaskSpecification &spec,
                const std::string &call_site,
-               int max_retries),
+               int max_retries,
+               bool consume_once),
               (override));
   MOCK_METHOD(void,
               CompletePendingTask,
