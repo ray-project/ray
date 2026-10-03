@@ -1777,6 +1777,12 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
             return [0, 0]
 
         arrow_compatible = column_accessor._to_arrow_compatible_container()
+        if not isinstance(arrow_compatible, (pa.Array, pa.ChunkedArray)):
+            # The pandas accessor returns a plain Python list.
+            arrow_compatible = pa.array(arrow_compatible)
+        if pa.types.is_boolean(arrow_compatible.type):
+            # `equal(bool, int)` has no kernel; treat booleans as 0/1.
+            arrow_compatible = pc.cast(arrow_compatible, pa.int8())
         # Use PyArrow compute to count zeros
         # First create a boolean mask for zero values
         zero_mask = pc.equal(arrow_compatible, 0)
