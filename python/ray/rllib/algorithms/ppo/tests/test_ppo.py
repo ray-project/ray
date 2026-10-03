@@ -202,6 +202,78 @@ class TestPPO(unittest.TestCase):
         algo.stop()
 
 
+    def test_restore_keeps_current_old_api_policy_config(self):
+        """Restoring training state must not roll back the current trial config."""
+
+        def make_config(*, lr, clip_param, lambda_):
+            return (
+                ppo.PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=False,
+                    enable_env_runner_and_connector_v2=False,
+                )
+                .environment("CartPole-v1")
+                .env_runners(num_env_runners=0, rollout_fragment_length=64)
+                .training(
+                    lr=lr,
+                    clip_param=clip_param,
+                    lambda_=lambda_,
+                    num_epochs=1,
+                    train_batch_size=64,
+                    minibatch_size=32,
+                )
+            )
+
+        donor_lr = 1e-4
+        donor = make_config(lr=donor_lr, clip_param=0.1, lambda_=0.8).build()
+        donor.train()
+        donor_policy = donor.get_policy()
+        donor_weights = donor_policy.get_weights()
+        donor_optimizer_state = donor_policy._optimizers[0].state_dict()
+        checkpoint = donor.save().checkpoint
+
+        target_lr = 7e-4
+        target_clip = 0.35
+        target_lambda = 0.97
+        target_config = make_config(
+            lr=target_lr,
+            clip_param=target_clip,
+            lambda_=target_lambda,
+        )
+        target = target_config.build()
+        target.restore(checkpoint)
+
+        policy = target.get_policy()
+        self.assertAlmostEqual(target.config.lr, target_lr)
+        self.assertAlmostEqual(policy.config["lr"], target_lr)
+        self.assertAlmostEqual(policy.config["clip_param"], target_clip)
+        self.assertAlmostEqual(policy.config["lambda"], target_lambda)
+        self.assertAlmostEqual(
+            policy._optimizers[0].param_groups[0]["lr"], target_lr
+        )
+
+        # Checkpoint state still owns training state: donor weights and Adam moments
+        # must be restored even though the current trial config remains authoritative.
+        check(donor_weights, policy.get_weights())
+        check(
+            donor_optimizer_state["state"],
+            policy._optimizers[0].state_dict()["state"],
+        )
+
+        # A direct Policy state restore keeps its existing public behavior and
+        # restores the serialized Policy config.
+        direct_policy = ppo.PPOTorchPolicy(
+            policy.observation_space,
+            policy.action_space,
+            target_config.to_dict(),
+        )
+        direct_policy.set_state(donor_policy.get_state())
+        self.assertAlmostEqual(direct_policy.config["lr"], donor_lr)
+
+        donor.stop()
+        target.stop()
+
+
 if __name__ == "__main__":
     import sys
 

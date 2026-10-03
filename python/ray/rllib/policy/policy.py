@@ -79,6 +79,11 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
+# Internal marker used when an Algorithm restores checkpointed state into an
+# already-constructed Policy. In that path, the current trial configuration is
+# the control plane and must not be replaced by the donor checkpoint config.
+PRESERVE_CURRENT_POLICY_CONFIG = "_rllib_preserve_current_policy_config"
+
 
 @OldAPIStack
 class PolicySpec:
@@ -1026,8 +1031,12 @@ class Policy(metaclass=ABCMeta):
                     f"{policy_spec.action_space}) does not match this Policy's "
                     f"action space ({self.action_space})."
                 )
-            # Override config, if part of the spec.
-            if policy_spec.config:
+            # Direct Policy restores use the serialized config. When an Algorithm
+            # restores into an already-constructed Policy, however, the current trial
+            # config is the control plane (for example after a PBT perturbation).
+            if policy_spec.config and not state.get(
+                PRESERVE_CURRENT_POLICY_CONFIG, False
+            ):
                 self.config = policy_spec.config
 
         # Override NN weights.
