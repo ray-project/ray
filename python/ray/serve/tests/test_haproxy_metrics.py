@@ -901,7 +901,11 @@ async def test_start_polls_and_binds_dgram_reader(tmp_path) -> None:
 
 
 def _render_with_metrics(
-    enabled: bool, router_metrics_enabled: Optional[bool] = None
+    enabled: bool,
+    *,
+    stream_enabled: bool = False,
+    has_router: bool = True,
+    router_metrics: bool | None = None,
 ) -> str:
     """Render the HAProxy config with metrics on or off; return the text.
 
@@ -921,11 +925,15 @@ def _render_with_metrics(
         cfg = HAProxyConfig(
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
-            # Most tests toggle both flags together; one checks them separately.
+            # `metrics_enabled` gates the per-request SD log line + socket;
+            # `ingress_request_router_metrics_enabled` gates the router-specific
+            # fields appended to it. Toggle them independently to retain
+            # HTTP-only coverage.
             metrics_enabled=enabled,
-            ingress_request_router_metrics_enabled=(
-                enabled if router_metrics_enabled is None else router_metrics_enabled
-            ),
+            ingress_request_router_metrics_enabled=enabled
+            if router_metrics is None
+            else router_metrics,
+            stream_metrics_enabled=stream_enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,
@@ -939,9 +947,11 @@ def _render_with_metrics(
                     name="A", host="127.0.0.1", port=9001, replica_id="actor-A"
                 ),
             ],
-            ingress_request_router_servers=[
-                ServerConfig(name="router", host="127.0.0.1", port=9100),
-            ],
+            ingress_request_router_servers=(
+                [ServerConfig(name="router", host="127.0.0.1", port=9100)]
+                if has_router
+                else []
+            ),
         )
         api = HAProxyApi(
             cfg=cfg,
@@ -959,11 +969,68 @@ def test_rendered_config_contains_metrics_directives_when_enabled() -> None:
     assert "[serve@1" in rendered
     assert "format rfc5424" in rendered
     assert "router_latency_us" in rendered
+    assert "filter ray_stream_metrics" not in rendered
+
+
+@pytest.mark.parametrize(
+    "http_metrics, has_router", [(True, True), (True, False), (False, True)]
+)
+def test_stream_metrics_configuration(http_metrics, has_router) -> None:
+    rendered = _render_with_metrics(
+        enabled=http_metrics, stream_enabled=True, has_router=has_router
+    )
+    active = http_metrics and has_router
+    assert ("filter ray_stream_metrics" in rendered) == active
+    assert ("frontend ray_stream_metrics_export" in rendered) == active
+    assert ("proto h2" in rendered) == active
+    assert rendered.count("format rfc5424") == int(http_metrics)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_llm_streaming_metrics_environment_flag(monkeypatch, enabled) -> None:
+    import subprocess
+    import sys
+
+    monkeypatch.delenv("RAY_SERVE_ENABLE_LLM_STREAMING_METRICS", raising=False)
+    monkeypatch.setenv("RAY_SERVE_HAPROXY_METRICS_ENABLED", "0")
+    monkeypatch.setenv("RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "0")
+    if enabled:
+        monkeypatch.setenv("RAY_SERVE_ENABLE_LLM_STREAMING_METRICS", "1")
+    # Fresh imports exercise environment parsing without changing other tests'
+    # already-imported constants. LLM opt-in also enables its transport socket.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from ray.serve._private.haproxy import HAProxyConfig; "
+            f"assert HAProxyConfig().stream_metrics_enabled is {enabled}; "
+            f"assert HAProxyConfig().metrics_enabled is {enabled}",
+        ],
+        check=True,
+    )
+
+
+def test_http_metrics_without_router_metrics() -> None:
+    rendered = _render_with_metrics(enabled=True, router_metrics=False)
+    assert "log-format-sd" in rendered
+    assert "format rfc5424" in rendered
+    assert "router_latency_us" not in rendered
+    assert "filter ray_stream_metrics" not in rendered
+
+
+def test_stream_metrics_reject_tls(monkeypatch) -> None:
+    # v1 has a plaintext reporter transport. Reject before starting HAProxy,
+    # rather than silently serving requests with missing observations.
+    monkeypatch.setenv("RAY_USE_TLS", "1")
+    with pytest.raises(ValueError, match="TLS"):
+        _render_with_metrics(enabled=True, stream_enabled=True)
+    assert "filter ray_stream_metrics" not in _render_with_metrics(enabled=True)
 
 
 def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
     rendered = _render_with_metrics(enabled=False)
     assert "log-format-sd" not in rendered
+    assert "filter ray_stream_metrics" not in rendered
     assert "[serve@1" not in rendered
     # Match the directive, not the bare token: an explanatory comment in the
     # global block mentions "rfc5424" unconditionally; the `format rfc5424` log
@@ -971,14 +1038,7 @@ def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
     assert "format rfc5424" not in rendered
 
 
-def test_rendered_config_omits_router_metrics_when_router_flag_disabled() -> None:
-    rendered = _render_with_metrics(enabled=True, router_metrics_enabled=False)
-    assert "log-format-sd" in rendered
-    assert "router_latency_us" not in rendered
-    assert "fallback=%" not in rendered
-
-
-def _render_lua_with_metrics(enabled: bool) -> str:
+def _render_lua_with_metrics(enabled: bool, *, stream_enabled: bool = False) -> str:
     """Render the ingress-request-router Lua and return its text."""
 
     from ray.serve._private.haproxy import (
@@ -994,6 +1054,8 @@ def _render_lua_with_metrics(enabled: bool) -> str:
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
             ingress_request_router_metrics_enabled=enabled,
+            metrics_enabled=enabled or stream_enabled,
+            stream_metrics_enabled=stream_enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,
@@ -1027,6 +1089,14 @@ def test_rendered_lua_has_timing_calls_when_metrics_enabled() -> None:
     assert "core.now()" in lua
     assert "ingress_request_router_latency_us" in lua
     assert "ingress_request_router_truncated_full_length" in lua
+    assert 'core.register_filter("llm_stream_metrics"' not in lua
+
+
+def test_stream_metrics_reuse_router_timer() -> None:
+    lua = _render_lua_with_metrics(enabled=False, stream_enabled=True)
+    assert "ingress_request_router_latency_us" in lua
+    assert "ingress_request_router_truncated_full_length" not in lua
+    assert "native_metrics.configure(HISTOGRAMS)" in lua
 
 
 def test_rendered_lua_has_no_timing_calls_when_metrics_disabled() -> None:

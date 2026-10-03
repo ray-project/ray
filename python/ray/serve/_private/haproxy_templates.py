@@ -157,6 +157,11 @@ frontend prometheus
 {%- endif %}
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if has_ingress_request_router and config.metrics_enabled and config.stream_metrics_enabled %}
+    filter ray_stream_metrics
+    {%- elif has_ingress_request_router %}
+    http-response del-header x-ray-llm-metric-tags
+    {%- endif %}
     {%- if has_ingress_request_router or has_router_applications %}
     # A routed client request creates an internal routing-decision request and
     # a subsequent data-plane request. Give both backend requests the same ID.

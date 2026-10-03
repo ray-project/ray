@@ -1,12 +1,14 @@
 import asyncio
 import csv
 import functools
+import hashlib
 import http.client
 import io
 import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import signal
 import socket
@@ -38,6 +40,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_ENABLE_LLM_STREAMING_METRICS,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
@@ -94,6 +97,10 @@ from ray.serve._private.constants import (
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
+from ray.serve._private.haproxy_stream_metrics import (
+    render_stream_metrics_export_config,
+    stream_metrics_agent_address,
+)
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
     HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE,
@@ -117,6 +124,15 @@ from ray.serve.schema import (
     TargetGroup,
 )
 from ray.util import metrics
+
+
+def stream_metrics_socket_path(metrics_socket_path: str, generation: str = "") -> str:
+    """Keep the observer socket below HAProxy's 97-byte Unix path limit."""
+    digest = hashlib.sha256((metrics_socket_path + generation).encode()).hexdigest()[
+        :32
+    ]
+    return f"/tmp/ray-stream-metrics-{digest}.sock"
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -742,6 +758,7 @@ class HAProxyConfig:
     metrics_uri: str = "/metrics"
     metrics_auth_required: bool = False
     exporter_socket_path: str = RAY_SERVE_HAPROXY_EXPORTER_SOCKET_PATH
+    stream_metrics_agent_address: Optional[str] = None
     # All timeout values are in seconds
     timeout_queue_s: Optional[int] = None
     timeout_connect_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S
@@ -812,6 +829,9 @@ class HAProxyConfig:
     # limitations in parsing trailers.
     metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
+
+    # Opt-in response observation for native, direct-streaming LLM applications.
+    stream_metrics_enabled: bool = RAY_SERVE_ENABLE_LLM_STREAMING_METRICS
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
@@ -966,6 +986,7 @@ class HAProxyApi(ProxyApi):
         self._proc: Optional[asyncio.subprocess.Process] = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+        self._stream_metrics_generation = secrets.token_hex(28)
         # Per-spawn counter for stdout/stderr file names.
         self._spawn_seq: int = 0
         # Unique per actor incarnation. A restart resets _spawn_seq to 0, so
@@ -1207,6 +1228,16 @@ class HAProxyApi(ProxyApi):
         base = f"{self.cfg.socket_path}.{self._log_id}.{self._spawn_seq}"
         stdout_path = f"{base}.stdout.log"
         stderr_path = f"{base}.stderr.log"
+        child_env = None
+        if self.cfg.metrics_enabled and self.cfg.stream_metrics_enabled:
+            from ray._private.authentication.grpc_authentication_client_interceptor import (
+                _get_authentication_metadata_tuple,
+            )
+
+            child_env = os.environ.copy()
+            child_env["RAY_SERVE_STREAM_METRICS_AUTHORIZATION"] = dict(
+                _get_authentication_metadata_tuple()
+            ).get("authorization", "")
         with open(stdout_path, "wb", buffering=0) as stdout_file, open(
             stderr_path, "wb", buffering=0
         ) as stderr_file:
@@ -1214,7 +1245,20 @@ class HAProxyApi(ProxyApi):
                 *args,
                 stdout=stdout_file,
                 stderr=stderr_file,
+                env=child_env,
             )
+        export_socket = stream_metrics_socket_path(
+            self.cfg.metrics_socket_path, self._stream_metrics_generation
+        )
+        # Unix exporter sockets belong to one generation; remove them only
+        # after that process has finished its final export.
+        if self.cfg.stream_metrics_enabled:
+
+            async def cleanup_export_socket():
+                await proc.wait()
+                Path(export_socket).unlink(missing_ok=True)
+
+            asyncio.create_task(cleanup_export_socket())
         # stdout/stderr paths are stashed on the proc so they travel with it to
         # _retire_log_files; asyncio's Process does not declare them.
         proc._stdout_path = stdout_path  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
@@ -1340,10 +1384,11 @@ class HAProxyApi(ProxyApi):
         if not routers:
             return None
 
-        # When metrics are enabled, render the two timing hooks and the
-        # truncation set_var; when disabled, all three substitute to empty
-        # strings to avoid any additional overhead.
-        if self.cfg.ingress_request_router_metrics_enabled:
+        # Router and LLM metrics share the routing timer. Body-truncation
+        # accounting is rendered only for the general router metrics.
+        if self.cfg.ingress_request_router_metrics_enabled or (
+            self.cfg.metrics_enabled and self.cfg.stream_metrics_enabled
+        ):
             metrics_pre = "local _metrics_t0 = core.now()"
             metrics_post = (
                 "local _metrics_t1 = core.now(); "
@@ -1351,14 +1396,14 @@ class HAProxyApi(ProxyApi):
                 "(_metrics_t1.sec - _metrics_t0.sec) * 1000000 "
                 "+ (_metrics_t1.usec - _metrics_t0.usec))"
             )
-            metrics_set_truncated = (
-                'txn:set_var("txn.ingress_request_router_truncated_full_length", '
-                "truncated)"
-            )
         else:
             metrics_pre = ""
             metrics_post = ""
-            metrics_set_truncated = ""
+        metrics_set_truncated = (
+            'txn:set_var("txn.ingress_request_router_truncated_full_length", truncated)'
+            if self.cfg.ingress_request_router_metrics_enabled
+            else ""
+        )
 
         content = _load_lua_template(
             "request_router_common.lua.tmpl", "ingress_request_router.lua.tmpl"
@@ -1373,6 +1418,20 @@ class HAProxyApi(ProxyApi):
             METRICS_POST_CALL_ROUTER=metrics_post,
             METRICS_SET_TRUNCATED=metrics_set_truncated,
         )
+
+        if self.cfg.metrics_enabled and self.cfg.stream_metrics_enabled:
+            # Opt-in and loaded with the router only; native headers identify LLMs.
+            content += "\n" + (
+                Path(__file__).parent / "stream_metrics.lua"
+            ).read_text().replace(
+                "@STREAM_METRICS_EXPORT_CONFIG@",
+                render_stream_metrics_export_config(
+                    stream_metrics_socket_path(
+                        self.cfg.metrics_socket_path, self._stream_metrics_generation
+                    ),
+                    self._stream_metrics_generation,
+                ),
+            )
 
         lua_path = os.path.join(
             os.path.dirname(self.config_file_path), "ingress_request_router.lua"
@@ -1411,6 +1470,14 @@ class HAProxyApi(ProxyApi):
 
     def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
+        if self.cfg.stream_metrics_enabled and os.environ.get(
+            "RAY_USE_TLS", "0"
+        ).lower() in ("1", "true"):
+            raise ValueError(
+                "HAProxy streaming metrics do not yet support RAY_USE_TLS; "
+                "disable RAY_SERVE_ENABLE_LLM_STREAMING_METRICS on TLS-enabled clusters."
+            )
+        self._stream_metrics_generation = secrets.token_hex(28)
         try:
             # Imported lazily so that a plain `import ray.serve` doesn't require
             # jinja2; it's only needed when HAProxy mode is actually used.
@@ -1542,6 +1609,39 @@ class HAProxyApi(ProxyApi):
                     "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
                 }
             )
+
+            if (
+                has_ingress_request_router
+                and self.cfg.metrics_enabled
+                and self.cfg.stream_metrics_enabled
+            ):
+                # Lua's HTTP client speaks HTTP/1 to this private Unix frontend;
+                # HAProxy's native mux forwards gRPC over HTTP/2 to Ray's sink.
+                export_socket = stream_metrics_socket_path(
+                    self.cfg.metrics_socket_path, self._stream_metrics_generation
+                )
+                agent = (
+                    self.cfg.stream_metrics_agent_address
+                    or stream_metrics_agent_address()
+                )
+                config_content += (
+                    "\nfrontend ray_stream_metrics_export\n"
+                    f"    bind {export_socket} mode 600 ray-metrics-export\n"
+                    "    mode http\n"
+                    "    timeout client 2s\n"
+                    "    http-request use-service lua.stream_metrics_status if { path /status }\n"
+                    "    default_backend ray_stream_metrics_agent\n"
+                    "\nbackend ray_stream_metrics_agent\n"
+                    "    mode http\n"
+                    # Reporter ports belong to the current Ray node session.
+                    # Restoring an earlier agent address can silently lose exports.
+                    "    load-server-state-from-file none\n"
+                    "    option abortonclose\n"
+                    "    timeout connect 1s\n"
+                    "    timeout server 1s\n"
+                    '    http-request set-header authorization "%[env(RAY_SERVE_STREAM_METRICS_AUTHORIZATION)]"\n'
+                    f"    server metrics_agent {agent} proto h2\n"
+                )
 
             # Ensure the config ends with a newline
             if not config_content.endswith("\n"):
