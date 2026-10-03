@@ -18,7 +18,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
-from ray.data.checkpoint.util import build_pending_checkpoint_trie
+from ray.data.checkpoint.util import PrefixTrie, find_owning_checkpoint_id
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
@@ -60,17 +60,28 @@ def _clean_pending_checkpoints_task(
     data_file_dir_unwrapped: str,
     data_file_filesystem: pyarrow.fs.FileSystem,
 ) -> int:
-    """Delete data files that have matching pending checkpoint files, then
-    delete the pending checkpoints.
+    """Delete the data files of uncommitted write tasks, then delete all
+    pending checkpoints.
 
     This runs as a remote task to avoid blocking the driver during potentially
     slow filesystem operations (especially on cloud storage like S3).
 
+    A task is uncommitted if it has a pending checkpoint and no committed one.
+    A pending checkpoint next to a committed one for the same task is a
+    leftover: a retry of the committed task stopped before cleaning it up, or
+    the commit's move (a copy followed by a delete on S3) stopped halfway.
+    That task's data files are final and must be kept, because its committed
+    IDs filter its rows out of the rerun.
+
     Algorithm:
-    1. List all files in checkpoint dir, find those ending with .pending.parquet
-    2. Build a PrefixTrie from their basenames (strip .pending.parquet)
+    1. List the checkpoint dir: pending (.pending.parquet) and committed
+       (.parquet) checkpoint IDs
+    2. Uncommitted IDs = pending IDs without a committed checkpoint
     3. List all data files in data_file_dir (recursively for partitions)
-    4. For each data file, if trie.has_prefix_of(basename) -> delete it
+    4. Delete each data file whose owner is an uncommitted ID. The owner is
+       the longest checkpoint ID that prefixes the file name, because one
+       task's ID can be a prefix of another's (see
+       `find_owning_checkpoint_id`).
     5. Delete all the pending checkpoint files
     6. Return count of pending checkpoints cleaned
 
@@ -87,37 +98,56 @@ def _clean_pending_checkpoints_task(
     """
 
     def _clean() -> int:
-        # 1. List all files in checkpoint dir, find pending ones
+        # 1. List all files in checkpoint dir, find pending and committed ones
         ckpt_files = checkpoint_filesystem.get_file_info(
             FileSelector(
                 checkpoint_path_unwrapped, recursive=False, allow_not_found=True
             )
         )
         pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
-        pending_file_paths = [
-            f
-            for f in ckpt_files
-            if f.type == FileType.File and f.path.endswith(pending_suffix)
-        ]
+        committed_suffix = ".parquet"
+        pending_file_paths = []
+        pending_ids = set()
+        committed_ids = set()
+        for f in ckpt_files:
+            if f.type != FileType.File:
+                continue
+            basename = posixpath.basename(f.path)
+            if basename.endswith(pending_suffix):
+                pending_file_paths.append(f)
+                pending_ids.add(basename[: -len(pending_suffix)])
+            elif basename.endswith(committed_suffix):
+                committed_ids.add(basename[: -len(committed_suffix)])
 
         if not pending_file_paths:
             return 0
 
-        # 2. Build prefix trie from pending checkpoint basenames
-        trie = build_pending_checkpoint_trie(pending_file_paths, pending_suffix)
+        # 2. Only tasks without a committed checkpoint lose their data files
+        uncommitted_ids = pending_ids - committed_ids
 
-        # 3. List all data files (recursively for partitions)
-        data_files = data_file_filesystem.get_file_info(
-            FileSelector(data_file_dir_unwrapped, recursive=True, allow_not_found=True)
-        )
+        if uncommitted_ids:
+            trie = PrefixTrie()
+            for checkpoint_id in uncommitted_ids:
+                trie.insert(checkpoint_id)
+            all_ids = pending_ids | committed_ids
 
-        # 4. Delete data files matching a pending checkpoint prefix
-        for f in data_files:
-            if f.type != FileType.File:
-                continue
-            basename = posixpath.basename(f.path)
-            if trie.has_prefix_of(basename):
-                data_file_filesystem.delete_file(f.path)
+            # 3. List all data files (recursively for partitions)
+            data_files = data_file_filesystem.get_file_info(
+                FileSelector(
+                    data_file_dir_unwrapped, recursive=True, allow_not_found=True
+                )
+            )
+
+            # 4. Delete data files owned by an uncommitted task. The trie
+            # check is a cheap filter; the owner check decides.
+            for f in data_files:
+                if f.type != FileType.File:
+                    continue
+                basename = posixpath.basename(f.path)
+                if not trie.has_prefix_of(basename):
+                    continue
+                if find_owning_checkpoint_id(basename, all_ids) in uncommitted_ids:
+                    data_file_filesystem.delete_file(f.path)
 
         # 5. Delete all pending checkpoint files
         for f in pending_file_paths:
@@ -335,8 +365,9 @@ class CheckpointManager(abc.ABC):
     ) -> None:
         """Clean up pending checkpoints from incomplete 2-phase commits.
 
-        Finds pending checkpoint files, builds a prefix trie from their basenames,
-        deletes matching data files, then deletes the pending checkpoints.
+        Deletes the data files of tasks that have a pending checkpoint and no
+        committed one, then deletes all pending checkpoints. Data files of
+        committed tasks are always kept. See `_clean_pending_checkpoints_task`.
 
         Runs as a Ray task to avoid blocking the driver during potentially
         slow filesystem operations (especially on cloud storage like S3).
