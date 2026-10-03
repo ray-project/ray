@@ -32,8 +32,10 @@ if PYDANTIC_INSTALLED:
         name: str
         uuid: str
         utilizationGpu: Optional[int] = None  # percentage
-        memoryUsed: int  # in MB
-        memoryTotal: int  # in MB
+        # None when the device does not report a separate GPU memory pool
+        # (e.g. unified-memory parts such as GB10). This means "unknown", not zero.
+        memoryUsed: Optional[int] = None  # in MB
+        memoryTotal: Optional[int] = None  # in MB
         processesPids: Optional[
             List[ProcessGPUInfo]
         ] = None  # converted to list in _compose_stats_payload
