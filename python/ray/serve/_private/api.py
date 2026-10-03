@@ -4,7 +4,7 @@ import logging
 
 # Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
 from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel
 
@@ -12,6 +12,7 @@ import ray
 from ray import ObjectRef
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
+from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
@@ -19,6 +20,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
+from ray.serve._private.tracing_utils import InvalidTracingConfigError
 from ray.serve.config import (
     ControllerOptions,
     HTTPOptions,
@@ -75,6 +77,40 @@ def _check_http_options(
                 f"in the following fields: {different_fields}. "
                 "The new HTTP config is ignored."
             )
+
+
+def _check_tracing_config(
+    client: ServeControllerClient,
+    tracing_config: Union[dict, TracingConfig],
+) -> None:
+    """Reject a tracing config that differs from the running controller's.
+
+    Compared on the controller so unset fields resolve from its env vars.
+    """
+    new_tracing_config = (
+        tracing_config
+        if isinstance(tracing_config, TracingConfig)
+        else TracingConfig(**tracing_config)
+    )
+    ray.get(
+        client._controller.reconfigure_global_tracing_config.remote(  # type: ignore[attr-defined]
+            new_tracing_config
+        )
+    )
+
+
+def _get_actor_init_error(error: RayActorError) -> Optional[BaseException]:
+    """Return the exception raised by the actor's __init__, if any.
+
+    Ray raises ``ActorDiedError(RayTaskError)``; ``RayTaskError.args[2]`` is
+    the original exception.
+    """
+    if not error.actor_init_failed:
+        return None
+    try:
+        return error.args[0].args[2]
+    except (AttributeError, IndexError):
+        return None
 
 
 def _create_controller_and_proxy_refs(
@@ -145,7 +181,14 @@ def _create_controller_and_proxy_refs(
         global_tracing_config=global_tracing_config,
     )
 
-    proxy_handles: Any = ray.get(controller.get_proxies.remote())
+    try:
+        proxy_handles: Any = ray.get(controller.get_proxies.remote())
+    except RayActorError as e:
+        # Surface an invalid tracing config as-is; re-raise anything else.
+        init_error = _get_actor_init_error(e)
+        if isinstance(init_error, InvalidTracingConfigError):
+            raise init_error from None
+        raise
     proxy_ready_refs = (
         [handle.ready.remote() for handle in proxy_handles.values()]
         if len(proxy_handles) > 0
@@ -192,6 +235,11 @@ async def serve_start_async(
         )
         if http_options:
             _check_http_options(client, http_options)
+        if global_tracing_config is not None:
+            # Blocking RPC; keep it off the event loop.
+            await asyncio.to_thread(
+                _check_tracing_config, client, global_tracing_config
+            )
         return client
 
     # Run the blocking controller-creation helper in a worker thread so its
@@ -317,6 +365,8 @@ def serve_start(
         )
         if http_options:
             _check_http_options(client, http_options)
+        if global_tracing_config is not None:
+            _check_tracing_config(client, global_tracing_config)
         return client
 
     controller, proxy_ready_refs = _create_controller_and_proxy_refs(

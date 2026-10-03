@@ -27,9 +27,13 @@ from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.exceptions import RayTaskError
 from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -775,16 +779,42 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     assert client.get_serve_details()["proxy_location"] == expected
 
 
+# HAProxy and direct ingress bypass the Python proxy, so it emits no
+# ``proxy_http_request`` spans. Skip proxy-focused tracing tests in those modes.
+_ALT_INGRESS_ENABLED = RAY_SERVE_ENABLE_HA_PROXY or RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+
+def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
+    """Return whether a span file contains the given span name.
+
+    The exporter creates the file during setup, so file existence alone does
+    not prove that a span was emitted.
+    """
+    if not os.path.isdir(spans_dir):
+        return False
+    for fname in os.listdir(spans_dir):
+        if component not in fname:
+            continue
+        try:
+            with open(os.path.join(spans_dir, fname)) as f:
+                if span_name in f.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+@pytest.mark.skipif(
+    _ALT_INGRESS_ENABLED,
+    reason="Proxy does not emit request spans under HAProxy/direct ingress.",
+)
 def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     """Tracing config passed to ``serve.start()`` reaches the controller and is
-    applied to replicas (the imperative flow).
+    applied to both replicas and proxies (the imperative flow).
 
-    Verifies that the controller stores the config and that, after a request,
-    a tracing span file is produced for the replica -- proving the config
-    propagated from serve.start() through the controller to the replica.
-
-    Note: proxy tracing is not wired via this path (proxies start before the
-    controller is queryable); that is handled separately via long poll.
+    Verifies the controller stores the config and that, after a request, tracing
+    span files are produced for the replica (which pulls the config at init) and
+    the proxy (which receives it as a constructor arg when it is created).
     """
     tracing_config = TracingConfig(enabled=True, sampling_ratio=1.0)
     serve.start(
@@ -810,15 +840,168 @@ def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     url = get_application_url("HTTP")
     assert httpx.post(f"{url}/").text == "hello"
 
+    # Tracing was set up on the replica and the proxy at startup, so each emits
+    # a span. Assert on span *contents*, not just file existence: the file
+    # exporter creates the file at setup time, so an empty file would pass an
+    # existence-only check even if no span was ever emitted.
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+
+    def replica_and_proxy_traces_created() -> bool:
+        # The replica runs the user code that emits ``application_span``; the
+        # proxy emits ``proxy_http_request`` for the HTTP request it forwards.
+        return _span_file_contains(
+            spans_dir, "replica", "application_span"
+        ) and _span_file_contains(spans_dir, "proxy", "proxy_http_request")
+
+    try:
+        wait_for_condition(replica_and_proxy_traces_created, timeout=20)
+    finally:
+        serve.shutdown()
+        shutil.rmtree(spans_dir, ignore_errors=True)
+
+
+def test_serve_tracing_config_survives_controller_recovery(ray_shutdown):
+    """A serve.start tracing config survives controller recovery.
+
+    The config is delivered as the controller's constructor argument, which Ray
+    replays when it restarts the controller (no checkpoint needed for this path).
+    """
+    config = TracingConfig(enabled=True, sampling_ratio=0.5)
+    serve.start(tracing_config=config)
+    client = _get_global_client()
+    assert ray.get(client._controller.get_tracing_config.remote()) == config
+
+    # Kill the controller; on recovery it restores the config from the replayed
+    # constructor argument.
+    pid = ray.get(client._controller.get_pid.remote())
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+    assert ray.get(client._controller.get_tracing_config.remote()) == config
+
+
+def test_deploy_tracing_to_running_untraced_serve_raises(ray_shutdown):
+    """Adding tracing to an already-running Serve started without it raises.
+
+    Tracing is an init-time setting delivered at controller construction; a
+    ``serve deploy`` that starts Serve passes it into the controller, but a
+    later config change to an already-running controller is rejected.
+    """
+    serve.start()  # No tracing config.
+    client = _get_global_client()
+    with pytest.raises(RayTaskError):
+        client.deploy_apps(
+            ServeDeploySchema(
+                applications=[
+                    ServeApplicationSchema(
+                        name="default",
+                        route_prefix="/",
+                        import_path="ray.serve.tests.test_standalone.WaiterNode",
+                    )
+                ],
+                tracing_config=TracingConfig(enabled=True, sampling_ratio=0.5),
+            )
+        )
     serve.shutdown()
 
-    # Tracing was set up on the replica, so a replica span file exists.
-    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
-    span_files = os.listdir(spans_dir)
+
+def test_reconfigure_tracing_config_at_runtime_raises(ray_shutdown):
+    """Changing the tracing config after Serve has started raises.
+
+    Tracing is an init-time setting (delivered to proxies/replicas at startup),
+    so the controller rejects a runtime change rather than silently dropping it.
+    """
+    config = TracingConfig(enabled=True, sampling_ratio=0.5)
+    serve.start(tracing_config=config)
+    client = _get_global_client()
+
+    # A different config at runtime is rejected; re-applying the same config is a
+    # no-op.
+    ray.get(client._controller.reconfigure_global_tracing_config.remote(config))
+    with pytest.raises(RayTaskError):
+        ray.get(
+            client._controller.reconfigure_global_tracing_config.remote(
+                TracingConfig(enabled=True, sampling_ratio=1.0)
+            )
+        )
+    assert ray.get(client._controller.get_tracing_config.remote()) == config
+    serve.shutdown()
+
+
+def test_serve_start_tracing_change_on_running_serve_raises(ray_shutdown):
+    """serve.start with a different tracing config on a running Serve raises.
+
+    Tracing is init-time; re-calling serve.start cannot change it (serve.start
+    otherwise returns the existing client and ignores new args). Re-passing the
+    same config is accepted.
+    """
+    serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=0.5))
+    # Same config is accepted (no-op).
+    serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=0.5))
+    # A different config is rejected rather than silently ignored.
+    with pytest.raises(ValueError):
+        serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0))
+    serve.shutdown()
+
+
+def test_serve_start_rejects_bad_exporter_import_path(ray_shutdown):
+    """An unimportable tracing exporter fails serve.start with a config error.
+
+    The controller validates the exporter in its own env at startup and reports
+    it as a ValueError (not an opaque actor-creation failure). The failed
+    attempt must not leave a controller behind, so a corrected retry succeeds.
+    """
+    bad_config = TracingConfig(
+        enabled=True, exporter_import_path="serve_missing_tracing_exporter_mod:exp"
+    )
+    with pytest.raises(ValueError, match="serve_missing_tracing_exporter_mod"):
+        serve.start(tracing_config=bad_config)
+
+    # The half-created controller was cleaned up...
+    with pytest.raises(ValueError):
+        ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+
+    # ...so a corrected start creates a fresh, working controller.
+    serve.start(tracing_config=TracingConfig(enabled=False))
+    client = _get_global_client()
+    assert ray.get(client._controller.get_tracing_config.remote()).enabled is False
+    serve.shutdown()
+
+
+def test_partial_tracing_config_resolves_from_controller_env(ray_shutdown, monkeypatch):
+    """Unset tracing fields resolve from the controller's env, not the caller's.
+
+    The exporter env var is set only on the controller (via
+    controller_options.runtime_env); the driver, which builds the partial
+    TracingConfig, does not have it. If defaults were resolved in the driver,
+    tracing would come out disabled.
+    """
+    monkeypatch.delenv("RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH", raising=False)
+    controller_options = {
+        "runtime_env": {
+            "env_vars": {
+                "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH": (
+                    DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+                )
+            }
+        }
+    }
+    partial = {"sampling_ratio": 0.5}
+    serve.start(controller_options=controller_options, tracing_config=partial)
+    client = _get_global_client()
+
     try:
-        assert any("replica" in f for f in span_files), span_files
+        effective = ray.get(client._controller.get_tracing_config.remote())
+        assert effective.enabled is True
+        assert effective.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        assert effective.sampling_ratio == 0.5
+
+        # Re-passing the same partial config is a no-op: both sides resolve in
+        # the controller's env, so it is not mistaken for a change.
+        serve.start(tracing_config=partial)
     finally:
-        shutil.rmtree(spans_dir, ignore_errors=True)
+        serve.shutdown()
+        shutil.rmtree(os.path.join(get_serve_logs_dir(), "spans"), ignore_errors=True)
 
 
 @pytest.mark.parametrize(

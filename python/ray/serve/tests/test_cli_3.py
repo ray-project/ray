@@ -11,11 +11,17 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
+import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import ApplicationStatus
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -269,6 +275,45 @@ class TestRun:
             timeout=15,
         )
         print("Kill successful! Deployment is not reachable over HTTP.")
+
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="File path incorrect on Windows."
+    )
+    def test_run_config_with_tracing_config(self, ray_start_stop, tmp_path):
+        """`serve run <config>` starts the controller with the YAML tracing_config.
+
+        Tracing is an init-time setting, so serve run must pass the config's
+        tracing_config when it creates the controller. If it were applied only
+        after startup, the controller would reject it as a runtime change and
+        the app would never come up.
+        """
+        config = {
+            "tracing_config": {"enabled": True, "sampling_ratio": 0.5},
+            "applications": [
+                {
+                    "name": SERVE_DEFAULT_APP_NAME,
+                    "route_prefix": "/",
+                    "import_path": "ray.serve.tests.test_config_files.pid.node",
+                }
+            ],
+        }
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(yaml.safe_dump(config))
+
+        p = subprocess.Popen(["serve", "run", "--address=auto", str(config_path)])
+        try:
+            wait_for_condition(
+                lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+                == ApplicationStatus.RUNNING,
+                timeout=60,
+            )
+            controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+            tracing_config = ray.get(controller.get_tracing_config.remote())
+            assert tracing_config.enabled is True
+            assert tracing_config.sampling_ratio == 0.5
+        finally:
+            p.send_signal(signal.SIGINT)
+            p.wait()
 
     @pytest.mark.skipif(
         sys.platform == "win32", reason="File path incorrect on Windows."

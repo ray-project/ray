@@ -1470,7 +1470,7 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
-        tracing_config: Optional[TracingConfig] = None,
+        tracing_config: TracingConfig,
         log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     ):
         """Initialize the proxy actor.
@@ -1485,10 +1485,18 @@ class ProxyActorInterface(ABC):
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
-        self._tracing_config = tracing_config
         self._log_buffer_size = log_buffer_size
 
         self._update_logging_config(logging_config)
+
+        # OpenTelemetry allows one tracer provider per process, so set tracing
+        # up once, here. Let a failure raise so it surfaces at startup.
+        if setup_tracing(
+            component_name="proxy",
+            component_id=self._node_ip_address,
+            tracing_config=tracing_config,
+        ):
+            logger.info("Successfully set up tracing for proxy")
 
     @abstractmethod
     async def ready(self) -> str:
@@ -1619,12 +1627,14 @@ class ProxyActor(ProxyActorInterface):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config: TracingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
 
         is_head = self._node_id == get_head_node_id()
@@ -1643,14 +1653,6 @@ class ProxyActor(ProxyActorInterface):
             call_in_event_loop=event_loop,
             client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
-
-        is_tracing_setup_successful = setup_tracing(
-            component_name="proxy",
-            component_id=node_ip_address,
-            tracing_config=self._tracing_config,
-        )
-        if is_tracing_setup_successful:
-            logger.info("Successfully set up tracing for proxy")
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
         if grpc_enabled:
