@@ -912,6 +912,22 @@ def test_field_types(partition_value, expected_type):
 
 
 @pytest.mark.parametrize(
+    "style,field_names,path,expected",
+    [
+        ("hive", None, "data.parquet", {}),
+        ("hive", None, "other=1/data.parquet", {"other": "1"}),
+        ("dir", ["key"], "data.parquet", {}),
+    ],
+)
+def test_field_types_with_missing_partition(style, field_names, path, expected):
+    partitioning = Partitioning(
+        style=style, field_names=field_names, field_types={"key": int}
+    )
+
+    assert PathPartitionParser(partitioning)(path) == expected
+
+
+@pytest.mark.parametrize(
     "path,predicate,expected_result,description",
     [
         # Simple equality matches

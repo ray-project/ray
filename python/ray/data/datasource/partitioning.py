@@ -288,7 +288,8 @@ class PathPartitionParser:
         partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
-            partitions[field] = _cast_value(partitions[field], data_type)
+            if field in partitions:
+                partitions[field] = _cast_value(partitions[field], data_type)
 
         return partitions
 
