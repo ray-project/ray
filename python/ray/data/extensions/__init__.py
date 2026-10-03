@@ -1,3 +1,4 @@
+from ray.data._internal.arrow_ops.transform_pyarrow import take_table
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
@@ -12,7 +13,6 @@ from ray.data.extensions.object_extension import (
     PythonObjectArray,
     PythonObjectDtype,
 )
-from ray.data.extensions.table import take_table
 from ray.data.extensions.tensor_extension import (
     ArrowConversionError,
     ArrowTensorArray,
