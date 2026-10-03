@@ -122,6 +122,12 @@ class DataConfig:
             ds.context.execution_options = self._resolve_execution_options(name)
 
             if name in datasets_to_split:
+                # Use equal=True to ensure each worker receives exactly
+                # n_rows // world_size rows. This is critical for
+                # TensorFlow's MultiWorkerMirroredStrategy where the
+                # per-epoch step count is n_rows_per_shard // batch_size.
+                # Without equal sharding, a worker could receive the full
+                # dataset and double the step count (see #61838).
                 for i, split in enumerate(
                     ds.streaming_split(
                         world_size, equal=True, locality_hints=locality_hints
