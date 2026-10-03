@@ -1869,7 +1869,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         gcs_table_storage_->ActorTable().Put(
             actor_id,
             observability_data,
-            {[this, dead_actor_id = actor_id, observability_data = observability_data](
+            {[this, dead_actor_id = actor_id, observability_data](
                  Status status) {
                gcs_publisher_->PublishActor(
                    dead_actor_id, GenActorDataOnlyWithStates(observability_data));
