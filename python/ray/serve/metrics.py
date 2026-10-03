@@ -71,8 +71,9 @@ def _add_serve_context_tag_values(
         return tags
 
     if tags is None:
-        tags = {}
-    if ROUTE_TAG not in tags:
+        tags = {ROUTE_TAG: ray.serve.context._get_serve_request_context().route}
+    elif ROUTE_TAG not in tags:
+        tags = tags.copy()
         tags[ROUTE_TAG] = ray.serve.context._get_serve_request_context().route
     return tags
 
