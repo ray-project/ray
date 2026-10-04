@@ -69,6 +69,7 @@ from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
+    DeviceType,
     EnvConfigDict,
     EnvType,
     LearningRateOrSchedule,
@@ -87,6 +88,9 @@ from ray.util.placement_group import PlacementGroup
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.connectors.env_to_module import EnvToModulePipeline
+    from ray.rllib.connectors.learner import LearnerConnectorPipeline
+    from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
     from ray.rllib.core.learner import Learner
     from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
     from ray.rllib.core.learner.learner_group import LearnerGroup
@@ -339,8 +343,10 @@ class AlgorithmConfig(_Config):
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
         self._env_to_module_connector = None
+        self._env_to_module_connector_builder = None
         self.add_default_connectors_to_env_to_module_pipeline = True
         self._module_to_env_connector = None
+        self._module_to_env_connector_builder = None
         self.add_default_connectors_to_module_to_env_pipeline = True
         self.merge_env_runner_states = "training_only"
         self.broadcast_env_runner_states = True
@@ -413,6 +419,7 @@ class AlgorithmConfig(_Config):
             pass
 
         self._learner_connector = None
+        self._learner_connector_builder = None
         self.add_default_connectors_to_learner_pipeline = True
         self.learner_config_dict = {}
         self.optimizer = {}  # @OldAPIStack
@@ -1019,21 +1026,56 @@ class AlgorithmConfig(_Config):
             config=self if not use_copy else copy.deepcopy(self),
         )
 
-    def build_env_to_module_connector(
+    def _default_env_to_module_connectors(
         self,
-        env=None,
-        spaces=None,
+        pipeline: "EnvToModulePipeline",
         device=None,
-    ) -> ConnectorV2:
+    ) -> "EnvToModulePipeline":
+        """Adds RLlib's default env-to-module ConnectorV2 pieces to `pipeline`."""
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
             AddTimeDimToBatchAndZeroPad,
             AgentToModuleMapping,
             BatchIndividualItems,
-            EnvToModulePipeline,
             NumpyToTensor,
         )
+
+        if not self.add_default_connectors_to_env_to_module_pipeline:
+            return pipeline
+
+        # Append OBS handling.
+        pipeline.append(AddObservationsFromEpisodesToBatch())
+        # Append time-rank handler.
+        pipeline.append(AddTimeDimToBatchAndZeroPad())
+        # Append STATE_IN/STATE_OUT handler.
+        pipeline.append(AddStatesFromEpisodesToBatch())
+        # If multi-agent -> Map from AgentID-based data to ModuleID based data.
+        if self.is_multi_agent:
+            pipeline.append(
+                AgentToModuleMapping(
+                    rl_module_specs=(
+                        self.rl_module_spec.rl_module_specs
+                        if isinstance(self.rl_module_spec, MultiRLModuleSpec)
+                        else set(self.policies)
+                    ),
+                    agent_to_module_mapping_fn=self.policy_mapping_fn,
+                )
+            )
+        # Batch all data.
+        pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
+        # Convert to Tensors.
+        pipeline.append(NumpyToTensor(device=device))
+
+        return pipeline
+
+    def build_env_to_module_connector(
+        self,
+        env=None,
+        spaces=None,
+        device=None,
+    ) -> ConnectorV2:
+        from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 
         custom_connectors = []
         # Create an env-to-module connector pipeline (including RLlib's default
@@ -1106,43 +1148,76 @@ class AlgorithmConfig(_Config):
             connectors=custom_connectors,
         )
 
-        if self.add_default_connectors_to_env_to_module_pipeline:
-            # Append OBS handling.
-            pipeline.append(AddObservationsFromEpisodesToBatch())
-            # Append time-rank handler.
-            pipeline.append(AddTimeDimToBatchAndZeroPad())
-            # Append STATE_IN/STATE_OUT handler.
-            pipeline.append(AddStatesFromEpisodesToBatch())
-            # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent:
-                pipeline.append(
-                    AgentToModuleMapping(
-                        rl_module_specs=(
-                            self.rl_module_spec.rl_module_specs
-                            if isinstance(self.rl_module_spec, MultiRLModuleSpec)
-                            else set(self.policies)
-                        ),
-                        agent_to_module_mapping_fn=self.policy_mapping_fn,
-                    )
-                )
-            # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
-            # Convert to Tensors.
-            pipeline.append(NumpyToTensor(device=device))
+        # Add RLlib's default connectors, then the optional user builder.
+        pipeline = self._default_env_to_module_connectors(pipeline, device=device)
+        if self._env_to_module_connector_builder is not None:
+            pipeline = self._env_to_module_connector_builder(pipeline, device=device)
+        if not isinstance(pipeline, EnvToModulePipeline):
+            raise ValueError(
+                "`AlgorithmConfig.env_runners(env_to_module_connector_builder=..)`"
+                " must return an `EnvToModulePipeline` object! Your function "
+                f"returned {pipeline}."
+            )
 
         return pipeline
 
-    def build_module_to_env_connector(self, env=None, spaces=None) -> ConnectorV2:
+    def _default_module_to_env_connectors(
+        self,
+        pipeline: "ModuleToEnvPipeline",
+        device=None,
+    ) -> "ModuleToEnvPipeline":
+        """Adds RLlib's default module-to-env ConnectorV2 pieces to `pipeline`."""
         from ray.rllib.connectors.module_to_env import (
             GetActions,
             ListifyDataForVectorEnv,
             ModuleToAgentUnmapping,
-            ModuleToEnvPipeline,
             NormalizeAndClipActions,
             RemoveSingleTsTimeRankFromBatch,
             TensorToNumpy,
             UnBatchToIndividualItems,
         )
+
+        if not self.add_default_connectors_to_module_to_env_pipeline:
+            return pipeline
+
+        # Prepend: data processing.
+
+        # Remove extra time-rank, if applicable.
+        pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
+
+        # If multi-agent -> Map from ModuleID-based data to AgentID based data.
+        if self.is_multi_agent:
+            pipeline.prepend(ModuleToAgentUnmapping())
+
+        # Unbatch all data.
+        pipeline.prepend(UnBatchToIndividualItems())
+
+        # Convert to numpy.
+        pipeline.prepend(TensorToNumpy())
+
+        # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
+        pipeline.prepend(GetActions())
+
+        # Append: action sampling.
+        # Unsquash/clip actions based on config and action space.
+        pipeline.append(
+            NormalizeAndClipActions(
+                normalize_actions=self.normalize_actions,
+                clip_actions=self.clip_actions,
+            )
+        )
+        # Listify data for the vector env.
+        pipeline.append(ListifyDataForVectorEnv())
+
+        return pipeline
+
+    def build_module_to_env_connector(
+        self,
+        env=None,
+        spaces=None,
+        device=None,
+    ) -> ConnectorV2:
+        from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
 
         custom_connectors = []
         # Create a module-to-env connector pipeline (including RLlib's default
@@ -1214,38 +1289,63 @@ class AlgorithmConfig(_Config):
             connectors=custom_connectors,
         )
 
-        if self.add_default_connectors_to_module_to_env_pipeline:
-            # Prepend: Anything that has to do with plain data processing (not
-            # particularly with the actions).
+        # Add RLlib's default connectors, then the optional user builder.
+        pipeline = self._default_module_to_env_connectors(pipeline, device=device)
+        if self._module_to_env_connector_builder is not None:
+            pipeline = self._module_to_env_connector_builder(pipeline, device=device)
+        if not isinstance(pipeline, ModuleToEnvPipeline):
+            raise ValueError(
+                "`AlgorithmConfig.env_runners(module_to_env_connector_builder=..)`"
+                " must return a `ModuleToEnvPipeline` object! Your function "
+                f"returned {pipeline}."
+            )
 
-            # Remove extra time-rank, if applicable.
-            pipeline.prepend(RemoveSingleTsTimeRankFromBatch())
+        return pipeline
 
-            # If multi-agent -> Map from ModuleID-based data to AgentID based data.
-            if self.is_multi_agent:
-                pipeline.prepend(ModuleToAgentUnmapping())
+    def _default_learner_connectors(
+        self,
+        pipeline: "LearnerConnectorPipeline",
+        device=None,
+    ) -> "LearnerConnectorPipeline":
+        """Adds RLlib's default learner ConnectorV2 pieces to `pipeline`."""
+        from ray.rllib.connectors.learner import (
+            AddColumnsFromEpisodesToTrainBatch,
+            AddObservationsFromEpisodesToBatch,
+            AddStatesFromEpisodesToBatch,
+            AddTimeDimToBatchAndZeroPad,
+            AgentToModuleMapping,
+            BatchIndividualItems,
+            NumpyToTensor,
+        )
 
-            # Unbatch all data.
-            pipeline.prepend(UnBatchToIndividualItems())
+        if not self.add_default_connectors_to_learner_pipeline:
+            return pipeline
 
-            # Convert to numpy.
-            pipeline.prepend(TensorToNumpy())
-
-            # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
-            pipeline.prepend(GetActions())
-
-            # Append: Anything that has to do with action sampling.
-            # Unsquash/clip actions based on config and action space.
+        # Append OBS handling.
+        pipeline.append(AddObservationsFromEpisodesToBatch(as_learner_connector=True))
+        # Append all other columns handling.
+        pipeline.append(AddColumnsFromEpisodesToTrainBatch())
+        # Append time-rank handler.
+        pipeline.append(AddTimeDimToBatchAndZeroPad(as_learner_connector=True))
+        # Append STATE_IN/STATE_OUT handler.
+        pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
+        # If multi-agent -> Map from AgentID-based data to ModuleID based data.
+        if self.is_multi_agent:
             pipeline.append(
-                NormalizeAndClipActions(
-                    normalize_actions=self.normalize_actions,
-                    clip_actions=self.clip_actions,
+                AgentToModuleMapping(
+                    rl_module_specs=(
+                        self.rl_module_spec.rl_module_specs
+                        if isinstance(self.rl_module_spec, MultiRLModuleSpec)
+                        else set(self.policies)
+                    ),
+                    agent_to_module_mapping_fn=self.policy_mapping_fn,
+                    as_learner_connector=True,
                 )
             )
-            # Listify data from ConnectorV2-data format to normal lists that we can
-            # index into by env vector index. These lists contain individual items
-            # for single-agent and multi-agent dicts for multi-agent.
-            pipeline.append(ListifyDataForVectorEnv())
+        # Batch all data.
+        pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
+        # Convert to Tensors.
+        pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
 
         return pipeline
 
@@ -1255,16 +1355,7 @@ class AlgorithmConfig(_Config):
         input_action_space,
         device=None,
     ) -> ConnectorV2:
-        from ray.rllib.connectors.learner import (
-            AddColumnsFromEpisodesToTrainBatch,
-            AddObservationsFromEpisodesToBatch,
-            AddStatesFromEpisodesToBatch,
-            AddTimeDimToBatchAndZeroPad,
-            AgentToModuleMapping,
-            BatchIndividualItems,
-            LearnerConnectorPipeline,
-            NumpyToTensor,
-        )
+        from ray.rllib.connectors.learner import LearnerConnectorPipeline
 
         custom_connectors = []
         # Create a learner connector pipeline (including RLlib's default
@@ -1295,34 +1386,17 @@ class AlgorithmConfig(_Config):
             input_observation_space=input_observation_space,
             input_action_space=input_action_space,
         )
-        if self.add_default_connectors_to_learner_pipeline:
-            # Append OBS handling.
-            pipeline.append(
-                AddObservationsFromEpisodesToBatch(as_learner_connector=True)
+        # Add RLlib's default connectors, then the optional user builder.
+        pipeline = self._default_learner_connectors(pipeline, device=device)
+        if self._learner_connector_builder is not None:
+            pipeline = self._learner_connector_builder(pipeline, device=device)
+        if not isinstance(pipeline, LearnerConnectorPipeline):
+            raise ValueError(
+                "`AlgorithmConfig.learners(learner_connector_builder=..)` must "
+                "return a `LearnerConnectorPipeline` object! Your function returned "
+                f"{pipeline}."
             )
-            # Append all other columns handling.
-            pipeline.append(AddColumnsFromEpisodesToTrainBatch())
-            # Append time-rank handler.
-            pipeline.append(AddTimeDimToBatchAndZeroPad(as_learner_connector=True))
-            # Append STATE_IN/STATE_OUT handler.
-            pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
-            # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-            if self.is_multi_agent:
-                pipeline.append(
-                    AgentToModuleMapping(
-                        rl_module_specs=(
-                            self.rl_module_spec.rl_module_specs
-                            if isinstance(self.rl_module_spec, MultiRLModuleSpec)
-                            else set(self.policies)
-                        ),
-                        agent_to_module_mapping_fn=self.policy_mapping_fn,
-                        as_learner_connector=True,
-                    )
-                )
-            # Batch all data.
-            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
-            # Convert to Tensors.
-            pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
+
         return pipeline
 
     def build_learner_group(
@@ -1877,8 +1951,18 @@ class AlgorithmConfig(_Config):
         env_to_module_connector: Optional[
             Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
+        env_to_module_connector_builder: Optional[
+            Callable[
+                ["EnvToModulePipeline", Optional[DeviceType]], "EnvToModulePipeline"
+            ]
+        ] = NotProvided,
         module_to_env_connector: Optional[
             Callable[[EnvType, "RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
+        ] = NotProvided,
+        module_to_env_connector_builder: Optional[
+            Callable[
+                ["ModuleToEnvPipeline", Optional[DeviceType]], "ModuleToEnvPipeline"
+            ]
         ] = NotProvided,
         add_default_connectors_to_env_to_module_pipeline: Optional[bool] = NotProvided,
         add_default_connectors_to_module_to_env_pipeline: Optional[bool] = NotProvided,
@@ -1981,6 +2065,16 @@ class AlgorithmConfig(_Config):
             module_to_env_connector: A callable taking an Env and an RLModule as input
                 args and returning a module-to-env ConnectorV2 (might be a pipeline)
                 object.
+            env_to_module_connector_builder: A callable taking the fully built
+                `EnvToModulePipeline` (including RLlib's default pieces) and the
+                `device`, and returning a (modified) pipeline. Use it to customize
+                the default pipeline, e.g. via `insert_before`/`insert_after`/
+                `remove`. May be combined with `env_to_module_connector`.
+            module_to_env_connector_builder: A callable taking the fully built
+                `ModuleToEnvPipeline` (including RLlib's default pieces) and the
+                `device`, and returning a (modified) pipeline. Use it to customize
+                the default pipeline, e.g. via `insert_before`/`insert_after`/
+                `remove`. May be combined with `module_to_env_connector`.
             add_default_connectors_to_env_to_module_pipeline: If True (default), RLlib's
                 EnvRunners automatically add the default env-to-module ConnectorV2
                 pieces to the EnvToModulePipeline. These automatically perform adding
@@ -2162,8 +2256,12 @@ class AlgorithmConfig(_Config):
             self.create_env_on_local_worker = create_env_on_local_worker
         if env_to_module_connector is not NotProvided:
             self._env_to_module_connector = env_to_module_connector
+        if env_to_module_connector_builder is not NotProvided:
+            self._env_to_module_connector_builder = env_to_module_connector_builder
         if module_to_env_connector is not NotProvided:
             self._module_to_env_connector = module_to_env_connector
+        if module_to_env_connector_builder is not NotProvided:
+            self._module_to_env_connector_builder = module_to_env_connector_builder
         if add_default_connectors_to_env_to_module_pipeline is not NotProvided:
             self.add_default_connectors_to_env_to_module_pipeline = (
                 add_default_connectors_to_env_to_module_pipeline
@@ -2312,6 +2410,12 @@ class AlgorithmConfig(_Config):
                 Union["ConnectorV2", List["ConnectorV2"]],
             ]
         ] = NotProvided,
+        learner_connector_builder: Optional[
+            Callable[
+                ["LearnerConnectorPipeline", Optional[DeviceType]],
+                "LearnerConnectorPipeline",
+            ]
+        ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
     ) -> Self:
@@ -2368,6 +2472,11 @@ class AlgorithmConfig(_Config):
             learner_connector: A callable taking an env observation space and an env
                 action space as inputs and returning a learner ConnectorV2 or
                 list of ConnectorV2's as part of pipeline object.
+            learner_connector_builder: A callable taking the fully built
+                `LearnerConnectorPipeline` (including RLlib's default pieces) and the
+                `device`, and returning a (modified) pipeline. Use it to customize
+                the default pipeline, e.g. via `insert_before`/`insert_after`/
+                `remove`. May be combined with `learner_connector`.
             add_default_connectors_to_learner_pipeline: If True (default), RLlib's
                 Learners automatically add the default Learner ConnectorV2
                 pieces to the LearnerPipeline. These automatically perform:
@@ -2422,6 +2531,8 @@ class AlgorithmConfig(_Config):
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
             self._learner_connector = learner_connector
+        if learner_connector_builder is not NotProvided:
+            self._learner_connector_builder = learner_connector_builder
         if add_default_connectors_to_learner_pipeline is not NotProvided:
             self.add_default_connectors_to_learner_pipeline = (
                 add_default_connectors_to_learner_pipeline
@@ -6298,6 +6409,12 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
         learner_connector: Optional[
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
+        learner_connector_builder: Optional[
+            Callable[
+                ["LearnerConnectorPipeline", Optional[DeviceType]],
+                "LearnerConnectorPipeline",
+            ]
+        ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         differentiable_learner_configs: List[DifferentiableLearnerConfig] = NotProvided,
@@ -6311,6 +6428,11 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             learner_connector: A callable taking an env observation space and an env
                 action space as inputs and returning a learner ConnectorV2 (might be
                 a pipeline) object.
+            learner_connector_builder: A callable taking the fully built
+                `LearnerConnectorPipeline` (including RLlib's default pieces) and the
+                `device`, and returning a (modified) pipeline. Use it to customize
+                the default pipeline, e.g. via `insert_before`/`insert_after`/
+                `remove`. May be combined with `learner_connector`.
             add_default_connectors_to_learner_pipeline: If True (default), RLlib's
                 Learners automatically add the default Learner ConnectorV2
                 pieces to the LearnerPipeline. These automatically perform:
@@ -6341,6 +6463,8 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
             self._learner_connector = learner_connector
+        if learner_connector_builder is not NotProvided:
+            self._learner_connector_builder = learner_connector_builder
         if add_default_connectors_to_learner_pipeline is not NotProvided:
             self.add_default_connectors_to_learner_pipeline = (
                 add_default_connectors_to_learner_pipeline
