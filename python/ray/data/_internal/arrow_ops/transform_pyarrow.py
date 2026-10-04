@@ -1,6 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -227,6 +228,23 @@ def _group_indices(
     return grouped_indices, offsets
 
 
+@lru_cache()
+def _get_nullable_integer_dtypes() -> Dict["pyarrow.DataType", Any]:
+    """Build the pandas dtype map only when the hash fallback is used."""
+    import pandas as pd
+
+    return {
+        pyarrow.int8(): pd.Int8Dtype(),
+        pyarrow.int16(): pd.Int16Dtype(),
+        pyarrow.int32(): pd.Int32Dtype(),
+        pyarrow.int64(): pd.Int64Dtype(),
+        pyarrow.uint8(): pd.UInt8Dtype(),
+        pyarrow.uint16(): pd.UInt16Dtype(),
+        pyarrow.uint32(): pd.UInt32Dtype(),
+        pyarrow.uint64(): pd.UInt64Dtype(),
+    }
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -249,19 +267,10 @@ def _hash_partition(
 
         # ArrowExtensionArray converts nullable integers to float64 when pandas
         # hashes them, so use pandas' nullable integer dtypes instead.
-        nullable_integer_dtypes = {
-            pyarrow.int8(): pd.Int8Dtype(),
-            pyarrow.int16(): pd.Int16Dtype(),
-            pyarrow.int32(): pd.Int32Dtype(),
-            pyarrow.int64(): pd.Int64Dtype(),
-            pyarrow.uint8(): pd.UInt8Dtype(),
-            pyarrow.uint16(): pd.UInt16Dtype(),
-            pyarrow.uint32(): pd.UInt32Dtype(),
-            pyarrow.uint64(): pd.UInt64Dtype(),
-        }
+        nullable_integer_dtypes = _get_nullable_integer_dtypes()
 
         def types_mapper(dtype):
-            return nullable_integer_dtypes.get(dtype, pd.ArrowDtype(dtype))
+            return nullable_integer_dtypes.get(dtype) or pd.ArrowDtype(dtype)
 
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=types_mapper), index=False
