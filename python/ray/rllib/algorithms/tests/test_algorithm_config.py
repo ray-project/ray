@@ -1,3 +1,4 @@
+import copy
 import unittest
 from typing import Type
 
@@ -737,6 +738,96 @@ class TestAlgorithmConfig(unittest.TestCase):
         names = [type(c).__name__ for c in pipeline.connectors]
         self.assertIn("Marker", names)
         self.assertEqual(seen_device, ["cpu"])
+
+    def test_connector_builder_receives_device(self):
+        """All three builder hooks receive the `device` kwarg."""
+        env = gym.make("CartPole-v1")
+        seen = {}
+
+        def make(name):
+            def builder(pipeline, device=None):
+                seen[name] = device
+                return pipeline
+
+            return builder
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                env_to_module_connector_builder=make("env_to_module"),
+                module_to_env_connector_builder=make("module_to_env"),
+            )
+            .learners(learner_connector_builder=make("learner"))
+        )
+        config.build_env_to_module_connector(env=env, device="cpu")
+        config.build_module_to_env_connector(env=env, device="cpu")
+        config.build_learner_connector(
+            env.observation_space, env.action_space, device="cpu"
+        )
+        self.assertEqual(
+            seen,
+            {"env_to_module": "cpu", "module_to_env": "cpu", "learner": "cpu"},
+        )
+
+    def test_connector_builder_must_return_pipeline(self):
+        """A builder that doesn't return the specific pipeline type raises."""
+        env = gym.make("CartPole-v1")
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(env_to_module_connector_builder=lambda p, device: None)
+        )
+        with self.assertRaisesRegex(ValueError, "must return an `EnvToModulePipeline`"):
+            config.build_env_to_module_connector(env=env)
+
+    def test_connector_builder_with_defaults_disabled(self):
+        """With default connectors disabled, the builder runs on the bare pipeline."""
+        from ray.rllib.connectors.connector_v2 import ConnectorV2
+
+        class Marker(ConnectorV2):
+            def __call__(self, *, rl_module, batch, episodes, shared_data=None):
+                return batch
+
+        env = gym.make("CartPole-v1")
+
+        def builder(pipeline, device=None):
+            pipeline.prepend(Marker())
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                add_default_connectors_to_env_to_module_pipeline=False,
+                env_to_module_connector_builder=builder,
+            )
+        )
+        names = [
+            type(c).__name__
+            for c in config.build_env_to_module_connector(env=env).connectors
+        ]
+        self.assertEqual(names, ["Marker"])
+
+    def test_connector_builder_config_roundtrip(self):
+        """`to_dict`/`from_dict` and `deepcopy` preserve the builder callable."""
+
+        def builder(pipeline, device=None):
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(env_to_module_connector_builder=builder)
+        )
+        self.assertIs(
+            PPOConfig.from_dict(config.to_dict())._env_to_module_connector_builder,
+            builder,
+        )
+        self.assertIs(
+            copy.deepcopy(config)._env_to_module_connector_builder,
+            builder,
+        )
 
 
 if __name__ == "__main__":
