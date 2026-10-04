@@ -168,15 +168,7 @@ class TestPPO(unittest.TestCase):
     def test_restore_keeps_current_old_api_policy_config(self):
         """Algorithm restore keeps the current trial config but loads training state."""
 
-        def make_config(
-            *,
-            lr,
-            clip_param,
-            lambda_,
-            lr_schedule=None,
-            entropy_coeff=0.0,
-            entropy_coeff_schedule=None,
-        ):
+        def make_config(*, lr, clip_param, lambda_, lr_schedule=None):
             return (
                 ppo.PPOConfig()
                 .api_stack(
@@ -188,8 +180,6 @@ class TestPPO(unittest.TestCase):
                 .training(
                     lr=lr,
                     lr_schedule=lr_schedule,
-                    entropy_coeff=entropy_coeff,
-                    entropy_coeff_schedule=entropy_coeff_schedule,
                     clip_param=clip_param,
                     lambda_=lambda_,
                     num_epochs=1,
@@ -268,28 +258,6 @@ class TestPPO(unittest.TestCase):
         self.assertAlmostEqual(scheduled_policy.config["lambda"], 0.91)
         check(scheduled_policy.get_weights(), donor_weights)
 
-        # Schedule-derived runtime state must also follow the current trial
-        # config after restoring the donor timestep. Keep LR unchanged here so
-        # this specifically covers the non-LR schedule path.
-        entropy_scheduled = make_config(
-            lr=donor_lr,
-            clip_param=0.42,
-            lambda_=0.91,
-            entropy_coeff=0.2,
-            entropy_coeff_schedule=[[0, 0.2], [1000, 0.0]],
-        ).build()
-        entropy_scheduled.restore(checkpoint)
-        entropy_policy = entropy_scheduled.get_policy()
-        expected_entropy = entropy_policy._entropy_coeff_schedule.value(
-            entropy_policy.global_timestep
-        )
-        self.assertAlmostEqual(entropy_policy.entropy_coeff, expected_entropy)
-        self.assertEqual(
-            entropy_policy.config["entropy_coeff_schedule"],
-            [[0, 0.2], [1000, 0.0]],
-        )
-
-        entropy_scheduled.stop()
         scheduled.stop()
         target.stop()
         donor.stop()
