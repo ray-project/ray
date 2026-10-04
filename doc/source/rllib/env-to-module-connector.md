@@ -282,18 +282,28 @@ the trailing default pieces automatically add these changed observations to the 
 Use `env_to_module_connector_builder` when you want to keep RLlib's default pieces but change the pipeline itself, for example insert a piece between two default pieces or remove a default one. RLlib calls your builder with the fully-built `EnvToModulePipeline` (including all default pieces) and the `device`, and uses the returned pipeline:
 
 ```{testcode}
-:skipif: True
+import gymnasium as gym
 
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.common import BatchIndividualItems, NumpyToTensor
+from ray.rllib.connectors.env_to_module import MeanStdFilter
+
+config = PPOConfig().environment("CartPole-v1")
+
 
 def my_env_to_module_builder(pipeline, device):
-    # Insert a custom piece right before the `BatchIndividualItems` default piece.
-    pipeline.insert_before(BatchIndividualItems, MyEnvToModuleConnector(..))
+    # Insert a connector piece right before the `BatchIndividualItems` default piece.
+    pipeline.insert_before(BatchIndividualItems, MeanStdFilter())
     # Remove a default piece you don't need.
     pipeline.remove(NumpyToTensor)
     return pipeline
 
+
 config.env_runners(env_to_module_connector_builder=my_env_to_module_builder)
+
+# Build the pipeline to apply the builder.
+env = gym.make("CartPole-v1")
+env_to_module = config.build_env_to_module_connector(env=env)
 ```
 
 Unlike `env_to_module_connector`, which only adds pieces at the front, the builder receives the whole pipeline, so you can position custom pieces anywhere and drop default ones. You can also combine both: RLlib first places the `env_to_module_connector` pieces, then adds the default pieces, and finally calls the builder with the fully-built pipeline.
