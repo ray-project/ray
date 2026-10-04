@@ -21,6 +21,8 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch
+from ray.rllib.connectors.learner import AddNextObservationsFromEpisodesToTrainBatch
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
@@ -519,6 +521,18 @@ class DQNConfig(AlgorithmConfig):
             )
         else:
             return self.rollout_fragment_length
+
+    @override(AlgorithmConfig)
+    def _default_learner_connectors(self, pipeline, device=None):
+        pipeline = super()._default_learner_connectors(pipeline, device=device)
+        if self.add_default_connectors_to_learner_pipeline:
+            # Add the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+            # after the corresponding "add-OBS-..." default piece).
+            pipeline.insert_after(
+                AddObservationsFromEpisodesToBatch,
+                AddNextObservationsFromEpisodesToTrainBatch(),
+            )
+        return pipeline
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
