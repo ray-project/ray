@@ -71,6 +71,18 @@ def test_train_iter_ctx_fails_after_repeated_sampling_timeouts_without_progress(
             ctx.should_stop(True)
 
 
+def test_train_iter_ctx_treats_empty_old_stack_result_as_no_progress():
+    """An empty old-stack training result is not a worker failure, but can stall."""
+    algo = _fake_algo(tolerance=1)
+
+    with TrainIterCtx(algo) as ctx:
+        assert ctx.should_stop(None) is False
+        # PPO's old-stack training step returns {} when sampling times out.
+        assert ctx.should_stop({}) is False
+        with pytest.raises(RuntimeError, match="No sampling progress"):
+            ctx.should_stop({})
+
+
 def test_train_iter_ctx_resets_no_progress_watchdog_after_sampling_progress():
     algo = _fake_algo(tolerance=1, min_sample_timesteps=3)
 
