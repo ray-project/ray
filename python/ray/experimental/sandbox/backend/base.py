@@ -4,8 +4,10 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SandboxStatus(Enum):
     """Operational status of a Sandbox."""
 
@@ -15,6 +17,7 @@ class SandboxStatus(Enum):
     ERROR = "ERROR"
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class ExecResult:
     """Result of executing a command inside a Sandbox.
@@ -84,6 +87,8 @@ class BaseSandboxBackend(ABC):
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command synchronously inside the sandbox.
 
@@ -93,6 +98,12 @@ class BaseSandboxBackend(ABC):
             timeout: Optional maximum execution time in seconds.
             cwd: Optional working directory override.
             env: Optional additional environment variables.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+            user: Optional user to run as: a numeric uid, "uid:gid", or a
+                user (optionally ":group") name, resolved against the
+                /etc/passwd and /etc/group inside the running sandbox
+                (default: the image user).
 
         Returns:
             An ExecResult instance containing stdout, stderr, and exit code.
@@ -101,7 +112,11 @@ class BaseSandboxBackend(ABC):
 
     @abstractmethod
     def write_file(
-        self, sandbox_id: str, path: str, content: Union[str, bytes]
+        self,
+        sandbox_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
         """Write content to a file inside the sandbox.
 
@@ -109,6 +124,7 @@ class BaseSandboxBackend(ABC):
             sandbox_id: Unique string identifier of the sandbox.
             path: Target file path inside the sandbox environment.
             content: Text string or raw bytes to write.
+            append: Append to the file instead of truncating it.
         """
         pass
 

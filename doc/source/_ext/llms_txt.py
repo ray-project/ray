@@ -63,6 +63,11 @@ Config values (set generic defaults here; Ray specifics live in ``conf.py``):
     Absolute base URL for generated links. Defaults to ``html_baseurl``; set it
     to the current build's canonical URL (e.g. ``READTHEDOCS_CANONICAL_URL``) so
     links track the version being built rather than a pinned SEO canonical.
+``llms_txt_markdown_hint``
+    Whether to tell agents that the page URLs also serve Markdown under an
+    ``Accept: text/markdown`` request (default ``False``). Only enable it where
+    the host actually negotiates that type — otherwise the index advertises a
+    representation that doesn't exist.
 
 All work happens in ``build-finished`` so it is parallel-safe, and the module
 sticks to APIs that survive the Sphinx 8 -> 9 jump (``findall`` not
@@ -365,6 +370,7 @@ def _render_index(
     meta_types,
     cache,
     full_enabled,
+    markdown_hint=False,
 ):
     """Render the root ``llms.txt`` index as a string.
 
@@ -380,6 +386,13 @@ def _render_index(
         lines += [
             "Full page text, grouped by section, is in "
             f"[llms-full.txt]({_asset_url(app, 'llms-full.txt')}).",
+            "",
+        ]
+    if markdown_hint:
+        lines += [
+            "Request the links that follow with the HTTP header "
+            "`Accept: text/markdown` to retrieve a Markdown rendering of the "
+            "page.",
             "",
         ]
 
@@ -712,6 +725,7 @@ def on_build_finished(app, exception):
         meta_types,
         cache,
         full_enabled,
+        getattr(config, "llms_txt_markdown_hint", False),
     )
     (Path(app.outdir) / "llms.txt").write_text(index, encoding="utf-8")
     logger.info("[llms_txt] wrote llms.txt (%d sections)", len(sections))
@@ -732,6 +746,7 @@ def setup(app):
     app.add_config_value("llms_txt_full_max_shard_tokens", 200000, "html")
     app.add_config_value("llms_txt_build", True, "html")
     app.add_config_value("llms_txt_base_url", None, "html")
+    app.add_config_value("llms_txt_markdown_hint", False, "html")
 
     app.connect("build-finished", on_build_finished)
 

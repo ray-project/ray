@@ -163,7 +163,7 @@ Note: Starting from KubeRay v1.6, KAI Scheduler supports **RayCluster**, **RaySe
 
 In Kubernetes, assigning different priorities to workloads ensures efficient resource management, minimizes service disruption, and supports better scaling. By prioritizing workloads, KAI Scheduler schedules jobs according to their assigned priority. When sufficient resources aren't available for a workload, the scheduler can preempt lower-priority workloads to free up resources for higher-priority ones. This approach ensures the scheduler always prioritizes that mission-critical services in resource allocation.
 
-KAI scheduler deployment comes with several predefined priority classes:
+KAI Scheduler deployment comes with several predefined priority classes:
 
 - train (50) - use for preemptible training workloads
 - build-preemptible (75) - use for preemptible build/interactive workloads

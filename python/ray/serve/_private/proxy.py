@@ -19,9 +19,6 @@ from typing import (
 )
 
 import grpc
-import starlette
-import starlette.routing
-from packaging import version
 from starlette.types import Receive
 
 import ray
@@ -331,7 +328,7 @@ class GenericProxy(ABC):
             exc: The exception that occurred, if any.
         """
         if exc:
-            set_span_exception(exc, escaped=True)  # type: ignore[arg-type]
+            set_span_exception(exc, escaped=True)
             if status is not None:
                 set_trace_status(status.is_error, str(exc))
         elif status is not None:
@@ -405,16 +402,10 @@ class GenericProxy(ABC):
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
-            route_path = proxy_request.route_path
             if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
                 proxy_request = cast(ASGIProxyRequest, proxy_request)
                 assert not route_prefix.endswith("/")
                 proxy_request.set_root_path(proxy_request.root_path + route_prefix)
-                # NOTE(edoakes): starlette<0.33.0 expected the ASGI 'root_prefix'
-                # to be stripped from the 'path', which wasn't technically following
-                # the standard. See https://github.com/encode/starlette/pull/2352.
-                if version.parse(starlette.__version__) < version.parse("0.33.0"):
-                    proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
             # NOTE(abrar): we try to match to a specific route pattern (e.g., /api/{user_id})
             # for logs & metrics when available. If no pattern matches, we fall back to the

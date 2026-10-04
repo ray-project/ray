@@ -21,6 +21,24 @@ Ray exports a number of system metrics, which provide introspection into the sta
   - `recommended`: Drop high-cardinality labels. Ray internally determines specific labels; currently this includes only `WorkerId`. (This is the default behavior since Ray 2.53.)
   - `low`: Same as `recommended`, but also drops the Name label for tasks and actors.
 
+.. note::
+
+  Ray uses an optional NVML API to collect per-process GPU SM utilization. Ray
+  automatically skips this API for devices whose name matches a known PPU
+  device-name pattern (for example, ``PPU-ZW810``). For other NVML-compatible
+  libraries that don't safely support this API, set
+  ``RAY_SKIP_PROCESS_UTIL_API=true`` on each affected Ray node.
+  To skip specific device names, use the comma-separated
+  ``RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES`` environment variable (names are
+  matched case-insensitively and exactly).
+
+  These variables must be set in the Ray node and Dashboard Reporter process
+  environment before ``ray start`` (for example, in the Pod environment when
+  using KubeRay). They are not applied through ``runtime_env``. Ray continues to
+  report GPU process IDs, allocated GPU memory, and device-level utilization,
+  memory, power, and temperature metrics. Only per-process GPU utilization is
+  unavailable.
+
 .. list-table:: Ray System Metrics
    :header-rows: 1
 
@@ -42,6 +60,15 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
+   * - OpenTelemetry: `ray_gcs_redis_request_payload_bytes`; OpenCensus: `ray_gcs_redis_request_payload_bytes_total` (plus the deprecated unsuffixed gauge when `RAY_EXPORT_COUNTER_AS_GAUGE=true`)
+     - `Command`, `TableName`
+     - Application bytes in Redis command arguments accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes the verb, Redis key, field names, and values; excludes RESP framing, TLS, and TCP/IP overhead. Recorded on the first successful submission of each logical command; retries are not counted again. `Command` is the actual verb normalized to uppercase ASCII and truncated to 16 bytes; this limits label length, not the number of distinct labels, so production verbs must remain code-controlled. `TableName` is a GCS table, `NONE`, or `ALL`.
+   * - OpenTelemetry: `ray_gcs_redis_response_payload_bytes`; OpenCensus: `ray_gcs_redis_response_payload_bytes_total` (plus the deprecated unsuffixed gauge when `RAY_EXPORT_COUNTER_AS_GAUGE=true`)
+     - `Command`, `TableName`
+     - Application bytes in Redis replies received by the GCS, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes bulk/status strings, HSCAN field names, and integer decimal text; excludes nil replies, error replies that are retried, RESP framing, TLS, and TCP/IP overhead.
+   * - OpenTelemetry and OpenCensus: `ray_gcs_redis_command_count_total`
+     - `Command`, `TableName`
+     - Number of logical Redis commands accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Batches count per chunk and table scans per HSCAN command; retries are not counted again, so this is not a count of network round trips. All three metrics exclude connection-establishment commands sent through synchronous or raw connection paths, such as `AUTH`, `SENTINEL MASTERS`, and `INFO CLUSTER`; they do not measure total Redis network traffic. Divide the byte metrics by this for mean bytes per logical command. Set `RAY_gcs_redis_payload_metrics_enabled=false` to stop recording all three metrics. Ray's `Sum` instrument is exposed as an OpenTelemetry up-down counter even though these byte metrics only record positive deltas, which is why its Prometheus name has no `_total` suffix on that backend.
    * - `ray_memory_manager_worker_eviction_total`
      - `Type`, `Name`
      - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).

@@ -15,6 +15,9 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <deque>
+#include <functional>
 #include <future>
 #include <memory>
 #include <string>
@@ -33,6 +36,7 @@
 #include <google/protobuf/util/json_util.h>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "ray/asio/periodical_runner.h"
@@ -55,9 +59,85 @@ using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
 
+/**
+ * @brief Per-request state for one CoreWorker::WaitAsync.
+ *
+ * Mutated under ``WaitAsyncRegistry::mu``. ``callback == nullptr`` means
+ * completed.
+ */
+struct WaitAsyncState {
+  ObjectID object_id;
+  void (*callback)(Status status, void *callback_arg) = nullptr;
+  void *callback_arg = nullptr;
+  CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id = 0;
+};
+
+/**
+ * @brief In-flight WaitAsync table.
+ *
+ * GetAsync callbacks capture a shared_ptr to this, not ``CoreWorker``. A
+ * completion after destruction finds no handle and returns. Each wait stays
+ * ``unique_ptr``. ``memory_store`` is nulled in ``~CoreWorker`` so a late
+ * finish cannot CancelGetAsync on a destroyed store.
+ */
+struct WaitAsyncRegistry {
+  absl::Mutex mu;
+  uint64_t next_handle ABSL_GUARDED_BY(mu) = 0;
+  absl::flat_hash_map<uint64_t, std::unique_ptr<WaitAsyncState>> requests
+      ABSL_GUARDED_BY(mu);
+  bool shutdown ABSL_GUARDED_BY(mu) = false;
+  CoreWorkerMemoryStore *memory_store ABSL_GUARDED_BY(mu) = nullptr;
+};
+
 namespace {
 // Default capacity for serialization caches.
 constexpr size_t kDefaultSerializationCacheCap = 500;
+
+/**
+ * @brief Complete one WaitAsync request. No-op if ``handle`` is already gone.
+ *
+ * CancelGetAsync runs under ``registry.mu`` so ``~CoreWorker`` cannot null
+ * ``memory_store`` until this returns. The user callback runs after unlock
+ * (it may re-enter WaitAsync).
+ *
+ * @param[in,out] registry In-flight WaitAsync table. The matching request is
+ * erased under ``registry.mu``.
+ * @param[in] handle Token from ``CoreWorker::WaitAsync``. Zero or a missing
+ * handle is a no-op.
+ * @param[in] status Passed to the user callback (OK, cancel, or shutdown).
+ * @return None. Missing or already-completed handles return without invoking
+ * the user callback.
+ */
+void CompleteWaitAsync(WaitAsyncRegistry &registry, uint64_t handle, Status status) {
+  void (*callback)(Status status, void *callback_arg) = nullptr;
+  void *callback_arg = nullptr;
+  {
+    absl::MutexLock lock(&registry.mu);
+    absl::flat_hash_map<uint64_t, std::unique_ptr<WaitAsyncState>>::iterator it =
+        registry.requests.find(handle);
+    if (it == registry.requests.end()) {
+      return;
+    }
+    WaitAsyncState &state = *it->second;
+    if (state.callback == nullptr) {
+      return;
+    }
+    callback = state.callback;
+    callback_arg = state.callback_arg;
+    ObjectID object_id = state.object_id;
+    CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id =
+        state.memory_callback_id;
+    state.callback = nullptr;
+    state.callback_arg = nullptr;
+    registry.requests.erase(it);
+    if (memory_callback_id != 0 && registry.memory_store != nullptr) {
+      registry.memory_store->CancelGetAsync(object_id, memory_callback_id);
+    }
+  }
+  if (callback != nullptr) {
+    callback(std::move(status), callback_arg);
+  }
+}
 
 // Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
 // These states override the RUNNING state of a task.
@@ -400,7 +480,20 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }),
+      max_free_local_objects_batch_size_(
+          static_cast<size_t>(RayConfig::instance().max_free_local_objects_batch_size())),
       clock_(clock) {
+  wait_async_ = std::make_shared<WaitAsyncRegistry>();
+  {
+    absl::MutexLock lock(&wait_async_->mu);
+    wait_async_->memory_store = memory_store_.get();
+  }
+  RAY_CHECK(RayConfig::instance().max_free_local_objects_batch_size() > 0)
+      << "max_free_local_objects_batch_size must be positive, got "
+      << RayConfig::instance().max_free_local_objects_batch_size();
+  RAY_CHECK(RayConfig::instance().free_local_objects_backlog_warn_objects_per_node() > 0)
+      << "free_local_objects_backlog_warn_objects_per_node must be positive, got "
+      << RayConfig::instance().free_local_objects_backlog_warn_objects_per_node();
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -580,7 +673,18 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
+  // Drain first so a completion already inside CompleteWaitAsync can finish
+  // CancelGetAsync while memory_store_ is still alive.
   WaitForShutdownComplete();
+  // Do not invoke the callbacks: this can run after Py_Finalize(). Graceful
+  // shutdown already cancelled pending waits (CancelAllWaitAsync). A
+  // non-empty map here means shutdown never ran; leak on process exit.
+  // Posted GetAsync still holds wait_async_; they miss the handle and return.
+  {
+    absl::MutexLock lock(&wait_async_->mu);
+    wait_async_->memory_store = nullptr;
+    wait_async_->requests.clear();
+  }
   RAY_LOG(INFO) << "Core worker is destructed";
 }
 
@@ -885,6 +989,7 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
         to_erase.push_back(generator_id);
         // Mark the gen task canceled so the executor loop bails before the
         // next gen.send instead of running another iteration of user code.
+        absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
         canceled_tasks_.insert(generator_id.TaskId());
       }
     }
@@ -1712,6 +1817,79 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
+void CoreWorker::FinishWaitAsync(uint64_t handle, Status status) {
+  CompleteWaitAsync(*wait_async_, handle, std::move(status));
+}
+
+uint64_t CoreWorker::WaitAsync(const ObjectID &object_id,
+                               void (*callback)(Status status, void *callback_arg),
+                               void *callback_arg) {
+  rpc::Address owner_address;
+  Status owner_status = GetOwnerAddress(object_id, &owner_address);
+  if (!owner_status.ok()) {
+    callback(std::move(owner_status), callback_arg);
+    return 0;
+  }
+
+  uint64_t handle = 0;
+  {
+    absl::MutexLock lock(&wait_async_->mu);
+    // Once CancelAllWaitAsync has run, io_service_ is about to stop, so a new
+    // registration would never be posted. Fail fast instead of hanging.
+    if (!wait_async_->shutdown) {
+      // 0 is reserved for "already completed". Skip wraparound to 0.
+      ++wait_async_->next_handle;
+      if (wait_async_->next_handle == 0) {
+        ++wait_async_->next_handle;
+      }
+      handle = wait_async_->next_handle;
+      std::unique_ptr<WaitAsyncState> state = std::make_unique<WaitAsyncState>();
+      state->object_id = object_id;
+      state->callback = callback;
+      state->callback_arg = callback_arg;
+      wait_async_->requests[handle] = std::move(state);
+      // Store memory_callback_id under the lock so CancelWaitAsync cannot
+      // miss a queued GetAsync. The posted completion holds wait_async_, not
+      // ``this``; CompleteWaitAsync returns if the handle is already gone.
+      std::shared_ptr<WaitAsyncRegistry> registry = wait_async_;
+      wait_async_->requests[handle]->memory_callback_id = memory_store_->GetAsync(
+          object_id, [registry, handle](std::shared_ptr<RayObject>) {
+            CompleteWaitAsync(*registry, handle, Status::OK());
+          });
+    }
+  }
+  if (handle == 0) {
+    callback(Status::Invalid("Core worker is shutting down."), callback_arg);
+    return 0;
+  }
+  return handle;
+}
+
+void CoreWorker::CancelWaitAsync(uint64_t handle) {
+  if (handle == 0) {
+    return;
+  }
+  FinishWaitAsync(handle, Status::Invalid("WaitAsync cancelled"));
+}
+
+void CoreWorker::CancelAllWaitAsync() {
+  // Collect handles under the lock, then finish outside it: CompleteWaitAsync
+  // takes registry.mu to unregister, so holding it here would deadlock.
+  std::vector<uint64_t> handles;
+  {
+    absl::MutexLock lock(&wait_async_->mu);
+    wait_async_->shutdown = true;
+    handles.reserve(wait_async_->requests.size());
+    for (const std::pair<const uint64_t, std::unique_ptr<WaitAsyncState>> &entry :
+         wait_async_->requests) {
+      handles.push_back(entry.first);
+    }
+  }
+  for (uint64_t handle : handles) {
+    FinishWaitAsync(handle, Status::Invalid("Core worker is shutting down."));
+  }
+}
+
 Status CoreWorker::GetLocationFromOwner(
     const std::vector<ObjectID> &object_ids,
     int64_t timeout_ms,
@@ -1793,7 +1971,7 @@ Status CoreWorker::GetLocationFromOwner(
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
   } else if (ready_promise->get_future().wait_for(
-                 std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
+                 std::chrono::milliseconds(timeout_ms)) != std::future_status::ready) {
     std::ostringstream stream;
     stream << "Failed querying object locations within " << timeout_ms
            << " milliseconds.";
@@ -2616,7 +2794,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
   // populated when CancelTask RPC is received.
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&canceled_tasks_mutex_);
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
@@ -3144,7 +3322,10 @@ Status CoreWorker::ExecuteTask(
     size_t erased = running_tasks_.erase(task_spec.TaskId());
     RAY_CHECK(erased == 1);
     // Clean up cancellation state for this task
-    canceled_tasks_.erase(task_spec.TaskId());
+    {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
+      canceled_tasks_.erase(task_spec.TaskId());
+    }
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -3426,6 +3607,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
                        << "index: " << item_index;
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
+        waiter->OnObjectReportAccepted();
         if (!status.ok()) {
           // If the request fails, we should just resume until task finishes without
           // backpressure.
@@ -3433,9 +3615,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
               << status;
-        }
-        waiter->OnObjectReportAccepted();
-        if (!status.ok()) {
+
           waiter->OnObjectConsumed(waiter->TotalObjectGenerated());
           if (actor_metadata) {
             actor_metadata->Teardown();
@@ -3788,7 +3968,11 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
-    worker_context_->MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    if (worker_context_->MaybeInitializeJobInfo(job_id,
+                                                request.task_spec().job_config())) {
+      reference_counter_->SetLineagePinningEnabled(
+          worker_context_->ShouldPinObjectLineage());
+    }
     task_counter_.SetJobId(job_id);
   }
 
@@ -4145,11 +4329,6 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;
   }
-  auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
-  if (!reference_exists) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object not found";
-  }
-
   // For generator tasks where we haven't yet received the task reply, the
   // internal ObjectRefs may not be added yet, so we don't find out about these
   // until the task finishes.
@@ -4165,7 +4344,11 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
       // ObjectID so that we can update its location.
       reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
     }
-    RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
+  }
+  if (!reference_counter_->AddObjectLocation(object_id, node_id)) {
+    // The ref may be dropped and free objects sent before this report arrives, so free
+    // the additional copies here.
+    FreeObjectOnNodesAsync(object_id, {node_id});
   }
 }
 
@@ -4323,6 +4506,7 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
     requested_task_running = main_thread_task_id_ == task_id;
 
     if (requested_task_running) {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
       canceled_tasks_.insert(task_id);
     }
   }
@@ -4379,6 +4563,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
 
         if (is_running) {
+          absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
           canceled_tasks_.insert(task_id);
         }
       }
@@ -4981,16 +5166,89 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
-  rpc::FreeLocalObjectsRequest request;
-  request.add_object_ids(object_id.Binary());
+  RAY_LOG(DEBUG) << absl::StrFormat("Freeing object %s asynchronously via request.",
+                                    object_id.Hex());
 
+  const size_t warn_backlog = static_cast<size_t>(
+      RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
   for (const auto &node_id : locations) {
-    auto client = GetRayletRpcClient(node_id);
-    if (client == nullptr) {
-      continue;
+    {
+      absl::MutexLock lock(&free_batch_mu_);
+      std::deque<ObjectID> &queue = free_pending_[node_id];
+      queue.push_back(object_id);
+      // Warn on first crossing the threshold, then every 1024 objects. Keep
+      // buffering; never drop.
+      if (queue.size() >= warn_backlog && (queue.size() - warn_backlog) % 1024 == 0) {
+        RAY_LOG(WARNING) << "FreeLocalObjects backlog for node " << node_id << " is "
+                         << queue.size()
+                         << " objects; it is draining slowly or is unreachable.";
+      }
     }
-    client->FreeLocalObjects(request);
+    SendFreeLocalObjectsBatchIfNeeded(node_id);
   }
+}
+
+void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
+  rpc::FreeLocalObjectsRequest request;
+  {
+    absl::MutexLock lock(&free_batch_mu_);
+    if (free_in_flight_.contains(node_id)) {
+      // If there's an in-flight request, the queue will be sent once the request
+      // is replied from the raylet.
+      return;
+    }
+    absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+        free_pending_.find(node_id);
+    if (it == free_pending_.end()) {
+      // No queue for this node; an entry is erased as soon as its queue drains, so
+      // a present entry is always non-empty.
+      return;
+    }
+    std::deque<ObjectID> &queue = it->second;
+    const size_t n = std::min(max_free_local_objects_batch_size_, queue.size());
+    request.mutable_object_ids()->Reserve(static_cast<int>(n));
+    for (size_t i = 0; i < n; i++) {
+      request.add_object_ids(queue.front().Binary());
+      queue.pop_front();
+    }
+    if (queue.empty()) {
+      free_pending_.erase(it);
+    }
+    free_in_flight_.insert(node_id);
+  }
+
+  std::shared_ptr<RayletClientInterface> client = GetRayletRpcClient(node_id);
+  if (client == nullptr) {
+    // Node is gone: clear in-flight and drop its queue so it cannot wedge.
+    absl::MutexLock lock(&free_batch_mu_);
+    free_in_flight_.erase(node_id);
+    free_pending_.erase(node_id);
+    return;
+  }
+  // Safe to capture `this`: the reply runs on io_service_, which is stopped
+  // before the CoreWorker is destroyed during shutdown.
+  client->FreeLocalObjects(
+      request, [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
+        {
+          absl::MutexLock lock(&free_batch_mu_);
+          free_in_flight_.erase(node_id);
+          if (!status.ok()) {
+            // The retryable client only surfaces an error once the node is dead;
+            // its copies died with it, so drop the queue instead of wedging.
+            absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+                free_pending_.find(node_id);
+            const size_t dropped = (it == free_pending_.end()) ? 0 : it->second.size();
+            if (it != free_pending_.end()) {
+              free_pending_.erase(it);
+            }
+            RAY_LOG(INFO).WithField(node_id)
+                << "FreeLocalObjects RPC failed (" << status << "); dropping " << dropped
+                << " buffered free request(s) for this node, which is likely dead.";
+            return;
+          }
+        }
+        SendFreeLocalObjectsBatchIfNeeded(node_id);
+      });
 }
 
 }  // namespace ray::core

@@ -979,6 +979,51 @@ def test_setting_initial_size_for_actor_pool():
     ray.shutdown()
 
 
+def test_max_concurrent_calls_per_actor_raises_on_invalid():
+    # The value must be positive.
+    with pytest.raises(ValueError, match="max_concurrent_calls_per_actor"):
+        ActorPoolStrategy(max_concurrent_calls_per_actor=0)
+
+
+def test_max_concurrent_calls_per_actor_passed_to_actor_pool():
+    data_context = DataContext.get_current()
+    # Use 2 instead of the default 1 so the test fails if the option is ignored.
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_concurrent_calls_per_actor=2,
+    )
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+    )
+
+    # Verify that the value is passed to the operator's actor pool.
+    pools = op.get_autoscaling_actor_pools()
+    assert len(pools) == 1, len(pools)
+    assert pools[0].max_actor_concurrency() == 2
+
+
+def test_max_concurrent_calls_per_actor_warns_on_conflict():
+    data_context = DataContext.get_current()
+    # Set the new actor concurrency option.
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_concurrent_calls_per_actor=2,
+    )
+
+    # Warn that max_concurrent_calls_per_actor takes precedence over max_concurrency.
+    with pytest.warns(UserWarning, match="takes precedence"):
+        MapOperator.create(
+            map_transformer=MagicMock(),
+            input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+            data_context=data_context,
+            compute_strategy=compute_strategy,
+            ray_remote_args={"max_concurrency": 1},
+        )
+
+
 def _create_bundle_with_single_row(row):
     block = pa.Table.from_pylist([row])
     block_ref = ray.put(block)
@@ -1167,11 +1212,14 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
-    # max_resource_usage: 2 actors * (1 gpu)
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
+    # GPU ops default to 1 CPU per actor.
+    # min_resource_usage: 1 actor * (1 cpu, 1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 cpu, 1 gpu)
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
     assert max_resource_usage_bound == ExecutionResources(
-        gpu=2, object_store_memory=float("inf")
+        cpu=2, gpu=2, object_store_memory=float("inf")
     )
 
 
@@ -1193,10 +1241,12 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # Unbounded pools should return infinite max resources for GPU (which is used),
-    # but 0 for CPU/memory (which are not specified) to prevent hoarding.
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
-    assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
+    # Unbounded pools should return infinite max resources for GPU and CPU (GPU
+    # ops default to 1 CPU), but 0 for memory (not specified) to prevent hoarding.
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
+    assert max_resource_usage_bound == ExecutionResources.for_limits(memory=0)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
@@ -1310,6 +1360,58 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
     assert actor_pool_map_op.has_completed()
+
+
+def test_dead_actor_released_and_replaced_e2e(shutdown_only, restore_data_context):
+    """A dead actor must be released from the pool and replaced (#62746).
+
+    With a fixed-size pool and `max_errored_blocks = -1`, an actor that dies
+    mid-pipeline (e.g. `sys.exit(0)` inside the UDF) used to stay in
+    `_running_actors` forever: the pool's size never dropped, the autoscaler
+    never created a replacement, and the pipeline silently hung.
+    """
+    import sys as _sys
+
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_errored_blocks = -1
+
+    @ray.remote(num_cpus=0)
+    class DeathFlag:
+        def __init__(self):
+            self._died = False
+
+        def should_die(self) -> bool:
+            died, self._died = self._died, True
+            return not died
+
+    flag = DeathFlag.remote()
+
+    class DiesOnce:
+        def __init__(self):
+            self._counter = 0
+
+        def __call__(self, batch):
+            self._counter += 1
+            if self._counter == 3 and ray.get(flag.should_die.remote()):
+                _sys.exit(0)
+            return batch
+
+    ds = (
+        ray.data.range(20, override_num_blocks=20)
+        .map_batches(
+            DiesOnce,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+        )
+        .materialize()
+    )
+
+    # The pipeline completes (instead of hanging), with only the blocks that
+    # were in flight on the dead actor dropped.
+    assert ds.count() > 0
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):

@@ -16,8 +16,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from jinja2 import Environment
-
 import ray
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
@@ -62,6 +60,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
+    RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT,
+    RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED,
     RAY_SERVE_HAPROXY_RETRIES,
     RAY_SERVE_HAPROXY_RETRY_ON,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
@@ -80,6 +80,7 @@ from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     SERVE_SESSION_ID,
 )
@@ -141,7 +142,7 @@ def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
 ) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router pool and replica map, restricted to backends with both.
+    """Router pools and replica maps for routed or fallback-enabled backends.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
@@ -150,7 +151,10 @@ def _routers_and_targets_by_backend(
     routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
-        if not backend.ingress_request_router_servers:
+        if (
+            not backend.ingress_request_router_servers
+            and not backend.ingress_router_fallback
+        ):
             continue
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
@@ -159,7 +163,9 @@ def _routers_and_targets_by_backend(
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
-        if colocated:
+        if not candidates:
+            pool = []
+        elif colocated:
             pool = sorted(colocated, key=lambda s: (s.host, s.port))
         else:
             pool = [min(candidates, key=lambda s: (s.host, s.port))]
@@ -518,6 +524,8 @@ class BackendConfig:
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
+    # Stays true when a configured router has no running replicas.
+    ingress_router_fallback: bool = False
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -652,6 +660,9 @@ class HAProxyConfig:
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
     # See RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S.
     close_spread_time_s: Optional[int] = RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S
+    # See RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED.
+    observe_mark_down_enabled: bool = RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED
+    observe_error_limit: int = RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
@@ -760,14 +771,6 @@ class HAProxyConfig:
     @property
     def grpc_frontend_port(self) -> int:
         return self.grpc_options.port
-
-    @property
-    def root_path(self) -> str:
-        """Global root_path prefix, normalized without a trailing slash.
-
-        Empty when unset so the config template omits root_path handling.
-        """
-        return (self.http_options.root_path or "").rstrip("/")
 
     @property
     def timeout_http_keep_alive_s(self) -> int:
@@ -1289,6 +1292,10 @@ class HAProxyApi(ProxyApi):
     def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
         try:
+            # Imported lazily so that a plain `import ray.serve` doesn't require
+            # jinja2; it's only needed when HAProxy mode is actually used.
+            from jinja2 import Environment
+
             env = Environment()
             # Escapes names before they are rendered into set-var-fmt values.
             env.filters["haproxy_fmt"] = _haproxy_fmt_literal
@@ -1309,7 +1316,7 @@ class HAProxyApi(ProxyApi):
             grpc_backends = [b for b in backends if b.protocol == RequestProtocol.GRPC]
 
             # Derive from the write result: returns None when no backend has
-            # both routers and replicas with IDs (transient during scaling).
+            # replica IDs plus routers or an enabled fallback policy.
             # The ingress request router is HTTP-only.
             ingress_request_router_lua_path = self._write_ingress_request_router_lua(
                 http_backends
@@ -1398,6 +1405,10 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_header_prefix": (
                         SERVE_INGRESS_ROUTER_HEADER_PREFIX
+                    ),
+                    "multiplexed_model_id_headers": (
+                        SERVE_MULTIPLEXED_MODEL_ID,
+                        SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-"),
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_enabled": self.cfg.metrics_enabled,
@@ -2089,6 +2100,7 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            ingress_router_fallback=target_group.ingress_router_fallback,
             app_name=target_group.app_name,
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,

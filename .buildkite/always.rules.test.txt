@@ -10,9 +10,9 @@
 some/random/file.txt: always lint
 python/ray/actor.py: always lint
 
-# Documentation prose emits always without lint. doc/source/index.rst is the
+# Documentation prose emits always without lint. doc/source/index.md is the
 # case that regressed the 27-minute Markdown-only build this rule addresses.
-doc/source/index.rst: always
+doc/source/index.md: always
 doc/source/ray-contribute/getting-involved.md: always
 doc/README.md: always
 
@@ -21,8 +21,12 @@ doc/README.md: always
 doc/source/images/ray-logo.png: always
 doc/source/data/images/dataset-arch.svg: always
 
-# Claude Code skills and agent files participate in no build.
+# Claude Code skills and agent files participate in no build. This holds for
+# both the doc subtree and the repo-root .claude/, which is Markdown plus a
+# settings JSON with no target of its own.
 doc/.claude/skills/sphinx-fix/SKILL.md: always
+.claude/skills/backport-docs/SKILL.md: always
+.claude/settings.json: always
 
 # Executable and config assets under doc/ are deliberately NOT exempt: they can
 # carry code that the code-oriented checks lint. pre_commit is the only
@@ -33,5 +37,14 @@ doc/source/data/examples.yml: always lint
 doc/BUILD.bazel: always lint
 
 # Prose outside doc/ is not exempt; the exemption is scoped to doc/.
-README.rst: always lint
 python/ray/data/README.md: always lint
+
+# The two inputs to `lint: doc_readme` add pypi_readme, which is the step's
+# only trigger. README.rst also shows that prose outside doc/ is not exempt
+# from the code-oriented lint matrix.
+README.rst: always lint pypi_readme
+python/setup.py: always lint pypi_readme
+
+# No other path emits pypi_readme, including neighbors of the two inputs.
+python/ray/setup-dev.py: always lint
+python/requirements.txt: always lint

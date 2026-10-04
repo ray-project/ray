@@ -1,5 +1,3 @@
---index-url https://pypi.org/simple
-
 adlfs==2026.4.0 \
     --hash=sha256:84c6f0fc28403629ef6d6d90f0d1a35a3302179f65ce4686c939a42ad0496d8d \
     --hash=sha256:a12a420583ae2d86d1b02902db147b7da5cf3e6eef40ee53024756a781d5d84f
