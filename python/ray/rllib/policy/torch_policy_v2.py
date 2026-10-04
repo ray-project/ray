@@ -994,11 +994,8 @@ class TorchPolicyV2(Policy):
                     for param_group, lr in zip(optimizer.param_groups, optimizer_lrs):
                         param_group["lr"] = lr
 
-        if preserve_current_policy_config:
-            # Schedule mixins are derived from the current trial config, while
-            # global_timestep is checkpointed training state. Re-evaluate those
-            # schedules at the restored timestep even when LR itself did not
-            # change (for example, an entropy-coeff schedule mutated by PBT).
+            # Re-evaluate a current-trial LR schedule at the restored timestep.
+            # For static LR configs this is a no-op and the values above remain.
             self.on_global_var_update({"timestep": self.global_timestep})
 
     @override(Policy)
