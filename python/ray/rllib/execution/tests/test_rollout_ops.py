@@ -64,7 +64,7 @@ def test_synchronous_parallel_sample_ignores_nan_agent_step_metrics():
     try:
         config = (
             PPOConfig()
-            .environment(_ChangingAgentsEnv)
+            .environment(_ChangingAgentsEnv, disable_env_checking=True)
             .env_runners(
                 num_env_runners=0,
                 batch_mode="complete_episodes",
