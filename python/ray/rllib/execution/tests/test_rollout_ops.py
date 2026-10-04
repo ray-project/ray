@@ -35,20 +35,14 @@ class _ChangingAgentsEnv(MultiAgentEnv):
         self._episode_index += 1
         self._t = 0
         self.agents = (
-            list(self.possible_agents)
-            if self._episode_index == 0
-            else ["agent_0"]
+            list(self.possible_agents) if self._episode_index == 0 else ["agent_0"]
         )
-        return {
-            aid: np.array([0.0], dtype=np.float32) for aid in self.agents
-        }, {}
+        return {aid: np.array([0.0], dtype=np.float32) for aid in self.agents}, {}
 
     def step(self, action_dict):
         self._t += 1
         terminated = self._t >= 2
-        obs = {
-            aid: np.array([0.0], dtype=np.float32) for aid in self.agents
-        }
+        obs = {aid: np.array([0.0], dtype=np.float32) for aid in self.agents}
         rewards = {aid: 0.0 for aid in self.agents}
         terminateds = {aid: terminated for aid in self.agents}
         terminateds["__all__"] = terminated
