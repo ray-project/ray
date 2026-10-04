@@ -88,5 +88,53 @@ def test_no_mount_when_auth_disabled(auth_env, tmp_path):
     assert "RAY_AUTH_TOKEN_PATH" not in command
 
 
+K8S_TOKEN_DIR = "/var/run/secrets/ray.io/serviceaccount"
+
+
+def test_mounts_k8s_token_directory(auth_env, monkeypatch):
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri.is_k8s_token_auth_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri.os.path.isdir",
+        lambda path: path == K8S_TOKEN_DIR,
+    )
+
+    command = _container_command()
+
+    assert f"-v {K8S_TOKEN_DIR}:{K8S_TOKEN_DIR}:ro" in command
+
+
+def test_no_k8s_mount_when_k8s_auth_disabled(auth_env, monkeypatch):
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri.is_k8s_token_auth_enabled",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri.os.path.isdir",
+        lambda path: path == K8S_TOKEN_DIR,
+    )
+
+    command = _container_command()
+
+    assert f"{K8S_TOKEN_DIR}:{K8S_TOKEN_DIR}:ro" not in command
+
+
+def test_no_k8s_mount_when_token_directory_missing(auth_env, monkeypatch):
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri.is_k8s_token_auth_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri.os.path.isdir",
+        lambda path: False,
+    )
+
+    command = _container_command()
+
+    assert f"{K8S_TOKEN_DIR}:{K8S_TOKEN_DIR}:ro" not in command
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

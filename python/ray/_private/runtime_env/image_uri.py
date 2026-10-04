@@ -10,6 +10,7 @@ from ray._private.authentication.authentication_token_setup import (
 from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._raylet import is_k8s_token_auth_enabled
 
 default_logger = logging.getLogger(__name__)
 
@@ -110,7 +111,13 @@ def _modify_context_impl(
 
     # Support for runtime_env['env_vars']
     env_vars.update(context.env_vars)
-
+    # Mount the Kubernetes projected service-account token directory.
+    # Mounting the directory allows Kubernetes token rotation to work.
+    k8s_token_dir = "/var/run/secrets/ray.io/serviceaccount"
+    if is_k8s_token_auth_enabled() and os.path.isdir(k8s_token_dir):
+        container_command.extend(
+            ["-v", f"{k8s_token_dir}:{k8s_token_dir}:ro"]
+        )
     # Mount the token file rather than passing the token via --env, which is
     # logged and visible in `ps`.
     if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in env_vars:
