@@ -149,19 +149,19 @@ class DreamerV3Config(AlgorithmConfig):
         # fmt: on
 
     @override(AlgorithmConfig)
-    def build_env_to_module_connector(self, env, spaces, device):
-        connector = super().build_env_to_module_connector(env, spaces, device)
+    def _default_env_to_module_connectors(self, pipeline, device=None):
+        pipeline = super()._default_env_to_module_connectors(pipeline, device=device)
 
         # Prepend the "is_first" connector such that the RSSM knows, when to insert
         # its (learned) internal state into the batch.
         # We have to do this before the `AddStatesFromEpisodesToBatch` piece
         # such that the column is properly batched/time-ranked.
-        if self.add_default_connectors_to_learner_pipeline:
-            connector.insert_before(
+        if self.add_default_connectors_to_env_to_module_pipeline:
+            pipeline.insert_before(
                 AddStatesFromEpisodesToBatch,
                 AddIsFirstsToBatch(),
             )
-        return connector
+        return pipeline
 
     @property
     def batch_size_B_per_learner(self):

@@ -195,24 +195,16 @@ class CQLConfig(SACConfig):
             )
 
     @override(AlgorithmConfig)
-    def build_learner_connector(
-        self,
-        input_observation_space,
-        input_action_space,
-        device=None,
-    ):
-        pipeline = super().build_learner_connector(
-            input_observation_space=input_observation_space,
-            input_action_space=input_action_space,
-            device=device,
-        )
+    def _default_learner_connectors(self, pipeline, device=None):
+        pipeline = super()._default_learner_connectors(pipeline, device=device)
 
-        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # Add the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
         # after the corresponding "add-OBS-..." default piece).
-        pipeline.insert_after(
-            AddObservationsFromEpisodesToBatch,
-            AddNextObservationsFromEpisodesToTrainBatch(),
-        )
+        if self.add_default_connectors_to_learner_pipeline:
+            pipeline.insert_after(
+                AddObservationsFromEpisodesToBatch,
+                AddNextObservationsFromEpisodesToTrainBatch(),
+            )
 
         return pipeline
 

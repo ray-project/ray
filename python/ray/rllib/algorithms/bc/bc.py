@@ -81,17 +81,8 @@ class BCConfig(MARWILConfig):
             )
 
     @override(AlgorithmConfig)
-    def build_learner_connector(
-        self,
-        input_observation_space,
-        input_action_space,
-        device=None,
-    ):
-        pipeline = super().build_learner_connector(
-            input_observation_space=input_observation_space,
-            input_action_space=input_action_space,
-            device=device,
-        )
+    def _default_learner_connectors(self, pipeline, device=None):
+        pipeline = super()._default_learner_connectors(pipeline, device=device)
 
         # Remove unneeded connectors from the MARWIL connector pipeline.
         pipeline.remove("AddOneTsToEpisodesAndTruncate")
