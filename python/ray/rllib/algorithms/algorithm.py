@@ -859,6 +859,8 @@ class Algorithm(Checkpointable, Trainable):
             self.spaces = self.eval_env_runner_group.get_spaces()
 
         if self.env_runner is None and self.spaces is not None:
+            # The main process has no `device`; per-EnvRunner/Learner pipelines get
+            # their own device when they are built.
             self.env_to_module_connector = self.config.build_env_to_module_connector(
                 spaces=self.spaces
             )
