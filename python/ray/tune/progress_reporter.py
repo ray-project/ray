@@ -1364,6 +1364,8 @@ class TrialProgressCallback(Callback):
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
         self.log_result(trial, trial.last_result, error=True)
+        # The trial is done: drop all per-trial bookkeeping (see #64231).
+        self._discard_trial_state(trial)
 
     def on_trial_complete(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
@@ -1379,6 +1381,35 @@ class TrialProgressCallback(Callback):
                 self.log_result(trial, trial.last_result, error=False)
             else:
                 self._print(f"Trial {trial} completed. Last result: {print_result_str}")
+
+        # The trial is done: drop all per-trial bookkeeping. Retaining it
+        # would pin one entry per completed trial (and the Trial object
+        # itself) for the whole run (see #64231).
+        self._discard_trial_state(trial)
+
+    def _discard_trial_state(self, trial: "Trial"):
+        """Drop per-trial bookkeeping for a finished trial.
+
+        Every dict keyed by the Trial object pins that trial (and its
+        config) for the rest of the run, growing driver RSS linearly with
+        completed trials (see #64231). The notebook progress table is
+        rendered from _last_result, so the finished trial's latest result
+        is preserved under its (string) trial name instead of the Trial
+        object: the table output is unchanged, but the Trial itself stays
+        collectable.
+        """
+        self._completed_trials.discard(trial)
+        for bookkeeping in (
+            self._last_print,
+            self._last_print_iteration,
+            self._last_result_str,
+        ):
+            bookkeeping.pop(trial, None)
+        if trial in self._last_result:
+            # Re-key by trial name: releases the Trial object while keeping
+            # the row in the notebook progress table (generate_trial_table
+            # sorts/displays on str(trial), so string keys render identically).
+            self._last_result[str(trial)] = self._last_result.pop(trial)
 
     def log_result(self, trial: "Trial", result: Dict, error: bool = False):
         done = result.get("done", False) is True
@@ -1564,7 +1595,7 @@ def _detect_reporter(_trainer_api: bool = False, **kwargs) -> TuneReporterBase:
 
 
 def _detect_progress_metrics(
-    trainable: Optional[Union["Trainable", Callable]]
+    trainable: Optional[Union["Trainable", Callable]],
 ) -> Optional[Collection[str]]:
     """Detect progress metrics to report."""
     if not trainable:
