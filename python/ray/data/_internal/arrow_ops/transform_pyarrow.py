@@ -247,12 +247,24 @@ def _hash_partition(
         # row-by-row loop.
         import pandas as pd
 
-        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
-        # in pandas. This avoids int64 -> float64 promotion for nullable integer
-        # columns, which would cause the same value to hash differently across
-        # blocks depending on whether the block contains nulls.
+        # ArrowExtensionArray converts nullable integers to float64 when pandas
+        # hashes them, so use pandas' nullable integer dtypes instead.
+        nullable_integer_dtypes = {
+            pyarrow.int8(): pd.Int8Dtype(),
+            pyarrow.int16(): pd.Int16Dtype(),
+            pyarrow.int32(): pd.Int32Dtype(),
+            pyarrow.int64(): pd.Int64Dtype(),
+            pyarrow.uint8(): pd.UInt8Dtype(),
+            pyarrow.uint16(): pd.UInt16Dtype(),
+            pyarrow.uint32(): pd.UInt32Dtype(),
+            pyarrow.uint64(): pd.UInt64Dtype(),
+        }
+
+        def types_mapper(dtype):
+            return nullable_integer_dtypes.get(dtype, pd.ArrowDtype(dtype))
+
         hashes = pd.util.hash_pandas_object(
-            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+            table.to_pandas(types_mapper=types_mapper), index=False
         ).values
         # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
         # avoid in-place np.mod(..., out=hashes). See #64552.
