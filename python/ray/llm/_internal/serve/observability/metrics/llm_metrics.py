@@ -1,10 +1,9 @@
 """Streaming identity and token-count metadata for HAProxy timing metrics."""
 
 import json
-from contextvars import ContextVar
 from functools import lru_cache, wraps
 from inspect import signature
-from typing import TYPE_CHECKING, Dict, NamedTuple
+from typing import TYPE_CHECKING, Dict
 
 import ray
 from ray import serve
@@ -136,14 +135,20 @@ def add_llm_stream_metrics_headers(
             route.app = request_response(with_identity(route.get_route_handler()))
 
 
-class _StreamTokenCounts(NamedTuple):
-    pending: dict[int, int] | None
-    preserve_token_ids: bool
+class _StreamRequestId(str):
+    """Carry request-local counts through native response construction.
 
+    vLLM passes this ID unchanged to each response constructor. Pydantic emits
+    the original string value; no global request map or async context is needed.
+    """
 
-_stream_token_counts: ContextVar[_StreamTokenCounts | None] = ContextVar(
-    "stream_token_counts", default=None
-)
+    __slots__ = ("pending", "preserve_token_ids")
+
+    def __new__(cls, value, pending, preserve_token_ids):
+        instance = super().__new__(cls, value)
+        instance.pending = pending
+        instance.preserve_token_ids = preserve_token_ids
+        return instance
 
 
 @lru_cache(maxsize=2)
@@ -162,15 +167,18 @@ def _install_token_count_response(chat: bool) -> None:
 
     @wraps(original)
     def with_counts(**kwargs):
-        identity = _stream_token_counts.get()
+        identity = kwargs["id"]
         response = validate(kwargs)
-        if identity is not None:
+        if isinstance(identity, _StreamRequestId):
             for choice in response.choices:
                 if identity.pending is None:
-                    count = len(choice.token_ids or ())
+                    fields = choice.__dict__
+                    count = len(fields["token_ids"] or ())
                     if not identity.preserve_token_ids:
-                        choice.token_ids = None
-                        choice.prompt_token_ids = None
+                        # Native validation has completed. Clear these known
+                        # optional fields without Pydantic's per-field setters
+                        # on every event; its existing serializer omits None.
+                        fields["token_ids"] = fields["prompt_token_ids"] = None
                 else:
                     count = identity.pending.pop(choice.index, 0)
                 choice.model_extra["ray_token_count"] = count
@@ -208,8 +216,8 @@ class _TokenCountResult:
 def enable_stream_metrics_token_counts(serving, *, chat: bool) -> None:
     """Carry delta counts to HAProxy through vLLM's single SSE serialization.
 
-    Request-local counts are available during each native generator resume.
-    No engine clocks or metrics are recorded here.
+    No clocks or metrics are recorded here. The original native async generator
+    is returned directly; its response ID carries isolated request-local counts.
     """
     _install_token_count_response(chat)
     method = (
@@ -219,7 +227,7 @@ def enable_stream_metrics_token_counts(serving, *, chat: bool) -> None:
     parameters = signature(original)
 
     @wraps(original)
-    async def with_counts(*args, **kwargs):
+    def with_counts(*args, **kwargs):
         bound = parameters.bind(*args, **kwargs)
         request = bound.arguments["request"]
         if not chat and not request.echo:
@@ -254,19 +262,9 @@ def enable_stream_metrics_token_counts(serving, *, chat: bool) -> None:
                     yield view if chat else (prompt_index, view)
 
             bound.arguments["result_generator"] = counted_results()
-        state = _StreamTokenCounts(pending, preserve_token_ids)
-        stream = original(*bound.args, **bound.kwargs)
-        try:
-            while True:
-                context = _stream_token_counts.set(state)
-                try:
-                    chunk = await anext(stream)
-                except StopAsyncIteration:
-                    break
-                finally:
-                    _stream_token_counts.reset(context)
-                yield chunk
-        finally:
-            await stream.aclose()
+        bound.arguments["request_id"] = _StreamRequestId(
+            bound.arguments["request_id"], pending, preserve_token_ids
+        )
+        return original(*bound.args, **bound.kwargs)
 
     setattr(serving, method, with_counts)
