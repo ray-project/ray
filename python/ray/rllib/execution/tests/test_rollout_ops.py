@@ -68,6 +68,7 @@ def test_synchronous_parallel_sample_ignores_nan_agent_step_metrics():
             .env_runners(
                 num_env_runners=0,
                 batch_mode="complete_episodes",
+                rollout_fragment_length=2,
             )
             .multi_agent(
                 policies={"p0"},
