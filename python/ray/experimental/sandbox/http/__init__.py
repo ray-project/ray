@@ -7,7 +7,8 @@ outside the Ray cluster with nothing but an HTTP client and a bearer token.
 The REST app (``build_app``, ``create_app``) requires the Serve extra
 (``pip install "ray[serve]"``). The package itself imports without FastAPI,
 so its other submodules need only ``ray[default]``: the gRPC facade
-(``grpc_facade``) adds just ``grpclib``. The base
+(``grpc_facade``) adds just ``grpclib``, and serving it with Ray Serve
+(``grpc_app``) also needs the Serve extra. The base
 ``ray.experimental.sandbox`` package never imports this one.
 """
 

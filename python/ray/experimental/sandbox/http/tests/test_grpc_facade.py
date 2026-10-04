@@ -950,6 +950,61 @@ def test_every_rpc_requires_the_token_before_reading_its_request(
     asyncio.run(scenario())
 
 
+class _RouterAccessCall:
+    """A TaskGetCommandRouterAccess call presenting ``metadata``."""
+
+    def __init__(self, metadata: Optional[Dict[str, Any]]) -> None:
+        self.metadata = metadata
+        self.sent: List[Any] = []
+
+    async def recv_message(self) -> Any:
+        return api_pb2.TaskGetCommandRouterAccessRequest()
+
+    async def send_message(self, message: Any) -> None:
+        self.sent.append(message)
+
+
+@pytest.mark.parametrize(
+    "advertise_url, metadata, url",
+    [
+        # Without a configured URL, the host the client dialed, behind TLS
+        # on the default port.
+        (None, {"x-modal-host": "facade.example.com"}, "https://facade.example.com"),
+        (None, {"x-modal-host": "10.0.0.7"}, "https://10.0.0.7"),
+        # A configured URL wins.
+        ("http://127.0.0.1:9000", {"x-modal-host": "facade.example.com"}, None),
+        ("http://127.0.0.1:9000", None, None),
+    ],
+)
+def test_router_url(advertise_url: Any, metadata: Any, url: Any) -> None:
+    control, _ = build_servicers(
+        handle_resolver=FakeResolver(), advertise_url=advertise_url
+    )
+    call = _RouterAccessCall(metadata)
+    asyncio.run(control.TaskGetCommandRouterAccess(call))
+    (access,) = call.sent
+    assert access.url == (url or advertise_url)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        None,
+        {},
+        {"x-modal-host": ""},
+        {"x-modal-host": "facade.example.com/path"},
+        {"x-modal-host": "facade.example.com:443"},
+        {"x-modal-host": "a b"},
+        {"x-modal-host": b"facade.example.com"},
+    ],
+)
+def test_router_url_needs_the_dialed_host(metadata: Any) -> None:
+    control, _ = build_servicers(handle_resolver=FakeResolver())
+    with pytest.raises(GRPCError) as info:
+        asyncio.run(control.TaskGetCommandRouterAccess(_RouterAccessCall(metadata)))
+    assert info.value.status == Status.FAILED_PRECONDITION
+
+
 def test_without_a_token_the_handlers_are_unchanged() -> None:
     """Tokenless, the gate adds nothing: each table entry is the handler."""
     for servicer in build_servicers(

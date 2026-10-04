@@ -95,6 +95,13 @@ class _FacadeThread:
         self._thread.join(10)
 
 
+@pytest.fixture(autouse=True)
+def _original_sandbox_api(monkeypatch) -> None:
+    """The facade serves the SDK's original sandbox API, which modal 1.6
+    stopped using by default (``MODAL_SANDBOX_V2``)."""
+    monkeypatch.setenv("MODAL_SANDBOX_V2", "0")
+
+
 @pytest.fixture
 def facade(monkeypatch) -> Iterator[Tuple[FakeResolver, Any]]:
     port = next(_next_port)

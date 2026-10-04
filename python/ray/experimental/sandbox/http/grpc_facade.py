@@ -35,6 +35,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import shlex
 import time
 import uuid
@@ -107,6 +108,9 @@ _MAX_EXEC_RECORDS = 50_000
 _EXEC_EVICTION_SCAN = 64
 # Command-router credential handed out when no token is configured.
 _ROUTER_JWT_WITHOUT_TOKEN = "ray-sandbox-facade"
+# A host a client may name as the one it dialed: a DNS name or an IPv4
+# address, so that it forms a URL by itself.
+_DIALED_HOST = re.compile(r"[A-Za-z0-9.-]{1,253}")
 
 
 def _new_sandbox_id(key: Optional[str] = None) -> str:
@@ -256,11 +260,12 @@ class _FacadeState:
         self,
         resolver: Any,
         settings: SandboxAPISettings,
-        advertise_url: str,
+        advertise_url: Optional[str],
         token: Optional[str] = None,
     ) -> None:
         self.resolver = resolver
         self.settings = settings
+        # None: derive each client's router URL; see _router_url_for.
         self.advertise_url = advertise_url
         # Required on every RPC when set; see _TokenGate.
         self.token = token
@@ -420,6 +425,26 @@ def _exec_stream(info: Dict[str, Any], want_stdout: bool) -> bytes:
 
 def _terminated() -> Any:
     return api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+
+
+def _router_url_for(metadata: Any) -> str:
+    """The command-router URL for a client of a facade with none configured.
+
+    The client SDK names the host it dialed in ``x-modal-host`` on every
+    control-plane call (gRPC servers don't see the ``:authority`` it also
+    sends). Behind a TLS endpoint on the default port, such as an ingress in
+    front of Ray Serve, ``https://`` plus that host reaches this same server.
+    A client can only point its own router calls elsewhere with it.
+    """
+    host = metadata.get("x-modal-host") if metadata is not None else None
+    if not isinstance(host, str) or not _DIALED_HOST.fullmatch(host):
+        raise GRPCError(
+            Status.FAILED_PRECONDITION,
+            "the facade has no command-router URL for this client: configure "
+            "the facade's advertise_url, or use a client that sends the host "
+            "it dialed (x-modal-host)",
+        )
+    return f"https://{host}"
 
 
 def _carries_token(metadata: Any, token: str) -> bool:
@@ -771,9 +796,12 @@ class RaySandboxControlServicer(_TokenGate, ModalClientBase):
 
     async def TaskGetCommandRouterAccess(self, stream: Any) -> None:
         await stream.recv_message()
+        url = self._state.advertise_url or _router_url_for(
+            getattr(stream, "metadata", None)
+        )
         await stream.send_message(
             api_pb2.TaskGetCommandRouterAccessResponse(
-                url=self._state.advertise_url,
+                url=url,
                 # The SDK presents this as "Bearer <jwt>" on every
                 # command-router call, so with a token configured it is the
                 # token itself, which this caller has just presented; that
@@ -1125,7 +1153,7 @@ def build_servicers(
     settings: Optional[SandboxAPISettings] = None,
     *,
     handle_resolver: Optional[Any] = None,
-    advertise_url: str,
+    advertise_url: Optional[str] = None,
 ) -> List[Any]:
     """Build the two grpclib servicers sharing one facade state.
 
@@ -1138,7 +1166,9 @@ def build_servicers(
         settings: Server settings; defaults are production-safe.
         handle_resolver: Test seam, same surface as in ``create_app``.
         advertise_url: Command-router URL handed to clients; must route
-            back to this same server.
+            back to this same server. When None, each client gets
+            ``https://`` plus the host it dialed, which suits a facade
+            behind a TLS endpoint on the default port.
 
     Returns:
         The control-plane and command-router servicers, ready for
