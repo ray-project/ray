@@ -13,6 +13,13 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 default_logger = logging.getLogger(__name__)
 
+# Directory KubeRay mounts the projected ServiceAccount token into.
+_K8S_SA_TOKEN_DIR = "/var/run/secrets/ray.io/serviceaccount"
+
+
+def _is_k8s_token_auth_enabled(env_vars: dict) -> bool:
+    return env_vars.get("RAY_ENABLE_K8S_TOKEN_AUTH", "").lower() in ("true", "1")
+
 
 async def _create_impl(image_uri: str, logger: logging.Logger):
     # Pull image if it doesn't exist
@@ -120,6 +127,13 @@ def _modify_context_impl(
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
             env_vars["RAY_AUTH_TOKEN_PATH"] = token_path
+
+        if _is_k8s_token_auth_enabled(env_vars):
+            # Mount the directory so we are able to get the new rotated token
+            if os.path.isdir(_K8S_SA_TOKEN_DIR):
+                container_command.extend(
+                    ["-v", f"{_K8S_SA_TOKEN_DIR}:{_K8S_SA_TOKEN_DIR}:ro"]
+                )
 
     # Set environment variables
     for env_var_name, env_var_value in env_vars.items():
