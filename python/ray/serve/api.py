@@ -623,6 +623,11 @@ def deployment(
             Defaults to 10s. The health check is by default a no-op Actor call to the
             replica, but you can define your own health check using the "check_health"
             method in your deployment that raises an exception when unhealthy.
+            When the route prefix is not "/", GET {route_prefix}/-/healthz calls
+            that same method and does not take a max_ongoing_requests slot.
+            The system route /-/healthz is unchanged and does not call check_health.
+            Ordinary application routes, including a user-defined /healthz, still
+            count toward max_ongoing_requests.
         health_check_timeout_s: Duration in seconds, that replicas wait for a health
             check method to return before considering it as failed. Defaults to 30s.
         logging_config: Logging config options for the deployment. If provided,

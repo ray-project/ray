@@ -66,6 +66,7 @@ from ray.serve._private.http_util import (
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
+    is_builtin_app_health_path,
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
     receive_http_body,
@@ -399,6 +400,26 @@ class GenericProxy(ABC):
             )
         else:
             route_prefix, handle, app_is_cross_language = matched_route
+            if (
+                self.protocol == RequestProtocol.HTTP
+                and isinstance(self, HTTPProxy)
+                and is_builtin_app_health_path(route_prefix, proxy_request.route_path)
+            ):
+                # Built-in app health. Do not send it through request admission,
+                # so a saturated max_ongoing_requests does not stall the probe.
+                # System /-/healthz is handled above and is not this path.
+                # The isinstance narrows this to HTTPProxy, which owns the method.
+                return ResponseHandlerInfo(
+                    response_generator=self.app_health_response(handle),
+                    metadata=HandlerMetadata(
+                        application_name=handle.deployment_id.app_name,
+                        deployment_name=handle.deployment_id.name,
+                        route=proxy_request.route_path,
+                    ),
+                    should_record_access_log=False,
+                    should_increment_ongoing_requests=False,
+                )
+
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
@@ -1103,6 +1124,40 @@ class HTTPProxy(GenericProxy):
             message=message,
             is_error=not healthy,
         )
+
+    async def app_health_response(self, handle: DeploymentHandle) -> ResponseGenerator:
+        """Per-app health check. Does not take a proxy or replica request slot.
+
+        Calls the ingress deployment's ``check_health`` on one running replica.
+        System ``/-/healthz`` is a separate proxy readiness check.
+        """
+        router_ready_for_traffic, router_msg = self.proxy_router.ready_for_traffic(
+            self._is_head
+        )
+        if self._is_draining():
+            healthy = False
+            message = DRAINING_MESSAGE
+        elif not router_ready_for_traffic:
+            healthy = False
+            message = router_msg
+        else:
+            try:
+                await handle.check_ingress_health()
+                healthy = True
+                message = HEALTHY_MESSAGE
+            except Exception:
+                logger.warning(
+                    "Application health check failed.",
+                    exc_info=True,
+                    extra={"log_to_stderr": False},
+                )
+                healthy = False
+                message = "UNHEALTHY"
+
+        async for message_or_status in self.health_response(
+            healthy=healthy, message=message
+        ):
+            yield message_or_status
 
     async def health_response(
         self, *, healthy: bool, message: str = ""
