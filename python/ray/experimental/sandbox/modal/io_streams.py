@@ -414,6 +414,13 @@ class _StreamReader:
             async for chunk in self._raw():
                 sys.stdout.write(decoder.decode(chunk))
                 sys.stdout.flush()
+            # A character cut off by the end of the stream is held in the
+            # decoder; without this it was dropped rather than printed as the
+            # replacement character `errors="replace"` promises.
+            tail = decoder.decode(b"", final=True)
+            if tail:
+                sys.stdout.write(tail)
+                sys.stdout.flush()
         except asyncio.CancelledError:
             raise
         except Exception:

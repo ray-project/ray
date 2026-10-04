@@ -480,7 +480,7 @@ class _FsActor(FakeActor):
     async def _exec_start(self, command, **kwargs):
         return "exec-1"
 
-    async def _exec_wait(self, exec_id, timeout):
+    async def _exec_wait(self, exec_id, timeout, **kwargs):
         return 0
 
     async def _exec_release(self, exec_id):
@@ -689,6 +689,18 @@ def test_stdout_stream_prints_to_local_stdout(capsys):
 
     run(attempt())
     assert "printed" in capsys.readouterr().out
+
+
+def test_stdout_stream_prints_a_character_cut_off_at_the_end(capsys):
+    """The decoder held the cut-off bytes and nothing flushed it at end of
+    stream: the character vanished instead of printing as U+FFFD."""
+
+    async def attempt():
+        reader = make_reader([b"done \xe2\x82"], stream_type=StreamType.STDOUT)
+        await reader._print_task
+
+    run(attempt())
+    assert capsys.readouterr().out == "done �"
 
 
 # -- output buffer: cursor addressing --------------------------------------

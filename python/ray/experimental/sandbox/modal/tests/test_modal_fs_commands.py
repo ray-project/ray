@@ -10,6 +10,7 @@ Two layers are covered without any sandbox:
 
 import logging
 import os
+import re
 import subprocess
 import sys
 
@@ -727,6 +728,63 @@ def test_remove_classifies_a_missing_path(tmp_path):
         run_script(fs.make_remove_command(str(tmp_path / "absent"), False)).returncode
         == fs.EXIT_NOT_FOUND
     )
+
+
+@requires_posix_shell
+@pytest.mark.parametrize("recursive", [True, False])
+def test_remove_with_a_trailing_slash_removes_a_symlink_not_its_target(
+    tmp_path, recursive
+):
+    """`link/` resolves to the link's target. GNU `rm -rf link/` then emptied
+    the directory the link points to, left the link in place, and exited 0."""
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "keep.txt").write_text("x")
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("This host cannot create symlinks.")
+    result = run_script(fs.make_remove_command(f"{link}/", recursive))
+    assert result.returncode == 0, result.stderr
+    assert not os.path.lexists(link)
+    assert (target / "keep.txt").exists(), "the link's target was emptied"
+
+
+@requires_posix_shell
+def test_remove_with_a_trailing_slash_still_removes_a_directory(tmp_path):
+    target = tmp_path / "full"
+    target.mkdir()
+    (target / "child.txt").write_text("x")
+    assert run_script(fs.make_remove_command(f"{target}/", True)).returncode == 0
+    assert not target.exists()
+
+
+@requires_posix_shell
+def test_remove_of_a_file_with_a_trailing_slash_is_still_refused(tmp_path):
+    target = tmp_path / "f.txt"
+    target.write_text("x")
+    result = run_script(fs.make_remove_command(f"{target}/", False))
+    assert result.returncode == fs.EXIT_NOT_A_DIRECTORY
+    assert target.exists()
+
+
+def test_temp_paths_do_not_embed_the_destination_name():
+    """The name added 24 bytes, so a valid name past 231 bytes overflowed
+    NAME_MAX in the temporary file and the write failed."""
+    temp = fs.make_temp_path("/dir/" + "n" * 255)
+    directory, _, name = temp.rpartition("/")
+    assert directory == "/dir"
+    assert re.fullmatch(r"\.ray-sandbox-tmp-[A-Za-z0-9]{6}", name)
+
+
+@requires_posix_shell
+def test_a_write_to_a_name_at_the_length_limit_round_trips(tmp_path):
+    target = str(tmp_path / ("n" * 255))
+    written = run_script(fs.make_write_file_command(target), stdin=b"ok")
+    assert written.returncode == 0, written.stderr
+    assert run_script(fs.make_read_file_command(target)).stdout == b"ok"
+    assert os.listdir(tmp_path) == ["n" * 255], "a temporary file was left behind"
 
 
 @requires_posix_shell

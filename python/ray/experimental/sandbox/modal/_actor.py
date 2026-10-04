@@ -144,6 +144,12 @@ _COALESCE_TARGET_BYTES = 16 * 1024
 _PROBE_WINDOW_SECONDS = 300
 _PROBE_ATTEMPT_TIMEOUT_SECONDS = 10
 
+# How long stopping a command waits for runsc to record its pid, and how often
+# it looks. runsc writes the pid file only once the command has started, so a
+# command stopped in its first moments has none yet.
+_PID_FILE_WAIT_SECONDS = 2
+_PID_FILE_POLL_SECONDS = 0.02
+
 # Exit codes Modal reports for sandbox-level outcomes.
 _EXIT_CODE_TIMEOUT = 124
 
@@ -902,12 +908,20 @@ class _ExecSession:
     """A single command running inside the sandbox."""
 
     def __init__(
-        self, process: "asyncio.subprocess.Process", pid_file: Optional[str] = None
+        self,
+        process: "asyncio.subprocess.Process",
+        pid_file: Optional[str] = None,
+        client_released: bool = False,
     ):
         self.process = process
         # Where runsc records the command's pid inside the sandbox: `process`
         # is only the runsc client, and killing it leaves the command running.
         self.pid_file = pid_file
+        # The client always calls exec_release for this session itself, as the
+        # filesystem's transfers do. Such a session is never evicted for the
+        # memory it holds: a download's command exits with up to a buffer of
+        # output still unread, and evicting it then lost that tail.
+        self.client_released = client_released
         self.buffers: Dict[int, Optional[_OutputBuffer]] = {}
         self.pump_tasks: List[asyncio.Task] = []
         self.stdin_closed = False
@@ -1543,6 +1557,7 @@ class _SandboxActor:
         timeout: Optional[float] = None,
         retain: Optional[int] = None,
         paced: bool = False,
+        client_released: bool = False,
     ) -> str:
         """Launch a command and return its exec id.
 
@@ -1555,6 +1570,9 @@ class _SandboxActor:
         That is wrong for a user's command, which Modal never holds back, and
         right for the filesystem's own transfers, which must arrive whole and
         have exactly one reader.
+
+        ``client_released`` marks a session its caller always releases itself;
+        see :attr:`_ExecSession.client_released`.
 
         A ``timeout`` is enforced here rather than left to whoever calls
         ``exec_wait``: Modal kills the command when its deadline passes, so
@@ -1580,7 +1598,7 @@ class _SandboxActor:
         )
         await self._refuse_if_ended_during_spawn(process, pid_file)
 
-        session = _ExecSession(process, pid_file)
+        session = _ExecSession(process, pid_file, client_released=client_released)
         for fd, stream, devnull in (
             (STDOUT_FD, process.stdout, stdout_devnull),
             (STDERR_FD, process.stderr, stderr_devnull),
@@ -1675,7 +1693,7 @@ class _SandboxActor:
         second, and ``session`` holds its pipes open until then, so the command
         never sees an EOF it did not get from the caller.
         """
-        pid = _read_pid(session.pid_file)
+        pid = await self._await_pid(session)
         if pid is not None and not self._deleted and session.process.returncode is None:
             try:
                 argv = self._runtime.backend.kill_process_group_argv(
@@ -1701,6 +1719,32 @@ class _SandboxActor:
             except ProcessLookupError:
                 pass
         _unlink_quietly(session.pid_file)
+
+    async def _await_pid(self, session: "_ExecSession") -> Optional[int]:
+        """The command's pid in the sandbox, waiting briefly for runsc to record it.
+
+        A command stopped before runsc wrote its pid file -- an upload
+        cancelled at once, a very short exec timeout -- used to have only its
+        client killed. The command kept running, holding a stdin pipe whose
+        eventual close would let an upload's `mv` commit a partial file.
+
+        Waits only while the wait can pay off: a client that has exited will
+        never write the file, and a sandbox that is ending takes the command
+        with it.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _PID_FILE_WAIT_SECONDS
+        while True:
+            pid = _read_pid(session.pid_file)
+            if (
+                pid is not None
+                or not session.pid_file
+                or session.process.returncode is not None
+                or self._ending()
+                or loop.time() >= deadline
+            ):
+                return pid
+            await asyncio.sleep(_PID_FILE_POLL_SECONDS)
 
     def _pid_file(self, exec_id: str) -> Optional[str]:
         """Where runsc records one command's pid, in this actor's own directory."""
@@ -1825,7 +1869,11 @@ class _SandboxActor:
         return _session_returncode(session)
 
     async def exec_wait(
-        self, exec_id: str, timeout: Optional[float] = None
+        self,
+        exec_id: str,
+        timeout: Optional[float] = None,
+        *,
+        require_live: bool = False,
     ) -> Optional[int]:
         """Wait for a process to exit. Returns None if ``timeout`` elapsed.
 
@@ -1837,18 +1885,33 @@ class _SandboxActor:
         ``CancelledError`` is deliberately not caught: swallowing it would turn
         an external cancellation into a normal return, and cancellation is
         delivered once, so the caller could never stop this.
+
+        Args:
+            exec_id: The command's exec id.
+            timeout: Seconds to wait, or None to wait until it exits.
+            require_live: Raise NotFoundError, rather than return the exit
+                code, when the command failed and the sandbox has ended: it
+                failed because the sandbox went. For the filesystem's
+                transfers, which report that the way ``exec_collect`` does.
+
+        Returns:
+            The exit code, or None if ``timeout`` ran out first.
         """
         session = self._execs.get(exec_id)
         if session is None:
             # Evicted while the caller held its handle. It has certainly
             # exited -- only a finished session is ever retired -- so its
             # recorded exit code is the whole answer, and waiting is a no-op.
-            return self._retired_returncode(exec_id)
-        try:
-            await asyncio.wait_for(asyncio.shield(session.reaper_task), timeout)
-        except asyncio.TimeoutError:
-            return None
-        return _session_returncode(session)
+            returncode = self._retired_returncode(exec_id)
+        else:
+            try:
+                await asyncio.wait_for(asyncio.shield(session.reaper_task), timeout)
+            except asyncio.TimeoutError:
+                return None
+            returncode = _session_returncode(session)
+        if require_live and returncode != 0:
+            self._require_live()
+        return returncode
 
     def _retire(self, exec_id: str) -> None:
         """Note that an exec finished, and bound what finished ones hold.
@@ -1893,11 +1956,16 @@ class _SandboxActor:
         reader still finds all of it. Only where it cannot -- no room to
         spill, or spilling stopped -- is the whole session dropped instead,
         its exit code kept, as sessions past the count cap are.
+
+        Sessions the client releases itself are left out of both the budget
+        and the eviction: a filesystem download's paced output can never move
+        to disk, and dropping it while its reader was still draining the tail
+        failed the transfer.
         """
         held = {
             exec_id: _session_memory(self._execs[exec_id])
             for exec_id in self._finished_execs
-            if exec_id in self._execs
+            if exec_id in self._execs and not self._execs[exec_id].client_released
         }
         total = sum(held.values())
         for exec_id in list(self._finished_execs):
@@ -2027,9 +2095,13 @@ class _SandboxActor:
         """
         for exec_id in list(self._finished_execs):
             session = self._execs.get(exec_id)
-            if session is None or not any(
-                buffer is not None and buffer.disk_bytes
-                for buffer in session.buffers.values()
+            if (
+                session is None
+                or session.client_released
+                or not any(
+                    buffer is not None and buffer.disk_bytes
+                    for buffer in session.buffers.values()
+                )
             ):
                 continue
             self._finished_execs.remove(exec_id)

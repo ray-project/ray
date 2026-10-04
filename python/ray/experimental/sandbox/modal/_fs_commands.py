@@ -301,16 +301,26 @@ def make_remove_temp_command(temp_path: str) -> List[str]:
     return _sh('rm -f "$1"', temp_path)
 
 
+def temp_name() -> str:
+    """A hidden scratch file name for a transfer that lands by rename.
+
+    Random, so two concurrent writes to one destination cannot clobber each
+    other's partial file before either is moved into place. Fixed-length and
+    free of the destination's own name, as Modal's ``copy_to_local`` temp is:
+    embedding the name added 24 bytes to it, and a name past 231 bytes then
+    overflowed NAME_MAX, failing a transfer to a perfectly valid path.
+    """
+    suffix = "".join(random.choices(string.ascii_letters + string.digits, k=6))
+    return f".ray-sandbox-tmp-{suffix}"
+
+
 def make_temp_path(remote_path: str) -> str:
     """A scratch path beside ``remote_path`` for :func:`make_write_file_command`.
 
-    A random suffix, as ``copy_to_local`` uses locally: a fixed name would let
-    two concurrent writes to one destination clobber each other's partial file
-    before either was moved into place.
+    In the same directory, so moving it into place is a rename.
     """
-    directory, _, name = remote_path.rpartition("/")
-    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-    return f"{directory}/.{name}.ray-sandbox-tmp-{suffix}"
+    directory, _, _ = remote_path.rpartition("/")
+    return f"{directory}/{temp_name()}"
 
 
 def make_make_directory_command(remote_path: str, create_parents: bool) -> List[str]:
@@ -345,6 +355,14 @@ def make_remove_command(remote_path: str, recursive: bool) -> List[str]:
     """Build the command that removes a file or directory."""
     script = (
         'p="$1"; recursive="$2"; '
+        # A trailing slash makes the shell's tests, and rm, resolve a symlink
+        # to its target: "link/" passed [ ! -L ] as a directory, and GNU
+        # `rm -rf link/` then emptied the directory the link points to and
+        # still exited 0, leaving the link itself in place. Name the link
+        # instead, as busybox's rm does. Only for a symlink: "file/" stays the
+        # error it is.
+        'case "$p" in */) q=${p%"${p##*[!/]}"}; '
+        '[ -n "$q" ] && [ -L "$q" ] && p=$q;; esac; '
         '{ [ -e "$p" ] || [ -L "$p" ]; } || '
         f"{_classify_missing('p', EXIT_NOT_FOUND)}; "
         'if [ -d "$p" ] && [ ! -L "$p" ]; then '

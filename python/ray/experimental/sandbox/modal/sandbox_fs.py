@@ -4,8 +4,6 @@ import asyncio
 import collections
 import logging
 import os
-import random
-import string
 from pathlib import Path
 from typing import AsyncIterator, Iterator, List, Optional, Union
 
@@ -368,13 +366,7 @@ class _SandboxFilesystem:
         # Off the loop: one daemon loop serves every blocking call in the
         # process, so a slow disk here stalls unrelated sandboxes too.
         await asyncio.to_thread(destination.parent.mkdir, parents=True, exist_ok=True)
-        # A random suffix, as Modal's does. A fixed name meant two copies to
-        # one destination clobbered each other's partial file before either
-        # renamed it into place.
-        suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        temp_path = destination.with_name(
-            f".{destination.name}.ray-sandbox-tmp-{suffix}"
-        )
+        temp_path = destination.with_name(_fs.temp_name())
 
         with _fs.translate_exec_errors("copy_to_local", remote_path):
             sink = await asyncio.to_thread(open, temp_path, "wb")
@@ -458,7 +450,12 @@ class _SandboxFilesystem:
         copy failed.
         """
         actor = self._actor
-        exec_id = await actor.exec_start.remote(command, paced=True)
+        # client_released: the `finally` below always releases this session,
+        # so the actor must not evict it first. Its command can exit with a
+        # buffer still unread, and evicting it then lost that tail.
+        exec_id = await actor.exec_start.remote(
+            command, paced=True, client_released=True
+        )
         try:
             received = 0
             async for offset, chunk in iter_stream(actor, exec_id, STDOUT_FD):
@@ -470,7 +467,10 @@ class _SandboxFilesystem:
                     )
                 received += len(chunk)
                 await consume(chunk)
-            returncode = await actor.exec_wait.remote(exec_id, None)
+            # require_live: a command the sandbox ended under failed because
+            # the sandbox went, which is a NotFoundError, as exec_collect
+            # reports it -- not a filesystem error with exit code 137.
+            returncode = await actor.exec_wait.remote(exec_id, None, require_live=True)
             if returncode != 0:
                 # Drained only on failure: on the common path this is an extra
                 # streaming session whose output is discarded.
@@ -488,10 +488,14 @@ class _SandboxFilesystem:
         """
         actor = self._actor
         temp_path = _fs.make_temp_path(remote_path)
+        # client_released, as in _stream_file: the stderr a failure is reported
+        # from must still be there when it is drained below.
         exec_id = await actor.exec_start.remote(
-            _fs.make_write_file_command(remote_path, temp_path), stdout_devnull=True
+            _fs.make_write_file_command(remote_path, temp_path),
+            stdout_devnull=True,
+            client_released=True,
         )
-        aborted = False
+        returncode = None
         # Released in `finally`, as copy_to_local does: a read error or a broken
         # pipe part-way through would otherwise strand the session on the actor,
         # holding its output buffers and possibly a live process, for as long as
@@ -515,11 +519,10 @@ class _SandboxFilesystem:
                 # Settle the writes still in flight before the release below.
                 # Left alone, they ran against the released session and each
                 # logged an unhandled "Unknown exec session" error.
-                aborted = True
                 await asyncio.gather(*writes, return_exceptions=True)
                 raise
             await actor.close_stdin.remote(exec_id, offset)
-            returncode = await actor.exec_wait.remote(exec_id, None)
+            returncode = await actor.exec_wait.remote(exec_id, None, require_live=True)
             if returncode != 0:
                 # Inside the `try`, so the drain happens before the `finally`
                 # releases the session: exec_release drops the session and the
@@ -535,7 +538,12 @@ class _SandboxFilesystem:
             # Releasing a running upload kills it before its stdin can close,
             # so the destination is never replaced by a partial file.
             await self._release(actor, exec_id)
-            if aborted:
+            # The script removes its temporary file on every failure it reports
+            # itself. One that never reported -- aborted, or cancelled while
+            # closing stdin or waiting -- or that was killed (128 + signal) can
+            # have left it behind. Cleaning up only after a failure in the
+            # chunk loop missed the cancellations after it.
+            if returncode is None or returncode >= 128:
                 await self._remove_quietly(actor, temp_path)
 
     @staticmethod

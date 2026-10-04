@@ -8,6 +8,8 @@ nor a Ray cluster.
 
 import asyncio
 import functools
+import os
+import re
 import sys
 import types
 from typing import Dict, List, Optional
@@ -74,6 +76,8 @@ class UploadActor:
         self.close_offset: Optional[int] = None
         self.stdin_closed = False
         self.command: Optional[List[str]] = None
+        self.start_kwargs: Optional[dict] = None
+        self.wait_kwargs: Optional[dict] = None
         self.pending = 0
         self.max_pending = 0
 
@@ -89,6 +93,7 @@ class UploadActor:
 
     async def _exec_start(self, command, **kwargs):
         self.command = command
+        self.start_kwargs = kwargs
         return "exec-1"
 
     def _write_stdin(self, exec_id, data, offset=None):
@@ -112,8 +117,9 @@ class UploadActor:
         self.stdin_closed = True
         self.close_offset = offset
 
-    async def _exec_wait(self, exec_id, timeout):
+    async def _exec_wait(self, exec_id, timeout, **kwargs):
         self._require_live()
+        self.wait_kwargs = kwargs
         return self._returncode
 
     async def _exec_release(self, exec_id):
@@ -294,7 +300,7 @@ def test_an_aborted_upload_settles_its_writes_before_releasing(tmp_path, monkeyp
     # The killed command's temporary file goes too -- after the release, which
     # returns only once the command is dead.
     temp_path = actor.command[-1]
-    assert temp_path.startswith("/dest/.file.ray-sandbox-tmp-")
+    assert re.fullmatch(r"/dest/\.ray-sandbox-tmp-[A-Za-z0-9]{6}", temp_path)
     assert events == ["release", ("collect", _fs.make_remove_temp_command(temp_path))]
 
 
@@ -331,6 +337,7 @@ class ReadActor:
         self.collect_command: Optional[List[str]] = None
         self.stream_command: Optional[List[str]] = None
         self.stream_kwargs: Optional[dict] = None
+        self.wait_kwargs: Optional[dict] = None
         self.released = False
 
     def __getattr__(self, name):
@@ -360,7 +367,8 @@ class ReadActor:
             for start in range(0, len(self._content), 3):
                 yield _Ref(_value((start, self._content[start : start + 3])))
 
-    async def _exec_wait(self, exec_id, timeout):
+    async def _exec_wait(self, exec_id, timeout, **kwargs):
+        self.wait_kwargs = kwargs
         return 0
 
     async def _exec_release(self, exec_id):
@@ -382,7 +390,7 @@ def test_a_file_past_the_inline_size_is_streamed_paced():
     content = bytes(range(200))
     actor = ReadActor(content, collect_returncode=_fs.EXIT_NOT_INLINE)
     assert run(filesystem(actor).read_bytes("/some/file")) == content
-    assert actor.stream_kwargs == {"paced": True}
+    assert actor.stream_kwargs == {"paced": True, "client_released": True}
     script = actor.stream_command[2]
     # Refused up front past Modal's limit, then read with cat: busybox's
     # `head -c` is syscall-bound under gVisor.
@@ -428,7 +436,7 @@ def test_copy_to_local_is_paced_and_uncapped(tmp_path):
     destination = tmp_path / "out.bin"
     run(filesystem(actor).copy_to_local("/some/file", destination))
     assert destination.read_bytes() == content
-    assert actor.stream_kwargs == {"paced": True}
+    assert actor.stream_kwargs == {"paced": True, "client_released": True}
     assert "head -c" not in actor.stream_command[2]
 
 
@@ -448,6 +456,97 @@ def test_a_finished_sandbox_is_reported_in_modals_words():
     assert str(excinfo.value) == (
         "The Sandbox is unavailable. This Sandbox may have already shut down."
     )
+
+
+def test_transfers_keep_their_sessions_and_report_a_lost_sandbox():
+    """Both transfers leave releasing their session to themselves, so the
+    actor never evicts it first, and ask for a command the sandbox's end
+    killed to be reported as the sandbox being gone."""
+    upload = UploadActor()
+    run(filesystem(upload).write_bytes(b"x", "/dest/file"))
+    assert upload.start_kwargs == {"stdout_devnull": True, "client_released": True}
+    assert upload.wait_kwargs == {"require_live": True}
+
+    download = ReadActor(b"abc", collect_returncode=_fs.EXIT_NOT_INLINE)
+    run(filesystem(download).read_bytes("/some/file"))
+    assert download.wait_kwargs == {"require_live": True}
+
+
+def test_a_sandbox_ending_mid_download_is_reported_as_unavailable():
+    """It used to surface as a filesystem error carrying exit code 137."""
+
+    class EndedActor(ReadActor):
+        async def _exec_wait(self, exec_id, timeout, **kwargs):
+            if kwargs.get("require_live"):
+                raise NotFoundError("The Sandbox is unavailable: it was terminated.")
+            return 137
+
+    actor = EndedActor(b"abc", collect_returncode=_fs.EXIT_NOT_INLINE)
+    with pytest.raises(NotFoundError) as excinfo:
+        run(filesystem(actor).read_bytes("/some/file"))
+    assert str(excinfo.value) == (
+        "The Sandbox is unavailable. This Sandbox may have already shut down."
+    )
+    assert actor.released
+
+
+def test_copy_to_local_accepts_a_name_at_the_length_limit(tmp_path):
+    """The temporary file embedded the destination's name, and a name past 231
+    bytes pushed it over NAME_MAX: a valid destination could not be opened."""
+    actor = ReadActor(b"payload")
+    destination = tmp_path / ("n" * 250)
+    run(filesystem(actor).copy_to_local("/some/file", destination))
+    assert destination.read_bytes() == b"payload"
+    assert os.listdir(tmp_path) == ["n" * 250]
+
+
+class _CleanupRecordingActor(UploadActor):
+    """Records the temporary-file removal an upload issues once it has failed."""
+
+    def __init__(self, fail_in: Optional[str] = None, **kwargs):
+        super().__init__(**kwargs)
+        self._fail_in = fail_in
+        self.collected: List[List[str]] = []
+
+    async def _close_stdin(self, exec_id, offset=None):
+        if self._fail_in == "close_stdin":
+            raise asyncio.CancelledError()
+        await super()._close_stdin(exec_id, offset)
+
+    async def _exec_wait(self, exec_id, timeout, **kwargs):
+        if self._fail_in == "exec_wait":
+            raise asyncio.CancelledError()
+        return await super()._exec_wait(exec_id, timeout, **kwargs)
+
+    async def _exec_collect(self, command, stdin=None):
+        self.collected.append(command)
+        return {"returncode": 0, "stdout": b"", "stderr": b""}
+
+
+@pytest.mark.parametrize("fail_in", ["close_stdin", "exec_wait"])
+def test_an_upload_stopped_after_its_last_write_removes_its_temporary_file(fail_in):
+    """Cleanup followed only a failure inside the chunk loop. A cancellation
+    while closing stdin or waiting released -- killed -- the command before
+    its `mv`, and left the hidden partial file beside the destination."""
+    actor = _CleanupRecordingActor(fail_in=fail_in)
+    with pytest.raises(asyncio.CancelledError):
+        run(filesystem(actor).write_bytes(b"data", "/dest/file"))
+    assert actor.collected == [_fs.make_remove_temp_command(actor.command[-1])]
+
+
+@pytest.mark.parametrize(
+    "returncode,removed",
+    [(0, False), (_fs.EXIT_PERMISSION_DENIED, False), (137, True)],
+)
+def test_only_an_upload_that_could_not_clean_up_is_cleaned_up(returncode, removed):
+    """The script removes its temporary file on every failure it reports
+    itself; a command killed by a signal cannot."""
+    actor = _CleanupRecordingActor(returncode=returncode)
+    try:
+        run(filesystem(actor).write_bytes(b"data", "/dest/file"))
+    except SandboxFilesystemError:
+        pass
+    assert bool(actor.collected) is removed
 
 
 if __name__ == "__main__":

@@ -426,6 +426,64 @@ def test_a_deadline_kills_the_command_and_its_children(tmp_path):
     assert not marker.exists(), "the command kept running past its deadline"
 
 
+async def _spawn_unwatched(script: str, **kwargs):
+    return await asyncio.create_subprocess_exec(
+        "/bin/sh",
+        "-c",
+        script,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+        **kwargs,
+    )
+
+
+@requires_posix_shell
+def test_stopping_a_command_waits_for_runsc_to_record_its_pid(tmp_path):
+    """runsc writes the pid file only once the command has started. A command
+    stopped before then -- an upload cancelled at once -- had only its client
+    killed, and ran on in the sandbox."""
+    pid_file = tmp_path / "e1.pid"
+
+    async def scenario():
+        actor = make_actor()
+        actor._runtime = types.SimpleNamespace(backend=_LocalKillBackend())
+        actor._instance_id = "sandbox"
+        process = await _spawn_unwatched("sleep 30 & sleep 31", start_new_session=True)
+
+        async def record_pid_late():
+            await asyncio.sleep(0.2)
+            pid_file.write_text(str(process.pid))
+
+        recorder = asyncio.ensure_future(record_pid_late())
+        await actor._stop_command(_ExecSession(process, str(pid_file)))
+        await recorder
+        await process.wait()
+        return process.pid
+
+    pgid = run(scenario())
+    assert group_is_gone(pgid), "only the client was killed; the command ran on"
+
+
+@requires_posix_shell
+def test_stopping_a_command_whose_client_exits_does_not_wait_for_its_pid(tmp_path):
+    """A client that has exited will never record a pid: waiting out the
+    grace period for one would only delay the release."""
+
+    async def scenario():
+        actor = make_actor()
+        actor._runtime = types.SimpleNamespace(backend=_LocalKillBackend())
+        actor._instance_id = "sandbox"
+        process = await _spawn_unwatched("sleep 0.1")
+        started = time.monotonic()
+        await actor._stop_command(_ExecSession(process, str(tmp_path / "none.pid")))
+        elapsed = time.monotonic() - started
+        await process.wait()
+        return elapsed
+
+    assert run(scenario()) < actor_module._PID_FILE_WAIT_SECONDS / 2
+
+
 # -- the main process ----------------------------------------------------------
 
 
@@ -671,6 +729,70 @@ def test_without_room_to_spill_the_oldest_finished_sessions_go_whole(monkeypatch
     kept, codes = run(scenario())
     assert kept == ["e4", "e5"], "the newest fit the budget; the oldest went"
     assert codes == list(range(6))
+
+
+class _ShellBackend:
+    """Runs exec_start's command locally, as it is given."""
+
+    def exec_argv(self, sandbox_id, command, **kwargs):
+        return list(command)
+
+
+@requires_posix_shell
+def test_a_finished_download_still_being_read_is_not_evicted_for_memory(monkeypatch):
+    """A filesystem download's command exits with up to a buffer of output
+    still unread. Paced output can never move to disk, so the memory trim
+    evicted the whole session, and the transfer failed with its tail lost."""
+    monkeypatch.setattr(actor_module, "_FINISHED_OUTPUT_MEMORY", 1024 * 1024)
+    size = 2_000_000
+
+    async def scenario():
+        actor = make_actor()
+        actor._runtime = types.SimpleNamespace(backend=_ShellBackend())
+        actor._instance_id = "sandbox"
+        exec_id = await actor.exec_start(
+            ["/bin/sh", "-c", f"head -c {size} /dev/zero"],
+            paced=True,
+            client_released=True,
+        )
+        await actor.exec_wait(exec_id, None)
+        return exec_id in actor._execs, await drain(actor, exec_id)
+
+    kept, items = run(scenario())
+    assert kept
+    assert items[0][0] == 0, "the reader was handed a gap"
+    assert sum(len(chunk) for _, chunk in items) == size
+
+
+@requires_posix_shell
+@pytest.mark.parametrize(
+    "script,ended,expected",
+    [
+        ("exit 3", False, 3),
+        ("exit 3", True, NotFoundError),
+        ("exit 0", True, 0),
+    ],
+)
+def test_require_live_reports_a_failure_the_sandbox_ending_caused(
+    script, ended, expected
+):
+    """A transfer the sandbox ended under came back as a filesystem error with
+    exit code 137, where exec_collect reports NotFoundError, as Modal does. A
+    command that succeeded is still a success, whatever happened since."""
+
+    async def scenario():
+        actor = make_actor()
+        exec_id = await start(actor, "e1", script)
+        await actor.exec_wait(exec_id, None)
+        if ended:
+            actor._exit_reason = "terminated"
+        return await actor.exec_wait(exec_id, None, require_live=True)
+
+    if expected is NotFoundError:
+        with pytest.raises(NotFoundError, match="terminated"):
+            run(scenario())
+    else:
+        assert run(scenario()) == expected
 
 
 # -- stdin ordering ----------------------------------------------------------
