@@ -770,6 +770,29 @@ class TestAlgorithmConfig(unittest.TestCase):
             {"env_to_module": "cpu", "module_to_env": "cpu", "learner": "cpu"},
         )
 
+    def test_connector_builder_second_arg_is_positional(self):
+        """The builder's second arg is positional; its name must not matter."""
+        env = gym.make("CartPole-v1")
+
+        def builder(pipeline, dev):  # deliberately not named `device`
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .env_runners(
+                env_to_module_connector_builder=builder,
+                module_to_env_connector_builder=builder,
+            )
+            .learners(learner_connector_builder=builder)
+        )
+        # Must not raise a `TypeError` about an unexpected `device` keyword arg.
+        config.build_env_to_module_connector(env=env, device="cpu")
+        config.build_module_to_env_connector(env=env, device="cpu")
+        config.build_learner_connector(
+            env.observation_space, env.action_space, device="cpu"
+        )
+
     def test_connector_builder_must_return_pipeline(self):
         """A builder that doesn't return the specific pipeline type raises."""
         env = gym.make("CartPole-v1")

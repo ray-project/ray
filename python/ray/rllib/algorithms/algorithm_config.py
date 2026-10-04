@@ -1151,7 +1151,7 @@ class AlgorithmConfig(_Config):
         # Add RLlib's default connectors, then the optional user builder.
         pipeline = self._default_env_to_module_connectors(pipeline, device=device)
         if self._env_to_module_connector_builder is not None:
-            pipeline = self._env_to_module_connector_builder(pipeline, device=device)
+            pipeline = self._env_to_module_connector_builder(pipeline, device)
         if not isinstance(pipeline, EnvToModulePipeline):
             raise ValueError(
                 "`AlgorithmConfig.env_runners(env_to_module_connector_builder=..)`"
@@ -1292,7 +1292,7 @@ class AlgorithmConfig(_Config):
         # Add RLlib's default connectors, then the optional user builder.
         pipeline = self._default_module_to_env_connectors(pipeline, device=device)
         if self._module_to_env_connector_builder is not None:
-            pipeline = self._module_to_env_connector_builder(pipeline, device=device)
+            pipeline = self._module_to_env_connector_builder(pipeline, device)
         if not isinstance(pipeline, ModuleToEnvPipeline):
             raise ValueError(
                 "`AlgorithmConfig.env_runners(module_to_env_connector_builder=..)`"
@@ -1389,7 +1389,7 @@ class AlgorithmConfig(_Config):
         # Add RLlib's default connectors, then the optional user builder.
         pipeline = self._default_learner_connectors(pipeline, device=device)
         if self._learner_connector_builder is not None:
-            pipeline = self._learner_connector_builder(pipeline, device=device)
+            pipeline = self._learner_connector_builder(pipeline, device)
         if not isinstance(pipeline, LearnerConnectorPipeline):
             raise ValueError(
                 "`AlgorithmConfig.learners(learner_connector_builder=..)` must "
