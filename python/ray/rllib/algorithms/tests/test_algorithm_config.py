@@ -681,6 +681,28 @@ class TestAlgorithmConfig(unittest.TestCase):
         # Builder's change applied.
         self.assertEqual(names.count("Marker"), 2)
 
+    def test_connector_pipeline_insert_missing_raises(self):
+        """`insert_before`/`insert_after` raise if the target piece is absent."""
+        from ray.rllib.connectors.common import NumpyToTensor
+        from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
+        from ray.rllib.connectors.connector_v2 import ConnectorV2
+
+        class Marker(ConnectorV2):
+            def __call__(self, *, rl_module, batch, episodes, shared_data=None):
+                return batch
+
+        pipeline = ConnectorPipelineV2(connectors=[Marker()])
+        with self.assertRaisesRegex(ValueError, "Can not find connector"):
+            pipeline.insert_before(NumpyToTensor, Marker())
+        with self.assertRaisesRegex(ValueError, "Can not find connector"):
+            pipeline.insert_after(NumpyToTensor, Marker())
+        # A real target still works and lands in the right spot.
+        pipeline.insert_before(Marker, NumpyToTensor())
+        self.assertEqual(
+            [type(c).__name__ for c in pipeline.connectors],
+            ["NumpyToTensor", "Marker"],
+        )
+
 
 if __name__ == "__main__":
     import sys
