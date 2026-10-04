@@ -349,6 +349,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const std::string &call_site,
     int max_retries,
     bool consume_once) {
+  // If consume_once is true, the task must be an actor task without a streaming
+  // generator or dynamic returns.
+  // TODO(karticam): Allow streaming generators in a follow-up PR. Dynamic returns stay
+  //  unsupported.
   RAY_CHECK(!consume_once || (spec.IsActorTask() && !spec.IsStreamingGenerator() &&
                               !spec.ReturnsDynamic()))
       << absl::StrFormat(
