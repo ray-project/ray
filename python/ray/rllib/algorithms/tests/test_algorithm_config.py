@@ -739,6 +739,18 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertIn("Marker", names)
         self.assertEqual(seen_device, ["cpu"])
 
+        # A builder that doesn't return a `LearnerConnectorPipeline` raises.
+        bad_cfg = DifferentiableLearnerConfig(
+            learner_class=DummyDiffLearner,
+            learner_connector_builder=lambda pipeline, device: None,
+        )
+        with self.assertRaisesRegex(
+            ValueError, "must return a `LearnerConnectorPipeline`"
+        ):
+            bad_cfg.build_learner_connector(
+                env.observation_space, env.action_space, device="cpu"
+            )
+
     def test_connector_builder_receives_device(self):
         """All three builder hooks receive the `device` kwarg."""
         env = gym.make("CartPole-v1")

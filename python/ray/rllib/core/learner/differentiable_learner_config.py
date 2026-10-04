@@ -10,9 +10,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import DeviceType, ModuleID
 
 if TYPE_CHECKING:
-    from ray.rllib.connectors.learner.learner_connector_pipeline import (
-        LearnerConnectorPipeline,
-    )
+    from ray.rllib.connectors.learner import LearnerConnectorPipeline
 
 
 @dataclass
@@ -154,6 +152,12 @@ class DifferentiableLearnerConfig:
 
         if self.learner_connector_builder is not None:
             pipeline = self.learner_connector_builder(pipeline, device)
+            if not isinstance(pipeline, LearnerConnectorPipeline):
+                raise ValueError(
+                    "`DifferentiableLearnerConfig.learner_connector_builder` must "
+                    "return a `LearnerConnectorPipeline` object! Your function "
+                    f"returned {pipeline}."
+                )
         return pipeline
 
     def update_from_kwargs(self, **kwargs):
