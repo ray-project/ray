@@ -125,6 +125,32 @@ the default pieces at the end of the pipeline automatically add these changed re
 ```
 
 
+### Modify the default Learner pipeline
+
+Use `learner_connector_builder` when you want to keep RLlib's default pieces but change the pipeline itself, for example insert a piece between two default pieces or remove a default one. RLlib calls your builder with the fully-built `LearnerConnectorPipeline` (including all default pieces) and the `device`, and uses the returned pipeline:
+
+```{testcode}
+:skipif: True
+
+from ray.rllib.connectors.common import (
+    AddObservationsFromEpisodesToBatch,
+    NumpyToTensor,
+)
+
+def my_learner_builder(pipeline, device):
+    # Insert a custom piece right after the default `AddObservationsFromEpisodesToBatch`.
+    pipeline.insert_after(
+        AddObservationsFromEpisodesToBatch, MyLearnerConnector(..)
+    )
+    # Remove a default piece you don't need.
+    pipeline.remove(NumpyToTensor)
+    return pipeline
+
+config.learners(learner_connector_builder=my_learner_builder)
+```
+
+Unlike `learner_connector`, which only adds pieces at the front, the builder receives the whole pipeline, so you can position custom pieces anywhere and drop default ones. You can also combine both: RLlib first places the `learner_connector` pieces, then adds the default pieces, and finally calls the builder with the fully-built pipeline.
+
 ### Example: Reward shaping before loss computation
 
 A good example of when to write a custom Learner ConnectorV2 piece is reward shaping before computing your algorithm's loss. The Learner connector's {py:meth}`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` has full access to the entire episode data, including observations, actions, other agents' data in multi-agent scenarios, and all rewards.

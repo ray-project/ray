@@ -277,6 +277,27 @@ for example by changing the observations as in an {ref}`ObservationPreprocessor 
 the trailing default pieces automatically add these changed observations to the batch.
 ```
 
+### Modify the default env-to-module pipeline
+
+Use `env_to_module_connector_builder` when you want to keep RLlib's default pieces but change the pipeline itself, for example insert a piece between two default pieces or remove a default one. RLlib calls your builder with the fully-built `EnvToModulePipeline` (including all default pieces) and the `device`, and uses the returned pipeline:
+
+```{testcode}
+:skipif: True
+
+from ray.rllib.connectors.common import BatchIndividualItems, NumpyToTensor
+
+def my_env_to_module_builder(pipeline, device):
+    # Insert a custom piece right before the `BatchIndividualItems` default piece.
+    pipeline.insert_before(BatchIndividualItems, MyEnvToModuleConnector(..))
+    # Remove a default piece you don't need.
+    pipeline.remove(NumpyToTensor)
+    return pipeline
+
+config.env_runners(env_to_module_connector_builder=my_env_to_module_builder)
+```
+
+Unlike `env_to_module_connector`, which only adds pieces at the front, the builder receives the whole pipeline, so you can position custom pieces anywhere and drop default ones. You can also combine both: RLlib first places the `env_to_module_connector` pieces, then adds the default pieces, and finally calls the builder with the fully-built pipeline.
+
 (observation-preprocessors)=
 
 ### Observation preprocessors
