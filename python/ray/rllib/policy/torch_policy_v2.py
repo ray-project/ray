@@ -943,9 +943,12 @@ class TorchPolicyV2(Policy):
         # Optimizer state_dicts include LR values. During an Algorithm restore into an
         # already-constructed Policy, keep the current trial's optimizer LRs only when
         # its LR control plane differs from the checkpoint's.
+        preserve_current_policy_config = state.get(
+            PRESERVE_CURRENT_POLICY_CONFIG, False
+        )
         restore_current_lrs = False
         current_optimizer_lrs = None
-        if state.get(PRESERVE_CURRENT_POLICY_CONFIG, False) and "policy_spec" in state:
+        if preserve_current_policy_config and "policy_spec" in state:
             policy_spec = PolicySpec.deserialize(state["policy_spec"])
             checkpoint_config = policy_spec.config or {}
             lr_keys = ("lr", "lr_schedule", "_lr_vf")
@@ -991,8 +994,11 @@ class TorchPolicyV2(Policy):
                     for param_group, lr in zip(optimizer.param_groups, optimizer_lrs):
                         param_group["lr"] = lr
 
-            # Re-evaluate a current-trial LR schedule at the restored timestep.
-            # For static LR configs this is a no-op and the values above remain.
+        if preserve_current_policy_config:
+            # Schedule mixins are derived from the current trial config, while
+            # global_timestep is checkpointed training state. Re-evaluate those
+            # schedules at the restored timestep even when LR itself did not
+            # change (for example, an entropy-coeff schedule mutated by PBT).
             self.on_global_var_update({"timestep": self.global_timestep})
 
     @override(Policy)
