@@ -2170,6 +2170,58 @@ def _get_replica_actor_handle(deployment_name: str, app_name: str) -> ActorHandl
     )
 
 
+@pytest.mark.parametrize("retry_after_policy", ["static", "queue_drain_rate"])
+def test_backpressure_retry_after_and_drain_counter(
+    _skip_if_ff_not_enabled, serve_instance, retry_after_policy: str
+):
+    """A direct-ingress rejection carries the jittered `Retry-After` (a cold
+    `queue_drain_rate` estimator falls back to `retry_after_s`), and the
+    replica's drain counter counts requests releasing their slot, not
+    rejections."""
+    name = f"retry-after-{retry_after_policy.replace('_', '-')}"
+    signal = SignalActor.remote()
+    serve.run(
+        Hybrid.options(
+            name=name,
+            max_ongoing_requests=1,
+            max_queued_requests=1,
+            backpressure_config={
+                "status_code": 429,
+                "retry_after_policy": retry_after_policy,
+                "retry_after_s": 7,
+            },
+        ).bind(message="done", wait_signal=signal),
+        name=name,
+    )
+    http_url = get_application_url("HTTP", app_name=name)
+    replica = _get_replica_actor_handle(name, name)
+
+    def drain_counter() -> int:
+        return ray.get(replica._get_backpressure_drain_counter_for_testing.remote())
+
+    initial_drain_counter = drain_counter()
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        running = executor.submit(httpx.get, http_url, timeout=30)
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+        # One of these is queued and the other is rejected.
+        pending = [executor.submit(httpx.get, http_url, timeout=30) for _ in range(2)]
+        done, not_done = wait(pending, timeout=30, return_when=FIRST_COMPLETED)
+        assert len(done) == 1 and len(not_done) == 1
+        rejected = done.pop().result()
+        assert rejected.status_code == 429
+        assert rejected.text.startswith("Request dropped due to backpressure")
+        # 7s jittered by +/-20%, rounded up.
+        assert rejected.headers["retry-after"] in {"6", "7", "8", "9"}
+        assert drain_counter() == initial_drain_counter
+
+        ray.get(signal.send.remote())
+        assert running.result().status_code == 200
+        assert not_done.pop().result().status_code == 200
+
+    wait_for_condition(lambda: drain_counter() == initial_drain_counter + 2)
+
+
 def test_tasks_cancelled_on_timeout(_skip_if_ff_not_enabled, serve_instance):
     """Test that the async tasks are cancelled and cleaned up on timeout.
 
@@ -2598,6 +2650,7 @@ def test_get_serve_instance_details_json_serializable(
                                 "backpressure_config": {
                                     "status_code": 503,
                                     "retry_after_s": None,
+                                    "retry_after_policy": "static",
                                 },
                                 "user_config": None,
                                 "autoscaling_config": {

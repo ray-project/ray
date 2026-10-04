@@ -1,4 +1,6 @@
+import asyncio
 import sys
+import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from urllib.parse import urljoin
 
@@ -14,14 +16,38 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import BackPressureError
 
-# (deployment options, expected rejection status, expected Retry-After header).
+# Every value `retry_after_s=7` can produce: jittered by +/-20%, rounded up.
+JITTERED_RETRY_AFTER_7 = {"6", "7", "8", "9"}
+
+# (deployment options, expected rejection status, expected Retry-After values).
 BACKPRESSURE_RESPONSE_CASES = [
     pytest.param({}, 503, None, id="default_503"),
     pytest.param(
         {"backpressure_config": {"status_code": 429, "retry_after_s": 7}},
         429,
-        "7",
+        JITTERED_RETRY_AFTER_7,
         id="429_with_retry_after",
+    ),
+    # The requests in these tests never complete before the rejection, so the
+    # drain rate is unknown and the computed policy falls back to the static
+    # value.
+    pytest.param(
+        {
+            "backpressure_config": {
+                "status_code": 429,
+                "retry_after_policy": "queue_drain_rate",
+                "retry_after_s": 7,
+            }
+        },
+        429,
+        JITTERED_RETRY_AFTER_7,
+        id="queue_drain_rate_cold_fallback",
+    ),
+    pytest.param(
+        {"backpressure_config": {"retry_after_policy": "queue_drain_rate"}},
+        503,
+        None,
+        id="queue_drain_rate_cold_no_fallback",
     ),
 ]
 
@@ -31,7 +57,7 @@ def check_rejection_response(response, expected_status: int, expected_retry_afte
     if expected_retry_after is None:
         assert "retry-after" not in response.headers
     else:
-        assert response.headers["retry-after"] == expected_retry_after
+        assert response.headers["retry-after"] in expected_retry_after
 
 
 def test_handle_backpressure(serve_instance):
@@ -76,6 +102,66 @@ def test_handle_backpressure(serve_instance):
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+
+
+def test_handle_backpressure_computed_retry_after(serve_instance):
+    """Once the router has observed requests draining, rejections carry the
+    computed value instead of the static fallback."""
+
+    @serve.deployment(
+        max_ongoing_requests=1,
+        max_queued_requests=2,
+        backpressure_config={
+            "retry_after_policy": "queue_drain_rate",
+            "retry_after_s": 30,
+        },
+    )
+    class Deployment:
+        async def __call__(self) -> str:
+            await asyncio.sleep(0.05)
+            return "ok"
+
+    handle = serve.run(Deployment.bind())
+    assert handle.remote().result() == "ok"
+    metrics_manager = handle._router._asyncio_router._metrics_manager
+    tracker = metrics_manager._drain_rate_tracker
+    wait_for_condition(lambda: tracker.sampling)
+
+    # Keep the router's queue busy until the estimator has a positive rate.
+    stop = threading.Event()
+
+    def send_load():
+        while not stop.is_set():
+            try:
+                handle.remote().result()
+            except BackPressureError:
+                pass
+
+    load_threads = [threading.Thread(target=send_load) for _ in range(3)]
+    for t in load_threads:
+        t.start()
+    try:
+        wait_for_condition(
+            lambda: tracker.estimator.warm and (tracker.estimator.rate or 0) > 0,
+            timeout=30,
+        )
+        retry_after_values = set()
+        for response in [handle.remote() for _ in range(20)]:
+            try:
+                response.result()
+            except BackPressureError as e:
+                retry_after_values.add(e.retry_after_s)
+    finally:
+        stop.set()
+        for t in load_threads:
+            t.join()
+
+    assert retry_after_values
+    # The queue drains in well under a second, so the estimate is clamped to
+    # 1s and jittered to at most 2s; the 30s fallback would be 24-36s.
+    assert retry_after_values <= {1, 2}
+    # The counter is monotonic and readable immediately from the handle.
+    assert metrics_manager._get_drain_counter() > 0
 
 
 @pytest.mark.parametrize(

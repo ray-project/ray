@@ -94,8 +94,27 @@ _, pending = ray.wait(queued_refs, timeout=0.1)
 assert len(pending) == 2
 
 # Additional requests are rejected with the configured status code and a
-# "Retry-After" header telling clients when to try again.
+# "Retry-After" header telling clients when to try again. The value is
+# jittered by up to +/-20% so rejected clients don't all retry at once.
 for status_code, retry_after in ray.get([r.do_request.remote() for _ in range(5)]):
     assert status_code == 429
-    assert retry_after == "5"
+    assert retry_after in {"4", "5", "6"}
 # __custom_response_test_end__
+
+# __queue_drain_rate_deployment_start__
+@serve.deployment(
+    max_ongoing_requests=2,
+    max_queued_requests=2,
+    backpressure_config=BackpressureConfig(
+        status_code=429,
+        # Estimate the delay from how fast the queue is currently draining.
+        retry_after_policy="queue_drain_rate",
+        # Used until enough traffic has been observed to estimate the delay.
+        retry_after_s=5,
+    ),
+)
+class SlowDeploymentWithComputedRetryAfter:
+    def __call__(self, request: Request) -> str:
+        time.sleep(2)
+        return "Hello!"
+# __queue_drain_rate_deployment_end__

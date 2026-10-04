@@ -419,6 +419,24 @@ def test_requires_actor_reconfigure():
     )
     assert v1.requires_actor_reconfigure(v2)
 
+    v1 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            backpressure_config=BackpressureConfig(retry_after_policy="static")
+        ),
+        {},
+    )
+    v2 = DeploymentVersion(
+        "1",
+        DeploymentConfig(
+            backpressure_config=BackpressureConfig(
+                retry_after_policy="queue_drain_rate"
+            )
+        ),
+        {},
+    )
+    assert v1.requires_actor_reconfigure(v2)
+
 
 def test_requires_long_poll_broadcast():
     # If max concurrent queries is updated, it needs to be broadcasted

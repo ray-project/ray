@@ -1,10 +1,12 @@
 import asyncio
 import concurrent.futures
+import json
+import logging
 import random
 import sys
 import threading
 from collections import defaultdict
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
@@ -13,6 +15,7 @@ import grpc
 import pytest
 
 import ray
+from ray._common.formatters import JSONFormatter
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import (
@@ -22,6 +25,7 @@ from ray.exceptions import (
     TaskCancelledError,
 )
 from ray.serve._private import autoscaling_metrics_codec
+from ray.serve._private.backpressure import DrainRateEstimator, DrainRateTracker
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -34,6 +38,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult, gRPCReplicaResult
@@ -57,7 +62,11 @@ from ray.serve._private.utils import (
     decompress_metric_report,
     get_random_string,
 )
-from ray.serve.config import AutoscalingConfig, RequestRouterConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    BackpressureConfig,
+    RequestRouterConfig,
+)
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
@@ -434,6 +443,7 @@ class FakeServeReplicaForSlotReservation(ServeReplica):
         # The real __init__ is bypassed; set the quiesce flag read by
         # _can_accept_request (reservations are rejected once quiescing).
         self._quiescing = False
+        self._drain_rate_tracker = DrainRateTracker(has_pending_work=lambda: False)
 
 
 @pytest.mark.asyncio
@@ -3491,6 +3501,348 @@ class TestCustomRequestRouterAPIs:
         )
         # Should complete without error.
         await r._backoff(0)
+
+
+@contextmanager
+def capture_serve_log_records():
+    """Collect records emitted on the Serve logger, whatever its config."""
+    records: List[logging.LogRecord] = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
+    handler = _Handler()
+    serve_logger.addHandler(handler)
+    try:
+        yield records
+    finally:
+        serve_logger.removeHandler(handler)
+
+
+def _fake_replica(name: str = "test-replica-1", **kwargs) -> FakeReplica:
+    return FakeReplica(
+        ReplicaID(unique_id=name, deployment_id=DeploymentID(name="test")), **kwargs
+    )
+
+
+class _FakeClock:
+    def __init__(self):
+        self.now_s = 0.0
+
+    def __call__(self) -> float:
+        return self.now_s
+
+
+@pytest.mark.asyncio
+class TestRouterDrainCounter:
+    """The drain counter counts requests a replica accepted from the queue."""
+
+    async def test_assignment_counted_once_completion_not_counted(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, fake_request_router = setup_router
+        fake_request_router.set_replica_to_return(_fake_replica())
+        metrics_manager = router._metrics_manager
+        assert metrics_manager._get_drain_counter() == 0
+
+        replica_result = await router.assign_request(dummy_request_metadata())
+        assert metrics_manager._get_drain_counter() == 1
+
+        replica_result.fire_done_callbacks()
+        await asyncio.sleep(0)
+        assert metrics_manager._get_drain_counter() == 1
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True}],
+        indirect=True,
+    )
+    async def test_replica_rejection_not_counted(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, fake_request_router = setup_router
+        fake_request_router.set_replica_to_return(
+            _fake_replica(
+                "rejecting",
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=False, num_ongoing_requests=1
+                ),
+            )
+        )
+        fake_request_router.set_replica_to_return_on_retry(
+            _fake_replica(
+                "accepting",
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=1
+                ),
+            )
+        )
+
+        await router.assign_request(dummy_request_metadata())
+        assert router._metrics_manager._get_drain_counter() == 1
+
+    async def test_failed_send_not_counted(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, fake_request_router = setup_router
+        fake_request_router.set_replica_to_return(
+            _fake_replica("dead", error=ActorDiedError())
+        )
+        fake_request_router.set_replica_to_return_on_retry(_fake_replica("healthy"))
+
+        await router.assign_request(dummy_request_metadata())
+        assert router._metrics_manager._get_drain_counter() == 1
+
+    async def test_cancelled_while_queued_not_counted(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Cancellation shrinks the queue without a hand-off, so it must not
+        look like drain throughput."""
+        router, fake_request_router = setup_router
+        fake_request_router.set_should_block_requests(True)
+        fake_request_router.set_replica_to_return(_fake_replica())
+        metrics_manager = router._metrics_manager
+
+        tasks = [
+            asyncio.ensure_future(router.assign_request(dummy_request_metadata()))
+            for _ in range(5)
+        ]
+        await async_wait_for_condition(lambda: metrics_manager.num_queued_requests == 5)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert metrics_manager.num_queued_requests == 0
+        assert metrics_manager._get_drain_counter() == 0
+
+    async def test_reservation_counted_once(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, fake_request_router = setup_router
+        rejecting = _fake_replica("rejecting")
+        rejecting._reject_reservation = True
+        fake_request_router.set_replica_to_return(rejecting)
+        fake_request_router.set_replica_to_return_on_retry(_fake_replica("accepting"))
+        metrics_manager = router._metrics_manager
+
+        request_metadata = dummy_request_metadata()
+        async with router.choose_replica(request_metadata) as selection:
+            # The rejected reservation doesn't count; the accepted one does.
+            assert metrics_manager._get_drain_counter() == 1
+            await router.dispatch(selection, request_metadata)
+
+        assert metrics_manager._get_drain_counter() == 1
+
+    async def test_pick_only_selection_not_counted(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Pick-only selections never enter the router queue."""
+        router, fake_request_router = setup_router
+        replica = _fake_replica()
+        fake_request_router._replicas_list = [replica]
+        fake_request_router._replicas = {replica.replica_id: replica}
+
+        async def fake_choose_replicas(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = fake_choose_replicas
+
+        async with router.choose_replica(dummy_request_metadata(), _reserve=False):
+            pass
+        assert router._metrics_manager._get_drain_counter() == 0
+
+    async def _reject(self, router: AsyncioRouter):
+        """Trigger one rejection; return the error and the logged decision."""
+        with patch(
+            "ray.serve._private.router.log_backpressure_rejection"
+        ) as log, patch(
+            "ray.serve._private.backpressure.random.random", return_value=0.5
+        ):
+            with pytest.raises(BackPressureError) as exc_info:
+                await router.assign_request(dummy_request_metadata())
+
+        log.assert_called_once()
+        message, decision = log.call_args.args
+        assert message == exc_info.value.message
+        # The header value is exactly the logged post-jitter value.
+        assert exc_info.value.retry_after_s == decision.post_jitter_s
+        return exc_info.value, decision
+
+    async def test_rejection_uses_observed_depth_above_cap(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, _ = setup_router
+        router.update_deployment_config(
+            DeploymentConfig(
+                max_queued_requests=2,
+                backpressure_config=BackpressureConfig(retry_after_s=5),
+            )
+        )
+        metrics_manager = router._metrics_manager
+        # Replica-rejected requests can re-enter the queue past the cap.
+        for _ in range(3):
+            metrics_manager.inc_num_queued_requests()
+        for _ in range(7):
+            metrics_manager.inc_num_assigned_requests()
+
+        error, decision = await self._reject(router)
+        assert decision.observed_queue_depth == 3
+        assert "num_queued_requests=3" in error.message
+        assert decision.policy == "static"
+        assert decision.fallback_rung == "static"
+        assert decision.drain_counter == 7
+        assert decision.post_jitter_s == 5
+
+    @pytest.mark.parametrize(
+        "retry_after_s,expected_rung,expected_retry_after_s",
+        [(5, "static_fallback", 5), (None, "none", None)],
+    )
+    async def test_cold_estimator_falls_back(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        retry_after_s,
+        expected_rung,
+        expected_retry_after_s,
+    ):
+        router, _ = setup_router
+        router.update_deployment_config(
+            DeploymentConfig(
+                max_queued_requests=1,
+                backpressure_config=BackpressureConfig(
+                    retry_after_policy="queue_drain_rate",
+                    retry_after_s=retry_after_s,
+                ),
+            )
+        )
+        router._metrics_manager.inc_num_queued_requests()
+
+        error, decision = await self._reject(router)
+        assert decision.policy == "queue_drain_rate"
+        assert not decision.estimator_warm
+        assert decision.fallback_rung == expected_rung
+        assert error.retry_after_s == expected_retry_after_s
+
+    async def test_warm_estimator_computes_retry_after(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, _ = setup_router
+        router.update_deployment_config(
+            DeploymentConfig(
+                max_queued_requests=4,
+                backpressure_config=BackpressureConfig(
+                    retry_after_policy="queue_drain_rate", retry_after_s=30
+                ),
+            )
+        )
+        metrics_manager = router._metrics_manager
+        # Drive the estimator with a fake clock: 2 assignments in 1s.
+        clock = _FakeClock()
+        estimator = DrainRateEstimator(alpha=1.0, warmup_samples=1, clock=clock)
+        metrics_manager._drain_rate_tracker._estimator = estimator
+        estimator.sample(has_pending_work=True)
+        metrics_manager.inc_num_assigned_requests()
+        metrics_manager.inc_num_assigned_requests()
+        clock.now_s += 1
+        estimator.sample(has_pending_work=True)
+
+        for _ in range(4):
+            metrics_manager.inc_num_queued_requests()
+
+        error, decision = await self._reject(router)
+        assert decision.fallback_rung == "computed"
+        assert decision.drain_rate == pytest.approx(2.0)
+        assert decision.pre_jitter_s == pytest.approx(2.0)
+        assert decision.drain_counter == 2
+        assert error.retry_after_s == 2
+
+    async def test_ground_truth_reached_after_depth_assignments(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Ground truth for a rejection is reached when the counter advances
+        by the logged depth."""
+        router, fake_request_router = setup_router
+        fake_request_router.set_should_block_requests(True)
+        fake_request_router.set_replica_to_return(_fake_replica())
+        router.update_deployment_config(DeploymentConfig(max_queued_requests=3))
+        metrics_manager = router._metrics_manager
+
+        tasks = [
+            asyncio.ensure_future(router.assign_request(dummy_request_metadata()))
+            for _ in range(3)
+        ]
+        await async_wait_for_condition(lambda: metrics_manager.num_queued_requests == 3)
+
+        _, decision = await self._reject(router)
+        c0, depth = decision.drain_counter, decision.observed_queue_depth
+        assert (c0, depth) == (0, 3)
+
+        fake_request_router.unblock_requests(depth - 1)
+        await async_wait_for_condition(
+            lambda: metrics_manager._get_drain_counter() == c0 + depth - 1
+        )
+
+        fake_request_router.unblock_requests(1)
+        await asyncio.gather(*tasks)
+        assert metrics_manager._get_drain_counter() == c0 + depth
+
+    async def test_rejection_record_formats_as_json(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, _ = setup_router
+        router.update_deployment_config(
+            DeploymentConfig(
+                max_queued_requests=1,
+                backpressure_config=BackpressureConfig(retry_after_s=5),
+            )
+        )
+        router._metrics_manager.inc_num_queued_requests()
+
+        with capture_serve_log_records() as records:
+            with pytest.raises(BackPressureError) as exc_info:
+                await router.assign_request(dummy_request_metadata())
+
+        [record] = [r for r in records if r.getMessage() == exc_info.value.message]
+        formatted = json.loads(JSONFormatter().format(record))
+        assert formatted["levelname"] == "WARNING"
+        assert formatted["backpressure_retry_after_policy"] == "static"
+        assert formatted["backpressure_retry_after_fallback_rung"] == "static"
+        assert formatted["backpressure_observed_queue_depth"] == 1
+        assert formatted["backpressure_drain_rate"] is None
+        assert formatted["backpressure_estimator_warm"] is False
+        assert formatted["backpressure_retry_after_pre_jitter_s"] == 5
+        assert (
+            formatted["backpressure_retry_after_post_jitter_s"]
+            == exc_info.value.retry_after_s
+        )
+        assert formatted["backpressure_drain_counter"] == 0
+
+    async def test_sampler_lifecycle_follows_config_updates(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """The sampler runs without autoscaling and starts/stops with the policy."""
+        router, _ = setup_router
+        tracker = router._metrics_manager._drain_rate_tracker
+
+        router.update_deployment_config(DeploymentConfig())
+        assert not tracker.sampling
+
+        computed = DeploymentConfig(
+            backpressure_config=BackpressureConfig(
+                retry_after_policy="queue_drain_rate"
+            )
+        )
+        router.update_deployment_config(computed)
+        router.update_deployment_config(computed)
+        assert tracker.sampling
+        assert list(tracker._metrics_pusher._async_tasks) == [
+            DrainRateTracker.SAMPLE_TASK_NAME
+        ]
+
+        router.update_deployment_config(DeploymentConfig())
+        assert not tracker.sampling
+        assert tracker._metrics_pusher._async_tasks == {}
 
 
 if __name__ == "__main__":

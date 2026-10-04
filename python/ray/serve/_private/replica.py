@@ -54,6 +54,11 @@ from ray.actor import ActorClass, ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
+from ray.serve._private.backpressure import (
+    DrainRateTracker,
+    RetryAfterDecision,
+    log_backpressure_rejection,
+)
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
@@ -1235,6 +1240,17 @@ class Replica:
         self._num_queued_requests = 0
         self._reserved_slots: Set[str] = set()
 
+        # Counts requests releasing their execution slot (each one lets a
+        # queued direct-ingress request start) and estimates the drain rate
+        # for the `queue_drain_rate` Retry-After policy. All accesses happen
+        # on the replica's main event loop.
+        self._drain_rate_tracker = DrainRateTracker(
+            has_pending_work=lambda: (
+                self._num_queued_requests > 0
+                or self._metrics_manager.get_num_ongoing_requests() > 0
+            )
+        )
+
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
@@ -1910,6 +1926,10 @@ class Replica:
                         rank=rank,
                     )
 
+                self._drain_rate_tracker.update_policy(
+                    self.backpressure_config.retry_after_policy
+                )
+
                 if is_first_init and RAY_SERVE_FREEZE_GC_ON_STARTUP:
                     # User code initialization is complete, including the first
                     # reconfigure call (if a user_config was provided). Collect
@@ -1946,6 +1966,9 @@ class Replica:
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
                 self._version, deployment_config, route_prefix
+            )
+            self._drain_rate_tracker.update_policy(
+                deployment_config.backpressure_config.retry_after_policy
             )
 
             self._metrics_manager.set_autoscaling_config(
@@ -2033,6 +2056,10 @@ class Replica:
                 self._metrics_manager.dec_num_ongoing_requests(request_metadata)
         finally:
             self._semaphore.release()
+            # Counted once per request that held a slot, however it ended
+            # (success, user error, or cancellation while running). Requests
+            # cancelled while waiting for a slot never get here.
+            self._drain_rate_tracker.record_drain()
 
     @contextmanager
     def _track_queued_request(self) -> Generator[Callable[[], None], None, None]:
@@ -2171,6 +2198,7 @@ class Replica:
                 logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
+        await self._drain_rate_tracker.shutdown()
 
     async def perform_graceful_shutdown(self):
         """Shut down gracefully, at most once.
@@ -2313,6 +2341,24 @@ class Replica:
     @property
     def backpressure_config(self):
         return self._deployment_config.backpressure_config
+
+    def _decide_direct_ingress_backpressure(self) -> RetryAfterDecision:
+        """Pick the Retry-After value for a rejected direct-ingress request
+        and log the rejection."""
+        num_queued_requests = self._num_queued_requests
+        decision = self._drain_rate_tracker.decide(
+            self.backpressure_config, observed_queue_depth=num_queued_requests
+        )
+        message = BackPressureError(
+            num_queued_requests=num_queued_requests,
+            max_queued_requests=self.max_queued_requests,
+        ).message
+        log_backpressure_rejection(message, decision)
+        return decision
+
+    def _get_backpressure_drain_counter_for_testing(self) -> int:
+        """Monotonic count of requests that released their execution slot."""
+        return self._drain_rate_tracker.drain_counter
 
     async def _maybe_start_direct_ingress_servers(self):
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
@@ -2734,6 +2780,9 @@ class Replica:
         )
 
         if not self._can_accept_request(request_metadata):
+            # gRPC has no Retry-After; the decision is still logged so every
+            # rejection produces one record.
+            self._decide_direct_ingress_backpressure()
             status = ResponseStatus(
                 code=grpc.StatusCode.RESOURCE_EXHAUSTED,
                 message="Request dropped due to backpressure",
@@ -3239,12 +3288,11 @@ class Replica:
         if not self._can_accept_request(request_metadata):
             # NOTE(abrar): its possible that we drop more requests than actual max_queued_requests
             # because between incrementing and decrementing the queued requests, we yield to the event loop.
+            decision = self._decide_direct_ingress_backpressure()
             for msg in convert_object_to_asgi_messages(
                 "Request dropped due to backpressure",
                 status_code=self.backpressure_config.status_code,
-                extra_headers=retry_after_headers(
-                    self.backpressure_config.retry_after_s
-                ),
+                extra_headers=retry_after_headers(decision.post_jitter_s),
             ):
                 await send(msg)
             return
@@ -3500,6 +3548,9 @@ class ReplicaActor:
         self,
     ) -> Dict[str, int]:
         return self._replica_impl._get_inflight_direct_ingress_task_counts_for_testing()
+
+    async def _get_backpressure_drain_counter_for_testing(self) -> int:
+        return self._replica_impl._get_backpressure_drain_counter_for_testing()
 
     async def initialize_and_get_metadata(
         self,

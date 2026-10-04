@@ -1780,6 +1780,13 @@ class ProxyActor(ProxyActorInterface):
         _, handle, _ = matched
         return handle._router._asyncio_router._request_router._replica_id_set  # type: ignore[union-attr]  # pyrefly: ignore[missing-attribute]
 
+    def _get_backpressure_drain_counter_for_testing(self, route: str) -> int:
+        """Monotonic count of requests the route's router assigned to replicas."""
+        matched = self.http_proxy.proxy_router.match_route(route)
+        assert matched is not None
+        _, handle, _ = matched
+        return handle._router._asyncio_router._metrics_manager._get_drain_counter()  # type: ignore[union-attr]  # pyrefly: ignore[missing-attribute]
+
     def _dump_ingress_cache_for_testing(self, route: str) -> Set[ReplicaID]:
         """Get replica IDs that have entries in the queue length cache (for testing)."""
         matched = self.http_proxy.proxy_router.match_route(route)

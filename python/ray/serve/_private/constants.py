@@ -1190,3 +1190,34 @@ SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS: List[float] = [
     5000,  # 5s
     10000,  # 10s
 ]
+
+# Tunables for the `queue_drain_rate` Retry-After policy (see
+# `BackpressureConfig.retry_after_policy`). The drain rate is an EWMA updated
+# once per sample interval as `alpha * last_interval_rate + (1 - alpha) * rate`.
+RAY_SERVE_BACKPRESSURE_DRAIN_RATE_EWMA_ALPHA = get_env_float_positive(
+    "RAY_SERVE_BACKPRESSURE_DRAIN_RATE_EWMA_ALPHA", 0.3
+)
+if RAY_SERVE_BACKPRESSURE_DRAIN_RATE_EWMA_ALPHA > 1:
+    raise ValueError(
+        "RAY_SERVE_BACKPRESSURE_DRAIN_RATE_EWMA_ALPHA must be at most 1, "
+        f"got {RAY_SERVE_BACKPRESSURE_DRAIN_RATE_EWMA_ALPHA}."
+    )
+RAY_SERVE_BACKPRESSURE_DRAIN_RATE_SAMPLE_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_BACKPRESSURE_DRAIN_RATE_SAMPLE_INTERVAL_S", 1.0
+)
+# Number of counted (non-idle) sample intervals before the computed value is
+# used. Until then, rejections fall back to the static `retry_after_s`.
+RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES = get_env_int_positive(
+    "RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES", 3
+)
+# Retry-After values are multiplied by a factor drawn uniformly from
+# [1 - fraction, 1 + fraction] so that clients rejected together don't retry
+# together. Applies to both the static and computed policies.
+RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION = get_env_float_non_negative(
+    "RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION", 0.2
+)
+if RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION >= 1:
+    raise ValueError(
+        "RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION must be less than 1, "
+        f"got {RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION}."
+    )

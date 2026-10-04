@@ -266,8 +266,14 @@ message BackpressureConfig {
   optional int32 status_code = 1;
 
   // Value of the `Retry-After` header (in seconds) attached to rejected HTTP
-  // responses. Unset means no header is attached.
+  // responses. Unset means no header is attached. Also the fallback value for
+  // computed policies.
   optional double retry_after_s = 2;
+
+  // How the `Retry-After` value is chosen: "static" or "queue_drain_rate".
+  // Unset (e.g. from an older controller during a rolling upgrade) falls back
+  // to "static" on the Python side.
+  optional string retry_after_policy = 3;
 }
 
 // Deployment language.
