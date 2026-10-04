@@ -703,6 +703,41 @@ class TestAlgorithmConfig(unittest.TestCase):
             ["NumpyToTensor", "Marker"],
         )
 
+    def test_differentiable_learner_connector_builder(self):
+        """`DifferentiableLearnerConfig` forwards the builder + device."""
+        from ray.rllib.connectors.common import BatchIndividualItems
+        from ray.rllib.connectors.connector_v2 import ConnectorV2
+        from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
+        from ray.rllib.core.learner.differentiable_learner_config import (
+            DifferentiableLearnerConfig,
+        )
+
+        class DummyDiffLearner(DifferentiableLearner):
+            pass
+
+        class Marker(ConnectorV2):
+            def __call__(self, *, rl_module, batch, episodes, shared_data=None):
+                return batch
+
+        seen_device = []
+
+        def builder(pipeline, device=None):
+            seen_device.append(device)
+            pipeline.insert_before(BatchIndividualItems, Marker())
+            return pipeline
+
+        learner_cfg = DifferentiableLearnerConfig(
+            learner_class=DummyDiffLearner,
+            learner_connector_builder=builder,
+        )
+        env = gym.make("CartPole-v1")
+        pipeline = learner_cfg.build_learner_connector(
+            env.observation_space, env.action_space, device="cpu"
+        )
+        names = [type(c).__name__ for c in pipeline.connectors]
+        self.assertIn("Marker", names)
+        self.assertEqual(seen_device, ["cpu"])
+
 
 if __name__ == "__main__":
     import sys

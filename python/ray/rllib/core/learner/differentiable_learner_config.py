@@ -1,5 +1,5 @@
 from dataclasses import dataclass, fields
-from typing import Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 import gymnasium as gym
 
@@ -8,6 +8,11 @@ from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import DeviceType, ModuleID
+
+if TYPE_CHECKING:
+    from ray.rllib.connectors.learner.learner_connector_pipeline import (
+        LearnerConnectorPipeline,
+    )
 
 
 @dataclass
@@ -21,6 +26,14 @@ class DifferentiableLearnerConfig:
 
     learner_connector: Optional[
         Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
+    ] = None
+
+    # Optional builder receiving the fully-built `LearnerConnectorPipeline` + `device`.
+    learner_connector_builder: Optional[
+        Callable[
+            ["LearnerConnectorPipeline", Optional[DeviceType]],
+            "LearnerConnectorPipeline",
+        ]
     ] = None
 
     add_default_connectors_to_learner_pipeline: bool = True
@@ -138,6 +151,9 @@ class DifferentiableLearnerConfig:
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
+
+        if self.learner_connector_builder is not None:
+            pipeline = self.learner_connector_builder(pipeline, device)
         return pipeline
 
     def update_from_kwargs(self, **kwargs):
