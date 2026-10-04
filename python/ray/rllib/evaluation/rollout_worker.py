@@ -1438,12 +1438,12 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     )
             if pid in self.policy_map:
                 policy = self.policy_map[pid]
-                if policy_already_exists and policy.framework == "torch":
+                if policy_already_exists and isinstance(policy, TorchPolicyV2):
                     # This worker was constructed from the current trial config before
-                    # checkpoint state is restored. Keep that config authoritative for
-                    # the old-stack Torch Policy while loading donor training state.
-                    # TF Policies use a different optimizer-state restore path and keep
-                    # their existing checkpoint-authority behavior in this focused fix.
+                    # checkpoint state is restored. TorchPolicyV2 reconciles that
+                    # control plane with donor optimizer/schedule state in set_state().
+                    # Legacy TorchPolicy and TF policies use different restore paths
+                    # and keep their existing checkpoint-authority behavior.
                     policy_state = dict(policy_state)
                     policy_state[PRESERVE_CURRENT_POLICY_CONFIG] = True
                 policy.set_state(policy_state)
