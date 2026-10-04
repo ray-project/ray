@@ -35,8 +35,8 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     _get_total_cluster_resources,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.stats import OpRuntimeMetrics
-from ray.data.block import Block, BlockAccessor, BlockStats, to_stats
+from ray.data._internal.stats import OpRuntimeMetrics, StatsDict, _OutputBlockStatsCollector
+from ray.data.block import Block, BlockAccessor, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -475,8 +475,8 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._extraction_tasks: Dict[int, DataOpTask] = {}
         self._finalization_started: bool = False
         self._output_queue: ReorderingBundleQueue = ReorderingBundleQueue()
-        self._shuffled_blocks_stats: List[BlockStats] = []
-        self._output_blocks_stats: List[BlockStats] = []
+        self._shuffled_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
+        self._output_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
 
         # Progress bars (populated by SubProgressBarMixin callbacks)
         self._shuffle_bar = None
@@ -728,7 +728,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
+    def get_stats(self) -> StatsDict:
         shuffle_name = f"{self._name}_shuffle"
         reduce_name = f"{self._name}_finalize"
         return {

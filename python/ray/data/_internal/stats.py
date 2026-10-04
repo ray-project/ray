@@ -11,6 +11,7 @@ from typing import (
     Any,
     DefaultDict,
     Dict,
+    Iterable,
     Iterator,
     List,
     Mapping,
@@ -62,7 +63,7 @@ UNKNOWN_UUID = "unknown_uuid"
 DISTRIBUTION_METRIC_STATISTICS = ("mean", "max")
 
 
-StatsDict = Dict[str, List[BlockStats]]
+StatsDict = Dict[str, Union[List[BlockStats], "_OutputBlockStatsCollector"]]
 DistributionPrometheusMetrics = Dict[str, Gauge]
 PrometheusMetric = Union[Metric, DistributionPrometheusMetrics]
 PrometheusMetricValue = Union[
@@ -232,6 +233,182 @@ class _StatsAccumulator:
             mean=safe_round(mean, round_digits),
             sum=safe_round(self.acc_sum, round_digits),
             count=self.count,
+        )
+
+
+class _OutputBlockStatsCollector:
+    """Online aggregator for per-block output statistics.
+
+    Physical operators used to retain one ``BlockStats`` per output block in an
+    append-only list for the lifetime of the dataset, so driver memory grew
+    linearly with the cumulative number of processed output blocks
+    (https://github.com/ray-project/ray/issues/66016).
+
+    Every consumer of the retained list
+    (:meth:`OperatorStatsSummary.from_block_metadata`) folds it in a single
+    pass, so instead of keeping the objects this collector folds each
+    ``BlockStats`` into fixed-size accumulators at dequeue time and drops it.
+    Driver memory is O(number of tasks + number of nodes) instead of O(number
+    of output blocks), while the reported summary is unchanged.
+    """
+
+    def __init__(self) -> None:
+        self._wall_time_acc: _StatsAccumulator = _StatsAccumulator()
+        self._cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
+        self._block_transform_time_acc: _StatsAccumulator = _StatsAccumulator()
+        self._input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
+        self._function_body_time_acc: _StatsAccumulator = _StatsAccumulator()
+        self._output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
+        self._stage_time_accs: List[_StatsAccumulator] = []
+        self._output_rows_acc: _StatsAccumulator = _StatsAccumulator()
+        self._output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
+        self._rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
+        self._tasks_per_node: DefaultDict[str, Set[int]] = collections.defaultdict(set)
+        self._num_exec = 0
+        self._earliest_start_time = float("inf")
+        self._latest_end_time = float("-inf")
+        # Total number of BlockStats folded in so far.
+        self.num_blocks = 0
+
+    def add(self, block_stats: BlockStats) -> None:
+        """Fold a single block's stats into the accumulators and drop it."""
+        self.num_blocks += 1
+        if block_stats.num_rows is not None:
+            self._output_rows_acc.add(block_stats.num_rows)
+        if block_stats.size_bytes is not None:
+            self._output_sizes_acc.add(block_stats.size_bytes)
+
+        es = block_stats.exec_stats
+        if es is not None:
+            self._num_exec += 1
+            if es.wall_time_s is not None:
+                self._wall_time_acc.add(es.wall_time_s)
+            if es.cpu_time_s is not None:
+                self._cpu_time_acc.add(es.cpu_time_s)
+            if es.block_transform_time_s is not None:
+                self._block_transform_time_acc.add(es.block_transform_time_s)
+            if es.input_prep_time_s is not None:
+                self._input_prep_time_acc.add(es.input_prep_time_s)
+            if es.function_body_time_s is not None:
+                self._function_body_time_acc.add(es.function_body_time_s)
+            if es.output_build_time_s is not None:
+                self._output_build_time_acc.add(es.output_build_time_s)
+            if es.stage_time_s is not None:
+                # Sized on first sight. Every block a chain produces has the
+                # same number of stages, but a retry that re-planned could
+                # in principle differ, so grow rather than assume.
+                while len(self._stage_time_accs) < len(es.stage_time_s):
+                    self._stage_time_accs.append(_StatsAccumulator())
+                for acc, seconds in zip(self._stage_time_accs, es.stage_time_s):
+                    acc.add(seconds)
+            self._tasks_per_node[es.node_id].add(es.task_idx)
+            if es.start_time_s is not None:
+                self._earliest_start_time = min(self._earliest_start_time, es.start_time_s)
+            if es.end_time_s is not None:
+                self._latest_end_time = max(self._latest_end_time, es.end_time_s)
+            if block_stats.num_rows is not None:
+                self._rows_per_task[es.task_idx] += block_stats.num_rows
+
+    def extend(self, block_stats: Iterable[BlockStats]) -> None:
+        """Fold an iterable of block stats, mirroring ``list.extend``."""
+        for stats in block_stats:
+            self.add(stats)
+
+    def build_summary(
+        self, operator_name: str, is_sub_operator: bool
+    ) -> "OperatorStatsSummary":
+        """Build the operator stats summary from the accumulated state."""
+        num_exec = self._num_exec
+        earliest_start_time = self._earliest_start_time
+        latest_end_time = self._latest_end_time
+
+        # Compute timing totals.
+        if num_exec and earliest_start_time != float("inf"):
+            time_total_s = latest_end_time - earliest_start_time
+            # Handle -0.0 case.
+            rounded_total = round(time_total_s, 2)
+            if rounded_total <= 0:
+                rounded_total = 0
+        else:
+            time_total_s = 0
+            rounded_total = 0
+            earliest_start_time, latest_end_time = None, None
+
+        # Build execution summary string.
+        if is_sub_operator:
+            exec_summary_str = f"{num_exec} blocks produced\n"
+        elif num_exec:
+            exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
+        else:
+            exec_summary_str = "\n"
+
+        # Task-level row stats.
+        task_rows_stats = None
+        if self._rows_per_task:
+            task_rows_acc = _StatsAccumulator()
+            for count in self._rows_per_task.values():
+                task_rows_acc.add(count)
+            task_rows_stats = task_rows_acc.get()
+            exec_summary_str = (
+                f"{task_rows_acc.count} tasks executed, {exec_summary_str}"
+            )
+
+        # Execution stats.
+        wall_time_stats = self._wall_time_acc.get()
+        cpu_stats = self._cpu_time_acc.get()
+        block_transform_stats = self._block_transform_time_acc.get()
+        # A chain that measured only its total leaves the phase accumulators
+        # empty. Report that as None rather than a zero-valued summary, so a
+        # consumer can tell "not measured" from "measured as zero" -- the phases
+        # are absent for row-based transforms unless
+        # `DataContext.accurate_map_phase_timing` is set.
+        phases_measured = self._input_prep_time_acc.count > 0
+        input_prep_stats = self._input_prep_time_acc.get() if phases_measured else None
+        function_body_stats = (
+            self._function_body_time_acc.get() if phases_measured else None
+        )
+        output_build_stats = (
+            self._output_build_time_acc.get() if phases_measured else None
+        )
+        # Empty unless `DataContext.per_stage_map_timing` was set for a chain
+        # with more than one stage. `None`, not `[]`, for the same reason the
+        # phases are `None`: absent means not measured.
+        stage_stats = [acc.get() for acc in self._stage_time_accs] or None
+
+        # Output stats.
+        output_num_rows_stats = self._output_rows_acc.get()
+        output_size_bytes_stats = self._output_sizes_acc.get()
+
+        # Node distribution stats.
+        node_counts_stats = None
+        if self._tasks_per_node:
+            node_counts_acc = _StatsAccumulator()
+            for tasks in self._tasks_per_node.values():
+                node_counts_acc.add(len(tasks))
+            node_counts_stats = node_counts_acc.get()
+
+        # Assign a value in to_summary and initialize it as None.
+        total_input_num_rows = None
+
+        return OperatorStatsSummary(
+            operator_name=operator_name,
+            is_sub_operator=is_sub_operator,
+            time_total_s=time_total_s,
+            earliest_start_time=earliest_start_time,
+            latest_end_time=latest_end_time,
+            block_execution_summary_str=exec_summary_str,
+            wall_time=wall_time_stats,
+            cpu_time=cpu_stats,
+            block_transform_time=block_transform_stats,
+            input_prep_time=input_prep_stats,
+            function_body_time=function_body_stats,
+            output_build_time=output_build_stats,
+            stage_time=stage_stats,
+            total_input_num_rows=total_input_num_rows,
+            output_num_rows=output_num_rows_stats,
+            output_size_bytes=output_size_bytes_stats,
+            node_count=node_counts_stats,
+            task_rows=task_rows_stats,
         )
 
 
@@ -1774,7 +1951,7 @@ class OperatorStatsSummary:
     def from_block_metadata(
         cls,
         operator_name: str,
-        block_stats: List[BlockStats],
+        block_stats: Union[List[BlockStats], "_OutputBlockStatsCollector"],
         is_sub_operator: bool,
     ) -> "OperatorStatsSummary":
         """Calculate the stats for a operator from a given list of blocks,
@@ -1782,147 +1959,19 @@ class OperatorStatsSummary:
 
         Args:
             operator_name: Name of operator associated with `blocks`
-            block_stats: List of `BlockStats` to calculate stats of
+            block_stats: List of `BlockStats` to calculate stats of, or an
+                `_OutputBlockStatsCollector` that already folded them online.
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
         """
-        # Single pass over block_stats to collect all metrics.
-        wall_time_acc: _StatsAccumulator = _StatsAccumulator()
-        cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
-        block_transform_time_acc: _StatsAccumulator = _StatsAccumulator()
-        input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
-        function_body_time_acc: _StatsAccumulator = _StatsAccumulator()
-        output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
-        stage_time_accs: List[_StatsAccumulator] = []
-        output_rows_acc: _StatsAccumulator = _StatsAccumulator()
-        output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
-        rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
-        tasks_per_node: DefaultDict[str, Set[int]] = collections.defaultdict(set)
-        num_exec = 0
-        earliest_start_time, latest_end_time = float("inf"), float("-inf")
-
-        for block_meta in block_stats:
-            if block_meta.num_rows is not None:
-                output_rows_acc.add(block_meta.num_rows)
-            if block_meta.size_bytes is not None:
-                output_sizes_acc.add(block_meta.size_bytes)
-
-            es = block_meta.exec_stats
-            if es is not None:
-                num_exec += 1
-                if es.wall_time_s is not None:
-                    wall_time_acc.add(es.wall_time_s)
-                if es.cpu_time_s is not None:
-                    cpu_time_acc.add(es.cpu_time_s)
-                if es.block_transform_time_s is not None:
-                    block_transform_time_acc.add(es.block_transform_time_s)
-                if es.input_prep_time_s is not None:
-                    input_prep_time_acc.add(es.input_prep_time_s)
-                if es.function_body_time_s is not None:
-                    function_body_time_acc.add(es.function_body_time_s)
-                if es.output_build_time_s is not None:
-                    output_build_time_acc.add(es.output_build_time_s)
-                if es.stage_time_s is not None:
-                    # Sized on first sight. Every block a chain produces has the
-                    # same number of stages, but a retry that re-planned could
-                    # in principle differ, so grow rather than assume.
-                    while len(stage_time_accs) < len(es.stage_time_s):
-                        stage_time_accs.append(_StatsAccumulator())
-                    for acc, seconds in zip(stage_time_accs, es.stage_time_s):
-                        acc.add(seconds)
-                tasks_per_node[es.node_id].add(es.task_idx)
-                if es.start_time_s is not None:
-                    earliest_start_time = min(earliest_start_time, es.start_time_s)
-                if es.end_time_s is not None:
-                    latest_end_time = max(latest_end_time, es.end_time_s)
-                if block_meta.num_rows is not None:
-                    rows_per_task[es.task_idx] += block_meta.num_rows
-
-        # Compute timing totals.
-        if num_exec and earliest_start_time != float("inf"):
-            time_total_s = latest_end_time - earliest_start_time
-            # Handle -0.0 case.
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                rounded_total = 0
+        if isinstance(block_stats, _OutputBlockStatsCollector):
+            collector = block_stats
         else:
-            time_total_s = 0
-            rounded_total = 0
-            earliest_start_time, latest_end_time = None, None
-
-        # Build execution summary string.
-        if is_sub_operator:
-            exec_summary_str = f"{num_exec} blocks produced\n"
-        elif num_exec:
-            exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
-        else:
-            exec_summary_str = "\n"
-
-        # Task-level row stats.
-        task_rows_stats = None
-        if rows_per_task:
-            task_rows_acc = _StatsAccumulator()
-            for count in rows_per_task.values():
-                task_rows_acc.add(count)
-            task_rows_stats = task_rows_acc.get()
-            exec_summary_str = (
-                f"{task_rows_acc.count} tasks executed, {exec_summary_str}"
-            )
-
-        # Execution stats.
-        wall_time_stats = wall_time_acc.get()
-        cpu_stats = cpu_time_acc.get()
-        block_transform_stats = block_transform_time_acc.get()
-        # A chain that measured only its total leaves the phase accumulators
-        # empty. Report that as None rather than a zero-valued summary, so a
-        # consumer can tell "not measured" from "measured as zero" -- the phases
-        # are absent for row-based transforms unless
-        # `DataContext.accurate_map_phase_timing` is set.
-        phases_measured = input_prep_time_acc.count > 0
-        input_prep_stats = input_prep_time_acc.get() if phases_measured else None
-        function_body_stats = function_body_time_acc.get() if phases_measured else None
-        output_build_stats = output_build_time_acc.get() if phases_measured else None
-        # Empty unless `DataContext.per_stage_map_timing` was set for a chain
-        # with more than one stage. `None`, not `[]`, for the same reason the
-        # phases are `None`: absent means not measured.
-        stage_stats = [acc.get() for acc in stage_time_accs] or None
-
-        # Output stats.
-        output_num_rows_stats = output_rows_acc.get()
-        output_size_bytes_stats = output_sizes_acc.get()
-
-        # Node distribution stats.
-        node_counts_stats = None
-        if tasks_per_node:
-            node_counts_acc = _StatsAccumulator()
-            for tasks in tasks_per_node.values():
-                node_counts_acc.add(len(tasks))
-            node_counts_stats = node_counts_acc.get()
-
-        # Assign a value in to_summary and initialize it as None.
-        total_input_num_rows = None
-
-        return OperatorStatsSummary(
-            operator_name=operator_name,
-            is_sub_operator=is_sub_operator,
-            time_total_s=time_total_s,
-            earliest_start_time=earliest_start_time,
-            latest_end_time=latest_end_time,
-            block_execution_summary_str=exec_summary_str,
-            wall_time=wall_time_stats,
-            cpu_time=cpu_stats,
-            block_transform_time=block_transform_stats,
-            input_prep_time=input_prep_stats,
-            function_body_time=function_body_stats,
-            output_build_time=output_build_stats,
-            stage_time=stage_stats,
-            total_input_num_rows=total_input_num_rows,
-            output_num_rows=output_num_rows_stats,
-            output_size_bytes=output_size_bytes_stats,
-            node_count=node_counts_stats,
-            task_rows=task_rows_stats,
-        )
+            # Single pass over block_stats to collect all metrics.
+            collector = _OutputBlockStatsCollector()
+            collector.extend(block_stats)
+        return collector.build_summary(operator_name, is_sub_operator)
 
     def __str__(self) -> str:
         """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from

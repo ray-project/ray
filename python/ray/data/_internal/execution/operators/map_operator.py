@@ -79,14 +79,13 @@ from ray.data._internal.execution.util import (
     merge_label_selector,
     yield_block_with_stats,
 )
-from ray.data._internal.stats import StatsDict
+from ray.data._internal.stats import StatsDict, _OutputBlockStatsCollector
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadataWithSchema,
-    BlockStats,
     TaskExecWorkerStats,
     to_stats,
 )
@@ -262,8 +261,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: Optional[BaseBundleQueue] = None
-        # Output metadata, added to on get_next().
-        self._output_blocks_stats: List[BlockStats] = []
+        # Output metadata, folded into a bounded online aggregator on get_next()
+        # instead of an append-only per-block list (see #66016).
+        self._output_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
         # All active `DataOpTask`s.
         self._data_tasks: Dict[int, DataOpTask] = {}
         self._next_data_task_idx = 0
