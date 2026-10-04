@@ -110,6 +110,48 @@ def _check_rl_module_spec(module_spec: RLModuleSpecType) -> None:
         )
 
 
+def _add_default_learner_connectors(
+    pipeline: "LearnerConnectorPipeline",
+    *,
+    is_multi_agent: bool,
+    rl_module_spec,
+    policies,
+    policy_mapping_fn,
+    device=None,
+) -> "LearnerConnectorPipeline":
+    """Appends RLlib's default learner ConnectorV2 pieces to `pipeline`."""
+    from ray.rllib.connectors.learner import (
+        AddColumnsFromEpisodesToTrainBatch,
+        AddObservationsFromEpisodesToBatch,
+        AddStatesFromEpisodesToBatch,
+        AddTimeDimToBatchAndZeroPad,
+        AgentToModuleMapping,
+        BatchIndividualItems,
+        NumpyToTensor,
+    )
+
+    pipeline.append(AddObservationsFromEpisodesToBatch(as_learner_connector=True))
+    pipeline.append(AddColumnsFromEpisodesToTrainBatch())
+    pipeline.append(AddTimeDimToBatchAndZeroPad(as_learner_connector=True))
+    pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
+    if is_multi_agent:
+        pipeline.append(
+            AgentToModuleMapping(
+                rl_module_specs=(
+                    rl_module_spec.rl_module_specs
+                    if isinstance(rl_module_spec, MultiRLModuleSpec)
+                    else set(policies)
+                ),
+                agent_to_module_mapping_fn=policy_mapping_fn,
+                as_learner_connector=True,
+            )
+        )
+    pipeline.append(BatchIndividualItems(multi_agent=is_multi_agent))
+    pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
+
+    return pipeline
+
+
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
@@ -1308,46 +1350,16 @@ class AlgorithmConfig(_Config):
         device=None,
     ) -> "LearnerConnectorPipeline":
         """Adds RLlib's default learner ConnectorV2 pieces to `pipeline`."""
-        from ray.rllib.connectors.learner import (
-            AddColumnsFromEpisodesToTrainBatch,
-            AddObservationsFromEpisodesToBatch,
-            AddStatesFromEpisodesToBatch,
-            AddTimeDimToBatchAndZeroPad,
-            AgentToModuleMapping,
-            BatchIndividualItems,
-            NumpyToTensor,
-        )
-
         if not self.add_default_connectors_to_learner_pipeline:
             return pipeline
-
-        # Append OBS handling.
-        pipeline.append(AddObservationsFromEpisodesToBatch(as_learner_connector=True))
-        # Append all other columns handling.
-        pipeline.append(AddColumnsFromEpisodesToTrainBatch())
-        # Append time-rank handler.
-        pipeline.append(AddTimeDimToBatchAndZeroPad(as_learner_connector=True))
-        # Append STATE_IN/STATE_OUT handler.
-        pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
-        # If multi-agent -> Map from AgentID-based data to ModuleID based data.
-        if self.is_multi_agent:
-            pipeline.append(
-                AgentToModuleMapping(
-                    rl_module_specs=(
-                        self.rl_module_spec.rl_module_specs
-                        if isinstance(self.rl_module_spec, MultiRLModuleSpec)
-                        else set(self.policies)
-                    ),
-                    agent_to_module_mapping_fn=self.policy_mapping_fn,
-                    as_learner_connector=True,
-                )
-            )
-        # Batch all data.
-        pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent))
-        # Convert to Tensors.
-        pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
-
-        return pipeline
+        return _add_default_learner_connectors(
+            pipeline,
+            is_multi_agent=self.is_multi_agent,
+            rl_module_spec=self.rl_module_spec,
+            policies=self.policies,
+            policy_mapping_fn=self.policy_mapping_fn,
+            device=device,
+        )
 
     def build_learner_connector(
         self,
