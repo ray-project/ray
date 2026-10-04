@@ -12,6 +12,7 @@ from ray.data._internal.execution.lineage_tracker import (
     ParentBlockOutput,
     ReconstructionPlanId,
 )
+from ray.data.tests.unit.lineage_tracker_util import release_inputs_and_submit
 
 
 @dataclass(frozen=True)
@@ -45,16 +46,17 @@ class Submit(Action):
     plan: Optional[PlanRef] = None
 
     def apply(self, runner: "_ActionRunner") -> None:
-        runner.tracker.register_task_submission(
+        release_inputs_and_submit(
+            runner.tracker,
             self.lineage_task_id,
-            dependencies=[
+            [
                 ParentBlockOutput(
                     parent_lineage_task_id=parent_task_id, output_index=output_index
                 )
                 for parent_task_id, output_indices in self.dependencies.items()
                 for output_index in output_indices
             ],
-            reconstruction_plan_id=runner.resolve_optional(self.plan),
+            runner.resolve_optional(self.plan),
         )
 
 
@@ -974,6 +976,64 @@ def test_all_to_all_failure_recovery(actions: List[Action]):
     task of it fails or two.
     """
     run_actions(actions)
+
+
+def test_retry_does_not_release_a_queued_sibling_again():
+    """A retry within a plan re-runs a shared parent, but does not release a
+    sibling whose input is already queued.
+
+    Graph::
+
+        seed --output 0--> left  --\\
+             --output 1--> right --+--> common
+
+    ``common`` fails, so the seed re-runs and releases the input of both
+    branches. ``left`` is submitted and loses its output, while ``right``'s
+    input is still queued. The retry re-runs the seed for the same plan, which
+    must re-produce only ``left``'s input.
+    """
+    tracker = LineageTracker()
+    seed, left, right, common = "seed", "left", "right", "common"
+    left_input = [ParentBlockOutput(parent_lineage_task_id=seed, output_index=0)]
+    right_input = [ParentBlockOutput(parent_lineage_task_id=seed, output_index=1)]
+
+    tracker.register_task_submission(seed, [])
+    tracker.register_task_submission(left, left_input)
+    tracker.register_task_submission(right, right_input)
+    tracker.register_task_submission(
+        common,
+        [
+            ParentBlockOutput(parent_lineage_task_id=left, output_index=0),
+            ParentBlockOutput(parent_lineage_task_id=right, output_index=0),
+        ],
+    )
+
+    _, plan = tracker.register_task_failed(common)
+    tracker.register_task_submission(seed, [], plan)
+    assert set(tracker.get_pending_children(seed, plan)) == {left, right}
+    # The seed completes and releases both branches' input.
+    for output_index in (0, 1):
+        tracker.register_block_queued(seed, output_index, plan)
+
+    # left is submitted and loses its output. right's input is still queued.
+    tracker.register_task_submission(left, left_input, plan)
+    assert tracker.register_task_failed(left, plan) == ([seed], plan)
+    tracker.register_task_submission(seed, [], plan)
+
+    assert tracker.get_pending_children(seed, plan) == {left: {seed: [0]}}
+    assert (
+        tracker.get_object_reuse_status(seed, 0, plan)
+        == ObjectReuseStatus.OBJECT_REUSED
+    )
+    assert (
+        tracker.get_object_reuse_status(seed, 1, plan)
+        == ObjectReuseStatus.OBJECT_PRUNED
+    )
+    with pytest.raises(ValueError, match="the plan does not owe it"):
+        tracker.register_block_queued(seed, 1, plan)
+
+    # The queued input from the first release is still valid for right.
+    tracker.register_task_submission(right, right_input, plan)
 
 
 if __name__ == "__main__":

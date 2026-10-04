@@ -11,6 +11,7 @@ from ray.data._internal.execution.lineage_tracker import (
     ParentBlockOutput,
     ReconstructionPlanId,
 )
+from ray.data.tests.unit.lineage_tracker_util import release_inputs_and_submit
 
 # These tests only build linear chains -- one parent per task -- so the only axis
 # that varies between otherwise identical scenarios is how many of the parent's
@@ -155,10 +156,11 @@ def _reconstruct_edge(
     tracker.register_task_complete(
         parent_task_id, reconstruction_plan_id=reconstruction_plan_id
     )
-    tracker.register_task_submission(
+    release_inputs_and_submit(
+        tracker,
         child_task_id,
-        dependencies=_dependencies(parent_task_id, output_indices),
-        reconstruction_plan_id=reconstruction_plan_id,
+        _dependencies(parent_task_id, output_indices),
+        reconstruction_plan_id,
     )
 
     _assert_parent_discharged(
@@ -265,9 +267,9 @@ def test_unregistered_task_submitted_for_a_live_plan_raises():
 #: The message a submission is rejected with when the plan no longer claims the
 #: task at all.
 _PLAN_NOT_CLAIMED = "not registered as a known reconstruction plan"
-#: The message a submission is rejected with when the plan still claims the task
-#: but does not owe it the block it asks for.
-_BLOCK_NOT_OWED = "to be required by plan"
+#: The message a block is rejected with when it is queued for a plan that does
+#: not owe it.
+_BLOCK_NOT_OWED = "the plan does not owe it"
 
 _SEED_TASK_ID: LineageTaskId = "seed_task"
 _CHILD_TASK_ID: LineageTaskId = "child_task"
@@ -324,10 +326,11 @@ def test_resubmission_for_a_block_the_plan_does_not_owe_raises(
 
     unowed_output_index = len(output_indices)
     with pytest.raises(ValueError, match=_BLOCK_NOT_OWED):
-        tracker.register_task_submission(
+        release_inputs_and_submit(
+            tracker,
             _CHILD_TASK_ID,
-            dependencies=_dependencies(_SEED_TASK_ID, [unowed_output_index]),
-            reconstruction_plan_id=reconstruction_plan_id,
+            _dependencies(_SEED_TASK_ID, [unowed_output_index]),
+            reconstruction_plan_id,
         )
 
 
@@ -354,17 +357,16 @@ def test_resubmission_of_an_already_claimed_block_raises():
         seed_task_id, reconstruction_plan_id=reconstruction_plan_id
     )
 
-    tracker.register_task_submission(
-        task_ids[1],
-        dependencies=_dependencies(seed_task_id, [0]),
-        reconstruction_plan_id=reconstruction_plan_id,
+    release_inputs_and_submit(
+        tracker, task_ids[1], _dependencies(seed_task_id, [0]), reconstruction_plan_id
     )
 
     with pytest.raises(ValueError, match=_BLOCK_NOT_OWED):
-        tracker.register_task_submission(
+        release_inputs_and_submit(
+            tracker,
             task_ids[1],
-            dependencies=_dependencies(seed_task_id, [0]),
-            reconstruction_plan_id=reconstruction_plan_id,
+            _dependencies(seed_task_id, [0]),
+            reconstruction_plan_id,
         )
 
 
@@ -413,18 +415,21 @@ def test_parent_resubmitted_after_plan_is_fully_discharged_raises(
 
 
 def test_target_consumed_output_pruned_and_unconsumed_output_new():
-    """The reconstruction target re-emits only the outputs nothing took.
+    """The reconstruction target re-emits only the outputs it never queued.
 
-    The child consumes only output 0, so when the seed is the target of
-    reconstruction that block is OBJECT_PRUNED -- the child already fetched a
-    copy of those rows, and re-emitting them would duplicate. Output 1, which
-    nothing downstream consumed, is OBJECT_NEW and free to be handed to anyone.
+    The seed queued only output 0, so when the seed is the target of
+    reconstruction that block is OBJECT_PRUNED -- a copy of those rows is already
+    downstream, and re-emitting them would duplicate. Output 1, which was never
+    queued, is OBJECT_NEW and free to be handed to anyone.
     """
     tracker = LineageTracker()
     seed_task_id = "seed_task"
     child_task_id = "child_task"
 
+    # The seed queues output 0, which the child consumes, and fails before it
+    # queues output 1.
     tracker.register_task_submission(seed_task_id, dependencies=[])
+    tracker.register_block_queued(seed_task_id, 0)
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, [0])
     )

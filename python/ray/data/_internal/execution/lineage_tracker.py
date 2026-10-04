@@ -84,6 +84,11 @@ class TaskNode:
     # Maps a reconstruction plan ID to the child block dependencies the plan must re-produce.
     plan_to_child_block_lineages: Dict[ReconstructionPlanId, Set[ChildBlockDependency]]
 
+    # How many outputs this task added to this operators output queue.
+    # This is only incremented by fresh tasks and tasks that are the reconstruction plan target,
+    # which are the only tasks that explicitly add outputs to the operator queue
+    num_queued_outputs: int = 0
+
     def __repr__(self) -> str:
         parent_ids = [task.lineage_task_id for task in self.parent_tasks]
         child_ids = [task.lineage_task_id for task in self.child_tasks]
@@ -91,7 +96,8 @@ class TaskNode:
             f"{type(self).__name__}(lineage_task_id={self.lineage_task_id!r}, "
             f"parent_tasks={parent_ids!r}, child_tasks={child_ids!r}, "
             f"child_task_block_dependencies={self.child_task_block_dependencies!r}, "
-            f"plan_to_child_block_lineages={self.plan_to_child_block_lineages!r})"
+            f"plan_to_child_block_lineages={self.plan_to_child_block_lineages!r}, "
+            f"num_queued_outputs={self.num_queued_outputs!r})"
         )
 
     def __eq__(self, other: object) -> bool:
@@ -127,6 +133,68 @@ class LineageTracker:
         self._block_id_to_parent_output[block_id] = ParentBlockOutput(
             parent_lineage_task_id=lineage_task_id, output_index=output_index
         )
+
+    def register_block_queued(
+        self,
+        lineage_task_id: LineageTaskId,
+        output_index: OutputIndex,
+        reconstruction_plan_id: Optional[ReconstructionPlanId] = None,
+    ) -> None:
+        """
+        Unlike ``register_block_output``, which records every block a task
+        produces, this is only called for a block the operator adds to the operator's output queue.
+        A block that is withheld or dropped is not queued.
+
+        A queued block counts as delivered even if no task has consumed it yet.
+        If a queued block is lost, the task that consumes it fails, and that failure
+        opens its own reconstruction plan.
+
+        Args:
+            lineage_task_id: The ID of the data task that produced the block.
+            output_index: The index of this output within the producing task.
+            reconstruction_plan_id: The reconstruction plan ID of the attempt
+                that queued the block. ``None`` for a fresh attempt.
+        """
+        task_node = self._lineage_task_id_to_task_node.get(lineage_task_id)
+        if task_node is None:
+            raise ValueError(
+                f"Expected task {lineage_task_id} to be registered before "
+                "queueing its output but was not."
+            )
+
+        # Fresh attempt, or a reconstruction task where this is the target/leaf node of the reconstruction plan.
+        # Both queue outputs in index order, so a count is enough to record which outputs are downstream.
+        if reconstruction_plan_id is None or reconstruction_plan_id == lineage_task_id:
+            if output_index != task_node.num_queued_outputs:
+                raise ValueError(
+                    f"Task {lineage_task_id} queued output {output_index}, but "
+                    f"{task_node.num_queued_outputs} outputs were already queued. "
+                    "Outputs must be queued once each, in index order."
+                )
+            task_node.num_queued_outputs += 1
+            return
+
+        # Each block has one consumer, so at most one child task matches this output index.
+        block_index_child_task_dependencies = (
+            task_node.plan_to_child_block_lineages.get(reconstruction_plan_id, set())
+        )
+        entry = next(
+            (
+                owed_block
+                for owed_block in block_index_child_task_dependencies
+                if owed_block.output_index == output_index
+            ),
+            None,
+        )
+        if entry is None:
+            raise ValueError(
+                f"Task {lineage_task_id} queued output {output_index} for plan "
+                f"{reconstruction_plan_id}, but the plan does not owe it. Was it "
+                "already queued for this plan?"
+            )
+        block_index_child_task_dependencies.remove(entry)
+        if not block_index_child_task_dependencies:
+            del task_node.plan_to_child_block_lineages[reconstruction_plan_id]
 
     def resolve_dependencies(
         self, block_ids: Iterable[BlockId]
@@ -190,13 +258,11 @@ class LineageTracker:
                         can be a re-execution of a reconstruction plan.
 
                         Raises if a ``reconstruction_plan_id`` was provided for the task to register,
-                        but the parents of the task has already marked the dependencies
-                        of the task as resolved for the plan. This means the task has
-                        already been submitted for the same plan, and the new task
-                        is a redundant duplicate.
-                        Invariant: a plan claims each block it owes exactly
-                        once, so within a plan, for any output block, there can
-                        be at most one reconstruction of it.
+                        but a parent of the task still owes one of its input
+                        blocks for the plan.
+                        Invariant: a re-execution is only submitted on input
+                        that its parents queued for the plan
+                        (``register_block_queued``).
         """
         logger.debug(
             "Registering task submission for task %s with dependencies %s",
@@ -243,31 +309,24 @@ class LineageTracker:
             parent_task_child_block_lineages = (
                 parent_task_node.plan_to_child_block_lineages
             )
-            # reconstruction task case: remove resolved dependencies from the
-            # plan of the parent.
+            # reconstruction task case: a re-execution attempt only runs on inputs its
+            # parents already released. Raise if the plan still owes any of it.
             if reconstruction_plan_id is not None:
-                if reconstruction_plan_id in parent_task_child_block_lineages:
-                    dependency_to_remove = ChildBlockDependency(
-                        child_lineage_task_id=lineage_task_id,
-                        output_index=dependency.output_index,
+                dependency_still_owed = ChildBlockDependency(
+                    child_lineage_task_id=lineage_task_id,
+                    output_index=dependency.output_index,
+                )
+                if dependency_still_owed in parent_task_child_block_lineages.get(
+                    reconstruction_plan_id, set()
+                ):
+                    raise ValueError(
+                        f"Task {lineage_task_id} was submitted for plan "
+                        f"{reconstruction_plan_id} with input "
+                        f"{dependency_still_owed} from parent "
+                        f"{dependency.parent_lineage_task_id}, but that block was "
+                        "never queued for the plan. Was the task submitted before "
+                        "its parent released its input?"
                     )
-                    if (
-                        dependency_to_remove
-                        not in parent_task_child_block_lineages[reconstruction_plan_id]
-                    ):
-                        raise ValueError(
-                            f"Expected dependency {dependency_to_remove} to be "
-                            f"required by plan {reconstruction_plan_id} as part of the parent's "
-                            "dependencies that need to be resubmitted in "
-                            f"{parent_task_child_block_lineages[reconstruction_plan_id]} but was not. Has "
-                            "the plan been correctly updated to reflect the "
-                            "dependencies needed for the reconstruction?"
-                        )
-                    parent_task_child_block_lineages[reconstruction_plan_id].remove(
-                        dependency_to_remove
-                    )
-                    if not parent_task_child_block_lineages[reconstruction_plan_id]:
-                        del parent_task_child_block_lineages[reconstruction_plan_id]
             # fresh task case: add dependencies as edge from parent to child.
             else:
                 if dependency.parent_lineage_task_id not in parent_to_dependencies:
@@ -322,8 +381,8 @@ class LineageTracker:
 
         Note:
             Completing a task does not remove anything from its plan set. Plan set entries are
-            removed in ``register_task_submission``, when the child that consumes the
-            block is resubmitted.
+            removed in ``register_block_queued``, when the block is released to
+            the child that consumes it.
 
         Args:
             lineage_task_id: The ID of the data task that was completed.
@@ -454,8 +513,8 @@ class LineageTracker:
         """
         Get the children that must be reconstructed for the given data task.
 
-        Children that are already in the middle of re-executing a reconstruction
-        are not included.
+        Children whose input this task already queued for the plan are not
+        included.
 
         Args:
             lineage_task_id: The ID of the data task to get the pending children for.
@@ -573,22 +632,13 @@ class LineageTracker:
                     return _log_and_return(ObjectReuseStatus.OBJECT_REUSED)
             return _log_and_return(ObjectReuseStatus.OBJECT_PRUNED)
 
-        # A child task fetched the block to its own node, so a copy of these rows
-        # outlives the node that produced them and re-producing would duplicate.
-        #
-        # Note what does *not* count: an output sitting in a downstream operator's
-        # queue. That queue holds an `ObjectRef`, so the only copy is still on the
-        # producing node and dies with it -- such an output falls through to
-        # OBJECT_NEW below and is re-emitted, which is required, not a duplicate.
-        object_used_by_child = any(
-            output_index in output_indices
-            for output_indices in task_node.child_task_block_dependencies.values()
-        )
-        if object_used_by_child:
+        # An output an earlier attempt queued is still downstream, either consumed
+        # or waiting in a queue. Queueing it again would duplicate its rows. If
+        # that copy is lost, the task that consumes it fails and opens its own
+        # plan, so it is never re-emitted here.
+        if output_index < task_node.num_queued_outputs:
             return _log_and_return(ObjectReuseStatus.OBJECT_PRUNED)
 
-        # For the task that is the target of reconstruction, its unconsumed
-        # outputs can safely be taken by anyone, since the previously produced and
-        # unconsumed outputs must have died with the previous node. (Assumes
-        # reconstruction happens only upon node deaths.)
+        # An output no earlier attempt queued has never been downstream, so the
+        # target must queue it.
         return _log_and_return(ObjectReuseStatus.OBJECT_NEW)

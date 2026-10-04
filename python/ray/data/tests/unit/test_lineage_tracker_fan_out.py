@@ -13,6 +13,7 @@ from ray.data._internal.execution.lineage_tracker import (
     ParentBlockOutput,
     ReconstructionPlanId,
 )
+from ray.data.tests.unit.lineage_tracker_util import release_inputs_and_submit
 
 #: The single seed output block that every child consumes in
 #: :attr:`FanOutMode.SHARED` fan-outs.
@@ -334,15 +335,16 @@ def _resubmit_child_retry(
     reconstruction_plan_id: ReconstructionPlanId,
 ) -> None:
     """Resubmit ``child_task_id`` against the recovered seed's fresh outputs."""
-    tracker.register_task_submission(
+    release_inputs_and_submit(
+        tracker,
         child_task_id,
-        dependencies=[
+        [
             ParentBlockOutput(
                 parent_lineage_task_id=seed_task_id, output_index=output_index
             )
             for output_index in child_output_indices
         ],
-        reconstruction_plan_id=reconstruction_plan_id,
+        reconstruction_plan_id,
     )
 
 
@@ -748,10 +750,10 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
         reconstruction plan id keying the recovery.
       - After the seed is resubmitted, ``child_0`` is *not* a pending child: it
         never failed and is still executing, so it must not be re-submitted.
-      - Output 0 is OBJECT_PRUNED (already claimed by the in-flight ``child_0``)
-        while output 1 is OBJECT_NEW -- no child has ever consumed it, so the
+      - Output 0 is OBJECT_PRUNED (the seed already queued it for ``child_0``)
+        while output 1 is OBJECT_NEW -- it was never queued, so the
         recovered seed genuinely produces it for the first time.
-      - Submitting ``child_1`` against output 1 flips that output to
+      - Queueing output 1 for ``child_1`` flips that output to
         OBJECT_PRUNED, and once the seed completes for the plan both outputs stay
         pruned and it has no pending children.
     """
@@ -760,8 +762,10 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
     child_task_ids = ["child_0", "child_1"]
     seed_output_indices = range(len(child_task_ids))
 
-    # The seed is submitted, and child_0 starts consuming its first output block.
+    # The seed is submitted and queues its first output block, which child_0
+    # starts consuming.
     tracker.register_task_submission(seed_task_id, dependencies=[])
+    tracker.register_block_queued(seed_task_id, 0)
     tracker.register_task_submission(
         child_task_ids[0],
         dependencies=[
@@ -789,8 +793,8 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
         == {}
     )
 
-    # Output 0 was already consumed by the in-flight child_0 -> pruned. Output 1
-    # has no consumer at all, so the recovered seed produces it fresh -> new.
+    # Output 0 was already queued for the in-flight child_0 -> pruned. Output 1
+    # was never queued, so the recovered seed produces it fresh -> new.
     assert (
         tracker.get_object_reuse_status(
             seed_task_id, output_index=0, reconstruction_plan_id=reconstruction_plan_id
@@ -804,7 +808,10 @@ def test_seed_fail_mid_fan_out_prunes_consumed_output_and_marks_new_output_new()
         == ObjectReuseStatus.OBJECT_NEW
     )
 
-    # child_1 is submitted against the newly produced output 1, which claims it.
+    # The recovered seed queues output 1, and child_1 is submitted against it.
+    tracker.register_block_queued(
+        seed_task_id, 1, reconstruction_plan_id=reconstruction_plan_id
+    )
     tracker.register_task_submission(
         child_task_ids[1],
         dependencies=[
@@ -1033,12 +1040,11 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
         tracker.register_task_complete(
             parent_task_id, reconstruction_plan_id=reconstruction_plan_id
         )
-        tracker.register_task_submission(
+        release_inputs_and_submit(
+            tracker,
             child_task_id,
-            dependencies=[
-                ParentBlockOutput(parent_lineage_task_id=parent_task_id, output_index=0)
-            ],
-            reconstruction_plan_id=reconstruction_plan_id,
+            [ParentBlockOutput(parent_lineage_task_id=parent_task_id, output_index=0)],
+            reconstruction_plan_id,
         )
 
         assert (

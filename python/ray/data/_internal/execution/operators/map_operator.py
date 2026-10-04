@@ -774,6 +774,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     reconstruction_plan_id=reconstruction_plan_id,
                 ),
             )
+            # Register with the lineage tracker that all the blocks for this task in a
+            # particular reconstruction plan are now queued
+            for slot in slots:
+                self._lineage_tracker.register_block_queued(
+                    slot.parent_lineage_task_id,
+                    slot.output_index,
+                    reconstruction_plan_id,
+                )
             # Add to the output queue of the current task
             self._output_queue.add(inputs, key=task_index)
             self._metrics.on_output_queued(inputs)
@@ -823,17 +831,17 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         # This task's next output_index. A per-task closure local, so it is scoped
         # exactly right and resets naturally on a re-execution.
-        num_outputs_emitted = 0
+        next_output_index = 0
 
         def _output_ready_callback(
             task_index,
             output: RefBundle,
         ):
-            nonlocal num_outputs_emitted
+            nonlocal next_output_index
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
-            output_index = num_outputs_emitted
-            num_outputs_emitted += 1
+            output_index = next_output_index
+            next_output_index += 1
             self._metrics.on_task_output_generated(task_index, output)
 
             if lineage_tracker is not None:
@@ -866,6 +874,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     # NEW falls through to the output queue.
                     if status is not ObjectReuseStatus.OBJECT_NEW:
                         return
+                lineage_tracker.register_block_queued(
+                    lineage_task_id, output_index, reconstruction_plan_id
+                )
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)

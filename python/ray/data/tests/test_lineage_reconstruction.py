@@ -162,6 +162,34 @@ def test_two_losses_under_one_seed_match_baseline(
     _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
 
 
+@pytest.mark.parametrize("reads_before_loss", [5, 10])
+@reconstruction_enabled
+def test_seed_loss_does_not_re_emit_queued_outputs(
+    ray_start_regular_shared,
+    restore_data_context,
+    lose_output,
+    reads_before_loss,  # noqa: F405
+):
+    """The seed loses its output after queueing some blocks; every row arrives once.
+
+    The downstream bundler waits for all 20 rows, so the blocks the seed queued
+    before the loss are still waiting when it re-runs. They are already
+    downstream, so the re-run must not queue them again.
+    """
+    restore_data_context.target_max_block_size = 1
+    fired = lose_output("ReadRange", reads_before_loss=reads_before_loss)
+
+    rows = (
+        ray.data.range(20, override_num_blocks=1)
+        .map(lambda row: {"id": row["id"] + 1})
+        .map_batches(lambda batch: batch, batch_size=20, concurrency=1)
+        .take_all()
+    )
+
+    assert fired == [0]
+    _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
+
+
 @pytest.mark.parametrize(
     ("run_plan", "expected"),
     [
@@ -246,8 +274,7 @@ def test_lost_child_reconstructs_across_graph_shapes(
         restore_data_context.target_max_block_size = 1
     num_children = num_rows // batch_size
     # Lose the last child submitted: by then every sibling is registered, so the
-    # seed's other re-produced outputs are pruned. An earlier child would re-emit
-    # siblings still queued -- right for a dead node, duplicates under an injection.
+    # seed's other re-produced outputs are pruned.
     fired = lose_output("MapBatches", task_indices=(num_children - 1,))
 
     rows = (
