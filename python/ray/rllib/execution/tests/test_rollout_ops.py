@@ -68,7 +68,6 @@ def test_synchronous_parallel_sample_ignores_nan_agent_step_metrics():
             .env_runners(
                 num_env_runners=0,
                 batch_mode="complete_episodes",
-                rollout_fragment_length=2,
             )
             .multi_agent(
                 policies={"p0"},
@@ -81,7 +80,7 @@ def test_synchronous_parallel_sample_ignores_nan_agent_step_metrics():
 
         # Prime the real MetricsLogger with both AgentIDs, then reduce it. The
         # Stats keys remain registered while their current windows are cleared.
-        env_runner.sample(num_episodes=1)
+        env_runner.sample(num_episodes=1, random_actions=True)
         first_metrics = env_runner.get_metrics()
         assert int(first_metrics[NUM_AGENT_STEPS_SAMPLED]["agent_0"]) > 0
         assert int(first_metrics[NUM_AGENT_STEPS_SAMPLED]["agent_1"]) > 0
@@ -95,6 +94,7 @@ def test_synchronous_parallel_sample_ignores_nan_agent_step_metrics():
             concat=False,
             _uses_new_env_runners=True,
             _return_metrics=True,
+            random_actions=True,
         )
 
         assert samples
