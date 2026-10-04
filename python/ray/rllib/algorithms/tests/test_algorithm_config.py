@@ -650,14 +650,20 @@ class TestAlgorithmConfig(unittest.TestCase):
             names.index("NormalizeAndClipActions"),
         )
 
-        # Learner: prepended.
+        # Learner: PPO prepends its own default `AddOneTsToEpisodesAndTruncate`, so the
+        # legacy piece sits right after it and in front of the base default pieces.
         config = (
             PPOConfig()
             .environment("CartPole-v1")
             .learners(learner_connector=lambda obs, act: Marker())
         )
         names = connector_names(config.build_learner_connector(obs_space, act_space))
-        self.assertEqual(names.index("Marker"), 0)
+        self.assertLess(
+            names.index("AddOneTsToEpisodesAndTruncate"), names.index("Marker")
+        )
+        self.assertLess(
+            names.index("Marker"), names.index("AddObservationsFromEpisodesToBatch")
+        )
 
         # Legacy `*_connector` + builder can be combined.
         seen = []
@@ -804,6 +810,32 @@ class TestAlgorithmConfig(unittest.TestCase):
         config.build_learner_connector(
             env.observation_space, env.action_space, device="cpu"
         )
+
+    def test_connector_builder_sees_algo_defaults(self):
+        """Algo-specific learner defaults (PPO's GAE) are visible to the builder."""
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray.rllib.connectors.learner import GeneralAdvantageEstimation
+
+        env = gym.make("CartPole-v1")
+        seen = []
+
+        def builder(pipeline, device):
+            seen.append([type(c).__name__ for c in pipeline.connectors])
+            pipeline.remove(GeneralAdvantageEstimation)
+            return pipeline
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .learners(learner_connector_builder=builder)
+        )
+        pipeline = config.build_learner_connector(
+            env.observation_space, env.action_space
+        )
+        names = [type(c).__name__ for c in pipeline.connectors]
+        self.assertIn("AddOneTsToEpisodesAndTruncate", seen[0])
+        self.assertIn("GeneralAdvantageEstimation", seen[0])
+        self.assertNotIn("GeneralAdvantageEstimation", names)
 
     def test_connector_builder_must_return_pipeline(self):
         """A builder that doesn't return the specific pipeline type raises."""
