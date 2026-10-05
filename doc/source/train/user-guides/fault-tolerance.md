@@ -21,7 +21,7 @@ Ray Train provides fault tolerance at three levels:
 2. **Worker node fault tolerance** handles node failures that may occur during training.
 3. **Job driver fault tolerance** handles the case where Ray Train driver process crashes, and training needs to be kicked off again, possibly from a new cluster.
 
-This user guide covers how to configure and use these fault tolerance mechanisms.
+This user guide covers how to configure and use these fault tolerance mechanisms. It also covers how to {ref}`save a just-in-time checkpoint <train-preemption-fault-tolerance>` before a node is preempted, so that a restart loses as little progress as possible.
 
 (train-worker-fault-tolerance)=
 
@@ -91,6 +91,106 @@ The new worker node has joined the cluster.
 Ray Train restarts all the worker processes and provides them with the latest checkpoint.
 The workers download the checkpoint from storage and use it to resume training.
 ```
+
+
+(train-preemption-fault-tolerance)=
+
+## Just-in-time checkpointing on node preemption
+
+Cloud providers preempt spot instances and preemptible virtual machines with a short notice. AWS gives about two minutes of notice before it preempts a spot instance, and GCP gives about 30 seconds. If your training run only checkpoints periodically, a preemption discards every step since the last checkpoint.
+
+Ray Train can react to that notice. When Ray marks a node that hosts one of your workers as *draining* because of a preemption, {func}`ray.train.get_preemption_info() <ray.train.get_preemption_info>` returns a {class}`~ray.train.PreemptionInfo`. Your training function can then save a *just-in-time checkpoint* before the node is preempted, so the restarted run resumes from the step where the preemption happened.
+
+To use just-in-time checkpointing, first make sure that your cluster sends preemption signals to Ray, then call {func}`~ray.train.get_preemption_info` in your training function.
+
+(train-preemption-drain-signal)=
+
+### Send preemption signals to Ray
+
+Ray Train only reacts to preemptions that Ray Core knows about. It reads the draining nodes and their deadlines from the Ray Global Control Service (GCS). Something outside of Ray Train has to watch for the preemption notice from the cloud provider and mark the node as draining with the `DRAIN_NODE_REASON_PREEMPTION` reason. How you set this up depends on where you run Ray:
+
+::::{tab-set}
+:::{tab-item} Managed platforms
+Managed Ray platforms such as Anyscale watch for preemption notices on every node and drain the node for you. You don't need to configure anything.
+:::
+
+:::{tab-item} KubeRay
+KubeRay starts Ray in each Pod with `ray start --block`. When that process receives `SIGTERM`, it sends the drain request to the GCS itself, with the `DRAIN_NODE_REASON_PREEMPTION` reason, before it shuts down Ray. You don't need to run a separate process to send it. Kubernetes sends `SIGTERM` when it deletes a Pod. Whether Kubernetes deletes the Pods on a preempted node depends on your cluster setup, such as graceful node shutdown on GKE or the AWS Node Termination Handler on Amazon EKS.
+
+The drain deadline is `RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S` seconds after `SIGTERM`, and the default is 30 seconds. To change it, set the environment variable on the Ray container. Set `terminationGracePeriodSeconds` on the Pod to a higher value than this timeout, so that Kubernetes doesn't kill the Pod before the drain window ends.
+
+The drain window starts at `SIGTERM`, not at the preemption notice from the cloud provider, so it's limited by the Pod's termination grace period. To start the drain as soon as the cloud provider sends the notice, run a watcher as described in the **Self-managed clusters** tab.
+:::
+
+:::{tab-item} Self-managed clusters
+Run a process on each node that polls the preemption notice from the cloud provider, such as the spot instance action on AWS or the preempted flag on GCP. When the notice arrives, drain the node with `ray drain-node --node-id <node-id> --reason DRAIN_NODE_REASON_PREEMPTION --reason-message <message> --deadline-remaining-seconds <seconds>`.
+
+The `ray drain-node` command is a developer API, and Ray's public API stability guarantees don't cover it.
+:::
+::::
+
+Choose a drain deadline that's shorter than the preemption notice. Ray Train restarts the run at the deadline, and it can only shut down the workers cleanly while the preempted node is still reachable. For example, with the two-minute AWS spot notice, a 60-second deadline leaves time for Ray Train to shut down the workers before AWS preempts the instance.
+
+To test your just-in-time checkpointing on any cluster, drain a worker node manually with `ray drain-node`.
+
+### How does Ray Train handle a preemption?
+
+Ray Train handles a preemption in four steps:
+
+1. Ray Train polls Ray Core every few seconds for draining nodes and ignores nodes that don't host train workers. On a TPU slice, a drain on any host marks every worker in the slice as preempted, because the cloud provider preempts the whole slice at once.
+1. Every worker, including workers on healthy nodes, receives the same {class}`~ray.train.PreemptionInfo` from {func}`~ray.train.get_preemption_info`. It lists the preempted node IDs, the affected world ranks in `preempted_ranks`, and the drain deadline in `deadline_ms`, which is a UNIX timestamp in milliseconds.
+1. Ray Train keeps every worker running so that your code can save a checkpoint. It waits until all workers exit or the drain deadline passes. If the drain has no deadline, Ray Train waits 120 seconds after it detects the preemption.
+1. Ray Train shuts down the worker group and restarts the run from the latest reported checkpoint on replacement nodes.
+
+Each restart counts against `FailureConfig(max_preemption_failures)`, a retry budget that's separate from `max_failures`. The default value of `-1` retries without a limit, so preemptions don't use up the retries that you reserve for real failures such as out-of-memory errors. After the run exhausts the budget, `trainer.fit()` raises a {class}`~ray.train.PreemptionError`.
+
+### Save a just-in-time checkpoint
+
+Call {func}`~ray.train.get_preemption_info` in your training loop. When it returns a value, save and report one more checkpoint. The restarted run resumes from the just-in-time checkpoint, so it doesn't keep the steps that run after it:
+
+```{literalinclude} ../doc_code/fault_tolerance.py
+:language: python
+:start-after: __preemption_jit_checkpoint_start__
+:end-before: __preemption_jit_checkpoint_end__
+:emphasize-lines: 30, 34-41, 53-55
+```
+
+Follow these rules when you call {func}`~ray.train.get_preemption_info`:
+
+- Call it from every worker the same number of times. It acts as a barrier that broadcasts the rank 0 result to all workers, so every worker acts on the same answer. If one worker skips a call, the other workers hang.
+- Save the checkpoint once, then keep training. The return value stays set until the run restarts, so track whether you already saved, as `saved_on_preemption` does in the example.
+- Fit the checkpoint upload into the drain window. Ray Train registers the checkpoint only after the upload to {ref}`persistent storage <persistent-storage-guide>` completes. If the upload takes longer than the drain window, see {ref}`train-preemption-slow-checkpoints`.
+
+:::{warning}
+Don't return from the training function after you save the just-in-time checkpoint. When the training function returns without an error, Ray Train marks the run as finished, even while a preemption is in progress.
+:::
+
+(train-preemption-slow-checkpoints)=
+
+### Finish slow checkpoints without the preempted workers
+
+By default, {func}`ray.train.report() <ray.train.report>` and {func}`~ray.train.get_preemption_info` wait for every worker. If the preempted node shuts down before its workers reach `report`, the surviving workers block until the drain deadline, and the just-in-time checkpoint is lost. Ray Train also shuts down the surviving workers as soon as the drain deadline passes, which can interrupt an upload.
+
+To finish a checkpoint that takes longer than the drain window, set two {class}`~ray.train.FailureConfig` options:
+
+```{literalinclude} ../doc_code/fault_tolerance.py
+:language: python
+:start-after: __preemption_relax_collectives_start__
+:end-before: __preemption_relax_collectives_end__
+:emphasize-lines: 5-10
+```
+
+With `relax_collectives_on_preemption=True`, {func}`~ray.train.report` and {func}`~ray.train.get_preemption_info` complete with only the surviving workers, so the survivors can commit the checkpoint on their own. `preemption_grace_s` keeps the surviving workers running for that many seconds past the drain deadline, so the upload can finish before Ray Train restarts the run.
+
+If a training step and a checkpoint upload fit inside the drain window, you don't need either option. The preempted workers are still alive and take part in the checkpoint.
+
+:::{warning}
+Only set `relax_collectives_on_preemption=True` if the surviving workers can write a complete checkpoint on their own. The option has three limitations:
+
+- Rank 0 must survive. Rank 0 sends the checkpoint directory name to the other workers, so if rank 0 is on a preempted node, Ray Train ignores the option and waits for every worker.
+- The checkpoint can't depend on state that only the preempted workers hold. Data-parallel training where rank 0 saves a full model replica, as in the preceding example, works. If each worker saves its own shard, as with FSDP or DeepSpeed ZeRO, Ray Train can commit a checkpoint that's missing the shards of the preempted workers.
+- Ray Train only relaxes two collectives: {func}`~ray.train.report` and {func}`~ray.train.get_preemption_info`. Every other collective still waits for every worker and hangs after a preempted peer shuts down. This includes {func}`ray.train.collective.barrier` and {func}`ray.train.collective.broadcast_from_rank_zero`, as well as framework collectives in your code such as `torch.distributed.barrier()` or a gather of a sharded state dict.
+:::
 
 
 (train-restore-guide)=
