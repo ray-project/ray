@@ -30,6 +30,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 from typing import (
     Any,
@@ -66,10 +67,11 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.storage import _upload_to_fs_path
 from ray.train.v2._internal.execution.worker_group import Worker, WorkerGroup
-from ray.train.v2._internal.metrics.base import Metric
-from ray.train.v2._internal.metrics.nccl_hang_detector import (
-    NCCLHangDetectorMetrics,
-    NCCLHangDetectorState,
+from ray.train.v2._internal.metrics.base import (
+    RUN_ID_TAG_KEY,
+    RUN_NAME_TAG_KEY,
+    Metric,
+    ValueMetric,
 )
 from ray.train.v2.api.exceptions import NCCLHangError
 
@@ -94,6 +96,18 @@ _UNSAFE_FILENAME_CHARS = re.compile(r"[^0-9A-Za-z._-]")
 # User-facing escalation milestones
 _FIRST_SUSPICION_AFTER_S: float = 60.0
 _PERIODIC_WARN_EVERY_S: float = 120.0
+
+# Grafana Dashbaord name
+GRAFANA_STATE = "train_nccl_hang_detector_state"
+GRAFANA_STALL_DURATION_S = "train_nccl_hang_stall_duration_s"
+
+
+class NCCLHangDetectorState(IntEnum):
+    """What the NCCL hang detector believes about the run, as a gauge value."""
+
+    HEALTHY = 0
+    SUSPECTED = 1
+    CONFIRMED = 2
 
 
 def parse_ras_addr(addr: str) -> Tuple[str, int]:
@@ -654,9 +668,28 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._metrics: Optional[Dict[str, Metric]] = None
 
     def after_controller_start(self, train_run_context: TrainRunContext):
-        self._metrics = NCCLHangDetectorMetrics.get_nccl_hang_detector_metrics(
-            train_run_context.get_run_config().name, train_run_context.run_id
-        )
+        base_tags = {
+            RUN_NAME_TAG_KEY: train_run_context.get_run_config().name,
+            RUN_ID_TAG_KEY: train_run_context.run_id,
+        }
+        self._metrics = {
+            GRAFANA_STATE: ValueMetric(
+                name=GRAFANA_STATE,
+                description=(
+                    "State of the NCCL hang detector: 0 for healthy, 1 for a "
+                    "suspected hang and 2 for a confirmed hang."
+                ),
+                base_tags=base_tags,
+            ),
+            GRAFANA_STALL_DURATION_S: ValueMetric(
+                name=GRAFANA_STALL_DURATION_S,
+                description=(
+                    "Seconds the most stalled NCCL communicator has made no "
+                    "progress with a collective mismatch."
+                ),
+                base_tags=base_tags,
+            ),
+        }
 
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
@@ -784,29 +817,22 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 frozen_counts[comm_id] = self.comm_deadlock_count.get(comm_id, 0) + 1
         return frozen_counts
 
-    def detector_state(self) -> Tuple[NCCLHangDetectorState, int]:
-        """The detector's state for the run, from its most stalled communicator.
-
-        Returns:
-            The state and the most stalled communicator's frozen-poll streak.
-        """
-        max_streak = max(self.comm_deadlock_count.values(), default=0)
-        if max_streak >= self._confirm_poll_counts:
-            return NCCLHangDetectorState.CONFIRMED, max_streak
-        if max_streak >= max(self._suspicion_polls, 1):
-            return NCCLHangDetectorState.SUSPECTED, max_streak
-        return NCCLHangDetectorState.HEALTHY, max_streak
-
     def record_detector_metrics(self):
         """Record the detector's current state and the longest stall."""
         if self._metrics is None:
             return
 
-        state, max_streak = self.detector_state()
-        self._metrics[NCCLHangDetectorMetrics.STATE].record(int(state))
-        self._metrics[NCCLHangDetectorMetrics.STALL_DURATION_S].record(
+        max_streak = max(self.comm_deadlock_count.values(), default=0)
+        self._metrics[GRAFANA_STALL_DURATION_S].record(
             max_streak * self._poll_interval_s
         )
+
+        if max_streak >= self._confirm_poll_counts:
+            self._metrics[GRAFANA_STATE].record(int(NCCLHangDetectorState.CONFIRMED))
+        elif max_streak >= max(self._suspicion_polls, 1):
+            self._metrics[GRAFANA_STATE].record(int(NCCLHangDetectorState.SUSPECTED))
+        else:
+            self._metrics[GRAFANA_STATE].record(int(NCCLHangDetectorState.HEALTHY))
 
     def log_recovered_comms(self, frozen_counts: Dict[str, int]):
         """Log each previously suspected communicator that is no longer frozen.
