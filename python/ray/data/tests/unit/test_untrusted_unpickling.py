@@ -13,6 +13,7 @@ import sys
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from packaging.version import parse as parse_version
 
 from ray.data._internal.object_extensions.arrow import (
     AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
@@ -25,6 +26,7 @@ from ray.data._internal.untrusted_unpickling import (
     guard_iterator,
     is_unpickling_forbidden,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.datasource import Reader
@@ -107,6 +109,28 @@ def test_pickled_column_in_ipc_stream_refused_inside_read(shape):
         pa.ipc.open_stream(buf).read_all()
 
     assert pa.ipc.open_stream(buf).read_all().num_rows == 1
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Arrow PyCapsule interface requires pyarrow>=14",
+)
+@pytest.mark.parametrize("shape", SHAPES)
+def test_pickled_column_via_c_data_interface_refused_inside_read(shape):
+    # Native readers (e.g. Hudi, Lance) hand batches to pyarrow through the
+    # Arrow C Data Interface, which also rebuilds the extension type on import.
+    batch = pa.RecordBatch.from_arrays([_nest(shape, _object_array())], ["col"])
+
+    class _NativeBatch:
+        def __arrow_c_array__(self, requested_schema=None):
+            return batch.__arrow_c_array__(requested_schema)
+
+    with forbid_untrusted_unpickling(), pytest.raises(
+        UntrustedUnpicklingError, match="arrow_pickled_object"
+    ):
+        pa.record_batch(_NativeBatch())
+
+    assert pa.record_batch(_NativeBatch()).num_rows == 1
 
 
 def test_plain_columns_read_inside_read(tmp_path):
