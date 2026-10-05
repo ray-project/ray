@@ -5690,20 +5690,20 @@ class AlgorithmConfig(_Config):
         maps PolicyIDs to complete PolicySpec objects (with all their fields not-None).
 
         Examples:
-        >>> import gymnasium as gym
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = (
-        ...   PPOConfig()
-        ...   .environment("CartPole-v1")
-        ...   .framework("torch")
-        ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
-        ... )
-        >>> policy_dict, is_policy_to_train = config.get_multi_agent_setup(
-        ...     env=gym.make("CartPole-v1"))
-        >>> is_policy_to_train("pol1")
-        True
-        >>> is_policy_to_train("pol2")
-        False
+            >>> import gymnasium as gym
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
+            >>> config = (
+            ...   PPOConfig()
+            ...   .environment("CartPole-v1")
+            ...   .framework("torch")
+            ...   .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
+            ... )
+            >>> policy_dict, is_policy_to_train = config.get_multi_agent_setup(
+            ...     env=gym.make("CartPole-v1"))
+            >>> is_policy_to_train("pol1")
+            True
+            >>> is_policy_to_train("pol2")
+            False
 
         Args:
             policies: An optional multi-agent `policies` dict, mapping policy IDs
