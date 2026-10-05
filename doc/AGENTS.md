@@ -14,6 +14,10 @@ Before writing or editing docs prose under `doc/`, read `doc/source/ray-contribu
 
 Author new files under `doc/source/` as MyST Markdown (`.md`). A lint check rejects newly added `.rst` files. Edits to existing `.rst` files are not flagged. `git mv` is not flagged for any rename, which covers file renames and directory reorganization. This is deliberate, to keep reorganization and agent-driven moves unblocked.
 
+## Moving or renaming pages
+
+When you move or rename a page under `doc/source/`, add a redirect from each old path to its new path in `doc/redirects/current.yaml` in the same PR. Follow `doc/redirects/README.md`, which covers the rule format, directory moves, and how one rule behaves across docs versions. Redirects don't go live at merge. CI applies them on a later scheduled postmerge run, so old URLs on `/en/master` might not reach their new pages for hours after the merge, longer over a weekend.
+
 ## How CI is configured
 
 `.buildkite/test.rules.txt` maps file-change patterns to tag sets, and tags drive which CI suites run. Documentation routing splits three ways:
