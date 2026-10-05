@@ -148,6 +148,27 @@ class ConnectorPipelineV2(ConnectorV2):
 
         return batch
 
+    def _connector_matches(
+        self, connector: ConnectorV2, name_or_class: Union[str, type]
+    ) -> bool:
+        """Returns True if `connector` matches the given name (str) or class (type)."""
+        if isinstance(name_or_class, str):
+            return connector.__class__.__name__ == name_or_class
+        if isinstance(name_or_class, type):
+            return connector.__class__ is name_or_class
+        return False
+
+    def _find_connector_index(self, name_or_class: Union[str, type]) -> int:
+        """Returns the index of the first matching connector piece.
+
+        Returns -1 if no connector piece in this pipeline matches `name_or_class`.
+        """
+        for index in range(len(self.connectors)):
+            connector = self.connectors[index]
+            if self._connector_matches(connector, name_or_class):
+                return index
+        return -1
+
     def remove(self, name_or_class: Union[str, Type]):
         """Remove a single connector piece in this pipeline by its name or class.
 
@@ -155,22 +176,16 @@ class ConnectorPipelineV2(ConnectorV2):
             name_or_class: The name of the connector piece to be removed from the
                 pipeline.
         """
-        idx = -1
-        for i, c in enumerate(self.connectors):
-            if (isinstance(name_or_class, type) and c.__class__ is name_or_class) or (
-                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
-            ):
-                idx = i
-                break
-        if idx >= 0:
-            del self.connectors[idx]
+        index = self._find_connector_index(name_or_class)
+        if index == -1:
+            logger.warning(
+                f"Trying to remove a non-existent connector {name_or_class}."
+            )
+        else:
+            del self.connectors[index]
             self._fix_spaces(self.input_observation_space, self.input_action_space)
             logger.info(
                 f"Removed connector {name_or_class} from {self.__class__.__name__}."
-            )
-        else:
-            logger.warning(
-                f"Trying to remove a non-existent connector {name_or_class}."
             )
 
     def insert_before(
@@ -188,19 +203,14 @@ class ConnectorPipelineV2(ConnectorV2):
         Returns:
             The ConnectorV2 before which `connector` has been inserted.
         """
-        idx = -1
-        for idx, c in enumerate(self.connectors):
-            if (
-                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
-            ) or (isinstance(name_or_class, type) and c.__class__ is name_or_class):
-                break
-        if idx < 0:
+        index = self._find_connector_index(name_or_class)
+        if index == -1:
             raise ValueError(
                 f"Can not find connector with name or type '{name_or_class}'!"
             )
-        next_connector = self.connectors[idx]
 
-        self.connectors.insert(idx, connector)
+        next_connector = self.connectors[index]
+        self.connectors.insert(index, connector)
         self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
@@ -224,26 +234,20 @@ class ConnectorPipelineV2(ConnectorV2):
         Returns:
             The ConnectorV2 after which `connector` has been inserted.
         """
-        idx = -1
-        for idx, c in enumerate(self.connectors):
-            if (
-                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
-            ) or (isinstance(name_or_class, type) and c.__class__ is name_or_class):
-                break
-        if idx < 0:
+        index = self._find_connector_index(name_or_class)
+        if index == -1:
             raise ValueError(
                 f"Can not find connector with name or type '{name_or_class}'!"
             )
-        prev_connector = self.connectors[idx]
 
-        self.connectors.insert(idx + 1, connector)
+        prev_connector = self.connectors[index]
+        self.connectors.insert(index + 1, connector)
         self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Inserted {connector.__class__.__name__} after {name_or_class} "
             f"to {self.__class__.__name__}."
         )
-
         return prev_connector
 
     def prepend(self, connector: ConnectorV2) -> None:

@@ -123,7 +123,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Create the module-to-env connector pipeline.
         self._module_to_env = self.config.build_module_to_env_connector(
-            env=self.env, spaces=self.spaces
+            env=self.env, spaces=self.spaces, device=self._device
         )
 
         self._needs_initial_reset: bool = True

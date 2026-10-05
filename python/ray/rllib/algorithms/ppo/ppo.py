@@ -17,6 +17,10 @@ from typing_extensions import Self
 from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.connectors.learner import (
+    AddOneTsToEpisodesAndTruncate,
+    GeneralAdvantageEstimation,
+)
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -280,6 +284,23 @@ class PPOConfig(AlgorithmConfig):
             self.entropy_coeff_schedule = entropy_coeff_schedule
 
         return self
+
+    @override(AlgorithmConfig)
+    def _default_learner_connectors(self, pipeline, device=None):
+        pipeline = super()._default_learner_connectors(pipeline, device=device)
+        if self.add_default_connectors_to_learner_pipeline:
+            # Before anything, add one ts to each episode (and record this in the loss
+            # mask, so that the computations at this extra ts are not used to compute
+            # the loss).
+            pipeline.prepend(AddOneTsToEpisodesAndTruncate())
+            # At the end of the pipeline (when the batch is already completed), add the
+            # GAE connector, which performs a vf forward pass, then computes the GAE
+            # computations, and puts the results of this (advantages, value targets)
+            # directly back in the batch.
+            pipeline.append(
+                GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
+            )
+        return pipeline
 
     @override(AlgorithmConfig)
     def validate(self) -> None:

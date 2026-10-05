@@ -349,29 +349,21 @@ class MARWILConfig(AlgorithmConfig):
         return super().build(env, **kwargs)
 
     @override(AlgorithmConfig)
-    def build_learner_connector(
-        self,
-        input_observation_space,
-        input_action_space,
-        device=None,
-    ):
-        pipeline = super().build_learner_connector(
-            input_observation_space=input_observation_space,
-            input_action_space=input_action_space,
-            device=device,
-        )
+    def _default_learner_connectors(self, pipeline, device=None):
+        pipeline = super()._default_learner_connectors(pipeline, device=device)
 
         # Before anything, add one ts to each episode (and record this in the loss
         # mask, so that the computations at this extra ts are not used to compute
         # the loss).
         pipeline.prepend(AddOneTsToEpisodesAndTruncate())
 
-        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # Add the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
         # after the corresponding "add-OBS-..." default piece).
-        pipeline.insert_after(
-            AddObservationsFromEpisodesToBatch,
-            AddNextObservationsFromEpisodesToTrainBatch(),
-        )
+        if self.add_default_connectors_to_learner_pipeline:
+            pipeline.insert_after(
+                AddObservationsFromEpisodesToBatch,
+                AddNextObservationsFromEpisodesToTrainBatch(),
+            )
 
         # At the end of the pipeline (when the batch is already completed), add the
         # GAE connector, which performs a vf forward pass, then computes the GAE
