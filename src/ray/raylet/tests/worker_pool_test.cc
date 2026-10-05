@@ -14,7 +14,6 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -30,7 +29,6 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 #include "nlohmann/json.hpp"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
@@ -38,6 +36,7 @@
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
@@ -83,9 +82,9 @@ TEST(WorkerGrpcThreadsWarningTest, ExplicitConfigurationSuppressesWarning) {
       GetWorkerGrpcThreadsWarning(kWorkerGrpcThreadsWarningThreshold + 1, 1).has_value());
 }
 
-class MockWorkerClient : public rpc::FakeCoreWorkerClient {
+class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
-  MockWorkerClient() = default;
+  FakeWorkerClient() = default;
 
   void Exit(const rpc::ExitRequest &request,
             const rpc::ClientCallback<rpc::ExitReply> &callback) {
@@ -130,7 +129,7 @@ static int GetReferenceCount(const std::string &serialized_runtime_env) {
   return it == runtime_env_reference.end() ? 0 : it->second;
 }
 
-class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
+class FakeRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
@@ -160,18 +159,19 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   };
 };
 
-class WorkerPoolMock : public WorkerPool {
+class FakeWorkerPoolForTest : public WorkerPool {
  public:
-  explicit WorkerPoolMock(instrumented_io_context &io_service,
-                          const WorkerCommandMap &worker_commands,
-                          gcs::GcsClient &gcs_client,
-                          absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
-                              &mock_worker_rpc_clients,
-                          WorkerPoolMetrics &worker_pool_metrics,
-                          ClockInterface &clock,
-                          int min_worker_port = 0,
-                          int max_worker_port = 0,
-                          const std::vector<int> &worker_ports = {})
+  explicit FakeWorkerPoolForTest(
+      instrumented_io_context &io_service,
+      const WorkerCommandMap &worker_commands,
+      gcs::GcsClient &gcs_client,
+      absl::flat_hash_map<WorkerID, std::shared_ptr<FakeWorkerClient>>
+          &fake_worker_rpc_clients,
+      WorkerPoolMetrics &worker_pool_metrics,
+      ClockInterface &clock,
+      int min_worker_port = 0,
+      int max_worker_port = 0,
+      const std::vector<int> &worker_ports = {})
       : WorkerPool(
             io_service,
             PeriodicalRunner::Create(io_service),
@@ -193,11 +193,11 @@ class WorkerPoolMock : public WorkerPool {
         last_worker_pid_(-1),
         instrumented_io_service_(io_service),
         client_call_manager_(instrumented_io_service_, false, /*local_address=*/""),
-        mock_worker_rpc_clients_(mock_worker_rpc_clients) {
+        fake_worker_rpc_clients_(fake_worker_rpc_clients) {
     SetNodeManagerPort(1);
   }
 
-  ~WorkerPoolMock() {
+  ~FakeWorkerPoolForTest() {
     // Avoid killing real processes
     states_by_lang_.clear();
   }
@@ -330,9 +330,9 @@ class WorkerPoolMock : public WorkerPool {
     }
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
-    std::shared_ptr<MockWorkerClient> rpc_client = std::make_shared<MockWorkerClient>();
+    std::shared_ptr<FakeWorkerClient> rpc_client = std::make_shared<FakeWorkerClient>();
     worker->Connect(rpc_client);
-    mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
+    fake_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
     return worker;
   }
 
@@ -439,8 +439,8 @@ class WorkerPoolMock : public WorkerPool {
   absl::flat_hash_map<pid_t, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   rpc::ClientCallManager client_call_manager_;
-  absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
-      &mock_worker_rpc_clients_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<FakeWorkerClient>>
+      &fake_worker_rpc_clients_;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -463,7 +463,7 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<FakeRuntimeEnvAgentClient>());
   }
 
   void TearDown() override {
@@ -511,15 +511,15 @@ class WorkerPoolTest : public ::testing::Test {
                          int min_worker_port = 0,
                          int max_worker_port = 0,
                          const std::vector<int> &worker_ports = {}) {
-    worker_pool_ = std::make_unique<WorkerPoolMock>(io_service_,
-                                                    worker_commands,
-                                                    *mock_gcs_client_,
-                                                    mock_worker_rpc_clients_,
-                                                    worker_pool_metrics_,
-                                                    fake_clock_,
-                                                    min_worker_port,
-                                                    max_worker_port,
-                                                    worker_ports);
+    worker_pool_ = std::make_unique<FakeWorkerPoolForTest>(io_service_,
+                                                           worker_commands,
+                                                           *fake_gcs_client_,
+                                                           fake_worker_rpc_clients_,
+                                                           worker_pool_metrics_,
+                                                           fake_clock_,
+                                                           min_worker_port,
+                                                           max_worker_port,
+                                                           worker_ports);
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process) {
@@ -546,16 +546,16 @@ class WorkerPoolTest : public ::testing::Test {
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
   }
 
-  absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
-      mock_worker_rpc_clients_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<FakeWorkerClient>>
+      fake_worker_rpc_clients_;
 
  protected:
   FakeClock fake_clock_{absl::FromUnixMillis(1)};
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<WorkerPoolMock> worker_pool_;
-  std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
-      std::make_unique<gcs::MockGcsClient>();
+  std::unique_ptr<FakeWorkerPoolForTest> worker_pool_;
+  std::unique_ptr<gcs::FakeGcsClient> fake_gcs_client_ =
+      std::make_unique<gcs::FakeGcsClient>();
 
   ray::observability::FakeGauge fake_num_workers_started_metric_;
   ray::observability::FakeGauge fake_num_cached_workers_skipped_job_mismatch_metric_;
@@ -928,8 +928,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
   worker_pool_->HandleJobFinished(JOB_ID);
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
-  for (const auto &[worker_id, mock_rpc_client] : mock_worker_rpc_clients_) {
-    mock_rpc_client->ExitReplySucceed();
+  for (const auto &[worker_id, fake_rpc_client] : fake_worker_rpc_clients_) {
+    fake_rpc_client->ExitReplySucceed();
   }
 }
 
@@ -1661,19 +1661,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   // The first core worker exits, so one of idle workers should've been killed.
   // Since the idle workers are killed in FIFO if they've been granted a lease, we can
   // assume the first entry in the idle workers will be killed.
-  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[0]->WorkerId());
-  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1)
+  auto fake_rpc_client_it = fake_worker_rpc_clients_.find(popped_workers[0]->WorkerId());
+  ASSERT_EQ(fake_rpc_client_it->second->exit_count, 1)
       << " expected pid " << popped_workers[0]->GetProcess().GetId();
-  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
-  mock_rpc_client_it->second->ExitReplySucceed();
+  ASSERT_EQ(fake_rpc_client_it->second->last_exit_forced, false);
+  fake_rpc_client_it->second->ExitReplySucceed();
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
 
   // The second core worker doesn't exit, meaning idle worker shouldn't have been killed.
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[1]->WorkerId());
-  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
-  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
-  mock_rpc_client_it->second->ExitReplyFailed();
+  fake_rpc_client_it = fake_worker_rpc_clients_.find(popped_workers[1]->WorkerId());
+  ASSERT_EQ(fake_rpc_client_it->second->exit_count, 1);
+  ASSERT_EQ(fake_rpc_client_it->second->last_exit_forced, false);
+  fake_rpc_client_it->second->ExitReplyFailed();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT + 1);
   // Try killing the idle workers again.
   worker_pool_->TryKillingIdleWorkers();
@@ -1683,8 +1683,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   // This tests that if a worker can't be killed (e.g., because it owns
   // objects), we will still try to cap the workers by killing other workers
   // that may have been idle for less time.
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[2]->WorkerId());
-  mock_rpc_client_it->second->ExitReplySucceed();
+  fake_rpc_client_it = fake_worker_rpc_clients_.find(popped_workers[2]->WorkerId());
+  fake_rpc_client_it->second->ExitReplySucceed();
 
   // Now that we have the number of workers == soft limit, it shouldn't kill any idle
   // worker.
@@ -1697,8 +1697,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   worker_pool_->num_available_cpus_ = 2;
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), worker_pool_->num_available_cpus_);
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[3]->WorkerId());
-  mock_rpc_client_it->second->ExitReplyFailed();
+  fake_rpc_client_it = fake_worker_rpc_clients_.find(popped_workers[3]->WorkerId());
+  fake_rpc_client_it->second->ExitReplyFailed();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
   worker_pool_->num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 
@@ -1730,9 +1730,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
   for (auto &entry : worker_pool_->GetIdleWorkers()) {
-    mock_rpc_client_it = mock_worker_rpc_clients_.find(entry.worker->WorkerId());
-    ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
-    ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+    fake_rpc_client_it = fake_worker_rpc_clients_.find(entry.worker->WorkerId());
+    ASSERT_EQ(fake_rpc_client_it->second->last_exit_forced, false);
+    ASSERT_FALSE(fake_rpc_client_it->second->ExitReplySucceed());
   }
   int num_callbacks = 0;
   auto callback = [&](std::shared_ptr<WorkerInterface> worker) { num_callbacks++; };
@@ -1784,13 +1784,13 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   std::vector<std::shared_ptr<WorkerInterface>> delayed_workers;
   bool delay = false;
   for (auto worker : workers) {
-    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
-    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+    auto fake_rpc_client_it = fake_worker_rpc_clients_.find(worker->WorkerId());
+    if (fake_rpc_client_it->second->callbacks_.size() == 0) {
       // This worker is not being killed. Skip it.
       continue;
     }
     if (!delay) {
-      ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+      ASSERT_TRUE(fake_rpc_client_it->second->ExitReplyFailed());
     } else {
       delayed_workers.push_back(worker);
     }
@@ -1805,17 +1805,17 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
 
   // Delayed workers reply first, then all workers reply the second time.
   for (auto worker : delayed_workers) {
-    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
-    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+    auto fake_rpc_client_it = fake_worker_rpc_clients_.find(worker->WorkerId());
+    ASSERT_TRUE(fake_rpc_client_it->second->ExitReplyFailed());
   }
 
   for (auto worker : workers) {
-    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
-    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+    auto fake_rpc_client_it = fake_worker_rpc_clients_.find(worker->WorkerId());
+    if (fake_rpc_client_it->second->callbacks_.size() == 0) {
       // This worker is not being killed. Skip it.
       continue;
     }
-    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+    ASSERT_TRUE(fake_rpc_client_it->second->ExitReplyFailed());
   }
 
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
@@ -1838,8 +1838,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   worker_pool_->PushWorker(worker);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
-  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
-  std::shared_ptr<MockWorkerClient> mock_rpc_client = mock_rpc_client_it->second;
+  auto fake_rpc_client_it = fake_worker_rpc_clients_.find(worker->WorkerId());
+  std::shared_ptr<FakeWorkerClient> fake_rpc_client = fake_rpc_client_it->second;
 
   // Finish the job.
   worker_pool_->HandleJobFinished(job_id);
@@ -1854,9 +1854,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(mock_rpc_client->exit_count, 1);
-  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
-  mock_rpc_client->ExitReplySucceed();
+  ASSERT_EQ(fake_rpc_client->exit_count, 1);
+  ASSERT_EQ(fake_rpc_client->last_exit_forced, true);
+  fake_rpc_client->ExitReplySucceed();
 
   job_id = JOB_ID_2;
   rpc::JobConfig job_config;
@@ -1888,8 +1888,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   // Call `OnWorkerStarted` to emulate worker port announcement.
   worker_pool_->OnWorkerStarted(worker);
 
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
-  mock_rpc_client = mock_rpc_client_it->second;
+  fake_rpc_client_it = fake_worker_rpc_clients_.find(worker->WorkerId());
+  fake_rpc_client = fake_rpc_client_it->second;
 
   // Finish the job.
   worker_pool_->HandleJobFinished(job_id);
@@ -1902,9 +1902,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(mock_rpc_client->exit_count, 1);
-  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
-  mock_rpc_client->ExitReplySucceed();
+  ASSERT_EQ(fake_rpc_client->exit_count, 1);
+  ASSERT_EQ(fake_rpc_client->last_exit_forced, true);
+  fake_rpc_client->ExitReplySucceed();
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
@@ -1931,25 +1931,25 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   worker_pool_->PushWorker(worker);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
-  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
-  std::shared_ptr<MockWorkerClient> mock_rpc_client = mock_rpc_client_it->second;
+  auto fake_rpc_client_it = fake_worker_rpc_clients_.find(worker->WorkerId());
+  std::shared_ptr<FakeWorkerClient> fake_rpc_client = fake_rpc_client_it->second;
 
   fake_clock_.SetTime(absl::FromUnixMillis(2000));
 
   // Won't kill the worker since job hasn't finished and we are under
   // the soft limit (5).
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(mock_rpc_client->exit_count, 0);
+  ASSERT_EQ(fake_rpc_client->exit_count, 0);
 
   // Finish the job.
   worker_pool_->HandleJobFinished(job_id);
 
   // The pool should try to force kill the worker.
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(mock_rpc_client->exit_count, 1);
-  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+  ASSERT_EQ(fake_rpc_client->exit_count, 1);
+  ASSERT_EQ(fake_rpc_client->last_exit_forced, true);
 
-  mock_rpc_client->ExitReplySucceed();
+  fake_rpc_client->ExitReplySucceed();
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest,
@@ -1991,14 +1991,14 @@ TEST_F(WorkerPoolDriverRegisteredTest,
   }
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 2);
 
-  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker_to_kill->WorkerId());
-  std::shared_ptr<MockWorkerClient> mock_rpc_client = mock_rpc_client_it->second;
+  auto fake_rpc_client_it = fake_worker_rpc_clients_.find(worker_to_kill->WorkerId());
+  std::shared_ptr<FakeWorkerClient> fake_rpc_client = fake_rpc_client_it->second;
 
   fake_clock_.SetTime(absl::FromUnixMillis(2000));
 
   // Won't kill the workers since neither job has finished.
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(mock_rpc_client->exit_count, 0);
+  ASSERT_EQ(fake_rpc_client->exit_count, 0);
 
   // Finish the job of the second worker.
   worker_pool_->HandleJobFinished(job_id_dead);
@@ -2006,10 +2006,10 @@ TEST_F(WorkerPoolDriverRegisteredTest,
   // The pool should try to force kill the second worker whose job is dead,
   // and keep the first worker whose job is alive.
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(mock_rpc_client->exit_count, 1);
-  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+  ASSERT_EQ(fake_rpc_client->exit_count, 1);
+  ASSERT_EQ(fake_rpc_client->last_exit_forced, true);
 
-  mock_rpc_client->ExitReplySucceed();
+  fake_rpc_client->ExitReplySucceed();
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerWithRuntimeEnv) {
@@ -2580,7 +2580,9 @@ TEST(WorkerPortPoolTest, PortRangeIsAPermutationOfTheRange) {
   for (int port = 20000; port <= 20100; port++) {
     expected_ports.push_back(port);
   }
-  EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(expected_ports));
+  std::vector<int> sorted_ports = ports;
+  std::sort(sorted_ports.begin(), sorted_ports.end());
+  EXPECT_EQ(sorted_ports, expected_ports);
 }
 
 TEST(WorkerPortPoolTest, ExplicitPortListIsAPermutationOfTheList) {
@@ -2588,7 +2590,9 @@ TEST(WorkerPortPoolTest, ExplicitPortListIsAPermutationOfTheList) {
   std::mt19937 gen(42);
   auto ports = BuildWorkerPortPool(
       worker_ports, /*min_worker_port=*/0, /*max_worker_port=*/0, gen);
-  EXPECT_THAT(ports, ::testing::UnorderedElementsAre(30000, 30001, 30002, 30003));
+  std::vector<int> sorted_ports = ports;
+  std::sort(sorted_ports.begin(), sorted_ports.end());
+  EXPECT_EQ(sorted_ports, (std::vector<int>{30000, 30001, 30002, 30003}));
 }
 
 TEST(WorkerPortPoolTest, ExplicitPortListTakesPrecedenceOverThePortRange) {
@@ -2596,7 +2600,11 @@ TEST(WorkerPortPoolTest, ExplicitPortListTakesPrecedenceOverThePortRange) {
   std::mt19937 gen(42);
   auto ports = BuildWorkerPortPool(
       worker_ports, /*min_worker_port=*/20000, /*max_worker_port=*/20100, gen);
-  EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(worker_ports));
+  std::vector<int> sorted_ports = ports;
+  std::sort(sorted_ports.begin(), sorted_ports.end());
+  std::vector<int> sorted_expected = worker_ports;
+  std::sort(sorted_expected.begin(), sorted_expected.end());
+  EXPECT_EQ(sorted_ports, sorted_expected);
 }
 
 TEST(WorkerPortPoolTest, MaxPortDefaultsToTheHighestValidPort) {
@@ -2664,7 +2672,9 @@ TEST(WorkerPortPoolTest, PortRangeBelow1024IsAllowed) {
                                          /*min_worker_port=*/1,
                                          /*max_worker_port=*/3,
                                          gen);
-  EXPECT_THAT(range_ports, ::testing::UnorderedElementsAre(1, 2, 3));
+  std::vector<int> sorted_ports = range_ports;
+  std::sort(sorted_ports.begin(), sorted_ports.end());
+  EXPECT_EQ(sorted_ports, (std::vector<int>{1, 2, 3}));
 }
 
 class WorkerPoolExplicitZeroPortTest : public WorkerPoolTest {
@@ -2677,7 +2687,7 @@ class WorkerPoolExplicitZeroPortTest : public WorkerPoolTest {
                       /*min_worker_port=*/0,
                       /*max_worker_port=*/0,
                       /*worker_ports=*/{0});
-    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<FakeRuntimeEnvAgentClient>());
     worker_pool_->HandleJobStarted(JOB_ID, rpc::JobConfig());
   }
 };
@@ -2720,7 +2730,7 @@ class WorkerPoolPortRangeTest : public WorkerPoolTest {
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}},
                       kMinTestWorkerPort,
                       kMaxTestWorkerPort);
-    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<FakeRuntimeEnvAgentClient>());
     RegisterDriver(Language::PYTHON, JOB_ID, rpc::JobConfig());
   }
 };
