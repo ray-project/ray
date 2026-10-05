@@ -649,13 +649,23 @@ class TestPrefixTreePrefixMatchOrSmallestTenants:
             "tenant_2"
         ]
 
-    def test_match_is_limited_to_available_tenants(self, tree: PrefixTree) -> None:
-        tree.add_tenants(["tenant_1", "tenant_2"], 0)
-        tree.insert("hello", "tenant_1", 1)
+    def test_match_uses_only_available_tenants(self, tree: PrefixTree) -> None:
+        """Only text cached by the available tenants counts toward the match."""
+        tree.add_tenants(["tenant_1", "tenant_2", "tenant_3"], 0)
+        tree.insert("hello world", "tenant_1", 1)
         tree.insert("hello", "tenant_2", 2)
         assert tree.prefix_match_or_smallest_tenants(
-            "hello", ["tenant_2"], match_rate_threshold=0.1
+            "hello world", match_rate_threshold=0.1
+        ) == ["tenant_1"]
+        # Without tenant_1, only tenant_2's "hello" matches: 5 of 11 characters.
+        available = ["tenant_2", "tenant_3"]
+        assert tree.prefix_match_or_smallest_tenants(
+            "hello world", available, match_rate_threshold=0.1
         ) == ["tenant_2"]
+        # That's below a 50% threshold, so the smallest tenant, tenant_3, is returned.
+        assert tree.prefix_match_or_smallest_tenants(
+            "hello world", available, match_rate_threshold=0.5
+        ) == ["tenant_3"]
 
 
 class TestPrefixTreeComprehensive:
