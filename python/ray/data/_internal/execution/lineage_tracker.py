@@ -632,10 +632,20 @@ class LineageTracker:
                     return _log_and_return(ObjectReuseStatus.OBJECT_REUSED)
             return _log_and_return(ObjectReuseStatus.OBJECT_PRUNED)
 
-        # An output an earlier attempt queued is still downstream, either consumed
-        # or waiting in a queue. Queueing it again would duplicate its rows. If
-        # that copy is lost, the task that consumes it fails and opens its own
-        # plan, so it is never re-emitted here.
+        # If the output_index of the block that's being checked for this task is less than the number of
+        # outputs queued by an earlier attempt of this task, this block is already downstream,
+        # either consumed or waiting in a queue. Queueing it again would duplicate its rows. If
+        # that block is lost, the task that consumes it fails and opens its own
+        # reconstruction plan separately.
+
+        # TODO(ayushkum): The above doesn't hold for outputs read by an iterator such
+        # as iter_batches or take_all. The iterator's ray.get runs outside the
+        # executor, so a lost copy never fails a tracked task and no plan opens.
+        # A target that loses its own output while running still opens a plan,
+        # but the outputs it queued for the iterator earlier aren't re-emitted.
+        # Supporting it needs an executor API for consumers to ack or report
+        # lost outputs. Address it with the Train + Data FT effort, which needs
+        # the same API for streaming_split consumers.
         if output_index < task_node.num_queued_outputs:
             return _log_and_return(ObjectReuseStatus.OBJECT_PRUNED)
 
