@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property, partial
 from typing import Any, Iterator, List, Optional, Sequence, Set, Tuple
@@ -53,6 +54,20 @@ class FileFormat(str, Enum):
     IPC = "ipc"
 
 
+@dataclass(frozen=True)
+class _ScanGroup:
+    """One pyarrow scan and the read units it covers, in scan order.
+
+    Usually a single unit. A reader may scan several consecutive units of one
+    file together (so pyarrow can coalesce their reads) when every row of
+    each unit comes out of the scan: then each unit's ``num_rows`` says where
+    to split the scanned tables back into per-unit tables.
+    """
+
+    fragment: pds.Fragment
+    units: Tuple[ReadUnitFragment, ...]
+
+
 @DeveloperAPI
 class FileReader(Reader[FileManifest]):
     """Reader for file-based sources.
@@ -95,8 +110,8 @@ class FileReader(Reader[FileManifest]):
                 being read from the file -- ``PathColumn`` for
                 ``include_paths``, ``RowHashColumn`` for ``include_row_hash``.
                 A same-named column found in a file is replaced. When any of
-                them requires read unit boundaries, each unit is scanned on
-                its own so batches never span two units.
+                them requires read unit boundaries, every batch the reader
+                yields comes from a single read unit.
             schema: Caller-supplied unified schema used both to override
                 pyarrow's per-fragment inference (so a file whose column
                 is all-null doesn't pin the type to ``null``) and to cast
@@ -429,41 +444,58 @@ class FileReader(Reader[FileManifest]):
         # Subclasses (e.g. ``ParquetFileReader``) override
         # ``_get_fragments_to_read`` to fan out chunk-level
         # sub-fragments from the manifest's chunk metadata.
-        fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
-        if not fragments_with_offsets:
+        scan_groups = self._get_scan_groups(dataset, manifest)
+        if not scan_groups:
             return
 
-        num_workers = len(fragments_with_offsets)
+        num_workers = len(scan_groups)
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
-                iter(fragments_with_offsets), scanner_kwargs
+                iter(scan_groups), scanner_kwargs
             )
             return
 
         # Set `preserve_ordering=True` to ensure deterministic output ordering.
         # This is required so that Ray Data task retries (block reconstruction)
         yield from make_async_gen(
-            base_iterator=iter(fragments_with_offsets),
+            base_iterator=iter(scan_groups),
             fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),
             preserve_ordering=True,
             num_workers=num_workers,
         )
 
+    def _get_scan_groups(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[_ScanGroup]:
+        """Return the scans to run for this manifest, each with its units.
+
+        Default impl scans every :class:`ReadUnitFragment` from
+        :meth:`_get_fragments_to_read` on its own. Subclasses may scan
+        several consecutive units together; see :class:`_ScanGroup`.
+        """
+        return [
+            _ScanGroup(unit_fragment.fragment, (unit_fragment,))
+            for unit_fragment in self._get_fragments_to_read(dataset, manifest)
+        ]
+
     def _read_fragments_sequential(
         self,
-        fragments_with_offsets: Iterator[ReadUnitFragment],
+        scan_groups: Iterator[_ScanGroup],
         scanner_kwargs: dict,
     ) -> Iterator[Tuple[pa.Table, ReadUnitPosition]]:
-        """Read each fragment in ``fragments_with_offsets`` in order, yielding
+        """Run each scan in ``scan_groups`` in order, yielding
         ``(table, position)`` pairs.
 
-        Each input is a :class:`ReadUnitFragment`. Every yielded
-        :class:`ReadUnitPosition` carries the fragment's ``unit`` and
-        ``unit_start_row`` unchanged, plus ``rows_before``: a cursor that
-        starts at zero for each unit and advances by each yielded table's
-        row count. A synthesized column therefore keys off the right window
-        even when chunking fans one file into several sub-fragments sharing
-        ``fragment.path``.
+        Every yielded table comes from exactly one read unit. Its
+        :class:`ReadUnitPosition` carries the unit and its ``unit_start_row``
+        unchanged, plus ``rows_before``: a cursor that starts at zero for each
+        unit and advances by each yielded table's row count. A synthesized
+        column therefore keys off the right window even when chunking fans
+        one file into several sub-fragments sharing ``fragment.path``. A scan
+        that covers several units has its tables split at the units' row
+        counts.
 
         ``iterate_with_retry`` is scoped to a single fragment so a
         transient I/O failure only re-reads the failing file (skipping
@@ -475,22 +507,56 @@ class FileReader(Reader[FileManifest]):
         and is also the entire read loop for the sequential path.
         """
         ctx = DataContext.get_current()
-        for fragment_to_read in fragments_with_offsets:
-            fragment = fragment_to_read.fragment
-            # Post-filter cursor: rows already yielded from this unit.
+        for scan_group in scan_groups:
+            fragment = scan_group.fragment
+            units = scan_group.units
+            # Index into ``units`` of the unit the next row belongs to, and
+            # the post-filter cursor: rows already yielded from that unit.
+            unit_index = 0
             rows_before = 0
             for table in iterate_with_retry(
                 partial(self._iter_fragment_tables, fragment, scanner_kwargs),
                 f"read fragment {fragment.path}",
                 match=ctx.retried_io_errors,
             ):
-                if table.num_rows > 0:
+                if table.num_rows == 0:
+                    continue
+                if len(units) == 1:
                     yield table, ReadUnitPosition(
-                        unit=fragment_to_read.unit,
+                        unit=units[0].unit,
                         rows_before=rows_before,
-                        unit_start_row=fragment_to_read.unit_start_row,
+                        unit_start_row=units[0].unit_start_row,
                     )
                     rows_before += table.num_rows
+                    continue
+                # A multi-unit scan returns every row of each unit in order,
+                # so each unit's ``num_rows`` marks where its rows end.
+                start = 0
+                while start < table.num_rows:
+                    assert unit_index < len(units), (
+                        f"Scan of {fragment.path} returned more rows than its "
+                        "read units hold"
+                    )
+                    unit_fragment = units[unit_index]
+                    # Only per-row-group units are scanned together, and they
+                    # carry their footer row counts.
+                    unit_num_rows = unit_fragment.unit.num_rows
+                    assert unit_num_rows is not None
+                    take = min(
+                        unit_num_rows - rows_before,
+                        table.num_rows - start,
+                    )
+                    if take > 0:
+                        yield table.slice(start, take), ReadUnitPosition(
+                            unit=unit_fragment.unit,
+                            rows_before=rows_before,
+                            unit_start_row=unit_fragment.unit_start_row,
+                        )
+                        start += take
+                        rows_before += take
+                    if rows_before >= unit_num_rows:
+                        unit_index += 1
+                        rows_before = 0
 
     def _iter_fragment_tables(
         self,
