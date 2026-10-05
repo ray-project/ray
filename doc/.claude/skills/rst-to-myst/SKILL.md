@@ -169,7 +169,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
   **The trap is `nested_parse`.** `GridDirective`, `GridItemCardDirective`, `div`, and Ray's own `callout`/`annotations` all call `self.state.nested_parse`, which under MyST parses their content as **Markdown**. RST left inside a native card doesn't error — it renders as literal text, through a green `fail_on_warning` build. So a card's nested `button-ref`, `button-link`, `image`, and `figure` all have to become fences in the same pass, and the render diff (Verification step 4) is the only check that will catch it if one doesn't. This is the `nested_parse` degradation referenced in step 4.
 
-  Four already-Markdown pages predate this and wrap their whole grid in `{eval-rst}` (`cluster/vms/index.md`, `cluster/kubernetes/index.md`, `ray-overview/index.md`, `serve/index.md`). Don't copy that pattern into a new conversion; native is the house choice as of batch 1.
+  Four already-Markdown pages predate this and wrap their whole grid in `{eval-rst}` (`cluster/vms/index.md`, `kuberay/index.md`, `ray-overview/index.md`, `serve/index.md`). Don't copy that pattern into a new conversion; native is the house choice as of batch 1.
 
 - **`list-table`**: keep the directive (` ```{list-table} `), move options to `:key: val` lines, and de-indent the `* -` / `  -` body to column 0. Don't convert it into a native Markdown table.
 

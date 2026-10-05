@@ -12,42 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <utility>
 
-#include "mock/ray/gcs/gcs_node_manager.h"
-#include "mock/ray/gcs/gcs_placement_group_scheduler.h"
-#include "mock/ray/gcs/gcs_resource_manager.h"
-#include "mock/ray/gcs/store_client/store_client.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/fake_gcs_node_manager.h"
+#include "ray/gcs/fake_gcs_placement_group_scheduler.h"
+#include "ray/gcs/fake_gcs_resource_manager.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
+#include "ray/gcs/store_client/fake_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
-using namespace ::testing;  // NOLINT
-using namespace ray;        // NOLINT
-using namespace ray::gcs;   // NOLINT
+using namespace ray;       // NOLINT
+using namespace ray::gcs;  // NOLINT
 namespace ray {
 namespace gcs {
 
-class GcsPlacementGroupManagerMockTest : public Test {
+class GcsPlacementGroupManagerMockTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerMockTest()
       : cluster_resource_manager_(PeriodicalRunner::Create(io_context_)) {}
 
   void SetUp() override {
-    store_client_ = std::make_shared<MockStoreClient>();
+    store_client_ = std::make_shared<FakeStoreClient>();
     gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
     gcs_placement_group_scheduler_ =
-        std::make_shared<MockGcsPlacementGroupSchedulerInterface>();
-    node_manager_ = std::make_unique<MockGcsNodeManager>();
-    resource_manager_ = std::make_shared<MockGcsResourceManager>(
+        std::make_shared<FakeGcsPlacementGroupSchedulerInterface>();
+    node_manager_ = std::make_unique<FakeGcsNodeManager>();
+    resource_manager_ = std::make_shared<FakeGcsResourceManager>(
         io_context_, cluster_resource_manager_, *node_manager_, NodeID::FromRandom());
 
     gcs_placement_group_manager_ = std::make_unique<GcsPlacementGroupManager>(
@@ -67,9 +65,9 @@ class GcsPlacementGroupManagerMockTest : public Test {
   FakeClock clock_;
   instrumented_io_context io_context_;
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
-  std::shared_ptr<MockGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;
+  std::shared_ptr<FakeGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<MockStoreClient> store_client_;
+  std::shared_ptr<FakeStoreClient> store_client_;
   std::unique_ptr<GcsNodeManager> node_manager_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> resource_manager_;
@@ -90,20 +88,18 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_, clock_);
   auto cb = [](Status s) {};
-  SchedulePgRequest request;
-  std::unique_ptr<Postable<void(bool)>> put_cb;
-  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
-  EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
-      .WillOnce(DoAll(SaveArg<0>(&request)));
   auto now = clock_.NowUnixNanos();
   gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
   auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LE(now, pending_queue.begin()->first);
   ASSERT_GE(clock_.NowUnixNanos(), pending_queue.begin()->first);
-  std::move(*put_cb).Post("PendingQueuePriorityReschedule", true);
+  ASSERT_NE(store_client_->last_async_put_callback, nullptr);
+  std::move(*store_client_->last_async_put_callback)
+      .Post("PendingQueuePriorityReschedule", true);
   io_context_.poll();
+  ASSERT_EQ(1, gcs_placement_group_scheduler_->schedule_unplaced_bundles_calls.size());
+  auto &request = gcs_placement_group_scheduler_->schedule_unplaced_bundles_calls.back();
   pg->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
   request.failure_callback(pg, true);
   ASSERT_EQ(1, pending_queue.size());
@@ -116,24 +112,25 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_, clock_);
   auto cb = [](Status s) {};
-  SchedulePgRequest request;
-  std::unique_ptr<Postable<void(bool)>> put_cb;
-  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
-  EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
-      .Times(2)
-      .WillRepeatedly(DoAll(SaveArg<0>(&request)));
   auto now = clock_.NowUnixNanos();
   gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
   auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LE(now, pending_queue.begin()->first);
   ASSERT_GE(clock_.NowUnixNanos(), pending_queue.begin()->first);
-  std::move(*put_cb).Post("PendingQueuePriorityFailed", true);
+  ASSERT_NE(store_client_->last_async_put_callback, nullptr);
+  std::move(*store_client_->last_async_put_callback)
+      .Post("PendingQueuePriorityFailed", true);
   io_context_.poll();
+  ASSERT_EQ(1, gcs_placement_group_scheduler_->schedule_unplaced_bundles_calls.size());
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
   now = clock_.NowUnixNanos();
-  request.failure_callback(pg, true);
+  {
+    auto failure_callback =
+        gcs_placement_group_scheduler_->schedule_unplaced_bundles_calls.back()
+            .failure_callback;
+    failure_callback(pg, true);
+  }
   auto exp_backer = ExponentialBackoff(
       1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
       RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
@@ -154,9 +151,15 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
                      absl::Nanoseconds(rank - clock_.NowUnixNanos()));
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(0, pending_queue.size());
+  ASSERT_EQ(2, gcs_placement_group_scheduler_->schedule_unplaced_bundles_calls.size());
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
   now = clock_.NowUnixNanos();
-  request.failure_callback(pg, true);
+  {
+    auto failure_callback =
+        gcs_placement_group_scheduler_->schedule_unplaced_bundles_calls.back()
+            .failure_callback;
+    failure_callback(pg, true);
+  }
   next = RayConfig::instance().gcs_create_placement_group_retry_multiplier() * next;
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LE(now + next, pending_queue.begin()->first);
@@ -171,24 +174,23 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   auto req2 = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "", counter_, clock_);
   auto cb = [](Status s) {};
-  SchedulePgRequest request;
-  std::unique_ptr<Postable<void(bool)>> put_cb;
-  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
-      .Times(2)
-      .WillRepeatedly(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
-  EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
-      .Times(2)
-      .WillRepeatedly(DoAll(SaveArg<0>(&request)));
   gcs_placement_group_manager_->RegisterPlacementGroup(pg1, cb);
   gcs_placement_group_manager_->RegisterPlacementGroup(pg2, cb);
   auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(2, pending_queue.size());
-  std::move(*put_cb).Post("PendingQueuePriorityOrder", true);
+  ASSERT_NE(store_client_->last_async_put_callback, nullptr);
+  std::move(*store_client_->last_async_put_callback)
+      .Post("PendingQueuePriorityOrder", true);
   io_context_.poll();
   ASSERT_EQ(1, pending_queue.size());
   // PG1 is scheduled first, so PG2 is in pending queue
   ASSERT_EQ(pg2, pending_queue.begin()->second.second);
-  request.failure_callback(pg1, true);
+  {
+    auto failure_callback =
+        gcs_placement_group_scheduler_->schedule_unplaced_bundles_calls.back()
+            .failure_callback;
+    failure_callback(pg1, true);
+  }
   ASSERT_EQ(2, pending_queue.size());
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   // PG2 is scheduled for the next, so PG1 is in pending queue
