@@ -235,6 +235,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                 }
                             ],
                             "recent_dead_replicas": [],
+                            "rollout_complete": True,
                         }
                     },
                     "external_scaler_enabled": False,
