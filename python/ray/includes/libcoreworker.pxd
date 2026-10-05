@@ -74,6 +74,12 @@ ctypedef void (*wait_async_callback) \
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
+cdef extern from "ray/core_worker/reference_counter_interface.h" nogil:
+    cdef enum class CMoveState "ray::core::MoveState":
+        NOT_MOVABLE
+        MOVABLE
+        MOVED
+
 cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
@@ -151,7 +157,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_string serialized_retry_exception_allowlist,
             c_string call_site,
             const CTaskID current_task_id)
-        CRayStatus CheckNoConsumeOnceArgs(const c_vector[CObjectID] &arg_ids)
+        optional[CMoveState] GetMoveState(const CObjectID &object_id)
+        c_vector[optional[CMoveState]] GetMoveStates(
+            const c_vector[CObjectID] &object_ids)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,

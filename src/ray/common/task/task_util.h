@@ -53,6 +53,8 @@ struct TaskFailureEntry {
 class TaskArg {
  public:
   virtual void ToProto(rpc::TaskArg *arg_proto) const = 0;
+  /// The ID of the object this argument refers to, if it is passed by reference.
+  virtual std::optional<ObjectID> GetReferenceId() const { return std::nullopt; }
   virtual ~TaskArg() = default;
 };
 
@@ -67,6 +69,8 @@ class TaskArgByReference : public TaskArg {
         owner_address_(std::move(owner_address)),
         call_site_(std::move(call_site)),
         tensor_transport_(std::move(tensor_transport)) {}
+
+  std::optional<ObjectID> GetReferenceId() const override { return id_; }
 
   void ToProto(rpc::TaskArg *arg_proto) const override {
     auto ref = arg_proto->mutable_object_ref();
