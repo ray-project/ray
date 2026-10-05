@@ -135,6 +135,9 @@ message RequestRouterConfig {
 
   // Maximum backoff time (in seconds) between retries.
   double max_backoff_s = 8;
+
+  // Maximum time (in seconds) a request waits to be assigned a replica.
+  optional double request_routing_timeout_s = 9;
 }
 //[End] ROUTING CONFIG
 
