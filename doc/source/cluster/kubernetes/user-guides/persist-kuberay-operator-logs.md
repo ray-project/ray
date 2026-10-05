@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Persist KubeRay operator logs to Grafana Loki and view them in a Grafana dashboard."
+---
+
 (persist-kuberay-operator-logs)=
 
 # Persist KubeRay Operator Logs

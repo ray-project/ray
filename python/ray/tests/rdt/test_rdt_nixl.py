@@ -1,3 +1,4 @@
+import gc
 import sys
 
 import pytest
@@ -5,7 +6,11 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_target_for_ref
+from ray.experimental import (
+    set_target_device_for_ref,
+    set_target_for_ref,
+    wait_tensor_freed,
+)
 from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
@@ -206,6 +211,39 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_put_nixl(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    actor = GPUTestActor.remote()
+    assert ray.get(actor.sum.remote(ref, "cuda")) == 6
+    assert ray.get(actor.borrow_and_sum.remote([ref])) == 6
+    assert torch.equal(ray.get(ref), tensor)
+
+    del ref
+    gc.collect()
+
+    wait_tensor_freed(tensor, timeout=10)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_owned_rdt_rejects_object_store_fallback(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    with pytest.raises(ValueError, match="_use_object_store=True"):
+        ray.get(ref, _use_object_store=True)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_rejects_two_sided_transport(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+
+    with pytest.raises(ValueError, match="one-sided transport"):
+        ray.put(tensor, _tensor_transport="nccl")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -573,6 +611,139 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
     assert ray.get(result)
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_cross_device_fetch(ray_start_regular):
+    """NIXL can fetch tensors onto a device that differs from the source device."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class CrossDeviceActor:
+        def put_cuda(self):
+            tensors = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def put_cpu(self):
+            tensors = [
+                torch.tensor([1, 2, 3]),
+                torch.tensor([4, 5, 6]),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def fetch_on_device(self, refs, target_device):
+            set_target_device_for_ref(refs[0], target_device)
+            tensors = ray.get(refs[0])
+            expected_type = torch.device(target_device).type
+            for t in tensors:
+                assert t.device.type == expected_type
+            # Move to CPU so the driver can compare the values regardless of device.
+            return [t.cpu() for t in tensors]
+
+        def fetch_into_cross_device_buffers(self, refs):
+            # Source tensors are on CUDA; receive into caller-provided CPU
+            # buffers (cross-device fetch via target_buffer).
+            cpu_buffers = [
+                torch.empty(3, dtype=torch.int64),
+                torch.empty(3, dtype=torch.int64),
+            ]
+            set_target_for_ref(refs[0], cpu_buffers)
+            tensors = ray.get(refs[0])
+            for new_tensor, buffer in zip(tensors, cpu_buffers):
+                assert new_tensor.device.type == "cpu"
+                # Make sure we ray.get-ted into the provided buffers.
+                assert id(new_tensor) == id(buffer)
+            return [t.clone() for t in tensors]
+
+        def target_device_overrides_target_buffer(self, refs):
+            # Setting a target device after a target buffer should overwrite the
+            # target buffer so the two options stay mutually exclusive.
+            cuda_buffers = [
+                torch.empty(3, dtype=torch.int64).to("cuda"),
+                torch.empty(3, dtype=torch.int64).to("cuda"),
+            ]
+            set_target_for_ref(refs[0], cuda_buffers)
+            set_target_device_for_ref(refs[0], "cpu")
+            tensors = ray.get(refs[0])
+            for new_tensor, buffer in zip(tensors, cuda_buffers):
+                # The stale target buffer must not be used.
+                assert new_tensor.device.type == "cpu"
+                assert id(new_tensor) != id(buffer)
+            return [t.cpu() for t in tensors]
+
+    actors = [CrossDeviceActor.remote() for _ in range(2)]
+
+    # CUDA source -> CPU fetch.
+    cuda_ref = ray.get(actors[0].put_cuda.remote())
+    cpu_tensors = ray.get(actors[1].fetch_on_device.remote([cuda_ref], "cpu"))
+    assert torch.equal(cpu_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(cpu_tensors[1], torch.tensor([4, 5, 6]))
+
+    # CPU source -> CUDA fetch.
+    cpu_ref = ray.get(actors[0].put_cpu.remote())
+    cuda_tensors = ray.get(actors[1].fetch_on_device.remote([cpu_ref], "cuda"))
+    assert torch.equal(cuda_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(cuda_tensors[1], torch.tensor([4, 5, 6]))
+
+    # CUDA source -> receive into caller-provided CPU buffers (cross-device).
+    cuda_ref_buffers = ray.get(actors[0].put_cuda.remote())
+    buffer_tensors = ray.get(
+        actors[1].fetch_into_cross_device_buffers.remote([cuda_ref_buffers])
+    )
+    assert torch.equal(buffer_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(buffer_tensors[1], torch.tensor([4, 5, 6]))
+
+    # A later set_target_device_for_ref call overwrites an earlier
+    # set_target_for_ref call so target buffer and target device stay mutually
+    # exclusive across repeated calls on the same ref.
+    cuda_ref2 = ray.get(actors[0].put_cuda.remote())
+    override_tensors = ray.get(
+        actors[1].target_device_overrides_target_buffer.remote([cuda_ref2])
+    )
+    assert torch.equal(override_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(override_tensors[1], torch.tensor([4, 5, 6]))
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_target_device_not_leaked_to_borrower(ray_start_regular):
+    """A target device set for one consumer must not leak to a borrowing process.
+
+    The target device is a per-consumer receive target, so it should be stripped
+    when an RDT ObjectRef is serialized in-band for borrowing (like target
+    buffers). Otherwise a process that set a target device for its own ray.get
+    would force a different process's fetch onto that device.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class CrossDeviceActor:
+        def put_cuda(self):
+            tensors = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def fetch_default(self, refs):
+            # No target device/buffer is set on this actor. The fetch should
+            # land on the source device (cuda), not the device the driver set
+            # for its own consumption.
+            tensors = ray.get(refs[0])
+            for t in tensors:
+                assert t.device.type == "cuda"
+            return [t.cpu() for t in tensors]
+
+    actors = [CrossDeviceActor.remote() for _ in range(2)]
+
+    cuda_ref = ray.get(actors[0].put_cuda.remote())
+    # The driver sets a target device for its own consumption of the ref.
+    set_target_device_for_ref(cuda_ref, "cpu")
+    # Borrow the ref in another actor by passing it in-band. The borrower must
+    # not inherit the driver's target device.
+    result = ray.get(actors[1].fetch_default.remote([cuda_ref]))
+    assert torch.equal(result[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(result[1], torch.tensor([4, 5, 6]))
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_register_deregister_nixl_memory(ray_start_regular):
     """
@@ -628,7 +799,9 @@ def test_nixl_memory_pool(ray_start_regular, device):
         def get_num_managed_meta_nixl(self):
             return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
 
-    src_actor = PoolActor.remote(device, 48)
+    # int64 tensors of 3 elems = 24 bytes; with 16-byte alignment each carves 32.
+    # Pool of 64 fits exactly two such tensors.
+    src_actor = PoolActor.remote(device, 64)
     dst_actor = GPUTestActor.remote()
 
     # Transfer the first small tensor (using memory pool internally).
@@ -662,59 +835,363 @@ def test_nixl_memory_pool(ray_start_regular, device):
     assert ray.get(dst_actor.sum.remote(ref4, device)) == 21
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool_cpu_pool_gpu_tensor(ray_start_regular):
+    """
+    Test that a CPU-based memory pool can serve GPU source tensors, and that
+    the tensor still lands on the GPU on the receiver.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolActor:
+        def __init__(self, pool_device, pool_size):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(pool_size, torch.device(pool_device))
+
+        @ray.method(tensor_transport="nixl")
+        def echo(self, data):
+            # Guard against the argument silently landing on CPU.
+            assert data.device.type == "cuda"
+            return data
+
+        def pool_device_type(self):
+            return (
+                get_tensor_transport_manager("NIXL")
+                ._memory_pool.get_pool_tensor()
+                .device.type
+            )
+
+    # Pool holds exactly one small tensor (24 bytes).
+    src_actor = PoolActor.remote("cpu", 24)
+    dst_actor = GPUTestActor.remote()
+    assert ray.get(src_actor.pool_device_type.remote()) == "cpu"
+
+    # Transfer the first small tensor (using memory pool internally).
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"))
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 6
+
+    # Second transfer: pool is full (ref1 still alive). The allocation raises
+    # NixlOutOfMemoryError, which surfaces as a RayTaskError, proving the
+    # pool (not direct registration) served ref1.
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"))
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(dst_actor.sum.remote(ref2, "cuda"))
+    assert "NixlOutOfMemoryError" in str(excinfo.value) and "out of memory" in str(
+        excinfo.value
+    )
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_nixl_memory_pool_view_deduplication(ray_start_regular):
-    """
-    Test that views of the same tensor within a single ray.put share a single
-    pool allocation, and that across ray.put calls the same storage reuses its
-    pool slot.
-    """
+def test_nixl_memory_pool_copies_tensor_not_storage(ray_start_regular):
+    """Pool copies only each tensor's own bytes, not the full backing storage."""
     from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
     )
 
     transport = NixlTensorTransport()
-    base = torch.tensor([[1, 2], [3, 4], [5, 6]], dtype=torch.float32).to("cuda")
-    storage_size = base.untyped_storage().nbytes()
+    base = torch.arange(1000, dtype=torch.float32).to("cuda")
+    view = base[100:104]  # 16 bytes; full storage is 4000 bytes
+    view_bytes = view.numel() * view.element_size()
 
-    # Pool sized to exactly one full storage copy — enough for the shared
-    # storage, and small enough that a duplicate allocation would fail.
-    transport.register_nixl_memory_pool(storage_size, torch.device("cuda"))
+    # Pool sized for the view only — full storage would not fit.
+    transport.register_nixl_memory_pool(64, torch.device("cuda"))
 
-    view_a = base[0:2]
-    view_b = base[1:3]
+    obj_id = "view_copy_obj"
+    meta = transport.extract_tensor_transport_metadata(obj_id, [view])
+    assert obj_id in transport._memory_pool._allocated_by_obj
+    blocks = transport._memory_pool._allocated_by_obj[obj_id]
+    assert len(blocks) == 1
+    assert blocks[0].size >= view_bytes
+    assert blocks[0].size < base.untyped_storage().nbytes()
 
-    # Both views share the same storage
-    assert view_a.untyped_storage().data_ptr() == base.untyped_storage().data_ptr()
-    assert view_b.untyped_storage().data_ptr() == base.untyped_storage().data_ptr()
+    # One transfer descriptor for the single packed block.
+    descs = transport.get_nixl_agent().deserialize_descs(meta.nixl_serialized_descs)
+    assert descs.descCount() == 1
+    assert descs[0][1] == view_bytes
 
-    # Put both views in one object — shared storage should be allocated only once,
-    # but metadata_count increments once per tensor.
-    obj_id1 = "view_obj_1"
-    meta1 = transport.extract_tensor_transport_metadata(obj_id1, [view_a, view_b])
-    ptr = base.untyped_storage().data_ptr()
-    pool = transport._memory_pool
-    assert pool.has_block(base)
-    assert ptr in transport._tensor_desc_cache
-    assert transport._tensor_desc_cache[ptr].reg_desc is None
-    assert transport._tensor_desc_cache[ptr].metadata_count == 2
+    transport.garbage_collect(obj_id, meta, [view])
+    assert obj_id not in transport._memory_pool._allocated_by_obj
 
-    # Second put of the same view — should reuse the same pool slot (cross-call cache)
-    obj_id2 = "view_obj_2"
-    meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view_a])
-    assert pool.has_block(base)
-    assert transport._tensor_desc_cache[ptr].metadata_count == 3
 
-    # GC: metadata_count decrements once per tensor passed in, symmetric with
-    # _add_pool_tensor_descs.
-    transport.garbage_collect(obj_id1, meta1, [view_a, view_b])
-    assert ptr in transport._tensor_desc_cache
-    assert transport._tensor_desc_cache[ptr].metadata_count == 1
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_nixl_memory_pool_collapses_descriptors(ray_start_regular):
+    """Multiple tensors in one put collapse to a single descriptor when unfragmented."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
 
-    transport.garbage_collect(obj_id2, meta2, [view_a])
-    # All refs gone, pool block freed
-    assert ptr not in transport._tensor_desc_cache
-    assert not pool.has_block(base)
+    transport = NixlTensorTransport()
+    t0 = torch.arange(4, dtype=torch.float32).to("cuda")
+    t1 = torch.arange(4, dtype=torch.float32).to("cuda") + 10
+    t2 = torch.arange(4, dtype=torch.float32).to("cuda") + 20
+    total = sum(t.numel() * t.element_size() for t in [t0, t1, t2])
+
+    transport.register_nixl_memory_pool(1024, torch.device("cuda"))
+    obj_id = "collapse_obj"
+    meta = transport.extract_tensor_transport_metadata(obj_id, [t0, t1, t2])
+
+    descs = transport.get_nixl_agent().deserialize_descs(meta.nixl_serialized_descs)
+    assert descs.descCount() == 1
+    # A group sharing one dtype packs with no padding.
+    assert descs[0][1] == total
+    assert len(transport._memory_pool._allocated_by_obj[obj_id]) == 1
+
+    transport.garbage_collect(obj_id, meta, [t0, t1, t2])
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
+    """Fragmented free list yields multiple descriptors with correct data."""
+    from ray.experimental.rdt.nixl_memory_pool import (
+        TensorLayout,
+        group_tensors_by_desc,
+    )
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    # Three 32-byte fillers fill a 96-byte pool; free the outer two.
+    transport.register_nixl_memory_pool(96, torch.device("cuda"))
+    fillers = [torch.zeros(8, dtype=torch.float32).to("cuda") for _ in range(3)]
+    filler_metas = []
+    for i, f in enumerate(fillers):
+        mid = transport.extract_tensor_transport_metadata(f"filler_{i}", [f])
+        filler_metas.append(mid)
+    # Free outer holes.
+    transport.garbage_collect("filler_0", filler_metas[0], [fillers[0]])
+    transport.garbage_collect("filler_2", filler_metas[2], [fillers[2]])
+
+    t0 = torch.arange(8, dtype=torch.float32).to("cuda")
+    t1 = torch.arange(8, dtype=torch.float32).to("cuda") + 10
+    obj_id = "frag_obj"
+    meta = transport.extract_tensor_transport_metadata(obj_id, [t0, t1])
+
+    descs = transport.get_nixl_agent().deserialize_descs(meta.nixl_serialized_descs)
+    assert descs.descCount() == 2
+    assert len(transport._memory_pool._allocated_by_obj[obj_id]) == 2
+
+    # Neither hole fits both tensors, so the receiver recovers one tensor per
+    # descriptor from the lengths alone.
+    layouts = [
+        TensorLayout(t.numel() * t.element_size(), t.element_size()) for t in (t0, t1)
+    ]
+    packed_group_nbytes = [descs[i][1] for i in range(descs.descCount())]
+    assert group_tensors_by_desc(layouts, packed_group_nbytes) == [[0], [1]]
+
+    transport.garbage_collect(obj_id, meta, [t0, t1])
+    transport.garbage_collect("filler_1", filler_metas[1], [fillers[1]])
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool_with_target_buffers(ray_start_regular):
+    """Pool-backed multi-tensor put works with set_target_for_ref."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolSrc:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+            self.tensors = [
+                torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32).to("cuda"),
+                torch.tensor([4.0, 5.0, 6.0], dtype=torch.float32).to("cuda"),
+            ]
+
+        def get_ref(self):
+            return ray.put(self.tensors, _tensor_transport="nixl")
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolDst:
+        def __init__(self):
+            self.buffers = [
+                torch.empty(3, dtype=torch.float32, device="cuda"),
+                torch.empty(3, dtype=torch.float32, device="cuda"),
+            ]
+
+        def get_with_buffers(self, refs):
+            set_target_for_ref(refs[0], self.buffers)
+            tensors = ray.get(refs[0])
+            for t, buf in zip(tensors, self.buffers):
+                assert id(t) == id(buf)
+            return [t.cpu().tolist() for t in tensors]
+
+    src = PoolSrc.remote()
+    dst = PoolDst.remote()
+    ref = ray.get(src.get_ref.remote())
+    result = ray.get(dst.get_with_buffers.remote([ref]))
+    assert result == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool_contiguous_target_buffers(ray_start_regular):
+    """Pool-backed put receives into views of one pre-allocated buffer."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolSrc:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+            self.tensors = [
+                torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32).to("cuda"),
+                torch.tensor([5.0, 6.0, 7.0, 8.0], dtype=torch.float32).to("cuda"),
+            ]
+
+        def get_ref(self):
+            return ray.put(self.tensors, _tensor_transport="nixl")
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolDst:
+        def __init__(self):
+            # One pre-allocated buffer carved into per-tensor views, which is
+            # the layout the sender packs into.
+            self.parent = torch.empty(8, dtype=torch.float32, device="cuda")
+            self.buffers = [self.parent[0:4], self.parent[4:8]]
+
+        def get_with_buffers(self, refs):
+            # The ref must be passed inside a list, otherwise Ray dereferences
+            # the argument and transfers the object before this method runs.
+            set_target_for_ref(refs[0], self.buffers)
+            tensors = ray.get(refs[0])
+            for t, buf in zip(tensors, self.buffers):
+                assert t.data_ptr() == buf.data_ptr()
+            return self.parent.cpu().tolist()
+
+    src = PoolSrc.remote()
+    dst = PoolDst.remote()
+    ref = ray.get(src.get_ref.remote())
+    assert ray.get(dst.get_with_buffers.remote([ref])) == [
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0,
+        7.0,
+        8.0,
+    ]
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool_multi_tensor_e2e(ray_start_regular):
+    """End-to-end multi-tensor pool put collapses to one descriptor and transfers."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolSrc:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+
+        def put_list(self):
+            tensors = [
+                torch.tensor([1.0, 2.0], dtype=torch.float32).to("cuda"),
+                torch.tensor([3.0, 4.0, 5.0], dtype=torch.float32).to("cuda"),
+            ]
+            ref = ray.put(tensors, _tensor_transport="nixl")
+            meta = get_tensor_transport_manager("NIXL")._get_meta(ref.hex())
+            descs = (
+                get_tensor_transport_manager("NIXL")
+                .get_nixl_agent()
+                .deserialize_descs(meta.nixl_serialized_descs)
+            )
+            return ref, descs.descCount()
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolDst:
+        def consume(self, refs):
+            # The ref must be passed inside a list, otherwise Ray dereferences
+            # the argument and transfers the object before this method runs.
+            tensors = ray.get(refs[0])
+            return [t.cpu().tolist() for t in tensors]
+
+    src = PoolSrc.remote()
+    dst = PoolDst.remote()
+    ref, desc_count = ray.get(src.put_list.remote())
+    assert desc_count == 1
+    result = ray.get(dst.consume.remote([ref]))
+    assert result == [[1.0, 2.0], [3.0, 4.0, 5.0]]
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_set_nixl_cuda_stream(ray_start_regular):
+    """set_nixl_cuda_stream restricts the pre-registration sync to the given
+    stream, and the transferred data is still valid."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class StreamActor:
+        @ray.method(tensor_transport="nixl")
+        def echo_on_stream(self, data):
+            from ray.experimental import set_nixl_cuda_stream
+
+            stream = torch.cuda.Stream()
+            with torch.cuda.stream(stream):
+                out = data.to("cuda") * 2
+            # Only block on `stream` instead of every stream on the device.
+            set_nixl_cuda_stream(stream)
+            return out
+
+        @ray.method(tensor_transport="nixl")
+        def echo_default(self, data):
+            from ray.experimental import set_nixl_cuda_stream
+
+            # Reset to the default full-device synchronization.
+            set_nixl_cuda_stream(None)
+            return data.to("cuda") * 2
+
+    src_actor = StreamActor.remote()
+    dst_actor = GPUTestActor.remote()
+
+    ref = src_actor.echo_on_stream.remote(torch.tensor([1, 2, 3]))
+    assert ray.get(dst_actor.sum.remote(ref, "cuda")) == 12
+
+    # After resetting to None, transfers still succeed.
+    ref2 = src_actor.echo_default.remote(torch.tensor([4, 5, 6]))
+    assert ray.get(dst_actor.sum.remote(ref2, "cuda")) == 30
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_set_nixl_cuda_stream_overwrite(ray_start_regular):
+    """Setting a stream overwrites any previous stream, and passing None
+    clears it."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    assert transport._cuda_stream is None
+
+    stream1 = torch.cuda.Stream()
+    stream2 = torch.cuda.Stream()
+    transport.set_cuda_stream(stream1)
+    assert transport._cuda_stream is stream1
+
+    # Setting again overwrites the previous stream.
+    transport.set_cuda_stream(stream2)
+    assert transport._cuda_stream is stream2
+
+    # None clears the recorded stream.
+    transport.set_cuda_stream(None)
+    assert transport._cuda_stream is None
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_set_nixl_cuda_stream_uncovered_device(ray_start_regular):
+    """A device used by the RDT object with no matching stream errors."""
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    # Provide a stream only for cuda:1, but create the tensor on cuda:0.
+    stream = torch.cuda.Stream(device=torch.device("cuda:1"))
+    transport.set_cuda_stream(stream)
+
+    tensor = torch.tensor([1, 2, 3]).to("cuda:0")
+    with pytest.raises(ValueError, match="Device mismatch between the CUDA stream"):
+        transport.extract_tensor_transport_metadata("uncovered_obj", [tensor])
 
 
 if __name__ == "__main__":

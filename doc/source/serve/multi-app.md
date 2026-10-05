@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy and manage multiple independent Serve applications on one cluster using multi-application config files, the serve CLI, and the Serve dashboard."
+---
+
 (serve-multi-application)=
 # Deploy Multiple Applications
 

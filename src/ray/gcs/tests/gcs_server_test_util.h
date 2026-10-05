@@ -164,9 +164,8 @@ struct GcsServerMocker {
       }
     }
 
-    bool ReplyCancelWorkerLease(bool success = true) {
+    bool ReplyCancelWorkerLease() {
       rpc::CancelWorkerLeaseReply reply;
-      reply.set_success(success);
       if (cancel_callbacks.size() == 0) {
         return false;
       } else {
@@ -354,7 +353,6 @@ struct GcsServerMocker {
 
    protected:
     friend class GcsPlacementGroupSchedulerTest;
-    FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:

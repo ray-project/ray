@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Resize Ray worker pod resources in place with KubeRay IPPR, avoiding restarts, with validation rules and resize behavior."
+---
+
 (kuberay-in-place-pod-resizing)=
 
 # KubeRay In-Place Pod Resizing (IPPR)
@@ -223,9 +229,9 @@ For example, after a successful resize, `resizing-at: null` means no resize is i
 }
 ```
 
-You can watch the Kubernetes-side progress of an in-flight resize via the Pod's [resize status conditions](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/#pod-resize-status) (`PodResizePending` and `PodResizeInProgress`) and the resource events the Kubelet emits during the resize. The simplest way to view both at once is `kubectl describe pod <worker-pod>`.
+You can watch the Kubernetes-side progress of an in-flight resize via the Pod's [resize status conditions](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/#pod-resize-status) (`PodResizePending` and `PodResizeInProgress`) and the resource events the kubelet emits during the resize. The simplest way to view both at once is `kubectl describe pod <worker-pod>`.
 
-After a successful resize, the `Conditions:` table contains only the standard Pod conditions (the transient `PodResizePending` / `PodResizeInProgress` fields are gone), the Pod's `Limits` / `Requests` reflect the new size, and the Kubelet emits a `ResizeCompleted` event:
+After a successful resize, the `Conditions:` table contains only the standard Pod conditions (the transient `PodResizePending` / `PodResizeInProgress` fields are gone), the Pod's `Limits` / `Requests` reflect the new size, and the kubelet emits a `ResizeCompleted` event:
 
 ```text
 Conditions:

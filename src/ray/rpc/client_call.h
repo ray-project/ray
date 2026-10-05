@@ -104,10 +104,6 @@ class ClientCallImpl : public ClientCall {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
     }
-    if (record_stats_ && !status.ok()) {
-      grpc_client_req_failed_counter_.Record(1.0,
-                                             {{"Method", stats_handle_->event_name}});
-    }
     if (callback_ != nullptr) {
       // This should be only called once.
       callback_(status, std::move(reply_));
@@ -147,9 +143,6 @@ class ClientCallImpl : public ClientCall {
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.
   grpc::ClientContext context_;
-
-  ray::stats::Count grpc_client_req_failed_counter_{
-      GetGrpcClientReqFailedCounterMetric()};
 
   friend class ClientCallManager;
 };
@@ -338,6 +331,10 @@ class ClientCallManager {
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
         RAY_CHECK_NE(stats_handle, nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
+          if (record_stats_ && !tag->GetCall()->GetStatus().ok()) {
+            client_metrics_.req_failed.Record(1.0,
+                                              {{"Method", stats_handle->event_name}});
+          }
           // Post the callback to the main event loop.
           main_service_.post(
               [tag]() {
@@ -388,6 +385,8 @@ class ClientCallManager {
 
   // Timeout in ms for calls created.
   int64_t call_timeout_ms_;
+
+  GrpcClientMetrics client_metrics_;
 };
 
 }  // namespace rpc

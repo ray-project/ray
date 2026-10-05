@@ -1,3 +1,6 @@
+.. meta::
+   :description: Collective communication primitives (allreduce, broadcast, send/recv) for Ray actors and tasks via ray.util.collective, on NCCL and GLOO.
+
 ..
   This part of the docs is generated from the ray.util.collective readme using m2r
   To update:
@@ -30,7 +33,7 @@ See below the current support matrix for all collective calls with different bac
    :header-rows: 1
 
    * - Backend
-     - `torch.distributed.gloo <https://pytorch.org/docs/stable/distributed.html#gloo>`_
+     - `torch.distributed.gloo <https://docs.pytorch.org/docs/stable/distributed.html#backends-that-come-with-pytorch>`_
      -
      - `nccl <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`_
      -

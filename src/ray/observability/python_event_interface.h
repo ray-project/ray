@@ -160,11 +160,6 @@ class PythonEventRecorder {
   std::unique_ptr<RayEventRecorder> recorder_;
 };
 
-/// Serialize Python-emitted events directly to a JSON array string.
-///
-/// Each event is serialized through RayEventInterface::Serialize, then converted
-/// to JSON via protobuf's MessageToJsonString. Events that fail to serialize are
-/// skipped with an error log. Returns a JSON array string (e.g., "[{...}, {...}]").
 std::string SerializeEventsToRayEventsDataJson(
     std::vector<std::unique_ptr<RayEventInterface>> &&events);
 

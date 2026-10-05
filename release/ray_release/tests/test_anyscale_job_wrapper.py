@@ -10,7 +10,10 @@ from ray_release.command_runner._anyscale_job_wrapper import (
     TIMEOUT_RETURN_CODE,
     main,
     run_bash_command,
+    run_obj_store_util_check,
+    run_ray_oom_kill_check,
     run_spilling_check,
+    run_unexpected_worker_failure_check,
 )
 
 cloud_storage_kwargs = dict(
@@ -234,6 +237,144 @@ def test_run_spilling_check_non_dict_json(tmpdir, payload):
         json.dump(payload, f)
     with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
         assert run_spilling_check() == 1
+
+
+_PROM_TASK_OOM_SAMPLE = {
+    "metric": {
+        "Name": "ReadFiles",
+        "Type": "MemoryManager.TaskEviction.Total",
+    },
+    "values": [[1786542912, "1"], [1786544112, "4"]],
+}
+_PROM_IDLE_WORKER_OOM_SAMPLE = {
+    "metric": {
+        "Name": "idle",
+        "Type": "MemoryManager.IdleWorkerEviction.Total",
+    },
+    "values": [[1786542912, "10"]],
+}
+_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE = {
+    "metric": {
+        "Name": "MapWorker(MapBatches(ExtractImageFeatures)).__init__",
+        "Type": "Raylet.UnexpectedActorFailure.Total",
+    },
+    "values": [[1786542267, "1"], [1786544217, "1"]],
+}
+
+
+def test_run_ray_oom_kill_check_ignores_idle_worker_kills(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump({"worker_oom_kills": [_PROM_IDLE_WORKER_OOM_SAMPLE]}, f)
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_ray_oom_kill_check() == 0
+    assert caplog.records == []
+
+
+def test_run_ray_oom_kill_check_summarizes_metric_series(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {
+                "worker_oom_kills": [
+                    _PROM_TASK_OOM_SAMPLE,
+                    _PROM_IDLE_WORKER_OOM_SAMPLE,
+                ]
+            },
+            f,
+        )
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_ray_oom_kill_check() == 1
+    assert [record.getMessage() for record in caplog.records] == [
+        "Test failed: OOM worker kills detected. "
+        "Latest cumulative counter values by metric:\n"
+        "  - ReadFiles (MemoryManager.TaskEviction.Total): 4",
+    ]
+
+
+def test_run_unexpected_worker_failure_check_summarizes_metric_series(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {"unexpected_worker_failures": [_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE]}, f
+        )
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_unexpected_worker_failure_check() == 1
+    assert [record.getMessage() for record in caplog.records] == [
+        "Test failed: Unexpected worker failures detected "
+        "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+        "Latest cumulative counter values by metric:\n"
+        "  - MapWorker(MapBatches(ExtractImageFeatures)).__init__ "
+        "(Raylet.UnexpectedActorFailure.Total): 1",
+    ]
+
+
+class TestRunObjStoreUtilCheck:
+    def test_peak_below_limit_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "79"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_peak_at_limit_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "80"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_peak_above_limit_fails(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "81"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 1
+
+    def test_earlier_sample_above_limit_fails(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps(
+                {"object_store_util_percent": [{"values": [[0, "81"], [1, "0"]]}]}
+            )
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 1
+
+    def test_no_samples_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(json.dumps({"object_store_util_percent": []}))
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_only_nan_samples_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "NaN"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_negative_limit_skips_check(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "500"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("-1") == 0
 
 
 if __name__ == "__main__":

@@ -320,9 +320,11 @@ class EventHead(
 
         try:
             await self._forward_external_ray_events(events)
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to forward external Ray events to aggregator.")
-            raise aiohttp.web.HTTPInternalServerError()
+            raise aiohttp.web.HTTPInternalServerError(
+                reason=f"Failed to forward events to the event aggregator: {e}"
+            )
 
         return dashboard_optional_utils.rest_response(
             success=True,

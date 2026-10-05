@@ -12,6 +12,10 @@ class BlockRefCounter:
     The callback fires when:
     - All Python ObjectRefs wrapping the block's ObjectID are garbage-collected, AND
     - All Ray tasks that received the block as an argument have completed.
+
+    On executor shutdown, pending callbacks are harmless: the callback thread
+    is a daemon thread that exits with the driver process. Any callbacks
+    that fire after shutdown only decrement counters that are no longer read.
     """
 
     def __init__(
@@ -45,6 +49,9 @@ class BlockRefCounter:
         producer's usage.
 
         Idempotent: calling twice with the same block_ref is a no-op.
+
+        The caller must own block_ref. Ray Core rejects a callback registered
+        by any other worker.
         """
         id_binary = block_ref.binary()
         with self._lock:
@@ -61,10 +68,6 @@ class BlockRefCounter:
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
 
-        # TODO(srayhome): This raises ValueError for blocks not owned by this
-        # worker (e.g., materialized dataset passed to streaming_split). We may
-        # need to guard this with RefBundle.owns_blocks or skip registration at
-        # the InputDataBuffer level.
         registered = self._add_callback_fn(block_ref, _on_object_freed)
         if not registered:
             _on_object_freed(id_binary)
@@ -73,13 +76,3 @@ class BlockRefCounter:
         """Total bytes of live blocks attributed to producer_id."""
         with self._lock:
             return self._bytes_by_producer.get(producer_id, 0)
-
-    def clear(self) -> None:
-        """Reset all accounting, e.g. on executor shutdown.
-
-        Any previously registered Ray Core callbacks firing after clear()
-        will be silently ignored because _registered_ids is empty.
-        """
-        with self._lock:
-            self._registered_ids.clear()
-            self._bytes_by_producer.clear()

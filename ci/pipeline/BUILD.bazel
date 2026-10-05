@@ -1,6 +1,27 @@
-load("@rules_python//python:defs.bzl", "py_library")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 py_library(
     name = "determine_tests_to_run",
     srcs = ["determine_tests_to_run.py"],
+)
+
+py_test(
+    name = "test_doc_api_rules_sync",
+    size = "small",
+    srcs = [
+        "determine_tests_to_run.py",
+        "test_doc_api_rules_sync.py",
+    ],
+    data = [
+        "//:.rayciversion",
+        "//.buildkite:test.rules.txt",
+        "//doc:doc_source_modules",
+        "//doc:source/_ext/api_sidebar.py",
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [ci_require("pytest")],
 )

@@ -2,11 +2,20 @@
 #
 
 # You can set these variables from the command line.
+
+# Number of parallel Sphinx workers, passed straight to sphinx-build -j.
+# "auto" is one worker per CPU, which is what Sphinx does by default and what
+# every caller except Read the Docs still gets. Each worker holds its own copy
+# of the build environment, so write-phase memory scales with this number.
+# Override it to a smaller value on a builder with a hard memory ceiling; see
+# the html job in .readthedocs.yaml for the one caller that does.
+SPHINX_JOBS ?= auto
+
 # Allow linkcheck to run without treating warnings as errors; -W will
 # fast-fail if enabled; it's better to gather the whole list of bad links at once.
-SPHINXOPTS    = -a -E -W -j auto
-LOCALSPHINXOPTS = -W -j auto
-LINKCHECKOPTS = -a -E -j auto
+SPHINXOPTS    = -a -E -W -j $(SPHINX_JOBS)
+LOCALSPHINXOPTS = -W -j $(SPHINX_JOBS)
+LINKCHECKOPTS = -a -E -j $(SPHINX_JOBS)
 # RtD-faithful build: our full-build options plus the two flags Read the Docs
 # adds to its synthesized html command (-T full tracebacks, -D language=en).
 RTDSPHINXOPTS = $(SPHINXOPTS) -T -D language=en

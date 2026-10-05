@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Common KubeRay problems: Ray version mismatches, ARM images on Apple silicon, worker init containers, and cluster domain issues."
+---
+
 (kuberay-troubleshooting-guides)=
 
 # Troubleshooting guide
@@ -78,7 +84,7 @@ RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In Kube
 
 ### Ray Autoscaler doesn't scale up, causing new Ray tasks or actors to remain pending
 
-One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide. Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node. Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
+One common cause is that the Ray tasks or actors require an amount of resources that exceeds what any single Ray node can provide. Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node. Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
 
 (multi-node-gpu)=
 ## Multi-node GPU Deployments

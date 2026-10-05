@@ -9,11 +9,15 @@ from ray import train
 from ray.data import DataIterator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
-    ExecutionResources,
 )
 from ray.tests.conftest import *  # noqa
 from ray.train import DataConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
+
+
+@pytest.fixture(autouse=True)
+def disable_train_v2_for_v1_trainer_tests(monkeypatch):
+    monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", "0")
 
 
 @pytest.fixture
@@ -137,8 +141,8 @@ def test_split(ray_start_4_cpus):
     test.fit()
 
 
-def test_configure_execution_options_carryover_context(ray_start_4_cpus):
-    """Tests that execution options in DataContext are carried over to DatConfig
+def test_default_ingest_options_carried_over_from_context(ray_start_4_cpus):
+    """Tests that execution options in DataContext are carried over to DataConfig
     automatically."""
 
     ctx = ray.data.DataContext.get_current()
@@ -146,10 +150,10 @@ def test_configure_execution_options_carryover_context(ray_start_4_cpus):
     ctx.execution_options.verbose_progress = True
 
     data_config = DataConfig()
-
-    ingest_options = data_config.default_ingest_options()
-    assert ingest_options.preserve_order is True
-    assert ingest_options.verbose_progress is True
+    resolved = data_config._resolve_execution_options("train")
+    assert resolved == DataConfig.default_ingest_options()
+    assert resolved.preserve_order is True
+    assert resolved.verbose_progress is True
 
 
 @pytest.mark.parametrize("enable_locality", [True, False])
@@ -277,7 +281,8 @@ def _run_data_config_resource_test(data_config):
     # Resources used by training workers.
     cpus_per_worker, gpus_per_worker = 2, 1
 
-    original_execution_options = data_config._get_execution_options("train")
+    original_execution_options = data_config._resolve_execution_options("train")
+    assert original_execution_options is not None
 
     ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
 
@@ -287,32 +292,24 @@ def _run_data_config_resource_test(data_config):
                 train_ds = train.get_dataset_shard("train")
                 new_execution_options = train_ds.get_context().execution_options
                 if original_execution_options.is_resource_limits_default():
-                    # If the original resource limits are default, the new resource
-                    # limits should be the default as well.
                     assert new_execution_options.is_resource_limits_default()
                     exclude_resources = new_execution_options.exclude_resources
                     assert (
                         exclude_resources.cpu
                         == original_execution_options.exclude_resources.cpu
-                        + cpus_per_worker * num_workers
-                        + 1  # trainer coordinator
                     )
                     assert (
                         exclude_resources.gpu
                         == original_execution_options.exclude_resources.gpu
-                        + gpus_per_worker * num_workers
                     )
                 else:
-                    # If the original resource limits are not default, the new resource
-                    # limits should be the same as the original ones.
-                    # And the new exclude_resources should be zero.
                     assert (
                         new_execution_options.resource_limits
                         == original_execution_options.resource_limits
                     )
                     assert (
                         new_execution_options.exclude_resources
-                        == ExecutionResources.zero()
+                        == original_execution_options.exclude_resources
                     )
 
             kwargs.pop("scaling_config", None)
@@ -358,32 +355,26 @@ def test_data_config_manual_resource_limits(shutdown_only):
     _run_data_config_resource_test(data_config)
 
 
-def test_v1_train_with_v2_data_autoscaler_sets_exclude_resources(
+def test_v1_train_without_execution_options_uses_default_ingest(
     shutdown_only, monkeypatch
 ):
-    """Regression test for the Train V1 + V2 cluster autoscaler combination."""
+    """Without user execution_options, datasets use default ingest options."""
     monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V2")
 
     ray.init(num_cpus=10, num_gpus=2)
 
-    num_train_cpus, num_train_gpus = 4.0, 2.0
     data_config = DataConfig()
-    data_config.set_train_total_resources(
-        num_train_cpus=num_train_cpus, num_train_gpus=num_train_gpus
-    )
-
-    iterators = data_config.configure(
+    data_config.configure(
         datasets={"train": ray.data.range(10)},
         world_size=2,
         worker_handles=None,
         worker_node_ids=None,
     )
 
-    exclude_resources = (
-        iterators[0]["train"].get_context().execution_options.exclude_resources
-    )
-    assert exclude_resources.cpu == num_train_cpus
-    assert exclude_resources.gpu == num_train_gpus
+    resolved = data_config._resolve_execution_options("train")
+    assert resolved == DataConfig.default_ingest_options()
+    assert resolved.is_resource_limits_default()
+    assert data_config._get_user_execution_options("train") is None
 
 
 if __name__ == "__main__":

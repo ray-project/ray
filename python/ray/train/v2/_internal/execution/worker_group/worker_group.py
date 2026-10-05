@@ -3,7 +3,7 @@ import copy
 import logging
 import os
 import traceback
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -83,6 +83,16 @@ from ray.util.tpu import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_SERIALIZATION_FAILURE_MARKERS = (
+    "cannot pickle",
+    "Cannot pickle",
+    "cannot serialize",
+    "Can't pickle",
+    "PicklingError",
+    "ray/cloudpickle/cloudpickle.py",
+)
 
 
 class WorkerGroup(ExecutionGroup):
@@ -670,6 +680,22 @@ class WorkerGroup(ExecutionGroup):
         for callback in self._callbacks:
             callback.after_worker_group_abort(self._worker_group_context)
 
+    def set_required_barrier_ranks(self, ranks: Optional[Collection[int]]) -> bool:
+        """Release the synchronization barrier once `ranks` have joined.
+
+        Used during a node preemption so healthy workers are not stranded
+        waiting on a rank that has already been reclaimed. Pass None to restore
+        the default, where every rank must join.
+
+        Args:
+            ranks: The ranks the barrier should wait for, or None for all.
+
+        Returns:
+            True if the barrier accepted the set.
+        """
+        sync_actor = self._worker_group_state.sync_actor
+        return ray.get(sync_actor.set_required_ranks.remote(ranks))
+
     #####################################################################################
     # Polling Worker Group
     #####################################################################################
@@ -779,6 +805,30 @@ class WorkerGroup(ExecutionGroup):
                     "A worker health check failed.\n"
                     f"Worker info: {workers[done_rank]}"
                 )
+
+                # The ray.get can fail for serialization / deserialization, adds a hint to users.
+                try:
+                    exception_msg = str(e)
+
+                    if any(
+                        marker in exception_msg
+                        for marker in _SERIALIZATION_FAILURE_MARKERS
+                    ):
+                        error_msg += (
+                            "\nHint: This is a failure to serialize a value that "
+                            "the training function produced, which is needed to "
+                            "send it back to the Ray Train controller. "
+                            "Ray Train checks the most common cases up front, "
+                            "but cannot cover every type. "
+                            "Look for non-serializable objects in: \n"
+                            " (1) the `metrics` passed to `ray.train.report()`,\n"
+                            " (2) the value returned by the training function, and\n"
+                            " (3) exceptions raised by the training function.\n"
+                            "The traceback below shows the object that failed to serialize."
+                        )
+                except Exception:
+                    error_msg += "\nFailed to convert the exception to a string."
+
                 poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),

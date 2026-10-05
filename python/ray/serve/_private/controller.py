@@ -5,24 +5,27 @@ import pickle
 import time
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
     Optional,
     Set,
     Tuple,
+    Type,
     Union,
+    cast,
 )
 
 import ray
 from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     HandleMetricReport,
     NodeId,
@@ -39,6 +42,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_LOG_TO_STDERR,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
@@ -73,7 +77,7 @@ from ray.serve._private.logging_utils import (
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.long_poll import KeyType, LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
@@ -110,6 +114,7 @@ from ray.serve.schema import (
     ServeInstanceDetails,
     Target,
     TargetGroup,
+    TracingConfig,
     gRPCOptionsSchema,
 )
 from ray.util import metrics
@@ -151,16 +156,19 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(
+    async def __init__(  # type: ignore[misc]
         self,
         *,
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
+        global_tracing_config: Optional[TracingConfig] = None,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_location: Optional[ProxyLocation] = None,
     ):
         if RAY_SERVE_THROUGHPUT_OPTIMIZED:
             self._log_throughput_opt_message()
+
+        self.global_tracing_config = global_tracing_config
 
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
@@ -178,7 +186,7 @@ class ServeController:
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
         # the constructor.
-        self.global_logging_config = None
+        self.global_logging_config: Optional[LoggingConfig] = None
         log_config_checkpoint = self.kv_store.get(LOGGING_CONFIG_CHECKPOINT_KEY)
         if log_config_checkpoint is not None:
             global_logging_config = pickle.loads(log_config_checkpoint)
@@ -203,6 +211,8 @@ class ServeController:
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
         # Last full set of ingress-port tuples fed to update_ports (for the per-tick set-diff).
         self._last_ingress_port_tuples: set = set()
+        # Last ingress membership version seen; -1 forces the first tick to run.
+        self._last_ingress_membership_version: int = -1
         if self._ha_proxy_enabled:
             logger.info(
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
@@ -226,14 +236,20 @@ class ServeController:
             http_options = http_options.model_copy(update={"location": None})
 
         # Configure proxy default HTTP and gRPC options.
+        # `global_logging_config` was set by `reconfigure_global_logging_config`
+        # above, so it is never None past this point. (A self-attribute assert
+        # in __init__ poisons mypy's inference of later attributes, so cast.)
         self.proxy_state_manager = ProxyStateManager(
             http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
-            logging_config=self.global_logging_config,
+            logging_config=cast(LoggingConfig, self.global_logging_config),
             grpc_options=set_proxy_default_grpc_options(grpc_options),
             proxy_location=proxy_location,
-            proxy_actor_class=HAProxyManager if self._ha_proxy_enabled else ProxyActor,
+            proxy_actor_class=cast(
+                Type[ProxyActor],
+                HAProxyManager if self._ha_proxy_enabled else ProxyActor,
+            ),
             running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
@@ -266,7 +282,7 @@ class ServeController:
             self.autoscaling_state_manager,
             self.endpoint_state,
             self.kv_store,
-            self.global_logging_config,
+            cast(LoggingConfig, self.global_logging_config),
         )
 
         # Controller actor details
@@ -304,7 +320,7 @@ class ServeController:
         self._recover_state_from_checkpoint()
 
         # Nodes where proxy actors should run.
-        self._proxy_nodes = set()
+        self._proxy_nodes: Set[str] = set()
         self._update_proxy_nodes()
 
         # Initialize to None (not []) to ensure the first broadcast always happens,
@@ -325,8 +341,14 @@ class ServeController:
             msg += "  • Router running in main thread (not separate)\n"
         if not RAY_SERVE_LOG_TO_STDERR:
             msg += "  • Log to stderr disabled\n"
+        if RAY_SERVE_FREEZE_GC_ON_STARTUP:
+            msg += "  • Garbage collector is frozen on startup\n"
         msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
         logger.info(msg)
+
+    def get_tracing_config(self) -> Optional[TracingConfig]:
+        """Return the global tracing config."""
+        return self.global_tracing_config
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -364,73 +386,109 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
+    def _record_metrics_delay(
+        self,
+        timestamp: float,
+        deployment_id: DeploymentID,
+        report_delay: Callable[..., None],
+        record_delay: Optional[Callable[[float], None]] = None,
+    ) -> None:
+        """Report ingest delay. Only deployment/application tags are set, so these
+        metrics stay bounded no matter how many sources report."""
+        delay_ms = (time.time() - timestamp) * 1000
+        report_delay(
+            delay_ms,
+            tags={
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+            },
+        )
+        if record_delay is not None:
+            record_delay(delay_ms)
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(replica_metric_report, bytes):
+            decompress_start = time.monotonic()
             replica_metric_report = decompress_metric_report(replica_metric_report)
-        latency = time.time() - replica_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = replica_metric_report.replica_id.deployment_id.name
-        application = replica_metric_report.replica_id.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all replicas of a deployment, so we omit the
-        # per-replica tag to keep cardinality bounded.
-        self.replica_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
+        # Decompression (above) always yields a ReplicaMetricReport.
+        replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
+        self._record_metrics_delay(
+            replica_metric_report.timestamp,
+            replica_metric_report.replica_id.deployment_id,
+            self.replica_metrics_delay_histogram.observe,
+            self._health_metrics_tracker.record_replica_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
+        )
+        self._health_metrics_tracker.record_replica_ingest(
+            (time.monotonic() - ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
-            handle_metric_report = decompress_metric_report(handle_metric_report)
-        latency = time.time() - handle_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = handle_metric_report.deployment_id.name
-        application = handle_metric_report.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all handles of a deployment, so we omit the
-        # per-handle tag to keep cardinality bounded.
-        self.handle_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+            if autoscaling_metrics_codec.is_columnar(handle_metric_report):
+                # Wire-detected on the frame magic rather than assumed, so this
+                # path works whether or not routers emit columnar yet. Timed apart
+                # from decompress: separating the two codecs is the point of the
+                # metric.
+                decode_start = time.monotonic()
+                try:
+                    d = autoscaling_metrics_codec.decode_handle_flat(
+                        handle_metric_report
+                    )
+                except Exception:
+                    # The sender never reads this call's ObjectRef, so an unparseable
+                    # report would otherwise vanish with no trace on either side. The
+                    # handle keeps its last good data until the drop path times it out.
+                    logger.exception("Dropping an undecodable columnar metric report.")
+                    return
+                self._health_metrics_tracker.record_columnar_decode(
+                    (time.monotonic() - decode_start) * 1000
+                )
+                self._record_metrics_delay(
+                    d["timestamp"],
+                    d["deployment_id"],
+                    self.handle_metrics_delay_histogram.observe,
+                    self._health_metrics_tracker.record_handle_metrics_delay,
+                )
+                self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
+                self._health_metrics_tracker.record_handle_ingest(
+                    (time.monotonic() - ingest_start) * 1000
+                )
+                return
+            decompress_start = time.monotonic()
+            try:
+                handle_metric_report = decompress_metric_report(handle_metric_report)
+            except Exception:
+                logger.exception("Dropping an undecompressible handle metric report.")
+                return
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
+        # Decompression (above) always yields a HandleMetricReport.
+        handle_metric_report = cast(HandleMetricReport, handle_metric_report)
+        self._record_metrics_delay(
+            handle_metric_report.timestamp,
+            handle_metric_report.deployment_id,
+            self.handle_metrics_delay_histogram.observe,
+            self._health_metrics_tracker.record_handle_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
-
-    def record_autoscaling_metrics_from_async_inference_task_queue(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics pushed from QueueMonitor."""
-        latency = time.time() - report.timestamp_s
-        latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.async_inference_task_queue_metrics_delay_gauge.set(
-            latency_ms,
-            tags={
-                "deployment": report.deployment_id.name,
-                "application": report.deployment_id.app_name,
-            },
+        self._health_metrics_tracker.record_handle_ingest(
+            (time.monotonic() - ingest_start) * 1000
         )
-        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
@@ -442,6 +500,11 @@ class ServeController:
     def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
+    def _should_autoscale_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> bool:
+        return self.autoscaling_state_manager.should_autoscale_deployment(deployment_id)
+
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._dump_replica_states_for_testing(
             deployment_id
@@ -452,7 +515,7 @@ class ServeController:
             deployment_id
         )
 
-    async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
+    async def listen_for_change(self, keys_to_snapshot_ids: Dict[KeyType, int]):
         """Proxy long pull client's listen request.
 
         Args:
@@ -512,7 +575,7 @@ class ServeController:
             return {}
         return self.proxy_state_manager.get_proxy_handles()
 
-    def get_proxy_names(self) -> bytes:
+    def get_proxy_names(self) -> Optional[bytes]:
         """Returns the proxy actor name list serialized by protobuf."""
         if self.proxy_state_manager is None:
             return None
@@ -606,7 +669,9 @@ class ServeController:
         any_recovering: Optional[bool] = None
         try:
             dsm_update_start_time = time.time()
-            any_recovering = self.deployment_state_manager.update()
+            any_recovering = self.deployment_state_manager.update(
+                proxy_nodes=self._proxy_nodes
+            )
 
             dsm_duration = time.time() - dsm_update_start_time
             self.dsm_update_duration_gauge_s.set(dsm_duration)
@@ -688,10 +753,20 @@ class ServeController:
         """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
         if self._direct_ingress_enabled:
+            # Skip the whole O(replicas) port reconcile on ticks where no ingress
+            # replica's membership/node/ports changed and no quarantined port is awaiting
+            # reclaim. The membership version is a monotonic counter (immune to the
+            # same-tick clear of the per-deployment broadcast dirty flag).
+            version = self.deployment_state_manager.get_ingress_membership_version()
+            if (
+                version == self._last_ingress_membership_version
+                and not NodePortManager.any_pending_quarantine()
+            ):
+                return
             # Update port values for ingress replicas.
             # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
-                Tuple[str, str, int, int]
+                Tuple[Optional[str], str, Optional[int], Optional[int]]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
 
             # update_port_if_missing is additive and idempotent, so we send update_ports
@@ -706,6 +781,11 @@ class ServeController:
             # Clean up stale ports
             # get all alive replica ids and their node ids.
             NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
+
+            # Mark this membership version reconciled only after update_ports +
+            # prune succeed. If either raised, the version is left unchanged so the
+            # control loop retries the reconcile next tick instead of skipping it.
+            self._last_ingress_membership_version = version
 
     def broadcast_target_groups_if_changed(self) -> None:
         """Broadcast target groups over long poll if they have changed.
@@ -771,9 +851,11 @@ class ServeController:
             ),
             tag_keys=("actor_id",),
         )
-        self.num_control_loops_gauge.set_default_tags(
-            {"actor_id": ray.get_runtime_context().get_actor_id()}
-        )
+        # The controller always runs inside an actor, so the actor ID is
+        # never None here.
+        controller_actor_id = ray.get_runtime_context().get_actor_id()
+        assert controller_actor_id is not None
+        self.num_control_loops_gauge.set_default_tags({"actor_id": controller_actor_id})
 
         # Autoscaling metrics delay gauges
         self.replica_metrics_delay_histogram = metrics.Histogram(
@@ -792,14 +874,6 @@ class ServeController:
                 "High values may indicate a busy controller."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "application"),
-        )
-        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
-            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
-            description=(
-                "Time taken for the async inference task queue metrics to be reported "
-                "to the controller. High values may indicate a busy controller."
-            ),
             tag_keys=("deployment", "application"),
         )
 
@@ -909,10 +983,10 @@ class ServeController:
 
         return self.proxy_state_manager.get_proxy_details().get(node_id)
 
-    def get_deployment_timestamps(self, app_name: str) -> float:
+    def get_deployment_timestamps(self, app_name: str) -> Optional[float]:
         """Returns the deployment timestamp for the given app.
 
-        Currently used for test only.
+        Returns None if the app doesn't exist. Currently used for test only.
         """
         for (
             _app_name,
@@ -920,6 +994,7 @@ class ServeController:
         ) in self.application_state_manager.list_app_statuses().items():
             if app_name == _app_name:
                 return app_status_info.deployment_timestamp
+        return None
 
     def get_deployment_details(
         self, app_name: str, deployment_name: str
@@ -1197,6 +1272,12 @@ class ServeController:
         )
         self._target_capacity = config.target_capacity
 
+        # If a global tracing config is provided in the declarative config,
+        # store it so replicas and proxies started for this config pick it up
+        # when they fetch the tracing config from the controller.
+        if config.tracing_config is not None:
+            self.global_tracing_config = config.tracing_config
+
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging
             # config.
@@ -1260,7 +1341,7 @@ class ServeController:
 
     def list_deployments_internal(
         self,
-    ) -> Dict[DeploymentID, Tuple[DeploymentInfo, str]]:
+    ) -> Dict[DeploymentID, Tuple[DeploymentInfo, Optional[str]]]:
         """Gets the current information about all deployments.
 
         Returns:
@@ -1405,6 +1486,8 @@ class ServeController:
             applications=applications,
             target_groups=self.get_target_groups(),
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
+            # Set this explicitly so exclude_unset includes it in the response.
+            restores_unset_config_options=True,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1422,6 +1505,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_router_fallback=False,
                     ingress_deployment_name="",
                 )
             )
@@ -1504,7 +1588,9 @@ class ServeController:
         # Create target groups for each application
         target_groups = []
         for app_name in apps:
+            # `apps` was filtered above to apps with a non-None route prefix.
             route_prefix = self.application_state_manager.get_route_prefix(app_name)
+            assert route_prefix is not None
             app_target_groups = self._get_target_groups_for_app(app_name, route_prefix)
             if app_target_groups:
                 target_groups.extend(app_target_groups)
@@ -1545,6 +1631,10 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name)
         )
+        # `ingress_deployment_name` may still be None before the app is built;
+        # there is no ingress deployment to look up in that case.
+        if ingress_deployment_name is None:
+            return []
         return self._get_running_replica_details_for_deployment(
             app_name, ingress_deployment_name
         )
@@ -1593,6 +1683,8 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        ingress_router_fallback = ingress_request_router_deployment_name is not None
+
         target_groups = []
 
         # Create targets for each protocol
@@ -1607,6 +1699,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )
@@ -1722,14 +1815,20 @@ class ServeController:
         self, replica_detail: ReplicaDetails, protocol: RequestProtocol
     ) -> int:
         """Get the port for a replica."""
-        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        # Running replicas always have their node ID populated.
+        node_manager = NodePortManager.get_node_manager(
+            cast(str, replica_detail.node_id)
+        )
         return node_manager.get_port(replica_detail.replica_id, protocol)
 
     def _is_port_allocated(
         self, replica_detail: ReplicaDetails, protocol: RequestProtocol
     ) -> bool:
         """Check if the port for a replica is allocated."""
-        node_manager = NodePortManager.get_node_manager(replica_detail.node_id)
+        # Running replicas always have their node ID populated.
+        node_manager = NodePortManager.get_node_manager(
+            cast(str, replica_detail.node_id)
+        )
         return node_manager.is_port_allocated(replica_detail.replica_id, protocol)
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
@@ -1904,6 +2003,8 @@ class ServeController:
         log_file_path = None
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.MemoryHandler):
+                # Serve's MemoryHandler always wraps a file handler.
+                assert isinstance(handler.target, logging.FileHandler)
                 log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 
@@ -1916,12 +2017,12 @@ class ServeController:
 def calculate_target_capacity_direction(
     curr_config: Optional[ServeDeploySchema],
     new_config: ServeDeploySchema,
-    curr_target_capacity_direction: Optional[float],
+    curr_target_capacity_direction: Optional[TargetCapacityDirection],
 ) -> Optional[TargetCapacityDirection]:
     """Compares two Serve configs to calculate the next scaling direction."""
 
     curr_target_capacity = None
-    next_target_capacity_direction = None
+    next_target_capacity_direction: Optional[TargetCapacityDirection] = None
 
     if curr_config is not None and applications_match(curr_config, new_config):
         curr_target_capacity = curr_config.target_capacity
@@ -1934,7 +2035,11 @@ def calculate_target_capacity_direction(
             next_target_capacity_direction = TargetCapacityDirection.DOWN
         elif next_target_capacity is None:
             next_target_capacity_direction = None
-        elif curr_target_capacity < next_target_capacity:
+        elif (
+            curr_target_capacity is not None
+            and next_target_capacity is not None
+            and curr_target_capacity < next_target_capacity
+        ):
             next_target_capacity_direction = TargetCapacityDirection.UP
         else:
             next_target_capacity_direction = TargetCapacityDirection.DOWN

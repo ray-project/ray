@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import time
 import uuid
 from contextlib import contextmanager
@@ -279,3 +280,35 @@ def wait_for_server_ready(
         print(f"Waiting for server at {url} to be ready...")
         time.sleep(retry_interval)
     raise TimeoutError(f"Server at {url} not ready within {timeout}s")
+
+
+def get_gpu_memory_used_mb() -> List[float]:
+    """Return GPU memory used (MB) per device via nvidia-smi."""
+    result = subprocess.run(
+        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [float(x.strip()) for x in result.stdout.strip().split("\n") if x.strip()]
+
+
+def get_total_gpu_memory_mb() -> float:
+    """Return total GPU memory used (MB) across all devices."""
+    return sum(get_gpu_memory_used_mb())
+
+
+def wait_for_gpu_memory_to_clear(threshold_mb: float, timeout: float = 240) -> None:
+    """Block until total GPU memory used falls below threshold_mb.
+
+    serve.shutdown() can return before a replica has released its GPU memory,
+    since the engine tears down asynchronously and, under direct ingress, the
+    drain keeps the old replica resident for its graceful shutdown window. A
+    test that redeploys on the same GPUs must wait for the previous replica to
+    free memory first or the next deployment OOMs.
+    """
+    wait_for_condition(
+        lambda: get_total_gpu_memory_mb() < threshold_mb,
+        timeout=timeout,
+        retry_interval_ms=2000,
+    )

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Build multi-deployment apps with DeploymentHandles: call between deployments, await DeploymentResponse objects, and scale each stage independently."
+---
+
 (serve-model-composition)=
 
 # Deploy Compositions of Models

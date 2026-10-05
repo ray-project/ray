@@ -16,6 +16,7 @@ import ray
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BatchMetadata,
+    FinalizedData,
     ResolvedBlock,
 )
 from ray.data._internal.block_batching.util import (
@@ -157,7 +158,7 @@ def test_collate():
 
 def test_finalize():
     def finalize_fn(batch):
-        return pa.table({"bar": [1] * 2})
+        return FinalizedData(data=pa.table({"bar": [1] * 2}))
 
     batches = [
         Batch(BatchMetadata(batch_idx=i), data)

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How-to guides for monitoring and debugging Ray apps: state queries, logging, profiling, custom metrics, tracing, and event export."
+---
+
 (observability-user-guides)=
 
 # User Guides
@@ -9,6 +15,7 @@ Debugging Applications <debug-apps/index>
 cli-sdk
 configure-logging
 profiling
+jax-tpu-profiling
 add-app-metrics
 ray-tracing
 ray-event-export
@@ -20,6 +27,8 @@ The guides include:
 * {ref}`observability-debug-apps`
 * {ref}`observability-programmatic`
 * {ref}`configure-logging`
+* {ref}`profiling`
+* {ref}`jax-tpu-profiling`
 * {ref}`application-level-metrics`
 * {ref}`ray-tracing`
 * {ref}`ray-event-export`
