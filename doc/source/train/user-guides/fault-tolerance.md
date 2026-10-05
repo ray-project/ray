@@ -97,7 +97,7 @@ The workers download the checkpoint from storage and use it to resume training.
 
 ## Just-in-time checkpointing on node preemption
 
-Cloud providers preempt spot instances and preemptible virtual machines with a short notice. AWS gives about two minutes of notice before it preempts a spot instance, and GCP gives about 30 seconds. If your training run only checkpoints periodically, a preemption discards every step since the last checkpoint.
+Cloud providers preempt spot instances and preemptible virtual machines with short notice. AWS gives about two minutes of notice before it preempts a spot instance, and GCP gives about 30 seconds. If your training run only checkpoints periodically, a preemption discards every step since the last checkpoint.
 
 Ray Train can react to that notice. When Ray marks a node that hosts one of your workers as *draining* because of a preemption, {func}`ray.train.get_preemption_info() <ray.train.get_preemption_info>` returns a {class}`~ray.train.PreemptionInfo`. Your training function can then save a *just-in-time checkpoint* before the node is preempted, so the restarted run resumes from the step where the preemption happened.
 
@@ -107,7 +107,7 @@ To use just-in-time checkpointing, first make sure that your cluster sends preem
 
 ### Send preemption signals to Ray
 
-Ray Train only reacts to preemptions that Ray Core knows about. It reads the draining nodes and their deadlines from the Ray Global Control Service (GCS). Something outside of Ray Train has to watch for the preemption notice from the cloud provider and mark the node as draining with the `DRAIN_NODE_REASON_PREEMPTION` reason. How you set this up depends on where you run Ray:
+Ray Train only reacts to preemptions that Ray Core knows about. It reads the draining nodes and their deadlines from the Ray Global Control Service (GCS). Something outside Ray Train has to watch for the preemption notice from the cloud provider and mark the node as draining with the `DRAIN_NODE_REASON_PREEMPTION` reason. How you set this up depends on where you run Ray:
 
 ::::{tab-set}
 :::{tab-item} Managed platforms
@@ -146,7 +146,7 @@ Each restart counts against `FailureConfig(max_preemption_failures)`, a retry bu
 
 ### Save a just-in-time checkpoint
 
-Call {func}`~ray.train.get_preemption_info` in your training loop. When it returns a value, save and report one more checkpoint. The restarted run resumes from the just-in-time checkpoint, so it doesn't keep the steps that run after it:
+Call {func}`~ray.train.get_preemption_info` in your training loop. When it returns a {class}`~ray.train.PreemptionInfo`, save and report one more checkpoint. The restarted run resumes from the just-in-time checkpoint:
 
 ```{literalinclude} ../doc_code/fault_tolerance.py
 :language: python
