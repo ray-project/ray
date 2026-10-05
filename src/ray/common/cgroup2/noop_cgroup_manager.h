@@ -39,6 +39,13 @@ class NoopCgroupManager : public CgroupManagerInterface {
     return Status::OK();
   }
 
+  StatusOr<std::string> AddProcessToGpuWorkerCgroup(const std::string &name,
+                                                    const std::string &pid) override {
+    return Status::Invalid("Resource isolation is not enabled.");
+  }
+
+  Status DeleteGpuWorkerCgroup(const std::string &name) override { return Status::OK(); }
+
   std::string GetSystemCgroupPath() const override { return ""; }
 
   std::string GetUserCgroupPath() const override { return ""; }
