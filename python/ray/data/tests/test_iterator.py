@@ -181,6 +181,18 @@ def test_iter_batches_close_on_held_iterator_shuts_down_executor(
     assert executor._shutdown is True
 
 
+@pytest.mark.parametrize("method", ["iter_batches", "iter_torch_batches"])
+@pytest.mark.parametrize("batch_size", [0, -1])
+def test_iter_batches_rejects_non_positive_batch_size(
+    ray_start_regular_shared, method, batch_size
+):
+    # A non-positive batch_size used to silently yield zero batches, dropping
+    # every row instead of raising. ``None`` stays valid (whole-block batches).
+    it = ray.data.range(10).iterator()
+    with pytest.raises(ValueError, match="batch_size must be a positive integer"):
+        getattr(it, method)(batch_size=batch_size)
+
+
 def test_basic_dataset_iter_rows(ray_start_regular_shared):
     ds = ray.data.range(100)
     it = ds.iterator()

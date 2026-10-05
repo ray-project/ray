@@ -238,6 +238,10 @@ class DataIterator(abc.ABC):
         _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
     ) -> Iterable[DataBatch]:
+        if batch_size is not None and batch_size <= 0:
+            raise ValueError(
+                f"batch_size must be a positive integer or None, but got {batch_size}."
+            )
         batch_format = _apply_batch_format(batch_format)
 
         def _create_iterator() -> Iterator[DataBatch]:
