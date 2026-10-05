@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
 
-# Directory to store sandbox states, container images and overlay filesystem.
+# Directory for sandbox bundles, cached container images, and per-sandbox
+# overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
 # network="public" gives each sandbox a private user+network namespace pair
@@ -78,6 +79,15 @@ _SLIRP4NETNS_FLAGS = [
 ]
 
 
+def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
+    """Return the fields of the ``name`` entry in passwd- or group-style text."""
+    for line in text.splitlines():
+        fields = line.split(":")
+        if len(fields) >= 3 and fields[0] == name:
+            return fields
+    return None
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -112,7 +122,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
             # The instance id pins the image in the cache while this sandbox
-            # lives (its extracted rootfs is the overlay lower layer).
+            # lives (its EROFS image is the sandbox's root filesystem).
             self._image_manager.pull_image(
                 config.image,
                 timeout_seconds=config.timeout_seconds,
@@ -166,9 +176,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except Exception:
             self._image_manager.release_image(config.image, sandbox_id)
             raise
-        overlay_dir = os.path.join(root_dir, "overlay")
-        os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-        run_args = self._build_run_command(config, root_dir, overlay_dir, sandbox_id)
+        run_args = self._build_run_command(config, root_dir, sandbox_id)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -278,8 +286,63 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     pass
 
             shutil.rmtree(root_dir, ignore_errors=True)
-            # Only now is the overlay's lower layer unused.
+            # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
+
+    def _read_account_file(self, sandbox_id: str, path: str) -> str:
+        """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
+        try:
+            return self.read_file(sandbox_id, path).decode("utf-8", errors="replace")
+        except SandboxError as err:
+            raise SandboxExecError(
+                f"cannot read {path} inside the sandbox to resolve a user name "
+                f"(pass a numeric uid instead): {err}"
+            ) from err
+
+    def _resolve_exec_user(self, sandbox_id: str, user: str) -> str:
+        """Turn ``user`` into the numeric ``uid[:gid]`` form runsc exec accepts.
+
+        Names resolve against the ``/etc/passwd`` and ``/etc/group`` inside
+        the running sandbox, read through a first exec: that covers users the
+        image ships and users added since, and needs no host copy of the root
+        filesystem. A named user with no explicit group gets its login group.
+
+        Args:
+            sandbox_id: The running sandbox.
+            user: ``uid``, ``uid:gid``, or ``name[:group]``.
+
+        Returns:
+            A ``uid`` or ``uid:gid`` string runsc accepts.
+
+        Raises:
+            SandboxExecError: When a named user or group is unknown to the
+                sandbox, or its account files cannot be read.
+        """
+        name, _, group = user.partition(":")
+        if name.isdigit() and (not group or group.isdigit()):
+            return user
+        uid, login_gid = name, None
+        if not name.isdigit():
+            passwd = self._read_account_file(sandbox_id, "/etc/passwd")
+            entry = _lookup_db_entry(passwd, name)
+            if entry is None:
+                raise SandboxExecError(
+                    f"user {name!r} not found in the sandbox's /etc/passwd; "
+                    "pass a numeric uid instead"
+                )
+            uid = entry[2]
+            login_gid = entry[3] if len(entry) > 3 else None
+        if group and not group.isdigit():
+            groups = self._read_account_file(sandbox_id, "/etc/group")
+            entry = _lookup_db_entry(groups, group)
+            if entry is None:
+                raise SandboxExecError(
+                    f"group {group!r} not found in the sandbox's /etc/group; "
+                    "pass a numeric gid instead"
+                )
+            group = entry[2]
+        gid = group or login_gid
+        return uid if gid is None else f"{uid}:{gid}"
 
     def exec_command(
         self,
@@ -289,6 +352,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
@@ -303,6 +367,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
         runsc_args.extend(["exec", "-cwd", exec_cwd])
+        if user is not None:
+            runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
         if env:
             for k, v in env.items():
                 runsc_args.extend(["-env", f"{k}={v}"])
@@ -344,9 +410,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise SandboxExecError(f"gVisor exec failed: {err}") from err
 
     def write_file(
-        self, sandbox_id: str, path: str, content: Union[str, bytes]
+        self,
+        sandbox_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
-        """Write content to a file inside the local gVisor sandbox directory."""
+        """Write (or append) content to a file inside the sandbox."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
 
@@ -360,7 +430,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 sandbox_id,
                 "/bin/sh",
                 "-c",
-                'mkdir -p "$(dirname "$1")" && cat > "$1"',
+                'mkdir -p -- "$(dirname -- "$1")" && cat >> "$1"'
+                if append
+                else 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"',
                 "--",
                 path,
             ]
@@ -437,12 +509,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             pass
 
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, overlay_dir: str, sandbox_id: str
+        self, config: SandboxConfig, root_dir: str, sandbox_id: str
     ) -> List[str]:
         """Build the full `runsc run` argv, namespace-wrapped for network="public".
 
         Pure argv construction (no filesystem side effects) so tests can
-        assert the exact command without runsc or slirp4netns installed.
+        assert the exact command without runsc or slirp4netns installed. The
+        rootfs and its writable overlay come from the bundle's gVisor
+        annotations (see ``ImageManager.create_oci_spec``), so runsc gets no
+        ``--overlay2`` flag.
         """
         args = self._runsc_base_args(config)
         use_netns = config.network == "public"
@@ -461,7 +536,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
-        args.append(f"--overlay2=root:dir={overlay_dir}")
         args.extend(["run", "--bundle", root_dir, sandbox_id])
         if use_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))

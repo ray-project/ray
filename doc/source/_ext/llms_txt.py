@@ -24,7 +24,7 @@ output). It emits three kinds of file into the HTML build output:
     a ``## Contents`` TOC. Sharded per directory because the whole corpus is far
     larger than any context window; a section that still exceeds
     ``llms_txt_full_max_shard_tokens`` is split further into per-subdirectory
-    sub-shards (e.g. ``cluster/kubernetes/llms-full.txt``) so each loadable unit
+    sub-shards (e.g. ``serve/llm/llms-full.txt``) so each loadable unit
     stays within an agent's effective context budget.
 
 ``llms-full.txt`` (root)

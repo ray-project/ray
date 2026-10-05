@@ -24,6 +24,32 @@ def gen_block(num_rows):
     return pa.table({"foo": [1] * num_rows})
 
 
+@pytest.mark.parametrize("ensure_copy", [False, True])
+@pytest.mark.parametrize("max_chunksize", [None, 2])
+@pytest.mark.parametrize("prefix_rows", [0, 1])
+def test_batching_arrow_ipc_bytes(ensure_copy, max_chunksize, prefix_rows):
+    table = pa.table({"value": [0, None, 2, 3, 4], "label": list("abcde")})
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table, max_chunksize=max_chunksize)
+
+    batcher = Batcher(batch_size=2, ensure_copy=ensure_copy)
+    if prefix_rows:
+        batcher.add(table.slice(0, prefix_rows))
+    batcher.add(sink.getvalue().to_pybytes())
+    batcher.done_adding()
+
+    batches = []
+    while batcher.has_any():
+        batches.append(batcher.next_batch())
+
+    expected = pa.concat_tables([table.slice(0, prefix_rows), table])
+    assert [batch.num_rows for batch in batches] == (
+        [2, 2, 1] if prefix_rows == 0 else [2, 2, 2]
+    )
+    assert pa.concat_tables(batches).equals(expected)
+
+
 def test_shuffling_batcher():
     batch_size = 5
     buffer_size = 20
@@ -433,13 +459,23 @@ def test_no_partial_batch_when_uncompacted_rows_available():
 
 
 @pytest.mark.parametrize("fail_stage", [None, "prepare", "take"])
-def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_stage):
+@pytest.mark.parametrize("variable_shape", [False, True])
+def test_shuffling_batcher_production_tensors(
+    shutdown_only, monkeypatch, fail_stage, variable_shape
+):
     ray.shutdown()
     ray.init(num_cpus=1)
     blocks = []
     for start in range(0, 4096, 256):
         ids = np.arange(start, start + 256, dtype=np.int64)
-        values = np.broadcast_to(ids[:, None], (256, 256)).astype(np.float32).copy()
+        if variable_shape:
+            values = np.empty(len(ids), dtype=object)
+            for i, row_id in enumerate(ids):
+                values[i] = np.full(
+                    (512 * (1 + row_id % 2), 4), row_id, dtype=np.float32
+                )
+        else:
+            values = np.broadcast_to(ids[:, None], (256, 256)).astype(np.float32).copy()
         blocks.append(
             pa.table({"row_id": ids, "tensor": ArrowTensorArray.from_numpy(values)})
         )
@@ -470,7 +506,12 @@ def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_s
         expected, _ = consume()
     calls = []
     failures = []
-    original = chunked_tensor_take.PreparedChunkedTensorTake.take
+    plan_type = (
+        chunked_tensor_take.PreparedVariableShapedTensorTake
+        if variable_shape
+        else chunked_tensor_take.PreparedFixedShapedTensorTake
+    )
+    original = plan_type.take
 
     def record_take(plan, indices):
         if fail_stage == "take":
@@ -480,9 +521,7 @@ def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_s
         calls.append(len(indices))
         return result
 
-    monkeypatch.setattr(
-        chunked_tensor_take.PreparedChunkedTensorTake, "take", record_take
-    )
+    monkeypatch.setattr(plan_type, "take", record_take)
     preparation_calls = []
     if fail_stage == "prepare":
 
