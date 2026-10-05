@@ -26,6 +26,9 @@ from ray.data._internal.usage.util import anonymize_op_name, query_prometheus_co
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.distribution_tracker import (
+        DistributionTracker,
+    )
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
@@ -41,6 +44,9 @@ _SPILLED_BYTES_METRIC = "ray_spill_manager_objects_bytes"
 _NODE_FAILURE_METRIC = "ray_node_failure_total"
 _OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
 _UNEXPECTED_WORKER_KILL_METRIC = "ray_node_manager_unexpected_worker_failure_total"
+# Core worker counters for lost-object recovery and task retries.
+_OBJECT_RECOVERY_ATTEMPTS_METRIC = "ray_object_recovery_attempts_total"
+_TASK_SUBMISSIONS_METRIC = "ray_task_submissions_total"
 
 
 @dataclass(frozen=True)
@@ -89,11 +95,36 @@ class EnvInfo:
 
 
 # Metric names shared by the poller (metric-value keys), the execution callback,
-# and the PipelinePerf fields below. Keep these equal to the field names.
+# and the PipelinePerf / LineageReconstructionInfo fields below. Keep these
+# equal to the field names.
 METRIC_BYTES_SPILLED = "bytes_spilled"
 METRIC_NODE_DEATHS = "node_deaths"
 METRIC_OOM_KILLS = "oom_kills"
 METRIC_UNEXPECTED_WORKER_KILLS = "unexpected_worker_kills"
+METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS = "object_reconstruction_attempts"
+METRIC_TASK_RETRIES = "task_retries"
+
+
+@dataclass(frozen=True)
+class MemoryStats:
+    """Summary statistics over a stream of memory samples, in bytes."""
+
+    num_samples: int
+    min: Optional[float]
+    max: Optional[float]
+    mean: Optional[float]
+    sum: Optional[float]
+    variance: Optional[float]
+
+
+@dataclass(frozen=True)
+class LineageReconstructionInfo:
+    # Lost objects Ray Core tried to rebuild via lineage reconstruction. Counted
+    # per object, so one re-run task producing many lost blocks counts many times.
+    object_reconstruction_attempts: Optional[int] = None
+    # Failed tasks whose error was caused by a lost object (e.g. lineage
+    # reconstruction failed or the object's owner died).
+    num_object_lost_task_failures: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +133,13 @@ class PipelinePerf:
     oom_kills: Optional[int] = None
     unexpected_worker_kills: Optional[int] = None
     node_deaths: Optional[int] = None
+    # Task re-submissions, from both failure retries and lineage reconstruction.
+    task_retries: Optional[int] = None
+    # Ray Data's object store usage, sampled once per scheduling loop step.
+    object_store_memory_bytes: Optional[MemoryStats] = None
+    # Peak USS (heap) memory of each finished task, across all operators.
+    task_max_uss_bytes: Optional[MemoryStats] = None
+    lineage_reconstruction: Optional[LineageReconstructionInfo] = None
 
 
 @dataclass(frozen=True)
@@ -222,6 +260,28 @@ def cluster_unexpected_worker_kills() -> Optional[int]:
     )
 
 
+def cluster_object_reconstruction_attempts() -> Optional[int]:
+    """Cluster-wide cumulative lineage reconstruction attempts for lost objects
+    from Prometheus, scoped to this session. None if the query failed.
+    """
+    return query_prometheus_counter(
+        _session_scoped_metric_query(
+            _OBJECT_RECOVERY_ATTEMPTS_METRIC, _session_name(), {"Type": "Reconstruct"}
+        )
+    )
+
+
+def cluster_task_retries() -> Optional[int]:
+    """Cluster-wide cumulative retried task submissions from Prometheus, scoped
+    to this session. None if the query failed.
+    """
+    return query_prometheus_counter(
+        _session_scoped_metric_query(
+            _TASK_SUBMISSIONS_METRIC, _session_name(), {"IsRetry": "true"}
+        )
+    )
+
+
 def record_usage_info(info: UsageInfo) -> None:
     """Forward ``info`` to the cluster-wide ``UsageCollectionActor``, which
     buffers it (evicting the oldest entry when full) and flushes the merged
@@ -304,6 +364,23 @@ def _logical_op_name_with_id(
         if usage_id is not None:
             return f"{name}-{usage_id}"
     return name
+
+
+def collect_memory_stats(
+    tracker: Optional["DistributionTracker"],
+) -> Optional[MemoryStats]:
+    """Convert a ``DistributionTracker`` into ``MemoryStats``. None if the
+    tracker has no samples."""
+    if tracker is None or tracker.num_samples == 0:
+        return None
+    return MemoryStats(
+        num_samples=tracker.num_samples,
+        min=tracker.min,
+        max=tracker.max,
+        mean=tracker.mean,
+        sum=tracker.mean * tracker.num_samples,
+        variance=tracker.variance,
+    )
 
 
 def collect_issues(

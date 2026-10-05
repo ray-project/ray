@@ -114,8 +114,15 @@ class TaskExecDriverStats:
     task_output_backpressure_s: float
 
 
+# Called as (exception, worker_stats, driver_stats, aborted). ``aborted`` is True
+# only for a task torn down without a failure (see ``DataOpTask.mark_aborted``).
 TaskDoneCallbackType = Callable[
-    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    [
+        Optional[Exception],
+        Optional[TaskExecWorkerStats],
+        Optional[TaskExecDriverStats],
+        bool,
+    ],
     None,
 ]
 
@@ -159,7 +166,7 @@ class DataOpTask(OpTask):
         block_ref_counter: BlockRefCounter,
         producer_id: str,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
-        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
+        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats, aborted: None,
         block_ready_callback: Callable[
             [ray.ObjectRef[Block]], None
         ] = lambda block_ref: None,
@@ -514,6 +521,7 @@ class DataOpTask(OpTask):
                 self._task_error,
                 None,  # TaskExecStats
                 None,  # TaskExecDriverStats
+                False,  # aborted
             )
         else:
             self._task_done_callback(
@@ -524,14 +532,18 @@ class DataOpTask(OpTask):
                 TaskExecDriverStats(
                     task_output_backpressure_s=self._total_output_backpressure_s,
                 ),
+                False,  # aborted
             )
         self._state = TaskGeneratorState.FINISHED
 
-    def mark_aborted(self, exception: Exception) -> None:
+    def mark_aborted(self, exception: Optional[Exception]) -> None:
         """Tear down a task whose output was lost, without reading its stream.
 
-        Transitions the task to FINISHED and runs the normal done-callback with
-        ``exception`` set (the same path ``on_data_ready`` takes on a task error)
+        ``exception`` is why the task failed. ``None`` aborts it without a
+        failure, for a lineage-tracked task whose lost output is being
+        reconstructed: the done-callback then gets ``aborted=True``.
+
+        Transitions the task to FINISHED and runs the normal done-callback
         so the owning operator releases every resource the task reserved --
         running-task metrics, logical CPU/GPU/memory usage, actor-pool slot, and
         pending input refs -- and pops it from ``_data_tasks``. Callers must use
@@ -544,10 +556,12 @@ class DataOpTask(OpTask):
             # earlier abort); firing it twice would double-release the task's
             # resource reservations.
             return
+        assert exception is not None or self.is_lineage_tracked
         self._task_done_callback(
             exception,
             None,  # TaskExecStats
             None,  # TaskExecDriverStats
+            exception is None,  # aborted
         )
         self._state = TaskGeneratorState.FINISHED
 

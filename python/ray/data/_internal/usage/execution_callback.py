@@ -13,9 +13,14 @@ import uuid
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
+)
 from ray.data._internal.usage import collector, util
 from ray.data._internal.usage.collector import (
     ExecutionId,
+    LineageReconstructionInfo,
+    MemoryStats,
     OpConfig,
     PipelinePerf,
     UsageInfo,
@@ -54,6 +59,14 @@ class UsageCallback(ExecutionCallback):
         self._cluster_deltas: Optional[Dict[str, Optional[int]]] = None
         self._executor: Optional["StreamingExecutor"] = None
         self._finished = False
+        # Set once collection starts, so per-step sampling skips the opt-out
+        # check and is a no-op when collection is disabled.
+        self._collecting = False
+        # Ray Data's object store usage, sampled on every scheduling loop step.
+        self._object_store_memory = DistributionTracker()
+        # Aggregates across operators, computed once at execution end.
+        self._task_max_uss_bytes: Optional[MemoryStats] = None
+        self._num_object_lost_task_failures: Optional[int] = None
 
     # --- ExecutionCallback interface ---
 
@@ -64,8 +77,19 @@ class UsageCallback(ExecutionCallback):
             self._executor = executor
             self.on_collection_start(executor)
             collector.record_usage_info(self.build_usage_info())
+            self._collecting = True
         except Exception:
             logger.debug("Usage collection failed at start", exc_info=True)
+
+    def on_execution_step(self, executor: "StreamingExecutor") -> None:
+        if not self._collecting:
+            return
+        try:
+            self._object_store_memory.add_sample(
+                executor._resource_manager.get_global_usage().object_store_memory
+            )
+        except Exception:
+            logger.debug("Usage collection failed at step", exc_info=True)
 
     def after_execution_succeeds(self, executor: "StreamingExecutor") -> None:
         self._finish(executor, None)
@@ -83,6 +107,7 @@ class UsageCallback(ExecutionCallback):
         try:
             self._executor = executor
             self._finished = True
+            self._collecting = False
             self.on_collection_end(executor, error)
             collector.record_usage_info(self.build_usage_info())
         except Exception:
@@ -117,6 +142,33 @@ class UsageCallback(ExecutionCallback):
         ``executor`` is a reference to the StreamingExecutor and ``error`` is the failure (or ``None`` on success);
         subclasses may override to capture either."""
         self._cluster_deltas = self._compute_cluster_deltas()
+        try:
+            self._collect_op_metrics(executor)
+        except Exception:
+            logger.debug("Failed to collect operator metrics", exc_info=True)
+
+    def _collect_op_metrics(self, executor: "StreamingExecutor") -> None:
+        """Aggregate per-operator task memory and object-lost failure counts
+        across all operators of the execution."""
+        from ray.data._internal.execution.operators.hash_shuffle import (
+            HashShufflingOperatorBase,
+        )
+
+        topology = executor._topology
+        if topology is None:
+            return
+        task_max_uss_bytes = DistributionTracker()
+        num_object_lost_task_failures = 0
+        for op in topology:
+            op_metrics = [op.metrics]
+            if isinstance(op, HashShufflingOperatorBase):
+                # Finalize tasks are recorded apart from ``op.metrics``.
+                op_metrics.append(op._reduce_metrics)
+            for metrics in op_metrics:
+                task_max_uss_bytes.merge(metrics.max_uss_bytes)
+                num_object_lost_task_failures += metrics.num_tasks_failed_object_lost
+        self._task_max_uss_bytes = collector.collect_memory_stats(task_max_uss_bytes)
+        self._num_object_lost_task_failures = num_object_lost_task_failures
 
     def _compute_cluster_deltas(self) -> Dict[str, Optional[int]]:
         """Compute delta for each metric between the poller's latest snapshot and the
@@ -154,6 +206,17 @@ class UsageCallback(ExecutionCallback):
                 oom_kills=metric_deltas.get(collector.METRIC_OOM_KILLS),
                 unexpected_worker_kills=metric_deltas.get(
                     collector.METRIC_UNEXPECTED_WORKER_KILLS
+                ),
+                task_retries=metric_deltas.get(collector.METRIC_TASK_RETRIES),
+                object_store_memory_bytes=collector.collect_memory_stats(
+                    self._object_store_memory
+                ),
+                task_max_uss_bytes=self._task_max_uss_bytes,
+                lineage_reconstruction=LineageReconstructionInfo(
+                    object_reconstruction_attempts=metric_deltas.get(
+                        collector.METRIC_OBJECT_RECONSTRUCTION_ATTEMPTS
+                    ),
+                    num_object_lost_task_failures=self._num_object_lost_task_failures,
                 ),
             )
         # Both are populated before this runs: on_collection_start sets

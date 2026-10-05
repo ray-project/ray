@@ -9,6 +9,9 @@ import pytest
 import ray
 from ray._common.usage import usage_lib
 from ray.data._internal.execution.lineage_tracker import LineageTracker
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.issue_detection.issue_detector import IssueType
 from ray.data._internal.usage import collector, poller, util
@@ -80,14 +83,23 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
-    # Performance carries all four metric fields. Values are None in this
-    # hermetic run (no cluster / Prometheus); the delta math is covered by
-    # test_compute_delta and the query path by the query_prometheus_counter tests.
+    # Values are None in this hermetic run (no cluster / Prometheus / scheduling
+    # steps); the delta math is covered by test_compute_delta, the query path by
+    # the query_prometheus_counter tests, and the memory / object-lost fields by
+    # test_memory_and_object_lost_stats_in_payload.
     assert set(entry["performance"]) == {
         "bytes_spilled",
         "node_deaths",
         "oom_kills",
         "unexpected_worker_kills",
+        "task_retries",
+        "object_store_memory_bytes",
+        "task_max_uss_bytes",
+        "lineage_reconstruction",
+    }
+    assert set(entry["performance"]["lineage_reconstruction"]) == {
+        "object_reconstruction_attempts",
+        "num_object_lost_task_failures",
     }
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
@@ -101,18 +113,25 @@ def test_memory_and_object_lost_stats_in_payload(reset_collector, mock_record):
         DistributionTracker,
     )
 
-    def make_op(uss_samples, num_object_lost):
-        op = MagicMock()
+    def make_metrics(uss_samples, num_object_lost):
+        metrics = MagicMock()
         tracker = DistributionTracker()
         for sample in uss_samples:
             tracker.add_sample(sample)
-        op.metrics.max_uss_bytes = tracker
-        op.metrics.num_tasks_failed_object_lost = num_object_lost
-        return op
+        metrics.max_uss_bytes = tracker
+        metrics.num_tasks_failed_object_lost = num_object_lost
+        return metrics
+
+    map_op = MagicMock()
+    map_op.metrics = make_metrics([100, 300], 1)
+    # Hash shuffle finalize tasks are recorded apart from ``op.metrics``.
+    shuffle_op = MagicMock(spec=HashShufflingOperatorBase)
+    shuffle_op.metrics = make_metrics([], 0)
+    shuffle_op._reduce_metrics = make_metrics([200], 2)
 
     executor = MagicMock()
     executor.issue_detector_manager = None
-    executor._topology = {make_op([100, 300], 1): None, make_op([200], 2): None}
+    executor._topology = {map_op: None, shuffle_op: None}
 
     ds = ray.data.range(1).map_batches(lambda b: b)
     callback = UsageCallback(ds._logical_plan)
@@ -141,7 +160,7 @@ def test_memory_and_object_lost_stats_in_payload(reset_collector, mock_record):
         "sum": 600,
         "variance": 10000,
     }
-    assert perf["num_object_lost_task_failures"] == 3
+    assert perf["lineage_reconstruction"]["num_object_lost_task_failures"] == 3
 
 
 def test_execution_step_no_op_when_disabled(
@@ -452,6 +471,32 @@ def test_session_scoped_metric_query():
         collector._session_scoped_metric_query("m", None, {"State": "Spilled"})
         == "sum(m{State='Spilled'})"
     )
+
+
+@pytest.mark.parametrize(
+    "reader,expected_promql",
+    [
+        (
+            collector.cluster_object_reconstruction_attempts,
+            "sum(ray_object_recovery_attempts_total"
+            "{Type='Reconstruct',SessionName='s1'})",
+        ),
+        (
+            collector.cluster_task_retries,
+            "sum(ray_task_submissions_total{IsRetry='true',SessionName='s1'})",
+        ),
+    ],
+)
+def test_reconstruction_counter_queries(monkeypatch, reader, expected_promql):
+    """The lineage reconstruction readers query the core worker counters with
+    the label filters used by the Ray dashboard."""
+    queries = []
+    monkeypatch.setattr(collector, "_session_name", lambda: "s1")
+    monkeypatch.setattr(
+        collector, "query_prometheus_counter", lambda q: queries.append(q) or 7
+    )
+    assert reader() == 7
+    assert queries == [expected_promql]
 
 
 def test_poller_snapshots():
