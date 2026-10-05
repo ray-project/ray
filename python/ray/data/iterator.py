@@ -105,7 +105,7 @@ class DataIterator(abc.ABC):
     """
 
     # Set by `_enable_checkpointing`. Declared at the class level so that
-    # every subclass has it, even ones that don't call `super().__init__()`.
+    # every subclass has it.
     _checkpointer: Optional["DataIteratorCheckpointer"] = None
 
     @abc.abstractmethod
