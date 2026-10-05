@@ -158,6 +158,9 @@ class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {
   // Gated on passive GCS.
 
   GCS_GATED_RPC(HandleRegisterActor, rpc::RegisterActorRequest, rpc::RegisterActorReply)
+  GCS_GATED_RPC(HandleRegisterActorBatch,
+                rpc::RegisterActorBatchRequest,
+                rpc::RegisterActorBatchReply)
   GCS_GATED_RPC(HandleRestartActorForLineageReconstruction,
                 rpc::RestartActorForLineageReconstructionRequest,
                 rpc::RestartActorForLineageReconstructionReply)

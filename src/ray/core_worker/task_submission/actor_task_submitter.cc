@@ -42,14 +42,32 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
         }
       }
     }
-    actor_creator_.AsyncReportActorOutOfScope(
-        actor_id, num_restarts_due_to_lineage_reconstruction, [actor_id](Status status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR).WithField(actor_id)
-                << "Failed to report actor out of scope: " << status
-                << ". The actor will not be killed";
+    io_service_.post(
+        [this, actor_id, num_restarts_due_to_lineage_reconstruction]() {
+          auto report_fn = [this, actor_id, num_restarts_due_to_lineage_reconstruction](
+                               const Status &register_status) {
+            if (!register_status.ok()) {
+              return;
+            }
+            actor_creator_.AsyncReportActorOutOfScope(
+                actor_id,
+                num_restarts_due_to_lineage_reconstruction,
+                [actor_id](Status status) {
+                  if (!status.ok()) {
+                    RAY_LOG(ERROR).WithField(actor_id)
+                        << "Failed to report actor out of scope: " << status
+                        << ". The actor will not be killed";
+                  }
+                });
+          };
+          if (actor_creator_.IsActorInRegistering(actor_id)) {
+            actor_creator_.AsyncWaitForActorRegisterFinish(actor_id,
+                                                           std::move(report_fn));
+          } else {
+            report_fn(Status::OK());
           }
-        });
+        },
+        "ActorTaskSubmitter.ReportActorOutOfScope");
   };
 
   if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(

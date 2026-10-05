@@ -28,6 +28,7 @@ void ActorInfoGrpcService::InitServerCallFactories(
   /// The register & create actor RPCs take a long time, so we shouldn't limit their
   /// concurrency to avoid distributed deadlock.
   RPC_SERVICE_HANDLER(ActorInfoGcsService, RegisterActor, -1)
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, RegisterActorBatch, -1)
   RPC_SERVICE_HANDLER(ActorInfoGcsService, CreateActor, -1)
   RPC_SERVICE_HANDLER(ActorInfoGcsService, RestartActorForLineageReconstruction, -1)
 

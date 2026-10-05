@@ -1990,7 +1990,7 @@ class ActorClass(Generic[T]):
         # could pass the check and then create the same named actor. We should
         # instead check this when we create the actor, but that's currently an
         # async call.
-        if name is not None:
+        if name is not None and not worker.core_worker.is_in_actor_batch():
             try:
                 ray.get_actor(name, namespace=namespace)
             except ValueError:  # Name is not taken.

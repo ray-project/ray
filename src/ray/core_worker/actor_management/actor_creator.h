@@ -40,6 +40,13 @@ class ActorCreatorInterface {
   virtual void AsyncRegisterActor(const TaskSpecification &task_spec,
                                   rpc::StatusCallback callback) = 0;
 
+  /// Asynchronously request GCS to register a batch of actors.
+  /// \param task_specs The specifications for the actor creation tasks.
+  /// \param callback Callback that will be called after all actors in the batch are
+  /// registered
+  virtual void AsyncRegisterActorBatch(const std::vector<TaskSpecification> &task_specs,
+                                       rpc::StatusCallback callback) = 0;
+
   virtual void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
@@ -70,6 +77,11 @@ class ActorCreatorInterface {
   /// \param actor_id The actor id to check
   /// \return bool Boolean to indicate whether the actor is under registering
   virtual bool IsActorInRegistering(const ActorID &actor_id) const = 0;
+
+  /// Mark an actor as being in the registering state (e.g. while buffered in a batch).
+  ///
+  /// \param actor_id The actor id to mark as registering
+  virtual void MarkActorAsRegistering(const ActorID &actor_id) = 0;
 };
 
 class ActorCreator : public ActorCreatorInterface {
@@ -82,6 +94,9 @@ class ActorCreator : public ActorCreatorInterface {
   void AsyncRegisterActor(const TaskSpecification &task_spec,
                           rpc::StatusCallback callback) override;
 
+  void AsyncRegisterActorBatch(const std::vector<TaskSpecification> &task_specs,
+                               rpc::StatusCallback callback) override;
+
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
@@ -92,6 +107,8 @@ class ActorCreator : public ActorCreatorInterface {
                                   rpc::StatusCallback callback) override;
 
   bool IsActorInRegistering(const ActorID &actor_id) const override;
+
+  void MarkActorAsRegistering(const ActorID &actor_id) override;
 
   void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
                                        rpc::StatusCallback callback) override;
