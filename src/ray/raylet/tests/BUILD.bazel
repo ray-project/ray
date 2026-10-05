@@ -28,6 +28,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "worker_resource_limits_test",
+    size = "small",
+    srcs = ["worker_resource_limits_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/common/scheduling:resource_set",
+        "//src/ray/raylet:worker_resource_limits",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_test(
     name = "worker_pool_test",
     size = "small",
     srcs = ["worker_pool_test.cc"],
