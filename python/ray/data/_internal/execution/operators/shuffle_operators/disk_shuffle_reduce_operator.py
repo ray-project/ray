@@ -40,7 +40,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
+from ray.data._internal.stats import StatsDict, _OutputBlockStatsCollector
+from ray.data.block import BlockAccessor, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -128,7 +129,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._output_queue: deque = deque()
 
         # -- Stats -----------------------------------------------------------
-        self._output_blocks_stats: List[BlockStats] = []
+        self._output_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
 
         # -- Sub-progress bars -----------------------------------------------
         self._reduce_bar: Optional["BaseProgressBar"] = None
@@ -396,7 +397,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
                 bundle.destroy_if_owned()
         self._pending_inputs.clear()
 
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
+    def get_stats(self) -> StatsDict:
         return {self._name: self._output_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:

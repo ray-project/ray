@@ -3495,6 +3495,66 @@ def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared)
     assert 0 <= p50 <= p90 <= schedule_max
 
 
+def test_output_block_stats_retention_is_bounded():
+    """Regression test for https://github.com/ray-project/ray/issues/66016.
+
+    Physical operators must not retain one ``BlockStats`` per output block for
+    the lifetime of the dataset. The dequeue path folds each block's stats
+    into a bounded online aggregator (instead of an append-only list), so the
+    number of live ``BlockStats`` instances stays flat no matter how many
+    blocks are consumed, while the reported summary is unchanged.
+    """
+    from ray.data._internal.stats import _OutputBlockStatsCollector
+
+    def make_block_stats(i: int) -> BlockStats:
+        exec_stats = BlockExecStats(
+            task_idx=i % 7,
+            node_id=f"node-{i % 3}",
+            start_time_s=float(i),
+            end_time_s=float(i) + 0.5,
+            wall_time_s=0.5,
+            cpu_time_s=0.4,
+        )
+        return BlockStats(num_rows=10, size_bytes=100, exec_stats=exec_stats)
+
+    def live_block_stats() -> int:
+        gc.collect()
+        return sum(isinstance(o, BlockStats) for o in gc.get_objects())
+
+    num_blocks = 20_000
+    gc.collect()
+    baseline = live_block_stats()
+
+    raw = [make_block_stats(i) for i in range(num_blocks)]
+    expected = OperatorStatsSummary.from_block_metadata("Map", raw, False)
+
+    # Exercise the exact call pattern the operators' dequeue paths use:
+    # extend() per output bundle (Map/HashShuffle/ShuffleReduce/...) and
+    # add() for single blocks (LimitOperator).
+    collector = _OutputBlockStatsCollector()
+    for i in range(0, num_blocks, 100):
+        collector.extend(raw[i : i + 100])
+    collector.add(raw[-1])
+    del raw
+    assert collector.num_blocks == num_blocks + 1
+
+    # The collector must not retain the per-block objects: live BlockStats
+    # count returns to baseline even after tens of thousands of blocks.
+    retained = live_block_stats()
+    assert retained <= baseline + 128, (
+        f"Per-block stats are retained without bound: {retained - baseline} "
+        f"BlockStats still alive after consuming {num_blocks} blocks"
+    )
+
+    # Reporting is unchanged: the online summary matches the list-based one.
+    actual = OperatorStatsSummary.from_block_metadata("Map", collector, False)
+    assert str(actual) == str(expected)
+    assert actual.output_num_rows.sum == num_blocks * 10
+    # The DatasetStats -> to_summary() path (what ds.stats() uses) accepts it.
+    summary = DatasetStats(metadata={"Map": collector}, parent=None).to_summary()
+    assert str(summary.operators_stats[0]) == str(expected)
+
+
 if __name__ == "__main__":
     import sys
 

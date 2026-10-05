@@ -59,7 +59,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
-from ray.data._internal.stats import OpRuntimeMetrics
+from ray.data._internal.stats import OpRuntimeMetrics, _OutputBlockStatsCollector
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import (
@@ -68,7 +68,6 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockMetadataWithSchema,
-    BlockStats,
     BlockType,
     TaskExecWorkerStats,
     to_stats,
@@ -654,8 +653,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         self._output_queue: Deque[RefBundle] = deque()
 
-        self._output_blocks_stats: List[BlockStats] = list()
-        self._shuffled_blocks_stats: List[BlockStats] = list()
+        self._output_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
+        self._shuffled_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
 
         # Incremental individual partition metadata accumulated separately for
         # individual input sequences during shuffling. Maps
@@ -1355,7 +1354,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         partition_shards_stats: Dict[int, _PartitionStats],
     ):
         # Keep track of the progress of shuffling incoming blocks
-        self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
+        self._shuffled_blocks_stats.add(input_block_metadata.to_stats())
 
         # Update incremental input sequence partitions metadata
         for partition_id, new_partition_shard_stats in partition_shards_stats.items():

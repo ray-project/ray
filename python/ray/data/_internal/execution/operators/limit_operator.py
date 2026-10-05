@@ -12,8 +12,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockStats
+from ray.data._internal.stats import StatsDict, _OutputBlockStatsCollector
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -31,7 +31,7 @@ class LimitOperator(OneToOneOperator):
         self._consumed_rows = 0
         self._buffer: Deque[RefBundle] = deque()
         self._name = f"limit={limit}"
-        self._output_blocks_stats: List[BlockStats] = []
+        self._output_blocks_stats: _OutputBlockStatsCollector = _OutputBlockStatsCollector()
         self._cur_output_bundles = 0
         super().__init__(self._name, input_op, data_context)
         if self._limit <= 0:
@@ -55,7 +55,7 @@ class LimitOperator(OneToOneOperator):
             if self._consumed_rows + num_rows <= self._limit:
                 out_blocks.append(block)
                 out_metadata.append(metadata)
-                self._output_blocks_stats.append(metadata.to_stats())
+                self._output_blocks_stats.add(metadata.to_stats())
                 self._consumed_rows += num_rows
             else:
                 # Slice the last block.
@@ -86,7 +86,7 @@ class LimitOperator(OneToOneOperator):
                     block, metadata.size_bytes or 0, self.id
                 )
                 out_metadata.append(metadata)
-                self._output_blocks_stats.append(metadata.to_stats())
+                self._output_blocks_stats.add(metadata.to_stats())
                 self._consumed_rows = self._limit
                 break
         self._cur_output_bundles += 1
