@@ -422,6 +422,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // death.
   auto plasma_client =
       std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true);
+  std::shared_ptr<plasma::PlasmaClientInterface> plasma_get_client;
+  if (RayConfig::instance().plasma_get_client_fallback_to_control()) {
+    plasma_get_client = plasma_client;
+  } else {
+    plasma_get_client =
+        std::make_shared<plasma::PlasmaClient>(/*exit_on_connection_failure*/ true);
+  }
   auto plasma_store_provider = std::make_shared<CoreWorkerPlasmaStoreProvider>(
       options.store_socket,
       raylet_ipc_client,
@@ -430,6 +437,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       (options.worker_type != WorkerType::SPILL_WORKER &&
        options.worker_type != WorkerType::RESTORE_WORKER),
       /*store_client=*/std::move(plasma_client),
+      /*get_client=*/std::move(plasma_get_client),
       /*fetch_batch_size=*/RayConfig::instance().worker_fetch_request_size(),
       /*clock=*/clock_,
       /*get_current_call_site=*/[this]() {

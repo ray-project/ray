@@ -36,6 +36,8 @@ namespace core {
 
 class TrackedBuffer;
 
+enum class PlasmaGetRoute { kControl, kGetClient };
+
 // Active buffers tracker. This must be allocated as a separate structure since its
 // lifetime can exceed that of the store provider due to TrackedBuffer.
 class BufferTracker {
@@ -99,6 +101,7 @@ class CoreWorkerPlasmaStoreProvider {
       std::function<Status()> check_signals,
       bool warmup,
       std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+      std::shared_ptr<plasma::PlasmaClientInterface> get_client,
       int64_t fetch_batch_size,
       ClockInterface &clock,
       std::function<std::string()> get_current_call_site = nullptr);
@@ -173,7 +176,8 @@ class CoreWorkerPlasmaStoreProvider {
   Status Get(const std::vector<ObjectID> &object_ids,
              const std::vector<rpc::Address> &owner_addresses,
              int64_t timeout_ms,
-             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results);
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             PlasmaGetRoute route);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -237,7 +241,8 @@ class CoreWorkerPlasmaStoreProvider {
       const std::vector<ObjectID> &ids,
       int64_t timeout_ms,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-      bool *got_exception);
+      bool *got_exception,
+      PlasmaGetRoute route);
 
   /// Print a warning if we've attempted the fetch for too long and some
   /// objects are still unavailable.
@@ -253,6 +258,7 @@ class CoreWorkerPlasmaStoreProvider {
 
   const std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client_;
   std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
+  std::shared_ptr<plasma::PlasmaClientInterface> get_client_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
   uint32_t object_store_full_delay_ms_;

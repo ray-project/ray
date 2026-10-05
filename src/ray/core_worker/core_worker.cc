@@ -1521,9 +1521,10 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &objec
   return Status::OK();
 }
 
-Status CoreWorker::Get(const std::vector<ObjectID> &ids,
-                       const int64_t timeout_ms,
-                       std::vector<std::shared_ptr<RayObject>> &results) {
+Status CoreWorker::GetWithPlasmaRoute(const std::vector<ObjectID> &ids,
+                                      const int64_t timeout_ms,
+                                      std::vector<std::shared_ptr<RayObject>> &results,
+                                      PlasmaGetRoute route) {
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
     // We track the state change only from workers.
@@ -1560,7 +1561,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   }
 #endif
 
-  return GetObjects(ids, timeout_ms, results);
+  return GetObjects(ids, timeout_ms, results, route);
 }
 
 Status CoreWorker::GetExperimentalMutableObjects(
@@ -1576,7 +1577,8 @@ Status CoreWorker::GetExperimentalMutableObjects(
 
 Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                               const int64_t timeout_ms,
-                              std::vector<std::shared_ptr<RayObject>> &results) {
+                              std::vector<std::shared_ptr<RayObject>> &results,
+                              PlasmaGetRoute route) {
   // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
@@ -1638,7 +1640,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        object_ids, owner_addresses, local_timeout_ms, &result_map));
+        object_ids, owner_addresses, local_timeout_ms, &result_map, route));
   }
 
   // Loop through `ids` and fill each entry for the `results` vector,
@@ -3485,8 +3487,8 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   std::vector<ObjectID> object_ids = {return_id};
   auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
 
-  Status status =
-      plasma_store_provider_->Get(object_ids, owner_addresses, 0, &result_map);
+  Status status = plasma_store_provider_->Get(
+      object_ids, owner_addresses, 0, &result_map, PlasmaGetRoute::kControl);
   // Remove the temporary ref.
   RemoveLocalReference(return_id);
 
@@ -3927,8 +3929,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   std::vector<ObjectID> object_ids =
       std::vector<ObjectID>(by_ref_ids.begin(), by_ref_ids.end());
   auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
-  RAY_RETURN_NOT_OK(
-      plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
+      object_ids, owner_addresses, -1, &result_map, PlasmaGetRoute::kGetClient));
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {
       args->at(idx) = it.second;
@@ -4901,7 +4903,9 @@ void CoreWorker::PlasmaCallback(const SetResultCallback &success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id}, 0, vec).ok()) {
+    if (GetWithPlasmaRoute(
+            std::vector<ObjectID>{object_id}, 0, vec, PlasmaGetRoute::kControl)
+            .ok()) {
       RAY_CHECK(!vec.empty())
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);
@@ -5249,6 +5253,12 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
         }
         SendFreeLocalObjectsBatchIfNeeded(node_id);
       });
+}
+
+Status CoreWorker::Get(const std::vector<ObjectID> &ids,
+                       const int64_t timeout_ms,
+                       std::vector<std::shared_ptr<RayObject>> &results) {
+  return GetWithPlasmaRoute(ids, timeout_ms, results, PlasmaGetRoute::kGetClient);
 }
 
 }  // namespace ray::core

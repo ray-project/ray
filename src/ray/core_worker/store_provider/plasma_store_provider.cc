@@ -68,11 +68,13 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     std::function<Status()> check_signals,
     bool warmup,
     std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+    std::shared_ptr<plasma::PlasmaClientInterface> get_client,
     int64_t fetch_batch_size,
     ClockInterface &clock,
     std::function<std::string()> get_current_call_site)
     : raylet_ipc_client_(raylet_ipc_client),
       store_client_(std::move(store_client)),
+      get_client_(std::move(get_client)),
       check_signals_(std::move(check_signals)),
       fetch_batch_size_(fetch_batch_size),
       get_request_counter_(0),
@@ -86,7 +88,11 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   buffer_tracker_ = std::make_shared<BufferTracker>();
   if (!store_socket.empty()) {
     RAY_CHECK(store_client_ != nullptr) << "Plasma client must be provided";
+    RAY_CHECK(get_client_ != nullptr) << "Plasma get client must be provided";
     RAY_CHECK_OK(store_client_->Connect(store_socket));
+    if (get_client_ != store_client_) {
+      RAY_CHECK_OK(get_client_->Connect(store_socket));
+    }
   }
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
@@ -94,6 +100,9 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
+  if (get_client_ != store_client_) {
+    get_client_->Disconnect();
+  }
   store_client_->Disconnect();
 }
 
@@ -184,9 +193,11 @@ Status CoreWorkerPlasmaStoreProvider::GetObjectsFromPlasmaStore(
     const std::vector<ObjectID> &ids,
     int64_t timeout_ms,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception) {
+    bool *got_exception,
+    PlasmaGetRoute route) {
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_->Get(ids, timeout_ms, &plasma_results));
+  auto &client = route == PlasmaGetRoute::kGetClient ? get_client_ : store_client_;
+  RAY_RETURN_NOT_OK(client->Get(ids, timeout_ms, &plasma_results));
 
   // Add successfully retrieved objects to the result map and remove them from
   // the set of IDs to get.
@@ -256,7 +267,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const std::vector<ObjectID> &object_ids,
     const std::vector<rpc::Address> &owner_addresses,
     int64_t timeout_ms,
-    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    PlasmaGetRoute route) {
   std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
   absl::flat_hash_map<ObjectID, int64_t> remaining_object_id_to_idx;
 
@@ -282,7 +294,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                                 batch_ids,
                                                 /*timeout_ms=*/0,
                                                 results,
-                                                &got_exception));
+                                                &got_exception,
+                                                route));
 
     std::vector<ObjectID> ids_to_pull;
     std::vector<rpc::Address> owner_addresses_to_pull;
@@ -332,8 +345,12 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     size_t previous_size = remaining_object_id_to_idx.size();
-    RAY_RETURN_NOT_OK(GetObjectsFromPlasmaStore(
-        remaining_object_id_to_idx, batch_ids, batch_timeout, results, &got_exception));
+    RAY_RETURN_NOT_OK(GetObjectsFromPlasmaStore(remaining_object_id_to_idx,
+                                                batch_ids,
+                                                batch_timeout,
+                                                results,
+                                                &got_exception,
+                                                route));
     should_break = timed_out || got_exception;
 
     if ((previous_size - remaining_object_id_to_idx.size()) < batch_ids.size()) {
