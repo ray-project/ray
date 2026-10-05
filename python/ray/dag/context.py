@@ -70,6 +70,8 @@ class DAGContext:
             can be submitted via `execute` or `execute_async` before consuming
             the output using `ray.get()`. If the caller submits more executions,
             `RayCgraphCapacityExceeded` is raised.
+        max_buffered_results: The maximum number of execution results that can
+            be buffered at the driver.
         overlap_gpu_communication: (experimental) Whether to overlap GPU
             communication with computation during DAG execution. If True, the
             communication and computation can be overlapped, which can improve
