@@ -188,6 +188,32 @@ class TestCheckpointConfig:
         ):
             CheckpointConfig(id_column, local_path)
 
+    def test_id_column_and_generated_id_column_mutually_exclusive(self, local_path):
+        with pytest.raises(InvalidCheckpointingConfig, match="Cannot specify both"):
+            CheckpointConfig(ID_COL, local_path, generated_id_column="generated_id")
+
+    def test_id_column_or_generated_id_column_required(self, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="Either `id_column` or `generated_id_column`",
+        ):
+            CheckpointConfig(checkpoint_path=local_path)
+
+    def test_generated_id_column_aliases_id_column(self, local_path):
+        """Checkpoint writing and loading key off ``id_column``, so a
+        generated-ID config exposes the generated name there too."""
+        config = CheckpointConfig(
+            checkpoint_path=local_path, generated_id_column="generated_id"
+        )
+        assert config.id_column == "generated_id"
+        assert config.generated_id_column == "generated_id"
+        assert config.has_generated_id_column
+
+    def test_id_column_config_has_no_generated_id_column(self, local_path):
+        config = CheckpointConfig(ID_COL, local_path)
+        assert config.generated_id_column is None
+        assert not config.has_generated_id_column
+
     def test_override_backend_emits_deprecation_warning(self):
         with pytest.warns(FutureWarning, match="deprecated"):
             CheckpointConfig(
@@ -329,6 +355,115 @@ class TestCheckpointConfig:
                 match="`checkpoint_filter_cls` must be a concrete class",
             ):
                 CheckpointConfig(ID_COL, local_path, checkpoint_filter_cls=cls)
+
+
+def _committed_checkpoint_files(checkpoint_path: str) -> List[str]:
+    return sorted(
+        f
+        for f in os.listdir(checkpoint_path)
+        if f.endswith(".parquet") and PENDING_CHECKPOINT_SUFFIX not in f
+    )
+
+
+def _physical_op_names(physical_plan) -> List[str]:
+    names = []
+    to_visit = [physical_plan.dag]
+    while to_visit:
+        op = to_visit.pop()
+        names.append(op.name)
+        to_visit.extend(op.input_dependencies)
+    return names
+
+
+def test_read_parquet_adds_generated_id_column(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """A generated-ID config makes ``read_parquet`` stamp every row with an ID;
+    Ray Data's own checkpoint reads opt out."""
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ds = ray.data.read_parquet(f_dir)
+    assert "generated_id" in ds.schema().names
+    rows = ds.take_all()
+    assert len(rows) == SAMPLE_DATA_NUM_ROWS
+    assert len({tuple(sorted(r["generated_id"].items())) for r in rows}) == len(rows)
+
+    opted_out = ray.data.read_parquet(f_dir, _add_generated_id_column=False)
+    assert "generated_id" not in opted_out.schema().names
+
+
+def test_generated_id_rerun_rereads_all_rows(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Until restore is wired up for generated IDs, only the write side is
+    planned: a rerun that finds committed checkpoint files redoes every row
+    instead of sending struct IDs through the numpy-based ID filter."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = str(tmp_path / "ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id",
+        # Keep the committed checkpoint so the second run sees it.
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(str(tmp_path / "out1"))
+    assert _committed_checkpoint_files(ckpt_path)
+
+    ds = ray.data.read_parquet(f_dir)
+    write_op = Write(
+        ParquetDatasink(str(tmp_path / "unused")),
+        input_dependencies=[ds._logical_plan.dag],
+    )
+    physical_plan, _ = get_execution_plan(LogicalPlan(write_op, ctx))
+    assert not any("CheckpointFilter" in n for n in _physical_op_names(physical_plan))
+
+    out2 = str(tmp_path / "out2")
+    ray.data.read_parquet(f_dir).write_parquet(out2)
+    result = pq.read_table(out2)
+    assert sorted(result[ID_COL].to_pylist()) == list(range(SAMPLE_DATA_NUM_ROWS))
+
+
+def test_generated_id_pending_cleanup_before_rerun(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """A rerun after a crashed write deletes leftover pending checkpoints and
+    their partially written data files before writing again."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = str(tmp_path / "ckpt")
+    out = str(tmp_path / "out")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path,
+        generated_id_column="generated_id",
+        delete_checkpoint_on_success=False,
+    )
+    f_dir = generate_sample_data_parquet()
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+    committed_before = set(_committed_checkpoint_files(ckpt_path))
+    assert committed_before
+
+    # Simulate a crashed run: a pending checkpoint whose commit never
+    # happened, plus the matching partially written data file.
+    stale_base = "crashed_write_0000"
+    pq.write_table(
+        pa.table({"generated_id": ["fake"]}),
+        os.path.join(ckpt_path, f"{stale_base}{PENDING_CHECKPOINT_SUFFIX}.parquet"),
+    )
+    stale_data_file = os.path.join(out, f"{stale_base}.parquet")
+    pq.write_table(pa.table({ID_COL: [-1]}), stale_data_file)
+
+    ray.data.read_parquet(f_dir).write_parquet(out)
+
+    remaining = os.listdir(ckpt_path)
+    assert not any(PENDING_CHECKPOINT_SUFFIX in f for f in remaining)
+    assert committed_before <= set(remaining)
+    assert not os.path.exists(stale_data_file)
 
 
 @pytest.mark.parametrize(
