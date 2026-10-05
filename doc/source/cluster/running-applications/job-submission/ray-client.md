@@ -171,7 +171,7 @@ provider:
 :::{warning}
 Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.
 
-**Do not expose this to \`0.0.0.0/0\`.**
+**Do not expose this to `0.0.0.0/0`.**
 :::
 
 ## Connect to multiple Ray clusters (Experimental)

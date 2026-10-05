@@ -44,7 +44,7 @@ while time.time() - start <= 10:
     rst = json.loads(resp.text)
     status = rst["status"]
     print(f"status: {status}")
-    if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
+    if status in {"SUCCEEDED", "STOPPED", "FAILED"}:
         break
     time.sleep(1)
 ```
@@ -80,9 +80,8 @@ import requests
 resp = requests.post(
     "http://127.0.0.1:8265/api/jobs/{job_or_submission_id}/stop",
 )
-rst = json.loads(resp.text)
-json = rst.json()
-stopped = json["stopped"]
+rst = resp.json()
+stopped = rst["stopped"]
 print(stopped)
 ```
 
