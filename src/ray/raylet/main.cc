@@ -1136,6 +1136,7 @@ int main(int argc, char *argv[]) {
     self_node_info.set_raylet_socket_name(raylet_socket_name);
     self_node_info.set_temp_dir(temp_dir);
     self_node_info.set_session_dir(session_dir);
+    self_node_info.set_logs_dir(log_dir);
     self_node_info.set_object_store_socket_name(object_manager_config.store_socket_name);
     self_node_info.set_object_manager_port(object_manager->GetServerPort());
     self_node_info.set_node_manager_port(node_manager->GetServerPort());
@@ -1162,6 +1163,7 @@ int main(int argc, char *argv[]) {
     self_node_info.set_instance_type_name(instance_type_name ? instance_type_name : "");
 
     RAY_LOG(INFO) << "Setting temp dir to: " << temp_dir;
+    RAY_LOG(INFO) << "Setting logs dir to: " << log_dir;
 
     node_manager->Start(std::move(self_node_info));
   });
