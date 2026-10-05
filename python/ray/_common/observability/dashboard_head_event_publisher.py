@@ -12,7 +12,7 @@ from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
 )
-from ray._raylet import RayEvent, serialize_events_to_ray_events_data_json
+from ray._raylet import GcsClient, RayEvent, serialize_events_to_ray_events_data_json
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class DashboardHeadRayEventPublisher:
 
     def __init__(
         self,
-        gcs_client=None,
+        gcs_client: GcsClient = None,
         dashboard_url: Optional[str] = None,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         headers: Optional[Dict[str, str]] = None,
@@ -39,6 +39,10 @@ class DashboardHeadRayEventPublisher:
         if gcs_client is None and dashboard_url is None:
             raise ValueError("Either gcs_client or dashboard_url must be provided.")
 
+        # NOTE: A long-lived publisher may outlive a
+        # GCS restart, and the cached gcs_client cannot be used across one.
+        # TODO: recreate the GCS client on failure once publishers need
+        # to survive GCS restarts.
         self._gcs_client = gcs_client
         self._dashboard_url = self._normalize_dashboard_url(dashboard_url)
         self._timeout_s = timeout_s
@@ -69,16 +73,29 @@ class DashboardHeadRayEventPublisher:
         dropped and the error is raised.
         """
         with self._lock:
+            # TODO: buffered events should ideally never hit this
+            # limit, but a long dashboard outage can overflow it and lose
+            # events. add metrics to track this.
+            overflow = len(self._pending) + len(events) - _MAX_BUFFERED_EVENTS
+            if overflow > 0:
+                logger.warning(
+                    "Event buffer is full (%d events); dropping the %d oldest "
+                    "buffered event(s).",
+                    _MAX_BUFFERED_EVENTS,
+                    overflow,
+                )
             self._pending.extend(events)
             if not self._pending:
                 return
+            # TODO: publish in bounded batches instead of the entire
+            # pending buffer in a single request.
             pending = list(self._pending)
             try:
                 self._do_publish(pending)
             except requests.HTTPError as e:
                 status = e.response.status_code if e.response is not None else None
                 if status is not None and status < 500:
-                    self._drop_sent(len(pending))
+                    self._pending.clear()
                     raise
                 self._warn_buffering(e)
             except (requests.RequestException, RuntimeError) as e:
@@ -87,7 +104,7 @@ class DashboardHeadRayEventPublisher:
                     self._dashboard_url = None
                 self._warn_buffering(e)
             else:
-                self._drop_sent(len(pending))
+                self._pending.clear()
 
     def _warn_buffering(self, error: Exception) -> None:
         logger.warning(
@@ -95,11 +112,6 @@ class DashboardHeadRayEventPublisher:
             len(self._pending),
             error,
         )
-
-    def _drop_sent(self, count: int) -> None:
-        # Only drop what was sent; events appended concurrently stay buffered.
-        for _ in range(min(count, len(self._pending))):
-            self._pending.popleft()
 
     def _do_publish(self, events: List[RayEvent]) -> None:
         response = self._session.post(

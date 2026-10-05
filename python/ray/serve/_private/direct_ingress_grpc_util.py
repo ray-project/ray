@@ -50,7 +50,7 @@ class gRPCDIReceiveStream(AsyncIterator[T]):
         # We don't create another task to consume the input stream if we run on the
         # same event loop.
         if self._same_event_loop:
-            return
+            return None
 
         self._fetch_task = asyncio.ensure_future(self._fetch_until_done())
         return self._fetch_task

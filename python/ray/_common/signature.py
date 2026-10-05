@@ -24,7 +24,7 @@ def get_signature(func: Any) -> inspect.Signature:
     it is relatively stable. Future versions of Python may allow overloading
     the inspect 'isfunction' and 'ismethod' functions / create ABC for Python
     functions. Until then, it appears that Cython won't do anything about
-    compatability with the inspect module.
+    compatibility with the inspect module.
 
     Args:
         func: The function whose signature should be checked.

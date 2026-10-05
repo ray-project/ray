@@ -26,6 +26,7 @@ from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
     Expr,
     StarExpr,
+    expand_projection_exprs,
     expand_star_exprs,
     exprlist_to_fields,
 )
@@ -256,6 +257,42 @@ class MapBatches(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
+        self._wrap_torch_inference()
+
+    def _wrap_torch_inference(self) -> None:
+        """Detect a ``TorchInference`` UDF and wrap it in the managed
+        callable that drives collate/transfer/process/finalize.
+        """
+        from ray.data._internal.utils.torch_inference import (
+            is_torch_inference_class,
+            is_torch_inference_instance,
+            validate_torch_inference_op,
+        )
+
+        if is_torch_inference_instance(self.fn):
+            raise ValueError(
+                "Pass the `TorchInference` subclass to `map_batches`, "
+                "not an instance of it."
+            )
+        if not is_torch_inference_class(self.fn):
+            return
+
+        validate_torch_inference_op(
+            self.fn,
+            self.fn_args,
+            self.fn_kwargs,
+            self.compute,
+            self.ray_remote_args,
+        )
+        self._set_torch_inference_udf()
+
+    def _set_torch_inference_udf(self) -> None:
+        """Replace ``fn`` with the managed serial wrapper."""
+        from ray.data._internal.utils.torch_inference import (
+            make_torch_inference_callable,
+        )
+
+        object.__setattr__(self, "fn", make_torch_inference_callable(self.fn))
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -373,6 +410,22 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             object.__setattr__(
                 self, "exprs", expand_star_exprs(self.exprs, input_schema)
             )
+        # Eagerly expand any expression that stands for several output
+        # columns (``UnnestExpr`` today) into ordinary named expressions, via
+        # ``Expr.expand_projection``. Unlike star expansion this runs even
+        # without an input schema: an unnest wrapping a UDF resolves its
+        # struct type from the UDF's declared ``return_dtype``. If an
+        # expression cannot be expanded at plan time it raises here, so no
+        # multi-column marker survives into optimizer rules or runtime
+        # evaluation.
+        object.__setattr__(
+            self,
+            "exprs",
+            expand_projection_exprs(
+                self.exprs,
+                input_schema if isinstance(input_schema, pa.Schema) else None,
+            ),
+        )
         if self.compute is None:
             object.__setattr__(
                 self,

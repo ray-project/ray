@@ -46,6 +46,10 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 # Max number of samples used to estimate the Pandas block size.
 _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
+# Largest integer magnitude float64 can represent exactly. Beyond this, integers
+# are not uniquely representable, so an "integral" float may not equal the
+# intended value.
+FLOAT64_MAX_INTEGER_VALUE = 2**53
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,99 @@ def lazy_import_pandas():
 
         _pandas = pandas
     return _pandas
+
+
+def _reconcile_arrow_backed_int_float_columns(
+    tables: List["pandas.DataFrame"],
+) -> List["pandas.DataFrame"]:
+    """Reconcile columns typed integer in some blocks and float in others.
+
+    Per-block pyarrow inference can type the same column as ``int64`` in some
+    blocks and ``double`` in others (e.g. a block whose values are all null infers
+    ``double``). ``pandas.concat`` then promotes to ``double`` with a *checked*
+    cast, which raises ``ArrowInvalid`` for ``int64`` values above ``2**53``. When
+    the float-typed blocks hold only null / integral values, cast them back to the
+    integer type so the concat stays lossless and cannot overflow. Blocks with
+    genuine fractional values are left untouched (pandas promotes as usual).
+
+    Reconciliation only happens when it is provably lossless (integral values
+    within both ``+-2**53`` and the target integer type's range). When it is not
+    lossless — e.g. a column mixes true ``int64`` values above ``2**53`` with
+    fractional float values — the blocks are left as-is and the subsequent
+    ``pandas.concat`` still raises ``ArrowInvalid`` on the checked ``int64`` ->
+    ``double`` promotion, exactly as before.
+
+    Only affects Arrow-backed (``pd.ArrowDtype``) columns; a no-op otherwise.
+    See https://github.com/ray-project/ray/issues/64765.
+    """
+    import pyarrow as pa
+
+    pandas = lazy_import_pandas()
+    if len(tables) < 2:
+        return tables
+
+    common_columns = set(tables[0].columns)
+    for table in tables[1:]:
+        common_columns &= set(table.columns)
+
+    # column -> integer ArrowDtype to cast the float-typed blocks to.
+    casts = {}
+    for column in common_columns:
+        dtypes = [table[column].dtype for table in tables]
+        if not all(isinstance(dtype, pandas.ArrowDtype) for dtype in dtypes):
+            continue
+        arrow_types = [dtype.pyarrow_dtype for dtype in dtypes]
+        int_types = [t for t in arrow_types if pa.types.is_integer(t)]
+        float_columns = [
+            table[column]
+            for table in tables
+            if pa.types.is_floating(table[column].dtype.pyarrow_dtype)
+        ]
+        if not int_types or not float_columns:
+            continue
+        # Downcast the float blocks to the widest integer type present among the
+        # int blocks, but only when every non-null float value can be recovered
+        # exactly as that integer type. A value must be:
+        #   - integral, and
+        #   - within +-2**53 (beyond that float64 cannot represent every integer,
+        #     so an "integral" float may not equal the intended value), and
+        #   - within the target type's range (bit width and signedness), so the
+        #     cast cannot overflow, wrap, or produce an invalid value.
+        # Otherwise leave the blocks for pandas' usual (float) promotion.
+        target_type = max(int_types, key=lambda t: t.bit_width)
+        if pa.types.is_unsigned_integer(target_type):
+            type_min, type_max = 0, 2**target_type.bit_width - 1
+        else:
+            type_min = -(2 ** (target_type.bit_width - 1))
+            type_max = 2 ** (target_type.bit_width - 1) - 1
+        lo = max(type_min, -FLOAT64_MAX_INTEGER_VALUE)
+        hi = min(type_max, FLOAT64_MAX_INTEGER_VALUE)
+        lossless = True
+        for column_values in float_columns:
+            non_null = column_values.dropna()
+            if non_null.empty:
+                continue
+            values = non_null.to_numpy(dtype="float64", na_value=np.nan)
+            is_integral = np.mod(values, 1) == 0
+            in_range = (values >= lo) & (values <= hi)
+            if not np.all(is_integral & in_range):
+                lossless = False
+                break
+        if lossless:
+            casts[column] = pandas.ArrowDtype(target_type)
+
+    if not casts:
+        return tables
+
+    reconciled = []
+    for table in tables:
+        replace = {
+            column: table[column].astype(target)
+            for column, target in casts.items()
+            if pa.types.is_floating(table[column].dtype.pyarrow_dtype)
+        }
+        reconciled.append(table.assign(**replace) if replace else table)
+    return reconciled
 
 
 def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
@@ -106,62 +203,62 @@ class PandasRow(Mapping):
     Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
 
-    def __init__(self, row: Any):
-        self._row = row
+    def __init__(self, df: "pandas.DataFrame", row_idx: int):
+        self._batch = df
+        self._row_idx = row_idx
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        def get_item(keys: List[str]) -> Any:
-            col = self._row[keys]
-            if len(col) == 0:
-                return None
+        def get_item(keys: List[str]) -> Tuple[Any, ...]:
+            items = []
+            for col_name in keys:
+                if col_name not in self._batch.columns:
+                    raise KeyError(col_name)
+                val = self._batch[col_name].iloc[self._row_idx]
+                if isinstance(val, TensorArrayElement):
+                    # Getting an item in a Pandas tensor column may return
+                    # a TensorArrayElement, which we have to convert to an ndarray.
+                    val = val.to_numpy()
+                items.append(val)
 
-            items = col.iloc[0]
-            if isinstance(items.iloc[0], TensorArrayElement):
-                # Getting an item in a Pandas tensor column may return
-                # a TensorArrayElement, which we have to convert to an ndarray.
-                return tuple(item.to_numpy() for item in items)
-
-            try:
-                # Try to interpret this as a numpy-type value.
-                # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-                return tuple(item for item in items)
-
-            except (AttributeError, ValueError) as e:
-                logger.warning(f"Failed to convert {items} to a tuple", exc_info=e)
-
-                # Fallback to the original form.
-                return items
+            # Unwrap NumPy scalars into their native Python equivalents, so that
+            # this returns what ``ArrowRow`` returns via ``pyarrow.Scalar.as_py()``.
+            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
+            #
+            # Only ``np.generic`` is unwrapped. ``ndarray`` also has ``.item()``,
+            # but calling it on a tensor value either drops the array's shape
+            # (size-1 arrays) or raises ``ValueError`` (anything larger), and
+            # ``ArrowRow`` returns tensor values as arrays too.
+            return tuple(v.item() if isinstance(v, np.generic) else v for v in items)
 
         is_single_item = isinstance(key, str)
         keys = [key] if is_single_item else key
-
         items = get_item(keys)
 
-        if items is None:
-            return None
-
-        elif is_single_item:
-            return items[0]
-        else:
-            return items
+        return items[0] if is_single_item else items
 
     def __iter__(self) -> Iterator:
-        for k in self._row.columns:
-            yield k
+        return iter(self._batch.columns)
 
     def __len__(self):
-        return self._row.shape[1]
+        return self._batch.shape[1]
 
     def as_pydict(self) -> Dict[str, Any]:
+        from ray.data.extensions import TensorArrayElement
+
         pydict: Dict[str, Any] = {}
-        for key, value in self.items():
+        for key in self:
+            value = self._batch[key].iloc[self._row_idx]
             # Convert NA to None for consistency across block formats. `pd.isna`
             # returns True for both NA and NaN, but since we want to preserve NaN
             # values, we check for identity instead.
             if is_scalar(value) and value is pd.NA:
                 pydict[key] = None
+            elif isinstance(value, TensorArrayElement):
+                pydict[key] = value.to_numpy()
+            elif isinstance(value, np.generic):
+                pydict[key] = value.item()
             else:
                 pydict[key] = value
 
@@ -361,6 +458,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         )
 
         if len(tables) > 1:
+            tables = _reconcile_arrow_backed_int_float_columns(tables)
             df = pandas.concat(tables, ignore_index=True)
             df.reset_index(drop=True, inplace=True)
         else:
@@ -404,8 +502,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         super().__init__(table)
 
     def _get_row(self, index: int) -> PandasRow:
-        base_row = self.slice(index, index + 1, copy=False)
-        return PandasRow(base_row)
+        return self.ROW_TYPE(self._table, index)
 
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()

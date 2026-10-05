@@ -1,24 +1,22 @@
 import asyncio
 import bisect
 import logging
-import statistics
 from collections import defaultdict
 from dataclasses import dataclass
-from itertools import chain
 from typing import (
+    Any,
     Awaitable,
     Callable,
+    Coroutine,
     DefaultDict,
     Dict,
     Hashable,
-    Iterable,
     List,
     Optional,
-    Tuple,
     Union,
 )
 
-from ray._raylet import (
+from ray._raylet import (  # type: ignore[attr-defined]
     merge_instantaneous_total_cython,
     time_weighted_average_cython,
 )
@@ -46,7 +44,7 @@ class MetricsPusher:
     def __init__(
         self,
         *,
-        async_sleep: Optional[Callable[[int], None]] = None,
+        async_sleep: Optional[Callable[[float], Coroutine[Any, Any, None]]] = None,
     ):
         self._async_sleep = async_sleep or asyncio.sleep
         self._tasks: Dict[str, _MetricsTask] = dict()
@@ -103,7 +101,7 @@ class MetricsPusher:
         self,
         name: str,
         task_func: Union[Callable, Callable[[], Awaitable]],
-        interval_s: int,
+        interval_s: float,
     ) -> None:
         """Register a sync or async task under the provided name, or update it.
 
@@ -192,66 +190,6 @@ class InMemoryMetricsStore:
         )
         return datapoints[idx:]
 
-    def _aggregate_reduce(
-        self,
-        keys: Iterable[Hashable],
-        aggregate_fn: Callable[[Iterable[float]], float],
-    ) -> Tuple[Optional[float], int]:
-        """Reduce the entire set of timeseries values across the specified keys.
-
-        Args:
-            keys: Iterable of keys to aggregate across.
-            aggregate_fn: Function to apply across all float values, e.g., sum, max.
-
-        Returns:
-            A tuple of (float, int) where the first element is the aggregated value
-            and the second element is the number of valid keys used.
-            Returns (None, 0) if no valid keys have data.
-
-        Example:
-        Suppose the store contains:
-        >>> store = InMemoryMetricsStore()
-        >>> store.data.update({
-        ...     "a": [TimeStampedValue(0, 1.0), TimeStampedValue(1, 2.0)],
-        ...     "b": [],
-        ...     "c": [TimeStampedValue(0, 10.0)],
-        ... })
-
-        Using sum across keys:
-
-        >>> store._aggregate_reduce(keys=["a", "b", "c"], aggregate_fn=sum)
-        (13.0, 2)
-
-        Here:
-        - The aggregated value is 1.0 + 2.0 + 10.0 = 13.0
-        - Only keys "a" and "c" contribute values, so report_count = 2
-        """
-        valid_key_count = 0
-
-        def _values_generator():
-            """Generator that yields values from valid keys without storing them all in memory."""
-            nonlocal valid_key_count
-            for key in keys:
-                series = self.data.get(key, [])
-                if not series:
-                    continue
-
-                valid_key_count += 1
-                for timestamp_value in series:
-                    yield timestamp_value.value
-
-        # Create the generator and check if it has any values
-        values_gen = _values_generator()
-        try:
-            first_value = next(values_gen)
-        except StopIteration:
-            # No valid data found
-            return None, 0
-
-        # Apply aggregation to the generator (memory efficient)
-        aggregated_result = aggregate_fn(chain([first_value], values_gen))
-        return aggregated_result, valid_key_count
-
     def get_latest(
         self,
         key: Hashable,
@@ -260,47 +198,6 @@ class InMemoryMetricsStore:
         if not self.data.get(key, None):
             return None
         return self.data[key][-1].value
-
-    def aggregate_sum(
-        self,
-        keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
-        """Sum the entire set of timeseries values across the specified keys.
-        Args:
-            keys: Iterable of keys to aggregate across.
-        Returns:
-            A tuple of (float, int) where the first element is the sum across
-            all values found at `keys`, and the second is the number of valid
-            keys used to compute the sum.
-            Returns (None, 0) if no valid keys have data.
-        """
-        return self._aggregate_reduce(keys, sum)
-
-    def aggregate_avg(
-        self,
-        keys: Iterable[Hashable],
-    ) -> Tuple[Optional[float], int]:
-        """Average the entire set of timeseries values across the specified keys.
-
-        Args:
-            keys: Iterable of keys to aggregate across.
-        Returns:
-            A tuple of (float, int) where the first element is the mean across
-            all values found at `keys`, and the second is the number of valid
-            keys used to compute the mean.
-            Returns (None, 0) if no valid keys have data.
-        """
-        return self._aggregate_reduce(keys, statistics.mean)
-
-    def timeseries_count(
-        self,
-        key: Hashable,
-    ) -> int:
-        """Count the number of values across all timeseries values at the specified keys."""
-        series = self.data.get(key, [])
-        if not series:
-            return 0
-        return len(series)
 
 
 def time_weighted_average(
@@ -403,11 +300,11 @@ def merge_instantaneous_total(
 
 def merge_timeseries_dicts(
     *timeseries_dicts: DefaultDict[Hashable, TimeSeries],
-) -> DefaultDict[Hashable, TimeSeries]:
+) -> Dict[Hashable, TimeSeries]:
     """
     Merge multiple time-series dictionaries using instantaneous merge approach.
     """
-    merged: DefaultDict[Hashable, TimeSeries] = defaultdict(list)
+    merged: DefaultDict[Hashable, List[TimeSeries]] = defaultdict(list)
 
     for ts_dict in timeseries_dicts:
         for key, ts in ts_dict.items():

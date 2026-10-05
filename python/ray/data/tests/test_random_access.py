@@ -3,6 +3,16 @@ import pytest
 
 import ray
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
+
+
+def test_to_random_access_dataset_emits_deprecation_warning(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    with pytest.warns(
+        RayDeprecationWarning,
+        match=r"`to_random_access_dataset\(\)` is unmaintained and will be removed in a future release.",
+    ):
+        ds.to_random_access_dataset("id")
 
 
 @pytest.mark.parametrize("pandas", [False, True])
@@ -49,6 +59,7 @@ def test_errors(ray_start_regular_shared):
 def test_stats(ray_start_regular_shared):
     ds = ray.data.range(100, override_num_blocks=10)
     rad = ds.to_random_access_dataset("id", num_workers=1)
+
     stats = rad.stats()
     assert "Accesses per worker: 0 min, 0 max, 0 mean" in stats, stats
     ray.get(rad.get_async(0))

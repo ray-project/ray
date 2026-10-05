@@ -332,7 +332,7 @@ class LongPollHost:
     def __init__(
         self,
         listen_for_change_request_timeout_s: Tuple[
-            int, int
+            float, float
         ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
     ):
         # Map object_key -> int
@@ -425,7 +425,7 @@ class LongPollHost:
         if not keys_to_snapshot_ids:
             await sleep(1)
 
-            updated_objects = {}
+            updated_objects: Dict[KeyType, UpdatedObject] = {}
             self._count_send(updated_objects)
             return updated_objects
 

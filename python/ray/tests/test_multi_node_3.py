@@ -144,7 +144,10 @@ def test_calling_start_ray_head(call_ray_stop_only):
     del os.environ["RAY_REDIS_ADDRESS"]
 
     # Test --block. Killing a child process should cause the command to exit.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"],
+        env={**os.environ, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S": "0"},
+    )
 
     blocked.poll()
     assert blocked.returncode is None
@@ -182,7 +185,10 @@ for i in range(0, 5):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"],
+        env={**os.environ, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S": "0"},
+    )
     blocked.poll()
     assert blocked.returncode is None
 
@@ -199,6 +205,54 @@ for i in range(0, 5):
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
+
+
+def test_graceful_shutdown_drains_node_on_sigterm(
+    call_ray_stop_only, monkeypatch, tmp_path
+):
+    # Opt-in graceful drain on SIGTERM (#64181): with
+    # RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S set, SIGTERM to a `ray start --block`
+    # node marks the node draining and waits for it to finish before tearing
+    # down, instead of killing the raylet within ~1s. We assert on the drain log
+    # markers, which only appear when the option is enabled.
+    import signal
+    import time
+
+    monkeypatch.setenv("RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S", "8")
+    monkeypatch.setenv("RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", "0.5")
+
+    log_path = tmp_path / "ray_start.log"
+    with open(log_path, "w") as out:
+        blocked = subprocess.Popen(
+            ["ray", "start", "--head", "--block", "--include-dashboard", "false"],
+            stdout=out,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            # Wait for the runtime to come up.
+            deadline = time.time() + 30
+            while time.time() < deadline and blocked.poll() is None:
+                if "Ray runtime started" in log_path.read_text():
+                    break
+                time.sleep(0.5)
+            assert "Ray runtime started" in log_path.read_text(), log_path.read_text()
+
+            # SIGTERM the supervisor, as Kubernetes would to PID 1.
+            blocked.send_signal(signal.SIGTERM)
+            blocked.wait(timeout=30)
+
+            # The node drained before teardown (these markers are absent when the
+            # option is off, which tears the raylet down within ~1s).
+            log = log_path.read_text()
+            assert "received SIGTERM. Draining for up to 8" in log, log[-2000:]
+            assert (
+                "Local node finished draining" in log
+                or "did not finish draining within" in log
+            ), log[-2000:]
+        finally:
+            if blocked.poll() is None:
+                blocked.kill()
+                blocked.wait()
 
 
 def test_ray_start_non_head(call_ray_stop_only, monkeypatch):

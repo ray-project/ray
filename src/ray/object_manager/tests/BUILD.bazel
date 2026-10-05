@@ -108,5 +108,8 @@ ray_cc_test(
         "//src/ray/object_manager",
         "//src/ray/object_manager/plasma:fake_plasma_client",
         "//src/ray/object_manager_rpc_client:fake_object_manager_client",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:path_utils",
+        "@boost//:endian",
     ],
 )

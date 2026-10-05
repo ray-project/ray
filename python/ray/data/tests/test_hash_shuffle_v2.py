@@ -1,9 +1,14 @@
+from unittest.mock import MagicMock, patch
+
 import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
     make_partition_sentinel,
@@ -12,6 +17,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
     ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     _encode_partition_ipc,
     _get_shard_batch,
     _ipc_write_options,
@@ -49,31 +55,31 @@ def _assert_keys_colocated(per_block):
     ), f"A key landed in more than one block: {per_block}"
 
 
+@pytest.fixture(autouse=True)
+def data_context_shuffle_v2(restore_data_context):
+    ctx = restore_data_context
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
 def test_repartition_keys_preserves_rows(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
     num_partitions,
 ):
     """No rows are lost or duplicated; key totals are preserved."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(1000, override_num_blocks=10)
-    out = ds.repartition(num_partitions, keys=["id"])
+    out = ds.repartition(num_partitions, keys=["id"]).materialize()
     assert out.count() == 1000
     assert out.sum("id") == sum(range(1000))
 
 
 def test_repartition_block_number_matched(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """All-non-empty partitions => exactly num_partitions output blocks."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     # 1000 distinct keys over 8 buckets => all 8 partitions are non-empty.
     ds = ray.data.range(1000, override_num_blocks=20)
@@ -83,12 +89,9 @@ def test_repartition_block_number_matched(
 
 def test_same_key_lands_in_same_block(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """All rows sharing a key should end up in one block."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(500, override_num_blocks=10).map(
         lambda row: {"k": row["id"] % 25, "v": row["id"]}
@@ -101,13 +104,10 @@ def test_same_key_lands_in_same_block(
 
 def test_multi_column_keys(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Composite keys hash on all columns: every distinct (a, b) tuple lands in
     exactly one block."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(500, override_num_blocks=10).map(
         lambda row: {"a": row["id"] % 5, "b": row["id"] % 7, "v": row["id"]}
@@ -120,13 +120,10 @@ def test_multi_column_keys(
 
 def test_more_partitions_than_keys_emits_empty_blocks(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Requesting more partitions than there are distinct keys emits the extra
     partitions as empty (0-row) blocks that still carry the dataset schema."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     # 3 distinct keys into 50 partitions => at most 3 non-empty, >=47 empty.
     ds = ray.data.range(600, override_num_blocks=10).map(
@@ -153,12 +150,9 @@ def test_more_partitions_than_keys_emits_empty_blocks(
 
 def test_repartition_empty_dataset(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Empty dataset should still output N blocks"""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(100, override_num_blocks=4).filter(lambda row: False)
     out = ds.repartition(4, keys=["id"]).materialize()
@@ -174,12 +168,9 @@ def test_repartition_empty_dataset(
 
 def test_repartition_with_sort_produces_sorted_partitions(
     ray_start_regular_shared_2_cpus,
-    restore_data_context,
     disable_fallback_to_object_extension,
 ):
     """Check that rows are sorted in every partition."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
     ds = ray.data.range(200, override_num_blocks=4)
     out = ds.repartition(4, keys=["id"], sort=True)
@@ -188,6 +179,26 @@ def test_repartition_with_sort_produces_sorted_partitions(
         for block_ref in ref_bundle.block_refs:
             ids = ray.get(block_ref)["id"].to_pylist()
             assert ids == sorted(ids)
+
+
+def test_sort_reduce_uses_higher_multiplier(ray_start_regular_shared_2_cpus):
+    """Sorted reduces request 3x their input (sort_by materializes a sorted
+    copy on top of the concatenated shards); plain concat reduces keep the
+    2x default."""
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
+    sorted_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
+    )[0].dag
+    assert sorted_dag._peak_memory_multiplier == 3
+    # The multiplier drives the reduce task's memory request.
+    sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
+    assert sorted_dag.incremental_resource_usage().memory == 300
+
+    plain_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"])._logical_plan
+    )[0].dag
+    assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
 
 def test_get_shard_batch_no_timeout(ray_start_regular_shared_2_cpus):
@@ -246,10 +257,93 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
+@pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
+def test_shuffle_input_batch_bytes_controls_map_task_batching(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    map_op_cls,
+    batch_bytes,
+    expected_num_tasks,
+):
+    """batch_bytes=0 submits one map task per input bundle; a large value
+    buffers all input into a single map task, flushed when input ends.
+    Both map-op variants share the same batching policy."""
+    restore_data_context.shuffle_input_batch_bytes = batch_bytes
+    op = map_op_cls(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    for bundle in make_ref_bundles([[0], [1]]):
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+
+    assert len(op.get_active_tasks()) == expected_num_tasks
+
+
+def test_shuffle_map_task_uses_operator_name():
+    ctx = DataContext.get_current()
+    name = "JoinShuffleMapLeft(keys=('id',), parts=2)"
+    op = ShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+        name=name,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "shuffle_map_operator._shuffle_map_task"
+    ) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = [
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        ]
+        op._submit_shuffle_map_task([], [])
+
+    assert shuffle_map_task.options.call_args.kwargs["name"] == name
+
+
+def test_shuffle_reduce_task_uses_operator_name():
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    name = "JoinShuffleReduce(num_partitions=1)"
+    op = ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=1,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+        reduce_ray_remote_args={"name": "caller-supplied-name"},
+        name=name,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "shuffle_reduce_operator._shuffle_reduce_task"
+    ) as shuffle_reduce_task:
+        shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
+
+    assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
+
+
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --
-# they aren't specific to hash-shuffle-v2.
+# they aren't specific to shuffle-v2.
 def _ipc_shard_bundle(partition_id, table):
     """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
     stamped with the partition id."""
@@ -339,6 +433,69 @@ def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus
     out = pa.concat_tables(_drain_reduce_op(op, feed))
     assert out.column("src").to_pylist() == ["L"]
     assert op.has_completed()
+
+
+def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
+    """With block splitting disallowed (target_max_block_size=None), the reduce
+    task must emit reduce_fn's blocks as-is instead of coalescing them into a
+    single block."""
+
+    def _one_row_blocks_reduce(partition_id, tables_by_input):
+        tables = [t for shards in tables_by_input for t in shards]
+        combined = pa.concat_tables(tables)
+        for i in range(combined.num_rows):
+            yield combined.slice(i, 1)
+
+    op = _make_multi_input_reduce_op(_one_row_blocks_reduce, num_inputs=2)
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"v": [1, 2]})), 0),
+        (_ipc_shard_bundle(0, pa.table({"v": [3, 4]})), 1),
+    ]
+    tables = _drain_reduce_op(op, feed)
+    assert [t.num_rows for t in tables] == [1, 1, 1, 1]
+    assert sorted(v for t in tables for v in t.column("v").to_pylist()) == [1, 2, 3, 4]
+
+
+@pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
+def test_shuffle_ops_report_per_task_exec_stats(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    restore_data_context,
+    use_disk,
+):
+    """Shuffle map and reduce tasks build their exec stats worker-side, where
+    the task index isn't known; the operators are responsible for stamping it.
+    Without the stamp (or with the old zero-width reduce spans), shuffle
+    operators silently vanish from per-task stats consumers."""
+    DataContext.get_current().use_disk_based_hash_shuffle = use_disk
+
+    ds = ray.data.range(1000, override_num_blocks=4).groupby("id").count().materialize()
+
+    stats = (
+        ds._current_executor.get_stats() if ds._current_executor else ds._raw_stats()
+    )
+    block_stats_by_op = {}
+
+    def visit(s):
+        for name, block_stats in s.metadata.items():
+            block_stats_by_op.setdefault(name, []).extend(block_stats)
+        for parent in s.parents:
+            visit(parent)
+
+    visit(stats)
+
+    for phase in ("HashAggregateMap", "HashAggregateReduce"):
+        blocks = [
+            bs for name, bss in block_stats_by_op.items() if phase in name for bs in bss
+        ]
+        assert blocks, (phase, sorted(block_stats_by_op))
+        for bs in blocks:
+            assert bs.exec_stats is not None, phase
+            assert bs.exec_stats.task_idx is not None, phase
+        assert (
+            sum(bs.exec_stats.end_time_s - bs.exec_stats.start_time_s for bs in blocks)
+            > 0
+        ), phase
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import random
@@ -17,6 +18,7 @@ from shutil import copytree, make_archive, rmtree
 import pytest
 
 import ray
+from ray._common.runtime_env_uri import parse_uri
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
 )
@@ -39,9 +41,9 @@ from ray._private.runtime_env.packaging import (
     get_uri_for_file,
     get_uri_for_package,
     is_tar_gz_uri,
+    is_tar_uri,
     is_whl_uri,
     is_zip_uri,
-    parse_uri,
     remove_dir_from_filepaths,
     untar_package,
     unzip_package,
@@ -665,20 +667,44 @@ class TestUnzipPackage:
             assert Path(archive_path).is_file()
 
 
+def _sha1_hex(s: str) -> str:
+    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+
 class TestParseUri:
     @pytest.mark.parametrize(
         "parsing_tuple",
         [
             ("gcs://file.zip", Protocol.GCS, "file.zip"),
-            ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
-            ("http://test.com/file.zip", Protocol.HTTP, "http_test_com_file.zip"),
-            ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
-            ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
-            ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
+            (
+                "s3://bucket/file.zip",
+                Protocol.S3,
+                f"s3_{_sha1_hex('s3://bucket/file.zip')}.zip",
+            ),
+            (
+                "http://test.com/file.zip",
+                Protocol.HTTP,
+                f"http_{_sha1_hex('http://test.com/file.zip')}.zip",
+            ),
+            (
+                "https://test.com/file.zip",
+                Protocol.HTTPS,
+                f"https_{_sha1_hex('https://test.com/file.zip')}.zip",
+            ),
+            (
+                "gs://bucket/file.zip",
+                Protocol.GS,
+                f"gs_{_sha1_hex('gs://bucket/file.zip')}.zip",
+            ),
+            (
+                "azure://container/file.zip",
+                Protocol.AZURE,
+                f"azure_{_sha1_hex('azure://container/file.zip')}.zip",
+            ),
             (
                 "abfss://container@account.dfs.core.windows.net/file.zip",
                 Protocol.ABFSS,
-                "abfss_container_account_dfs_core_windows_net_file.zip",
+                f"abfss_{_sha1_hex('abfss://container@account.dfs.core.windows.net/file.zip')}.zip",
             ),
             (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
@@ -704,17 +730,14 @@ class TestParseUri:
         [
             (
                 "https://username:PAT@github.com/repo/archive/commit_hash.zip",
-                "https_username_PAT_github_com_repo_archive_commit_hash.zip",
+                f"https_{_sha1_hex('https://username:PAT@github.com/repo/archive/commit_hash.zip')}.zip",
             ),
             (
                 (
                     "https://un:pwd@gitlab.com/user/repo/-/"
                     "archive/commit_hash/repo-commit_hash.zip"
                 ),
-                (
-                    "https_un_pwd_gitlab_com_user_repo_-_"
-                    "archive_commit_hash_repo-commit_hash.zip"
-                ),
+                f"https_{_sha1_hex('https://un:pwd@gitlab.com/user/repo/-/archive/commit_hash/repo-commit_hash.zip')}.zip",
             ),
         ],
     )
@@ -730,37 +753,37 @@ class TestParseUri:
             (
                 "https://username:PAT@github.com/repo/archive:2/commit_hash.zip",
                 Protocol.HTTPS,
-                "https_username_PAT_github_com_repo_archive_2_commit_hash.zip",
+                f"https_{_sha1_hex('https://username:PAT@github.com/repo/archive:2/commit_hash.zip')}.zip",
             ),
             (
                 "gs://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.GS,
-                "gs_fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"gs_{_sha1_hex('gs://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "s3://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.S3,
-                "s3_fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"s3_{_sha1_hex('s3://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "azure://fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.AZURE,
-                "azure_fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"azure_{_sha1_hex('azure://fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.ABFSS,
-                "abfss_container_account_dfs_core_windows_net_2022-10-21T13_11_35_00_00_package.zip",
+                f"abfss_{_sha1_hex('abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.FILE,
-                "file__fake_2022-10-21T13_11_35_00_00_package.zip",
+                f"file_{_sha1_hex('file:///fake/2022-10-21T13:11:35+00:00/package.zip')}.zip",
             ),
             (
                 "file:///fake/2022-10-21T13:11:35+00:00/(package).zip",
                 Protocol.FILE,
-                "file__fake_2022-10-21T13_11_35_00_00__package_.zip",
+                f"file_{_sha1_hex('file:///fake/2022-10-21T13:11:35+00:00/(package).zip')}.zip",
             ),
         ],
     )
@@ -820,6 +843,18 @@ class TestParseUri:
         protocol, package_name = parse_uri(gcs_uri)
         assert protocol == Protocol.GCS
         assert package_name == gcs_uri.split("/")[-1]
+
+
+def test_download_percent_encoded_file_uri(tmp_path):
+    """as_uri() escapes the space, so the scheme cannot just be sliced off."""
+    package = tmp_path / "a dir" / "pkg.zip"
+    package.parent.mkdir()
+    package.write_bytes(b"package-bytes")
+    dest_file = tmp_path / "downloaded.zip"
+
+    ProtocolsProvider.download_remote_uri("file", package.as_uri(), str(dest_file))
+
+    assert dest_file.read_bytes() == b"package-bytes"
 
 
 class TestAbfssProtocol:
@@ -1042,30 +1077,45 @@ def test_http_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
     assert tp["timeout"] == 60
 
 
-def test_upload_working_dir_zip_with_upload_fn(tmp_path):
-    """Test that upload_working_dir_if_needed uses upload_fn for local zip files."""
-    # Create a temporary zip file
-    zip_path = tmp_path / "test_package.zip"
-    with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("hello.py", "print('hello')")
+@pytest.mark.parametrize(
+    "extension,mode",
+    [
+        (".zip", None),
+        (".tar.gz", "w:gz"),
+        (".tgz", "w:gz"),
+        (".tar.xz", "w:xz"),
+    ],
+)
+def test_upload_working_dir_archive_with_upload_fn(tmp_path, extension, mode):
+    """Local working_dir archives use the Job SDK upload callback."""
+    archive_path = tmp_path / f"test_package{extension}"
+    if extension == ".zip":
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("hello.py", "print('hello')")
+    else:
+        with tarfile.open(archive_path, mode) as archive:
+            content = b"print('hello')"
+            info = tarfile.TarInfo(name="hello.py")
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
 
     captured_calls = []
 
     def mock_upload_fn(path, excludes=None, is_file=False):
         captured_calls.append({"path": path, "excludes": excludes, "is_file": is_file})
 
-    runtime_env = {"working_dir": str(zip_path)}
+    runtime_env = {"working_dir": str(archive_path)}
     result = upload_working_dir_if_needed(
         runtime_env, include_gitignore=True, upload_fn=mock_upload_fn
     )
 
     # Verify upload_fn was called with is_file=True
     assert len(captured_calls) == 1
-    assert captured_calls[0]["path"] == str(zip_path)
+    assert captured_calls[0]["path"] == str(archive_path)
     assert captured_calls[0]["is_file"] is True
 
     # Verify the working_dir was replaced with a GCS URI
-    expected_uri = get_uri_for_package(zip_path)
+    expected_uri = get_uri_for_package(archive_path)
     assert result["working_dir"] == expected_uri
 
 
@@ -1081,7 +1131,7 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            # upload the zip file to GCS pkg_uri
+            # Upload the zip file to its GCS URI.
             pkg_uri = "gcs://my-zipfile.zip"
             upload_package_to_gcs(pkg_uri, zipfile_path.read_bytes())
 
@@ -1093,22 +1143,31 @@ class TestDownloadAndUnpackPackage:
                     gcs_client=None,
                 )
 
-    async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
+    @pytest.mark.parametrize("extension,mode", [(".zip", None), (".tar.xz", "w:xz")])
+    async def test_download_and_unpack_package_with_gcs_uri(
+        self, ray_start_regular, extension, mode
+    ):
         # Test downloading and unpacking a GCS package with a GCS client.
 
         gcs_client = ray._private.worker.global_worker.gcs_client
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            zipfile_path = Path(temp_dir) / "test-zip-file.zip"
-            with zipfile.ZipFile(zipfile_path, "x") as zip:
-                # Add a file to the zip file so we can verify the file was extracted.
-                zip.writestr("file.txt", "Hello, world!")
+            package_path = Path(temp_dir) / f"test-package{extension}"
+            if extension == ".zip":
+                with zipfile.ZipFile(package_path, "x") as archive:
+                    archive.writestr("file.txt", "Hello, world!")
+            else:
+                with tarfile.open(package_path, mode) as archive:
+                    content = b"Hello, world!"
+                    info = tarfile.TarInfo(name="file.txt")
+                    info.size = len(content)
+                    archive.addfile(info, io.BytesIO(content))
 
-            # upload the zip file to GCS pkg_uri
-            pkg_uri = "gcs://my-zipfile.zip"
-            upload_package_to_gcs(pkg_uri, zipfile_path.read_bytes())
+            # Upload the package to its GCS URI.
+            pkg_uri = f"gcs://my-package{extension}"
+            upload_package_to_gcs(pkg_uri, package_path.read_bytes())
 
-            # Download the zip file from GCS pkg_uri
+            # Download the package from its GCS URI.
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
                 base_directory=temp_dir,
@@ -1166,10 +1225,13 @@ class TestDownloadAndUnpackPackage:
             # Check that the file was extracted to the destination directory
             assert (Path(local_dir) / "file.txt").exists()
 
-    async def test_download_and_unpack_package_with_file_uri_tar_gz(self):
+    @pytest.mark.parametrize(
+        "extension,mode", [(".tar.gz", "w:gz"), (".tar.xz", "w:xz")]
+    )
+    async def test_download_and_unpack_package_with_file_uri_tar(self, extension, mode):
         with tempfile.TemporaryDirectory() as temp_dir:
-            tar_path = Path(temp_dir) / "test-tar-file.tar.gz"
-            with tarfile.open(tar_path, "w:gz") as tar:
+            tar_path = Path(temp_dir) / f"test-tar-file{extension}"
+            with tarfile.open(tar_path, mode) as tar:
                 file_content = b"Hello from tar!"
                 info = tarfile.TarInfo(name="top_level/file.txt")
                 info.size = len(file_content)
@@ -1392,6 +1454,19 @@ def test_get_uri_for_package_tgz(tmp_path):
     assert not uri.endswith(".zip")
 
 
+def test_get_uri_for_package_tar_xz(tmp_path):
+    tar_path = tmp_path / "my-pkg.tar.xz"
+    with tarfile.open(tar_path, "w:xz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tar_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.xz")
+    assert not uri.endswith(".zip")
+
+
 def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
     assert get_local_dir_from_uri(uri, "base_dir") == Path(
@@ -1406,6 +1481,13 @@ def test_get_local_dir_from_uri_tar_gz():
     assert not str(local_dir).endswith(".gz")
 
 
+def test_get_local_dir_from_uri_tar_xz():
+    uri = "s3://bucket/archive.tar.xz"
+    local_dir = get_local_dir_from_uri(uri, "base_dir")
+    assert "tar" not in str(local_dir.name)
+    assert not str(local_dir).endswith(".xz")
+
+
 def test_is_tar_gz_uri():
     assert is_tar_gz_uri("s3://bucket/archive.tar.gz")
     assert is_tar_gz_uri("https://example.com/pkg.tar.gz")
@@ -1413,6 +1495,12 @@ def test_is_tar_gz_uri():
     assert not is_tar_gz_uri("s3://bucket/archive.zip")
     assert not is_tar_gz_uri("gcs://archive.whl")
     assert not is_tar_gz_uri("invalid_format")
+
+
+def test_is_tar_uri():
+    for extension in [".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"]:
+        assert is_tar_uri(f"s3://bucket/archive{extension}")
+    assert not is_tar_uri("s3://bucket/archive.zip")
 
 
 def test_parse_uri_tar_gz():
@@ -1468,10 +1556,11 @@ def test_untar_package_with_top_level_dir(tmp_path):
     assert not tar_path.exists()
 
 
-def test_untar_package_path_traversal(tmp_path):
+@pytest.mark.parametrize("extension,mode", [(".tar.gz", "w:gz"), (".tar.xz", "w:xz")])
+def test_untar_package_path_traversal(tmp_path, extension, mode):
     """Verify that path traversal attacks are blocked."""
-    tar_path = tmp_path / "malicious.tar.gz"
-    with tarfile.open(tar_path, "w:gz") as tar:
+    tar_path = tmp_path / f"malicious{extension}"
+    with tarfile.open(tar_path, mode) as tar:
         file_content = b"malicious"
         info = tarfile.TarInfo(name="../../../etc/passwd")
         info.size = len(file_content)

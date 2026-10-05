@@ -360,12 +360,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // A one-word summary of the task func as a call site (e.g., __main__.foo).
   std::string CallSiteString() const;
 
-  // Lookup the resource shape that corresponds to the static key.
-  static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
-
-  // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
-
   // Placement Group bundle that this task or actor creation is associated with.
   const BundleID PlacementGroupBundleId() const;
 

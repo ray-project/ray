@@ -259,6 +259,177 @@ NETWORK_TOTAL_PANEL = Panel(
     ],
 )
 
+# Data Loading Metrics
+EXPOSED_DATA_LOADING_TIME_PANEL = Panel(
+    id=18,
+    title="Max Exposed Data Loading Time",
+    description="Per-batch data loading time exposed as training stall, not hidden behind data loader pipelining, taken as the max across ranks so it reflects the slowest rank, per dataset, over the last ${window}. Use to identify if training is stalled on data loading; ideally this value is 0, and any non-zero value indicates stall.",
+    unit="ms/batch",
+    targets=[
+        Target(
+            expr="max by (dataset) (1000 * sum(rate(ray_data_iter_total_blocked_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split))",
+            legend="{{dataset}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOADING_THROUGHPUT_PANEL = Panel(
+    id=27,
+    title="Data Ingest Throughput by Rank",
+    description="Rows per second consumed by the training loop, one line per rank, averaged over the last ${window}.",
+    unit="rowsps",
+    targets=[
+        Target(
+            expr="sum(rate(ray_data_iter_rows_total{{{global_filters}}}[$window])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_PRODUCTION_THROUGHPUT_PANEL = Panel(
+    id=29,
+    title="Data Production Throughput",
+    description="Rows/sec the Ray Data pipeline delivers to the training workers, over the last ${window}; only reported for datasets split across workers (DataConfig `datasets_to_split`), so non-split datasets show no data here.",
+    unit="rowsps",
+    targets=[
+        Target(
+            expr='sum(rate(ray_data_output_rows{{operator=~"split.*", {global_filters}}}[$window])) by (dataset)',
+            legend="{{dataset}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_LOADING_BREAKDOWN_PANEL = Panel(
+    id=19,
+    title="Percentage Data Loading Breakdown by Stage",
+    description="Share of per-batch data loading time spent in each stage (production wait -> data transfer -> batching -> format -> collate -> finalize), across ranks, over the last ${window}. If exposed data loading time is 0, the stages do not contribute to training stall and are hidden by data loading pipelining; otherwise, use this graph to identify the offending stages.",
+    unit="percentunit",
+    targets=[
+        Target(
+            expr="sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset) / (sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset))",
+            legend="Production Wait: {{dataset}}",
+        ),
+        Target(
+            expr="sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset) / (sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset))",
+            legend="Data Transfer: {{dataset}}",
+        ),
+        Target(
+            expr="sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset) / (sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset))",
+            legend="Batching: {{dataset}}",
+        ),
+        Target(
+            expr="sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset) / (sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset))",
+            legend="Format: {{dataset}}",
+        ),
+        Target(
+            expr="sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset) / (sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset))",
+            legend="Collate: {{dataset}}",
+        ),
+        Target(
+            expr="sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset) / (sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset) + sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset))",
+            legend="Finalize: {{dataset}}",
+        ),
+    ],
+    fill=10,
+    stack=True,
+)
+
+PRODUCTION_WAIT_TIME_PANEL = Panel(
+    id=30,
+    title="Production Wait Time by Rank",
+    description="Average per-batch time the data loader spends waiting for the Ray Data pipeline to produce the next block, one line per rank, over the last ${window}. Use to identify data production stragglers.",
+    unit="ms/batch",
+    targets=[
+        Target(
+            expr="1000 * sum(rate(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+DATA_TRANSFER_TIME_PANEL = Panel(
+    id=22,
+    title="Data Transfer Time by Rank",
+    description="Average per-batch time spent resolving and transferring data blocks, one line per rank, over the last ${window}. Use to identify data transfer stragglers.",
+    unit="ms/batch",
+    targets=[
+        Target(
+            expr="1000 * sum(rate(ray_data_iter_get_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+BATCHING_TIME_PANEL = Panel(
+    id=23,
+    title="Batching Time by Rank",
+    description="Average per-batch time spent building batches (slicing, local shuffle), one line per rank, over the last ${window}. Use to identify batching stragglers.",
+    unit="ms/batch",
+    targets=[
+        Target(
+            expr="1000 * sum(rate(ray_data_iter_next_batch_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+FORMAT_TIME_PANEL = Panel(
+    id=24,
+    title="Format Time by Rank",
+    description="Average per-batch time spent converting blocks to the batch format, one line per rank, over the last ${window}. Use to identify formatting stragglers.",
+    unit="ms/batch",
+    targets=[
+        Target(
+            expr="1000 * sum(rate(ray_data_iter_format_batch_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+COLLATE_TIME_PANEL = Panel(
+    id=25,
+    title="Collate Time by Rank",
+    description="Average per-batch time spent in the user collate function, one line per rank, over the last ${window}. Use to identify collation stragglers.",
+    unit="ms/batch",
+    targets=[
+        Target(
+            expr="1000 * sum(rate(ray_data_iter_collate_batch_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+FINALIZE_TIME_PANEL = Panel(
+    id=26,
+    title="Finalize Time by Rank",
+    description="Average per-batch time spent in finalize (e.g. host-to-device transfer), one line per rank, over the last ${window}. Use to identify finalization stragglers.",
+    unit="ms/batch",
+    targets=[
+        Target(
+            expr="1000 * sum(rate(ray_data_iter_finalize_batch_seconds{{{global_filters}}}[$window])) by (dataset, split) / sum(rate(ray_data_iter_batches_total{{{global_filters}}}[$window])) by (dataset, split)",
+            legend="{{dataset}}, {{split}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
 TRAIN_GRAFANA_PANELS = []
 
 TRAIN_GRAFANA_ROWS = [
@@ -297,6 +468,24 @@ TRAIN_GRAFANA_ROWS = [
             NETWORK_TOTAL_PANEL,
         ],
         collapsed=True,
+    ),
+    # Data Ingestion Row
+    Row(
+        title="Data Ingestion",
+        id=21,
+        panels=[
+            EXPOSED_DATA_LOADING_TIME_PANEL,
+            DATA_LOADING_BREAKDOWN_PANEL,
+            DATA_LOADING_THROUGHPUT_PANEL,
+            DATA_PRODUCTION_THROUGHPUT_PANEL,
+            PRODUCTION_WAIT_TIME_PANEL,
+            DATA_TRANSFER_TIME_PANEL,
+            BATCHING_TIME_PANEL,
+            FORMAT_TIME_PANEL,
+            COLLATE_TIME_PANEL,
+            FINALIZE_TIME_PANEL,
+        ],
+        collapsed=False,
     ),
 ]
 

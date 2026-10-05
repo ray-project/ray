@@ -40,6 +40,7 @@ from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
     expected_proxy_actors,
+    extract_tags,
     get_application_url,
     get_metric_dictionaries,
 )
@@ -78,24 +79,6 @@ def metrics_start_shutdown(request):
         serve.shutdown()
         ray.shutdown()
         reset_ray_address()
-
-
-def extract_tags(line: str) -> Dict[str, str]:
-    """Extracts any tags from the metrics line."""
-
-    try:
-        tags_string = line.replace("{", "}").split("}")[1]
-    except IndexError:
-        # No tags were found in this line.
-        return {}
-
-    detected_tags = {}
-    for tag_pair in tags_string.split(","):
-        sanitized_pair = tag_pair.replace('"', "")
-        tag, value = sanitized_pair.split("=")
-        detected_tags[tag] = value
-
-    return detected_tags
 
 
 def contains_tags(line: str, expected_tags: Optional[Dict[str, str]] = None) -> bool:

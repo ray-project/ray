@@ -210,7 +210,8 @@ std::string SerializeEventsToRayEventsDataJson(
   std::vector<std::string> json_parts;
   json_parts.reserve(events.size());
   for (std::unique_ptr<RayEventInterface> &event : events) {
-    auto ray_event_or = std::move(*event).Serialize();
+    StatusSetOr<rpc::events::RayEvent, StatusT::Invalid> ray_event_or =
+        std::move(*event).Serialize();
     if (ray_event_or.has_error()) {
       RAY_LOG(WARNING) << "Skipping event that failed to serialize: "
                        << ray_event_or.message();
@@ -220,6 +221,9 @@ std::string SerializeEventsToRayEventsDataJson(
     auto status = google::protobuf::util::MessageToJsonString(
         ray_event_or.value(), &json_str, options);
     if (!status.ok()) {
+      // TODO: We can support an input param to control whether we raise an exception
+      // here or fail silently like we do today. Also we can emit a metric to track how
+      // many events failed to serialize to JSON.
       RAY_LOG(WARNING) << "Skipping event that failed to serialize to JSON: "
                        << status.message();
       continue;

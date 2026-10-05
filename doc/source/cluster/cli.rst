@@ -1,3 +1,6 @@
+.. meta::
+   :description: CLI reference for managing Ray clusters with the cluster launcher: ray up, down, exec, submit, attach, and status.
+
 .. _ray-cluster-cli:
 
 Cluster Management CLI

@@ -43,6 +43,12 @@ def create_resource_allocator(
         return ReservationOpResourceAllocator(
             resource_manager,
             reservation_ratio=data_context.op_resource_reservation_ratio,
+            object_store_reservation_overshoot_ratio=(
+                data_context.object_store_reservation_overshoot_ratio
+            ),
+            object_store_memory_pressure_fraction=(
+                data_context.object_store_memory_pressure_fraction
+            ),
         )
 
     else:
