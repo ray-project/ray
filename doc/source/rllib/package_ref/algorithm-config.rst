@@ -172,3 +172,28 @@ Configuring experimental settings
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.experimental
     :noindex:
+
+
+.. _rllib-algorithm-specific-configs:
+
+Algorithm-specific configuration classes
+----------------------------------------
+
+Each algorithm's configuration class adds its algorithm-specific settings to its ``training()`` method.
+
+.. currentmodule:: ray.rllib.algorithms
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
+
+    ~ppo.ppo.PPOConfig
+    ~dqn.dqn.DQNConfig
+    ~sac.sac.SACConfig
+    ~appo.appo.APPOConfig
+    ~impala.impala.IMPALAConfig
+    ~bc.bc.BCConfig
+    ~cql.cql.CQLConfig
+    ~iql.iql.IQLConfig
+    ~marwil.marwil.MARWILConfig

@@ -118,3 +118,18 @@ The EnvRunner actors always execute the following callback methods:
     ~RLlibCallback.on_episode_start
     ~RLlibCallback.on_episode_step
     ~RLlibCallback.on_episode_end
+
+
+.. _rllib-callback-reference-built-in:
+
+Built-in callback classes
+-------------------------
+
+.. currentmodule:: ray.rllib.callbacks.callbacks
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
+
+    MemoryTrackingCallbacks

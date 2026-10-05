@@ -135,6 +135,7 @@ llms_txt_exclude = [
     "serve/api/doc/*",
     "rllib/package_ref/doc/*",
     "rllib/package_ref/env/doc/*",
+    "ray-more-libs/api/doc/*",
     # Deprecated pages: surfacing a superseded API/guide to an agent is worse
     # than omitting it — the agent may follow the old API. (DOC-908)
     "train/api/deprecated",
@@ -265,6 +266,7 @@ remove_from_toctrees = [
     "serve/api/doc/*",
     "rllib/package_ref/doc/*",
     "rllib/package_ref/env/doc/*",
+    "ray-more-libs/api/doc/*",
 ]
 
 myst_enable_extensions = [

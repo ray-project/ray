@@ -53,6 +53,7 @@ API_PATH_PREFIXES = (
     "serve/api/",
     "core/api/",
     "rllib/package_ref/",
+    "ray-more-libs/api/",
 )
 
 # Captured in the main process at env-updated and consumed in the main process at
