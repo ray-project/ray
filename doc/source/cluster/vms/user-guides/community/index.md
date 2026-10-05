@@ -43,5 +43,4 @@ provider:
   module: "my.module.MyCustomNodeProvider"
 ```
 
-You can refer to [AWSNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/aws/node_provider.py#L95), [KubeRayNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/kuberay/node_provider.py#L148) and
-: [LocalNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/local/node_provider.py#L166) for more examples.
+You can refer to [AWSNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/aws/node_provider.py#L95), [KubeRayNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/kuberay/node_provider.py#L148) and [LocalNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/local/node_provider.py#L166) for more examples.
