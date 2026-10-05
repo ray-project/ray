@@ -16,7 +16,15 @@ Author new files under `doc/source/` as MyST Markdown (`.md`). A lint check reje
 
 ## Moving or renaming pages and APIs
 
-When you move or rename a page under `doc/source/`, add a redirect from each old path to its new path in `doc/redirects/current.yaml` in the same PR. This includes generated API reference pages. Renaming or moving a Ray API, or the API page that lists it, changes the path of its generated reference page, so that page needs a redirect too. When you remove the reference page of a deprecated or end-of-life API that has a clear successor, redirect it to the successor's reference page. Redirects with the default `force: false` fire only on a 404, so they never override a reference page that older docs versions still serve. Follow `doc/redirects/README.md`, which covers the rule format, directory moves, API reference pages, and how one rule behaves across docs versions. Redirects don't go live at merge. CI applies them on a later scheduled postmerge run, so old URLs on `/en/master` might not reach their new pages for hours after the merge, longer over a weekend.
+When you move or rename a page under `doc/source/`, add a redirect from each old path to its new path in `doc/redirects/current.yaml` in the same PR. `doc/redirects/README.md` covers the rule format, directory moves, and how one rule behaves across docs versions.
+
+Generated API reference pages follow the same rules. Keep the following in mind:
+
+- Renaming or moving a Ray API, or the API page that lists it, changes the path of its generated reference page. Add a redirect from the old path.
+- When you remove the reference page of a deprecated or end-of-life API that has a clear successor, redirect the old page to the successor's reference page.
+- Redirects with the default `force: false` fire only on a 404, so they never override a reference page that older docs versions still serve.
+
+Redirects don't go live at merge. CI applies them on a later scheduled postmerge run, so old URLs on `/en/master` might not reach their new pages for hours after the merge, longer over a weekend.
 
 ## How CI is configured
 

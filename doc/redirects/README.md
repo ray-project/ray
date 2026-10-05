@@ -24,7 +24,13 @@ mirrors the live configuration exactly.
    [Moving or renaming pages](#moving-or-renaming-pages).
 2. Validate locally: `rtd-redirects validate doc/redirects/current.yaml`.
    No Read the Docs credentials needed.
-3. Open a PR. After it merges, CI applies the change to the live project automatically, so you don't need to apply it manually. The `doc: apply redirects` Buildkite step runs `rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --strict`, but only on the postmerge builds that the scheduled release-automation pipeline triggers, not on every merge to master. The change goes live on the first of those runs after the merge, usually within a few hours on a weekday and longer over a weekend. If that run fails or skips the step, the change waits for the next one. To check whether a merged change is live, run `rtd-redirects plan` as described in [Auditing drift](#auditing-drift). It needs a Read the Docs API token.
+3. Open a PR. After it merges, CI applies the change to the live project automatically, so you don't need to apply it manually. The change goes live on a later scheduled run, not at merge. See [When merged redirects go live](#when-merged-redirects-go-live).
+
+## When merged redirects go live
+
+The `doc: apply redirects` Buildkite step runs `rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --strict`. It runs only on the postmerge builds that the scheduled release-automation pipeline triggers, not on every merge to master. A merged change goes live on the first of those runs after the merge, usually within a few hours on a weekday and longer over a weekend. If that run fails or skips the step, the change waits for the next one.
+
+To check whether a merged change is live, run `rtd-redirects plan` as described in [Auditing drift](#auditing-drift). It needs a Read the Docs API token.
 
 ## How redirects apply across versions
 
