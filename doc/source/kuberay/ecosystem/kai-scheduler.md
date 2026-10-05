@@ -57,7 +57,7 @@ helm upgrade -i kai-scheduler oci://ghcr.io/nvidia/kai-scheduler/kai-scheduler -
 
 ## Step 1: Install the KubeRay operator with KAI Scheduler as the batch scheduler
 
-Follow the official KubeRay operator [installation documentation](https://docs.ray.io/en/master/cluster/kubernetes/getting-started/kuberay-operator-installation.html#kuberay-operator-installation) and add the following configuration to enable KAI Scheduler integration:
+Follow the official KubeRay operator [installation documentation](https://docs.ray.io/en/latest/kuberay/getting-started/operator-installation.html#kuberay-operator-installation) and add the following configuration to enable KAI Scheduler integration:
 
 ```bash
 --set batchScheduler.name=kai-scheduler
