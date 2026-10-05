@@ -285,7 +285,7 @@ The cluster configuration is defined within a YAML file that will be used by the
 
 ### Node types
 
-The `available_nodes_types` object's keys represent the names of the different node types.
+The `available_node_types` object's keys represent the names of the different node types.
 
 Deleting a node type from `available_node_types` and updating with {ref}`ray up <ray-up-doc>` will cause the autoscaler to scale down all nodes of that type. In particular, changing the key of a node type object will result in removal of nodes corresponding to the old key; nodes with the new key name will then be created according to cluster configuration and Ray resource demands.
 
@@ -1604,7 +1604,7 @@ The switch controlling the way for binding the GPU from ESXi host to the Ray nod
 
 (cluster-configuration-node-config)=
 
-### `available_node_types.<node_type_name>.node_type.node_config`
+### `available_node_types.<node_type_name>.node_config`
 
 The configuration to be used to launch the nodes on the cloud service provider. Among other things, this will specify the instance type to be launched.
 
@@ -1614,7 +1614,7 @@ The configuration to be used to launch the nodes on the cloud service provider. 
 
 (cluster-configuration-resources)=
 
-### `available_node_types.<node_type_name>.node_type.resources`
+### `available_node_types.<node_type_name>.resources`
 
 The resources that a node type provides, which enables the autoscaler to automatically select the right type of nodes to launch given the resource demands of the application. The resources specified will be automatically passed to the `ray start` command for the node via an environment variable. If not provided, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers. For more information, see also the [resource demand scheduler](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/resource_demand_scheduler.py)
 
@@ -1627,7 +1627,7 @@ In some cases, adding special nodes without any resources may be desirable. Such
 
 (cluster-configuration-node-min-workers)=
 
-### `available_node_types.<node_type_name>.node_type.min_workers`
+### `available_node_types.<node_type_name>.min_workers`
 
 The minimum number of workers to maintain for this node type regardless of utilization.
 
@@ -1640,7 +1640,7 @@ The minimum number of workers to maintain for this node type regardless of utili
 
 (cluster-configuration-node-max-workers)=
 
-### `available_node_types.<node_type_name>.node_type.max_workers`
+### `available_node_types.<node_type_name>.max_workers`
 
 The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over {ref}`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide {ref}`max_workers <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
 
@@ -1655,18 +1655,18 @@ Note, for the nodes of type `head_node_type` the default number of max workers i
 
 (cluster-configuration-node-type-worker-setup-commands)=
 
-### `available_node_types.<node_type_name>.node_type.worker_setup_commands`
+### `available_node_types.<node_type_name>.worker_setup_commands`
 
 A list of commands to run to set up worker nodes of this type. These commands will replace the general {ref}`worker setup commands <cluster-configuration-worker-setup-commands>` for the node.
 
 * **Required:** No
-* **Importance:** low
+* **Importance:** Low
 * **Type:** List of String
 * **Default:** `[]`
 
 (cluster-configuration-cpu)=
 
-### `available_node_types.<node_type_name>.node_type.resources.CPU`
+### `available_node_types.<node_type_name>.resources.CPU`
 
 ::::{tab-set}
 :::{tab-item} AWS
@@ -1705,7 +1705,7 @@ The number of CPUs made available by this node. If not configured, the nodes wil
 
 (cluster-configuration-gpu)=
 
-### `available_node_types.<node_type_name>.node_type.resources.GPU`
+### `available_node_types.<node_type_name>.resources.GPU`
 
 ::::{tab-set}
 :::{tab-item} AWS
@@ -1743,7 +1743,7 @@ The number of GPUs made available by this node.
 
 (cluster-configuration-memory)=
 
-### `available_node_types.<node_type_name>.node_type.resources.memory`
+### `available_node_types.<node_type_name>.resources.memory`
 
 
 ::::{tab-set}
@@ -1782,7 +1782,7 @@ The memory in megabytes allocated for python worker heap memory on the node. If 
 
 (cluster-configuration-object-store-memory)=
 
-### `available_node_types.<node_type_name>.node_type.resources.object-store-memory`
+### `available_node_types.<node_type_name>.resources.object_store_memory`
 
 ::::{tab-set}
 :::{tab-item} AWS
