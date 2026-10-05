@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 from unittest.mock import patch
 
 import pyarrow as pa
+import pyarrow.fs
 import pyarrow.parquet as pq
 import pytest
 
@@ -70,6 +71,28 @@ def test_checkpoint_path_not_set(checkpoint_path):
                 id_column="id", checkpoint_path=checkpoint_path
             )
         )
+
+
+@pytest.mark.parametrize("use_uri", [True, False])
+def test_override_filesystem_checkpoint_path(tmp_path, use_uri):
+    """Test that the checkpoint path is used with `override_filesystem`,
+    with or without a URI scheme."""
+    checkpoint_path = f"file://{tmp_path}" if use_uri else str(tmp_path)
+    checkpointer = RowIDBasedDataIteratorCheckpointer(
+        checkpoint_config=DatasetCheckpointConfig(
+            id_column="id",
+            checkpoint_path=checkpoint_path,
+            override_filesystem=pyarrow.fs.LocalFileSystem(),
+        )
+    )
+    checkpointer.start_epoch()
+    checkpointer.record_yielded_batch(_create_batch([1, 2, 3]))
+    checkpointer.state_dict()
+
+    checkpoint_file = tmp_path.joinpath(
+        "rank=0", "epoch=0", "checkpoint=0", "chunk_0.parquet"
+    )
+    assert pq.read_table(checkpoint_file).column("id").to_pylist() == [1, 2, 3]
 
 
 def test_basic(tmp_path):

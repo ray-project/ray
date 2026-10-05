@@ -258,12 +258,15 @@ class DatasetCheckpointConfig:
             object storage (e.g. `s3://bucket/path`) or a file system path.
             If the latter, the path must be a network-mounted file system (e.g.
             `/mnt/cluster_storage/`) that is accessible to the entire cluster.
-            If not set, defaults to `{RunConfig.storage_path}/{RunConfig.name}`
-            configured on the `ray.train` trainer.
+            If not set, defaults to
+            `{RunConfig.storage_path}/{RunConfig.name}/ray_data_checkpoints/{dataset_name}`
+            configured on the `ray.train` trainer. Each dataset must use a
+            different `checkpoint_path`.
         override_filesystem: Override the :class:`pyarrow.fs.FileSystem` object used to
             read/write checkpoint data. Use this when you want to use custom credentials.
             If unset, this defaults to the filesystem configured in the `ray.train.RunConfig`
-            passed to the trainer.
+            when `checkpoint_path` is also unset. Otherwise, the filesystem is
+            inferred from `checkpoint_path`.
         delete_checkpoints_after_epoch: If True, automatically delete checkpoint
             data after each epoch completion. This allows for fault tolerance from
             the latest checkpoint. If you intend to resume from a checkpoint prior

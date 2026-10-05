@@ -1,6 +1,6 @@
 import abc
 import logging
-import os
+import posixpath
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, fields
@@ -19,6 +19,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.interfaces import DatasetCheckpointConfig
 from ray.data.context import DataContext
 from ray.data.datasource import PartitionStyle, PathPartitionFilter
+from ray.data.datasource.path_util import _unwrap_protocol
 
 logger = logging.getLogger(__name__)
 
@@ -264,14 +265,19 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
             raise ValueError(
                 "`checkpoint_path` must be set to enable data iterator "
                 "checkpointing. Ray Train sets it by default to "
-                "`{RunConfig.storage_path}/{RunConfig.name}/ray_data_checkpoints`."
+                "`{RunConfig.storage_path}/{RunConfig.name}/ray_data_checkpoints/"
+                "{dataset_name}`."
             )
 
         self._checkpoint_config = checkpoint_config
         self._id_column = checkpoint_config.id_column
         if checkpoint_config.override_filesystem:
             self._fs = checkpoint_config.override_filesystem
-            self._checkpoint_path_unwrapped = checkpoint_config.checkpoint_path
+            # Strip the URI scheme (e.g., `s3://`), since pyarrow filesystems
+            # expect paths without it.
+            self._checkpoint_path_unwrapped = _unwrap_protocol(
+                checkpoint_config.checkpoint_path
+            )
         else:
             self._fs, self._checkpoint_path_unwrapped = pyarrow.fs.FileSystem.from_uri(
                 checkpoint_config.checkpoint_path
@@ -340,7 +346,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         Example: {checkpoint_path}/rank={r}/epoch={x}/checkpoint={y}
         """
         # TODO: handle multiple datasets (add the dataset name to the path)
-        return os.path.join(
+        return posixpath.join(
             self._checkpoint_path_unwrapped,
             f"{RowIDBasedStateDict.RANK_PATH_KEY}={self.world_rank}",
             f"{RowIDBasedStateDict.EPOCH_PATH_KEY}={self._epoch_idx}",
@@ -361,7 +367,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
 
         Example: {checkpoint_path}/rank={r}/epoch={x}/checkpoint={y}/chunk_{z}.parquet
         """
-        return os.path.join(
+        return posixpath.join(
             self._get_current_checkpoint_directory(),
             f"chunk_{self._chunk_idx}.parquet",
         )
@@ -569,7 +575,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         from ray.train.v2._internal.execution.storage import delete_fs_path
 
         fs = self._fs
-        checkpoint_path = os.path.join(
+        checkpoint_path = posixpath.join(
             self._checkpoint_path_unwrapped,
             f"rank={self.world_rank}",
             f"epoch={epoch_idx}",
