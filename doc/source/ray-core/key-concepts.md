@@ -10,6 +10,8 @@ myst:
 
 This section overviews Ray's key concepts. These primitives work together to enable Ray to flexibly support a broad range of distributed applications.
 
+To choose how your application coordinates work, see {ref}`Choose a programming model <programming-models>`.
+
 (task-key-concept)=
 
 ## Tasks
