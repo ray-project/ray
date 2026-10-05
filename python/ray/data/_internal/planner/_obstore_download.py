@@ -117,6 +117,85 @@ def _obstore_client_options_from_env() -> Dict[str, Any]:
     return {"timeout": timedelta(seconds=timeout_s)}
 
 
+class DownloadError(OSError):
+    """A URI could not be downloaded after the retries were exhausted.
+
+    Raised by ``download()`` for transient or systemic failures (5xx,
+    throttling, timeouts, dropped connections, bad credentials) so the task
+    fails instead of silently yielding ``None`` for the row. Missing objects,
+    permission-denied objects and invalid URIs still yield ``None``.
+
+    Match on ``"DownloadError"`` in ``DataContext.retried_map_errors`` (with
+    ``max_map_retries``) to retry the task, or set
+    ``DataContext.max_errored_blocks`` to tolerate the failure.
+    """
+
+
+try:
+    from obstore import exceptions as _obstore_exceptions
+except ImportError:  # obstore not installed, or too old to ship the module.
+    _obstore_exceptions = None
+
+
+def _permanent_download_error_types() -> Tuple[type, ...]:
+    """Exception types meaning "this URI can never be downloaded"."""
+    types: List[type] = [
+        # 404 from obstore (NotFound maps to the builtin) and from PyArrow.
+        FileNotFoundError,
+        # Local-filesystem permission denial; see PermissionDeniedError below.
+        PermissionError,
+        # Malformed URI, raised before any request is made (ArrowInvalid is a
+        # ValueError subclass).
+        ValueError,
+    ]
+    if _obstore_exceptions is not None:
+        for name in (
+            # Deprecated in favour of FileNotFoundError since obstore 0.7;
+            # keep it for older versions.
+            "NotFoundError",
+            # S3 answers 403 for a *missing* key when the caller lacks
+            # s3:ListBucket, so a permission denial has to stay row-local.
+            "PermissionDeniedError",
+            "InvalidPathError",
+            "NotSupportedError",
+        ):
+            exc_type = getattr(_obstore_exceptions, name, None)
+            if exc_type is not None:
+                types.append(exc_type)
+    return tuple(types)
+
+
+_PERMANENT_DOWNLOAD_ERROR_TYPES = _permanent_download_error_types()
+
+
+def _is_permanent_download_error(exc: BaseException) -> bool:
+    """Whether ``exc`` means the URI can never be downloaded (yield ``None``).
+
+    Everything else is transient or systemic and must raise ``DownloadError``
+    so task-level retry and ``max_errored_blocks`` apply instead of the row
+    being lost: ``obstore.exceptions.GenericError`` (what obstore raises once
+    its retries on 5xx / 429 / timeouts / dropped connections are exhausted),
+    ``UnauthenticatedError``, ``JoinError``, and any other ``OSError``.
+    ``GenericError`` is deliberately not inspected further: the retry
+    exhaustion text differs across object_store versions, and a message gate
+    would silently revert to ``None`` on an upgrade.
+    """
+    return isinstance(exc, _PERMANENT_DOWNLOAD_ERROR_TYPES)
+
+
+def _download_error(
+    uri: str, uri_column_name: str, cause: BaseException
+) -> DownloadError:
+    """Build the ``DownloadError`` for a transient failure on ``uri``."""
+    return DownloadError(
+        f"Failed to download {uri!r} (column {uri_column_name!r}): "
+        f"{type(cause).__name__}: {cause}. Missing or inaccessible objects "
+        "(404/403) yield null; other failures fail the block. See the "
+        "RAY_DATA_OBSTORE_RETRY_* environment variables and "
+        "DataContext.max_errored_blocks."
+    )
+
+
 # Constants & configuration
 RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
 OBSTORE_AVAILABLE = RAY_DATA_USE_OBSTORE and obstore_parse_scheme is not None
@@ -939,8 +1018,10 @@ async def _download_uris_with_obstore(
             from inside the event loop (aiobotocore sessions need ``asyncio.run``).
 
     Returns:
-        Downloaded bytes in the same order as *uris*.  ``None`` entries
-        indicate failed downloads.
+        Downloaded bytes in the same order as *uris*.  ``None`` entries are
+        URIs that can never be downloaded (missing object, permission denied,
+        invalid URI). A transient failure that outlasts the retries raises
+        ``DownloadError`` for the whole call.
     """
     if fs_kwargs is None:
         # Direct-caller path (tests, internal helpers). Session-backed fsspec
@@ -1024,7 +1105,13 @@ async def _fetch_whole(
     uri_column_name: str,
     semaphore: Optional[asyncio.Semaphore] = None,
 ) -> Optional[bytes]:
-    """Download a single URI, returning ``None`` on failure."""
+    """Download a single URI as a whole-file GET.
+
+    Returns ``None`` when the URI can never be downloaded (missing object,
+    permission denied, invalid URI). Raises ``DownloadError`` once obstore's
+    retries are exhausted on a transient error, so the task fails instead of
+    the row silently going missing (DATA-3604).
+    """
     try:
         if semaphore is not None:
             async with semaphore:
@@ -1032,18 +1119,11 @@ async def _fetch_whole(
         # No semaphore (RAY_DATA_OBSTORE_MAX_CONCURRENCY=0).
         # Concurrency is bounded only by the partition actor batch size.
         return await _fetch(uri, registry)
-    except OSError as e:
-        logger.debug(
-            "OSError reading uri %r for column %r: %s", uri, uri_column_name, e
-        )
     except Exception as e:
-        logger.warning(
-            "Unexpected error reading uri %r for column %r: %s",
-            uri,
-            uri_column_name,
-            e,
-        )
-    return None
+        if _is_permanent_download_error(e):
+            logger.debug("Skipping uri %r for column %r: %s", uri, uri_column_name, e)
+            return None
+        raise _download_error(uri, uri_column_name, e) from e
 
 
 async def _fetch_ranged(

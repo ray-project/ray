@@ -1225,7 +1225,9 @@ class Dataset:
 
         Args:
             column_name: The name of the new column.
-            expr: An expression that defines the new column values.
+            expr: An expression that defines the new column values. For
+                :func:`~ray.data.expressions.download`, see that function for
+                how missing objects and transient download failures are handled.
             compute: The compute strategy to use for the projection operation.
                 If not specified and the expression contains callable class UDFs,
                 Ray Data automatically uses ``ActorPoolStrategy`` for actor semantics.

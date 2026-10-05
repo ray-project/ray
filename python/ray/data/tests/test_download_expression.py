@@ -524,6 +524,121 @@ class TestDownloadPartitionActorExactPartitioning:
         ]
 
 
+def _start_flaky_http_server(get_statuses, content=b"image bytes"):
+    """Loopback HTTP server for ``download()`` tests.
+
+    ``HEAD`` always succeeds with the content length, so the partition actor
+    learns the size. Each ``GET`` answers the next status in ``get_statuses``;
+    the last one repeats. Returns ``(server, port, served)`` where ``served``
+    records every GET status sent.
+    """
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from threading import Thread
+
+    served = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+
+        def do_GET(self):
+            status = get_statuses[min(len(served), len(get_statuses) - 1)]
+            served.append(status)
+            body = content if status == 200 else b""
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1], served
+
+
+# obstore itself does not retry under this budget, so every transient error
+# surfaces to Ray Data's own retry machinery immediately.
+_TINY_RETRY_BUDGET = {
+    "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES": "0",
+    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS": "1",
+    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS": "2",
+    "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S": "5",
+}
+
+
+class TestDownloadTransientFailures:
+    """DATA-3604: a download that fails after its retries fails the task.
+
+    Before, the row silently became ``None`` bytes and blew up downstream
+    (``PIL.UnidentifiedImageError`` in ``read_from_uris_fixed_size``).
+    """
+
+    @pytest.fixture
+    def tiny_retry_cluster(self, shutdown_only):
+        # The env vars must reach the worker processes, so they go through
+        # runtime_env rather than monkeypatch. Earlier tests in this module
+        # may have auto-started a cluster without it.
+        ray.shutdown()
+        ray.init(num_cpus=2, runtime_env={"env_vars": _TINY_RETRY_BUDGET})
+        ctx = ray.data.DataContext.get_current()
+        saved = (ctx.max_errored_blocks, ctx.retried_map_errors, ctx.max_map_retries)
+        yield ctx
+        ctx.max_errored_blocks, ctx.retried_map_errors, ctx.max_map_retries = saved
+
+    @pytest.fixture
+    def flaky_server(self):
+        servers = []
+
+        def start(get_statuses):
+            server, port, served = _start_flaky_http_server(get_statuses)
+            servers.append(server)
+            return port, served
+
+        yield start
+        for server in servers:
+            server.shutdown()
+
+    def test_aborts_by_default(self, tiny_retry_cluster, flaky_server):
+        pytest.importorskip("obstore")
+        port, _ = flaky_server([503])
+        ds = ray.data.from_items([{"uri": f"http://127.0.0.1:{port}/a.bin"}])
+        ds = ds.with_column("bytes", download("uri"))
+        with pytest.raises(Exception, match="Failed to download"):
+            ds.take_all()
+
+    def test_tolerated_with_max_errored_blocks(
+        self, tiny_retry_cluster, flaky_server, tmp_path
+    ):
+        pytest.importorskip("obstore")
+        (tmp_path / "ok.bin").write_bytes(b"fine")
+        port, _ = flaky_server([503])
+        tiny_retry_cluster.max_errored_blocks = -1
+        ds = ray.data.from_items(
+            [
+                {"uri": f"file://{tmp_path}/ok.bin"},
+                {"uri": f"http://127.0.0.1:{port}/a.bin"},
+            ],
+            override_num_blocks=2,
+        )
+        ds = ds.with_column("bytes", download("uri"))
+        # The block with the failing URI is dropped; the other one survives.
+        assert [row["bytes"] for row in ds.take_all()] == [b"fine"]
+
+    def test_retried_with_map_retries(self, tiny_retry_cluster, flaky_server):
+        pytest.importorskip("obstore")
+        port, served = flaky_server([503, 503, 200])
+        tiny_retry_cluster.retried_map_errors = ["DownloadError"]
+        tiny_retry_cluster.max_map_retries = 2
+        ds = ray.data.from_items([{"uri": f"http://127.0.0.1:{port}/a.bin"}])
+        ds = ds.with_column("bytes", download("uri"))
+        assert [row["bytes"] for row in ds.take_all()] == [b"image bytes"]
+        assert served == [503, 503, 200]
+
+
 if __name__ == "__main__":
     import sys
 

@@ -19,6 +19,8 @@ from ray.data._internal.logical.operators import Download
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner._obstore_download import (
     OBSTORE_AVAILABLE,
+    _download_error,
+    _is_permanent_download_error,
     _log_fallback_warning,
     _plan_obstore_routing,
     download_bytes_async,
@@ -306,9 +308,9 @@ def download_bytes_threaded(
         ):
             """Download bytes for each URI using the pre-resolved filesystem."""
             for uri in uri_iterator:
-                read_bytes = None
                 try:
                     if uri is None:
+                        yield None
                         continue
                     # Normalize the path only; FS is supplied so no network I/O.
                     resolved_paths, _ = _resolve_paths_and_filesystem(
@@ -316,21 +318,23 @@ def download_bytes_threaded(
                     )
                     resolved_path = resolved_paths[0] if resolved_paths else None
                     if resolved_path is None:
+                        yield None
                         continue
                     with wrapped_fs.open_input_stream(resolved_path) as f:
                         read_bytes = f.read()
-                except OSError as e:
-                    logger.debug(
-                        f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
-                    )
                 except Exception as e:
-                    # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
-                    # `foo://bar` to avoid failing because of one invalid uri.
-                    logger.warning(
-                        f"Unexpected error reading uri '{uri}' for column '{uri_column_name}': {e}"
-                    )
-                finally:
-                    yield read_bytes
+                    # A URI that can never be read (missing file, invalid uri
+                    # like `foo://bar`) yields None. Anything else survived the
+                    # RetryingPyFileSystem retries and must fail the task
+                    # rather than silently drop the row (DATA-3604).
+                    if _is_permanent_download_error(e):
+                        logger.debug(
+                            "Skipping uri %r for column %r: %s", uri, uri_column_name, e
+                        )
+                        yield None
+                        continue
+                    raise _download_error(uri, uri_column_name, e) from e
+                yield read_bytes
 
         # Use make_async_gen to resolve and download URI bytes concurrently
         # preserve_ordering=True ensures results are returned in the same order as input URIs
