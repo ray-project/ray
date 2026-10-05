@@ -281,7 +281,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     # Count only text matched under this request's model: model IDs
                     # can share a prefix with each other.
                     matched_chars = max(len(matched_text) - len(key_prefix), 0)
-                    match_rate = matched_chars / len(input_text)
+                    match_rate = matched_chars / len(input_text) if len(input_text) > 0 else 0.0
                     if match_rate < self._match_rate_threshold:
                         smallest_tenants_id_strings = ray.get(
                             self._tree_actor.get_smallest_tenants.remote(
