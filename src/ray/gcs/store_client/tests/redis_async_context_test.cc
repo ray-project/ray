@@ -27,6 +27,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/time/time.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
@@ -98,7 +99,7 @@ TEST_F(RedisAsyncContextTest, TestRedisCommands) {
       io_service,
       std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac, RedisContextDeleter()));
 
-  // Mirrors SetDisconnectCallback() in redis_context.cc: the callbacks need a
+  // Mirrors SetConnectionCallbacks() in redis_context.cc: the callbacks need a
   // way back to the owning RedisAsyncContext to release the raw pointer.
   ac->data = &redis_async_context;
   redisAsyncSetConnectCallback(ac, ConnectCallback);
@@ -118,6 +119,262 @@ TEST_F(RedisAsyncContextTest, TestRedisCommands) {
                   .ok());
 
   io_service.run();
+}
+
+namespace {
+
+std::unique_ptr<redisAsyncContext, RedisContextDeleter> ConnectRaw(int port) {
+  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", port);
+  EXPECT_TRUE(ac != nullptr);
+  EXPECT_EQ(ac->err, 0);
+  return std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac,
+                                                                 RedisContextDeleter());
+}
+
+// Stand in for a real disconnect. On a dropped connection hiredis frees the
+// raw context itself (__redisAsyncDisconnect -> __redisAsyncFree) and then
+// invokes the disconnect callback, which releases our unique_ptr. Do both, in
+// that order, so the test neither double-frees nor leaks the context.
+void SimulateHiredisDisconnect(RedisAsyncContext &ctx) {
+  redisAsyncContext *raw = ctx.GetRawRedisAsyncContext();
+  ctx.ResetRawRedisAsyncContext();
+  redisAsyncFree(raw);
+}
+
+}  // namespace
+
+// A command issued after the raw context is gone must report Disconnected
+// rather than dereferencing the released pointer.
+TEST_F(RedisAsyncContextTest, TestCommandAfterResetRawContextIsDisconnected) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  ASSERT_NE(ctx.GetRawRedisAsyncContext(), nullptr);
+
+  SimulateHiredisDisconnect(ctx);
+  ASSERT_EQ(ctx.GetRawRedisAsyncContext(), nullptr);
+
+  const char *argv[] = {"PING"};
+  const size_t argvlen[] = {4};
+  Status status = ctx.RedisAsyncCommandArgv(nullptr, nullptr, 1, argv, argvlen);
+  ASSERT_TRUE(status.IsDisconnected()) << status;
+}
+
+// Reset() must rebind the object to a fresh connection while keeping the
+// object's own address stable: in-flight RedisRequestContexts hold a raw
+// pointer to it.
+TEST_F(RedisAsyncContextTest, TestResetRebindsInPlace) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  const RedisAsyncContext *address_before = &ctx;
+
+  SimulateHiredisDisconnect(ctx);
+  ASSERT_EQ(ctx.GetRawRedisAsyncContext(), nullptr);
+
+  ctx.Reset(ConnectRaw(port));
+
+  // Don't compare against the pre-disconnect raw pointer: it has been freed,
+  // and the allocator is free to hand the same address back for the new one.
+  ASSERT_NE(ctx.GetRawRedisAsyncContext(), nullptr);
+  ASSERT_EQ(address_before, &ctx);
+
+  // The rebound context accepts commands again.
+  const char *argv[] = {"PING"};
+  const size_t argvlen[] = {4};
+  ASSERT_TRUE(ctx.RedisAsyncCommandArgv(nullptr, nullptr, 1, argv, argvlen).ok());
+}
+
+namespace {
+
+// Drop the async connection of `ctx` from the server side, the way a proxy or a
+// Redis restart would, and check that a command issued right after rides out
+// the in-place reconnect. CLIENT KILL spares the admin connection issuing it
+// (SKIPME defaults to yes), so the server itself stays up throughout.
+void ExpectReconnectAfterServerDropsConnection(const std::string &host) {
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  // The contract in redis_context.h: destroy the context only once its
+  // io_context has stopped running.
+  absl::Cleanup stop = [&] {
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(ctx->Connect(host, port, /*username=*/"", /*password=*/"").ok());
+
+  redisContext *admin = redisConnect("127.0.0.1", port);
+  ASSERT_TRUE(admin != nullptr && admin->err == 0);
+  auto *killed =
+      static_cast<redisReply *>(redisCommand(admin, "CLIENT KILL TYPE normal"));
+  ASSERT_TRUE(killed != nullptr);
+  EXPECT_EQ(killed->type, REDIS_REPLY_INTEGER);
+  EXPECT_GE(killed->integer, 1);
+  freeReplyObject(killed);
+  redisFree(admin);
+
+  std::promise<bool> done;
+  ctx->RunArgvAsync(
+      {"SET", "reconnect_probe", host},
+      [&done](const std::shared_ptr<CallbackReply> &reply) {
+        done.set_value(reply->ReadAsStatus().ok());
+      },
+      kNoTable);
+  auto future = done.get_future();
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+  EXPECT_TRUE(future.get());
+}
+
+}  // namespace
+
+// A literal IP is reconnected to directly, without a lookup.
+TEST_F(RedisAsyncContextTest, TestReconnectsToLiteralAddress) {
+  ExpectReconnectAfterServerDropsConnection("127.0.0.1");
+}
+
+// A host name is re-resolved on every attempt, asynchronously so the GCS
+// io_context is never blocked on DNS. This is the only test that takes the
+// async_resolve path: everything else connects to a literal IP.
+TEST_F(RedisAsyncContextTest, TestReconnectsThroughHostName) {
+  ExpectReconnectAfterServerDropsConnection("localhost");
+}
+
+// A server that answers -NOAUTH never ran the command: that is what commands
+// queued behind a rejected reconnect AUTH get back. Such replies must not spend
+// the retry budget while the grace period lasts. The budget is six attempts
+// over about 3.5s; the server keeps refusing for 5s, and the command must
+// still succeed once it is allowed through.
+TEST_F(RedisAsyncContextTest, TestNoAuthRepliesDoNotSpendRetries) {
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  redisContext *admin = redisConnect("127.0.0.1", port);
+  ASSERT_TRUE(admin != nullptr && admin->err == 0);
+  auto admin_command = [admin](const char *command, const char *arg = nullptr) {
+    auto *reply =
+        static_cast<redisReply *>(arg == nullptr ? redisCommand(admin, command)
+                                                 : redisCommand(admin, command, arg));
+    ASSERT_TRUE(reply != nullptr);
+    EXPECT_NE(reply->type, REDIS_REPLY_ERROR) << command << ": " << reply->str;
+    freeReplyObject(reply);
+  };
+  // Changing requirepass also drops the authentication of connections that are
+  // already open, the admin's included, so it authenticates before lifting it.
+  // The empty password goes in as an argument: hiredis does not parse quotes,
+  // so a literal "" in the format string would set a two-character password.
+  auto lift_password = [admin]() {
+    freeReplyObject(redisCommand(admin, "AUTH noauth_test_pw"));
+    freeReplyObject(redisCommand(admin, "CONFIG SET requirepass %s", ""));
+  };
+  absl::Cleanup stop = [&] {
+    // Lift the password for the tests that follow even if this one failed
+    // half way; harmless when it is already lifted.
+    lift_password();
+    redisFree(admin);
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(ctx->Connect("127.0.0.1", port, /*username=*/"", /*password=*/"").ok());
+
+  // Require a password the client does not have, then drop its connection:
+  // it reconnects without AUTH and every command comes back -NOAUTH.
+  admin_command("CONFIG SET requirepass noauth_test_pw");
+  admin_command("CLIENT KILL TYPE normal");
+
+  std::promise<bool> done;
+  ctx->RunArgvAsync(
+      {"SET", "noauth_probe", "1"},
+      [&done](const std::shared_ptr<CallbackReply> &reply) {
+        done.set_value(reply->ReadAsStatus().ok());
+      },
+      kNoTable);
+  auto future = done.get_future();
+  // Longer than the whole retry budget: without the refund the command would
+  // have run out of attempts and aborted the process by now.
+  EXPECT_EQ(future.wait_for(std::chrono::seconds(5)), std::future_status::timeout);
+
+  // Lift the password and drop the connection once more: lifting it does not
+  // authenticate a connection that is already open, and in production the
+  // rejected AUTH tears the connection down too, so the retry lands on a fresh
+  // one.
+  admin_command("AUTH noauth_test_pw");
+  admin_command("CONFIG SET requirepass %s", "");
+  admin_command("CLIENT KILL TYPE normal");
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+  EXPECT_TRUE(future.get());
+}
+
+// The outage deadline is stamped once, by whoever gets there first, and every
+// later caller in the same outage sees that same deadline regardless of the
+// grace it passes. Clearing it lets the next outage start fresh.
+TEST_F(RedisAsyncContextTest, TestOutageDeadlineIsSharedAndResettable) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  const absl::Time t0 = absl::FromUnixSeconds(1000);
+  const absl::Time first = ctx.OutageDeadline(t0, absl::Seconds(60));
+  EXPECT_EQ(first, t0 + absl::Seconds(60));
+  // A command that shows up 30s into the outage does not get its own 60s.
+  EXPECT_EQ(ctx.OutageDeadline(t0 + absl::Seconds(30), absl::Seconds(60)), first);
+
+  ctx.ClearOutage();
+  const absl::Time t1 = t0 + absl::Seconds(500);
+  EXPECT_EQ(ctx.OutageDeadline(t1, absl::Seconds(60)), t1 + absl::Seconds(60));
+}
+
+// A zero grace period stamps a deadline equal to now, so nothing is ever
+// strictly before it: no refunds, which is the pre-reconnect behaviour.
+TEST_F(RedisAsyncContextTest, TestOutageDeadlineZeroGraceRefundsNothing) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  const absl::Time now = absl::FromUnixSeconds(1000);
+  EXPECT_FALSE(now < ctx.OutageDeadline(now, absl::ZeroDuration()));
+}
+
+namespace {
+std::atomic<int> connect_callback_status{-1};
+void RecordConnectStatus(const redisAsyncContext * /*c*/, int status) {
+  connect_callback_status = status;
+}
+}  // namespace
+
+// The reconnect path registers the connect callback on the raw context before
+// Reset() publishes it, so no hiredis field changes after other threads can
+// see the context. hiredis arms its first write while that callback is being
+// registered, which goes nowhere because our event hooks do not exist yet;
+// Reset() has to arm it again or the connect is never noticed.
+TEST_F(RedisAsyncContextTest, TestResetArmsWriteForPreRegisteredConnectCallback) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+  SimulateHiredisDisconnect(ctx);
+
+  auto fresh = ConnectRaw(port);
+  fresh->data = &ctx;
+  connect_callback_status = -1;
+  ASSERT_EQ(redisAsyncSetConnectCallback(fresh.get(), RecordConnectStatus), REDIS_OK);
+  ctx.Reset(std::move(fresh));
+
+  for (int i = 0; i < 50 && connect_callback_status.load() == -1; ++i) {
+    local_io_service.run_for(std::chrono::milliseconds(100));
+    local_io_service.restart();
+  }
+  EXPECT_EQ(connect_callback_status.load(), REDIS_OK);
 }
 
 TEST_F(RedisAsyncContextTest, RejectedSubmissionDoesNotRecordRequestMetrics) {
