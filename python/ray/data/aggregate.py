@@ -101,21 +101,18 @@ class AggregateFn:
             as-is.
 
     Example:
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import AggregateFn
-
-            # A simple aggregator that counts how many rows there are per group
-            count_agg = AggregateFn(
-                init=lambda k: 0,
-                accumulate_row=lambda counter, row: counter + 1,
-                merge=lambda c1, c2: c1 + c2,
-                name="custom_count"
-            )
-            ds = ray.data.from_items([{"group": "A"}, {"group": "B"}, {"group": "A"}])
-            result = ds.groupby("group").aggregate(count_agg).take_all()
-            # result: [{'group': 'A', 'custom_count': 2}, {'group': 'B', 'custom_count': 1}]
+        >>> import ray
+        >>> from ray.data.aggregate import AggregateFn
+        >>> # A simple aggregator that counts how many rows there are per group
+        >>> count_agg = AggregateFn(
+        ...     init=lambda k: 0,
+        ...     accumulate_row=lambda counter, row: counter + 1,
+        ...     merge=lambda c1, c2: c1 + c2,
+        ...     name="custom_count"
+        ... )
+        >>> ds = ray.data.from_items([{"group": "A"}, {"group": "B"}, {"group": "A"}])
+        >>> result = ds.groupby("group").aggregate(count_agg).take_all()
+        >>> # result: [{'group': 'A', 'custom_count': 2}, {'group': 'B', 'custom_count': 1}]
     """
 
     def __init__(
@@ -445,28 +442,22 @@ class Count(VectorizedAggregateFnV2[int, int]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Count
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Counting all rows:
-            result = ds.aggregate(Count())
-            # result: {'count()': 100}
-
-
-            # Counting all rows per group:
-            result = ds.groupby("group_key").aggregate(Count(on="id")).take_all()
-            # result: [{'group_key': 0, 'count(id)': 34},
-            #          {'group_key': 1, 'count(id)': 33},
-            #          {'group_key': 2, 'count(id)': 33}]
+        >>> import ray
+        >>> from ray.data.aggregate import Count
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Counting all rows:
+        >>> result = ds.aggregate(Count())
+        >>> # result: {'count()': 100}
+        >>> # Counting all rows per group:
+        >>> result = ds.groupby("group_key").aggregate(Count(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'count(id)': 34},
+        >>> #          {'group_key': 1, 'count(id)': 33},
+        >>> #          {'group_key': 2, 'count(id)': 33}]
 
 
     Args:
@@ -524,27 +515,19 @@ class AsList(VectorizedAggregateFnV2[List, List]):
 
     Example:
 
-        .. testcode::
-            :skipif: True
-
-            # Skip testing b/c this example require proper ordering of the output
-            # to be robust and not flaky
-
-            import ray
-            from ray.data.aggregate import AsList
-
-            ds = ray.data.range(10)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Listing all elements per group:
-            result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
-            # result: [{'group_key': 0, 'list(id)': [0, 3, 6, 9]},
-            #          {'group_key': 1, 'list(id)': [1, 4, 7]},
-            #          {'group_key': 2, 'list(id)': [2, 5, 8]}
+        >>> import ray
+        >>> from ray.data.aggregate import AsList
+        >>> ds = ray.data.range(10)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Listing all elements per group:
+        >>> result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'list(id)': [0, 3, 6, 9]},
+        >>> #          {'group_key': 1, 'list(id)': [1, 4, 7]},
+        >>> #          {'group_key': 2, 'list(id)': [2, 5, 8]}
 
     Args:
         on: The name of the column to collect values from. Must be provided.
@@ -593,21 +576,17 @@ class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Sum
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Summing all rows per group:
-            result = ds.aggregate(Sum(on="id"))
-            # result: {'sum(id)': 4950}
+        >>> import ray
+        >>> from ray.data.aggregate import Sum
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Summing all rows per group:
+        >>> result = ds.aggregate(Sum(on="id"))
+        >>> # result: {'sum(id)': 4950}
 
     Args:
         on: The name of the numerical column to sum. Must be provided.
@@ -660,23 +639,19 @@ class Min(
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Min
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Finding the minimum value per group:
-            result = ds.groupby("group_key").aggregate(Min(on="id")).take_all()
-            # result: [{'group_key': 0, 'min(id)': 0},
-            #          {'group_key': 1, 'min(id)': 1},
-            #          {'group_key': 2, 'min(id)': 2}]
+        >>> import ray
+        >>> from ray.data.aggregate import Min
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Finding the minimum value per group:
+        >>> result = ds.groupby("group_key").aggregate(Min(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'min(id)': 0},
+        >>> #          {'group_key': 1, 'min(id)': 1},
+        >>> #          {'group_key': 2, 'min(id)': 2}]
 
     Args:
         on: The name of the column to find the minimum value from. Must be provided.
@@ -736,23 +711,19 @@ class Max(
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Max
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Finding the maximum value per group:
-            result = ds.groupby("group_key").aggregate(Max(on="id")).take_all()
-            # result: [{'group_key': 0, 'max(id)': ...},
-            #          {'group_key': 1, 'max(id)': ...},
-            #          {'group_key': 2, 'max(id)': ...}]
+        >>> import ray
+        >>> from ray.data.aggregate import Max
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Finding the maximum value per group:
+        >>> result = ds.groupby("group_key").aggregate(Max(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'max(id)': ...},
+        >>> #          {'group_key': 1, 'max(id)': ...},
+        >>> #          {'group_key': 2, 'max(id)': ...}]
 
     Args:
         on: The name of the column to find the maximum value from. Must be provided.
@@ -810,23 +781,19 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Mean
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Calculating the mean value per group:
-            result = ds.groupby("group_key").aggregate(Mean(on="id")).take_all()
-            # result: [{'group_key': 0, 'mean(id)': ...},
-            #          {'group_key': 1, 'mean(id)': ...},
-            #          {'group_key': 2, 'mean(id)': ...}]
+        >>> import ray
+        >>> from ray.data.aggregate import Mean
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Calculating the mean value per group:
+        >>> result = ds.groupby("group_key").aggregate(Mean(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'mean(id)': ...},
+        >>> #          {'group_key': 1, 'mean(id)': ...},
+        >>> #          {'group_key': 2, 'mean(id)': ...}]
 
     Args:
         on: The name of the numerical column to calculate the mean on. Must be provided.
@@ -904,23 +871,19 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Std
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Calculating the standard deviation per group:
-            result = ds.groupby("group_key").aggregate(Std(on="id")).take_all()
-            # result: [{'group_key': 0, 'std(id)': ...},
-            #          {'group_key': 1, 'std(id)': ...},
-            #          {'group_key': 2, 'std(id)': ...}]
+        >>> import ray
+        >>> from ray.data.aggregate import Std
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Calculating the standard deviation per group:
+        >>> result = ds.groupby("group_key").aggregate(Std(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'std(id)': ...},
+        >>> #          {'group_key': 1, 'std(id)': ...},
+        >>> #          {'group_key': 2, 'std(id)': ...}]
 
     Args:
         on: The name of the column to calculate standard deviation on.
@@ -1011,23 +974,19 @@ class AbsMax(
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import AbsMax
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Calculating the absolute maximum value per group:
-            result = ds.groupby("group_key").aggregate(AbsMax(on="id")).take_all()
-            # result: [{'group_key': 0, 'abs_max(id)': ...},
-            #          {'group_key': 1, 'abs_max(id)': ...},
-            #          {'group_key': 2, 'abs_max(id)': ...}]
+        >>> import ray
+        >>> from ray.data.aggregate import AbsMax
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Calculating the absolute maximum value per group:
+        >>> result = ds.groupby("group_key").aggregate(AbsMax(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'abs_max(id)': ...},
+        >>> #          {'group_key': 1, 'abs_max(id)': ...},
+        >>> #          {'group_key': 2, 'abs_max(id)': ...}]
 
     Args:
         on: The name of the column to calculate absolute maximum on. Must be provided.
@@ -1096,23 +1055,19 @@ class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Quantile
-
-            ds = ray.data.range(100)
-            # Schema: {'id': int64}
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-            # Schema: {'id': int64, 'group_key': int64}
-
-            # Calculating the 50th percentile (median) per group:
-            result = ds.groupby("group_key").aggregate(Quantile(q=0.5, on="id")).take_all()
-            # result: [{'group_key': 0, 'quantile(id)': ...},
-            #          {'group_key': 1, 'quantile(id)': ...},
-            #          {'group_key': 2, 'quantile(id)': ...}]
+        >>> import ray
+        >>> from ray.data.aggregate import Quantile
+        >>> ds = ray.data.range(100)
+        >>> # Schema: {'id': int64}
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Schema: {'id': int64, 'group_key': int64}
+        >>> # Calculating the 50th percentile (median) per group:
+        >>> result = ds.groupby("group_key").aggregate(Quantile(q=0.5, on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'quantile(id)': ...},
+        >>> #          {'group_key': 1, 'quantile(id)': ...},
+        >>> #          {'group_key': 2, 'quantile(id)': ...}]
 
     Args:
         on: The name of the column to calculate the quantile on. Must be provided.
@@ -1188,21 +1143,17 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import Unique
-
-            ds = ray.data.range(100)
-            ds = ds.add_column(
-                "group_key", lambda batch: batch["id"].astype("int64") % 3
-            )
-
-            # Calculating the unique values per group:
-            result = ds.groupby("group_key").aggregate(Unique(on="id")).take_all()
-            # result: [{'group_key': 0, 'unique(id)': ...},
-            #          {'group_key': 1, 'unique(id)': ...},
-            #          {'group_key': 2, 'unique(id)': ...}]
+        >>> import ray
+        >>> from ray.data.aggregate import Unique
+        >>> ds = ray.data.range(100)
+        >>> ds = ds.add_column(
+        ...     "group_key", lambda batch: batch["id"].astype("int64") % 3
+        ... )
+        >>> # Calculating the unique values per group:
+        >>> result = ds.groupby("group_key").aggregate(Unique(on="id")).take_all()
+        >>> # result: [{'group_key': 0, 'unique(id)': ...},
+        >>> #          {'group_key': 1, 'unique(id)': ...},
+        >>> #          {'group_key': 2, 'unique(id)': ...}]
 
     Args:
         on: The name of the column from which to collect unique values.
@@ -1336,29 +1287,24 @@ class CountDistinct(Unique):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import CountDistinct
-
-            # Create a dataset with repeated values
-            ds = ray.data.from_items([
-                {"category": "A"}, {"category": "B"}, {"category": "A"},
-                {"category": "C"}, {"category": "A"}, {"category": "B"}
-            ])
-
-            # Count distinct categories
-            result = ds.aggregate(CountDistinct(on="category"))
-            # result: {'count_distinct(category)': 3}
-
-            # Using with groupby
-            ds = ray.data.from_items([
-                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
-                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
-            ])
-            result = ds.groupby("group").aggregate(CountDistinct(on="category")).take_all()
-            # result: [{'group': 'X', 'count_distinct(category)': 2},
-            #          {'group': 'Y', 'count_distinct(category)': 1}]
+        >>> import ray
+        >>> from ray.data.aggregate import CountDistinct
+        >>> # Create a dataset with repeated values
+        >>> ds = ray.data.from_items([
+        ...     {"category": "A"}, {"category": "B"}, {"category": "A"},
+        ...     {"category": "C"}, {"category": "A"}, {"category": "B"}
+        ... ])
+        >>> # Count distinct categories
+        >>> result = ds.aggregate(CountDistinct(on="category"))
+        >>> # result: {'count_distinct(category)': 3}
+        >>> # Using with groupby
+        >>> ds = ray.data.from_items([
+        ...     {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+        ...     {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+        ... ])
+        >>> result = ds.groupby("group").aggregate(CountDistinct(on="category")).take_all()
+        >>> # result: [{'group': 'X', 'count_distinct(category)': 2},
+        >>> #          {'group': 'Y', 'count_distinct(category)': 1}]
 
     Args:
         on: The name of the column to count distinct values on.
@@ -1419,29 +1365,24 @@ class ValueCounter(AggregateFnV2):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import ValueCounter
-
-            # Create a dataset with repeated values
-            ds = ray.data.from_items([
-                {"category": "A"}, {"category": "B"}, {"category": "A"},
-                {"category": "C"}, {"category": "A"}, {"category": "B"}
-            ])
-
-            # Count occurrences of each category
-            result = ds.aggregate(ValueCounter(on="category"))
-            # result: {'value_counter(category)': {'values': ['A', 'B', 'C'], 'counts': [3, 2, 1]}}
-
-            # Using with groupby
-            ds = ray.data.from_items([
-                {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
-                {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
-            ])
-            result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
-            # result: [{'group': 'X', 'value_counter(category)': {'values': ['A', 'B'], 'counts': [1, 1]}},
-            #          {'group': 'Y', 'value_counter(category)': {'values': ['A'], 'counts': [2]}}]
+        >>> import ray
+        >>> from ray.data.aggregate import ValueCounter
+        >>> # Create a dataset with repeated values
+        >>> ds = ray.data.from_items([
+        ...     {"category": "A"}, {"category": "B"}, {"category": "A"},
+        ...     {"category": "C"}, {"category": "A"}, {"category": "B"}
+        ... ])
+        >>> # Count occurrences of each category
+        >>> result = ds.aggregate(ValueCounter(on="category"))
+        >>> # result: {'value_counter(category)': {'values': ['A', 'B', 'C'], 'counts': [3, 2, 1]}}
+        >>> # Using with groupby
+        >>> ds = ray.data.from_items([
+        ...     {"group": "X", "category": "A"}, {"group": "X", "category": "B"},
+        ...     {"group": "Y", "category": "A"}, {"group": "Y", "category": "A"}
+        ... ])
+        >>> result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+        >>> # result: [{'group': 'X', 'value_counter(category)': {'values': ['A', 'B'], 'counts': [1, 1]}},
+        >>> #          {'group': 'Y', 'value_counter(category)': {'values': ['A'], 'counts': [2]}}]
 
     Args:
         on: The name of the column to count values in. Must be provided.
@@ -1625,29 +1566,24 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import MissingValuePercentage
-
-            # Create a dataset with some missing values
-            ds = ray.data.from_items([
-                {"value": 1}, {"value": None}, {"value": 3},
-                {"value": None}, {"value": 5}
-            ])
-
-            # Calculate missing value percentage
-            result = ds.aggregate(MissingValuePercentage(on="value"))
-            # result: 40.0 (2 out of 5 values are missing)
-
-            # Using with groupby
-            ds = ray.data.from_items([
-                {"group": "A", "value": 1}, {"group": "A", "value": None},
-                {"group": "B", "value": 3}, {"group": "B", "value": None}
-            ])
-            result = ds.groupby("group").aggregate(MissingValuePercentage(on="value")).take_all()
-            # result: [{'group': 'A', 'missing_pct(value)': 50.0},
-            #          {'group': 'B', 'missing_pct(value)': 50.0}]
+        >>> import ray
+        >>> from ray.data.aggregate import MissingValuePercentage
+        >>> # Create a dataset with some missing values
+        >>> ds = ray.data.from_items([
+        ...     {"value": 1}, {"value": None}, {"value": 3},
+        ...     {"value": None}, {"value": 5}
+        ... ])
+        >>> # Calculate missing value percentage
+        >>> result = ds.aggregate(MissingValuePercentage(on="value"))
+        >>> # result: 40.0 (2 out of 5 values are missing)
+        >>> # Using with groupby
+        >>> ds = ray.data.from_items([
+        ...     {"group": "A", "value": 1}, {"group": "A", "value": None},
+        ...     {"group": "B", "value": 3}, {"group": "B", "value": None}
+        ... ])
+        >>> result = ds.groupby("group").aggregate(MissingValuePercentage(on="value")).take_all()
+        >>> # result: [{'group': 'A', 'missing_pct(value)': 50.0},
+        >>> #          {'group': 'B', 'missing_pct(value)': 50.0}]
 
     Args:
         on: The name of the column to calculate missing value percentage on.
@@ -1711,37 +1647,31 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import ZeroPercentage
-
-            # Create a dataset with some zero values
-            ds = ray.data.from_items([
-                {"value": 0}, {"value": 1}, {"value": 0},
-                {"value": 3}, {"value": 0}
-            ])
-
-            # Calculate zero value percentage
-            result = ds.aggregate(ZeroPercentage(on="value"))
-            # result: 60.0 (3 out of 5 values are zero)
-
-            # With null values and ignore_nulls=True (default)
-            ds = ray.data.from_items([
-                {"value": 0}, {"value": None}, {"value": 0},
-                {"value": 3}, {"value": 0}
-            ])
-            result = ds.aggregate(ZeroPercentage(on="value", ignore_nulls=True))
-            # result: 75.0 (3 out of 4 non-null values are zero)
-
-            # Using with groupby
-            ds = ray.data.from_items([
-                {"group": "A", "value": 0}, {"group": "A", "value": 1},
-                {"group": "B", "value": 0}, {"group": "B", "value": 0}
-            ])
-            result = ds.groupby("group").aggregate(ZeroPercentage(on="value")).take_all()
-            # result: [{'group': 'A', 'zero_pct(value)': 50.0},
-            #          {'group': 'B', 'zero_pct(value)': 100.0}]
+        >>> import ray
+        >>> from ray.data.aggregate import ZeroPercentage
+        >>> # Create a dataset with some zero values
+        >>> ds = ray.data.from_items([
+        ...     {"value": 0}, {"value": 1}, {"value": 0},
+        ...     {"value": 3}, {"value": 0}
+        ... ])
+        >>> # Calculate zero value percentage
+        >>> result = ds.aggregate(ZeroPercentage(on="value"))
+        >>> # result: 60.0 (3 out of 5 values are zero)
+        >>> # With null values and ignore_nulls=True (default)
+        >>> ds = ray.data.from_items([
+        ...     {"value": 0}, {"value": None}, {"value": 0},
+        ...     {"value": 3}, {"value": 0}
+        ... ])
+        >>> result = ds.aggregate(ZeroPercentage(on="value", ignore_nulls=True))
+        >>> # result: 75.0 (3 out of 4 non-null values are zero)
+        >>> # Using with groupby
+        >>> ds = ray.data.from_items([
+        ...     {"group": "A", "value": 0}, {"group": "A", "value": 1},
+        ...     {"group": "B", "value": 0}, {"group": "B", "value": 0}
+        ... ])
+        >>> result = ds.groupby("group").aggregate(ZeroPercentage(on="value")).take_all()
+        >>> # result: [{'group': 'A', 'zero_pct(value)': 50.0},
+        >>> #          {'group': 'B', 'zero_pct(value)': 100.0}]
 
     Args:
         on: The name of the column to calculate zero value percentage on.
@@ -1844,19 +1774,15 @@ class ApproximateQuantile(AggregateFnV2):
 
         Example:
 
-            .. testcode::
-
-                import ray
-                from ray.data.aggregate import ApproximateQuantile
-
-                # Create a dataset with some values
-                ds = ray.data.from_items(
-                    [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
-                    {"value": 80.0}, {"value": 100.0}]
-                )
-
-                result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
-                # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
+            >>> import ray
+            >>> from ray.data.aggregate import ApproximateQuantile
+            >>> # Create a dataset with some values
+            >>> ds = ray.data.from_items(
+            ...     [{"value": 20.0}, {"value": 40.0}, {"value": 60.0},
+            ...     {"value": 80.0}, {"value": 100.0}]
+            ... )
+            >>> result = ds.aggregate(ApproximateQuantile(on="value", quantiles=[0.1, 0.5, 0.9]))
+            >>> # Result: {'approx_quantile(value)': [20.0, 60.0, 100.0]}
 
 
         Args:
@@ -1938,18 +1864,14 @@ class ApproximateTopK(AggregateFnV2):
 
         Example:
 
-            .. testcode::
-
-                import ray
-                from ray.data.aggregate import ApproximateTopK
-
-                ds = ray.data.from_items([
-                    {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
-                    {"word": "cherry"}, {"word": "apple"}
-                ])
-
-                result = ds.aggregate(ApproximateTopK(on="word", k=2))
-                # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
+            >>> import ray
+            >>> from ray.data.aggregate import ApproximateTopK
+            >>> ds = ray.data.from_items([
+            ...     {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+            ...     {"word": "cherry"}, {"word": "apple"}
+            ... ])
+            >>> result = ds.aggregate(ApproximateTopK(on="word", k=2))
+            >>> # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
 
         Args:
             on: The name of the column to aggregate.
@@ -2041,18 +1963,14 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
 
     Example:
 
-        .. testcode::
-
-            import ray
-            from ray.data.aggregate import TopKUnique
-
-            ds = ray.data.from_items([
-                {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
-                {"word": "cherry"}, {"word": "apple"}, {"word": "banana"}
-            ])
-
-            result = ds.aggregate(TopKUnique(on="word", k=2))
-            # result: {'topk_unique(word)': ['apple', 'banana']}
+        >>> import ray
+        >>> from ray.data.aggregate import TopKUnique
+        >>> ds = ray.data.from_items([
+        ...     {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+        ...     {"word": "cherry"}, {"word": "apple"}, {"word": "banana"}
+        ... ])
+        >>> result = ds.aggregate(TopKUnique(on="word", k=2))
+        >>> # result: {'topk_unique(word)': ['apple', 'banana']}
 
     Args:
         on: The name of the column to aggregate.
