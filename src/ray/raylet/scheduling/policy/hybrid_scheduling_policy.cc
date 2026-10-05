@@ -93,7 +93,7 @@ scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
   return node_scores[node_index].first;
 }
 
-scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
+NodeSchedulingResult HybridSchedulingPolicy::ScheduleImpl(
     const ResourceRequest &resource_request,
     float spread_threshold,
     bool force_spillback,
@@ -159,28 +159,31 @@ scheduling::NodeID HybridSchedulingPolicy::ScheduleImpl(
   if (!available_nodes.empty()) {
     bool prioritize_preferred_node = !force_spillback && preferred_node_is_available;
     // First prioritize available nodes.
-    return GetBestNode(available_nodes,
-                       num_candidate_nodes,
-                       prioritize_preferred_node
-                           ? std::optional<scheduling::NodeID>(preferred_node_id)
-                           : std::optional<scheduling::NodeID>(),
-                       ComputeNodeScore(preferred_node_id, spread_threshold));
-  } else if (!feasible_and_unavailable_nodes.empty() && !require_node_available) {
+    return NodeSchedulingResult::Scheduled(GetBestNode(
+        available_nodes,
+        num_candidate_nodes,
+        prioritize_preferred_node ? std::optional<scheduling::NodeID>(preferred_node_id)
+                                  : std::optional<scheduling::NodeID>(),
+        ComputeNodeScore(preferred_node_id, spread_threshold)));
+  }
+  if (!feasible_and_unavailable_nodes.empty() && !require_node_available) {
     bool prioritize_preferred_node = !force_spillback && preferred_node_is_feasible;
     // If there are no available nodes, and the caller is okay with an
     // unavailable node, check the feasible nodes next.
-    return GetBestNode(feasible_and_unavailable_nodes,
-                       num_candidate_nodes,
-                       prioritize_preferred_node
-                           ? std::optional<scheduling::NodeID>(preferred_node_id)
-                           : std::optional<scheduling::NodeID>(),
-                       ComputeNodeScore(preferred_node_id, spread_threshold));
-  } else {
-    return scheduling::NodeID::Nil();
+    return NodeSchedulingResult::Scheduled(GetBestNode(
+        feasible_and_unavailable_nodes,
+        num_candidate_nodes,
+        prioritize_preferred_node ? std::optional<scheduling::NodeID>(preferred_node_id)
+                                  : std::optional<scheduling::NodeID>(),
+        ComputeNodeScore(preferred_node_id, spread_threshold)));
   }
+  if (!feasible_and_unavailable_nodes.empty()) {
+    return NodeSchedulingResult::NoNodeAvailable();
+  }
+  return NodeSchedulingResult::Infeasible();
 }
 
-scheduling::NodeID HybridSchedulingPolicy::Schedule(
+NodeSchedulingResult HybridSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
@@ -196,16 +199,16 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
   }
 
   // Try schedule on non-GPU nodes.
-  auto best_node_id = ScheduleImpl(resource_request,
-                                   options.spread_threshold_,
-                                   options.avoid_local_node_,
-                                   /*require_node_available*/ true,
-                                   NodeFilter::kNonGpu,
-                                   options.preferred_node_id_,
-                                   options.schedule_top_k_absolute_,
-                                   options.scheduler_top_k_fraction_);
-  if (!best_node_id.IsNil()) {
-    return best_node_id;
+  auto result = ScheduleImpl(resource_request,
+                             options.spread_threshold_,
+                             options.avoid_local_node_,
+                             /*require_node_available*/ true,
+                             NodeFilter::kNonGpu,
+                             options.preferred_node_id_,
+                             options.schedule_top_k_absolute_,
+                             options.scheduler_top_k_fraction_);
+  if (result.IsScheduled()) {
+    return result;
   }
 
   // If we cannot find any available node from non-gpu nodes, fallback to the original

@@ -17,31 +17,34 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-bool AffinityWithBundleSchedulingPolicy::IsNodeFeasibleAndAvailable(
+NodeSchedulingResult AffinityWithBundleSchedulingPolicy::TryNode(
     const scheduling::NodeID &node_id,
     const ResourceRequest &resource_request,
     bool avoid_gpu_nodes) {
-  if (!(nodes_.contains(node_id) && is_node_alive_(node_id) &&
-        nodes_.at(node_id).GetLocalView().IsFeasible(resource_request) &&
-        nodes_.at(node_id).GetLocalView().IsAvailable(resource_request))) {
-    return false;
+  const auto it = nodes_.find(node_id);
+  if (it == nodes_.end() || !is_node_alive_(node_id) ||
+      !it->second.GetLocalView().IsFeasible(resource_request)) {
+    return NodeSchedulingResult::Infeasible();
   }
-  if (!avoid_gpu_nodes) {
-    return true;
+  const auto &node_resources = it->second.GetLocalView();
+  if (avoid_gpu_nodes) {
+    // Avoiding gpu nodes is only needed for requests with no bundle id specified, so we
+    // only avoid the nodes with the PG's gpu wildcard resource.
+    // Now combine the right prefix and suffix for the gpu wildcard resource name.
+    std::string gpu_wildcard_resource_name =
+        "GPU_group_" +
+        GetGroupIDFromResource(resource_request.ResourceIds().begin()->Binary());
+    if (node_resources.total.Has(scheduling::ResourceID(gpu_wildcard_resource_name))) {
+      return NodeSchedulingResult::Infeasible();
+    }
   }
-
-  // Avoiding gpu nodes is only needed for requests with no bundle id specified, so we
-  // only avoid the nodes with the PG's gpu wildcard resource.
-  // Now combine the right prefix and suffix for the gpu wildcard resource name.
-  std::string gpu_wildcard_resource_name =
-      "GPU_group_" +
-      GetGroupIDFromResource(resource_request.ResourceIds().begin()->Binary());
-
-  const auto &node_total = nodes_.at(node_id).GetLocalView().total;
-  return !node_total.Has(scheduling::ResourceID(gpu_wildcard_resource_name));
+  if (!node_resources.IsAvailable(resource_request)) {
+    return NodeSchedulingResult::NoNodeAvailable();
+  }
+  return NodeSchedulingResult::Scheduled(node_id);
 }
 
-scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
+NodeSchedulingResult AffinityWithBundleSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::AFFINITY_WITH_BUNDLE);
 
@@ -49,13 +52,18 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
       dynamic_cast<const AffinityWithBundleSchedulingContext *>(
           options.scheduling_context_.get());
   const BundleID &bundle_id = bundle_scheduling_context->GetAffinityBundleID();
+  bool saw_feasible_but_unavailable = false;
   if (bundle_id.second != -1) {
     const auto &node_id_opt = bundle_location_index_.GetBundleLocation(bundle_id);
     if (node_id_opt) {
-      auto target_node_id = scheduling::NodeID(node_id_opt.value().Binary());
-      if (IsNodeFeasibleAndAvailable(
-              target_node_id, resource_request, /*avoid_gpu_nodes=*/false)) {
-        return target_node_id;
+      const auto result = TryNode(scheduling::NodeID(node_id_opt.value().Binary()),
+                                  resource_request,
+                                  /*avoid_gpu_nodes=*/false);
+      if (result.IsScheduled()) {
+        return result;
+      }
+      if (result.IsNoNodeAvailable()) {
+        saw_feasible_but_unavailable = true;
       }
     }
   } else {
@@ -65,24 +73,35 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
       // Find a target with gpu nodes avoided (if required).
       if (options.avoid_gpu_nodes_) {
         for (const auto &iter : *(bundle_locations_opt.value())) {
-          auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
-          if (IsNodeFeasibleAndAvailable(
-                  target_node_id, resource_request, /*avoid_gpu_nodes=*/true)) {
-            return target_node_id;
+          const auto result = TryNode(scheduling::NodeID(iter.second.first.Binary()),
+                                      resource_request,
+                                      /*avoid_gpu_nodes=*/true);
+          if (result.IsScheduled()) {
+            return result;
+          }
+          if (result.IsNoNodeAvailable()) {
+            saw_feasible_but_unavailable = true;
           }
         }
       }
       // Find a target from all nodes.
       for (const auto &iter : *(bundle_locations_opt.value())) {
-        auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
-        if (IsNodeFeasibleAndAvailable(
-                target_node_id, resource_request, /*avoid_gpu_nodes=*/false)) {
-          return target_node_id;
+        const auto result = TryNode(scheduling::NodeID(iter.second.first.Binary()),
+                                    resource_request,
+                                    /*avoid_gpu_nodes=*/false);
+        if (result.IsScheduled()) {
+          return result;
+        }
+        if (result.IsNoNodeAvailable()) {
+          saw_feasible_but_unavailable = true;
         }
       }
     }
   }
-  return scheduling::NodeID::Nil();
+  if (saw_feasible_but_unavailable) {
+    return NodeSchedulingResult::NoNodeAvailable();
+  }
+  return NodeSchedulingResult::Infeasible();
 }
 
 }  // namespace raylet_scheduling_policy
