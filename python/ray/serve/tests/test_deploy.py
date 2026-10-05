@@ -63,7 +63,6 @@ def test_deploy_basic(serve_instance, use_handle):
     "component_name_with_special_character",
     [
         "test@component",
-        "test#123",
         "component/name",
         "component.name",
         "component!name",

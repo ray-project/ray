@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve DeepSeek R1 with Ray Serve LLM on GKE via RayService, from GPU cluster setup to the first request."
+---
+
 (kuberay-rayservice-deepseek-example)=
 
 # Serve Deepseek R1 using Ray Serve LLM
@@ -129,7 +135,7 @@ status:
 ```{admonition} Note
 :class: note
 
-The model download and deployment will typically take 20-30 minutes. While this is in progress, use the Ray Dashboard (Step 4) Cluster tab to monitor  the download progress as disk fills up.
+The model download and deployment will typically take 20-30 minutes. While this is in progress, use the Ray dashboard (Step 4) Cluster tab to monitor the download progress as disk fills up.
 ```
 
 ## Step 4: View the Ray dashboard

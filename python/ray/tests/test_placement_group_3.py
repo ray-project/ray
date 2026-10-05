@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 from typing import List
@@ -453,7 +452,7 @@ def test_placement_group_gpu_assigned(ray_start_cluster):
 
     @ray.remote(num_gpus=1, num_cpus=0)
     def f():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        return tuple(ray.get_gpu_ids())
 
     pg1 = ray.util.placement_group([{"GPU": 1}])
     pg2 = ray.util.placement_group([{"GPU": 1}])
@@ -540,14 +539,10 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster):
     pg = placement_group(bundles)
     ray.get(pg.ready())
 
-    # Actor using 1 GPU that has a method to get
-    #  $CUDA_VISIBLE_DEVICES env variable.
     @ray.remote(num_gpus=1, num_cpus=1)
     class Actor:
         def get_gpu(self):
-            import os
-
-            return os.environ["CUDA_VISIBLE_DEVICES"]
+            return tuple(ray.get_gpu_ids())
 
     # Create actors out of order.
     actors = []

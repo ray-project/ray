@@ -386,7 +386,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         A new dictionary containing only the columns allowed by the schema.
     """
     filtered_data = {}
-    columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
+    columns = state_dataclass.list_columns(detail=detail)
     for col in columns:
         if col in data:
             filtered_data[col] = data[col]
@@ -1688,6 +1688,13 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     for src, keys in mappings:
         for key in keys:
             task_state[key] = src.get(key)
+
+    task_log_info = task_state["task_log_info"]
+    if task_log_info:
+        # The offsets are int64, which MessageToDict renders as strings.
+        for field in ("stdout_start", "stdout_end", "stderr_start", "stderr_end"):
+            if field in task_log_info:
+                task_log_info[field] = int(task_log_info[field])
 
     task_state["creation_time_ms"] = None
     task_state["start_time_ms"] = None

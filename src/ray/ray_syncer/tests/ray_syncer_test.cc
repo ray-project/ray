@@ -319,8 +319,9 @@ struct SyncerServerTest {
     auto server_address = BuildAddress("0.0.0.0", port);
     grpc::ServerBuilder builder;
     service = std::make_unique<RaySyncerService>(*syncer);
+    grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
+    builder.RegisterService(grpc_service.get());
     server = builder.BuildAndStart();
 
     for (size_t cid = 0; cid < reporters.size(); ++cid) {
@@ -459,6 +460,7 @@ struct SyncerServerTest {
     return iter->second;
   }
   std::unique_ptr<RaySyncerService> service;
+  std::unique_ptr<RaySyncerGrpcService> grpc_service;
   std::unique_ptr<RaySyncer> syncer;
   std::unique_ptr<grpc::Server> server;
   std::unique_ptr<std::thread> thread;
@@ -1104,6 +1106,7 @@ class SyncerAuthenticationTest : public ::testing::Test {
     std::unique_ptr<std::thread> thread;
     std::unique_ptr<RaySyncer> syncer;
     std::unique_ptr<RaySyncerService> service;
+    std::unique_ptr<RaySyncerGrpcService> grpc_service;
     std::unique_ptr<grpc::Server> server;
 
     AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
@@ -1121,11 +1124,12 @@ class SyncerAuthenticationTest : public ::testing::Test {
           *syncer,
           token.empty() ? nullptr
                         : std::make_shared<const ray::rpc::AuthenticationToken>(token));
+      grpc_service = std::make_unique<RaySyncerGrpcService>(*service);
 
       auto server_address = BuildAddress("0.0.0.0", port);
       grpc::ServerBuilder builder;
       builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-      builder.RegisterService(service.get());
+      builder.RegisterService(grpc_service.get());
       server = builder.BuildAndStart();
     }
 
@@ -1281,6 +1285,51 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
 
   // Verify connection is established
   ASSERT_GT(client.syncer->GetAllConnectedNodeIDs().size(), 0);
+}
+
+grpc::Status StartSyncWithMetadata(
+    const std::string &port,
+    const std::vector<std::pair<std::string, std::string>> &metadata) {
+  auto channel = grpc::CreateChannel(BuildAddress("127.0.0.1", port),
+                                     grpc::InsecureChannelCredentials());
+  auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  for (const auto &[key, value] : metadata) {
+    context.AddMetadata(key, value);
+  }
+  auto stream = stub->StartSync(&context);
+  stream->WritesDone();
+  return stream->Finish();
+}
+
+TEST_F(SyncerAuthenticationTest, MissingNodeIdAndTokenIsRejected) {
+  auto server = CreateAuthenticatedServer("37897", "server-token-12345");
+  ASSERT_EQ(StartSyncWithMetadata("37897", {}).error_code(),
+            grpc::StatusCode::UNAUTHENTICATED);
+}
+
+TEST_F(SyncerAuthenticationTest, MissingNodeIdWithValidTokenIsRejected) {
+  const std::string token = "server-token-12345";
+  auto server = CreateAuthenticatedServer("37898", token);
+  ASSERT_EQ(StartSyncWithMetadata(
+                "37898",
+                {{kAuthTokenKey,
+                  ray::rpc::AuthenticationToken(token).ToAuthorizationHeaderValue()}})
+                .error_code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_F(SyncerAuthenticationTest, MissingOrMalformedNodeIdWithoutAuthIsRejected) {
+  auto server = CreateAuthenticatedServer("37899", "");
+  ASSERT_EQ(StartSyncWithMetadata("37899", {}).error_code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_EQ(StartSyncWithMetadata("37899", {{"node_id", "not-hex"}}).error_code(),
+            grpc::StatusCode::INVALID_ARGUMENT);
+  ASSERT_EQ(
+      StartSyncWithMetadata("37899", {{"node_id", std::string(2 * NodeID::Size(), 'z')}})
+          .error_code(),
+      grpc::StatusCode::INVALID_ARGUMENT);
 }
 
 }  // namespace syncer

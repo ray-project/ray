@@ -67,13 +67,16 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     serve.multiplexed(...)(fn)``) is detected. This case can only be caught at
     runtime, since it is not visible on the class statically.
     """
-    # NOTE: the marker is checked with `is True` rather than truthiness because some
-    # objects (e.g. `DeploymentHandle`, whose `__getattr__` returns a handle for any
-    # name) return a truthy value for an arbitrary attribute. The decorator always
-    # sets the marker to the literal `True`, so this stays exact without false
-    # positives.
+    # Static: a plain `getattr` on a `DeploymentHandle` runs `__getattr__`, which
+    # eagerly initializes its Router. `is True` guards against truthy impostors.
     def _has_marker(obj: Any) -> bool:
-        return getattr(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False) is True
+        try:
+            return (
+                inspect.getattr_static(obj, MULTIPLEXED_FUNCTION_MARKER_ATTR, False)
+                is True
+            )
+        except Exception:
+            return False
 
     # Standalone function deployment decorated with `@serve.multiplexed`.
     if _has_marker(callable_obj):
@@ -88,7 +91,13 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
 
     # An instance that stored a multiplexed wrapper as an instance attribute.
     if not isinstance(callable_obj, type):
-        for attr in getattr(callable_obj, "__dict__", {}).values():
+        # `getattr` falls back to `__getattr__` on a `__slots__` class;
+        # `getattr_static` returns the descriptor rather than the instance mapping.
+        try:
+            instance_vars = object.__getattribute__(callable_obj, "__dict__")
+        except AttributeError:
+            instance_vars = {}
+        for attr in instance_vars.values():
             if _has_marker(attr):
                 return True
 
@@ -792,9 +801,12 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
         if request_metadata._by_reference and obj.by_reference:
-            # If sending requests by reference, launch async task to
-            # convert DeploymentResponse to an object ref
-            return asyncio.create_task(obj._to_object_ref())
+
+            # Peek, then wait for presence only. Downstream fetches the value.
+            async def to_ready_ref():
+                return await (await obj._to_object_ref())._ready()
+
+            return asyncio.create_task(to_ready_ref())
         else:
             # Otherwise, resolve DeploymentResponse directly to result
             return asyncio.create_task(await_deployment_response(obj))

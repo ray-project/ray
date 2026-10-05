@@ -2,16 +2,23 @@
 
 import gc
 import logging
+import os
 import sys
 import time
 
 import numpy as np
 import pytest
 
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import client_test_enabled
 from ray._private.worker import _wait_generators_bulk
-from ray.exceptions import ObjectRefStreamEndOfStreamError, RayTaskError
+from ray.exceptions import (
+    ActorDiedError,
+    ObjectRefStreamEndOfStreamError,
+    RayTaskError,
+    TaskCancelledError,
+    WorkerCrashedError,
+)
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -312,6 +319,14 @@ def test__wait_generators_bulk_after_partial_eof(ray_start_regular):
         with pytest.raises(ObjectRefStreamEndOfStreamError):
             ray.get(ref)
 
+    ready_again = _wait_generators_bulk([(one_item, [False])], timeout=1)
+    assert len(ready_again) == 1
+    _, refs_again = ready_again[0]
+    assert len(refs_again) == 1
+    assert refs_again[0] not in refs
+    with pytest.raises(ObjectRefStreamEndOfStreamError):
+        ray.get(refs_again[0])
+
 
 @pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
 def test__wait_generators_bulk_after_partial_error(ray_start_regular):
@@ -334,6 +349,174 @@ def test__wait_generators_bulk_after_partial_error(ray_start_regular):
     assert isinstance(exc_info.value.as_instanceof_cause(), ValueError)
     with pytest.raises(ObjectRefStreamEndOfStreamError):
         ray.get(refs[2])
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__get_next_ref_n_cancelled_surfaces_task_cancelled(ray_start_regular):
+    """A ref peeked in advance that the generator will never produce because the
+    task was cancelled must surface TaskCancelledError -- the same error as the
+    generator completion ref -- not a generic end-of-stream."""
+
+    @ray.remote(num_returns="streaming")
+    def gen():
+        # Block forever so the value at stream position 0 is never produced.
+        time.sleep(1000)
+        yield "value"
+
+    g = gen.remote()
+
+    # Eagerly peek the value ref before the task is cancelled: EOF is not marked
+    # yet, so the peeked ref is only materialized once the stream ends.
+    [value_ref] = g._get_next_ref_n(1)
+
+    ray.cancel(g)
+
+    with pytest.raises(TaskCancelledError):
+        ray.get(value_ref, timeout=30)
+    # Oracle: the peeked ref surfaces the same error as the completion ref.
+    with pytest.raises(TaskCancelledError):
+        ray.get(g.completed(), timeout=30)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__get_next_ref_n_consumed_value_not_repeated_after_cancel(ray_start_regular):
+    """If cancellation collides with an already-produced value ref, consuming the
+    peeked value must still advance the bulk cursor past that ref."""
+
+    @ray.remote
+    class Signal:
+        def __init__(self):
+            self.ready = False
+
+        def wait(self):
+            while not self.ready:
+                time.sleep(0.01)
+
+        def send(self):
+            self.ready = True
+
+    @ray.remote(num_returns="streaming")
+    def gen(signal):
+        yield 1
+        ray.get(signal.wait.remote())
+        yield 2
+
+    signal = Signal.remote()
+    g = gen.remote(signal)
+
+    [first_ref] = g._get_next_ref_n(1)
+    assert ray.get(first_ref) == 1
+
+    ray.cancel(g)
+    with pytest.raises(TaskCancelledError):
+        ray.get(g.completed(), timeout=30)
+
+    g._consume_next_ref_n(1)
+    [next_ref] = g._get_next_ref_n(1)
+    assert next_ref != first_ref
+    with pytest.raises(TaskCancelledError):
+        ray.get(next_ref, timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="sys.exit() actor crash flaky on Windows"
+)
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__get_next_ref_n_actor_crash_surfaces_actor_died(ray_start_regular):
+    """A ref peeked in advance that a streaming generator method will never
+    produce because its actor died must surface ActorDiedError, matching the
+    generator completion ref."""
+
+    @ray.remote
+    class Crasher:
+        @ray.method(num_returns="streaming")
+        def gen(self):
+            # Die before producing the value at stream position 0.
+            sys.exit(0)
+            yield "value"
+
+    actor = Crasher.remote()
+    g = actor.gen.remote()
+
+    [value_ref] = g._get_next_ref_n(1)
+
+    with pytest.raises(ActorDiedError):
+        ray.get(value_ref, timeout=30)
+    # Oracle: the peeked ref surfaces the same error as the completion ref.
+    with pytest.raises(ActorDiedError):
+        ray.get(g.completed(), timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="sys.exit() actor crash flaky on Windows"
+)
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__get_next_ref_n_actor_crash_after_yield_surfaces_actor_died(ray_start_regular):
+    """After one successful yield, an actor that dies before producing the next
+    value must leave the produced ref retrievable while the peeked next ref
+    surfaces ActorDiedError (the EOF marker lands on an already-produced index)."""
+
+    @ray.remote
+    class Crasher:
+        @ray.method(num_returns="streaming")
+        def gen(self, signal):
+            yield "value"
+            # Block until the consumer has taken the first value, then die
+            # before producing the value at stream position 1. SignalActor is
+            # async so send() runs concurrently with this wait().
+            ray.get(signal.wait.remote())
+            sys.exit(0)
+            yield "never"
+
+    signal = SignalActor.remote()
+    actor = Crasher.remote()
+    g = actor.gen.remote(signal)
+
+    # Peek the produced value ref and the not-yet-produced next ref together.
+    value_ref, next_ref = g._get_next_ref_n(2)
+
+    # The first yield completed and stays retrievable.
+    assert ray.get(value_ref, timeout=30) == "value"
+
+    # Let the actor die now that the first value has been consumed.
+    signal.send.remote()
+
+    # The second position is never produced because the actor died.
+    with pytest.raises(ActorDiedError):
+        ray.get(next_ref, timeout=30)
+    # Oracle: the peeked ref surfaces the same error as the completion ref.
+    with pytest.raises(ActorDiedError):
+        ray.get(g.completed(), timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="os._exit() worker crash flaky on Windows"
+)
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test__get_next_ref_n_worker_crash_surfaces_worker_crashed(ray_start_regular):
+    """A ref peeked in advance that a streaming generator task will never produce
+    because its worker crashed must surface WorkerCrashedError, matching the
+    generator completion ref. This exercises a non-actor terminal error type
+    (WORKER_DIED) on the propagation path, complementing the actor-death and
+    cancellation cases."""
+
+    # max_retries=0 so the worker crash fails the task immediately instead of
+    # being retried, giving a deterministic terminal error.
+    @ray.remote(num_returns="streaming", max_retries=0)
+    def gen():
+        # Crash the worker before producing the value at stream position 0.
+        os._exit(1)
+        yield "value"
+
+    g = gen.remote()
+
+    [value_ref] = g._get_next_ref_n(1)
+
+    with pytest.raises(WorkerCrashedError):
+        ray.get(value_ref, timeout=30)
+    # Oracle: the peeked ref surfaces the same error as the completion ref.
+    with pytest.raises(WorkerCrashedError):
+        ray.get(g.completed(), timeout=30)
 
 
 def _assert_no_owned_refs_leak():

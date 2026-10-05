@@ -4,19 +4,26 @@ requires a shared Serve instance.
 """
 
 import asyncio
+import json
 import logging
 import os
-import random
+import shutil
 import socket
 import sys
 import time
+from typing import List
 
 import httpx
 import pytest
+from fastapi import FastAPI, WebSocket
+from opentelemetry import trace
+from starlette.requests import Request
+from websockets.sync.client import connect
 
 import ray
 import ray._private.state as state
 from ray import serve
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
@@ -29,7 +36,12 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.test_utils import expected_proxy_actors
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    get_application_url,
+    get_application_urls,
+)
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
@@ -38,12 +50,9 @@ from ray.serve.config import (
     ProxyLocation,
 )
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema, TracingConfig
+from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
-
-
-def _get_random_port() -> int:
-    return random.randint(10000, 65535)
 
 
 @pytest.fixture
@@ -51,7 +60,7 @@ def ray_cluster():
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
     cluster = Cluster()
-    yield Cluster()
+    yield cluster
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
@@ -103,7 +112,7 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
     assert handle.remote().result() == "from_f"
-    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get(get_application_url("HTTP", app_name="f")).text == "from_f"
 
     serve.context._global_client = None
     ray.shutdown()
@@ -118,8 +127,8 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
     assert handle.remote().result() == "from_g"
-    assert httpx.get("http://localhost:8000/say_hi_g").text == "from_g"
-    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get(get_application_url("HTTP", app_name="g")).text == "from_g"
+    assert httpx.get(get_application_url("HTTP", app_name="f")).text == "from_f"
 
 
 def test_connect(ray_shutdown):
@@ -270,7 +279,7 @@ def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
-    port = _get_random_port()
+    port = find_free_port()
     # `middlewares` in HTTPOptions has been removed; passing it raises an error.
     # Use Serve's FastAPI integration to configure middlewares instead.
     with pytest.raises(ValueError, match="`middlewares` in HTTPOptions"):
@@ -284,26 +293,88 @@ def test_middleware(ray_shutdown):
         )
 
 
+def _all_ingress_urls(**kwargs) -> List[str]:
+    """URLs Serve listens on, without root_path or the route prefix.
+
+    Includes the internal targets (e.g. replicas behind HAProxy) so a broken
+    target can't hide behind HAProxy's fallback to the Serve proxy.
+    """
+    urls = get_application_urls(exclude_route_prefix=True, **kwargs)
+    urls += get_application_urls(
+        exclude_route_prefix=True, from_proxy_manager=True, **kwargs
+    )
+    return sorted(set(urls))
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_http_root_path(ray_shutdown):
+@pytest.mark.parametrize("root_path", ["", "/serve", "/serve/"])
+def test_http_root_path(ray_shutdown, root_path: str):
+    """`root_path` follows the ASGI spec.
+
+    Serve sits behind a proxy that strips `root_path`, so requests arrive without it.
+    The app sees the full path in `scope["path"]` and its mount point (`root_path + route_prefix`)
+    in `scope["root_path"]`. Like uvicorn, Serve uses `root_path` as-is, so a value like `"/serve/"`
+    results in `"//"` in the path.
+
+    By default, this runs against the HTTP proxy. With `RAY_SERVE_ENABLE_HA_PROXY=1`, it also runs
+    against HAProxy and direct ingress.
+    """
+    app = FastAPI()
+
+    @app.get("/items/{item_id}")
+    def get_item(item_id: str, request: Request):
+        return {
+            "path": request.scope["path"],
+            "raw_path": request.scope["raw_path"].decode(),
+            "root_path": request.scope["root_path"],
+            "url_for": request.url_for("get_item", item_id=item_id).path,
+        }
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_json(
+            {"path": websocket.scope["path"], "root_path": websocket.scope["root_path"]}
+        )
+        await websocket.close()
+
     @serve.deployment
-    def hello():
-        return "hello"
+    @serve.ingress(app)
+    class Ingress:
+        pass
 
-    port = _get_random_port()
-    root_path = "/serve"
-    serve.start(http_options=dict(root_path=root_path, port=port))
-    serve.run(hello.bind(), route_prefix="/hello")
+    serve.start(http_options={"root_path": root_path})
+    serve.run(Ingress.bind(), route_prefix="/hello")
+    mount = f"{root_path}/hello"
 
-    # check routing works as expected
-    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/hello")
-    assert resp.status_code == 200
-    assert resp.text == "hello"
+    for url in _all_ingress_urls():
+        # The app sees the full path; raw_path keeps the percent-encoding.
+        resp = httpx.get(f"{url}/hello/items/a%20b")
+        assert resp.status_code == 200, (url, resp.text)
+        assert resp.json() == {
+            "path": f"{mount}/items/a b",
+            "raw_path": f"{mount}/items/a%20b",
+            "root_path": mount,
+            "url_for": f"{mount}/items/a b",
+        }, url
 
-    # check advertized routes are prefixed correctly
-    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
-    assert resp.status_code == 200
-    assert resp.json() == {"/hello": "default"}
+        # A request that includes root_path is outside the mount.
+        if root_path:
+            resp = httpx.get(f"{url}{root_path}/hello/items/1")
+            assert resp.status_code == 404, url
+
+        # Serve's own endpoints are served without root_path.
+        assert httpx.get(f"{url}/-/healthz").status_code == 200, url
+        resp = httpx.get(f"{url}/-/routes")
+        assert resp.status_code == 200, url
+        assert resp.json() == {"/hello": "default"}, url
+
+    for url in _all_ingress_urls(is_websocket=True):
+        with connect(f"{url}/hello/ws") as websocket:
+            assert json.loads(websocket.recv()) == {
+                "path": f"{mount}/ws",
+                "root_path": mount,
+            }, url
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -349,13 +420,13 @@ def test_no_http(ray_shutdown):
 
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
+    head_node = cluster.add_node(num_cpus=4, dashboard_port=find_free_port())
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
     assert len(ray.nodes()) == 2
 
-    serve.start(proxy_location="HeadOnly", http_options={"port": _get_random_port()})
+    serve.start(proxy_location="HeadOnly", http_options={"port": find_free_port()})
 
     # Controller and proxy on the head node. Under HAProxy the proxy is the
     # HAProxyManager alongside the fallback ProxyActor, which registers asynchronously.
@@ -423,7 +494,7 @@ def test_serve_start_different_http_checkpoint_options_warning(
     serve.start()
 
     # create a different config
-    test_http = dict(host="127.1.1.8", port=_get_random_port())
+    test_http = dict(host="127.1.1.8", port=find_free_port())
 
     serve.start(http_options=test_http)
 
@@ -583,7 +654,8 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
 
     # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/").text == "May I take your order?"
+        lambda: httpx.get(get_application_url("HTTP")).text == "May I take your order?",
+        timeout=60,
     )
 
     serve.shutdown()
@@ -701,6 +773,52 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     serve.start(**options)
     client = _get_global_client()
     assert client.get_serve_details()["proxy_location"] == expected
+
+
+def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
+    """Tracing config passed to ``serve.start()`` reaches the controller and is
+    applied to replicas (the imperative flow).
+
+    Verifies that the controller stores the config and that, after a request,
+    a tracing span file is produced for the replica -- proving the config
+    propagated from serve.start() through the controller to the replica.
+
+    Note: proxy tracing is not wired via this path (proxies start before the
+    controller is queryable); that is handled separately via long poll.
+    """
+    tracing_config = TracingConfig(enabled=True, sampling_ratio=1.0)
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=tracing_config,
+    )
+
+    # The controller received the tracing config from serve.start().
+    client = _get_global_client()
+    assert ray.get(client._controller.get_tracing_config.remote()) == tracing_config
+
+    @serve.deployment
+    class Model:
+        def __call__(self, request):
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ):
+                return "hello"
+
+    serve.run(Model.bind())
+
+    url = get_application_url("HTTP")
+    assert httpx.post(f"{url}/").text == "hello"
+
+    serve.shutdown()
+
+    # Tracing was set up on the replica, so a replica span file exists.
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+    span_files = os.listdir(spans_dir)
+    try:
+        assert any("replica" in f for f in span_files), span_files
+    finally:
+        shutil.rmtree(spans_dir, ignore_errors=True)
 
 
 @pytest.mark.parametrize(

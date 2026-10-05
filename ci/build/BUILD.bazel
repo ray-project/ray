@@ -1,3 +1,4 @@
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 py_library(
@@ -69,4 +70,20 @@ py_test(
         "team:ci",
     ],
     deps = [":build_image"],
+)
+
+py_test(
+    name = "bundled_dependency_versions_test",
+    srcs = ["bundled_dependency_versions_test.py"],
+    data = [
+        "//:python/setup.py",
+        "//java:dependencies.bzl",
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+    ],
 )

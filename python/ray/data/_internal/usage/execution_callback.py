@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.usage import collector, util
 from ray.data._internal.usage.collector import (
+    ExecutionId,
     OpConfig,
     PipelinePerf,
     UsageInfo,
@@ -37,7 +38,7 @@ class UsageCallback(ExecutionCallback):
     def __init__(self, logical_plan: "LogicalPlan"):
         self._logical_plan = logical_plan
         # Globally unique per-execution id, used for deduplicating executions for usage collection
-        self._execution_id = uuid.uuid4().hex
+        self._execution_id: ExecutionId = uuid.uuid4().hex
         # id(logical_op) -> usage_id, built while assembling the payload and used
         # to label operators so they reference the workload payload.
         self._usage_id_map: Dict[int, str] = {}

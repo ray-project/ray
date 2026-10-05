@@ -16,6 +16,7 @@ from ray._common.test_utils import run_string_as_driver
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
+    ArrowRow,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
@@ -229,7 +230,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds = ray.data.range(10).map_batches(fn)
     ds = ds.materialize()
-    block = ray.get(ds.get_internal_block_refs()[0])
+    block = ray.get(next(ds.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_dict"].iloc[0] == {"data": 0}
@@ -241,7 +242,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds2 = ray.data.range(10).map_batches(fn2)
     ds2 = ds2.materialize()
-    block = ray.get(ds2.get_internal_block_refs()[0])
+    block = ray.get(next(ds2.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_none"].iloc[0] is None
@@ -347,6 +348,51 @@ def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
     assert roundtripped.to_pydict() == {"x": expected_values}
 
 
+def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
+    # A block whose column is entirely null is typed pa.null(). Keeping that as
+    # null[pyarrow] makes the column unusable in pandas: fillna and masked
+    # assignment cannot box a non-null value into Arrow's null type. Fall back to
+    # pandas' default conversion instead, which still round-trips to pa.null().
+    table = pa.table({"x": pa.array([None, None], type=pa.null())})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(df.dtypes["x"], pd.ArrowDtype)
+    assert df["x"].tolist() == [None, None]
+
+    # Untouched, the column round-trips back to Arrow's null type.
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+    assert roundtripped.schema.field("x").type == pa.null()
+    assert roundtripped.to_pydict() == {"x": [None, None]}
+
+    # Filling the nulls now works and yields the fill value's type.
+    filled = BlockAccessor.for_block(df.fillna({"x": 3.0})).to_arrow()
+    assert filled.to_pydict() == {"x": [3.0, 3.0]}
+
+
+def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
+    # One-row blocks type a column with no values as pa.null(), so a pandas UDF
+    # calling fillna used to fail with ArrowInvalid on whichever block happened
+    # to hold only nulls for that column.
+    ds = ray.data.from_items(
+        [
+            {"a": 1.0, "b": 2.0},
+            {"a": 3.0, "b": None},
+            {"a": None, "b": 4.0},
+        ],
+        override_num_blocks=3,
+    )
+
+    filled = ds.map_batches(
+        lambda df: df.fillna({"a": 0.0, "b": 0.0}), batch_format="pandas"
+    )
+
+    assert sorted(filled.take_all(), key=lambda row: row["a"]) == [
+        {"a": 0.0, "b": 4.0},
+        {"a": 1.0, "b": 2.0},
+        {"a": 3.0, "b": 0.0},
+    ]
+
+
 def test_arrow_block_to_pandas_opt_out_numpy_dtypes(restore_data_context):
     # https://github.com/ray-project/ray/issues/64765: opting out restores the
     # pre-2.56 numpy conversion, so standard Arrow types no longer become
@@ -426,6 +472,47 @@ def test_to_pandas_does_not_downcast_out_of_range_floats(
     assert len(df) == 2
     assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
     assert float_value in df["v"].dropna().tolist()
+
+
+@pytest.fixture
+def arrow_row():
+    table = pa.table({"a": [1, 2, 3], "b": [10.5, 20.5, 30.5]})
+    return ArrowRow(table, 1)
+
+
+@pytest.mark.parametrize(
+    "key", ["missing", ["missing"], ["a", "missing"], ["missing", "a"]]
+)
+def test_arrow_row_missing_column_raises_key_error(arrow_row, key):
+    """A missing column must raise regardless of where it appears in the key."""
+    with pytest.raises(KeyError):
+        arrow_row[key]
+
+
+def test_arrow_row_get_returns_default_for_missing_column(arrow_row):
+    """``Mapping.get`` can only return the default if ``__getitem__`` raises."""
+    assert arrow_row.get("missing") is None
+    assert arrow_row.get("missing", 0) == 0
+    assert arrow_row.get("a") == 2
+
+
+def test_arrow_row_empty_key_list(arrow_row):
+    """Selecting no columns yields no values, rather than raising."""
+    assert arrow_row[[]] == ()
+
+
+def test_arrow_row_unwraps_scalars_but_not_tensors():
+    """Scalars come back as Python natives; tensor values stay arrays."""
+    from ray.data.extensions import ArrowTensorArray
+
+    tensors = np.arange(3).reshape(3, 1)
+    table = pa.table(
+        {"a": [1, 2, 3], "emb": ArrowTensorArray.from_numpy(tensors)},
+    )
+    row = ArrowRow(table, 1)
+
+    assert type(row["a"]) is int
+    np.testing.assert_array_equal(row["emb"], np.array([1]))
 
 
 if __name__ == "__main__":

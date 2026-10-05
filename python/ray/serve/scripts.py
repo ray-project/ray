@@ -131,15 +131,6 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
-def warn_if_agent_address_set():
-    if "RAY_AGENT_ADDRESS" in os.environ:
-        cli_logger.warning(
-            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
-            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
-            "ignored."
-        )
-
-
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
     context_settings=dict(help_option_names=["--help", "-h"]),
@@ -193,6 +184,13 @@ def cli():
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
+@click.option(
+    "--grpc-enable-reflection/--grpc-disable-reflection",
+    default=True,
+    required=False,
+    help="Enable the gRPC server reflection protocol on the gRPC server. "
+    "Defaults to enabled.",
+)
 def start(
     address,
     http_host,
@@ -200,6 +198,7 @@ def start(
     proxy_location,
     grpc_port,
     grpc_servicer_functions,
+    grpc_enable_reflection,
 ):
     ray.init(
         address=address,
@@ -214,6 +213,7 @@ def start(
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
+            enable_reflection=grpc_enable_reflection,
         ),
     )
 
@@ -622,8 +622,6 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
-    warn_if_agent_address_set()
-
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -696,8 +694,6 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
-    warn_if_agent_address_set()
-
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -744,8 +740,6 @@ def status(address: str, name: Optional[str]):
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
-    warn_if_agent_address_set()
-
     # check if the address is a valid Ray address
     try:
         # see what applications are deployed on the cluster
@@ -882,11 +876,19 @@ def controller_health(address: str, output_json: bool):
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
+@click.option(
+    "--grpc-enable-reflection/--grpc-disable-reflection",
+    default=True,
+    required=False,
+    help="Enable the gRPC server reflection protocol on the gRPC server. "
+    "Defaults to enabled.",
+)
 def build(
     import_paths: Tuple[str],
     app_dir: str,
     output_path: Optional[str],
     grpc_servicer_functions: List[str],
+    grpc_enable_reflection: bool,
 ):
     sys.path.insert(0, app_dir)
 
@@ -926,6 +928,7 @@ def build(
         "grpc_options": {
             "port": DEFAULT_GRPC_PORT,
             "grpc_servicer_functions": grpc_servicer_functions,
+            "enable_reflection": grpc_enable_reflection,
         },
         "logging_config": LoggingConfig().model_dump(),
         "applications": app_configs,

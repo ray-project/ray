@@ -19,6 +19,8 @@ development
 ci
 dependency-management
 docs
+publishing-examples
+publishing-examples-legacy
 writing-style
 writing-code-snippets
 fake-autoscaler
@@ -289,12 +291,6 @@ In addition, there are other formatting and semantic checkers, such as the follo
 ```shell
 cd python
 python setup.py check --restructuredtext --strict --metadata
-```
-
-* Python and docs banned words check
-
-```shell
-./ci/lint/check-banned-words.sh
 ```
 
 * Bazel format:

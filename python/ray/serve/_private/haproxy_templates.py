@@ -140,6 +140,13 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if has_ingress_request_router %}
+    # Direct-streaming requests first pass through the ingress request router,
+    # then are forwarded to a selected replica. Generate a request ID here when
+    # the client did not provide one so both hops use the same lifecycle ID.
+    unique-id-format %[uuid]
+    http-request set-header x-request-id %[unique-id] if !{ req.hdr(x-request-id) -m found }
+    {%- endif %}
     {%- if config.metrics_enabled %}
     log global
     # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
@@ -155,16 +162,7 @@ frontend http_frontend
     # metrics are also enabled, the router-specific fields are appended to the same
     # line.
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
-    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
-    {%- endif %}
-    {%- if config.root_path %}
-    # Strip the configured global root_path so the health/routes endpoints, the
-    # per-backend path ACLs, and the path forwarded to replicas are all
-    # root_path-agnostic. Mirrors the native Serve proxy, which mounts the app
-    # under root_path. An exact root_path match becomes "/", and paths outside
-    # root_path are left unchanged.
-    http-request set-path / if { path {{ config.root_path }} }
-    http-request set-path %[path,regsub(^{{ config.root_path }}/,/)] if { path_beg {{ config.root_path }}/ }
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)] router_status=%[var(txn.ingress_request_router_status)] fallback=%[var(txn.ingress_request_router_fallback)]{% endif %}]"
     {%- endif %}
 {{ healthz_rules|safe }}
     # Routes endpoint
@@ -206,24 +204,35 @@ frontend http_frontend
     # backend. Backends are sorted longest-prefix-first, and the !found guard
     # ensures only the longest match wins.
     {%- for backend in backends %}
-    {%- if backend.ingress_request_router_servers %}
+    {%- if backend.ingress_request_router_servers or backend.ingress_router_fallback %}
     http-request set-var(txn.ingress_request_router_app) str({{ backend.name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.ingress_request_router_app) -m found }
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    # Remove client-supplied values from the router-owned header namespace.
+    # Lua then applies trusted metadata returned by /internal/route.
+    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
+    {%- for header in multiplexed_model_id_headers %}
+    http-request del-header {{ header }} if has_ingress_request_router_app
+    {%- endfor %}
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
-    # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
-    # per app so the 503 below fails loud for apps with none.
+    # Fall back to primary replicas when the ingress router fails.
+    {%- for backend in backends %}
+    {%- if backend.ingress_router_fallback %}
+    http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m found }
+    http-request set-var(txn.ingress_request_router_fallback) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m found }
+    {%- endif %}
+    {%- endfor %}
+    # A pin-miss can also use the fallback Serve proxy.
     {%- for backend in backends %}
     {%- if backend.ingress_request_router_servers and backend.fallback_server %}
     http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
     {%- endif %}
     {%- endfor %}
-    # 503 on any router failure except a recoverable pin-miss. Must precede the
-    # use_backend rules so failures never fall through to the primary backend.
+    # Return 503 on unrecoverable router failures before the use_backend rules.
     http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found } !{ var(txn.ingress_request_router_recoverable) -m found }
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
@@ -245,6 +254,9 @@ backend default_backend
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
     log global
+    {%- if backend.ingress_router_fallback %}
+    balance random(1)
+    {%- endif %}
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
@@ -279,7 +291,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # Servers in this backend
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
@@ -288,6 +300,9 @@ backend {{ backend.name or 'unknown' }}
 {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
+    {%- if backend.ingress_router_fallback %}
+    balance random(1)
+    {%- endif %}
     # Keep the pinned data-plane path on the same connection policy as the
     # primary backend. For streamed responses, forcing server-close can leave
     # HAProxy holding unread server-side FINs under a burst while worker
@@ -425,7 +440,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 check backup

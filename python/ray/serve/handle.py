@@ -296,7 +296,6 @@ class _DeploymentHandleBase(Generic[T]):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle[T]":
         raise NotImplementedError
@@ -645,17 +644,8 @@ class DeploymentResponse(_DeploymentResponseBase[R]):
                 "loop. Use `await response._to_object_ref()` instead."
             )
 
-        # First, fetch the result of the future
-        start_time_s = time.time()
         replica_result = self._fetch_future_result_sync(_timeout_s)
-
-        # Then, if necessary, resolve generator to ref
-        remaining_timeout_s = calculate_remaining_timeout(
-            timeout_s=_timeout_s,
-            start_time_s=start_time_s,
-            curr_time_s=time.time(),
-        )
-        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
+        return replica_result.to_object_ref()
 
 
 @PublicAPI(stability="stable")
@@ -1091,7 +1081,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _by_reference: Union[bool, DEFAULT] = DEFAULT.VALUE,
         request_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
@@ -1104,7 +1093,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             multiplexed_model_id: The model ID to use for multiplexed model requests.
             session_id: Session identifier used for honoring session stickiness.
             stream: Whether to use streaming for the request.
-            use_new_handle_api: Whether to use the new handle API.
             _prefer_local_routing: Whether to prefer local routing.
             _by_reference: Whether to use by reference.
             request_serialization: Serialization method for RPC requests.
@@ -1126,12 +1114,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 multiplexed_model_id="model:v1",
             ).remote()
         """
-        if use_new_handle_api is not DEFAULT.VALUE:
-            warnings.warn(
-                "Setting `use_new_handle_api` no longer has any effect. "
-                "This argument will be removed in a future version."
-            )
-
         if _prefer_local_routing is not DEFAULT.VALUE:
             warnings.warn(
                 "Modifying `_prefer_local_routing` with `options()` is "

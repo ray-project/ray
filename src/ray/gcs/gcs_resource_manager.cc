@@ -90,9 +90,9 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(node_resources_entry.first.Binary());
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
+    for (const auto &resource_id : node_resources.GetAvailableResourceIds()) {
       const auto &resource_name = resource_id.Binary();
-      const auto &resource_value = node_resources.available.Get(resource_id);
+      const auto resource_value = node_resources.GetAvailableSum(resource_id);
       resource.mutable_resources_available()->insert(
           {resource_name, resource_value.Double()});
     }
