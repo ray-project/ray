@@ -207,6 +207,7 @@ azure-storage-blob==12.28.0
     #   -r python/requirements/ml/data-test-requirements.txt
     #   adlfs
     #   smart-open
+    #   testcontainers
 babel==2.18.0
     # via jupyterlab-server
 backcall==0.2.0

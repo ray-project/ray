@@ -139,6 +139,7 @@ import tempfile
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from unittest import mock
 
 import pytest
@@ -227,7 +228,14 @@ class _AzuriteBackend:
 
     is_emulator = True
 
-    def __init__(self, authority, *, container_handle=None, process=None, tmp_dir=None):
+    def __init__(
+        self,
+        authority,
+        *,
+        container_handle=None,
+        process: Optional[subprocess.Popen] = None,
+        tmp_dir: Optional[str] = None,
+    ):
         self._container_handle = container_handle
         self._process = process
         self._tmp_location = tmp_dir
@@ -329,12 +337,14 @@ class _AzuriteBackend:
         if self._container_handle is not None:
             self._container_handle.stop()
             return
-        self._process.terminate()
-        try:
-            self._process.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            self._process.kill()
-        shutil.rmtree(self._tmp_location, ignore_errors=True)
+        if self._process is not None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+        if self._tmp_location is not None:
+            shutil.rmtree(self._tmp_location, ignore_errors=True)
 
     def _emulator_endpoint_kwargs(self):
         """Where pyarrow should look. Azurite is not on Azure's DNS, and http."""
