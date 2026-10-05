@@ -1002,6 +1002,14 @@ class gRPCOptionsSchema(BaseModel):
         default=None,
         description="The timeout for gRPC requests. Defaults to no timeout.",
     )
+    enable_reflection: bool = Field(
+        default=True,
+        description=(
+            "Enable the gRPC server reflection protocol on Serve's gRPC proxy "
+            "so tools such as grpcurl and grpcui can discover and call the "
+            "registered gRPC services. Defaults to True."
+        ),
+    )
 
 
 @PublicAPI(stability="stable")
@@ -1033,8 +1041,11 @@ class HTTPOptionsSchema(BaseModel):
     root_path: str = Field(
         default="",
         description=(
-            'Root path to mount the serve application (for example, "/serve"). All '
-            'deployment routes will be prefixed with this path. Defaults to "".'
+            "ASGI root path that the serve application is mounted at (for "
+            'example, "/serve"), for when Serve runs behind a proxy that strips '
+            "this prefix before forwarding. Requests reach Serve without the "
+            "prefix, and applications see it in the ASGI scope's root_path and "
+            'path. Defaults to "".'
         ),
     )
     request_timeout_s: Optional[float] = Field(
@@ -1657,6 +1668,13 @@ class TargetGroup(BaseModel):
             "decisions. Only populated on HTTP target groups; always empty for gRPC."
         ),
     )
+    ingress_router_fallback: bool = Field(
+        False,
+        description=(
+            "Whether an HTTP ingress router is configured. HAProxy uses this to "
+            "enable fallback even when no router replicas are running."
+        ),
+    )
     # Name of the application's ingress deployment (the deployment that serves
     # the data-plane traffic). Empty when not applicable (e.g. proxy target groups).
     ingress_deployment_name: str = Field(
@@ -1777,6 +1795,15 @@ class ControllerHealthMetrics(BaseModel):
             "(rolling window, ms)."
         ),
     )
+
+    columnar_decode_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decode time for columnar metric reports (rolling window, ms). "
+            "Separate from metrics_decompress_duration_ms so the two wire formats "
+            "stay comparable."
+        ),
+    )
     handle_reports_received: int = Field(
         default=0, description="Total handle metric reports ingested since start."
     )
@@ -1887,6 +1914,14 @@ class ServeInstanceDetails(BaseModel):
     controller_health_metrics: ControllerHealthMetrics = Field(
         default_factory=ControllerHealthMetrics,
         description="Health metrics for the Ray Serve controller.",
+    )
+
+    restores_unset_config_options: bool = Field(
+        default=False,
+        description=(
+            "Whether removing a deployment config override restores the value "
+            "defined in code. Older versions omit this field and keep the override."
+        ),
     )
 
     @staticmethod

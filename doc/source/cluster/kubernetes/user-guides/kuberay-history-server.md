@@ -32,7 +32,7 @@ This guide requires the following:
 * A Kubernetes cluster. This guide uses GKE and `gcloud`, but the steps apply to other Kubernetes distributions.
 * [Helm](https://helm.sh/docs/intro/install/), installed and updated.
 * KubeRay v1.7 or later.
-* Ray 2.55 or later.
+* Ray 2.58 or later.
 
 ## Create a GKE cluster with Workload Identity enabled
 
@@ -378,8 +378,7 @@ gs://${GCS_BUCKET}/
                     └── <session_name>/                   # Same node layout as above
 ```
 
-For `RayJob` and `RayService`, the paths carry an extra `<owner_name>` segment, and the
-`cluster-metadata` directory name joins the owner name into the underscore-separated key. In this guide, `<owner_name>` is `rayjob-historyserver-gcs`, and `<cluster_name>` is the RayCluster name KubeRay generated for the job.
+For `RayJob` and `RayService`, the paths carry an extra `<owner_name>` segment, and the `cluster-metadata` directory name joins the owner name into the underscore-separated key. In this guide, `<owner_name>` is `rayjob-historyserver-gcs`, and `<cluster_name>` is the RayCluster name KubeRay generated for the job.
 
 
 To list the objects in storage, run the following command:
@@ -415,11 +414,11 @@ curl -s http://localhost:8080/clusters
 
 ### Start the local Ray dashboard
 
-Install Ray locally. Make sure to use at least Ray `v2.55`.
+Install Ray locally. Make sure to use at least Ray `v2.58`.
 
 ```sh
 pip uninstall -y ray
-pip install -U "ray[default]==2.55.0"
+pip install -U "ray[default]==2.58.0"
 ```
 
 Run the `ray start` command:

@@ -39,18 +39,10 @@ TEAM_API_CONFIGS = {
         # (reachable from api.rst's toctree).
         "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
         "head_doc_file": "doc/source/data/api/api.md",
-        "white_list_apis": {
-            # special case where we cannot deprecate although we want to
-            "ray.data.random_access_dataset.RandomAccessDataset",
-        },
+        "white_list_apis": set(),
         "tracked_doc_debt": {
             # not sure what to do
             "ray.data.dataset.MaterializedDataset",
-            # Deprecated but still documented. Remove from the docs, or move to a
-            # deprecated-only page, then drop these.
-            "ray.data.aggregate.AggregateFn",
-            "ray.data.dataset.Dataset.iter_tf_batches",
-            "ray.data.read_api.read_unity_catalog",
             # Private-named accessor classes documented under expressions.rst
             # "Expression namespaces". Document the public accessor surface, or
             # promote these to public names, then drop them.
@@ -505,13 +497,14 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
 
     # Every documented API must resolve to public code (docs is a subset of
     # code). A documented name that no longer imports, or that resolves to a
-    # deprecated / private object, is a stale or wrong doc entry.
+    # private object, is a stale or wrong doc entry. Deprecated APIs are public
+    # for this purpose: the API policy requires them to be documented.
     print(
         f"--- Validating that documented {team} APIs resolve to public code...",
         file=sys.stderr,
     )
     doc_only_whitelist = white_list_apis | config.get("doc_only_whitelist", set())
-    unresolved_apis, non_public_apis = API.split_resolvable_and_broken_doc_apis(
+    unresolved_apis, private_apis = API.split_resolvable_and_broken_doc_apis(
         doc_apis, doc_only_whitelist
     )
 
@@ -526,15 +519,15 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
         )
         passed = False
 
-    if non_public_apis:
+    if private_apis:
         print(
-            "Documented APIs that resolve to deprecated / private objects:",
+            "Documented APIs that resolve to private objects:",
             file=sys.stderr,
         )
-        for api in non_public_apis:
+        for api in private_apis:
             print(f"\t{api}", file=sys.stderr)
         print(
-            f"Some documented {team} APIs are not public. Stop documenting them, "
+            f"Some documented {team} APIs are private. Stop documenting them, "
             "or white-list them if the documentation is intentional.",
             file=sys.stderr,
         )

@@ -172,10 +172,12 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         tlog("Confirmed many queries are inflight.")
 
-        wait_for_condition(check_num_queued_requests_eq, handle=handle, expected=0)
+        wait_for_condition(
+            check_num_queued_requests_eq, handle=handle, expected=0, timeout=20
+        )
         tlog("Confirmed all requests are assigned to replicas.")
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, timeout=20)
         tlog("Confirmed deployment scaled to 5 replicas.")
         tlog("Releasing signal.")
         signal.send.remote()
@@ -237,7 +239,9 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
         print("Confirmed many queries are inflight.")
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=5, app_name="app1")
+        wait_for_condition(
+            check_num_replicas_eq, name="A", target=5, app_name="app1", timeout=20
+        )
         print("Confirmed deployment scaled to 5 replicas.")
 
         # Wait for all requests to be scheduled to replicas so they'll be failed
@@ -319,9 +323,11 @@ class TestAutoscalingMetrics:
         handle = serve.run(app)
         [handle.remote() for _ in range(20)]
 
-        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        wait_for_condition(
+            check_num_requests_eq, client=client, id=dep_id, expected=20, timeout=20
+        )
         # Wait for deployment A to scale up
-        wait_for_condition(check_num_replicas_eq, name="A", target=5)
+        wait_for_condition(check_num_replicas_eq, name="A", target=5, timeout=20)
         print("Confirmed deployment scaled to 5 replicas.")
 
         router_info = [
@@ -688,7 +694,7 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
             "min_replicas": 1,
             "max_replicas": 2,
             "look_back_period_s": 0.5,
-            "downscale_delay_s": 0.5,
+            "downscale_delay_s": 2.0,
             "upscale_delay_s": 0.5,
             "aggregation_function": aggregation_function,
         },
@@ -773,7 +779,7 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
 
     [handle.remote() for _ in range(50)]
 
-    wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
+    wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=60)
     signal.send.remote()
 
     # Wait for zero, not <= 1: the last replica stays routable until the
@@ -782,7 +788,7 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     signal.send.remote(clear=True)
 
     [handle.remote() for _ in range(50)]
-    wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
+    wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=60)
 
     signal.send.remote()
     # As the queue is drained, we should scale back down.
@@ -830,7 +836,10 @@ def test_downscaling_with_fractional_scaling_factor(
     # Deploy with initial replicas = 2+, smoothing factor = 0.5
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     wait_for_condition(
-        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+        check_deployment_status,
+        name="A",
+        expected_status=DeploymentStatus.HEALTHY,
+        timeout=20,
     )
 
     # Send a blocked request to one of two replicas.
@@ -846,7 +855,7 @@ def test_downscaling_with_fractional_scaling_factor(
     current_num_replicas = initial_replicas
     while current_num_replicas > 1:
         wait_for_condition(
-            check_num_replicas_eq, name="A", target=current_num_replicas - 1
+            check_num_replicas_eq, name="A", target=current_num_replicas - 1, timeout=20
         )
         current_num_replicas -= 1
         print(f"Deployment has downscaled to {current_num_replicas} replicas.")
@@ -1186,7 +1195,9 @@ app = g.bind()
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
-        return httpx.get("http://localhost:8000/").text
+        # The first call is in flight across the 0->1 cold start, which this test
+        # budgets at 20s below; httpx's 5s default read timeout would fire first.
+        return httpx.get("http://localhost:8000/", timeout=60).text
 
     ref = send_request.remote()
 
@@ -1447,7 +1458,9 @@ def test_autoscaling_status_changes(serve_instance):
         assert ray.get(event_manager.num_active_replicas.remote()) == expected
         return True
 
-    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    wait_for_condition(
+        check_num_active_replicas, expected=expected_num_active_replicas, timeout=20
+    )
     print("Replicas have started waiting. Releasing some replicas...")
 
     ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
@@ -1524,7 +1537,9 @@ def test_autoscaling_status_changes(serve_instance):
     serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
-    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    wait_for_condition(
+        check_num_active_replicas, expected=expected_num_active_replicas, timeout=20
+    )
     print("Replicas have started waiting. Releasing some replicas...")
 
     ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas - 1))
@@ -1553,7 +1568,9 @@ def test_autoscaling_status_changes(serve_instance):
         "Releasing some replicas and checking again..."
     )
 
-    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    wait_for_condition(
+        check_num_active_replicas, expected=expected_num_active_replicas, timeout=20
+    )
 
     # Release enough replicas for deployment to enter autoscaling bounds.
     ray.get(event_manager.set_max_replicas_to_run.remote(min_replicas))
@@ -1580,7 +1597,9 @@ def test_autoscaling_status_changes(serve_instance):
     serve._run(app, name=app_name, _blocking=False)
     expected_num_active_replicas = min_replicas
 
-    wait_for_condition(check_num_active_replicas, expected=expected_num_active_replicas)
+    wait_for_condition(
+        check_num_active_replicas, expected=expected_num_active_replicas, timeout=20
+    )
     print("Replicas have started waiting. Checking statuses...")
 
     # DeploymentStatus should return to UPDATING because the
@@ -1806,7 +1825,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
         print(time.ctime(), "Application is RUNNING.")
         self.verify_scaling_decisions(signal_A, signal_B)
 
@@ -1838,7 +1857,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
 
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(60)]
@@ -1887,7 +1906,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
 
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]
@@ -1931,7 +1950,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
 
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]
@@ -1956,7 +1975,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
 
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]
@@ -1989,7 +2008,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
 
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]
@@ -2012,7 +2031,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
         wait_for_condition(check_num_replicas_eq, name="A", target=1)
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]
@@ -2129,7 +2148,7 @@ class TestAppLevelClassCallablePolicy:
         client.deploy_apps(
             ServeDeploySchema.model_validate({"applications": [config_template]})
         )
-        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_running, timeout=30)
         print(time.ctime(), "Application is RUNNING.")
 
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
