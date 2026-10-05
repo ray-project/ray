@@ -86,6 +86,8 @@ Done performing action inference through 10 Episodes
 """
 import os
 
+from packaging import version
+
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
 from ray.rllib.core import (
@@ -119,10 +121,11 @@ torch, nn = try_import_torch()
 class _ONNXWrapper(nn.Module if nn else object):
     """Thin `nn.Module` wrapper for ONNX export of a recurrent (LSTM) RLModule.
 
-    `torch.onnx.export(..., dynamo=True)` (the default since
-    torch 2.9) traces a module whose `forward` takes and returns flat, named
-    tensors. RLModules instead consume/produce nested dicts (here including the
-    LSTM `STATE_IN`/`STATE_OUT` `{"h", "c"}` sub-dicts), so we wrap the module to
+    `torch.onnx.export` traces a module whose `forward` takes and returns flat,
+    named tensors (with both the dynamo exporter, the default since torch 2.9,
+    and the legacy TorchScript exporter, used below for torch<2.13). RLModules
+    instead consume/produce nested dicts (here including the LSTM
+    `STATE_IN`/`STATE_OUT` `{"h", "c"}` sub-dicts), so we wrap the module to
     expose a tensor-in/tensor-out signature ``(obs, h, c) -> (logits, h, c)`` and
     call its public `forward_inference` API.
     """
@@ -290,19 +293,34 @@ if __name__ == "__main__":
             example_obs = torch.from_numpy(input_dict[Columns.OBS])
             example_h = torch.from_numpy(input_dict[Columns.STATE_IN]["h"])
             example_c = torch.from_numpy(input_dict[Columns.STATE_IN]["c"])
-            batch = torch.export.Dim("batch")
+            input_names = ["obs", "state_in_h", "state_in_c"]
+            output_names = ["action_dist_inputs", "state_out_h", "state_out_c"]
+
+            # TODO: Remove else case when torch>=2.13 is complete.
+            #  Before 2.13, torch.export records the LSTM's h_n/c_n with a spurious
+            #  extra dim, so the RLModule's state transposes are exported with the
+            #  wrong rank and onnxruntime rejects the model
+            #  (https://github.com/pytorch/pytorch/issues/151200).
+            use_dynamo = version.parse(torch.__version__) >= version.parse("2.13")
+            if use_dynamo:
+                batch = torch.export.Dim("batch")
+                export_kwargs = {
+                    "dynamic_shapes": {name: {0: batch} for name in input_names}
+                }
+            else:
+                export_kwargs = {
+                    "dynamic_axes": {
+                        name: {0: "batch"} for name in input_names + output_names
+                    }
+                }
             torch.onnx.export(
                 _ONNXWrapper(rl_module),
                 (example_obs, example_h, example_c),
                 f="test.onnx",
-                input_names=["obs", "state_in_h", "state_in_c"],
-                output_names=["action_dist_inputs", "state_out_h", "state_out_c"],
-                dynamic_shapes={
-                    "obs": {0: batch},
-                    "state_in_h": {0: batch},
-                    "state_in_c": {0: batch},
-                },
-                dynamo=True,
+                input_names=input_names,
+                output_names=output_names,
+                dynamo=use_dynamo,
+                **export_kwargs,
             )
             ort_session = onnxruntime.InferenceSession(
                 "test.onnx", providers=["CPUExecutionProvider"]

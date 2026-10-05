@@ -11,9 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "mock/ray/ray_syncer/ray_syncer.h"
+#include "ray/ray_syncer/ray_syncer.h"
 
-#include <gmock/gmock.h>
 #include <google/protobuf/util/json_util.h>
 #include <google/protobuf/util/message_differencer.h>
 #include <grpc/grpc.h>
@@ -35,8 +34,8 @@
 
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
+#include "ray/ray_syncer/fake_ray_syncer.h"
 #include "ray/ray_syncer/node_state.h"
-#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
 #include "ray/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/authentication/authentication_token.h"
@@ -47,11 +46,6 @@
 #include "ray/util/raii.h"
 
 using ray::NodeID;
-using ::testing::_;
-using ::testing::Eq;
-using ::testing::Invoke;
-using ::testing::Return;
-using ::testing::WithArg;
 
 namespace ray {
 namespace syncer {
@@ -76,9 +70,9 @@ class RaySyncerTest : public ::testing::Test {
     work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());
     local_versions_.fill(0);
     for (size_t cid = 0; cid < reporters_.size(); ++cid) {
-      receivers_[cid] = std::make_unique<MockReceiverInterface>();
+      receivers_[cid] = std::make_unique<FakeReceiverInterface>();
       auto &reporter = reporters_[cid];
-      reporter = std::make_unique<MockReporterInterface>();
+      reporter = std::make_unique<FakeReporterInterface>();
       auto take_snapshot =
           [this, cid](int64_t curr_version) mutable -> std::optional<RaySyncMessage> {
         if (curr_version >= local_versions_[cid]) {
@@ -90,8 +84,7 @@ class RaySyncerTest : public ::testing::Test {
           return std::make_optional(std::move(msg));
         }
       };
-      ON_CALL(*reporter, CreateSyncMessage(_, _))
-          .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
+      reporter->create_sync_message_fn = take_snapshot;
     }
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
@@ -99,11 +92,11 @@ class RaySyncerTest : public ::testing::Test {
         io_context_, PeriodicalRunner::Create(io_context_), local_id_.Binary(), 1, 0);
   }
 
-  MockReporterInterface *GetReporter(MessageType cid) {
+  FakeReporterInterface *GetReporter(MessageType cid) {
     return reporters_[static_cast<size_t>(cid)].get();
   }
 
-  MockReceiverInterface *GetReceiver(MessageType cid) {
+  FakeReceiverInterface *GetReceiver(MessageType cid) {
     return receivers_[static_cast<size_t>(cid)].get();
   }
 
@@ -121,9 +114,9 @@ class RaySyncerTest : public ::testing::Test {
   }
 
   std::array<int64_t, kTestComponents> local_versions_;
-  std::array<std::unique_ptr<MockReporterInterface>, kTestComponents> reporters_ = {
+  std::array<std::unique_ptr<FakeReporterInterface>, kTestComponents> reporters_ = {
       nullptr};
-  std::array<std::unique_ptr<MockReceiverInterface>, kTestComponents> receivers_ = {
+  std::array<std::unique_ptr<FakeReceiverInterface>, kTestComponents> receivers_ = {
       nullptr};
 
   instrumented_io_context io_context_;
@@ -139,7 +132,7 @@ TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
   node_status->SetComponent(MessageType::RESOURCE_VIEW, nullptr, nullptr);
   ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(MessageType::RESOURCE_VIEW));
 
-  auto reporter = std::make_unique<MockReporterInterface>();
+  auto reporter = std::make_unique<FakeReporterInterface>();
   ASSERT_TRUE(node_status->SetComponent(
       MessageType::RESOURCE_VIEW, GetReporter(MessageType::RESOURCE_VIEW), nullptr));
 
@@ -167,7 +160,7 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 }
 
-struct MockReactor {
+struct FakeReactor {
   void StartRead(RaySyncMessageBatch *) { ++read_count; }
 
   void StartWrite(const RaySyncMessageBatch *,
@@ -185,14 +178,14 @@ struct MockReactor {
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto node_id = NodeID::FromRandom();
 
-  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+  FakeRaySyncerBidiReactorBase<FakeReactor> sync_reactor(
       /* io_context */ io_context_,
       /* remote_node_id */ node_id.Binary(),
       /* message_processor */
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
       /* max_batch_size */ 1,
       /* max_batch_delay_ms */ 0);
-  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+  sync_reactor.SetSelfRef(std::shared_ptr<FakeRaySyncerBidiReactorBase<FakeReactor>>(
       &sync_reactor, [](auto *) {}));
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
@@ -226,14 +219,14 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
   auto node_id = NodeID::FromRandom();
 
-  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+  FakeRaySyncerBidiReactorBase<FakeReactor> sync_reactor(
       /* io_context */ io_context_,
       /* remote_node_id */ node_id.Binary(),
       /* message_processor */
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
       /* max_batch_size */ 3,
       /* max_batch_delay_ms */ 100);
-  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+  sync_reactor.SetSelfRef(std::shared_ptr<FakeRaySyncerBidiReactorBase<FakeReactor>>(
       &sync_reactor, [](auto *) {}));
 
   auto from_node_id1 = NodeID::FromRandom();
@@ -267,14 +260,14 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
   auto node_id = NodeID::FromRandom();
 
-  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+  FakeRaySyncerBidiReactorBase<FakeReactor> sync_reactor(
       /* io_context */ io_context_,
       /* remote_node_id */ node_id.Binary(),
       /* message_processor */
       [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
       /* max_batch_size */ 3,
       /* max_batch_delay_ms */ 100);
-  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+  sync_reactor.SetSelfRef(std::shared_ptr<FakeRaySyncerBidiReactorBase<FakeReactor>>(
       &sync_reactor, [](auto *) {}));
 
   auto from_node_id = NodeID::FromRandom();
@@ -344,9 +337,8 @@ struct SyncerServerTest {
                        << NodeID::FromBinary(message->node_id())
                        << ", local_id=" << node_id;
       };
-      receivers[cid] = std::make_unique<MockReceiverInterface>();
-      EXPECT_CALL(*receivers[cid], ConsumeSyncMessage(_))
-          .WillRepeatedly(WithArg<0>(Invoke(snapshot_received)));
+      receivers[cid] = std::make_unique<FakeReceiverInterface>();
+      receivers[cid]->consume_sync_message_fn = snapshot_received;
       auto &reporter = reporters[cid];
       auto take_snapshot =
           [this, cid](int64_t version_after) mutable -> std::optional<RaySyncMessage> {
@@ -361,9 +353,8 @@ struct SyncerServerTest {
           return std::make_optional(std::move(msg));
         }
       };
-      reporter = std::make_unique<MockReporterInterface>();
-      EXPECT_CALL(*reporter, CreateSyncMessage(_, Eq(cid)))
-          .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
+      reporter = std::make_unique<FakeReporterInterface>();
+      reporter->create_sync_message_fn = take_snapshot;
       syncer->Register(
           static_cast<MessageType>(cid), reporter.get(), receivers[cid].get());
     }
@@ -469,14 +460,14 @@ struct SyncerServerTest {
   work_guard_type work_guard;
   std::string server_port;
   std::array<std::atomic<int64_t>, kTestComponents> local_versions;
-  std::array<std::unique_ptr<MockReporterInterface>, kTestComponents> reporters = {
+  std::array<std::unique_ptr<FakeReporterInterface>, kTestComponents> reporters = {
       nullptr};
   int64_t snapshot_taken = 0;
 
   std::unordered_map<std::string, std::array<std::atomic<int64_t>, kTestComponents>>
       received_versions;
   std::unordered_map<std::string, std::atomic<int64_t>> message_consumed;
-  std::array<std::unique_ptr<MockReceiverInterface>, kTestComponents> receivers = {
+  std::array<std::unique_ptr<FakeReceiverInterface>, kTestComponents> receivers = {
       nullptr};
 };
 
@@ -914,8 +905,8 @@ TEST_F(SyncerTest, TestMToN) {
   ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
 }
 
-struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
-  MockRaySyncerService(
+struct FakeRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
+  FakeRaySyncerService(
       instrumented_io_context &_io_context,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> _message_processor,
       std::function<void(RaySyncerBidiReactor *reactor, bool)> _cleanup_cb)
@@ -947,7 +938,7 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
 class SyncerReactorTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    rpc_service_ = std::make_unique<MockRaySyncerService>(
+    rpc_service_ = std::make_unique<FakeRaySyncerService>(
         io_context_,
         [this](auto msg) { server_received_message.set_value(msg); },
         [this](RaySyncerBidiReactor *reactor, bool restart) {
@@ -1026,7 +1017,7 @@ class SyncerReactorTest : public ::testing::Test {
   instrumented_io_context io_context_;
   std::unique_ptr<work_guard_type> work_guard_;
   std::unique_ptr<std::thread> thread_;
-  std::unique_ptr<MockRaySyncerService> rpc_service_;
+  std::unique_ptr<FakeRaySyncerService> rpc_service_;
   std::unique_ptr<grpc::Server> server;
   std::promise<std::shared_ptr<const RaySyncMessage>> server_received_message;
   std::promise<std::shared_ptr<const RaySyncMessage>> client_received_message;

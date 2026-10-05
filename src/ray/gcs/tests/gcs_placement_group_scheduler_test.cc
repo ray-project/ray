@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
@@ -60,8 +59,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }
     gcs_table_storage_ =
         std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
-    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
         std::make_unique<pubsub::FakePublisher>());
     auto local_node_id = NodeID::FromRandom();
