@@ -21,6 +21,7 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -32,6 +33,7 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
@@ -194,6 +196,15 @@ const std::vector<std::string> node_manager_message_enum =
                       static_cast<int>(ray::protocol::MessageType::MIN),
                       static_cast<int>(ray::protocol::MessageType::MAX));
 
+// Workers map a GPU instance index to these IDs when they set CUDA_VISIBLE_DEVICES.
+std::vector<std::string> VisibleGpuIds() {
+  const char *visible_devices = std::getenv("CUDA_VISIBLE_DEVICES");
+  if (visible_devices == nullptr) {
+    return {};
+  }
+  return absl::StrSplit(visible_devices, ',', absl::SkipEmpty());
+}
+
 }  // namespace
 
 NodeManager::NodeManager(
@@ -286,6 +297,16 @@ NodeManager::NodeManager(
                                                     *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
+      gpu_memory_isolator_(
+          RayConfig::instance().enable_gpu_memory_isolation()
+              ? std::make_unique<GpuMemoryIsolator>(
+                    io_service,
+                    *cgroup_manager_,
+                    absl::StrSplit(RayConfig::instance().gpu_memory_limit_command(),
+                                   ' ',
+                                   absl::SkipWhitespace()),
+                    VisibleGpuIds())
+              : nullptr),
       shutting_down_(shutting_down),
       clock_(clock),
       acceptor_(std::move(acceptor)),
@@ -1639,6 +1660,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
     // Return the resources that were being used by this worker.
     local_lease_manager_.ReleaseWorkerResources(worker);
+    if (gpu_memory_isolator_ != nullptr) {
+      gpu_memory_isolator_->Release(worker->WorkerId());
+    }
 
     // Since some resources may have been released, we can try to grant more leases.
     cluster_lease_manager_.ScheduleAndGrantLeases();
@@ -2219,6 +2243,9 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
       HandleNotifyWorkerUnblocked(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
+    if (gpu_memory_isolator_ != nullptr) {
+      gpu_memory_isolator_->Release(worker->WorkerId());
+    }
     // If the worker is exiting, don't add it to our pool. The worker will cleanup
     // and terminate itself.
     if (!request.worker_exiting()) {
@@ -2624,6 +2651,59 @@ std::string NodeManager::DebugString() const {
                                                                   debug_start)
                 .count();
   return result.str();
+}
+
+void NodeManager::PrepareGrantedLease(const std::shared_ptr<WorkerInterface> &worker,
+                                      const RayLease &lease,
+                                      const TaskResourceInstances &allocated_instances,
+                                      std::function<void(Status)> done) {
+  const LeaseSpecification &lease_spec = lease.GetLeaseSpecification();
+  const ResourceSet &required = lease_spec.GetRequiredResources();
+  if (gpu_memory_isolator_ == nullptr ||
+      !required.Has(scheduling::ResourceID::GPUMemory())) {
+    done(Status::OK());
+    return;
+  }
+
+  auto on_isolated = [this, worker, done = std::move(done)](Status status) {
+    if (status.ok()) {
+      done(status);
+      return;
+    }
+    std::string message = absl::StrCat("Failed to cap the GPU memory of worker ",
+                                       worker->WorkerId().Hex(),
+                                       ": ",
+                                       status.message());
+    RAY_LOG(ERROR) << message;
+    done(Status::Invalid(message));
+    if (!worker->IsDead()) {
+      DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
+    }
+  };
+
+  std::optional<size_t> gpu_index;
+  if (allocated_instances.Has(scheduling::ResourceID::GPU())) {
+    const std::vector<FixedPoint> &gpus =
+        allocated_instances.Get(scheduling::ResourceID::GPU());
+    for (size_t i = 0; i < gpus.size(); i++) {
+      if (gpus[i] > 0) {
+        gpu_index = i;
+        break;
+      }
+    }
+  }
+  if (!gpu_index.has_value()) {
+    on_isolated(Status::Invalid("The lease was granted without a GPU."));
+    return;
+  }
+
+  gpu_memory_isolator_->Isolate(
+      worker->WorkerId(),
+      lease_spec.LeaseId(),
+      worker->GetProcess().GetId(),
+      *gpu_index,
+      static_cast<int64_t>(required.Get(scheduling::ResourceID::GPUMemory()).Double()),
+      std::move(on_isolated));
 }
 
 bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
