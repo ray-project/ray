@@ -361,7 +361,18 @@ class LocalLeaseManagerTest : public ::testing::Test {
             },
             /*max_pinned_lease_arguments_bytes=*/1000,
             /*scheduler_metrics=*/scheduler_metrics_,
-            /*clock=*/clock_)) {}
+            /*clock=*/clock_,
+            RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
+            [this](const std::shared_ptr<WorkerInterface> &worker,
+                   const RayLease &lease,
+                   const TaskResourceInstances &allocated_instances,
+                   std::function<void(Status)> done) {
+              if (granted_lease_hook_) {
+                granted_lease_hook_(worker, lease, allocated_instances, std::move(done));
+              } else {
+                done(Status::OK());
+              }
+            })) {}
 
   void SetUp() override {
     static rpc::GcsNodeAddressAndLiveness node_info;
@@ -401,8 +412,62 @@ class LocalLeaseManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
   ray::raylet::SchedulerMetrics scheduler_metrics_;
   LeaseDependencyManager lease_dependency_manager_;
+  GrantedLeaseHook granted_lease_hook_;
   std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };
+
+class GrantedLeaseHookTest : public LocalLeaseManagerTest {
+ protected:
+  void GrantLease() {
+    granted_lease_hook_ = [this](const std::shared_ptr<WorkerInterface> &,
+                                 const RayLease &,
+                                 const TaskResourceInstances &,
+                                 std::function<void(Status)> done) {
+      done_ = std::move(done);
+    };
+    worker_ = std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
+    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_));
+    auto callback = [this](Status, std::function<void()>, std::function<void()>) {
+      ++num_replies_;
+    };
+    local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
+        CreateLease({{ray::kCPU_ResourceLabel, 1}}),
+        false,
+        false,
+        std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply_)},
+        internal::WorkStatus::WAITING));
+    pool_.TriggerCallbacks();
+  }
+
+  std::shared_ptr<MockWorker> worker_;
+  std::function<void(Status)> done_;
+  rpc::RequestWorkerLeaseReply reply_;
+  int num_replies_ = 0;
+};
+
+TEST_F(GrantedLeaseHookTest, ReplyWaitsForTheHook) {
+  GrantLease();
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(num_replies_, 0);
+
+  done_(Status::OK());
+
+  ASSERT_EQ(num_replies_, 1);
+  ASSERT_FALSE(reply_.canceled());
+  ASSERT_EQ(reply_.worker_address().worker_id(), worker_->WorkerId().Binary());
+}
+
+TEST_F(GrantedLeaseHookTest, HookFailureCancelsTheLease) {
+  GrantLease();
+
+  done_(Status::Invalid("no cap"));
+
+  ASSERT_EQ(num_replies_, 1);
+  ASSERT_TRUE(reply_.canceled());
+  ASSERT_EQ(reply_.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  ASSERT_EQ(reply_.scheduling_failure_message(), "no cap");
+}
 
 TEST_F(LocalLeaseManagerTest, TestCancelLeasesWithoutReply) {
   int num_callbacks_called = 0;

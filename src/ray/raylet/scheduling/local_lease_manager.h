@@ -15,6 +15,7 @@
 #pragma once
 
 #include <deque>
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
@@ -59,6 +60,14 @@ namespace raylet {
 /// as it should return the request to the distributed scheduler if
 /// resource accusition failed, or a lease has arguments pending resolution for too long
 /// time.
+/// Runs after a lease is granted and before the grant is replied to. Calling `done` with
+/// OK sends the grant; any other status cancels it.
+using GrantedLeaseHook =
+    std::function<void(const std::shared_ptr<WorkerInterface> &worker,
+                       const RayLease &lease,
+                       const TaskResourceInstances &allocated_instances,
+                       std::function<void(Status)> done)>;
+
 class LocalLeaseManager : public LocalLeaseManagerInterface {
  public:
   /// Create a local lease manager.
@@ -91,7 +100,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
       SchedulerMetrics &scheduler_metrics,
       ClockInterface &clock,
       int64_t sched_cls_cap_interval_ms =
-          RayConfig::instance().worker_cap_initial_backoff_delay_ms());
+          RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
+      GrantedLeaseHook granted_lease_hook = nullptr);
 
   /// Queue lease and schedule.
   void QueueAndScheduleLease(std::shared_ptr<internal::Work> work) override;
@@ -378,6 +388,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   const int64_t sched_cls_cap_interval_ms_;
 
   const int64_t sched_cls_cap_max_ms_;
+
+  GrantedLeaseHook granted_lease_hook_;
 
   size_t num_lease_spilled_ = 0;
   size_t num_waiting_lease_spilled_ = 0;

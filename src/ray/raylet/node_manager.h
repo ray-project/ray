@@ -45,6 +45,7 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/gpu_memory_isolator.h"
 #include "ray/raylet/lease_dependency_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/placement_group_resource_manager.h"
@@ -301,6 +302,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Whether the request was successful.
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
+
+  /// Caps the GPU memory of a gpu_memory lease before the grant is replied to.
+  void PrepareGrantedLease(const std::shared_ptr<WorkerInterface> &worker,
+                           const RayLease &lease,
+                           const TaskResourceInstances &allocated_instances,
+                           std::function<void(Status)> done);
 
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
@@ -1039,6 +1046,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   // Controls the lifecycle of the CgroupManager.
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+
+  std::unique_ptr<GpuMemoryIsolator> gpu_memory_isolator_;
 
   std::atomic_bool &shutting_down_;
 
