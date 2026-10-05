@@ -48,7 +48,7 @@ These take precedence over generic packaging advice:
 
 Ray uses a two-tier dependency management system:
 
-1. **`requirements_compiled*.txt`** — monorepo-wide pinned dependency files, compiled via `ci/ci.sh compile_pip_dependencies`. There is a **single unified lock**: `requirements_compiled.txt` is the source of truth, and `requirements_compiled_py3.10.txt`, `requirements_compiled_py3.11.txt`, `requirements_compiled_py3.12.txt`, and `requirements_compiled_py3.13.txt` are all symlinks to it. (`requirements_compiled_py3.14.txt` is currently maintained as a separate file.)
+1. **`requirements_compiled*.txt`** — monorepo-wide pinned dependency files, compiled via `ci/ci.sh compile_pip_dependencies`. There is a **single unified lock**: `requirements_compiled.txt` is the source of truth, and `requirements_compiled_py3.10.txt`, `requirements_compiled_py3.11.txt`, `requirements_compiled_py3.12.txt`, and `requirements_compiled_py3.13.txt` are all symlinks to it. (`requirements_compiled_py3.14.txt` is a separate file, compiled by `ci/ci.sh compile_pip_dependencies_py314` from the same sources plus `python/requirements/py314-overrides.txt`, which replaces source pins that have no cp314 wheel.)
 2. **raydepsets** — a DAG-based lock file manager (`ci/raydepsets/`) that generates per-image, per-environment lock files from `.depsets.yaml` configs. Lock files live in `python/deplocks/` and `release/ray_release/byod/`.
 
 ### Key file locations
@@ -88,6 +88,9 @@ ci/ci.sh compile_pip_dependencies
 
 # Custom output filename (rare)
 ci/ci.sh compile_pip_dependencies my_custom_lock.txt
+
+# py3.14 constraints (uv, cross-resolves for linux x86_64 cp314; needs git + uv)
+ci/ci.sh compile_pip_dependencies_py314
 ```
 
 Run inside an environment matching the target Python version (the function `pip install`s `pip-tools==7.4.1` and `wheel==0.45.1` itself). aarch64/arm64 is a no-op — the function returns early because not all pinned packages have aarch64 wheels.

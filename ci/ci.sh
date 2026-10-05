@@ -13,6 +13,29 @@ suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
 }
 
+# Source files for the compiled constraints (requirements_compiled*.txt).
+COMPILE_PIP_SOURCES=(
+  python/requirements.txt
+  python/requirements/lint-requirements.txt
+  python/requirements/test-requirements.txt
+  python/requirements/cloud-requirements.txt
+  python/requirements/serve/serve-test-requirements.txt
+  python/requirements/docker/ray-docker-requirements.txt
+  python/requirements/ml/core-requirements.txt
+  python/requirements/ml/data-requirements.txt
+  python/requirements/ml/data-test-requirements.txt
+  python/requirements/ml/dl-cpu-requirements.txt
+  python/requirements/ml/ml-requirements.txt
+  python/requirements/ml/third_party.txt
+  python/requirements/ml/rllib-requirements.txt
+  python/requirements/ml/rllib-test-requirements.txt
+  python/requirements/ml/train-requirements.txt
+  python/requirements/ml/train-test-requirements.txt
+  python/requirements/ml/tune-requirements.txt
+  python/requirements/ml/tune-test-requirements.txt
+  python/requirements/security-requirements.txt
+)
+
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -49,25 +72,7 @@ compile_pip_dependencies() {
       --unsafe-package pip \
       --unsafe-package setuptools \
       -o "python/$TARGET" \
-      python/requirements.txt \
-      python/requirements/lint-requirements.txt \
-      python/requirements/test-requirements.txt \
-      python/requirements/cloud-requirements.txt \
-      python/requirements/serve/serve-test-requirements.txt \
-      python/requirements/docker/ray-docker-requirements.txt \
-      python/requirements/ml/core-requirements.txt \
-      python/requirements/ml/data-requirements.txt \
-      python/requirements/ml/data-test-requirements.txt \
-      python/requirements/ml/dl-cpu-requirements.txt \
-      python/requirements/ml/ml-requirements.txt \
-      python/requirements/ml/third_party.txt \
-      python/requirements/ml/rllib-requirements.txt \
-      python/requirements/ml/rllib-test-requirements.txt \
-      python/requirements/ml/train-requirements.txt \
-      python/requirements/ml/train-test-requirements.txt \
-      python/requirements/ml/tune-requirements.txt \
-      python/requirements/ml/tune-test-requirements.txt \
-      python/requirements/security-requirements.txt
+      "${COMPILE_PIP_SOURCES[@]}"
 
     # Delete local installation
     sed -i "/@ file/d" "python/$TARGET"
@@ -90,6 +95,65 @@ compile_pip_dependencies() {
     if [[ "$HAS_TORCH" == "0" ]]; then
       pip uninstall -y torch
     fi
+  )
+}
+
+compile_pip_dependencies_py314() {
+  # requirements_compiled_py3.14.txt is compiled separately: several shared
+  # source pins have no cp314 wheel, so python/requirements/py314-overrides.txt
+  # replaces them.
+  # Every other pin is held to requirements_compiled.txt (the py3.10-3.13 lock)
+  # by passing it as a constraint, so the overrides file is the complete list
+  # of where 3.14 diverges.
+  # A resolution failure here means a new divergence: add it to the overrides
+  # file with the reason.
+  TARGET="requirements_compiled_py3.14.txt"
+  local parity_constraints="/tmp/ray-deps/py314-parity-constraints.txt"
+
+  # Compiled packages that must install from a wheel on 3.14. An sdist build
+  # in the images fails
+  local only_binary=(
+    ale-py cffi crc32c datasketches dm-tree fastrlock h5py llvmlite mujoco
+    netifaces numba numcodecs numpy open-spiel pygame pyiceberg pymongo pymunk
+    s3torchconnectorclient snowflake-connector-python tinyscaler tokenizers
+  )
+  local only_binary_args=()
+  for pkg in "${only_binary[@]}"; do
+    only_binary_args+=(--only-binary "${pkg}")
+  done
+
+  (
+    cd "${WORKSPACE_DIR}"
+
+    # The main lock's pins, minus the packages the overrides file replaces.
+    local overridden
+    overridden="$(sed -e 's/#.*//' -e 's/[=;<> ].*//' python/requirements/py314-overrides.txt \
+      | grep -v '^$' | tr '[:upper:]_' '[:lower:]-' | sort -u)"
+    mkdir -p "$(dirname "${parity_constraints}")"
+    grep -E '^[A-Za-z0-9_.-]+==' python/requirements_compiled.txt \
+      | awk -v skip="${overridden}" 'BEGIN { n = split(skip, a, "\n"); for (i = 1; i <= n; i++) s[a[i]] = 1 }
+          { name = tolower($0); sub(/==.*/, "", name); gsub(/_/, "-", name); if (!(name in s)) print }' \
+      > "${parity_constraints}"
+
+    env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
+      -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
+      uv pip compile --python-version 3.14 --python-platform x86_64-manylinux_2_28 \
+      --no-header --strip-extras \
+      --index-strategy unsafe-best-match --emit-index-url --emit-find-links \
+      --prerelease=if-necessary-or-explicit \
+      --unsafe-package ray \
+      --unsafe-package pip \
+      --unsafe-package setuptools \
+      --override python/requirements/py314-overrides.txt \
+      --constraint "${parity_constraints}" \
+      "${only_binary_args[@]}" \
+      -o "python/$TARGET" \
+      "${COMPILE_PIP_SOURCES[@]}"
+
+    # Match compile_pip_dependencies: no default index line, no override
+    # annotations, and bare public versions for +cpu torch wheels.
+    sed -i -e "/^--index-url /d" -e "/--override /d" -e "\\#-c ${parity_constraints}#d" "python/$TARGET"
+    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "python/$TARGET"
   )
 }
 
