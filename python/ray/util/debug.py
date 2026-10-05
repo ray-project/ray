@@ -27,8 +27,7 @@ def log_once(key: str) -> bool:
         True if this is the first call for ``key`` (subject to the current
         ``log_once`` settings), False otherwise.
 
-    Example:
-
+    Examples:
         >>> import logging
         >>> from ray.util.debug import log_once
         >>> logger = logging.getLogger(__name__)
