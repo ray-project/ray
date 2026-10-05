@@ -28,8 +28,11 @@ A checkpoint that records the ids of the units it finished can hand them back
 through ``TaskContext.kwargs[EXCLUDED_READ_UNIT_IDS_KWARG_NAME]`` on the
 ``ListFiles`` operator; the listing task passes them to
 ``FileIndexer.list_files(excluded_read_unit_ids=...)`` so those units never
-reach the partitioner or a read task. Nothing in this module performs
-checkpointing.
+reach the partitioner or a read task. Units it finished only partly come back
+through ``TaskContext.kwargs[EXCLUDED_ROWS_KWARG_NAME]`` on the ``ReadFiles``
+operator instead: a boolean mask per unit, which the read task hands to
+``Reader.read(excluded_rows=...)`` so the reader drops the rows already done.
+Nothing in this module performs checkpointing.
 """
 
 from dataclasses import dataclass
@@ -43,6 +46,12 @@ from ray.util.annotations import DeveloperAPI
 # resumed job must not read again. Set with ``MapOperator.create(
 # map_task_kwargs=...)`` on the ``ListFiles`` operator.
 EXCLUDED_READ_UNIT_IDS_KWARG_NAME = "excluded_read_unit_ids"
+
+# ``TaskContext.kwargs`` key for rows a resumed job must not read again inside
+# read units it finished only partly: a mapping from :attr:`ReadUnit.id` to a
+# boolean mask over the rows the reader produces from that unit (``True``
+# means drop). Set on the ``ReadFiles`` operator.
+EXCLUDED_ROWS_KWARG_NAME = "excluded_rows"
 
 
 @DeveloperAPI

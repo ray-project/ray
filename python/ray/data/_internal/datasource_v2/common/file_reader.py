@@ -1,7 +1,8 @@
 from enum import Enum
 from functools import cached_property, partial
-from typing import Any, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.dataset as pds
 from pyarrow.fs import FileSystem, LocalFileSystem
@@ -51,6 +52,19 @@ class FileFormat(str, Enum):
     JSON = "json"
     ARROW = "arrow"
     IPC = "ipc"
+
+
+def _drop_excluded_rows(
+    table: pa.Table, mask: np.ndarray, rows_before: int
+) -> pa.Table:
+    """Drop the rows of ``table`` that ``mask`` marks, where ``table`` starts
+    at row ``rows_before`` of its read unit. Rows past the mask are kept."""
+    window = np.zeros(table.num_rows, dtype=bool)
+    covered = mask[rows_before : rows_before + table.num_rows]
+    window[: len(covered)] = covered
+    if not window.any():
+        return table
+    return table.filter(pa.array(~window))
 
 
 @DeveloperAPI
@@ -183,7 +197,11 @@ class FileReader(Reader[FileManifest]):
                 arr = arr.cast(self._schema.field(idx).type)
         return arr
 
-    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+    def read(
+        self,
+        input_split: FileManifest,
+        excluded_rows: Optional[Mapping[str, np.ndarray]] = None,
+    ) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
 
         This method is called on workers to perform the actual read operation.
@@ -191,6 +209,9 @@ class FileReader(Reader[FileManifest]):
 
         Args:
             input_split: Work unit describing what data to read.
+            excluded_rows: Rows to leave out, keyed by read unit id; see
+                :meth:`Reader.read`. Rows are dropped after synthesized
+                columns are added, so those columns see every row's position.
 
         Yields:
             pa.Table: PyArrow Tables containing the read data.
@@ -250,11 +271,8 @@ class FileReader(Reader[FileManifest]):
         for table, position in self._read_fragment_batches(
             dataset, scanner_kwargs, input_split
         ):
-            if self._limit is not None:
-                if rows_read >= self._limit:
-                    break
-                if len(table) > self._limit - rows_read:
-                    table = table.slice(0, self._limit - rows_read)
+            if self._limit is not None and rows_read >= self._limit:
+                break
 
             # Build the list of (name, value) pairs to synthesize from
             # the fragment path: hive partitions.
@@ -295,6 +313,16 @@ class FileReader(Reader[FileManifest]):
                 table = table.append_column(
                     column.name, column.compute(position, table.num_rows)
                 )
+
+            if excluded_rows:
+                mask = excluded_rows.get(position.unit.id)
+                if mask is not None:
+                    table = _drop_excluded_rows(table, mask, position.rows_before)
+                    if table.num_rows == 0:
+                        continue
+
+            if self._limit is not None and len(table) > self._limit - rows_read:
+                table = table.slice(0, self._limit - rows_read)
 
             if self._columns is not None:
                 # Project/reorder to the caller's requested column order;

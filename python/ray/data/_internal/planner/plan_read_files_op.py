@@ -24,6 +24,9 @@ import logging
 from typing import Iterable, List
 
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.read_units import (
+    EXCLUDED_ROWS_KWARG_NAME,
+)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -56,15 +59,17 @@ def plan_read_files_op(
     scanner = op.scanner
     block_udf = op.block_udf
 
-    def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+    def do_read(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         reader = scanner.create_reader()
+        # Set by a resumed job: rows of partly finished read units to skip.
+        excluded_rows = ctx.kwargs.get(EXCLUDED_ROWS_KWARG_NAME)
         # ``prune_input_split`` is an identity by default; ``FileScanner``
         # overrides it to drop files failing a pushed-down partition predicate.
         for block in blocks:
             manifest = scanner.prune_input_split(FileManifest(block))
             if len(manifest) == 0:
                 continue
-            for table in reader.read(manifest):
+            for table in reader.read(manifest, excluded_rows=excluded_rows):
                 if block_udf is not None:
                     table = block_udf(table)
                 yield table
