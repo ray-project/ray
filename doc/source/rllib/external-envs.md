@@ -20,10 +20,10 @@ The simulator periodically sends batches of data to the server and in turn recei
 For better performance, the client computes actions locally.
 ```
 
-RLlib provides an [external messaging protocol](https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py) called {ref}`RLlink <rllink-protocol-docs>` for this purpose. You can also customize your {py:class}`~ray.rllib.env.env_runner.EnvRunner` class to communicate through {ref}`RLlink <rllink-protocol-docs>` with one or more clients. An [example TCP-based EnvRunner implementation with RLlink](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py) is available. It also contains a dummy CartPole client for testing and as a template for how your external application or simulator should use the {ref}`RLlink <rllink-protocol-docs>` protocol.
+RLlib provides an [external messaging protocol](https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/external/rllink.py) called {ref}`RLlink <rllink-protocol-docs>` for this purpose. You can also customize your {py:class}`~ray.rllib.env.env_runner.EnvRunner` class to communicate through {ref}`RLlink <rllink-protocol-docs>` with one or more clients. An [example TCP-based EnvRunner implementation with RLlink](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py) is available. It also contains a dummy CartPole client for testing and as a template for how your external application or simulator should use the {ref}`RLlink <rllink-protocol-docs>` protocol.
 
 :::{note}
-External application support is a work in progress on RLlib's new API stack. The Ray team is developing more examples for custom EnvRunner implementations, beyond [the available TCP-based one](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py), along with client-side, non-Python RLlib adapters for popular game engines and other simulation software.
+External application support is a work in progress on RLlib's new API stack. The Ray team is developing more examples for custom EnvRunner implementations, beyond [the available TCP-based one](https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/tcp_client_inference_env_runner.py), along with client-side, non-Python RLlib adapters for popular game engines and other simulation software.
 :::
 
 (rllink-protocol-docs)=
@@ -172,6 +172,6 @@ This protocol is an initial draft toward a widely adopted protocol for communica
 
 ## Example: External client connecting to a TCP-based EnvRunner
 
-An [example TCP-based EnvRunner implementation with RLlink](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py) is available. See the [full end-to-end example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
+An [example TCP-based EnvRunner implementation with RLlink](https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/tcp_client_inference_env_runner.py) is available. See the [full end-to-end example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
 
 You can alter the underlying logic of your custom EnvRunner. For example, you could implement a shared-memory communication layer instead of the TCP-based one.

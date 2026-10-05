@@ -1,5 +1,62 @@
 schema_version: 1
 redirects:
+- from: /cluster/kubernetes/benchmarks.html
+  to: /kuberay/benchmarks/index.html
+  type: page
+- from: /cluster/kubernetes/examples.html
+  to: /kuberay/examples/index.html
+  type: page
+- from: /cluster/kubernetes/getting-started.html
+  to: /kuberay/getting-started/index.html
+  type: page
+- from: /cluster/kubernetes/references.html
+  to: /kuberay/references/index.html
+  type: page
+- from: /cluster/kubernetes/troubleshooting.html
+  to: /kuberay/troubleshooting/index.html
+  type: page
+- from: /cluster/kubernetes/user-guides.html
+  to: /kuberay/user-guides/index.html
+  type: page
+- from: /cluster/kubernetes/k8s-ecosystem.html
+  to: /kuberay/ecosystem/index.html
+  type: page
+- from: /cluster/kubernetes/k8s-ecosystem/*
+  to: /kuberay/ecosystem/:splat
+  type: page
+- from: /cluster/kubernetes/getting-started/kuberay-operator-installation.html
+  to: /kuberay/getting-started/operator-installation.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-auth.html
+  to: /kuberay/user-guides/auth.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-auth-rbac.html
+  to: /kuberay/user-guides/auth-rbac.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-dashboard.html
+  to: /kuberay/user-guides/dashboard.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-ft.html
+  to: /kuberay/user-guides/gcs-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-persistent-ft.html
+  to: /kuberay/user-guides/gcs-persistent-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-rocksdb-ft.html
+  to: /kuberay/user-guides/gcs-rocksdb-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-history-server.html
+  to: /kuberay/user-guides/history-server.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-mtls.html
+  to: /kuberay/user-guides/mtls.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-serve-high-throughput.html
+  to: /kuberay/user-guides/serve-high-throughput.html
+  type: page
+- from: /cluster/kubernetes/*
+  to: /kuberay/:splat
+  type: page
 - from: /train/user-guides/using-gpus.html
   to: /train/user-guides/using-accelerators.html
   type: page
@@ -351,10 +408,10 @@ redirects:
   to: /rllib/getting-started.html
   type: page
 - from: /rllib-models.html
-  to: /rllib/rl-modules.html
+  to: /rllib/rllib-models.html
   type: page
 - from: /rllib-sample-collection.html
-  to: /rllib/examples.html
+  to: /rllib/rllib-examples.html
   type: page
 - from: /rllib-concepts.html
   to: /rllib/key-concepts.html
@@ -459,7 +516,7 @@ redirects:
   to: /ray-contribute/development.html
   type: page
 - from: /rllib-env.html
-  to: /rllib/env.html
+  to: /rllib/rllib-env.html
   type: page
 - from: /fault-tolerance.html
   to: /ray-core/fault-tolerance.html
@@ -543,16 +600,16 @@ redirects:
   to: /ray-core/walkthrough.html
   type: page
 - from: /rllib-offline.html
-  to: /rllib/offline.html
+  to: /rllib/rllib-offline.html
   type: page
 - from: /package-ref.html
   to: /ray-core/api/index.html
   type: page
 - from: /rllib-dev.html
-  to: /rllib/dev.html
+  to: /rllib/rllib-dev.html
   type: page
 - from: /rllib-algorithms.html
-  to: /rllib/algorithms.html
+  to: /rllib/rllib-algorithms.html
   type: page
 - from: /ray-libraries.html
   to: /ray-overview/ray-libraries.html
@@ -585,7 +642,7 @@ redirects:
   to: /tune/index.html
   type: page
 - from: /rllib-examples.html
-  to: /rllib/examples.html
+  to: /rllib/rllib-examples.html
   type: page
 - from: /iter.html
   to: /index.html
@@ -798,7 +855,7 @@ redirects:
   to: https://github.com/ray-project/ray
   type: page
   description: Sphinx source-view pages have no docs equivalent so they land on the Ray source code
-- from: /cluster/kubernetes/*
+- from: /kuberay/*
   to: /cluster/kubernetes/index.html
   type: page
 - from: /serve/tutorials/*

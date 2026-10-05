@@ -33,7 +33,7 @@ When you deploy a Serve application, the [ingress deployment](serve-key-concepts
 :language: python
 ```
 
-Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers). A Serve app's route prefix can be changed from `/` to another string by setting `route_prefix` in `serve.run()` or the Serve config file.
+Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://starlette.dev/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://starlette.dev/responses/) (e.g., to return a custom status code or custom headers). A Serve app's route prefix can be changed from `/` to another string by setting `route_prefix` in `serve.run()` or the Serve config file.
 
 (serve-request-cancellation-http)=
 ### Request cancellation
@@ -140,7 +140,7 @@ Ray Serve's object-based pattern, shown previously, requires FastAPI objects to 
 
 Some applications must stream incremental results back to the caller. This is common for text generation using large language models (LLMs) or video processing applications. The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
 
-To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler. This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
+To use HTTP response streaming, return a [StreamingResponse](https://starlette.dev/responses/#streamingresponse) that wraps a generator from your HTTP handler. This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
 
 The code below defines a Serve application that incrementally streams numbers up to a provided `max`. The client-side code is also updated to handle the streaming outputs. This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced.html#streaming-requests) library.
 
@@ -210,4 +210,4 @@ Client disconnecting
 (serve-http-guide-keep-alive-timeout)=
 ## Set keep alive timeout
 
-Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve config files. This config is global to your Ray cluster, and you can't update it during runtime. See Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
+Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve config files. This config is global to your Ray cluster, and you can't update it during runtime. See Uvicorn's keep alive timeout [guide](https://uvicorn.dev/server-behavior/#timeouts) for more information.
