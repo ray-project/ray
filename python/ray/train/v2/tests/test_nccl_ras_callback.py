@@ -5,9 +5,9 @@ import subprocess
 import sys
 import time
 import types
-from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from unittest.mock import MagicMock
 
 import pytest
@@ -450,6 +450,11 @@ def test_parse_ras_addr_malformed_raises(addr):
         parse_ras_addr(addr)
 
 
+# ---------------------------------------------------------------------------
+# Detection: the callback driven by a scripted poller
+# ---------------------------------------------------------------------------
+
+
 class FakePoller:
     """Stand-in for :class:`RASPoller` that hands the controller a scripted
     sequence of poll results, one per tick, and a fixed text report."""
@@ -478,36 +483,53 @@ class FakePoller:
         return self.TEXT_REPORT
 
 
+# The callback's diagnostic dump methods, keyed by tool, in the order a
+# confirmed hang captures them.
+_DIAGNOSTIC_METHODS = {
+    nccl_ras._FLIGHT_RECORDER_TOOL: "dump_workers_flight_recorder",
+    nccl_ras._NVIDIA_SMI_TOOL: "dump_nodes_nvidia_smi",
+    nccl_ras._NCCL_RAS_TOOL: "dump_ras_query_history",
+    nccl_ras._STACK_TRACES_TOOL: "dump_workers_stack_traces",
+}
+_ALL_DIAGNOSTICS = list(_DIAGNOSTIC_METHODS)
+
+# What a stubbed diagnostic does: True uploads a directory, False uploads
+# nothing (returns None), and an exception is raised from the capture.
+_DiagnosticOutcome = Union[bool, Exception]
+
+
 def make_nccl_ras_callback(
-    monkeypatch,
-    action,
-    confirm_count,
-    reports,
-    first_suspicion_polls=1,
-    periodic_warn_every_polls=2,
-    nvidia_smi=True,
-    flight_recorder=False,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    confirm_count: int,
+    reports: List[Union[RASReport, RASQueryError]],
+    first_suspicion_polls: int = 1,
+    periodic_warn_every_polls: int = 2,
+    diagnostics: Optional[Dict[str, _DiagnosticOutcome]] = None,
+) -> Tuple[NCCLRASCallback, List[Tuple[str, tuple]]]:
     """Build a callback whose poller yields the given sequence of poll results.
 
     The detector confirms hangs on consecutive frozen polls but is configured in
-    seconds, so a 1s poll interval makes every "seconds" knob equal a poll count:
-    ``confirm_count`` polls, and the escalation milestones (tuned for production
-    at 60s/120s, i.e. 4 and 8 polls) shrunk to values the small
-    ``confirm_count``s here actually reach.
-
-    ``nvidia_smi`` is whether the nodes have ``nvidia-smi`` at all: without it
-    the snapshot has nothing to record and returns no directory.
-
-    ``flight_recorder`` arms ``TORCH_FR_BUFFER_SIZE``, which is what decides
-    whether the Flight Recorder dump yields anything: unarmed, its ring buffer
-    holds no collectives, so the capture returns no directory.
+    seconds, so a 1s poll interval makes every "seconds" knob equal a poll count.
 
     No poller thread is started: a :class:`FakePoller` returns one scripted
     result per controller tick, so the tests stay deterministic.
 
-    Returns the callback and the list its diagnostic captures record themselves
-    in (the tool names that produced a directory, in capture order).
+    Args:
+        monkeypatch: Sets the callback's env vars and escalation milestones.
+        action: ``fail`` or ``observe``.
+        confirm_count: Consecutive frozen polls that confirm a hang.
+        reports: The poll results the fake poller hands out, one per tick.
+        first_suspicion_polls: Frozen polls before the first warning (60s in
+            production, shrunk so the small ``confirm_count``s here reach it).
+        periodic_warn_every_polls: Frozen polls between reminders (120s in
+            production).
+        diagnostics: Each tool's stubbed outcome (default: every tool uploads
+            a directory). The real dump methods are tested on their own.
+
+    Returns:
+        The callback and the ``(tool, args)`` calls its diagnostic stubs
+        received, in capture order.
     """
     monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, action)
     monkeypatch.setenv(NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, str(confirm_count))
@@ -518,47 +540,43 @@ def make_nccl_ras_callback(
     monkeypatch.setattr(
         nccl_ras, "_PERIODIC_WARN_EVERY_S", float(periodic_warn_every_polls)
     )
-    if flight_recorder:
-        monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
-    else:
-        monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
 
     callback = NCCLRASCallback()
     assert callback._confirm_poll_counts == confirm_count
     callback._worker_group = MagicMock()
     callback._ras_poller = FakePoller(reports)
 
-    captured = []
+    diagnostics = diagnostics or {}
+    calls: List[Tuple[str, tuple]] = []
 
-    def capture(tool, produces_dir=True):
-        if not produces_dir:
-            return None
-        captured.append(tool)
-        return f"/exp/{HANG_DETECTOR_DIRNAME}/{tool}"
+    def stub(tool):
+        outcome = diagnostics.get(tool, True)
 
-    callback.dump_workers_stack_traces = lambda: capture(nccl_ras._STACK_TRACES_TOOL)
-    callback.dump_nodes_nvidia_smi = lambda: capture(
-        nccl_ras._NVIDIA_SMI_TOOL, produces_dir=nvidia_smi
-    )
-    callback.dump_ras_query_history = lambda _report=None: capture(
-        nccl_ras._NCCL_RAS_TOOL
-    )
-    callback.dump_workers_flight_recorder = lambda: capture(
-        nccl_ras._FLIGHT_RECORDER_TOOL, produces_dir=flight_recorder
-    )
+        def capture(*args):
+            calls.append((tool, args))
+            if isinstance(outcome, Exception):
+                raise outcome
+            return f"/exp/{HANG_DETECTOR_DIRNAME}/{tool}" if outcome else None
 
-    return callback, captured
+        return capture
+
+    for tool, method in _DIAGNOSTIC_METHODS.items():
+        setattr(callback, method, stub(tool))
+
+    return callback, calls
+
+
+def captured_tools(calls):
+    return [tool for tool, _ in calls]
+
+
+def tick(callback):
+    """One controller poll-loop iteration."""
+    callback.after_worker_group_poll_status(MagicMock())
 
 
 _COMM_A = "0x2b9ffd12ea17b069"
 _COMM_B = "0xced5b798f46495a3"
-
-# The diagnostics a confirmed hang captures, in the order they are collected.
-_CONFIRMED_HANG_DIAGNOSTICS = [
-    nccl_ras._NVIDIA_SMI_TOOL,
-    nccl_ras._NCCL_RAS_TOOL,
-    nccl_ras._STACK_TRACES_TOOL,
-]
 
 # A rank's spec is either an AllReduce count (int) or an explicit op->count map.
 _RankCounts = Dict[int, Union[int, Dict[str, int]]]
@@ -598,304 +616,270 @@ def create_healthy_report():
     return create_report()
 
 
-def test_observe_mode_never_raises(monkeypatch):
-    # A confirmed hang in observe mode never raises, but still captures the same
-    # diagnostics as fail mode: observing is worthless without them.
-    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
-    callback, captured_diagnostics = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=2, reports=reports
-    )
-
-    for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())  # must not raise
-    assert captured_diagnostics.count(nccl_ras._STACK_TRACES_TOOL) == 1
-
-
-def test_fail_mode_raises_after_confirm(monkeypatch):
-    # rank 3 frozen behind rank 2 with no progress on either -> a deadlock.
-    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
-    callback, captured_diagnostics = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
-    )
-
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
-    with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2 -> raise
-    # The error reports how many communicators were confirmed stalled.
-    message = str(exc_info.value)
-    assert "1 of 1 communicators" in message
-    assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
-    # ...and points the user at every diagnostic that was captured.
-    assert "per-rank stack traces" in message
-    assert "/exp/hang_detector/stack_traces" in message
-    assert "query history" in message
-    assert "/exp/hang_detector/nccl_ras" in message
-
-
-@pytest.mark.parametrize("nvidia_smi", [False, True], ids=["no_gpus", "gpus"])
-def test_confirmed_hang_captures_diagnostics(monkeypatch, nvidia_smi):
-    # Which diagnostics a confirmed hang collects, and what the error points the
-    # user at. On a node with no `nvidia-smi` there is no hardware snapshot, and
-    # the hang must still fail the run and report the stack traces.
-    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
-    callback, captured = make_nccl_ras_callback(
-        monkeypatch,
-        NCCL_RAS_ACTION_FAIL,
-        confirm_count=2,
-        reports=reports,
-        nvidia_smi=nvidia_smi,
-    )
-
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
-    with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2
-
-    message = str(exc_info.value)
-    assert "per-rank stack traces" in message
-    assert "/exp/hang_detector/stack_traces" in message
-    if nvidia_smi:
-        # Snapshotted before the stack traces, which take far longer, so the GPU
-        # reading is as close to the moment of the hang as we can make it.
-        assert captured == _CONFIRMED_HANG_DIAGNOSTICS
-        assert "`nvidia-smi` snapshots" in message
-        assert "/exp/hang_detector/nvidia_smi" in message
-    else:
-        assert captured == [nccl_ras._NCCL_RAS_TOOL, nccl_ras._STACK_TRACES_TOOL]
-        assert "nvidia-smi" not in message
-    # The hang is the expected outcome, not a detector bug.
-    assert callback._is_ras_degraded is False
-
-
-@pytest.mark.parametrize("flight_recorder", [False, True], ids=["fr_off", "fr_on"])
-def test_confirmed_hang_captures_diagnostics(monkeypatch, flight_recorder):
-    # Which diagnostics a confirmed hang collects, and what the error points the
-    # user at. Flight Recorder is only collected when its ring buffer was armed;
-    # with it off the hang must still fail the run and report the stack traces.
-    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
-    callback, captured = make_nccl_ras_callback(
-        monkeypatch,
-        NCCL_RAS_ACTION_FAIL,
-        confirm_count=2,
-        reports=reports,
-        flight_recorder=flight_recorder,
-    )
-
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
-    with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2
-
-    message = str(exc_info.value)
-    assert "per-rank stack traces" in message
-    assert "/exp/hang_detector/stack_traces" in message
-    if flight_recorder:
-        # Dumped before the stack traces, so a rank that is still running cannot
-        # overwrite the ring buffer while we are collecting.
-        assert captured == [
-            nccl_ras._FLIGHT_RECORDER_TOOL,
-            nccl_ras._STACK_TRACES_TOOL,
-        ]
-        assert "Flight Recorder" in message
-        assert "/exp/hang_detector/flight_recorder" in message
-    else:
-        assert captured == [nccl_ras._STACK_TRACES_TOOL]
-        assert "Flight Recorder" not in message
-    # The hang is the expected outcome, not a detector bug.
-    assert callback._is_ras_degraded is False
-
-
-@pytest.mark.parametrize(
-    "other_op_advances,expect_hang",
-    [(False, True), (True, False)],
-    ids=["other_op_frozen", "other_op_advancing"],
-)
-def test_deadlock_requires_whole_comm_frozen(
-    monkeypatch, other_op_advances, expect_hang
-):
-    # Comm A runs two ops. AllReduce is skewed (mismatched) and frozen the whole time
-    #   - other_op_frozen: AllGather is also frozen, so the communicator is fully
-    #     stalled -> a hang, reported on the mismatched AllReduce op.
-    #   - other_op_advancing: AllGather keeps advancing, so the ranks are alive
-    #     and the stale AllReduce skew must NOT be treated as a hang.
-    def report(allgather):
-        return create_report(
-            comms={
-                _COMM_A: {
-                    0: {"AllReduce": 5, "AllGather": allgather},
-                    1: {"AllReduce": 4, "AllGather": allgather},
-                }
+def create_two_op_report(allgather):
+    """Comm A with a skewed AllReduce and an AllGather at ``allgather`` on both ranks."""
+    return create_report(
+        comms={
+            _COMM_A: {
+                0: {"AllReduce": 5, "AllGather": allgather},
+                1: {"AllReduce": 4, "AllGather": allgather},
             }
-        )
-
-    allgather_seq = [2, 3, 4] if other_op_advances else [2, 2, 2]
-    reports = [report(ag) for ag in allgather_seq]
-
-    callback, captured_diagnostics = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
+        }
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    if expect_hang:
-        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
-        assert callback.comm_deadlock_count == {_COMM_A: 1}
-        with pytest.raises(NCCLHangError) as exc_info:
-            callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> raise
-        assert "1 of 1 communicators" in str(exc_info.value)
-        assert captured_diagnostics.count(nccl_ras._STACK_TRACES_TOOL) == 1
-    else:
-        for _ in reports[1:]:
-            callback.after_worker_group_poll_status(MagicMock())  # never a hang
-        assert callback.comm_deadlock_count == {}
-        assert not captured_diagnostics
+
+# A frozen, mismatched communicator: confirmed after the baseline + 2 polls.
+_FROZEN = create_single_comm_report({1: 5, 2: 4})
+
+# Each case is a confirm count and the polls fed to the callback, each paired
+# with the expected ``comm_deadlock_count`` after it -- or, for the final poll
+# of a hang, the text the NCCLHangError must contain. The first poll of every
+# case is a baseline: there is nothing to diff it against.
+_STREAK_CASES = [
+    pytest.param(
+        3,
+        [
+            (_FROZEN, {}),
+            (_FROZEN, {_COMM_A: 1}),
+            (create_healthy_report(), {}),
+        ],
+        id="healthy_poll_resets_streak",
+    ),
+    pytest.param(
+        2,
+        [
+            (create_single_comm_report({1: 5, 2: 3}), {}),
+            (create_single_comm_report({1: 9, 2: 5}), {}),
+            (create_single_comm_report({1: 15, 2: 8}), {}),
+            (create_single_comm_report({1: 20, 2: 14}), {}),
+        ],
+        id="skewed_but_advancing_never_deadlocks",
+    ),
+    pytest.param(
+        2,
+        [
+            (create_single_comm_report({2: 5, 3: 3}), {}),
+            (create_single_comm_report({2: 8, 3: 6}), {}),
+            # Rank 3 froze but rank 2 still moved, so the comm isn't frozen.
+            (create_single_comm_report({2: 10, 3: 6}), {}),
+            (create_single_comm_report({2: 10, 3: 6}), {_COMM_A: 1}),
+            (create_single_comm_report({2: 10, 3: 6}), "1 of 1 communicators"),
+        ],
+        id="advancing_then_freezing_deadlocks",
+    ),
+    pytest.param(
+        2,
+        [
+            (create_two_op_report(2), {}),
+            (create_two_op_report(2), {_COMM_A: 1}),
+            (create_two_op_report(2), "1 of 1 communicators"),
+        ],
+        id="every_op_frozen_deadlocks",
+    ),
+    pytest.param(
+        2,
+        # AllGather keeps advancing, so the ranks are alive and the stale
+        # AllReduce skew must not be treated as a hang.
+        [
+            (create_two_op_report(2), {}),
+            (create_two_op_report(3), {}),
+            (create_two_op_report(4), {}),
+        ],
+        id="another_op_advancing_is_not_a_hang",
+    ),
+    pytest.param(
+        2,
+        # A deadlocks while B stays skewed but advancing: only A is confirmed.
+        [
+            (create_report({_COMM_A: {2: 5, 3: 6}, _COMM_B: {0: 5, 1: 4}}), {}),
+            (
+                create_report({_COMM_A: {2: 5, 3: 6}, _COMM_B: {0: 7, 1: 6}}),
+                {_COMM_A: 1},
+            ),
+            (
+                create_report({_COMM_A: {2: 5, 3: 6}, _COMM_B: {0: 9, 1: 8}}),
+                "1 of 2 communicators",
+            ),
+        ],
+        id="communicators_streak_independently",
+    ),
+    pytest.param(
+        2,
+        # B appears already skewed; it cannot be flagged on the poll it first
+        # appears in (no baseline to diff against).
+        [
+            (create_report({_COMM_A: {0: 2, 1: 2}}), {}),
+            (create_report({_COMM_A: {0: 3, 1: 3}}), {}),
+            (create_report({_COMM_A: {0: 4, 1: 4}, _COMM_B: {0: 7, 1: 5}}), {}),
+            (
+                create_report({_COMM_A: {0: 5, 1: 5}, _COMM_B: {0: 7, 1: 5}}),
+                {_COMM_B: 1},
+            ),
+            (
+                create_report({_COMM_A: {0: 6, 1: 6}, _COMM_B: {0: 7, 1: 5}}),
+                "1 of 2 communicators",
+            ),
+        ],
+        id="added_communicator_needs_a_baseline",
+    ),
+    pytest.param(
+        2,
+        # A's process group is destroyed mid-streak: its streak is dropped and
+        # B keeps being evaluated on its own.
+        [
+            (create_report({_COMM_A: {2: 5, 3: 4}, _COMM_B: {0: 2, 1: 2}}), {}),
+            (
+                create_report({_COMM_A: {2: 5, 3: 4}, _COMM_B: {0: 3, 1: 3}}),
+                {_COMM_A: 1},
+            ),
+            (create_report({_COMM_B: {0: 6, 1: 4}}), {}),
+            (create_report({_COMM_B: {0: 9, 1: 6}}), {}),
+        ],
+        id="removed_communicator_drops_its_streak",
+    ),
+]
 
 
-def test_healthy_resets_deadlock_streak(monkeypatch):
-    reports = [
-        create_single_comm_report({1: 5, 2: 4}),  # baseline (mismatched)
-        create_single_comm_report({1: 5, 2: 4}),  # mismatched -> 1/3
-        create_healthy_report(),  # healthy -> reset
-    ]
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=3, reports=reports
+@pytest.mark.parametrize("confirm_count,polls", _STREAK_CASES)
+def test_frozen_streaks(monkeypatch, confirm_count, polls):
+    # A communicator is deadlocked only once it is mismatched and *no* rank
+    # advanced *any* op for `confirm_count` consecutive polls.
+    callback, calls = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        confirm_count=confirm_count,
+        reports=[report for report, _ in polls],
     )
 
-    callback.after_worker_group_poll_status(MagicMock())
-    callback.after_worker_group_poll_status(MagicMock())
-    assert callback.comm_deadlock_count == {_COMM_A: 1}
-    callback.after_worker_group_poll_status(MagicMock())
-    assert callback.comm_deadlock_count == {}
+    for i, (_, expected) in enumerate(polls):
+        if isinstance(expected, str):
+            with pytest.raises(NCCLHangError, match=expected):
+                tick(callback)
+        else:
+            tick(callback)
+            assert callback.comm_deadlock_count == expected, f"after poll {i}"
 
-
-def test_advancing_never_deadlocks(monkeypatch):
-    # Both ranks are skewed but keep advancing (nonzero deltas), so the op is
-    # never frozen and no deadlock is ever counted.
-    reports = [
-        create_single_comm_report({1: 5, 2: 3}),
-        create_single_comm_report({1: 9, 2: 5}),
-        create_single_comm_report({1: 15, 2: 8}),
-        create_single_comm_report({1: 20, 2: 14}),
-    ]
-    callback, captured_diagnostics = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
-    )
-
-    for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())
-        assert callback.comm_deadlock_count == {}
-    assert not captured_diagnostics
-
-
-def test_advancing_then_freeze_deadlocks(monkeypatch):
-    # Advancing (skewed) for a while, then rank 3's op freezes and rank 2 stops
-    # too -> the op is now frozen and the deadlock streak builds to a hang.
-    reports = [
-        create_single_comm_report({2: 5, 3: 3}),  # baseline, advancing
-        create_single_comm_report({2: 8, 3: 6}),  # advancing
-        create_single_comm_report({2: 10, 3: 6}),  # rank 3 froze, rank 2 still moved
-        create_single_comm_report({2: 10, 3: 6}),  # fully frozen -> 1/2
-        create_single_comm_report({2: 10, 3: 6}),  # fully frozen -> 2/2 -> raise
-    ]
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
-    )
-
-    for _ in reports[:-1]:
-        callback.after_worker_group_poll_status(MagicMock())
-    assert callback.comm_deadlock_count == {_COMM_A: 1}
-    with pytest.raises(NCCLHangError):
-        callback.after_worker_group_poll_status(MagicMock())
-
-
-def test_per_communicator_streak_is_independent(monkeypatch):
-    # Communicator A deadlocks while B stays merely skewed but advancing. Only A
-    # should be confirmed and named in the error.
-    reports = [
-        create_report(comms={_COMM_A: {2: 5, 3: 6}, _COMM_B: {0: 5, 1: 4}}),
-        create_report(comms={_COMM_A: {2: 5, 3: 6}, _COMM_B: {0: 7, 1: 6}}),
-        create_report(comms={_COMM_A: {2: 5, 3: 6}, _COMM_B: {0: 9, 1: 8}}),
-    ]
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
-    )
-
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # A frozen -> 1/2
-    assert callback.comm_deadlock_count == {_COMM_A: 1}
-    with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # A frozen -> 2/2
-    # Only A is confirmed (1 of the 2 communicators), not B.
-    assert "1 of 2 communicators" in str(exc_info.value)
-
-
-def test_communicator_added_after_two_polls(monkeypatch):
-    # Comm A advances normally for the first two polls, then comm B appears on the
-    # third poll already skewed and stays frozen. B cannot be flagged on the poll
-    # it first appears (it has no prior baseline in the diff) and only starts its
-    # own confirm streak once a baseline exists.
-    reports = [
-        create_report(comms={_COMM_A: {0: 2, 1: 2}}),  # baseline
-        create_report(comms={_COMM_A: {0: 3, 1: 3}}),  # A advances, healthy
-        create_report(comms={_COMM_A: {0: 4, 1: 4}, _COMM_B: {0: 7, 1: 5}}),  # B new
-        create_report(comms={_COMM_A: {0: 5, 1: 5}, _COMM_B: {0: 7, 1: 5}}),  # B 1/2
-        create_report(comms={_COMM_A: {0: 6, 1: 6}, _COMM_B: {0: 7, 1: 5}}),  # B 2/2
-    ]
-    callback, captured_diagnostics = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
-    )
-
-    callback.after_worker_group_poll_status(MagicMock())  # baseline (A healthy)
-    callback.after_worker_group_poll_status(MagicMock())  # A advances, healthy
-    assert callback.comm_deadlock_count == {}
-    callback.after_worker_group_poll_status(MagicMock())  # B appears, no baseline yet
-    assert callback.comm_deadlock_count == {}
-    callback.after_worker_group_poll_status(MagicMock())  # B frozen -> 1/2
-    assert callback.comm_deadlock_count == {_COMM_B: 1}
-    with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # B frozen -> 2/2
-    # Only B is confirmed (1 of the 2 communicators present this poll).
-    assert "1 of 2 communicators" in str(exc_info.value)
-    assert captured_diagnostics.count(nccl_ras._STACK_TRACES_TOOL) == 1
-
-
-def test_communicator_removed_over_time(monkeypatch):
-    # A communicator can disappear mid-run (e.g. its process group is destroyed).
-    # Its in-progress deadlock streak is dropped, and a still-present comm keeps
-    # being evaluated on its own.
-    reports = [
-        create_report(comms={_COMM_A: {2: 5, 3: 4}, _COMM_B: {0: 2, 1: 2}}),  # base
-        create_report(comms={_COMM_A: {2: 5, 3: 4}, _COMM_B: {0: 3, 1: 3}}),  # A 1/2
-        create_report(comms={_COMM_B: {0: 6, 1: 4}}),  # A gone; B skewed, advancing
-        create_report(comms={_COMM_B: {0: 9, 1: 6}}),  # B still advancing
-    ]
-    callback, captured_diagnostics = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
-    )
-
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # A frozen -> 1/2
-    assert callback.comm_deadlock_count == {_COMM_A: 1}
-    callback.after_worker_group_poll_status(MagicMock())  # A removed -> streak drops
-    assert callback.comm_deadlock_count == {}
-    callback.after_worker_group_poll_status(MagicMock())  # B keeps advancing
-    assert callback.comm_deadlock_count == {}
-    assert not captured_diagnostics
+    hung = isinstance(polls[-1][1], str)
+    assert captured_tools(calls) == (_ALL_DIAGNOSTICS if hung else [])
 
 
 def test_no_new_report_is_noop(monkeypatch):
     # The controller polls (~2s) far more often than the poller publishes (15s).
-    # A hook that finds nothing queued must leave detection state untouched.
-    reports = [create_single_comm_report({2: 5, 3: 3})]
+    # A hook that finds nothing queued must leave detection state, and the RAS
+    # history, untouched.
     callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=1, reports=reports
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=1,
+        reports=[create_single_comm_report({2: 5, 3: 3})],
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # consumes the report
+    tick(callback)  # consumes the report
     first_report = callback.prev_report
     assert first_report is not None
-    callback.after_worker_group_poll_status(MagicMock())  # poller published nothing
+    tick(callback)  # poller published nothing
     assert callback.prev_report is first_report
+    assert list(callback.ras_history) == [first_report]
+
+
+# ---------------------------------------------------------------------------
+# Confirmed hang: which diagnostics are captured and what the error says
+# ---------------------------------------------------------------------------
+
+
+def confirm_hang(callback) -> NCCLHangError:
+    """Drive a callback fed ``[_FROZEN] * 3`` (confirm_count=2) to its hang."""
+    tick(callback)  # baseline
+    tick(callback)  # frozen -> 1/2
+    with pytest.raises(NCCLHangError) as exc_info:
+        tick(callback)  # frozen -> 2/2
+    return exc_info.value
+
+
+def test_confirmed_hang_capture_order(monkeypatch):
+    callback, calls = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=[_FROZEN] * 3
+    )
+
+    confirm_hang(callback)
+
+    # Flight Recorder first, so a rank still running cannot overwrite its ring
+    # buffer; nvidia-smi before the stack traces, which take far longer, so the
+    # GPU reading is as close to the moment of the hang as we can make it.
+    assert captured_tools(calls) == _ALL_DIAGNOSTICS
+    # The text report is fetched once and saved alongside the history.
+    assert callback._ras_poller.text_queries == 1
+    assert dict(calls)[nccl_ras._NCCL_RAS_TOOL] == (FakePoller.TEXT_REPORT,)
+
+
+_MESSAGE_CASES = [
+    pytest.param({}, id="all_produced"),
+    pytest.param(
+        {tool: RuntimeError("boom") for tool in _ALL_DIAGNOSTICS}, id="all_raise"
+    ),
+] + [
+    pytest.param({tool: outcome}, id=f"{tool}_{outcome_id}")
+    for tool in _ALL_DIAGNOSTICS
+    for outcome_id, outcome in (("none", False), ("raises", RuntimeError("boom")))
+]
+
+
+@pytest.mark.parametrize("diagnostics", _MESSAGE_CASES)
+def test_confirmed_hang_message(monkeypatch, diagnostics):
+    # The error points the user at exactly the diagnostics that produced a
+    # directory. A diagnostic that uploads nothing or fails must neither stop
+    # the others nor suppress the hang, and a real hang must not be misread as
+    # a detector bug.
+    callback, calls = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        confirm_count=2,
+        reports=[_FROZEN] * 3,
+        diagnostics=diagnostics,
+    )
+
+    message = str(confirm_hang(callback))
+
+    assert captured_tools(calls) == _ALL_DIAGNOSTICS
+    for tool in _ALL_DIAGNOSTICS:
+        produced = diagnostics.get(tool, True) is True
+        assert (f"/exp/{HANG_DETECTOR_DIRNAME}/{tool}" in message) is produced, tool
+    assert callback._is_ras_degraded is False
+
+
+@pytest.mark.parametrize("action", [NCCL_RAS_ACTION_FAIL, NCCL_RAS_ACTION_OBSERVE])
+def test_confirmed_hang_action(monkeypatch, caplog, propagate_logs, action):
+    # Fail mode raises; observe mode logs the same message and keeps training,
+    # but still captures every diagnostic: observing is worthless without them.
+    callback, calls = make_nccl_ras_callback(
+        monkeypatch, action, confirm_count=2, reports=[_FROZEN] * 3
+    )
+
+    if action == NCCL_RAS_ACTION_FAIL:
+        message = str(confirm_hang(callback))
+    else:
+        with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+            for _ in range(3):
+                tick(callback)  # must not raise
+        message = caplog.text
+
+    assert "1 of 1 communicators" in message
+    assert captured_tools(calls) == _ALL_DIAGNOSTICS
+
+
+def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
+    # A diagnostic that fails must never take the run's hang handling with it.
+    def boom():
+        raise RuntimeError("upload failed")
+
+    with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
+        assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
+    assert "worker stack traces" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Poller thread and transport
+# ---------------------------------------------------------------------------
 
 
 def _drain(poller, n, timeout_s=5.0):
@@ -1028,9 +1012,15 @@ def test_ras_poller_query_no_workers():
     assert excinfo.value.reason == "no_workers" and not excinfo.value.fatal
 
 
+# ---------------------------------------------------------------------------
+# Lifecycle, degradation and config
+# ---------------------------------------------------------------------------
+
+
 def test_callback_starts_and_stops_poller(monkeypatch):
     # The worker group start owns one poller; teardown stops it and a restart
-    # gets a fresh one (never the stopped instance).
+    # gets a fresh one (never the stopped instance) and fresh detection state:
+    # a new worker group is a new set of communicators.
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=100, reports=[]
     )
@@ -1044,44 +1034,39 @@ def test_callback_starts_and_stops_poller(monkeypatch):
     assert callback._ras_poller is None and callback._worker_group is None
     assert _join(first)
 
+    callback.prev_report = _FROZEN
+    callback.ras_history.append(_FROZEN)
+    callback.comm_deadlock_count = {_COMM_A: 1}
+
     callback.after_worker_group_start(MagicMock())
     second = callback._ras_poller
     assert second is not first and second.is_alive
-    assert callback.prev_report is None and callback.comm_deadlock_count == {}
+    assert callback.prev_report is None
+    assert callback.comm_deadlock_count == {}
+    assert len(callback.ras_history) == 0
     callback.before_worker_group_shutdown(MagicMock())
     assert _join(second)
 
 
 def test_callback_degrades_on_fatal_poll_result(monkeypatch):
     fatal = RASQueryError("unsupported_f_option", "binary rejected `-f`", fatal=True)
-    callback, captured = make_nccl_ras_callback(
+    callback, calls = make_nccl_ras_callback(
         monkeypatch,
         NCCL_RAS_ACTION_FAIL,
         confirm_count=1,
         reports=[fatal, create_single_comm_report({2: 5, 3: 3})],
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # fatal -> degrade
+    tick(callback)  # fatal -> degrade
     assert callback._is_ras_degraded is True
-    callback.after_worker_group_poll_status(MagicMock())  # no-op once degraded
-    assert callback.prev_report is None and not captured
+    tick(callback)  # no-op once degraded: the queued report is never consumed
+    assert callback.prev_report is None
+    assert callback.comm_deadlock_count == {}
+    assert not calls
 
     # A degraded callback does not start a poller for a later worker group.
     callback.after_worker_group_start(MagicMock())
     assert callback._ras_poller is None
-
-
-def test_degraded_skips(monkeypatch):
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch,
-        NCCL_RAS_ACTION_FAIL,
-        confirm_count=1,
-        reports=[create_single_comm_report({2: 5, 3: 3})],
-    )
-    callback._is_ras_degraded = True
-    callback.after_worker_group_poll_status(MagicMock())  # must not query/raise
-    assert callback.prev_report is None
-    assert callback.comm_deadlock_count == {}
 
 
 def test_unexpected_error_disables_detection(monkeypatch):
@@ -1098,62 +1083,11 @@ def test_unexpected_error_disables_detection(monkeypatch):
         raise RuntimeError("detector bug")
 
     callback._ras_poller.next_result = boom
-    callback.after_worker_group_poll_status(MagicMock())  # must not raise
+    tick(callback)  # must not raise
     assert callback._is_ras_degraded is True
     # Once degraded, later polls are a no-op (guarded before next_result).
-    callback.after_worker_group_poll_status(MagicMock())
+    tick(callback)
     assert callback.prev_report is None
-
-
-@pytest.mark.parametrize(
-    "fail_stack_traces,fail_nvidia_smi,fail_ras_history",
-    [
-        (True, False, False, False),
-        (False, True, False, False),
-        (False, False, True, False),
-        (False, False, False, True),
-        (True, True, True, True),
-    ],
-    ids=["stack_traces_fail", "nvidia_smi_fails", "ras_history_fails", "flight_recorder_failed", "both_fail"],
-)
-def test_hang_error_propagates_when_diagnostics_fail(
-    monkeypatch, fail_stack_traces, fail_nvidia_smi, fail_ras_history, fail_flight_recorder
-):
-    # Collecting hang diagnostics must not suppress the hang failure, and a real
-    # hang must not be misread as a detector bug. Each diagnostic fails on its
-    # own, so the one that worked is still reported to the user.
-    reports = [create_single_comm_report({2: 5, 3: 4})] * 3
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch,
-        NCCL_RAS_ACTION_FAIL,
-        confirm_count=2,
-        reports=reports,
-        flight_recorder=True,
-    )
-
-    def boom(*_args, **_kwargs):
-        raise RuntimeError("diagnostic failed")
-
-    if fail_stack_traces:
-        callback.dump_workers_stack_traces = boom
-    if fail_nvidia_smi:
-        callback.dump_nodes_nvidia_smi = boom
-    if fail_ras_history:
-        callback.dump_ras_query_history = boom
-    if fail_flight_recorder:
-        callback.dump_workers_flight_recorder = boom
-
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
-    with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> still raises
-
-    message = str(exc_info.value)
-    assert ("per-rank stack traces" in message) is not fail_stack_traces
-    assert ("query history" in message) is not fail_ras_history
-    assert ("`nvidia-smi` snapshots" in message) is not fail_nvidia_smi
-    assert ("Flight Recorder" in message) is not fail_flight_recorder
-    assert callback._is_ras_degraded is False
 
 
 @pytest.mark.parametrize(
@@ -1207,14 +1141,14 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
     # A frozen communicator builds a streak. confirm_count is high enough that no
     # hang is confirmed, so we can observe the escalating warnings on the way up.
     # First-suspicion fires at 1 poll, periodic reminder every 2 (helper defaults).
-    reports = [create_single_comm_report({1: 5, 2: 4})] * 4
+    reports = [_FROZEN] * 4
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=reports
     )
 
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
         for _ in reports:
-            callback.after_worker_group_poll_status(MagicMock())
+            tick(callback)
 
     text = caplog.text
     # New-suspicion announcement names the stalled communicator in a parenthetical.
@@ -1232,14 +1166,14 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
 def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
     # Observe mode still surfaces the suspicion/periodic warnings but must never
     # threaten to raise an error, since it only observes.
-    reports = [create_single_comm_report({1: 5, 2: 4})] * 4
+    reports = [_FROZEN] * 4
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=100, reports=reports
     )
 
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
         for _ in reports:
-            callback.after_worker_group_poll_status(MagicMock())
+            tick(callback)
 
     text = caplog.text
     assert "Possible NCCL hang detected!" in text
@@ -1247,401 +1181,17 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
     assert "NCCLHangError will be raised" not in text
 
 
-@pytest.fixture
-def uploads(monkeypatch):
-    """Capture each upload as ``(fs_path, {filename: contents})``."""
-    calls = []
-
-    def fake_upload(local_dir, filesystem, fs_path):
-        calls.append(
-            (fs_path, {p.name: p.read_text() for p in Path(local_dir).iterdir()})
-        )
-
-    monkeypatch.setattr(nccl_ras, "_upload_to_fs_path", fake_upload)
-    return calls
+# ---------------------------------------------------------------------------
+# Diagnostics, stage 1: the worker-side functions
+# ---------------------------------------------------------------------------
 
 
-def make_diagnostics_callback(workers=None, experiment_fs_path="/exp"):
-    """A callback wired to a worker group, to exercise the real dump methods."""
-    callback = NCCLRASCallback()
-    worker_group = MagicMock()
-    worker_group.get_workers.return_value = (
-        [make_worker(rank) for rank in (0, 1)] if workers is None else workers
-    )
-    worker_group._storage_context.experiment_fs_path = experiment_fs_path
-    callback._worker_group = worker_group
-    return callback
+def fake_subprocess_run(monkeypatch, **run_result):
+    """Script ``subprocess.run`` for the worker-side tools, recording each call.
 
-
-def test_ras_history_retains_the_confirm_window_plus_a_margin(monkeypatch):
-    # The buffer has to reach back past the confirmation window, otherwise the
-    # saved history only ever shows the communicator already stalled.
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=3, reports=[]
-    )
-    assert (
-        callback.ras_history.maxlen
-        == callback._confirm_poll_counts + nccl_ras._RAS_HISTORY_MARGIN_POLLS
-        > callback._confirm_poll_counts
-    )
-
-
-def test_ras_history_records_every_poll_and_evicts_the_oldest(monkeypatch):
-    # Every successful poll is recorded, healthy or not, and the buffer keeps
-    # only the most recent maxlen of them.
-    reports = [create_single_comm_report({1: count}) for count in range(20)]
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=reports
-    )
-    monkeypatch.setattr(callback, "ras_history", deque(maxlen=3))
-
-    for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())
-
-    assert list(callback.ras_history) == reports[-3:]
-
-
-def test_ras_history_ignores_polls_that_produced_no_report(monkeypatch):
-    # A poll the controller has no report for (the poller had nothing new)
-    # must not advance the history or its file numbering.
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=[]
-    )
-
-    callback.after_worker_group_poll_status(MagicMock())
-
-    assert len(callback.ras_history) == 0
-
-
-def test_ras_history_resets_with_the_worker_group(monkeypatch):
-    # A new worker group is a new set of communicators, so the old group's polls
-    # say nothing about it and the file numbering restarts.
-    reports = [create_single_comm_report({1: 5})] * 2
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=reports
-    )
-
-    for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())
-    assert len(callback.ras_history) == 2
-
-    callback.reset_detection_state()
-    assert len(callback.ras_history) == 0
-
-
-def test_ras_history_uploads_one_file_per_retained_poll(uploads):
-    # Each retained poll is written verbatim under a filename that carries its
-    # poll number (so the files read in poll order even once the buffer has
-    # wrapped) and the RAS timestamp, with the text report alongside them.
-    callback = make_diagnostics_callback()
-    callback.ras_history.extend(
-        parse_ras_schema(ras_json)
-        for ras_json in (HEALTHY_RAS_JSON, DEAD_RANK_RAS_JSON, MULTI_COMM_RAS_JSON)
-    )
-
-    fs_path = callback.dump_ras_query_history("human readable report")
-
-    assert fs_path == "/exp/hang_detector/nccl_ras"
-    ((uploaded_path, files),) = uploads
-    assert uploaded_path == fs_path
-    assert sorted(files) == [
-        "ncclras_2026-06-19-06-51-56.json",
-        "ncclras_2026-06-19-06-55-57.json",
-        "ncclras_2026-06-19-06-56-24.json",
-        "ncclras_report.txt",
-    ]
-    # The polls are the raw `ncclras` output, not what the detector parsed out
-    # of it, so hosts, pids and missing ranks survive into the history.
-    assert files["ncclras_2026-06-19-06-51-56.json"] == HEALTHY_RAS_JSON
-    assert files["ncclras_report.txt"] == "human readable report"
-
-
-def test_ras_history_upload_without_a_text_report(uploads):
-    # The text report is a separate query that can fail while the history the
-    # controller already holds is still worth writing.
-    callback = make_diagnostics_callback()
-    callback.ras_history.append(parse_ras_schema(HEALTHY_RAS_JSON))
-
-    callback.dump_ras_query_history(None)
-
-    ((_, files),) = uploads
-    assert list(files) == ["ncclras_2026-06-19-06-51-56.json"]
-
-
-def test_ras_history_upload_skipped_when_empty(uploads):
-    # Nothing polled yet (the hang was confirmed on another signal): there is no
-    # empty directory to leave behind in the user's experiment directory.
-    assert make_diagnostics_callback().dump_ras_query_history() is None
-    assert uploads == []
-
-
-def make_stack_dump_callback(
-    monkeypatch: pytest.MonkeyPatch,
-    ranks: List[int],
-    launch_errors: Optional[Dict[int, Exception]] = None,
-    results: Optional[Dict[int, Union[str, Exception]]] = None,
-):
-    """A callback whose workers answer a stack dump with scripted outcomes.
-
-    Args:
-        monkeypatch: Used to stub out ``ray.wait``/``ray.get``.
-        ranks: The world rank of each worker in the group.
-        launch_errors: ``{rank: exception}`` raised by ``execute_async``.
-        results: ``{rank: str | Exception}`` -- what ``ray.get`` returns for that
-            rank's dump, or raises. A rank left out never becomes ready, which is
-            how a dump that outlived the wait timeout looks.
-
-    Returns:
-        The callback and the ``{rank: worker}`` mapping it fans out to.
+    ``run_result`` is either ``side_effect`` (raised) or the ``returncode``,
+    ``stdout`` and ``stderr`` of the completed process.
     """
-    launch_errors = launch_errors or {}
-    results = results or {}
-
-    workers = {}
-    for rank in ranks:
-        worker = MagicMock()
-        worker.distributed_context.world_rank = rank
-        if rank in launch_errors:
-            worker.execute_async.side_effect = launch_errors[rank]
-        else:
-            # Stands in for the ObjectRef the dump is launched with; the
-            # rank it carries is what the stubbed ray.wait/ray.get key off.
-            worker.execute_async.return_value = MagicMock(rank=rank)
-        workers[rank] = worker
-
-    callback = make_diagnostics_callback()
-    callback._worker_group.get_workers.return_value = list(workers.values())
-
-    def fake_wait(refs, num_returns, timeout):
-        ready = [ref for ref in refs if ref.rank in results]
-        return ready, [ref for ref in refs if ref not in ready]
-
-    def fake_get(ref):
-        result = results[ref.rank]
-        if isinstance(result, Exception):
-            raise result
-        return result
-
-    monkeypatch.setattr(nccl_ras.ray, "wait", fake_wait)
-    monkeypatch.setattr(nccl_ras.ray, "get", fake_get)
-    return callback, workers
-
-
-def test_stack_traces_upload_one_file_per_rank(monkeypatch, uploads):
-    # The whole group is dumped in parallel and each rank's trace lands in its
-    # own file, named by world rank so it can be matched to the RAS report.
-    callback, workers = make_stack_dump_callback(
-        monkeypatch,
-        ranks=[0, 1, 2],
-        results={rank: f"trace of rank {rank}" for rank in (0, 1, 2)},
-    )
-
-    fs_path = callback.dump_workers_stack_traces()
-
-    assert fs_path == "/exp/hang_detector/stack_traces"
-    ((uploaded_path, files),) = uploads
-    assert uploaded_path == fs_path
-    assert files == {f"rank_{rank}.log": f"trace of rank {rank}" for rank in (0, 1, 2)}
-    # py-spy has to give up before the controller stops waiting, otherwise the
-    # wait times out with nothing to show for it.
-    for worker in workers.values():
-        worker.execute_async.assert_called_once_with(
-            nccl_ras.dump_stack_trace, nccl_ras._STACK_DUMP_TIMEOUT_S - 5
-        )
-
-
-def test_stack_traces_record_a_rank_that_could_not_be_launched(monkeypatch, uploads):
-    # A worker that is unreachable (already dead, actor call refused) still gets
-    # a file, so a rank missing from the diagnostics is never silent.
-    callback, _ = make_stack_dump_callback(
-        monkeypatch,
-        ranks=[0, 1],
-        launch_errors={1: RuntimeError("actor unavailable")},
-        results={0: "trace of rank 0"},
-    )
-
-    callback.dump_workers_stack_traces()
-
-    ((_, files),) = uploads
-    assert files["rank_0.log"] == "trace of rank 0"
-    assert files["rank_1.log"] == "failed to launch: actor unavailable"
-
-
-def test_stack_traces_record_a_rank_that_timed_out(
-    monkeypatch, uploads, caplog, propagate_logs
-):
-    # The hung rank is the interesting one, so a dump that never comes back must
-    # not hold up (or drop) the traces the other ranks did return.
-    callback, _ = make_stack_dump_callback(
-        monkeypatch, ranks=[0, 1], results={0: "trace of rank 0"}
-    )
-
-    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
-        callback.dump_workers_stack_traces()
-
-    ((_, files),) = uploads
-    assert files["rank_0.log"] == "trace of rank 0"
-    assert files["rank_1.log"] == (
-        f"timed out after {nccl_ras._STACK_DUMP_TIMEOUT_S:.0f}s"
-    )
-    assert "dump_stack_trace on rank 1 did not finish" in caplog.text
-
-
-def test_stack_traces_record_a_rank_whose_dump_failed(monkeypatch, uploads):
-    # The dump was launched and returned, but as an error (the worker died while
-    # dumping): report that against the rank rather than losing every trace.
-    callback, _ = make_stack_dump_callback(
-        monkeypatch,
-        ranks=[0, 1],
-        results={0: "trace of rank 0", 1: RuntimeError("worker died")},
-    )
-
-    callback.dump_workers_stack_traces()
-
-    ((_, files),) = uploads
-    assert files["rank_1.log"] == "failed to collect: worker died"
-
-
-def test_stack_traces_skipped_without_workers(monkeypatch, uploads):
-    # The group can be empty by the time the hang is confirmed (already torn
-    # down): there is no empty directory to leave in the experiment directory.
-    callback, _ = make_stack_dump_callback(monkeypatch, ranks=[])
-
-    assert callback.dump_workers_stack_traces() is None
-    assert uploads == []
-
-
-def test_dump_stack_trace_falls_back_to_python_when_py_spy_is_missing(monkeypatch):
-    # py-spy is an optional dependency; without it the native frames are lost but
-    # the Python stacks of every thread are still worth having.
-    def no_py_spy(*args, **kwargs):
-        raise FileNotFoundError("py-spy")
-
-    monkeypatch.setattr(nccl_ras.subprocess, "run", no_py_spy)
-
-    trace = nccl_ras.dump_stack_trace(1.0)
-
-    assert "py-spy unavailable: py-spy not installed" in trace
-    assert "test_dump_stack_trace_falls_back_to_python_when_py_spy_is_missing" in trace
-
-
-def test_dump_stack_trace_returns_the_py_spy_dump(monkeypatch):
-    # The native dump is what shows a rank blocked inside NCCL, so it is returned
-    # verbatim rather than summarised.
-    monkeypatch.setattr(
-        nccl_ras.subprocess,
-        "run",
-        lambda *args, **kwargs: MagicMock(
-            returncode=0, stdout="native stack", stderr=""
-        ),
-    )
-
-    assert nccl_ras.dump_stack_trace(1.0) == "native stack"
-
-
-def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
-    # A diagnostic that fails must never take the run's hang handling with it.
-    def boom():
-        raise RuntimeError("upload failed")
-
-    with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
-        assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
-    assert "worker stack traces" in caplog.text
-
-
-def make_worker(rank, node_ip="10.0.0.1"):
-    """A train worker stand-in; the diagnostics only need its rank and node."""
-    return MagicMock(
-        distributed_context=MagicMock(world_rank=rank),
-        metadata=MagicMock(node_ip=node_ip),
-    )
-
-
-@pytest.fixture
-def fan_out(monkeypatch):
-    """Script what each worker does when a diagnostic fans out to it.
-
-    Returns a namespace holding a ``worker(rank, ...)`` factory and the
-    ``ray.wait`` mock the fan-out used. A worker returns ``value``, or instead
-    fails its launch (``launch_error``), never finishes so the fan-out times out
-    (``ready=False``), or fails when its finished call is collected
-    (``get_error``).
-    """
-    pending, values, get_errors = set(), {}, {}
-
-    def worker(
-        rank, value=None, launch_error=None, get_error=None, ready=True, **kwargs
-    ):
-        worker = make_worker(rank, **kwargs)
-        if launch_error is not None:
-            worker.execute_async.side_effect = launch_error
-            return worker
-        # The mock's return value stands in for the call's ObjectRef.
-        ref = worker.execute_async.return_value
-        values[ref] = value
-        if not ready:
-            pending.add(ref)
-        if get_error is not None:
-            get_errors[ref] = get_error
-        return worker
-
-    def wait(refs, num_returns, timeout):
-        assert num_returns == len(refs)
-        return (
-            [ref for ref in refs if ref not in pending],
-            [ref for ref in refs if ref in pending],
-        )
-
-    def get(ref, timeout=None):
-        if ref in get_errors:
-            raise get_errors[ref]
-        return values[ref]
-
-    wait_mock = MagicMock(side_effect=wait)
-    monkeypatch.setattr(nccl_ras.ray, "wait", wait_mock)
-    monkeypatch.setattr(nccl_ras.ray, "get", get)
-    return types.SimpleNamespace(worker=worker, wait=wait_mock)
-
-
-def test_fan_out_collects_every_worker(fan_out):
-    workers = [fan_out.worker(7, value="stack-7"), fan_out.worker(4, value="stack-4")]
-
-    dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
-
-    # A dump is keyed by the worker's world rank, not its position in the list.
-    assert {dump.rank: dump.value for dump in dumps} == {7: "stack-7", 4: "stack-4"}
-    assert all(dump.error is None for dump in dumps)
-    workers[0].execute_async.assert_called_once_with(dump_stack_trace, 25.0)
-    # One wait for the whole fan-out, sharing the budget between the workers.
-    assert fan_out.wait.call_args.kwargs["timeout"] == 30.0
-
-
-@pytest.mark.parametrize(
-    "broken,expected_error",
-    [
-        ({"launch_error": RuntimeError("actor is dead")}, "failed to launch"),
-        ({"ready": False}, "timed out after 30s"),
-        ({"get_error": RuntimeError("worker exited")}, "failed to collect"),
-    ],
-    ids=["launch_failed", "timed_out", "collect_failed"],
-)
-def test_fan_out_records_per_rank_failures(fan_out, broken, expected_error):
-    # One unreachable rank must not cost us the ranks that did answer: it gets an
-    # error saying why, which is what ends up in that rank's file.
-    workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
-
-    dumps = {
-        dump.rank: dump
-        for dump in fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
-    }
-
-    assert dumps[0].value is None
-    assert expected_error in dumps[0].error
-    assert dumps[1].value == "stack-1" and dumps[1].error is None
-
-
-def fake_nvidia_smi(monkeypatch, **run_result):
-    """Script the ``nvidia-smi`` subprocess, recording how it was invoked."""
     calls = []
 
     def fake_run(cmd, **kwargs):
@@ -1659,8 +1209,62 @@ def fake_nvidia_smi(monkeypatch, **run_result):
     return calls
 
 
+@pytest.fixture
+def fake_c10d(monkeypatch):
+    """Put a fake ``torch._C._distributed_c10d`` in front of the real torch.
+
+    ``dump_flight_recorder`` imports it when it runs, so these tests exercise
+    the worker-side dump whether or not torch is installed.
+    """
+    c10d = types.ModuleType("torch._C._distributed_c10d")
+    torch_c = types.ModuleType("torch._C")
+    torch_c._distributed_c10d = c10d
+    monkeypatch.setitem(
+        sys.modules, "torch", sys.modules.get("torch") or types.ModuleType("torch")
+    )
+    monkeypatch.setitem(sys.modules, "torch._C", torch_c)
+    monkeypatch.setitem(sys.modules, "torch._C._distributed_c10d", c10d)
+    return c10d
+
+
+def test_dump_stack_trace_returns_the_py_spy_dump(monkeypatch):
+    # The native dump is what shows a rank blocked inside NCCL, so it is returned
+    # verbatim rather than summarised.
+    calls = fake_subprocess_run(monkeypatch, stdout="native stack")
+
+    assert dump_stack_trace(25.0) == "native stack"
+    ((cmd, kwargs),) = calls
+    assert cmd[:2] == ["py-spy", "dump"] and "--native" in cmd
+    assert kwargs["timeout"] == 25.0
+
+
+@pytest.mark.parametrize(
+    "run_result,expected_reason",
+    [
+        ({"side_effect": FileNotFoundError("py-spy")}, "py-spy not installed"),
+        (
+            {"side_effect": subprocess.TimeoutExpired("py-spy", 25.0)},
+            "py-spy timed out",
+        ),
+        ({"returncode": 1}, "py-spy exited 1"),
+    ],
+    ids=["not_installed", "timed_out", "non_zero_exit"],
+)
+def test_dump_stack_trace_falls_back_to_python(
+    monkeypatch, run_result, expected_reason
+):
+    # py-spy is an optional dependency; without it the native frames are lost but
+    # the Python stacks of every thread are still worth having.
+    fake_subprocess_run(monkeypatch, **run_result)
+
+    trace = dump_stack_trace(25.0)
+
+    assert f"py-spy unavailable: {expected_reason}" in trace
+    assert "test_dump_stack_trace_falls_back_to_python" in trace
+
+
 def test_nvidia_smi_returns_the_report(monkeypatch):
-    calls = fake_nvidia_smi(monkeypatch, stdout="GPU 00000000:00:04.0\n")
+    calls = fake_subprocess_run(monkeypatch, stdout="GPU 00000000:00:04.0\n")
 
     assert run_nvidia_smi(25.0) == {"ok": True, "stdout": "GPU 00000000:00:04.0\n"}
     ((cmd, kwargs),) = calls
@@ -1672,7 +1276,7 @@ def test_nvidia_smi_returns_the_report(monkeypatch):
 @pytest.mark.parametrize(
     "run_result,expected_reason",
     [
-        ({"side_effect": FileNotFoundError()}, "binary_not_found"),
+        ({"side_effect": FileNotFoundError()}, "`nvidia-smi` is missing on this node"),
         (
             {"side_effect": subprocess.TimeoutExpired("nvidia-smi", 25.0)},
             "timed out after 25s",
@@ -1683,129 +1287,58 @@ def test_nvidia_smi_returns_the_report(monkeypatch):
     ids=["not_installed", "driver_stuck", "os_error", "non_zero_exit"],
 )
 def test_nvidia_smi_failures_say_why(monkeypatch, run_result, expected_reason):
-    fake_nvidia_smi(monkeypatch, **run_result)
+    # The reason is written into the node's file, so it has to be readable.
+    fake_subprocess_run(monkeypatch, **run_result)
 
     result = run_nvidia_smi(25.0)
 
     assert result["ok"] is False and expected_reason in result["reason"]
 
 
-def scripted_fan_out(monkeypatch, dumps):
-    """Replace the worker fan-out with fixed dumps, recording how it was called."""
-    calls = []
+def test_flight_recorder_dump_decodes_bytes(fake_c10d):
+    # torch returns the trace as utf-8 bytes, but the dumps are uploaded as text
+    # files, so the bytes have to be decoded before they get there.
+    fake_c10d._dump_fr_trace_json = lambda *args, **kwargs: b'{"entries": []}'
 
-    def fake_fan_out(workers, fn, *fn_args, timeout_s):
-        calls.append((workers, fn, fn_args, timeout_s))
-        return dumps
-
-    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", fake_fan_out)
-    return calls
+    assert dump_flight_recorder() == {"ok": True, "trace_json": '{"entries": []}'}
 
 
-def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
-    # Two ranks share a node and a third is on its own: `nvidia-smi` reports
-    # every GPU on a node, so the shared node must only be queried once.
-    workers = [
-        make_worker(0, node_ip="10.0.0.1"),
-        make_worker(1, node_ip="10.0.0.1"),
-        make_worker(2, node_ip="10.0.0.2"),
-    ]
-    callback = make_diagnostics_callback(workers)
-    calls = scripted_fan_out(
-        monkeypatch,
-        [
-            WorkerDump(0, value={"ok": True, "stdout": "node 1 GPUs"}),
-            WorkerDump(2, value={"ok": True, "stdout": "node 2 GPUs"}),
-        ],
-    )
-
-    fs_path = callback.dump_nodes_nvidia_smi()
-
-    assert fs_path == "/exp/hang_detector/nvidia_smi"
-    assert uploads == [
-        (fs_path, {"10.0.0.1.log": "node 1 GPUs", "10.0.0.2.log": "node 2 GPUs"})
-    ]
-    ((queried, fn, fn_args, timeout_s),) = calls
-    assert [worker.metadata.node_ip for worker in queried] == ["10.0.0.1", "10.0.0.2"]
-    assert (fn, fn_args, timeout_s) == (
-        nccl_ras.run_nvidia_smi,
-        (nccl_ras._NVIDIA_SMI_TIMEOUT_S - 5,),
-        nccl_ras._NVIDIA_SMI_TIMEOUT_S,
-    )
+def _raise_dump_failed(*args, **kwargs):
+    raise RuntimeError("dump failed")
 
 
 @pytest.mark.parametrize(
-    "bad_dump,expected_reason",
+    "torch_c,dump_fn,expected_reason",
     [
-        (WorkerDump(0, error="timed out after 30s"), "timed out after 30s"),
-        (
-            WorkerDump(0, value={"ok": False, "reason": "`nvidia-smi -q` exited 9"}),
-            "exited 9",
-        ),
+        (None, None, "c10d"),  # a None module makes the import fail
+        ("fake", _raise_dump_failed, "dump failed"),
     ],
-    ids=["fan_out_failed", "nvidia_smi_failed"],
+    ids=["no_torch", "dump_raises"],
 )
-def test_nvidia_smi_failed_node_gets_placeholder(
-    monkeypatch, uploads, bad_dump, expected_reason
+def test_flight_recorder_dump_failures(
+    monkeypatch, fake_c10d, torch_c, dump_fn, expected_reason
 ):
-    # A driver that will not answer is the hardware failure being looked for, so
-    # the reason is the evidence and is written out like any other snapshot.
-    workers = [make_worker(0, node_ip="10.0.0.1"), make_worker(1, node_ip="10.0.0.2")]
-    callback = make_diagnostics_callback(workers)
-    scripted_fan_out(
-        monkeypatch, [bad_dump, WorkerDump(1, value={"ok": True, "stdout": "GPUs"})]
+    if torch_c is None:
+        monkeypatch.setitem(sys.modules, "torch._C", None)
+    else:
+        fake_c10d._dump_fr_trace_json = dump_fn
+
+    result = dump_flight_recorder()
+
+    assert result["ok"] is False and expected_reason in result["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics, stage 2: fanning a worker-side function out to the group
+# ---------------------------------------------------------------------------
+
+
+def make_worker(rank, node_ip="10.0.0.1"):
+    """A train worker stand-in; the diagnostics only need its rank and node."""
+    return MagicMock(
+        distributed_context=MagicMock(world_rank=rank),
+        metadata=MagicMock(node_ip=node_ip),
     )
-
-    callback.dump_nodes_nvidia_smi()
-
-    ((_, files),) = uploads
-    assert expected_reason in files["10.0.0.1.log"]
-    assert files["10.0.0.2.log"] == "GPUs"
-
-
-def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
-    # The whole worker-side path: what `nvidia-smi` prints has to arrive intact
-    # in the node's file.
-    fake_nvidia_smi(monkeypatch, stdout="Driver Version : 580.65.06\n")
-    callback = make_diagnostics_callback([make_worker(0, node_ip="10.0.0.1")])
-
-    def local_fan_out(workers, fn, *fn_args, timeout_s):
-        return [
-            WorkerDump(worker.distributed_context.world_rank, value=fn(*fn_args))
-            for worker in workers
-        ]
-
-    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
-
-    callback.dump_nodes_nvidia_smi()
-
-    ((_, files),) = uploads
-    assert files["10.0.0.1.log"] == "Driver Version : 580.65.06\n"
-
-
-def test_stack_traces_upload_per_rank(monkeypatch, uploads):
-    callback = make_diagnostics_callback()
-    calls = scripted_fan_out(
-        monkeypatch,
-        [WorkerDump(0, value="stack 0"), WorkerDump(1, error="timed out after 30s")],
-    )
-
-    fs_path = callback.dump_workers_stack_traces()
-
-    assert fs_path == "/exp/hang_detector/stack_traces"
-    assert uploads == [
-        (fs_path, {"rank_0.log": "stack 0", "rank_1.log": "timed out after 30s"})
-    ]
-    ((_, fn, fn_args, timeout_s),) = calls
-    assert (fn, fn_args, timeout_s) == (
-        nccl_ras.dump_stack_trace,
-        (nccl_ras._STACK_DUMP_TIMEOUT_S - 5,),
-        nccl_ras._STACK_DUMP_TIMEOUT_S,
-    )
-
-def make_worker(rank):
-    """A train worker stand-in; the diagnostics only need its world rank."""
-    return MagicMock(distributed_context=MagicMock(world_rank=rank))
 
 
 @pytest.fixture
@@ -1866,78 +1399,50 @@ def test_fan_out_collects_every_worker(fan_out):
 
 
 @pytest.mark.parametrize(
-    "broken,expected_error",
+    "broken,expected_error,expected_log",
     [
-        ({"launch_error": RuntimeError("actor is dead")}, "failed to launch"),
-        ({"ready": False}, "timed out after 30s"),
-        ({"get_error": RuntimeError("worker exited")}, "failed to collect"),
+        (
+            {"launch_error": RuntimeError("actor is dead")},
+            "failed to launch: actor is dead",
+            "Failed to launch dump_stack_trace on rank 0",
+        ),
+        (
+            {"ready": False},
+            "timed out after 30s",
+            "dump_stack_trace on rank 0 did not finish within 30s",
+        ),
+        (
+            {"get_error": RuntimeError("worker exited")},
+            "failed to collect: worker exited",
+            "Failed to collect dump_stack_trace on rank 0",
+        ),
     ],
     ids=["launch_failed", "timed_out", "collect_failed"],
 )
-def test_fan_out_records_per_rank_failures(fan_out, broken, expected_error):
-    # One unreachable rank must not cost us the ranks that did answer: it gets an
-    # error saying why, which is what ends up in that rank's file.
+def test_fan_out_records_per_rank_failures(
+    fan_out, caplog, propagate_logs, broken, expected_error, expected_log
+):
+    # One unreachable rank (the hung one is the interesting one) must not cost
+    # us the ranks that did answer: it gets an error saying why, which is what
+    # ends up in that rank's file, and the failure is logged.
     workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
 
-    dumps = {
-        dump.rank: dump
-        for dump in fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
-    }
+    with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
+        dumps = {
+            dump.rank: dump
+            for dump in fan_out_to_workers(
+                workers, dump_stack_trace, 25.0, timeout_s=30.0
+            )
+        }
 
-    assert dumps[0].value is None
-    assert expected_error in dumps[0].error
+    assert dumps[0].value is None and dumps[0].error == expected_error
     assert dumps[1].value == "stack-1" and dumps[1].error is None
+    assert expected_log in caplog.text
 
 
-@pytest.fixture
-def fake_c10d(monkeypatch):
-    """Put a fake ``torch._C._distributed_c10d`` in front of the real torch.
-
-    ``dump_flight_recorder`` imports it when it runs, so these tests exercise
-    the worker-side dump whether or not torch is installed.
-    """
-    c10d = types.ModuleType("torch._C._distributed_c10d")
-    torch_c = types.ModuleType("torch._C")
-    torch_c._distributed_c10d = c10d
-    monkeypatch.setitem(
-        sys.modules, "torch", sys.modules.get("torch") or types.ModuleType("torch")
-    )
-    monkeypatch.setitem(sys.modules, "torch._C", torch_c)
-    monkeypatch.setitem(sys.modules, "torch._C._distributed_c10d", c10d)
-    return c10d
-
-
-def test_flight_recorder_dump_decodes_bytes(fake_c10d):
-    # torch returns the trace as utf-8 bytes, but the dumps are uploaded as text
-    # files, so the bytes have to be decoded before they get there.
-    fake_c10d._dump_fr_trace_json = lambda *args, **kwargs: b'{"entries": []}'
-
-    assert dump_flight_recorder() == {"ok": True, "trace_json": '{"entries": []}'}
-
-
-def test_flight_recorder_dump_without_torch(monkeypatch):
-    monkeypatch.setitem(sys.modules, "torch._C", None)  # makes the import fail
-
-    result = dump_flight_recorder()
-
-    assert result["ok"] is False and "c10d" in result["reason"]
-
-
-def test_flight_recorder_dump_error(fake_c10d):
-    def boom(*args, **kwargs):
-        raise RuntimeError("dump failed")
-
-    fake_c10d._dump_fr_trace_json = boom
-
-    result = dump_flight_recorder()
-
-    assert result["ok"] is False and "dump failed" in result["reason"]
-
-
-@pytest.fixture
-def armed_flight_recorder(monkeypatch):
-    """Arm the Flight Recorder ring buffer, which the dump refuses to run without."""
-    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+# ---------------------------------------------------------------------------
+# Diagnostics, stage 3: turning each tool's dumps into uploaded files
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -1954,11 +1459,16 @@ def uploads(monkeypatch):
     return calls
 
 
-def make_diagnostics_callback(ranks=(0, 1), experiment_fs_path="/exp"):
-    """A callback wired to a worker group, to exercise the real dump methods."""
+def make_diagnostics_callback(workers=None, experiment_fs_path="/exp"):
+    """A callback wired to a worker group, to exercise the real dump methods.
+
+    By default two workers, each on its own node.
+    """
+    if workers is None:
+        workers = [make_worker(rank, node_ip=f"10.0.0.{rank}") for rank in (0, 1)]
     callback = NCCLRASCallback()
     worker_group = MagicMock()
-    worker_group.get_workers.return_value = [make_worker(rank) for rank in ranks]
+    worker_group.get_workers.return_value = workers
     worker_group._storage_context.experiment_fs_path = experiment_fs_path
     callback._worker_group = worker_group
     return callback
@@ -1969,130 +1479,248 @@ def scripted_fan_out(monkeypatch, dumps):
     calls = []
 
     def fake_fan_out(workers, fn, *fn_args, timeout_s):
-        calls.append((fn, fn_args, timeout_s))
+        calls.append((workers, fn, fn_args, timeout_s))
         return dumps
 
     monkeypatch.setattr(nccl_ras, "fan_out_to_workers", fake_fan_out)
     return calls
 
 
-def test_flight_recorder_dumps_upload_per_rank(
-    monkeypatch, uploads, armed_flight_recorder
-):
-    callback = make_diagnostics_callback()
-    calls = scripted_fan_out(
-        monkeypatch,
-        [
-            WorkerDump(0, value={"ok": True, "trace_json": '{"entries": [0]}'}),
-            WorkerDump(1, value={"ok": True, "trace_json": '{"entries": [1]}'}),
-        ],
-    )
+@dataclass
+class FanOutDiagnostic:
+    """How one fan-out diagnostic talks to its workers and names its files.
 
-    fs_path = callback.dump_workers_flight_recorder()
+    Attributes:
+        tool: The ``hang_detector/`` sub-directory it uploads to.
+        method: The callback method that captures it.
+        fn: The worker-side function fanned out.
+        fn_args: The arguments ``fn`` is fanned out with.
+        timeout_s: The fan-out's budget.
+        ok: The worker's return value for a successful dump of ``contents``.
+        failed: The worker's return value when it reports a failure with
+            ``reason``, or ``None`` if the worker-side function never does.
+        filename: The file a rank's dump lands in (nvidia-smi: its node's).
+        placeholder: What is written in place of a dump that failed with
+            ``reason``.
+    """
 
-    assert fs_path == "/exp/hang_detector/flight_recorder"
-    assert uploads == [
-        (
-            fs_path,
-            {"rank_0.json": '{"entries": [0]}', "rank_1.json": '{"entries": [1]}'},
-        )
-    ]
-    assert calls == [
-        (nccl_ras.dump_flight_recorder, (), nccl_ras._FLIGHT_RECORDER_DUMP_TIMEOUT_S)
-    ]
+    tool: str
+    method: str
+    fn: Callable[..., Any]
+    fn_args: tuple
+    timeout_s: float
+    ok: Callable[[str], Any]
+    failed: Optional[Callable[[str], Any]]
+    filename: Callable[[int], str]
+    placeholder: Callable[[str], str]
+
+
+_FAN_OUT_DIAGNOSTICS = [
+    FanOutDiagnostic(
+        tool=nccl_ras._STACK_TRACES_TOOL,
+        method="dump_workers_stack_traces",
+        fn=nccl_ras.dump_stack_trace,
+        # py-spy has to give up before the controller stops waiting.
+        fn_args=(nccl_ras._STACK_DUMP_TIMEOUT_S - 5,),
+        timeout_s=nccl_ras._STACK_DUMP_TIMEOUT_S,
+        ok=lambda contents: contents,
+        failed=None,  # dump_stack_trace always returns a (fallback) trace
+        filename=lambda rank: f"rank_{rank}.log",
+        placeholder=lambda reason: reason,
+    ),
+    FanOutDiagnostic(
+        tool=nccl_ras._NVIDIA_SMI_TOOL,
+        method="dump_nodes_nvidia_smi",
+        fn=nccl_ras.run_nvidia_smi,
+        fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 5,),
+        timeout_s=nccl_ras._NVIDIA_SMI_TIMEOUT_S,
+        ok=lambda contents: {"ok": True, "stdout": contents},
+        failed=lambda reason: {"ok": False, "reason": reason},
+        filename=lambda rank: f"10.0.0.{rank}.log",
+        placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}\n",
+    ),
+    FanOutDiagnostic(
+        tool=nccl_ras._FLIGHT_RECORDER_TOOL,
+        method="dump_workers_flight_recorder",
+        fn=nccl_ras.dump_flight_recorder,
+        fn_args=(),
+        timeout_s=nccl_ras._FLIGHT_RECORDER_DUMP_TIMEOUT_S,
+        ok=lambda contents: {"ok": True, "trace_json": contents},
+        failed=lambda reason: {"ok": False, "reason": reason},
+        filename=lambda rank: f"rank_{rank}.json",
+        # Still valid JSON, so every file in the directory parses.
+        placeholder=lambda reason: json.dumps({"ray_train_dump_error": reason}),
+    ),
+]
 
 
 @pytest.mark.parametrize(
-    "bad_dump,expected_error",
-    [
-        (WorkerDump(0, error="timed out after 30s"), "timed out after 30s"),
-        (
-            WorkerDump(0, value={"ok": False, "reason": "torch c10d is unavailable"}),
-            "torch c10d is unavailable",
-        ),
-    ],
-    ids=["fan_out_failed", "dump_failed"],
+    "diagnostic", _FAN_OUT_DIAGNOSTICS, ids=lambda diagnostic: diagnostic.tool
 )
-def test_flight_recorder_failed_rank_gets_placeholder(
-    monkeypatch, uploads, armed_flight_recorder, bad_dump, expected_error
-):
-    # A rank with no dump is written as an explicit error, so the gap is never
-    # silent -- and the ranks that did answer are still uploaded.
+def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic):
+    # Every rank (nvidia-smi: every node) gets its own file, named so it can be
+    # matched to the RAS report, holding exactly what the worker returned.
+    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
     callback = make_diagnostics_callback()
-    scripted_fan_out(
-        monkeypatch, [bad_dump, WorkerDump(1, value={"ok": True, "trace_json": "{}"})]
+    workers = callback._worker_group.get_workers()
+    calls = scripted_fan_out(
+        monkeypatch,
+        [WorkerDump(rank, value=diagnostic.ok(f"dump {rank}")) for rank in (0, 1)],
     )
 
-    callback.dump_workers_flight_recorder()
+    fs_path = getattr(callback, diagnostic.method)()
 
-    ((_, files),) = uploads
-    assert json.loads(files["rank_0.json"]) == {"ray_train_dump_error": expected_error}
-    assert files["rank_1.json"] == "{}"
+    assert fs_path == f"/exp/{HANG_DETECTOR_DIRNAME}/{diagnostic.tool}"
+    assert uploads == [
+        (fs_path, {diagnostic.filename(rank): f"dump {rank}" for rank in (0, 1)})
+    ]
+    assert calls == [(workers, diagnostic.fn, diagnostic.fn_args, diagnostic.timeout_s)]
 
 
-def test_flight_recorder_dump_reaches_the_uploaded_file(
-    monkeypatch, uploads, fake_c10d, armed_flight_recorder
+_PLACEHOLDER_CASES = [
+    pytest.param(diagnostic, source, id=f"{diagnostic.tool}-{source}")
+    for diagnostic in _FAN_OUT_DIAGNOSTICS
+    for source in ("fan_out_error", "worker_reported_failure")
+    if source == "fan_out_error" or diagnostic.failed is not None
+]
+
+
+@pytest.mark.parametrize("diagnostic,source", _PLACEHOLDER_CASES)
+def test_diagnostic_failed_target_gets_placeholder(
+    monkeypatch, uploads, diagnostic, source
 ):
-    # The whole worker-side path: what torch hands back has to arrive in the
-    # rank's file as readable JSON.
-    fake_c10d._dump_fr_trace_json = lambda *a, **kw: b'{"entries": [{"seq_id": 3}]}'
-    callback = make_diagnostics_callback(ranks=(0,))
+    # A rank or node with no dump -- the fan-out couldn't reach it, or the tool
+    # itself failed there (e.g. `nvidia-smi` missing on that node) -- still gets
+    # a file saying why, so a gap is never silent, and the targets that did
+    # answer are still uploaded.
+    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+    callback = make_diagnostics_callback()
+    reason = "it went wrong"
+    if source == "fan_out_error":
+        bad_dump = WorkerDump(0, error=reason)
+    else:
+        bad_dump = WorkerDump(0, value=diagnostic.failed(reason))
+    scripted_fan_out(
+        monkeypatch, [bad_dump, WorkerDump(1, value=diagnostic.ok("dump 1"))]
+    )
 
-    def local_fan_out(workers, fn, *fn_args, timeout_s):
-        return [
-            WorkerDump(worker.distributed_context.world_rank, value=fn(*fn_args))
-            for worker in workers
-        ]
-
-    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
-
-    callback.dump_workers_flight_recorder()
+    getattr(callback, diagnostic.method)()
 
     ((_, files),) = uploads
-    assert json.loads(files["rank_0.json"]) == {"entries": [{"seq_id": 3}]}
+    assert files == {
+        diagnostic.filename(0): diagnostic.placeholder(reason),
+        diagnostic.filename(1): "dump 1",
+    }
 
 
-def test_flight_recorder_skipped_when_buffer_is_not_armed(monkeypatch, uploads):
-    # The ring buffer has to be armed before the process group is created, so
-    # without TORCH_FR_BUFFER_SIZE there is nothing for the workers to dump and
-    # the fan-out is not worth the hung job's time.
-    monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
-    callback = make_diagnostics_callback()
-    calls = scripted_fan_out(monkeypatch, [WorkerDump(0, value={"ok": True})])
+def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
+    # Two ranks share a node and a third is on its own: `nvidia-smi` reports
+    # every GPU on a node, so the shared node must only be queried once.
+    workers = [
+        make_worker(0, node_ip="10.0.0.1"),
+        make_worker(1, node_ip="10.0.0.1"),
+        make_worker(2, node_ip="10.0.0.2"),
+    ]
+    callback = make_diagnostics_callback(workers)
+    calls = scripted_fan_out(
+        monkeypatch,
+        [
+            WorkerDump(0, value={"ok": True, "stdout": "node 1 GPUs"}),
+            WorkerDump(2, value={"ok": True, "stdout": "node 2 GPUs"}),
+        ],
+    )
 
-    assert callback.dump_workers_flight_recorder() is None
+    callback.dump_nodes_nvidia_smi()
+
+    ((queried, *_),) = calls
+    assert queried == [workers[0], workers[2]]
+    ((_, files),) = uploads
+    assert files == {"10.0.0.1.log": "node 1 GPUs", "10.0.0.2.log": "node 2 GPUs"}
+
+
+@pytest.mark.parametrize(
+    "method,has_workers,fr_armed",
+    [
+        ("dump_workers_stack_traces", False, True),
+        ("dump_nodes_nvidia_smi", False, True),
+        ("dump_workers_flight_recorder", False, True),
+        # The ring buffer has to be armed before the process group is created,
+        # so unarmed there is nothing to dump and the fan-out isn't worth the
+        # hung job's time.
+        ("dump_workers_flight_recorder", True, False),
+        # Nothing polled yet: the history has nothing to write.
+        ("dump_ras_query_history", True, True),
+    ],
+    ids=[
+        "stack_traces_no_workers",
+        "nvidia_smi_no_workers",
+        "flight_recorder_no_workers",
+        "flight_recorder_not_armed",
+        "ras_history_empty",
+    ],
+)
+def test_diagnostic_skipped(monkeypatch, uploads, method, has_workers, fr_armed):
+    # With nothing to record there is no empty directory to leave behind in the
+    # user's experiment directory, and the error does not point at one.
+    if fr_armed:
+        monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+    else:
+        monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
+    callback = make_diagnostics_callback(None if has_workers else [])
+    calls = scripted_fan_out(monkeypatch, [])
+
+    assert getattr(callback, method)() is None
     assert calls == [] and uploads == []
 
 
-def test_stack_traces_upload_per_rank(monkeypatch, uploads):
-    callback = make_diagnostics_callback()
-    calls = scripted_fan_out(
-        monkeypatch,
-        [WorkerDump(0, value="stack 0"), WorkerDump(1, error="timed out after 30s")],
+# ---------------------------------------------------------------------------
+# Diagnostics: the RAS query history
+# ---------------------------------------------------------------------------
+
+
+def test_ras_history_buffer(monkeypatch):
+    # Every successful poll is recorded, healthy or not, and the buffer reaches
+    # back past the confirmation window (otherwise the saved history only ever
+    # shows the communicator already stalled), evicting the oldest beyond that.
+    confirm_count = 3
+    maxlen = confirm_count + nccl_ras._RAS_HISTORY_MARGIN_POLLS
+    reports = [create_single_comm_report({1: count}) for count in range(maxlen + 5)]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=confirm_count, reports=reports
     )
 
-    fs_path = callback.dump_workers_stack_traces()
+    for _ in reports:
+        tick(callback)
 
-    assert fs_path == "/exp/hang_detector/stack_traces"
-    assert uploads == [
-        (fs_path, {"rank_0.log": "stack 0", "rank_1.log": "timed out after 30s"})
-    ]
-    assert calls == [
-        (
-            nccl_ras.dump_stack_trace,
-            (nccl_ras._STACK_DUMP_TIMEOUT_S - 5,),
-            nccl_ras._STACK_DUMP_TIMEOUT_S,
-        )
-    ]
+    assert callback.ras_history.maxlen == maxlen
+    assert list(callback.ras_history) == reports[-maxlen:]
 
 
-def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
-    def boom():
-        raise RuntimeError("upload failed")
+@pytest.mark.parametrize(
+    "text_report", ["human readable report", None], ids=["with_text", "without_text"]
+)
+def test_ras_history_upload(uploads, text_report):
+    # Each retained poll is written verbatim -- the raw `ncclras` output, so
+    # hosts, pids and missing ranks survive -- under a filename made from its
+    # RAS timestamp. The text report is a separate query that can fail while
+    # the history is still worth writing.
+    callback = make_diagnostics_callback()
+    callback.ras_history.extend(
+        parse_ras_schema(ras_json)
+        for ras_json in (HEALTHY_RAS_JSON, DEAD_RANK_RAS_JSON, MULTI_COMM_RAS_JSON)
+    )
 
-    with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
-        assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
-    assert "worker stack traces" in caplog.text
+    fs_path = callback.dump_ras_query_history(text_report)
+
+    assert fs_path == f"/exp/{HANG_DETECTOR_DIRNAME}/nccl_ras"
+    expected = {
+        "ncclras_2026-06-19-06-51-56.json": HEALTHY_RAS_JSON,
+        "ncclras_2026-06-19-06-55-57.json": DEAD_RANK_RAS_JSON,
+        "ncclras_2026-06-19-06-56-24.json": MULTI_COMM_RAS_JSON,
+    }
+    if text_report:
+        expected["ncclras_report.txt"] = text_report
+    assert uploads == [(fs_path, expected)]
 
 
 if __name__ == "__main__":

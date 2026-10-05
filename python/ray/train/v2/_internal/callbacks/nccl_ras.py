@@ -649,7 +649,7 @@ def run_nvidia_smi(timeout_s: float) -> Dict[str, Any]:
             ["nvidia-smi", "-q"], capture_output=True, text=True, timeout=timeout_s
         )
     except FileNotFoundError:
-        return {"ok": False, "reason": "binary_not_found"}
+        return {"ok": False, "reason": "`nvidia-smi` is missing on this node"}
     except subprocess.TimeoutExpired:
         return {
             "ok": False,
@@ -1070,25 +1070,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             logger.exception("Trying to capture the %s failed.", name)
             return None
 
-    @staticmethod
-    def capture_diagnostic(
-        name: str, capture: Callable[[], Optional[str]]
-    ) -> Optional[str]:
-        """Run one diagnostic capture, logging rather than raising on failure.
-
-        Args:
-            name: What is being captured, for the log message.
-            capture: The capture, returning where it was uploaded.
-
-        Returns:
-            Where the diagnostic was uploaded, or ``None`` if it failed.
-        """
-        try:
-            return capture()
-        except Exception:  # noqa: BLE001
-            logger.exception("Trying to capture the %s failed.", name)
-            return None
-
     def dump_ras_query_history(
         self, human_report: Optional[str] = None
     ) -> Optional[str]:
@@ -1143,17 +1124,21 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """Snapshot every node's GPUs and write the reports to the log dir.
 
         The GPUs belong to the node rather than the rank, so exactly one worker
-        per node is queried and each node gets a ``{node_ip}.log``.
+        per node is queried and each node gets a ``{node_ip}.log``. A node with
+        no snapshot (e.g. ``nvidia-smi`` is missing there) gets a one-line
+        placeholder saying why, so mixed clusters are never silent.
 
         Returns:
-            The path to the folder with the snapshots, or ``None`` when no node
-            has ``nvidia-smi`` at all, so there is nothing to record.
+            The path to the folder with the snapshots, or ``None`` when there
+            are no workers to query.
         """
         node_workers: Dict[str, Worker] = {}
         node_ips: Dict[int, str] = {}
         for worker in self._worker_group.get_workers():
             node_workers.setdefault(worker.metadata.node_ip, worker)
             node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
+        if not node_workers:
+            return None
 
         dumps = fan_out_to_workers(
             list(node_workers.values()),

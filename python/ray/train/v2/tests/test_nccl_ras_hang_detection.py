@@ -342,7 +342,7 @@ def assert_hang_diagnostics(err, storage_path, num_workers):
 
     flight_recorder_dir = diagnostics_dir(storage_path, "flight_recorder")
     assert set(os.listdir(flight_recorder_dir)) == {
-        f"rank_{i}.json" for i in range(4)
+        f"rank_{i}.json" for i in range(num_workers)
     }
 
 
