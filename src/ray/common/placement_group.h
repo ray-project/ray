@@ -72,6 +72,16 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   std::vector<BundleSpecification> bundles_;
 };
 
+/// @brief Defines a specific scheduling option for a placement group.
+/// This includes the resources needed for bundles and the constraints on nodes.
+struct PlacementGroupSchedulingOption {
+  /// @brief The resource requirements for each bundle in the placement group.
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  /// @brief The label selectors for each bundle, defining constraints on which nodes the
+  /// bundle can be placed.
+  std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector;
+};
+
 class PlacementGroupSpecBuilder {
  public:
   PlacementGroupSpecBuilder() : message_(std::make_shared<rpc::PlacementGroupSpec>()) {}
@@ -92,6 +102,7 @@ class PlacementGroupSpecBuilder {
       bool is_creator_detached_actor,
       const std::vector<std::unordered_map<std::string, std::string>>
           &bundle_label_selector = {},
+      const std::vector<PlacementGroupSchedulingOption> &fallback_strategy = {},
       const std::unordered_map<std::string, rpc::PlacementStrategy> &topology_strategy =
           {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
@@ -137,6 +148,34 @@ class PlacementGroupSpecBuilder {
 
     message_->mutable_topology_strategy()->insert(topology_strategy.begin(),
                                                   topology_strategy.end());
+    if (!fallback_strategy.empty()) {
+      for (const auto &option : fallback_strategy) {
+        auto *message_option = message_->add_fallback_strategy();
+
+        // Set bundles for scheduling option (primary and fallbacks).
+        for (size_t i = 0; i < option.bundles.size(); i++) {
+          const auto &resources = option.bundles[i];
+          auto *message_bundle = message_option->add_bundles();
+          auto *mutable_bundle_id = message_bundle->mutable_bundle_id();
+          mutable_bundle_id->set_bundle_index(i);
+          mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+          auto *mutable_unit_resources = message_bundle->mutable_unit_resources();
+          for (const auto &pair : resources) {
+            if (pair.second > 0) {
+              mutable_unit_resources->insert({pair.first, pair.second});
+            }
+          }
+
+          if (option.bundle_label_selector.size() > i) {
+            auto *mutable_label_selector = message_bundle->mutable_label_selector();
+            for (const auto &pair : option.bundle_label_selector[i]) {
+              (*mutable_label_selector)[pair.first] = pair.second;
+            }
+          }
+        }
+      }
+    }
+
     return *this;
   }
 
