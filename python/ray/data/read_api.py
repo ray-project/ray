@@ -3091,6 +3091,7 @@ def read_tfrecords(
     memory: Optional[float] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
@@ -3158,6 +3159,8 @@ def read_tfrecords(
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         ignore_missing_paths:  If True, ignores any file paths in ``paths`` that are not
@@ -3200,6 +3203,7 @@ def read_tfrecords(
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
+        partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
         include_paths=include_paths,
@@ -3689,6 +3693,7 @@ def read_webdataset(
     memory: Optional[float] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = None,
     decoder: Optional[Union[bool, str, callable, list]] = True,
     fileselect: Optional[Union[list, callable]] = None,
     filerename: Optional[Union[list, callable]] = None,
@@ -3729,6 +3734,8 @@ def read_webdataset(
             ``arrow_open_stream_args={'compression': 'gzip'}``).
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
         decoder: A function or list of functions to decode the data.
         fileselect: A callable or list of glob patterns to select files.
         filerename: A function or list of tuples to rename files prior to grouping.
@@ -3784,6 +3791,7 @@ def read_webdataset(
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
+        partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
