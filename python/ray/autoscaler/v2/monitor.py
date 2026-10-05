@@ -19,6 +19,7 @@ from ray._common.network_utils import (
     is_localhost,
     parse_address,
 )
+from ray._common.observability.autoscaler_events import is_ray_event_enabled
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -96,20 +97,46 @@ class AutoscalerMonitor:
         head_node_ip = parse_address(self.gcs_address)[0]
 
         self.autoscaler = None
-        if log_dir:
+
+        # ONE-event and legacy export events are mutually exclusive.
+        # When an autoscaler event type is enabled via
+        # RAY_ENABLE_PYTHON_RAY_EVENT_TYPES, publish structured events
+        # through the dashboard head; otherwise fall back to the legacy
+        # export-event logger.
+        self.event_logger = None
+        log_cluster_shape = (
+            config_reader.get_cached_autoscaling_config().provider != Provider.READ_ONLY
+        )
+        if is_ray_event_enabled():
+            try:
+                # Lazy import: pulls in requests, which minimal installs
+                # don't have.
+                from ray._common.observability.dashboard_head_event_publisher import (
+                    DashboardHeadRayEventPublisher,
+                )
+
+                # The publisher buffers events until the dashboard is reachable.
+                ray_event_publisher = DashboardHeadRayEventPublisher(
+                    gcs_client=self.gcs_client
+                )
+                self.event_logger = AutoscalerEventLogger(
+                    ray_event_publisher=ray_event_publisher,
+                    session_name=self._session_name or "",
+                    log_cluster_shape=log_cluster_shape,
+                )
+            except Exception:
+                logger.exception("Failed to initialize DashboardHeadRayEventPublisher.")
+        elif log_dir:
             try:
                 ray_event_logger = get_event_logger(
                     RayEvent.SourceType.AUTOSCALER, log_dir
                 )
                 self.event_logger = AutoscalerEventLogger(
-                    ray_event_logger,
-                    log_cluster_shape=config_reader.get_cached_autoscaling_config().provider
-                    != Provider.READ_ONLY,
+                    export_event_logger=ray_event_logger,
+                    log_cluster_shape=log_cluster_shape,
                 )
             except Exception:
-                self.event_logger = None
-        else:
-            self.event_logger = None
+                logger.exception("Failed to initialize export event logger.")
 
         prom_metrics = AutoscalerPrometheusMetrics(session_name=self._session_name)
         self.metric_reporter = AutoscalerMetricsReporter(prom_metrics)
