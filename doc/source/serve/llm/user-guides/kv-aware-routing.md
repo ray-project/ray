@@ -47,7 +47,7 @@ export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
 :::{note}
-With body forwarding enabled, `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` sets HAProxy's request-buffer cap (256 KiB by default). HAProxy sends only a prefix of larger bodies to the router. Raise it when `serve_haproxy_ingress_router_truncations_total` shows that this truncation is affecting body-aware routing; a larger buffer increases HAProxy memory use and can delay routing and TTFT.
+With body forwarding enabled, `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` sets HAProxy's request-buffer cap (8 MiB by default). HAProxy sends only a prefix of larger bodies to the router. Raise it when `serve_haproxy_ingress_router_truncations_total` shows that this truncation is affecting body-aware routing; a larger buffer increases HAProxy memory use and can delay routing and TTFT.
 :::
 
 Then select the router through `request_router_config`:
@@ -187,6 +187,10 @@ The router scores requests using token IDs, so each request is tokenized at the 
 Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` when tokenizing and scoring at the ingress bound throughput. Two per node is usually enough, though the right number depends on your traffic.
 
 Ray Serve LLM keeps the KV cache and token load views synchronized across ingress replicas. These views are **eventually consistent**: token load and engine updates are propagated in the background, so an ingress replica may briefly make routing decisions based on a slightly stale KV cache or token load view.
+
+## Router availability
+
+If the ingress router fails to route a request, Ray Serve LLM can send it to an available model replica. These requests may not follow KV-aware routing, reducing cache reuse until the router recovers. Fallback is automatic. Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to monitor router failures and fallback requests.
 
 ## Limitations
 
