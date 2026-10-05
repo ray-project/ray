@@ -1,12 +1,10 @@
-Deploying Ray for ML platforms
-==============================
+# Deploying Ray for ML platforms
 
 This page describes how you might use or deploy Ray in your infrastructure. There are two main deployment patterns -- pick and choose, and within existing platforms.
 
 The core idea is that Ray can be **complementary** to your existing infrastructure and integration tools.
 
-Design Principles
------------------
+## Design Principles
 
 * Ray and its libraries handle the heavyweight compute aspects of AI apps and services.
 * Ray relies on external integrations (e.g., Tecton, MLFlow, W&B) for Storage and Tracking.
@@ -15,8 +13,7 @@ Design Principles
 * Ray libraries can be used independently, within an existing ML platform, or to build a Ray-native ML platform.
 
 
-Pick and choose your own libraries
-----------------------------------
+## Pick and choose your own libraries
 
 You can pick and choose which Ray AI libraries you want to use.
 
@@ -26,27 +23,28 @@ For example, Alice wants to use RLlib to train models for her work project. Bob 
 
 This scenario describes most usages of Ray libraries today.
 
-.. https://docs.google.com/drawings/d/1DcrchNda9m_3MH45NuhgKY49ZCRtj2Xny5dgY0X9PCA/edit
+<!-- https://docs.google.com/drawings/d/1DcrchNda9m_3MH45NuhgKY49ZCRtj2Xny5dgY0X9PCA/edit -->
 
-.. image:: /images/air_arch_1.svg
+```{image} /images/air_arch_1.svg
+```
 
 In the above diagram:
 
 * Only one library is used -- showing that you can pick and choose and do not need to replace all of your ML infrastructure to use Ray.
-* You can use one of :ref:`Ray's many deployment modes <jobs-overview>` to launch and manage Ray clusters and Ray applications.
+* You can use one of {ref}`Ray's many deployment modes <jobs-overview>` to launch and manage Ray clusters and Ray applications.
 * Ray AI libraries can read data from external storage systems such as Amazon S3 / Google Cloud Storage, as well as store results there.
 
 
 
-Existing ML Platform integration
---------------------------------
+## Existing ML Platform integration
 
 You may already have an existing machine learning platform but want to use some subset of Ray's ML libraries. For example, an ML engineer wants to use Ray within the ML Platform their organization has purchased (e.g., SageMaker, Vertex).
 
 Ray can complement existing machine learning platforms by integrating with existing pipeline/workflow orchestrators, storage, and tracking services, without requiring a replacement of your entire ML platform.
 
 
-.. image:: images/air_arch_2.png
+```{image} images/air_arch_2.png
+```
 
 
 In the above diagram:
