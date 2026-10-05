@@ -109,28 +109,29 @@ def _check_rl_module_spec(module_spec: RLModuleSpecType) -> None:
 class AlgorithmConfig(_Config):
     """A RLlib AlgorithmConfig builds an RLlib Algorithm from a given configuration.
 
-    >>> from ray.rllib.algorithms.ppo import PPOConfig
-    >>> from ray.rllib.callbacks.callbacks import MemoryTrackingCallbacks
-    >>> # Construct a generic config object, specifying values within different
-    >>> # sub-categories, e.g. "training".
-    >>> config = (
-    ...     PPOConfig()
-    ...     .training(gamma=0.9, lr=0.01)
-    ...     .environment(env="CartPole-v1")
-    ...     .env_runners(num_env_runners=0)
-    ...     .callbacks(MemoryTrackingCallbacks)
-    ... )
-    >>> # A config object can be used to construct the respective Algorithm.
-    >>> rllib_algo = config.build()
+    Examples:
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
+        >>> from ray.rllib.callbacks.callbacks import MemoryTrackingCallbacks
+        >>> # Construct a generic config object, specifying values within different
+        >>> # sub-categories, e.g. "training".
+        >>> config = (
+        ...     PPOConfig()
+        ...     .training(gamma=0.9, lr=0.01)
+        ...     .environment(env="CartPole-v1")
+        ...     .env_runners(num_env_runners=0)
+        ...     .callbacks(MemoryTrackingCallbacks)
+        ... )
+        >>> # A config object can be used to construct the respective Algorithm.
+        >>> rllib_algo = config.build()
 
-    >>> from ray.rllib.algorithms.ppo import PPOConfig
-    >>> from ray import tune
-    >>> # In combination with a tune.grid_search:
-    >>> config = PPOConfig()
-    >>> _ = config.training(lr=tune.grid_search([0.01, 0.001]))
-    >>> # Use `to_dict()` method to get the legacy plain python config dict
-    >>> # for usage with `tune.Tuner().fit()`.
-    >>> _ = tune.Tuner("PPO", param_space=config.to_dict())
+        >>> from ray.rllib.algorithms.ppo import PPOConfig
+        >>> from ray import tune
+        >>> # In combination with a tune.grid_search:
+        >>> config = PPOConfig()
+        >>> _ = config.training(lr=tune.grid_search([0.01, 0.001]))
+        >>> # Use `to_dict()` method to get the legacy plain python config dict
+        >>> # for usage with `tune.Tuner().fit()`.
+        >>> _ = tune.Tuner("PPO", param_space=config.to_dict())
     """
 
     @staticmethod
@@ -152,10 +153,11 @@ class AlgorithmConfig(_Config):
     def from_dict(cls, config_dict: dict) -> Self:
         """Creates an AlgorithmConfig from a legacy python config dict.
 
-        >>> from ray.rllib.algorithms.ppo.ppo import PPOConfig
-        >>> # pass a RLlib config dict
-        >>> ppo_config = PPOConfig.from_dict({})
-        >>> ppo = ppo_config.build(env="Pendulum-v1")
+        Examples:
+            >>> from ray.rllib.algorithms.ppo.ppo import PPOConfig
+            >>> # pass a RLlib config dict
+            >>> ppo_config = PPOConfig.from_dict({})
+            >>> ppo = ppo_config.build(env="Pendulum-v1")
 
         Args:
             config_dict: The legacy formatted python config dict for some algorithm.
@@ -186,28 +188,29 @@ class AlgorithmConfig(_Config):
         settings that would change with respect to some main config, e.g. in multi-agent
         setups and evaluation configs.
 
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> from ray.rllib.policy.policy import PolicySpec
-        >>> config = (
-        ...     PPOConfig()
-        ...     .multi_agent(
-        ...         policies={
-        ...             "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
-        ...         },
-        ...     )
-        ... )
+        Examples:
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
+            >>> from ray.rllib.policy.policy import PolicySpec
+            >>> config = (
+            ...     PPOConfig()
+            ...     .multi_agent(
+            ...         policies={
+            ...             "pol0": PolicySpec(config=PPOConfig.overrides(lambda_=0.95))
+            ...         },
+            ...     )
+            ... )
 
 
-        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        >>> from ray.rllib.algorithms.ppo import PPOConfig
-        >>> config = (
-        ...     PPOConfig()
-        ...     .evaluation(
-        ...         evaluation_num_env_runners=1,
-        ...         evaluation_interval=1,
-        ...         evaluation_config=AlgorithmConfig.overrides(explore=False),
-        ...     )
-        ... )
+            >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+            >>> from ray.rllib.algorithms.ppo import PPOConfig
+            >>> config = (
+            ...     PPOConfig()
+            ...     .evaluation(
+            ...         evaluation_num_env_runners=1,
+            ...         evaluation_interval=1,
+            ...         evaluation_config=AlgorithmConfig.overrides(explore=False),
+            ...     )
+            ... )
 
         Returns:
             A dict mapping valid config property-names to values.
@@ -6251,29 +6254,30 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
     """An RLlib DifferentiableAlgorithmConfig builds a Meta algorithm from a given
     configuration
 
-    >>> from ray.rllib.algorithms.algorithm_config import DifferentiableAlgorithmConfig
-    >>> from ray.rllib.core.learner.differentiable_learner_config import (
-    ...     DifferentiableLearnerConfig,
-    ... )
-    >>> from ray.rllib.core.learner.torch.torch_differentiable_learner import (
-    ...     TorchDifferentiableLearner,
-    ... )
-    >>> # Construct a generic config for an algorithm that needs differentiable Learners.
-    >>> config = (
-    ...     DifferentiableAlgorithmConfig()
-    ...     .training(lr=3e-4)
-    ...     .environment(env="CartPole-v1")
-    ...     .learners(
-    ...         differentiable_learner_configs=[
-    ...             DifferentiableLearnerConfig(
-    ...                 TorchDifferentiableLearner,
-    ...                 lr=1e-4,
-    ...             )
-    ...         ]
-    ...     )
-    ... )
-    >>> # The config is then used to configure a MetaLearner, see
-    >>> # `rllib/examples/algorithms/maml_lr_supervised_learning.py` for a full example.
+    Examples:
+        >>> from ray.rllib.algorithms.algorithm_config import DifferentiableAlgorithmConfig
+        >>> from ray.rllib.core.learner.differentiable_learner_config import (
+        ...     DifferentiableLearnerConfig,
+        ... )
+        >>> from ray.rllib.core.learner.torch.torch_differentiable_learner import (
+        ...     TorchDifferentiableLearner,
+        ... )
+        >>> # Construct a generic config for an algorithm that needs differentiable Learners.
+        >>> config = (
+        ...     DifferentiableAlgorithmConfig()
+        ...     .training(lr=3e-4)
+        ...     .environment(env="CartPole-v1")
+        ...     .learners(
+        ...         differentiable_learner_configs=[
+        ...             DifferentiableLearnerConfig(
+        ...                 TorchDifferentiableLearner,
+        ...                 lr=1e-4,
+        ...             )
+        ...         ]
+        ...     )
+        ... )
+        >>> # The config is then used to configure a MetaLearner, see
+        >>> # `rllib/examples/algorithms/maml_lr_supervised_learning.py` for a full example.
 
 
     """
