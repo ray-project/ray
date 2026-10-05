@@ -13,16 +13,17 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
-from azure.mgmt.resource import ResourceManagementClient
-from azure.mgmt.resource.resources.models import DeploymentMode
+from azure.mgmt.resource.resources import ResourceManagementClient
 
 from ray._common.usage.usage_lib import get_cloud_from_metadata_requests
 from ray.autoscaler._private._azure.config import (
+    DeploymentMode,
     _delete_role_assignments_for_principal,
     _generate_arm_guid,
     _is_shared_msi,
     bootstrap_azure,
     get_azure_sdk_function,
+    get_deployments_client,
 )
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_START_WAIT_S,
@@ -110,6 +111,9 @@ class AzureNodeProvider(NodeProvider):
         self.compute_client = ComputeManagementClient(credential, subscription_id)
         self.network_client = NetworkManagementClient(credential, subscription_id)
         self.resource_client = ResourceManagementClient(credential, subscription_id)
+        self.deployments_client = get_deployments_client(
+            self.resource_client, credential, subscription_id
+        )
 
         self.lock = RLock()
 
@@ -494,7 +498,7 @@ class AzureNodeProvider(NodeProvider):
 
         # TODO: we could get the private/public ips back directly
         create_or_update = get_azure_sdk_function(
-            client=self.resource_client.deployments,
+            client=self.deployments_client.deployments,
             function_name="create_or_update",
         )
         create_or_update(

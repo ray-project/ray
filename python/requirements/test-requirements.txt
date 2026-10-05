@@ -8,6 +8,7 @@ azure-identity==1.23.1
 azure-mgmt-compute==35.0.0
 azure-mgmt-network==29.0.0
 azure-mgmt-resource==24.0.0
+azure-mgmt-resource-deployments==2.0.0
 msrestazure==0.6.4.post1
 beautifulsoup4==4.11.1
 boto3==1.29.7

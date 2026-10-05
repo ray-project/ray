@@ -43,7 +43,7 @@ Now, install the Azure SDK libraries that enable the Ray cluster launcher to bui
 
 ```bash
 # Install azure SDK libraries.
-pip install azure-core azure-mgmt-network azure-mgmt-common azure-mgmt-resource azure-mgmt-compute msrestazure
+pip install azure-core azure-mgmt-network azure-mgmt-common azure-mgmt-resource azure-mgmt-resource-deployments azure-mgmt-compute msrestazure
 ```
 
 ### Start Ray with the Ray cluster launcher

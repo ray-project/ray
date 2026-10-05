@@ -11,8 +11,7 @@ from uuid import UUID
 from azure.common.credentials import get_cli_profile
 from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
 from azure.identity import AzureCliCredential
-from azure.mgmt.resource import ResourceManagementClient
-from azure.mgmt.resource.resources.models import DeploymentMode
+from azure.mgmt.resource.resources import ResourceManagementClient
 
 from ray.autoscaler._private.util import (
     generate_rsa_key_pair,
@@ -26,6 +25,34 @@ CONTRIBUTOR_ROLE_DEFINITION_ID = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 UNIQUE_ID_LEN = 4
 
 logger = logging.getLogger(__name__)
+
+try:
+    from azure.mgmt.resource.deployments import DeploymentsMgmtClient
+    from azure.mgmt.resource.deployments.models import DeploymentMode
+except ImportError:
+    # azure-mgmt-resource<25 still bundles the deployments API; 25.0.0 moved it to
+    # the separate azure-mgmt-resource-deployments package.
+    DeploymentsMgmtClient = None
+    try:
+        from azure.mgmt.resource.resources.models import DeploymentMode
+    except ImportError as e:
+        raise ImportError(
+            "The installed Azure SDK is incompatible with the Ray Azure autoscaler. "
+            "Install azure-mgmt-resource-deployments (pip install "
+            "azure-mgmt-resource-deployments==2.0.0)."
+        ) from e
+
+
+def get_deployments_client(resource_client, credential, subscription_id):
+    """Return the client that performs ARM deployment operations.
+
+    With azure-mgmt-resource-deployments installed this is its dedicated
+    DeploymentsMgmtClient. Without it (azure-mgmt-resource<25), deployment
+    operations are exposed by the resource client itself, so that is returned.
+    """
+    if DeploymentsMgmtClient is None:
+        return resource_client
+    return DeploymentsMgmtClient(credential, subscription_id)
 
 
 def get_azure_sdk_function(client: Any, function_name: str) -> Callable:
@@ -61,6 +88,9 @@ def _configure_resource_group(config):
     if subscription_id is None:
         subscription_id = get_cli_profile().get_subscription_id()
     resource_client = ResourceManagementClient(AzureCliCredential(), subscription_id)
+    deployments_client = get_deployments_client(
+        resource_client, AzureCliCredential(), subscription_id
+    )
     config["provider"]["subscription_id"] = subscription_id
     logger.info("Using subscription id: %s", subscription_id)
 
@@ -321,7 +351,7 @@ def _configure_resource_group(config):
     }
 
     create_or_update = get_azure_sdk_function(
-        client=resource_client.deployments, function_name="create_or_update"
+        client=deployments_client.deployments, function_name="create_or_update"
     )
     outputs = (
         create_or_update(
