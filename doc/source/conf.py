@@ -423,6 +423,7 @@ all_toc_libs = [
 ]
 all_toc_libs += [
     "cluster",
+    "kuberay",
     "tune",
     "data",
     "train",

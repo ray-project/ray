@@ -11,11 +11,11 @@ myst:
 ```{toctree}
 :hidden:
 
-getting-started/kuberay-operator-installation
-getting-started/raycluster-quick-start
-getting-started/rayjob-quick-start
-getting-started/rayservice-quick-start
-getting-started/raycronjob-quick-start
+operator-installation
+raycluster-quick-start
+rayjob-quick-start
+rayservice-quick-start
+raycronjob-quick-start
 ```
 
 
