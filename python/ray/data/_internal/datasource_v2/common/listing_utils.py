@@ -94,9 +94,9 @@ def list_files_for_each_block(
     set.
 
     ``ctx.kwargs[EXCLUDED_READ_UNIT_IDS_KWARG_NAME]``, when a resumed job sets
-    it on the ``ListFiles`` operator, is the set of read unit ids already
-    finished; the indexer leaves them out, so the partitioner packs only the
-    remaining work.
+    it on the ``ListFiles`` operator, is the read unit ids already finished
+    (any collection of strings, or an Arrow string array); the indexer
+    leaves them out, so the partitioner packs only the remaining work.
     """
     pruners = _build_pruners(file_extensions, partition_filter, partition_pruner)
     # The excluded ids arrive through ``TaskContext.kwargs`` rather than as an
@@ -107,6 +107,10 @@ def list_files_for_each_block(
     # ``TaskContext.kwargs`` is untyped, so normalize here once: every lookup
     # downstream (per file, per row group) then stays O(1) whatever was passed.
     excluded_ids = ctx.kwargs.get(EXCLUDED_READ_UNIT_IDS_KWARG_NAME)
+    if isinstance(excluded_ids, (pa.Array, pa.ChunkedArray)):
+        # A set built straight from an Arrow array holds Arrow scalars, which
+        # never equal the ``str`` ids looked up below.
+        excluded_ids = excluded_ids.to_pylist()
     excluded_read_unit_ids = frozenset(excluded_ids) if excluded_ids else None
     for block in blocks:
         for manifest in indexer.list_files(
