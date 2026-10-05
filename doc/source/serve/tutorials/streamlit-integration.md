@@ -7,7 +7,7 @@ myst:
 
 # Serve a Streamlit app with Ray Serve
 
-This tutorial shows how to host a [Streamlit](https://streamlit.io/) app with Ray Serve. Streamlit provides an ASGI-compatible `st.App` entry point, and Ray Serve's {mod}`@serve.ingress <ray.serve.ingress>` decorator accepts ASGI applications.
+This tutorial shows how to host a [Streamlit](https://streamlit.io/) app with Ray Serve. Streamlit provides an ASGI-compatible `st.App` entry point, and Ray Serve's {func}`@serve.ingress <ray.serve.ingress>` decorator accepts ASGI applications.
 
 This example requires Streamlit 1.53 or later.
 
