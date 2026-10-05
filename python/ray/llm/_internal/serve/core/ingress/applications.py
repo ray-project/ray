@@ -15,7 +15,10 @@ from fastapi import FastAPI, Request, status
 from starlette.responses import JSONResponse
 
 from ray import serve
-from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
+from ray.llm._internal.serve.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    get_llm_serve_runtime_env,
+)
 from ray.llm._internal.serve.core.ingress.router import (
     _BODY_TRUNCATED_HEADER,
     _get_routing_payload_from_body,
@@ -268,4 +271,6 @@ class RouterApplication:
 
     @classmethod
     def get_deployment_options(cls) -> Dict[str, Any]:
-        return copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
+        options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
+        options["ray_actor_options"]["runtime_env"] = get_llm_serve_runtime_env()
+        return options
