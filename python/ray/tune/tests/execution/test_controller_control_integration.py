@@ -150,6 +150,46 @@ def test_stop_trial_with_export_formats(
         runner.cleanup()
 
 
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.parametrize("export_formats", [None, [], ["model"]])
+def test_stop_pending_trial_with_scheduled_actor(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, export_formats, tmp_path
+):
+    register_mock_trainable()
+    storage = mock_storage_context(storage_path=str(tmp_path))
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(), storage=storage
+    )
+    trial = Trial(MOCK_TRAINABLE_NAME, storage=storage, export_formats=export_formats)
+    runner.add_trial(trial)
+
+    try:
+        # Register the actor request without advancing the actor manager.
+        runner._schedule_trial_actor(trial)
+        tracked_actor = runner._trial_to_actor[trial]
+        assert trial.status == Trial.PENDING
+        assert not runner._actor_manager.is_actor_started(tracked_actor)
+
+        runner.stop_trial(trial)
+        runner.stop_trial(trial)
+
+        assert trial.status == Trial.TERMINATED
+        assert trial not in runner.get_live_trials()
+        assert not runner._has_errored
+        assert trial not in runner._trial_to_actor
+        assert tracked_actor not in runner._actor_manager.pending_actors
+        assert not runner._actor_manager._actor_task_events.get_futures()
+        queued_tasks = runner._actor_manager._pending_actors_to_enqueued_actor_tasks
+        assert all(
+            method_name != "export_model"
+            for _, method_name, _, _ in queued_tasks.get(tracked_actor, [])
+        )
+    finally:
+        runner.cleanup()
+
+
 @pytest.mark.parametrize("status", [Trial.PENDING, Trial.PAUSED])
 @pytest.mark.parametrize("export_formats", [None, [], ["model"]])
 def test_stop_actorless_trial_with_export_formats(status, export_formats, monkeypatch):
@@ -197,6 +237,8 @@ def test_export_trial_with_actor(monkeypatch, export_error):
     error = RuntimeError("export failed") if export_error else None
 
     with mock.patch.object(
+        runner._actor_manager, "is_actor_started", return_value=True
+    ), mock.patch.object(
         runner, "_schedule_trial_task", return_value=mock.sentinel.export_future
     ) as schedule_task, mock.patch.object(
         runner._actor_manager._actor_task_events, "resolve_future", side_effect=error
@@ -239,6 +281,8 @@ def test_stop_trial_with_export_error(monkeypatch, error_callback):
             raise error
 
     with mock.patch.object(
+        runner._actor_manager, "is_actor_started", return_value=True
+    ), mock.patch.object(
         runner, "_schedule_trial_task", return_value=mock.sentinel.export_future
     ) as schedule_task, mock.patch.object(
         runner._actor_manager._actor_task_events,

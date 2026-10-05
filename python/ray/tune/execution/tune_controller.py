@@ -1885,8 +1885,11 @@ class TuneController:
         if not trial.export_formats or len(trial.export_formats) <= 0:
             return
 
-        # Pending and paused trials may not have an actor to export a model from.
-        if trial not in self._trial_to_actor:
+        # Pending and paused trials may not have a started actor to export from.
+        if (
+            trial not in self._trial_to_actor
+            or not self._actor_manager.is_actor_started(self._trial_to_actor[trial])
+        ):
             return
 
         # Todo: We are waiting here synchronously until the task resolved.
