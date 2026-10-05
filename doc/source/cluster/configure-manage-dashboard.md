@@ -37,7 +37,7 @@ head_start_ray_commands:
 :::
 
 :::{tab-item} KubeRay
-View the [specifying non-default ports](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports) page for details.
+View the [specifying non-default ports](https://docs.ray.io/en/latest/kuberay/user-guides/config.html#specifying-non-default-ports) page for details.
 :::
 
 ::::
