@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import re
 from typing import Dict, List, Optional, Tuple
@@ -12,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
-MPS_GPU_MEMORY_LIMIT_ENV_VAR = "RAY_ENABLE_MPS_GPU_MEMORY_LIMIT"
-MPS_PINNED_DEVICE_MEM_LIMIT_ENV_VAR = "CUDA_MPS_PINNED_DEVICE_MEM_LIMIT"
 
 # Capture the accelerator model from the NVML device name: the run of leading
 # all-caps tokens (e.g. "RTX", "PRO") up to and including the first token that
@@ -142,14 +139,6 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         os.environ[
             NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_cuda_devices])
-
-    @staticmethod
-    def set_current_process_gpu_memory_limit(
-        device_ordinal: int, gpu_memory: float
-    ) -> None:
-        os.environ[
-            MPS_PINNED_DEVICE_MEM_LIMIT_ENV_VAR
-        ] = f"{device_ordinal}={math.ceil(gpu_memory / 2**20)}MB"
 
     @staticmethod
     def get_ec2_instance_num_accelerators(
