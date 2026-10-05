@@ -414,6 +414,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         max_ongoing_requests. So when the chosen replicas are much busier than the
         candidates and the replicas with the fewest models loaded, route the request
         to the least busy of those instead.
+
+        Busy replicas are left out: replica selection prefers replicas with a cached
+        queue length, so offering them would keep the request on them whenever the
+        idle replicas have no cached queue length.
         """
         spill_pool = {r.replica_id: r for r in candidate_replicas}
         for replica_id in self._get_replica_ids_with_fewest_multiplexed_models():
@@ -422,7 +426,12 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         least_load = min(self._get_cached_queue_len(r) for r in spill_pool.values())
         if chosen_load - least_load <= self._multiplex_spill_threshold:
             return []
-        return list(spill_pool.values())
+        return [
+            r
+            for r in spill_pool.values()
+            if self._get_cached_queue_len(r) - least_load
+            <= self._multiplex_spill_threshold
+        ]
 
     def _get_cached_queue_len(self, replica: RunningReplica) -> int:
         # A replica without a cached queue length hasn't served requests recently.

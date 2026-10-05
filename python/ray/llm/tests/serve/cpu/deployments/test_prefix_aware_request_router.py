@@ -47,7 +47,9 @@ def prefix_request_router(tree_actor, request):
         request_router = PrefixCacheAffinityRouter(
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=DeploymentHandleSource.REPLICA,
-            use_replica_queue_len_cache=False,
+            use_replica_queue_len_cache=params.get(
+                "use_replica_queue_len_cache", False
+            ),
             get_curr_time_s=TIMER.time,
         )
         return request_router
@@ -339,7 +341,30 @@ class TestMultiplexedRouting:
 
         # r2 has the fewest models loaded, so it's where r1's requests spill.
         spill_replicas = prefix_request_router._get_spill_replicas([r1], [r1])
-        assert set(spill_replicas) == ({r1, r2} if spills else set())
+        assert set(spill_replicas) == ({r2} if spills else set())
+
+    @pytest.mark.parametrize(
+        "prefix_request_router",
+        [{"multiplex_spill_threshold": 10, "use_replica_queue_len_cache": True}],
+        indirect=True,
+    )
+    @pytest.mark.asyncio
+    async def test_spill_reaches_replica_without_cached_queue_len(
+        self, prefix_request_router
+    ):
+        """A spilled request leaves the busy replica even if only it is cached."""
+        # Like Serve LLM's default max_ongoing_requests, the replicas never fill up.
+        r1 = FakeRunningReplica("r1", model_ids={"m1"}, max_ongoing_requests=1000)
+        r1.set_queue_len_response(100)
+        r2 = FakeRunningReplica("r2", max_ongoing_requests=1000)
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello", "m1")
+        # Replica selection prefers cached queue lengths, and only r1 has one.
+        prefix_request_router._replica_queue_len_cache.update(r1.replica_id, 100)
+
+        req = fake_pending_request(prompt="hello world", multiplexed_model_id="m1")
+        assert await prefix_request_router._choose_replica_for_request(req) == r2
 
 
 class TestEvictionBehavior:
