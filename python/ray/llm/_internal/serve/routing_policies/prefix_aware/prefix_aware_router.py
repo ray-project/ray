@@ -213,7 +213,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         # Check for imbalanced load.
         highest_queue_len = 0
         lowest_queue_len = float("inf")
-        not_in_cache: List[ReplicaID] = []
+        not_in_cache: List[RunningReplica] = []
         if self._use_replica_queue_len_cache:
             # Populate available queue lens from the cache.
             for r in candidate_replicas:
