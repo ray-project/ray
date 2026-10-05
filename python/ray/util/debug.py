@@ -29,14 +29,11 @@ def log_once(key: str) -> bool:
 
     Example:
 
-        .. testcode::
-
-            import logging
-            from ray.util.debug import log_once
-
-            logger = logging.getLogger(__name__)
-            if log_once("some_key"):
-                logger.info("Some verbose logging statement")
+        >>> import logging
+        >>> from ray.util.debug import log_once
+        >>> logger = logging.getLogger(__name__)
+        >>> if log_once("some_key"):
+        ...     logger.info("Some verbose logging statement")
     """
 
     global _last_logged
