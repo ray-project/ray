@@ -159,13 +159,18 @@ class NonSamplingFileIndexer(FileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        """One manifest row per file, with ``__file_chunk_metadata`` unset.
+        """Emit one manifest row per file, with ``__file_chunk_metadata`` unset.
 
-        Ignores ``predicate``, ``limit`` and ``projected_columns``. Override
-        when the format has per-piece metadata (row groups, stripes): read it
-        here, skip pieces the predicate rules out, emit one ``FileChunk`` row
-        per run so the packer can split it, and keep ``list_file_infos`` as
-        the path source, the way ``FooterFileIndexer`` does.
+        Override this when the file format has some form of horizontal
+        partitioning, like row groups or stripes. Your implementation should:
+
+            1. Take the file paths from :meth:`list_file_infos`.
+            2. Read each file's metadata and drop the pieces that
+               ``predicate`` rules out or ``excluded_read_unit_ids`` names.
+            3. Emit one ``FileChunk`` row per run of remaining pieces.
+
+        ``FooterFileIndexer`` is the Parquet example. This default ignores
+        ``predicate``, ``limit`` and ``projected_columns``.
         """
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so this method only batches them into manifests, one row per file.

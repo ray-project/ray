@@ -36,8 +36,17 @@ class FilePartitioner(ABC):
 
     ``RoundRobinPartitioner`` (estimated sizes, whole files) and
     ``OnlineBinPacker`` (exact sizes, splits files at read-unit boundaries) in
-    ``common/`` cover most formats. Implement this class only when neither
-    grouping fits, for example one read task per hive partition.
+    ``common/`` cover most formats.
+
+    Implement this class when neither grouping fits, for example one read
+    task per hive partition. Your implementation should:
+
+        1. Buffer rows in :meth:`add_input` and group them deterministically.
+        2. Report a finished group through :meth:`has_partition` and hand it
+           out from :meth:`next_partition`.
+        3. Flush any remaining rows in :meth:`finalize`.
+        4. Return ``True`` from :attr:`requires_global_input` if it must see
+           every file before grouping.
     """
 
     @property

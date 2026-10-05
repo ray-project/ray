@@ -11,8 +11,10 @@ class InMemorySizeEstimator(ABC):
     """Sizes listing rows for ``RoundRobinPartitioner``.
 
     ``SamplingInMemorySizeEstimator`` reads one file per listing task and
-    scales by its ratio. Implement this instead when decoded size is a known
-    function of file size, so no sample read is needed.
+    scales by its ratio.
+
+    Implement this when decoded size is a known function of file size, so no
+    sample read is needed.
     """
 
     @abstractmethod

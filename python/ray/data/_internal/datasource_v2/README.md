@@ -18,27 +18,28 @@ A new format adds one folder under `formats/` and changes nothing in
 
 ## How a read works
 
-Four stages. The datasource supplies one object per stage; the framework runs
-them.
+The unit of work is a `FileManifest`: an Arrow block with one row per piece
+of data a reader can open, in columns `__path`, `__file_size` and
+`__file_chunk_metadata` (`None` for the whole file, or a `FileChunk` naming
+a run of read units inside it). `__path` is any string the reader can act
+on, not necessarily a filesystem path.
 
-| Stage | Object | Runs where | Does |
+A call to `read_*` runs these steps. The datasource supplies the object in
+each; the framework calls it.
+
+| Step | Object | Runs where | Does |
 | --- | --- | --- | --- |
-| Plan | `Scanner` | driver | holds the schema and the pushdowns the optimizer handed it. Immutable: every `push_*` returns a new scanner. |
-| List | `FileIndexer` | `ListFiles` tasks | turns `paths` into `FileManifest` rows, one per piece of data a reader can open. |
-| Group | `FilePartitioner` | same tasks | regroups manifest rows into one manifest per read task. |
-| Read | `Reader` | `ReadFiles` tasks | decodes one manifest into `pyarrow.Table`s, honouring the scanner's pushdowns. |
+| 1. Plan | `DataSourceV2` | driver, in `_read_datasource_v2` | infers the schema (a `FileDataSourceV2` lists a sample of files for it; a `DataSourceWithMetadata` answers from its metadata), builds a `Scanner`, picks the `FileIndexer` and `FilePartitioner`, and emits two logical operators: `ListFiles(paths, indexer, partitioner)` feeding `ReadFiles(scanner)`. |
+| 2. Optimize | `Scanner` | driver, optimizer rules | each rule calls a `push_*` method on the scanner and gets a new scanner back; the pushdowns it accepted are copied onto `ListFiles` as a `ListFilesPushdown`. |
+| 3. Index | `FileIndexer` | `ListFiles` tasks | turns the datasource's `paths` into `FileManifest` rows, skipping pieces the pushdowns rule out by metadata. |
+| 4. Partition | `FilePartitioner` | same tasks | regroups manifest rows into one manifest per read task. |
+| 5. Read | `Reader` | `ReadFiles` tasks, one per manifest | `scanner.create_reader().read(manifest)` yields `pyarrow.Table`s, honouring every pushdown. |
 
-Accepted pushdowns go two ways: to the `Reader` through `create_reader()`,
-and to `ListFiles` as a `ListFilesPushdown`. Listing skips whole pieces by
-metadata; the reader filters rows and is what makes the result correct, so a
-scanner must never report a pushdown its reader does not enforce.
-
-`FileManifest` is the only type that crosses stages: an Arrow block with
-`__path`, `__file_size` and `__file_chunk_metadata` (`None` for the whole
-file, or a `FileChunk` naming a run of read units inside it). `__path` is any
-string the reader can act on. Manifests travel through the object store; the
-`Scanner`, `FileIndexer` and `FilePartitioner` are pickled into the task
-functions, so open connections belong inside `list_files` and `read`.
+Indexing skips whole pieces; the reader filters rows and is what makes the
+result correct, so a scanner must never report a pushdown its reader does not
+enforce. Manifests travel through the object store; the `Scanner`,
+`FileIndexer` and `FilePartitioner` are pickled into the task functions, so
+open connections belong inside `list_files` and `read`.
 
 ## Class hierarchy
 
