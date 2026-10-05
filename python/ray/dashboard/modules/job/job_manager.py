@@ -68,11 +68,17 @@ class JobManager:
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(
-        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+        self,
+        gcs_client: GcsClient,
+        logs_dir: str,
+        timeout_check_timer: Timer = None,
+        session_name: str = "",
     ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
-        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
+        self._job_info_client = JobInfoStorageClient(
+            gcs_client, logs_dir, session_name=session_name
+        )
         self._gcs_address = gcs_client.address
         self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()

@@ -80,7 +80,11 @@ class JobSupervisor:
     ):
         self._job_id = job_id
         gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
-        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
+        self._job_info_client = JobInfoStorageClient(
+            gcs_client,
+            logs_dir,
+            session_name=ray._private.worker.global_worker.node.session_name,
+        )
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -351,33 +355,21 @@ class JobSupervisor:
         # (RUNNING, SUCCEEDED, STOPPED, FAILED) from this process are captured.
         if submission_job_events_enabled():
             try:
-                from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
                 from ray._raylet import EventRecorder
-                from ray.dashboard.consts import DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX
 
-                agent_info_raw = await self._job_info_client._gcs_client.async_internal_kv_get(
-                    f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{driver_node_id}".encode(),
-                    namespace=KV_NAMESPACE_DASHBOARD,
+                # The aggregator agent is served on the dashboard agent's gRPC
+                # server, which listens on metrics_agent_port.
+                EventRecorder.initialize(
+                    aggregator_port=node.metrics_agent_port,
+                    node_ip=node.node_ip_address,
+                    node_id_hex=driver_node_id,
+                    max_buffer_size=10000,
+                    metric_source="job_supervisor",
                 )
-                if agent_info_raw:
-                    _, _, grpc_port = json.loads(agent_info_raw)
-                    EventRecorder.initialize(
-                        aggregator_port=int(grpc_port),
-                        node_ip=node.node_ip_address,
-                        node_id_hex=driver_node_id,
-                        max_buffer_size=10000,
-                        metric_source="job_supervisor",
-                    )
-                    self._logger.info(
-                        "Initialized ray event recorder in JobSupervisor "
-                        f"(grpc_port={grpc_port})."
-                    )
-                else:
-                    self._logger.warning(
-                        "Dashboard agent info not found in KV store for "
-                        f"node {driver_node_id}. "
-                        "Event recorder will not be initialized."
-                    )
+                self._logger.info(
+                    "Initialized ray event recorder in JobSupervisor "
+                    f"(grpc_port={node.metrics_agent_port})."
+                )
             except Exception:
                 self._logger.warning(
                     "Failed to initialize ray event recorder in JobSupervisor.",

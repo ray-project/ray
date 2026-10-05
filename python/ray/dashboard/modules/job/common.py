@@ -249,15 +249,18 @@ class JobInfoStorageClient:
         self,
         gcs_client: GcsClient,
         export_event_log_dir_root: Optional[str] = None,
+        session_name: str = "",
     ):
         """
         Initialize the JobInfoStorageClient which manages data in the internal KV store.
         Export Submission Job events are written when the KV store is updated if
         the feature flag is on and a export_event_log_dir_root is passed.
         export_event_log_dir_root doesn't need to be passed if the caller
-        is not modifying data in the KV store.
+        is not modifying data in the KV store. session_name is attached to
+        submission job events emitted via the One-Event framework.
         """
         self._gcs_client = gcs_client
+        self._session_name = session_name
         self._export_submission_job_event_logger: logging.Logger = None
         try:
             if (
@@ -356,8 +359,12 @@ class JobInfoStorageClient:
                     entrypoint_num_gpus=job_info.entrypoint_num_gpus,
                     entrypoint_memory=job_info.entrypoint_memory,
                     entrypoint_resources=job_info.entrypoint_resources,
+                    session_name=self._session_name,
                 )
-                EventRecorder.emit(builder.build())
+                if not EventRecorder.emit(builder.build()):
+                    logger.warning(
+                        f"Failed to emit submission job definition event for {job_id}."
+                    )
             except Exception:
                 logger.warning(
                     "Error emitting submission job definition event.", exc_info=True
@@ -383,13 +390,17 @@ class JobInfoStorageClient:
             builder = SubmissionJobLifecycleEventBuilder(
                 submission_id=job_id,
                 state=state,
-                message=job_info.message,
+                message=job_info.message or "",
                 error_type=(job_info.error_type.value if job_info.error_type else None),
                 driver_node_id=job_info.driver_node_id,
                 driver_agent_http_address=job_info.driver_agent_http_address,
                 driver_exit_code=job_info.driver_exit_code,
+                session_name=self._session_name,
             )
-            EventRecorder.emit(builder.build())
+            if not EventRecorder.emit(builder.build()):
+                logger.warning(
+                    f"Failed to emit submission job lifecycle event for {job_id}."
+                )
         except Exception:
             logger.warning(
                 "Error emitting submission job lifecycle event.", exc_info=True

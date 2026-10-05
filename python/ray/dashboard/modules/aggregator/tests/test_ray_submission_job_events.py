@@ -59,6 +59,7 @@ def test_ray_submission_job_events(ray_start_cluster, httpserver):
     cluster.wait_for_nodes()
     head_node_id = cluster.head_node.node_id
     ray.init(address=cluster.address)
+    session_name = ray._private.worker.global_worker.node.session_name
     wait_for_dashboard_agent_available(cluster)
 
     # Set up HTTP server to accept event exports before submitting the job.
@@ -102,6 +103,7 @@ def test_ray_submission_job_events(ray_start_cluster, httpserver):
     def_event = def_events[0]
     assert def_event["eventType"] == "SUBMISSION_JOB_DEFINITION_EVENT"
     assert def_event["sourceType"] == "JOBS"
+    assert def_event["sessionName"] == session_name
     assert base64.b64decode(def_event["nodeId"]).hex() == head_node_id
 
     def_data = def_event["submissionJobDefinitionEvent"]
@@ -120,6 +122,7 @@ def test_ray_submission_job_events(ray_start_cluster, httpserver):
     for lc in lc_events:
         assert lc["eventType"] == "SUBMISSION_JOB_LIFECYCLE_EVENT"
         assert lc["sourceType"] == "JOBS"
+        assert lc["sessionName"] == session_name
         assert base64.b64decode(lc["nodeId"]).hex() == head_node_id
 
         lc_data = lc["submissionJobLifecycleEvent"]

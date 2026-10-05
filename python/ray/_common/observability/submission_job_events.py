@@ -79,16 +79,6 @@ class SubmissionJobDefinitionEventBuilder(InternalEventBuilder):
         return event.SerializeToString()
 
 
-# Mapping from JobStatus name to SubmissionJobLifecycleEvent.State enum value.
-_JOB_STATUS_TO_PROTO_STATE = {
-    "PENDING": SubmissionJobLifecycleEvent.State.PENDING,
-    "RUNNING": SubmissionJobLifecycleEvent.State.RUNNING,
-    "STOPPED": SubmissionJobLifecycleEvent.State.STOPPED,
-    "SUCCEEDED": SubmissionJobLifecycleEvent.State.SUCCEEDED,
-    "FAILED": SubmissionJobLifecycleEvent.State.FAILED,
-}
-
-
 def job_status_to_proto_state(
     status_name: str,
 ) -> Optional[int]:
@@ -96,7 +86,8 @@ def job_status_to_proto_state(
 
     Returns None if the status name is not recognized.
     """
-    return _JOB_STATUS_TO_PROTO_STATE.get(status_name)
+    value = SubmissionJobLifecycleEvent.State.DESCRIPTOR.values_by_name.get(status_name)
+    return value.number if value is not None else None
 
 
 class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
@@ -109,7 +100,7 @@ class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
         self,
         submission_id: str,
         state: int,
-        message: Optional[str] = None,
+        message: str = "",
         error_type: Optional[str] = None,
         driver_node_id: Optional[str] = None,
         driver_agent_http_address: Optional[str] = None,
@@ -120,11 +111,11 @@ class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
             source_type=RayEventProto.SourceType.JOBS,
             event_type=RayEventProto.EventType.SUBMISSION_JOB_LIFECYCLE_EVENT,
             nested_event_field_number=RayEventProto.SUBMISSION_JOB_LIFECYCLE_EVENT_FIELD_NUMBER,
+            message=message,
             session_name=session_name,
         )
         self._submission_id = submission_id
         self._state = state
-        self._message = message
         self._error_type = error_type
         self._driver_node_id = driver_node_id
         self._driver_agent_http_address = driver_agent_http_address
@@ -146,7 +137,7 @@ class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
             Timestamp(seconds=int(now), nanos=int((now % 1) * 1e9))
         )
 
-        if self._message is not None:
+        if self._message:
             transition.message = self._message
         if self._error_type is not None:
             transition.error_type = self._error_type
