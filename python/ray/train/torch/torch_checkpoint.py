@@ -64,38 +64,27 @@ class TorchCheckpoint(FrameworkCheckpoint):
 
         Examples:
 
-            .. testcode::
-
-                import torch
-                import torch.nn as nn
-                from ray.train.torch import TorchCheckpoint
-
-                # Set manual seed
-                torch.manual_seed(42)
-
-                # Function to create a NN model
-                def create_model() -> nn.Module:
-                    model = nn.Sequential(nn.Linear(1, 10),
-                            nn.ReLU(),
-                            nn.Linear(10,1))
-                    return model
-
-                # Create a TorchCheckpoint from our model's state_dict
-                model = create_model()
-                checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
-
-                # Now load the model from the TorchCheckpoint by providing the
-                # model architecture
-                model_from_chkpt = checkpoint.get_model(create_model())
-
-                # Assert they have the same state dict
-                assert str(model.state_dict()) == str(model_from_chkpt.state_dict())
-                print("worked")
-
-            .. testoutput::
-                :hide:
-
-                ...
+            >>> import torch
+            >>> import torch.nn as nn
+            >>> from ray.train.torch import TorchCheckpoint
+            >>> # Set manual seed
+            >>> _ = torch.manual_seed(42)
+            >>> # Function to create a NN model
+            >>> def create_model() -> nn.Module:
+            ...     model = nn.Sequential(nn.Linear(1, 10),
+            ...             nn.ReLU(),
+            ...             nn.Linear(10,1))
+            ...     return model
+            >>> # Create a TorchCheckpoint from our model's state_dict
+            >>> model = create_model()
+            >>> checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
+            >>> # Now load the model from the TorchCheckpoint by providing the
+            >>> # model architecture
+            >>> model_from_chkpt = checkpoint.get_model(create_model())
+            >>> # Assert they have the same state dict
+            >>> assert str(model.state_dict()) == str(model_from_chkpt.state_dict())
+            >>> print("worked")
+            worked
         """
         tempdir = tempfile.mkdtemp()
 
@@ -137,24 +126,16 @@ class TorchCheckpoint(FrameworkCheckpoint):
 
         Examples:
 
-            .. testcode::
-
-                from ray.train.torch import TorchCheckpoint
-                import torch
-
-                # Create model identity and send a random tensor to it
-                model = torch.nn.Identity()
-                input = torch.randn(2, 2)
-                output = model(input)
-
-                # Create a checkpoint
-                checkpoint = TorchCheckpoint.from_model(model)
-                print(checkpoint)
-
-            .. testoutput::
-                :hide:
-
-                ...
+            >>> from ray.train.torch import TorchCheckpoint
+            >>> import torch
+            >>> # Create model identity and send a random tensor to it
+            >>> model = torch.nn.Identity()
+            >>> input = torch.randn(2, 2)
+            >>> output = model(input)
+            >>> # Create a checkpoint
+            >>> checkpoint = TorchCheckpoint.from_model(model)
+            >>> print(checkpoint)  # doctest: +ELLIPSIS
+            Checkpoint(filesystem=local, path=...)
         """
         tempdir = tempfile.mkdtemp()
 
