@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from starlette.datastructures import Headers
 
+from ray.llm._internal.serve.constants import get_llm_serve_runtime_env
 from ray.llm._internal.serve.core.ingress import applications as applications_module
 from ray.llm._internal.serve.core.ingress.applications import RouterApplication
 from ray.serve._private.constants import (
@@ -403,7 +404,10 @@ def test_deployment_options_keep_router_available():
     options = RouterApplication.get_deployment_options()
     assert options == {
         "max_ongoing_requests": applications_module.DEFAULT_MAX_ONGOING_REQUESTS,
-        "ray_actor_options": {"num_cpus": 1},
+        "ray_actor_options": {
+            "num_cpus": 1,
+            "runtime_env": get_llm_serve_runtime_env(),
+        },
         "autoscaling_config": {
             "min_replicas": 1,
             "initial_replicas": 2,
