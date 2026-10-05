@@ -27,7 +27,7 @@ from ray.serve._private.common import (
     ReplicaState,
     TargetCapacityDirection,
     TimeStampedValue,
-    push_freshness_window_s,
+    _push_freshness_window_s,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -12552,7 +12552,7 @@ class TestPushedHealthTracker:
         assert t.should_defer_probe(10.0)  # stashed, not yet consumed
         self._resolve(t)
         assert t.should_defer_probe(10.0)  # applied
-        timer.advance(push_freshness_window_s(10.0) + 1)
+        timer.advance(_push_freshness_window_s(10.0) + 1)
         assert not t.should_defer_probe(10.0)
 
     # -- probe against push ---------------------------------------------------
@@ -12713,9 +12713,9 @@ def test_the_push_window_stays_under_the_probe_cadence():
     window has to stay under the cadence it replaces or push detects crashes later
     than pull probing did. Absolute values, so a change here has to be deliberate."""
     for period in (2.0, 10.0, 30.0):
-        assert ds_mod.push_freshness_window_s(period) < period
-    assert ds_mod.push_freshness_window_s(10.0) == 7.5
-    assert ds_mod.push_freshness_window_s(0.5) == 1.0  # the floor still applies
+        assert ds_mod._push_freshness_window_s(period) < period
+    assert ds_mod._push_freshness_window_s(10.0) == 7.5
+    assert ds_mod._push_freshness_window_s(0.5) == 1.0  # the floor still applies
 
 
 class TestIngestLagGate:

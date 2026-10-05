@@ -11,7 +11,7 @@ from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
     TimeStampedValue,
-    push_freshness_window_s,
+    _push_freshness_window_s,
 )
 from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
@@ -1616,7 +1616,7 @@ class TestReplicaHealthVerdict:
         slower than pull probing alone."""
         r = self._replica()
         r._healthy = True
-        window = push_freshness_window_s(r._deployment_config.health_check_period_s)
+        window = _push_freshness_window_s(r._deployment_config.health_check_period_s)
         r._self_health_evaluated_at = time.time() - window
         await r.check_health()
         r._user_callable_wrapper.call_user_health_check.assert_called_once()
