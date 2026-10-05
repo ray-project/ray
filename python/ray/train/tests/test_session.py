@@ -212,6 +212,20 @@ def test_get_result_from_queues(session, block, put_result_queue, put_actor_queu
         assert result is None
 
 
+def test_inter_actor_queue_keeps_one_open_get(session):
+    """Polling an empty inter-actor queue keeps one `get` open, and `finish`
+    resolves it."""
+    session._get_or_create_inter_actor_queue()
+    assert session._get_result_from_queues(block=True) is None
+    open_get = session._pending_inter_actor_get
+    assert session._get_result_from_queues(block=True) is None
+    assert session._pending_inter_actor_get is open_get
+
+    session.finish()
+    assert session._pending_inter_actor_get is None
+    assert ray.get(open_get, timeout=5) is None
+
+
 def test_no_start(session):
     with pytest.raises(RuntimeError):
         session.get_next()

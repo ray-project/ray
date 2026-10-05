@@ -208,6 +208,9 @@ class _TrainSession:
         # Queue for sending results from training actor to main thread.
         self._inter_actor_queue: Optional[ray_queue.Queue[Dict]] = None
 
+        # Open `get` on the inter-actor queue, kept across polls.
+        self._pending_inter_actor_get: Optional[ray.ObjectRef] = None
+
         # Queue for raising exceptions from runner thread to main thread.
         # The error queue has a max size of one to prevent stacking error and force
         # error reporting to block until finished.
@@ -247,6 +250,9 @@ class _TrainSession:
 
         Raises any Exception from training.
         """
+        # Resolve the open inter-actor `get` so the queue actor can exit.
+        self._wake_pending_inter_actor_get()
+
         # Set the stop event for the training thread to gracefully exit.
         self.stop_event.set()
 
@@ -328,21 +334,44 @@ class _TrainSession:
         """Get result from result queue. Pass result from training actor result queue if needed."""
         result = None
         if self._inter_actor_queue is not None:
-            try:
-                inter_actor_item = self._inter_actor_queue.get(
-                    block=block, timeout=_RESULT_FETCH_TIMEOUT
-                )
-                if inter_actor_item:
-                    # Must release continue_lock to allow report to work.
-                    self.continue_lock.release()
-                    self.report(inter_actor_item)
-            except ray_queue.Empty:
-                pass
+            inter_actor_item = self._poll_inter_actor_queue()
+            if inter_actor_item:
+                # Must release continue_lock to allow report to work.
+                self.continue_lock.release()
+                self.report(inter_actor_item)
         try:
             result = self.result_queue.get(block=block, timeout=_RESULT_FETCH_TIMEOUT)
         except queue.Empty:
             pass
         return result
+
+    def _poll_inter_actor_queue(self) -> Optional[Dict]:
+        """Wait up to ``_RESULT_FETCH_TIMEOUT`` for the next inter-actor item.
+
+        One ``get`` stays open across polls. A ``get`` with a timeout raises
+        ``Empty`` in the queue actor each time the queue is empty, and Ray records
+        every one of those as a failed task. This waits even when the caller does
+        not block, since a new ``get`` needs a round trip.
+        """
+        if self._pending_inter_actor_get is None:
+            self._pending_inter_actor_get = self._inter_actor_queue.actor.get.remote()
+        ready, _ = ray.wait(
+            [self._pending_inter_actor_get], timeout=_RESULT_FETCH_TIMEOUT
+        )
+        if not ready:
+            return None
+        pending_get = self._pending_inter_actor_get
+        self._pending_inter_actor_get = None
+        return ray.get(pending_get)
+
+    def _wake_pending_inter_actor_get(self):
+        """Resolve the open inter-actor ``get`` with ``None``, which polling skips."""
+        pending_get = self._pending_inter_actor_get
+        self._pending_inter_actor_get = None
+        if pending_get is None or ray.wait([pending_get], timeout=0)[0]:
+            return
+        wake_put = self._inter_actor_queue.actor.put.remote(None)
+        ray.wait([pending_get, wake_put], num_returns=2, timeout=_RESULT_FETCH_TIMEOUT)
 
     def _auto_fill_metrics(self, result: dict) -> dict:
         """Add autofilled metrics and update attributes."""
