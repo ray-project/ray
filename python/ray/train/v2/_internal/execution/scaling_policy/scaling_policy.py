@@ -1,7 +1,5 @@
 import abc
 import logging
-import os
-import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -14,10 +12,6 @@ from ray.train._internal.autoscaling_coordinator_client import (
     _reserved_resources_to_bundle_label_selectors,
     build_train_resource_request,
 )
-from ray.train.v2._internal.constants import (
-    DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
-    WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
-)
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.scaling_policy.autoscaling_coordinator_client import (  # noqa: E501
@@ -27,6 +21,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
     WorkerGroupState,
 )
+from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
@@ -47,10 +42,8 @@ class ResizeDecision(ScalingDecision):
     num_workers: int
     resources_per_worker: Dict[str, float]
     # One node-pinning label selector per worker, built from the same
-    # reservation snapshot that chose `num_workers`. `None` means the policy
-    # didn't compute pins: either pinning doesn't apply (see
-    # `ScalingPolicy._should_pin_to_reservation`) or the controller polls for
-    # them (`FixedScalingPolicy`, for now).
+    # reservation snapshot that chose `num_workers`. `None` means the worker
+    # group is not pinned (see `ScalingPolicy._should_pin_to_reservation`).
     label_selectors: Optional[List[LabelSelector]] = None
 
 
@@ -73,8 +66,12 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
     # TODO: Restructure these APIs to consider different TrainControllerStates
     # instead of just running and non-running worker groups.
 
+    # Minimum interval in seconds between logs about waiting for reserved resources.
+    WAITING_FOR_RESERVATION_LOG_INTERVAL_S = 30
+
     def __init__(self, scaling_config: ScalingConfig):
         self.scaling_config = scaling_config
+        self._latest_waiting_for_reservation_log_time = float("-inf")
         # Due to multiple train dataset runs, the requester_id
         # isn't set until the run is started.
         self._requester_id: Optional[RequesterId] = None
@@ -224,45 +221,31 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
 
         return label_selectors
 
-    def get_reserved_bundle_label_selectors(
-        self, num_workers: int
-    ) -> Optional[List[LabelSelector]]:
-        """Poll the coordinator for per-worker node pins.
-
-        Used for decisions that don't carry pins (``FixedScalingPolicy``).
-        Polls until the reservation covers every worker or the worker-group
-        start timeout elapses, analogous to ``placement_group.wait()``. The
-        timeout is ``RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S`` (default 60s).
-
-        Args:
-            num_workers: The number of workers the worker group will start.
-
-        Returns:
-            One node-pinning label selector per worker, or ``None`` if the
-            coordinator has not reserved enough capacity to place every worker
-            within the start timeout. ``None`` means "not ready", not "no
-            constraint": the caller must not start a partially pinned worker
-            group.
-        """
-        if self._coordinator_client is None:
-            return None
-
-        timeout_s = float(
-            os.environ.get(
-                WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
-                DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
+    def _count_reserved_workers(self, reserved_resources: ReservedResources) -> int:
+        """Number of worker slots in a reservation snapshot."""
+        if not reserved_resources:
+            return 0
+        return len(
+            _reserved_resources_to_bundle_label_selectors(
+                reserved_resources=reserved_resources,
+                resources_per_worker=self.scaling_config._resources_per_worker_not_none,
+                trainer_resources=self.scaling_config._trainer_resources_not_none,
             )
         )
-        deadline = time.monotonic() + timeout_s
-        while True:
-            selectors = self._get_reserved_label_selectors(
-                self._get_reserved_resources(recompute=True), num_workers
-            )
-            if selectors is not None:
-                return selectors
-            if time.monotonic() >= deadline:
-                return None
-            time.sleep(1)
+
+    def _maybe_log_waiting_for_reservation(self, num_reserved: int, num_required: int):
+        """Periodically log that the policy is waiting on the coordinator."""
+        now = time_monotonic()
+        if (
+            now - self._latest_waiting_for_reservation_log_time
+            < self.WAITING_FOR_RESERVATION_LOG_INTERVAL_S
+        ):
+            return
+        self._latest_waiting_for_reservation_log_time = now
+        logger.info(
+            f"Waiting for reserved resources: {num_reserved}/{num_required} "
+            "workers are covered by the current reservation."
+        )
 
     @property
     def _autoscaling_coordinator(self):

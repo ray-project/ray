@@ -180,6 +180,9 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         reserved_resources = self._get_reserved_resources()
         if not reserved_resources:
+            self._maybe_log_waiting_for_reservation(
+                num_reserved=0, num_required=self.scaling_config.min_workers
+            )
             return NoopDecision()
 
         num_workers = self._count_possible_workers(reserved_resources)

@@ -19,7 +19,6 @@ from ray.train.v2._internal.constants import (
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
-from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     ReportCallback,
@@ -455,9 +454,6 @@ class TrainController:
 
         Raises:
             Exception: If the worker group failed to start.
-            WorkerGroupStartupTimeoutError: If the decision carries no pins and
-                coordinator reservations are not ready yet for positive-resource
-                workers (controller retries).
         """
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
@@ -477,36 +473,17 @@ class TrainController:
                 label_selector = [selector.copy() for _ in range(num_workers)]
 
         # Pin workers to AutoscalingCoordinator reservations, so that two
-        # concurrent runs aren't both scheduled onto the same capacity.
-        # Skipped when:
-        # - Workers request no resources: nothing to reserve, and they fit
-        #   anywhere, so there is nothing to wait for.
-        # - TPU: `SlicePlacementGroup` does its own reservation below and
-        #   ignores `label_selector`, so pins would only add latency.
-        # - A `label_selector` is set: the coordinator picks nodes by resource
-        #   fit and never matches `label_selectors` against node labels, so its
-        #   pins can name a node that violates the selector. Combining the two
-        #   would produce an unsatisfiable selector and a placement group that
-        #   never becomes ready, so the user's selector wins and placement is
-        #   left to the placement group.
-        #   TODO: Reconcile w/ ray core later
-        can_pin_to_reservation = (
-            not scaling_config.use_tpu
-            and sum(resources_per_worker.values()) > 0
-            and not label_selector
-        )
-        if can_pin_to_reservation:
-            if reserved_label_selectors is None:
-                # The decision carries no pins (`FixedScalingPolicy`), so wait
-                # for reserved capacity (same idea as pg.wait()).
-                reserved_label_selectors = (
-                    self._scaling_policy.get_reserved_bundle_label_selectors(
-                        num_workers
-                    )
-                )
-                if reserved_label_selectors is None:
-                    # Still not ready. Retry via SCHEDULING -> RESCHEDULING.
-                    raise WorkerGroupStartupTimeoutError(num_workers=num_workers)
+        # concurrent runs aren't both scheduled onto the same capacity. The
+        # scaling policy builds the pins from the same reservation snapshot that
+        # chose `num_workers` (see `ScalingPolicy._should_pin_to_reservation`
+        # for when it skips pinning).
+        # A `label_selector` from a callback still wins: the coordinator picks
+        # nodes by resource fit and never matches `label_selectors` against node
+        # labels, so its pins can name a node that violates the selector.
+        # Combining the two would produce an unsatisfiable selector and a
+        # placement group that never becomes ready.
+        # TODO: Reconcile w/ ray core later
+        if reserved_label_selectors is not None and not label_selector:
             assert len(reserved_label_selectors) == num_workers
             # `placement_strategy` is deliberately left alone: the pins already
             # determine the layout, and keeping the strategy lets the placement
@@ -694,9 +671,17 @@ class TrainController:
         if isinstance(
             controller_state, (InitializingState, RestartingState, ReschedulingState)
         ):
-            return self._make_and_handle_scaling_decision_for_non_running_worker_group(
-                controller_state
+            result = (
+                self._make_and_handle_scaling_decision_for_non_running_worker_group(
+                    controller_state
+                )
             )
+            if result.next_state is controller_state:
+                # Nothing to start yet (e.g. waiting for reserved resources).
+                # Sleep before asking again, which also yields the event loop so
+                # calls like `abort()` can reach this actor.
+                await asyncio.sleep(self._health_check_interval_s)
+            return result
         elif isinstance(controller_state, SchedulingState):
             assert isinstance(controller_state.scaling_decision, ResizeDecision)
             return self._execute_resize_decision(controller_state.scaling_decision)
