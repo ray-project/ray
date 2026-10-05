@@ -247,7 +247,8 @@ def _collect_rows_full_method(blocks, batch_size, buffer_size, seed):
     shuffle_buffer_min_size = max(buffer_size, batch_size)
 
     min_rows_to_yield_batch = max(
-        1, int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD)
+        batch_size,
+        int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD),
     )
 
     builder = DelegatingBlockBuilder()
@@ -354,11 +355,9 @@ def test_incremental_index_matches_full_method(
 def test_no_partial_batch_mid_stream():
     """has_batch() must not return True when total rows < batch_size.
 
-    With SHUFFLE_BUFFER_COMPACTION_THRESHOLD < 1.0, _min_rows_to_yield_batch
-    can be less than batch_size. If we drain the compacted buffer below
-    batch_size while no uncompacted rows are available, has_batch() must
-    return False — otherwise next_batch() would return a partial batch
-    mid-stream.
+    Once the compacted buffer is drained below batch_size and no uncompacted
+    rows are waiting, has_batch() must return False. Otherwise next_batch()
+    would return a partial batch mid-stream.
     """
     batch_size = 10
     buffer_size = 10  # common case: equal to batch_size
@@ -431,6 +430,8 @@ def test_no_partial_batch_when_uncompacted_rows_available():
     assert sum(sizes) == 40
     # 40 rows in batches of 8 is 5 batches, whatever the blocking.
     assert sizes == [batch_size] * 5
+
+
 @pytest.mark.parametrize("fail_stage", [None, "prepare", "take"])
 def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_stage):
     ray.shutdown()

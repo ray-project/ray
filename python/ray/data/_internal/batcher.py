@@ -363,8 +363,13 @@ class ShufflingBatcher(BatcherInterface):
             shuffle_buffer_min_size = batch_size
         self._shuffle_buffer_min_size = shuffle_buffer_min_size
 
+        # At least one full batch, otherwise half the shuffle buffer. The 0.5
+        # watermark is when to keep using the current permutation; it must not
+        # fall below ``batch_size`` or a compacted remainder can be sliced into
+        # a short batch while more rows are waiting.
         self._min_rows_to_yield_batch = max(
-            1, int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD)
+            self._batch_size,
+            int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD),
         )
         self._min_rows_to_trigger_compaction = int(
             shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_RATIO
@@ -510,7 +515,6 @@ class ShufflingBatcher(BatcherInterface):
         if self._num_uncompacted_rows() > 0 and (
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
-            or self._num_compacted_rows() < self._batch_size
         ):
             self._start_new_shuffle_generation()
 
