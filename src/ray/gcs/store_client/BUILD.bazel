@@ -13,6 +13,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_store_client",
+    testonly = True,
+    hdrs = ["fake_store_client.h"],
+    deps = [
+        ":store_client",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
     name = "redis_store_client",
     srcs = [
         "redis_async_context.cc",
