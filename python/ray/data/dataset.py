@@ -2444,6 +2444,8 @@ class Dataset:
                 strict=strict,
             )
         else:
+            if num_blocks <= 0:
+                raise ValueError(f"num_blocks must be positive, but got {num_blocks}.")
             op = Repartition(
                 num_outputs=num_blocks,
                 input_dependencies=[self._logical_plan.dag],

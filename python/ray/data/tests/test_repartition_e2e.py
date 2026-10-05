@@ -197,6 +197,18 @@ def test_repartition_target_num_rows_per_block(
             True,
             "`shuffle` must be False when `target_num_rows_per_block` is set.",
         ),
+        (
+            0,
+            None,
+            False,
+            "num_blocks must be positive",
+        ),
+        (
+            -2,
+            None,
+            False,
+            "num_blocks must be positive",
+        ),
     ],
 )
 def test_repartition_invalid_inputs(
