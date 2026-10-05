@@ -1,0 +1,17 @@
+# Single-node compute config for Ray Data LLM baseline benchmark
+# Instance: 46CPU-480GB-2xH100. The benchmark uses one GPU.
+
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    metadata:
+        labels:
+            kueue.x-k8s.io/queue-name: default-queue
+
+head_node:
+    instance_type: 8CPU-32GB
+
+worker_nodes:
+    - instance_type: 46CPU-480GB-2xH100
+      min_nodes: 1
+      max_nodes: 1

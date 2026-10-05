@@ -1,7 +1,7 @@
 model_loading_config:
   model_id: RedHatAI/Qwen3.5-9B-quantized.w4a16
 
-accelerator_type: A10G
+accelerator_type: H100
 
 engine_kwargs:
   max_model_len: 8192

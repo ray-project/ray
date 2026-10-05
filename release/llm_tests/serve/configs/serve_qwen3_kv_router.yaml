@@ -8,7 +8,7 @@ applications:
         - model_loading_config:
             model_id: qwen3-1.7b
             model_source: Qwen/Qwen3-1.7B
-          accelerator_type: L4
+          accelerator_type: H100
           deployment_config:
             request_router_config:
               request_router_class: ray.serve.llm.request_router.KVAwareRouter

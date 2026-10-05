@@ -40,7 +40,7 @@ logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
 
 
-CLOUD = "serve_release_tests_cloud"
+CLOUD = "rkn-gpu-cloud"
 JOB_NAME = "serve_llm_release_test_vllm_perf"
 JOB_TIMEOUT_S = 1800
 SERVICE_NAME = "serve_llm_release_test_service"
@@ -226,9 +226,12 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
         cloud=CLOUD,
         compute_config=anyscale.compute_config.ComputeConfig(
             head_node=anyscale.anyscale.compute_config.HeadNodeConfig(
-                instance_type="g5.12xlarge",  # 4 GPUS,
+                instance_type="92CPU-960GB-4xH100",  # 4 GPUS,
             ),
             worker_nodes=[],  # To force running on head node only.
+            advanced_instance_config={
+                "metadata": {"labels": {"kueue.x-k8s.io/queue-name": "default-queue"}}
+            },
         ),
         image_uri=image_uri,
         env_vars={
