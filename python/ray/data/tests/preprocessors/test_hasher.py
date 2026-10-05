@@ -74,6 +74,14 @@ def test_feature_hasher_serialization():
     assert len(result["hashed"][1]) == 8
 
 
+@pytest.mark.parametrize("num_features", [0, -3])
+def test_feature_hasher_rejects_non_positive_num_features(num_features):
+    # Without this check `num_features=0` raised `ZeroDivisionError` inside the
+    # read task and a negative count silently produced no hash columns.
+    with pytest.raises(ValueError, match="num_features must be a positive integer"):
+        FeatureHasher(["a"], num_features=num_features, output_column="hashed")
+
+
 if __name__ == "__main__":
     import sys
 

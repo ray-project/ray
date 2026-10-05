@@ -146,6 +146,14 @@ class HashingVectorizer(SerializablePreprocessorBase):
         super().__init__()
         self._columns = columns
         self._num_features = num_features
+        # `simple_hash` divides by `num_features`, so a count of 0 raises
+        # `ZeroDivisionError` in the read task and a negative count silently
+        # produces no hash columns.
+        if isinstance(num_features, int) and num_features <= 0:
+            raise ValueError(
+                f"num_features must be a positive integer, but got "
+                f"{num_features} instead."
+            )
         self._tokenization_fn = tokenization_fn or simple_split_tokenizer
         self._output_columns = (
             SerializablePreprocessorBase._derive_and_validate_output_columns(

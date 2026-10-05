@@ -94,6 +94,14 @@ class FeatureHasher(SerializablePreprocessorBase):
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
         self._num_features = num_features
+        # `simple_hash` divides by `num_features`, so a count of 0 raises
+        # `ZeroDivisionError` in the read task and a negative count silently
+        # produces no hash columns.
+        if isinstance(num_features, int) and num_features <= 0:
+            raise ValueError(
+                f"num_features must be a positive integer, but got "
+                f"{num_features} instead."
+            )
         self._output_column = output_column
 
     @property

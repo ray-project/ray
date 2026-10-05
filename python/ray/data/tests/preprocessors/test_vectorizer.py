@@ -228,6 +228,14 @@ def test_count_vectorizer_serialization():
     assert "text" in result.columns
 
 
+@pytest.mark.parametrize("num_features", [0, -3])
+def test_hashing_vectorizer_rejects_non_positive_num_features(num_features):
+    # Without this check `num_features=0` raised `ZeroDivisionError` inside the
+    # read task and a negative count silently produced no hash columns.
+    with pytest.raises(ValueError, match="num_features must be a positive integer"):
+        HashingVectorizer(["text"], num_features=num_features)
+
+
 if __name__ == "__main__":
     import sys
 
