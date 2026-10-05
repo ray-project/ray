@@ -18,6 +18,10 @@ Single RLModuleSpec
     :toctree: doc/
 
     RLModuleSpec
+
+.. autosummary::
+    :nosignatures:
+
     RLModuleSpec.build
 
 .. autoattribute:: ray.rllib.core.rl_module.rl_module.RLModuleSpec.module_class
@@ -48,6 +52,10 @@ MultiRLModuleSpec
     :toctree: doc/
 
     MultiRLModuleSpec
+
+.. autosummary::
+    :nosignatures:
+
     MultiRLModuleSpec.build
 
 .. autoattribute:: ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec.multi_rl_module_class
@@ -98,6 +106,10 @@ Construction and setup
     RLModule.action_space
     RLModule.inference_only
     RLModule.model_config
+
+.. autosummary::
+    :nosignatures:
+
     RLModule.setup
     RLModule.as_multi_rl_module
 
@@ -112,7 +124,6 @@ all phases) or, for more granularity, use ``_forward_exploration``, ``_forward_i
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~RLModule.forward_exploration
     ~RLModule.forward_inference
@@ -140,12 +151,16 @@ Saving and restoring
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~RLModule.save_to_path
     ~RLModule.restore_from_path
     ~RLModule.from_checkpoint
     ~RLModule.get_state
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~RLModule.set_state
 
 
@@ -162,6 +177,10 @@ Constructor
     :toctree: doc/
 
     MultiRLModule
+
+.. autosummary::
+    :nosignatures:
+
     MultiRLModule.setup
     MultiRLModule.as_multi_rl_module
 
@@ -170,7 +189,6 @@ Modifying the underlying RLModules
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~MultiRLModule.add_module
     ~MultiRLModule.remove_module
@@ -180,12 +198,20 @@ Saving and restoring
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~MultiRLModule.save_to_path
     ~MultiRLModule.restore_from_path
     ~MultiRLModule.from_checkpoint
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~MultiRLModule.get_state
+
+.. autosummary::
+    :nosignatures:
+
     ~MultiRLModule.set_state
 
 

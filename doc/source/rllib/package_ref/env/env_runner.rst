@@ -18,6 +18,10 @@ Construction and setup
     :toctree: doc/
 
     EnvRunner
+
+.. autosummary::
+    :nosignatures:
+
     EnvRunner.make_env
     EnvRunner.make_module
     EnvRunner.get_spaces
@@ -28,7 +32,6 @@ Sampling
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     EnvRunner.sample
     EnvRunner.get_metrics
@@ -38,7 +41,6 @@ Cleanup
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     EnvRunner.stop
 
