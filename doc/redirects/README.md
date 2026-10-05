@@ -76,6 +76,14 @@ from a move are expected. A chain is a warning only when the second rule sets
 `force: true`, because that chain happens on every version. Neither blocks CI,
 which fails only on error-level findings.
 
+## Renaming, moving, or removing APIs
+
+Generated API reference pages follow the same rules as hand-written pages. Sphinx autosummary generates one page per documented object, named after the object's fully qualified name and placed under the `:toctree:` directory of the API page that lists it, such as `/data/api/doc/ray.data.Dataset.map.html`. Renaming or moving an API changes that path, and so does moving the API page that lists it. Add a redirect for each generated page whose path changes, in the same PR.
+
+When you remove the reference page of a deprecated or end-of-life API that has a clear successor, redirect the old page to the successor's reference page.
+
+Rules with the default `force: false` fire only on a 404, so they never replace a reference page that still exists. Docs versions that still document the old API, such as older releases, keep serving its page. The redirect takes effect only on versions where the page is gone.
+
 ## Auditing drift
 
 `rtd-redirects plan --project anyscale-ray --file doc/redirects/current.yaml`
