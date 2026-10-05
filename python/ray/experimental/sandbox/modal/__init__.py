@@ -61,42 +61,33 @@ Images are pulled and cached per node.
     is Modal's for the build-step ``env=`` parameters. Accepting it is a
     widening, so no Modal program behaves differently.
 
-Output is kept as Modal keeps it, up to a disk budget.
-    Measured on Modal, no stream ever makes the process wait for a reader, an
-    ``exec``'d command's output is kept whole (4 GiB came back intact), and a
-    Sandbox's own stdout and stderr keep their newest 256 MiB. The same holds
-    here: the actor drains every pipe continuously, holds each stream's newest
-    8 MiB in memory, and spills older output to files on the node's disk
-    under ``/tmp/ray/sandbox-output``. ``read()`` reads the whole retained
-    stream from its first byte on every call, as Modal's does; iterating is a
-    single pass.
+Reading consumes, as on Modal; unread output is held in memory, up to a bound.
+    As in Modal's client from 1.6, a ``StreamReader`` keeps one position:
+    ``read()`` and every loop over it draw from it, so each byte is delivered
+    once, and a second ``read()`` after the end returns empty. Stopping
+    part-way -- a ``break``, ``aclose()`` -- keeps the position, and the next
+    read or loop resumes exactly there. No stream ever makes the process wait
+    for a reader.
 
-    The difference is the budget. A sandbox may spill up to
-    ``RAY_SANDBOX_OUTPUT_SPILL_LIMIT`` (default ``8Gi``; ``0`` turns spilling
-    off), and never so much that the node's disk nears the point where Ray
-    stops spilling its own objects (5% free): it leaves that 5% free plus
-    headroom of 15% of the disk, at most 16 GiB of it. A size in
-    ``RAY_SANDBOX_OUTPUT_SPILL_MIN_FREE`` sets that floor instead. Past
-    that, the oldest spilled output of finished commands goes first, then the
-    oldest of the busiest running stream -- never blocking the process. What
-    is dropped is reported rather than spliced: the reader sets ``truncated``
-    and ``bytes_lost`` and logs once, and never raises, so a program that runs
-    clean on Modal still runs here. The Sandbox's own streams report the same
-    way when their 256 MiB window moves, where Modal logs a warning. Spilled
-    output is deleted by ``terminate()``; a sandbox that is killed instead
-    leaves it until the next sandbox on that node sweeps it up.
+    The difference is where unread output lives. Modal's servers keep an
+    ``exec``'d command's whole output until it is read (4 GiB came back
+    intact, measured); here it is in the sandbox actor's memory, freed as it
+    is read, and bounded while it is not: the newest 64 MiB of each exec
+    stream, the newest 256 MiB of the Sandbox's own stdout and stderr (Modal
+    keeps the same 256 MiB of those), and 512 MiB across the whole sandbox,
+    where finished commands' oldest unread output goes first. Output read as
+    it is produced is never dropped. What is dropped is reported rather than
+    spliced: the reader sets ``truncated`` and ``bytes_lost`` and logs once,
+    and never raises, so a program that runs clean on Modal still runs here.
 
-    A finished command's output stays readable, as on Modal -- a batch of
-    commands can all finish before any of them is read. What finished
-    commands hold in memory is bounded (64 MiB together): past it, the oldest
-    one's output moves to spill files, where it still reads back whole. Only
-    where the sandbox cannot spill is a finished command's output dropped
-    instead, oldest first, and past 1024 finished commands the oldest go
-    regardless. Its *exit code* outlives it either way, so ``poll()`` and
-    ``wait()`` on a ``ContainerProcess`` keep answering, which is what Modal
-    does. A read of a dropped command's stream reports the whole stream as
-    lost, through the same ``truncated`` / ``bytes_lost`` route as a partial
-    overrun.
+    A finished command's output stays readable until it is read, as on Modal
+    -- a batch of commands can all finish before any of them is read. Once
+    both its streams have been read to the end its session is released; past
+    1024 finished commands the oldest go regardless. Its *exit code* outlives
+    it either way, so ``poll()`` and ``wait()`` on a ``ContainerProcess`` keep
+    answering, which is what Modal does. A read of a dropped command's stream
+    reports the rest as lost, through the same ``truncated`` / ``bytes_lost``
+    route.
 
 ``Probe.with_tcp()`` is unimplemented.
     The backend publishes no ports and has no tunnels, so a TCP check would
@@ -127,15 +118,10 @@ Network access is all-or-nothing, and the default is not Modal's isolation.
     kept at Modal's so that ported programs keep their egress, and creating a
     Sandbox without ``block_network=True`` logs a warning once per process
     saying so.
-    Modal's CIDR and domain allowlists are rejected rather than approximated,
-    because silently failing to enforce an egress restriction is worse than
-    refusing it.
-
-``copy_to_local()`` has no size limit.
-    ``read_bytes()`` and ``read_text()`` refuse a file over 5 GiB with
-    ``SandboxFilesystemFileTooLargeError``, as Modal does, and writes are
-    unlimited on both. Modal applies the same 5 GiB cap to ``copy_to_local()``;
-    here it streams to disk, so it takes files of any size.
+    Modal's CIDR and domain allowlists, and its experimental outbound policy,
+    are rejected rather than approximated, because silently failing to enforce
+    an egress restriction is worse than refusing it. An empty allowlist is
+    refused too: on Modal it allows nothing, so it is not the same as none.
 
 ``Image.shell()`` is accepted but currently has no effect.
     It is validated and carried into the sandbox, but the backend consults its
@@ -166,7 +152,10 @@ Some Modal members are absent rather than stubbed.
     ``Sandbox.open()`` raises rather than pretending otherwise. Modal's
     experimental sidecar API -- ``Sandbox._experimental_sidecars``,
     ``SidecarContainer``, ``SidecarManager`` -- is absent too, as is the
-    ``Object`` base it hydrates its handles through.
+    ``Object`` base it hydrates its handles through. The reverse holds for
+    ``Sandbox.ls()``, ``mkdir()`` and ``rm()``: Modal's current client has
+    removed them, and here they still work, delegating to ``filesystem``, so
+    code written against an older client keeps running.
 
 ``App`` carries Modal's constructor but owns nothing.
     ``App(name, tags=..., image=..., secrets=..., volumes=...)`` accepts every
@@ -212,7 +201,9 @@ Exceptions match Modal's hierarchy, with one addition.
     ``FilesystemExecutionError``, ``AuthError``, ``DataLossError``,
     ``ResourceExhaustedError``, ``UnimplementedError``, ``RequestSizeError``
     and ``VersionError``. (``ClientClosed`` is raised, as on Modal, by a
-    ``detach()``-ed handle.) Modal's
+    ``detach()``-ed handle.) ``FilesystemExecutionError`` has since been
+    removed from Modal's client along with its legacy filesystem API; it stays
+    here so older ``except`` clauses still resolve. Modal's
     Function-, Volume-, Mount- and Cls-only errors are not mirrored, nor is the
     ``grpclib`` mixin its control-plane errors carry, so ``err.status`` and
     ``except grpclib.GRPCError`` have no counterpart here.
@@ -256,7 +247,9 @@ Smaller argument-level differences.
     timed out. ``cpu`` and ``memory`` follow Modal's model -- the request is
     reserved from Ray, and only a ``(request, limit)`` tuple's limit caps the
     container -- except that Modal's default soft CPU limit, 16 cores above
-    the request, is a hard CFS quota here.
+    the request, is a hard CFS quota here. ``runtime="gvisor"`` is accepted,
+    since every Sandbox here runs under gVisor; ``runtime="vm"`` raises
+    ``NotSupportedError``.
 """
 
 # Exported as a submodule, not as loose names: upstream spells these

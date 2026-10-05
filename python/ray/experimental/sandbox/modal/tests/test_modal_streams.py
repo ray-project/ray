@@ -5,10 +5,7 @@ actor, so they need neither runsc nor a Ray cluster.
 """
 
 import asyncio
-import collections
 import functools
-import os
-import shutil
 import sys
 import time
 import types
@@ -23,14 +20,10 @@ from ray.experimental.sandbox.modal._actor import (
     _COALESCE_MAX_WINDOW,
     _COALESCE_TARGET_BYTES,
     _MAX_YIELD_BYTES,
-    _SPILL_LIMIT_ENV,
-    _SPILL_MIN_FREE_ENV,
     STDERR_FD,
     STDOUT_FD,
+    _MemoryBudget,
     _OutputBuffer,
-    _size_from_env,
-    _SpillStore,
-    _sweep_stale_spill_directories,
 )
 from ray.experimental.sandbox.modal.exception import (
     InvalidError,
@@ -94,6 +87,8 @@ class FakeActor:
         self.stdin_offsets: List[Optional[int]] = []
         self.stdin_close_offset: Optional[int] = None
         self.stdin_closed = False
+        # (fd, offset) for every stream_ack received.
+        self.acks: List[tuple] = []
 
     def __getattr__(self, name):
         impl = getattr(type(self), f"_{name}", None)
@@ -104,9 +99,8 @@ class FakeActor:
     async def _stream_output(self, exec_id, fd, start_offset=0):
         """Mirror the real streaming generator: yield refs of (offset, chunk).
 
-        Non-destructive and offset-addressed, matching the real
-        ``_OutputBuffer``: replaying from a cursor is what makes resumption and
-        a second independent reader work.
+        Offset-addressed, matching the real ``stream_output``: a reader that
+        reopens at its own position continues exactly there.
         """
         self.stream_calls.append(start_offset)
         chunks = self._streams.get(fd)
@@ -124,6 +118,9 @@ class FakeActor:
                 begin = max(offset, floor)
                 yield _FakeRef((begin, chunk[begin - offset :]))
             offset = end
+
+    async def _stream_ack(self, exec_id, fd, offset):
+        self.acks.append((fd, offset))
 
     async def _write_stdin(self, exec_id, data, offset=None):
         self.stdin_writes.append(data)
@@ -184,8 +181,8 @@ def test_read_returns_whole_stream(chunks, text, expected):
     ],
 )
 def test_read_ignores_line_buffering(chunks, expected):
-    """Reading to end of stream joins every chunk, so where the boundaries
-    fall cannot matter -- which is what lets read() skip the re-chunking."""
+    """Reading to end of stream joins every line, so line buffering cannot
+    change what read() returns."""
     assert run(make_reader(chunks, by_line=True).read()) == expected
     assert run(make_reader(chunks, by_line=False).read()) == expected
 
@@ -295,8 +292,8 @@ def test_blocking_line_iteration_crosses_to_the_loop_per_batch_not_per_line(
     assert len(crossings) <= 20
 
 
-def test_aiter_is_memoized_so_a_second_pass_yields_nothing():
-    """Matches Modal: a StreamReader is an iterable, not a restartable one."""
+def test_a_second_loop_after_the_end_yields_nothing():
+    """Matches Modal 1.6: one position per reader, so nothing comes twice."""
     reader = make_reader([b"a", b"b"], text=True)
 
     async def collect_twice():
@@ -307,18 +304,6 @@ def test_aiter_is_memoized_so_a_second_pass_yields_nothing():
     first, second = run(collect_twice())
     assert first == ["a", "b"]
     assert second == []
-
-
-def test_two_readers_each_see_the_whole_stream():
-    """Modal gives every reader the full log; ours must not split the bytes."""
-    actor = FakeActor({STDOUT_FD: [b"hello ", b"world"]})
-    first = _StreamReader(actor, "exec-1", STDOUT_FD)
-    second = _StreamReader(actor, "exec-1", STDOUT_FD)
-
-    assert run(first.read()) == "hello world"
-    assert run(second.read()) == "hello world"
-    # Both opened their own generator, each from offset 0.
-    assert actor.stream_calls == [0, 0]
 
 
 def test_iteration_resumes_from_its_cursor_after_a_partial_pass():
@@ -334,27 +319,31 @@ def test_iteration_resumes_from_its_cursor_after_a_partial_pass():
         return [line async for line in reader]
 
     assert run(stop_early()) == "one\n"
-    # A fresh generator picks up at the cursor rather than replaying.
-    reader._read_gen = None
+    # The first loop's stream closed with its event loop; the next one opens
+    # where it stopped rather than replaying.
     assert run(the_rest()) == ["two\n", "three\n"]
     assert actor.stream_calls == [0, len("one\n")]
     assert reader.truncated is False
 
 
-def test_read_returns_the_whole_stream_every_time():
-    """Modal's read() starts from the first byte on every call."""
+@pytest.mark.parametrize("text,empty", [(True, ""), (False, b"")])
+def test_a_second_read_returns_nothing_without_asking_the_actor(text, empty):
+    """Modal 1.6: read() consumes, so after the end there is nothing left."""
     actor = FakeActor({STDOUT_FD: [b"hello ", b"world"]})
-    reader = _StreamReader(actor, "exec-1", STDOUT_FD)
+    reader = _StreamReader(actor, "exec-1", STDOUT_FD, text=text)
 
     async def read_twice():
         return await reader.read(), await reader.read()
 
-    assert run(read_twice()) == ("hello world", "hello world")
-    assert actor.stream_calls == [0, 0]
+    first, second = run(read_twice())
+    assert first == ("hello world" if text else b"hello world")
+    assert second == empty
+    assert actor.stream_calls == [0]
 
 
-def test_read_after_a_partial_iteration_returns_the_whole_stream():
-    """Lines an interrupted `async for` had buffered are not lost to read()."""
+def test_read_after_a_partial_loop_returns_the_rest():
+    """Lines an interrupted `async for` had decoded but not handed out go to
+    read(), and nothing it handed out comes again."""
     actor = FakeActor({STDOUT_FD: [b"a\nb\nc\n", b"d\n"]})
     reader = _StreamReader(actor, "exec-1", STDOUT_FD, by_line=True)
 
@@ -362,18 +351,78 @@ def test_read_after_a_partial_iteration_returns_the_whole_stream():
         async for line in reader:
             return line, await reader.read()
 
-    assert run(first_then_read()) == ("a\n", "a\nb\nc\nd\n")
+    assert run(first_then_read()) == ("a\n", "b\nc\nd\n")
 
 
-def test_reading_twice_does_not_count_one_hole_twice():
+@pytest.mark.parametrize(
+    "chunks,first,rest",
+    [
+        # The loop stops with half a line held back for its newline.
+        ([b"a\nb", b"c\nd"], "a\n", "bc\nd"),
+        # ...and with half of a character held back too.
+        ([b"a\ncaf\xc3", b"\xa9\nend"], "a\n", "café\nend"),
+    ],
+)
+def test_read_after_a_loop_keeps_what_the_loop_held_back(chunks, first, rest):
+    """read() decodes unsplit, for speed; the line a loop left unfinished must
+    still lead what it returns, whole."""
+    actor = FakeActor({STDOUT_FD: chunks})
+    reader = _StreamReader(actor, "exec-1", STDOUT_FD, by_line=True)
+
+    async def first_then_read():
+        async for line in reader:
+            return line, await reader.read()
+
+    assert run(first_then_read()) == (first, rest)
+
+
+def test_a_hole_is_counted_once():
     actor = FakeActor({STDOUT_FD: [b"lost bytes", b"kept bytes"]}, base_offset=10)
     reader = _StreamReader(actor, "exec-1", STDOUT_FD)
 
     async def read_twice():
         return await reader.read(), await reader.read()
 
-    assert run(read_twice()) == ("kept bytes", "kept bytes")
+    assert run(read_twice()) == ("kept bytes", "")
     assert reader.bytes_lost == 10
+
+
+def test_reaching_the_end_acknowledges_the_stream():
+    """So the actor can free what it kept for chunks in flight, and release a
+    finished command read to the end."""
+    actor = FakeActor({STDOUT_FD: [b"hello ", b"world"]})
+    reader = _StreamReader(actor, "exec-1", STDOUT_FD)
+
+    async def read_and_settle():
+        text = await reader.read()
+        await reader._ack_task
+        return text
+
+    assert run(read_and_settle()) == "hello world"
+    assert actor.acks == [(STDOUT_FD, len(b"hello world"))]
+
+
+def test_stopping_part_way_does_not_acknowledge():
+    actor = FakeActor({STDOUT_FD: [b"one\n", b"two\n"]})
+    reader = _StreamReader(actor, "exec-1", STDOUT_FD, by_line=True)
+
+    async def first_line():
+        async for line in reader:
+            return line
+
+    assert run(first_line()) == "one\n"
+    assert actor.acks == []
+
+
+def test_concurrent_reads_take_turns_and_deliver_each_byte_once():
+    actor = FakeActor({STDOUT_FD: [b"a" * 10, 0.01, b"b" * 10, 0.01, b"c" * 10]})
+    reader = _StreamReader(actor, "exec-1", STDOUT_FD)
+
+    async def two_readers():
+        return await asyncio.gather(reader.read(), reader.read())
+
+    results = run(two_readers())
+    assert sorted(results, key=len) == ["", "a" * 10 + "b" * 10 + "c" * 10]
 
 
 def test_a_reader_overtaken_by_eviction_reports_the_gap(caplog):
@@ -394,9 +443,9 @@ def test_a_gap_is_logged_once_but_counted_every_time(caplog):
     reader = _StreamReader(FakeActor(), "exec-1", STDOUT_FD)
 
     with caplog.at_level("WARNING"):
-        # Two gaps in one pass: 10 bytes, then 25 more.
-        reader._note_gap(10, 10)
-        reader._note_gap(25, 35)
+        # Two gaps: 10 bytes, then 25 more.
+        reader._note_gap(10)
+        reader._note_gap(25)
 
     assert reader.bytes_lost == 35
     assert caplog.text.count("truncated") == 1
@@ -560,17 +609,25 @@ def test_the_public_reader_is_its_own_iterator():
         next(reader)
 
 
-def test_read_after_breaking_out_of_a_loop_returns_everything():
-    """A `for ... break` can leave a look-ahead read in flight on the loop.
-
-    read() used to close the shared generator under it, which raised "aclose():
-    asynchronous generator is already running"; a pass of its own cannot.
-    """
-    reader = public_reader([b"start\n", 0.2, b"done\n"], by_line=True)
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        # Everything decoded at once: the loop must leave what it did not hand
+        # out with the reader, not in a look-ahead of its own.
+        [b"start\nmiddle\ndone\n"],
+        # A pause after the first line: a fetch can be left in flight.
+        [b"start\n", 0.2, b"middle\ndone\n"],
+    ],
+)
+def test_read_after_breaking_out_of_a_loop_returns_the_rest(chunks):
+    """Measured on Modal 1.6.1: `break` after 10 lines, then read(), returned
+    exactly from line 11."""
+    reader = public_reader(chunks, by_line=True)
     for line in reader:
         break
     assert line == "start\n"
-    assert reader.read() == "start\ndone\n"
+    assert reader.read() == "middle\ndone\n"
+    assert reader.read() == ""
 
 
 @pytest.mark.parametrize(
@@ -786,15 +843,6 @@ def test_read_from_splits_an_oversized_chunk_without_losing_bytes():
     assert drain(buffer) == b"a" * (_MAX_YIELD_BYTES + 10)
 
 
-def test_reading_does_not_consume_so_a_second_reader_sees_everything():
-    """The property the cursor buys: readers no longer race for the bytes."""
-    buffer = _OutputBuffer()
-    buffer.feed(b"shared output")
-    buffer.feed_eof()
-    assert drain(buffer) == b"shared output"
-    assert drain(buffer) == b"shared output"
-
-
 @pytest.mark.parametrize("cursor", [0, 4, 13])
 def test_a_reader_resumes_at_its_cursor(cursor):
     buffer = _OutputBuffer()
@@ -803,39 +851,41 @@ def test_a_reader_resumes_at_its_cursor(cursor):
     assert drain(buffer, cursor) == b"shared output"[cursor:]
 
 
-def test_eviction_alone_is_not_loss_for_a_reader_that_keeps_up():
-    """However much passes through, a caller at the tail never sees a gap.
+def test_a_reader_that_keeps_up_never_loses_output():
+    """However much passes through a small cap, a reader that acknowledges as
+    it goes never sees a gap, and the buffer holds next to nothing.
 
     Driven inside one event loop: the buffer's asyncio.Event binds to the first
     loop it is awaited on, and in production that is the actor's single loop.
     """
 
     async def attempt():
-        buffer = _OutputBuffer(limit=1024)
+        buffer = _OutputBuffer(cap=1024)
         cursor = 0
         for _ in range(200):
             buffer.feed(b"x" * 512)
             offset, data = await buffer.read_from(cursor)
             assert offset == cursor, "a reader at the tail must not be overtaken"
             cursor = offset + len(data)
-        return cursor, buffer.dropped
+            buffer.ack(cursor)
+        return cursor, buffer.lost, buffer.memory_bytes
 
-    cursor, dropped = run(attempt())
+    cursor, lost, held = run(attempt())
     assert cursor == 200 * 512
-    # Plenty was evicted behind the reader; none of it was ever lost to it.
-    assert dropped > 0
+    assert lost == 0
+    assert held == 0
 
 
-def test_a_cursor_behind_the_window_reports_the_gap():
-    """Overrun resumes at the oldest retained byte and says so."""
-    buffer = _OutputBuffer(limit=1024)
+def test_a_cursor_behind_the_kept_output_reports_the_gap():
+    """Overrun resumes at the oldest byte still held and says so."""
+    buffer = _OutputBuffer(cap=1024)
     for _ in range(10):
         buffer.feed(b"x" * 512)
 
     offset, data = run(buffer.read_from(0))
 
     # Nothing is spliced: the jump is visible in the offset itself.
-    assert offset == buffer.dropped > 0
+    assert offset == buffer.lost > 0
     assert offset + len(data) == 10 * 512
 
 
@@ -887,37 +937,29 @@ def test_a_stream_without_a_deadline_is_read_whenever():
     assert run(reader.read()) == "later\n"
 
 
-# -- spilling to disk ------------------------------------------------------
+# -- unread output: bounded in memory --------------------------------------
 #
-# Modal keeps an exec'd command's whole output and never makes the command
-# wait for a reader; the buffer matches that by moving what outgrows memory to
-# files. Small files and a small memory tail keep these fast.
+# The process is never made to wait for a reader, as on Modal. What the reader
+# has acknowledged is freed; what nobody reads is kept up to the stream's cap,
+# and past it the oldest goes -- reported, never spliced.
 
-_SEGMENT = 8 * 1024
 _TAIL = 4096
 # Patterned, so a byte out of place or a spliced gap shows as a mismatch.
 _PAYLOAD = bytes(i % 251 for i in range(100_000))
 
 
-def spill_store(tmp_path, limit=1 << 30, **kwargs):
-    kwargs.setdefault("segment_bytes", _SEGMENT)
-    # The test machine's disk is not what is under test.
-    kwargs.setdefault("min_free", 0)
-    return _SpillStore(str(tmp_path / "spill"), limit, **kwargs)
-
-
 async def pump_into(buffer, payload, piece=1000):
-    """Feed ``payload`` the way _pump does -- a chunk, then pace -- and settle."""
+    """Feed ``payload`` the way _pump does: a chunk, then pace."""
     for i in range(0, len(payload), piece):
         buffer.feed(payload[i : i + piece])
         await buffer.pace()
     buffer.feed_eof()
-    if buffer._flush_task is not None:
-        await buffer._flush_task
 
 
 async def read_all(buffer, cursor=0):
-    """Read to end of stream. Returns where the data began, and the data."""
+    """Read to end of stream, acknowledging as it goes, as the actor's
+    stream_output does on its reader's behalf. Returns where the data began,
+    and the data."""
     out = bytearray()
     first = None
     while True:
@@ -929,205 +971,66 @@ async def read_all(buffer, cursor=0):
             first = offset
         out += data
         cursor = offset + len(data)
+        buffer.ack(cursor)
 
 
-def test_output_past_memory_spills_to_disk_and_reads_back_whole(tmp_path):
-    store = spill_store(tmp_path)
+def test_past_its_cap_a_stream_drops_its_oldest_unread_output_and_says_why():
+    reasons = []
+    buffer = _OutputBuffer(_TAIL, on_drop=reasons.append)
+    for i in range(0, len(_PAYLOAD), 1000):
+        buffer.feed(_PAYLOAD[i : i + 1000])
+    buffer.feed_eof()
 
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        files = os.listdir(store.directory)
-        return buffer, files, await read_all(buffer)
+    first, data = run(read_all(buffer))
 
-    buffer, files, (first, data) = run(attempt())
-    assert files, "output past the memory tail should be on disk"
-    assert (first, data) == (0, _PAYLOAD)
-    assert buffer.dropped == 0
-    assert store.used == buffer.disk_bytes > 0
-
-
-def test_reads_from_disk_and_memory_join_without_a_seam(tmp_path):
-    """A reader that starts part-way through, inside a spill file, sees no gap."""
-    store = spill_store(tmp_path)
-
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        return await read_all(buffer, cursor=_SEGMENT + 123)
-
-    first, data = run(attempt())
-    assert (first, data) == (_SEGMENT + 123, _PAYLOAD[_SEGMENT + 123 :])
-
-
-def test_a_retained_stream_keeps_exactly_its_newest_bytes(tmp_path):
-    """The Sandbox's own output: a byte-exact window, like Modal's V2."""
-    store = spill_store(tmp_path)
-
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, retain=30_000, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        return buffer, await read_all(buffer)
-
-    buffer, (first, data) = run(attempt())
-    assert first == buffer.dropped == len(_PAYLOAD) - 30_000
-    assert data == _PAYLOAD[-30_000:]
-    # Files wholly behind the window are deleted as it moves.
-    assert buffer.disk_bytes <= 30_000 + _SEGMENT
-    assert store.used == buffer.disk_bytes
-
-
-def test_past_the_spill_limit_the_oldest_output_goes_and_is_reported(tmp_path, caplog):
-    store = spill_store(tmp_path, limit=3 * _SEGMENT)
-
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        return buffer, await read_all(buffer)
-
-    with caplog.at_level("WARNING"):
-        buffer, (first, data) = run(attempt())
-    # Never an error, and never a splice: the reader is told where it resumed.
-    assert first == buffer.dropped > 0
-    assert data == _PAYLOAD[first:]
-    assert store.used <= 3 * _SEGMENT
-    # Readers only see the gap; the sandbox's log says why, once.
-    assert caplog.text.count("Sandbox output is being dropped") == 1
-    assert _SPILL_LIMIT_ENV in caplog.text
-
-
-def test_at_the_disk_floor_a_stream_keeps_its_newest_output(
-    tmp_path, monkeypatch, caplog
-):
-    """Room for three files above the floor: the stream sheds its oldest.
-
-    The disk here fills as the store writes, as a real one does, so this is
-    the floor being reached part-way through a command rather than a disk
-    that was full from the start.
-    """
-    usage = collections.namedtuple("usage", "total used free")
-    room = 3 * _SEGMENT
-    store = spill_store(tmp_path)
-    monkeypatch.setattr(
-        shutil,
-        "disk_usage",
-        lambda path: usage(1 << 40, store.used, room - store.used),
-    )
-
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        return buffer, await read_all(buffer)
-
-    with caplog.at_level("WARNING"):
-        buffer, (first, data) = run(attempt())
-    assert first == buffer.dropped > 0
-    assert data == _PAYLOAD[first:]
-    assert store.used <= room
-    # Still as much of the newest output as the room holds, not just memory.
-    assert len(data) > 2 * _SEGMENT
-    assert caplog.text.count("Sandbox output is being dropped") == 1
-    assert _SPILL_MIN_FREE_ENV in caplog.text
-
-
-def test_without_room_to_spill_a_stream_drops_its_oldest_output(tmp_path, caplog):
-    store = spill_store(tmp_path, limit=0)
-
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        return buffer, await read_all(buffer)
-
-    with caplog.at_level("WARNING"):
-        buffer, (first, data) = run(attempt())
-    assert first == buffer.dropped > 0
-    assert data == _PAYLOAD[first:]
     assert len(data) <= _TAIL
-    assert store.used == 0
-    assert caplog.text.count("Sandbox output is being dropped") == 1
-    assert _SPILL_LIMIT_ENV in caplog.text
+    assert first + len(data) == len(_PAYLOAD), "the newest output, to the end"
+    assert data == _PAYLOAD[first:]
+    assert buffer.lost == first
+    assert reasons and "cap" in reasons[0]
 
 
-_GIB = 1024**3
+def test_acknowledged_output_is_freed():
+    buffer = _OutputBuffer()
+    buffer.feed(b"x" * 100_000)
+    buffer.feed(b"y" * 100_000)
+    held_before = buffer.memory_bytes
+
+    buffer.ack(100_000)
+
+    assert held_before == 200_000
+    assert buffer.memory_bytes == 100_000, "the first chunk is gone"
+    assert buffer.lost == 0, "freeing what was read is not loss"
+    assert run(buffer.read_from(0)) == (100_000, b"y" * 100_000)
 
 
-@pytest.mark.parametrize(
-    "total_gib, free_gib, min_free_gib, spills",
-    [
-        # A mostly empty disk.
-        (100, 30, None, True),
-        # 90% used: inside the 20% a small disk keeps free.
-        (100, 10, None, False),
-        # Just above Ray's own disk-full line of 5% free, where the raylet
-        # stops spilling objects: sandbox output must not take that room.
-        (251, 13.4, None, False),
-        # 85% of a large disk: the headroom is capped at 16 GiB, so this still
-        # spills where a flat 20% floor would have refused.
-        (1024, 153.6, None, True),
-        # An explicit floor replaces the default one.
-        (251, 13.4, 1, True),
-    ],
-)
-def test_the_disk_floor_stays_clear_of_rays_own_disk_full_line(
-    tmp_path, monkeypatch, caplog, total_gib, free_gib, min_free_gib, spills
-):
-    usage = collections.namedtuple("usage", "total used free")
-    total, free = int(total_gib * _GIB), int(free_gib * _GIB)
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda path: usage(total, total - free, free)
-    )
-    min_free = None if min_free_gib is None else min_free_gib * _GIB
-    store = spill_store(tmp_path, min_free=min_free)
-
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        return buffer
-
-    with caplog.at_level("WARNING"):
-        buffer = run(attempt())
-    if spills:
-        assert buffer.dropped == 0
-        assert store.used > 0
-        assert "being dropped" not in caplog.text
-    else:
-        assert buffer.dropped > 0
-        assert store.used == 0
-        # The warning names the knob that governs this, not the spill limit,
-        # which cannot help.
-        assert _SPILL_MIN_FREE_ENV in caplog.text
-        assert _SPILL_LIMIT_ENV not in caplog.text
+def test_acknowledging_never_moves_backwards_or_past_the_end():
+    buffer = _OutputBuffer()
+    buffer.feed(b"abc")
+    buffer.ack(10)
+    buffer.ack(1)
+    buffer.feed(b"def")
+    assert run(buffer.read_from(3)) == (3, b"def")
 
 
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        (None, "default"),
-        ("", "default"),
-        ("0", 0),
-        ("512Mi", 512 * 1024 * 1024),
-        ("2Gi", 2 * _GIB),
-        ("lots", "default"),
-    ],
-)
-def test_spill_sizes_are_read_from_the_environment(monkeypatch, raw, expected):
-    if raw is None:
-        monkeypatch.delenv(_SPILL_MIN_FREE_ENV, raising=False)
-    else:
-        monkeypatch.setenv(_SPILL_MIN_FREE_ENV, raw)
-    result = _size_from_env(_SPILL_MIN_FREE_ENV, "default")
-    assert result == expected
+def test_a_stream_is_consumed_once_ended_and_acknowledged_to_its_end():
+    buffer = _OutputBuffer()
+    buffer.feed(b"abc")
+    buffer.ack(3)
+    assert not buffer.consumed, "it has not ended"
+    buffer.feed_eof()
+    assert buffer.consumed
 
 
 def test_a_paced_stream_holds_its_producer_a_buffer_ahead_of_the_reader():
-    """The filesystem's transfers: whole, in bounded memory, no disk.
+    """The filesystem's transfers: whole, in bounded memory.
 
-    A copy used to run its command flat out, and with nowhere to spill a
-    reader more than a buffer behind lost bytes and the copy failed.
+    A copy used to run its command flat out, and a reader more than a buffer
+    behind lost bytes and the copy failed.
     """
 
     async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, paced=True)
+        buffer = _OutputBuffer(_TAIL, paced=True)
 
         async def produce():
             await pump_into(buffer, _PAYLOAD)
@@ -1143,14 +1046,23 @@ def test_a_paced_stream_holds_its_producer_a_buffer_ahead_of_the_reader():
     assert waiting, "nobody was reading, so the producer should be waiting"
     assert held <= _TAIL + 1000
     assert (first, data) == (0, _PAYLOAD)
-    assert buffer.disk_bytes == 0
+    assert buffer.lost == 0
+
+
+def test_a_paced_stream_never_drops():
+    buffer = _OutputBuffer(_TAIL, paced=True)
+    for i in range(0, len(_PAYLOAD), 1000):
+        buffer.feed(_PAYLOAD[i : i + 1000])
+    assert buffer.drop_oldest(len(_PAYLOAD), "test") == 0
+    assert buffer.lost == 0
+    assert buffer.memory_bytes == len(_PAYLOAD)
 
 
 def test_closing_a_paced_stream_releases_a_waiting_producer():
     """exec_release on a transfer the caller abandoned."""
 
     async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, paced=True)
+        buffer = _OutputBuffer(_TAIL, paced=True)
         buffer.feed(b"x" * (2 * _TAIL))
         waiter = asyncio.ensure_future(buffer.pace())
         await asyncio.sleep(0.02)
@@ -1161,68 +1073,46 @@ def test_closing_a_paced_stream_releases_a_waiting_producer():
     run(attempt())
 
 
-def test_closing_a_stream_deletes_its_spill_files(tmp_path):
-    store = spill_store(tmp_path)
-
-    async def attempt():
-        buffer = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(buffer, _PAYLOAD)
-        assert os.listdir(store.directory)
-        buffer.close()
-        return await buffer.read_from(0)
-
-    after = run(attempt())
-    assert os.listdir(store.directory) == []
-    assert store.used == 0
-    # A reader part-way through learns the rest is gone, not that it ended.
-    assert after == (len(_PAYLOAD), b"")
+@pytest.mark.parametrize("chunks", [0, 1])
+def test_a_stream_with_nothing_droppable_gives_up_nothing(chunks):
+    """Relief walks every stream, empty ones included; one with no chunks to
+    spare raised from inside feed() and silently stopped another's pump."""
+    buffer = _OutputBuffer()
+    for _ in range(chunks):
+        buffer.feed(b"x" * 100_000)
+    assert buffer.drop_oldest(10, "test") == 0
+    assert buffer.lost == 0
 
 
-def test_finished_output_is_freed_before_a_live_stream_loses_any(tmp_path):
-    finished = []
+def test_buffers_account_what_they_hold_to_the_sandbox_budget():
+    budget = _MemoryBudget(1 << 30)
+    first = _OutputBuffer(budget=budget)
+    second = _OutputBuffer(budget=budget)
+    first.feed(b"x" * 100_000)
+    second.feed(b"y" * 50_000)
+    assert budget.used == 150_000
 
-    def relieve():
-        if not finished:
-            return False
-        finished.pop().close()
-        return True
-
-    # Room for the live stream's spill, but not for both streams' at once.
-    store = spill_store(tmp_path, limit=16 * _SEGMENT, relieve=relieve)
-
-    async def attempt():
-        old = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(old, _PAYLOAD[:40_000])
-        finished.append(old)
-        live = _OutputBuffer(limit=_TAIL, spill=store)
-        await pump_into(live, _PAYLOAD)
-        return old, await read_all(live)
-
-    old, (first, data) = run(attempt())
-    assert old.disk_bytes == 0, "the finished stream should have been freed"
-    assert (first, data) == (0, _PAYLOAD)
+    first.ack(100_000)
+    assert budget.used == 50_000
+    second.close()
+    assert budget.used == 0
 
 
-def test_stale_spill_directories_of_dead_processes_are_swept(tmp_path, monkeypatch):
-    monkeypatch.setattr(_actor, "_SPILL_ROOT", str(tmp_path))
-    # Past Linux's pid_max, so certainly not a running process.
-    (tmp_path / "4194305-ray-sandbox-dead").mkdir()
-    (tmp_path / f"{os.getpid()}-ray-sandbox-mine").mkdir()
-    (tmp_path / "unrelated").mkdir()
-
-    _sweep_stale_spill_directories()
-
-    assert sorted(os.listdir(tmp_path)) == sorted(
-        [f"{os.getpid()}-ray-sandbox-mine", "unrelated"]
-    )
+def test_past_the_sandbox_cap_the_excess_is_handed_to_relief():
+    asked = []
+    budget = _MemoryBudget(150_000, relieve=asked.append)
+    buffer = _OutputBuffer(budget=budget)
+    buffer.feed(b"x" * 100_000)
+    assert asked == []
+    buffer.feed(b"y" * 100_000)
+    assert asked == [50_000]
 
 
 # -- a line-at-a-time producer ---------------------------------------------
 #
 # The common slow producer: every pipe read is one short line. Measured before
-# these fixes, a stream like that past its 8 MiB window held ~100k tiny chunks,
-# each read scanned them from the head (~7 ms of the actor's loop), and spilling
-# wrote each line or two as a file write of its own.
+# gathering, 8 MiB of such a stream was ~100k tiny chunks, and each read
+# scanned them from the head (~7 ms of the actor's loop).
 
 _LINE = b"y" * 79 + b"\n"
 _MIB = 1024 * 1024
@@ -1240,38 +1130,6 @@ def test_small_reads_are_gathered_rather_than_kept_one_per_chunk():
     offset, data = run(buffer.read_from(tail))
     assert (offset, data) == (tail, _LINE * 3)
     assert type(data) is bytes, "a gathered bytearray must not leak out"
-
-
-def test_a_line_at_a_time_producer_spills_in_large_writes(tmp_path, monkeypatch):
-    writes = []
-    real_append = _actor._append_file
-
-    def recording_append(path, data):
-        writes.append(len(data))
-        real_append(path, data)
-
-    monkeypatch.setattr(_actor, "_append_file", recording_append)
-    store = spill_store(tmp_path, segment_bytes=16 * _MIB)
-    buffer = _OutputBuffer(spill=store)
-
-    async def produce():
-        fed = 0
-        while fed < 12 * _MIB:
-            buffer.feed(_LINE)
-            fed += len(_LINE)
-            await buffer.pace()
-            # A slow producer lets the loop turn between lines, which is when
-            # a flush in flight used to pick up each line or two on its own.
-            await asyncio.sleep(0)
-        buffer.feed_eof()
-        while buffer._flush_task is not None:
-            await asyncio.sleep(0.01)
-        return fed, await read_all(buffer)
-
-    fed, (first, data) = run(produce())
-    assert (first, len(data)) == (0, fed)
-    assert writes, "past its window the stream spilled"
-    assert min(writes) >= _actor._SPILL_BATCH_BYTES
 
 
 def test_reading_from_a_gone_sandbox_reports_not_found():

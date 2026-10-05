@@ -8,8 +8,22 @@ that classifies the failure with a distinct exit code, then the work itself.
 Keying on exit codes rather than parsing stderr keeps the mapping independent
 of locale and of which ``coreutils`` the image ships (GNU or busybox).
 
-Known limitation: records are newline-separated, so paths containing a literal
-newline cannot be listed or stat'ed.
+This is a compatibility layer, not a reimplementation of that helper: the
+image must provide ``/bin/sh`` and the utilities the scripts use (``stat``,
+``cat``, ``head``, ``mkdir``, ``rm``, ``ls``), and their behavior is the
+image's. The fully compatible end state is a Ray-owned helper binary with a
+lossless protocol, so behavior no longer depends on the user's image.
+
+Known limitations of the record protocol, all from paths the shell has to
+print:
+
+* Records are newline-separated, so a path containing a literal newline
+  cannot be listed or stat'ed.
+* Fields are separated by ``\\x1f`` (ASCII unit separator), which a Linux file
+  name may legally contain; such a name splits into extra fields, and its
+  ``FileInfo`` comes back with its name and path misread.
+* Output is decoded as UTF-8 with replacement, so a name that is not valid
+  UTF-8 does not round-trip into ``FileInfo``.
 """
 
 import contextlib
@@ -374,6 +388,14 @@ def make_remove_command(remote_path: str, recursive: bool) -> List[str]:
         # variable to answer a boolean, on a path that is usually about to
         # succeed anyway.
         '    rmdir "$p" 2>/dev/null && exit 0; '
+        # The kernel checks write permission on the parent before it looks at
+        # the directory's contents: a non-empty directory under a parent the
+        # user cannot write to is EACCES, not ENOTEMPTY, and Modal's helper
+        # reports the errno it gets. Only bites a non-root exec user; root
+        # passes every -w.
+        # Trailing slashes first, or "dir/" named itself as its parent.
+        '    d=${p%"${p##*[!/]}"}; d=${d%/*}; [ -n "$d" ] || d=/; '
+        '    [ -w "$d" ] || exit 13; '
         '    if [ -n "$(ls -A "$p" 2>/dev/null)" ]; then exit 14; fi; '
         "    exit 13; "
         "  fi; "

@@ -396,7 +396,7 @@ process.wait()
 
 Pass `stdout=modal.StreamType.DEVNULL` to discard a stream, or `StreamType.STDOUT` to have it printed locally as it arrives. Use `text=False` for bytes instead of decoded text, and `bufsize=1` to iterate a line at a time.
 
-A `StreamReader` is an *iterable*, not a restartable one: iterating it a second time yields nothing, because the first pass consumed the stream.
+Reading consumes, as in Modal's client from 1.6: a `StreamReader` keeps one position, which `read()` and every loop over it share, so each byte comes back once. A second `read()` after the end returns empty, and a loop that breaks off part-way is continued exactly by the next `read()` or loop.
 
 ### Filesystem
 
@@ -476,12 +476,15 @@ A Ray sandbox is owned by the handle that created it and there's no hosted contr
 | `secrets`, `volumes`, `network_file_systems`, `proxy` | Not supported |
 | `cloud`, `region`, `idle_timeout`, `pty` | Not supported |
 | `gpu` | Not supported — no GPU device is passed into the sandbox, so a reservation would go unused |
+| `outbound_cidr_allowlist`, `outbound_domain_allowlist`, `inbound_cidr_allowlist`, `_experimental_outbound_policy` | Not supported — network access is all-or-nothing, so use `block_network=True`. An empty allowlist is refused too, since on Modal it allows nothing. |
+| `runtime` | `"gvisor"` accepted, since every sandbox runs under gVisor; `"vm"` isn't supported |
 | `filesystem.watch()` | Not supported — needs inotify inside the sandbox |
 
-Two behavioral differences worth knowing:
+Three behavioral differences worth knowing:
 
 * **Writable by default.** `Sandbox.create()` here defaults to `readonly=False`, so the filesystem is writable like Modal's. Writes land in a per-sandbox copy-on-write overlay, so the base image is never modified and sandboxes sharing an image can't see each other's changes. The core {func}`~ray.experimental.sandbox.create` API defaults to `readonly=True` instead.
 * **Network on by default.** Modal sandboxes have internet access unless you pass `block_network=True`, so this API defaults to `network="public"`: a network namespace private to the sandbox, which can still reach anything the node can reach, including other Ray nodes. The core API defaults to `network="none"`. Pass `block_network=True` for untrusted code.
+* **Unread output is held in memory, up to a bound.** Output you read as it's produced is never dropped. Output nobody reads stays in the sandbox's actor: the newest 64 MiB of each `exec` stream, the newest 256 MiB of the sandbox's own stdout and stderr, and 512 MiB across the sandbox, finished commands' oldest output first to go. Modal keeps an `exec` command's whole unread output on its servers. A reader that lost output reports it on `truncated` and `bytes_lost` rather than raising.
 
 The filesystem layer runs POSIX shell commands inside the sandbox, so the image needs `/bin/sh` and the usual `stat`, `readlink`, and `cat` utilities. Both busybox-based and GNU coreutils images work; a distroless image with no shell doesn't.
 

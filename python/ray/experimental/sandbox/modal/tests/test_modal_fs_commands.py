@@ -714,6 +714,43 @@ def test_remove_refuses_a_non_empty_directory_without_recursive(tmp_path):
 
 
 @requires_posix_shell
+def test_remove_refuses_a_non_empty_directory_named_with_a_trailing_slash(tmp_path):
+    """The parent is found past the slash, not taken to be the path itself."""
+    target = tmp_path / "full"
+    target.mkdir()
+    (target / "child.txt").write_text("x")
+    assert (
+        run_script(fs.make_remove_command(f"{target}/", False)).returncode
+        == fs.EXIT_DIRECTORY_NOT_EMPTY
+    )
+
+
+@requires_posix_shell
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root can write to any directory",
+)
+@pytest.mark.parametrize("suffix", ["", "/"])
+def test_a_non_empty_directory_under_a_read_only_parent_is_a_permission_error(
+    tmp_path, suffix
+):
+    """The kernel checks write permission on the parent before it looks at the
+    directory's contents, so rmdir there fails EACCES rather than ENOTEMPTY --
+    and Modal's helper reports the errno it gets."""
+    parent = tmp_path / "parent"
+    target = parent / "full"
+    target.mkdir(parents=True)
+    (target / "child.txt").write_text("x")
+    parent.chmod(0o555)
+    try:
+        result = run_script(fs.make_remove_command(f"{target}{suffix}", False))
+    finally:
+        parent.chmod(0o755)
+    assert result.returncode == fs.EXIT_PERMISSION_DENIED
+    assert target.exists()
+
+
+@requires_posix_shell
 def test_remove_recursive_deletes_a_tree(tmp_path):
     target = tmp_path / "full"
     (target / "nested").mkdir(parents=True)

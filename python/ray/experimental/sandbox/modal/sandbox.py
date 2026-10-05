@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import time
+import typing
 from pathlib import PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
@@ -42,7 +43,13 @@ from ray.experimental.sandbox.modal.io_streams import _StreamReader, _StreamWrit
 from ray.experimental.sandbox.modal.probe import Probe
 from ray.experimental.sandbox.modal.sandbox_fs import _SandboxFilesystem
 from ray.experimental.sandbox.modal.stream_type import StreamType
-from ray.experimental.sandbox.modal.types import FileWatchEvent, FileWatchEventType
+from ray.experimental.sandbox.modal.types import (
+    FileWatchEvent,
+    FileWatchEventType,
+    # Modal's runtime names. Aliased: SandboxRuntime otherwise means Ray's
+    # sandbox runtime class, which this module's comments refer to.
+    SandboxRuntime as _RuntimeName,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +81,18 @@ def _unsupported(name: str, alternative: str = ""):
     return NotSupportedError(
         f"{name} is not supported by the Ray sandbox backend.{suffix}"
     )
+
+
+def _validate_runtime(runtime: Optional[_RuntimeName]) -> None:
+    """Accept Modal's ``runtime`` values that mean gVisor, refuse the rest."""
+    runtimes = list(typing.get_args(_RuntimeName))
+    if runtime is not None and runtime not in runtimes:
+        # Modal's own message, so a typo reads the same on both.
+        raise InvalidError(f"runtime must be one of {runtimes}, got {runtime!r}")
+    if runtime == "vm":
+        raise _unsupported(
+            "runtime='vm'", "Every Sandbox here runs under gVisor; use 'gvisor'."
+        )
 
 
 def _reject_unsupported(**kwargs) -> None:
@@ -313,6 +332,7 @@ class _Sandbox:
         gpu: Optional[str] = None,
         cpu: Optional[Union[float, Tuple[float, float]]] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
+        runtime: Optional[_RuntimeName] = None,
         block_network: bool = False,
         verbose: bool = False,
         # Accepted so that ported code fails loudly rather than silently. This
@@ -338,6 +358,7 @@ class _Sandbox:
         outbound_domain_allowlist: Optional[Sequence[str]] = None,
         inbound_cidr_allowlist: Optional[Sequence[str]] = None,
         cidr_allowlist: Optional[Sequence[str]] = None,
+        _experimental_outbound_policy: Optional[Any] = None,
         include_oidc_identity_token: bool = False,
         experimental_options: Optional[Dict[str, Any]] = None,
         _experimental_enable_snapshot: bool = False,
@@ -371,6 +392,8 @@ class _Sandbox:
             memory: Memory in MiB, as a number or a ``(request, limit)`` tuple.
                 The request is reserved from Ray; only a given limit caps the
                 container, as on Modal.
+            runtime: ``"gvisor"`` or None, which mean the same here: every
+                Sandbox runs under gVisor. ``"vm"`` is unsupported.
             block_network: Cut off network access entirely. When False (the
                 default) the Sandbox gets a network namespace and loopback of
                 its own, with no path to the node's loopback, but its egress
@@ -403,6 +426,8 @@ class _Sandbox:
             inbound_cidr_allowlist: Unsupported, as above.
             cidr_allowlist: Unsupported, as above. Modal's older spelling of
                 ``outbound_cidr_allowlist``.
+            _experimental_outbound_policy: Unsupported, as above: outbound
+                requests are not rewritten here.
             include_oidc_identity_token: Unsupported.
             experimental_options: Unsupported.
             _experimental_enable_snapshot: Unsupported.
@@ -422,7 +447,8 @@ class _Sandbox:
 
         Raises:
             InvalidError: An argument is not usable, such as an ``env`` that
-                is not a dict of strings or names a variable Modal would refuse.
+                is not a dict of strings or names a variable Modal would refuse,
+                or a ``runtime`` Modal does not know.
             NotImplementedError: A Modal-only parameter was passed.
             ValueError: ``app`` was never initialized with ``App.lookup()``.
         """
@@ -471,13 +497,17 @@ class _Sandbox:
         # `allowlist_name`, not `name`: `name` is one of this method's own
         # parameters, and rebinding it here left it holding a leftover string
         # for the rest of the call.
+        #
+        # `is not None`, not truthiness: an empty allowlist is Modal's way of
+        # allowing nothing, and treating it as absent granted open egress.
         for allowlist_name, value in (
             ("outbound_cidr_allowlist", outbound_cidr_allowlist),
             ("outbound_domain_allowlist", outbound_domain_allowlist),
             ("inbound_cidr_allowlist", inbound_cidr_allowlist),
             ("cidr_allowlist", cidr_allowlist),
+            ("_experimental_outbound_policy", _experimental_outbound_policy),
         ):
-            if value:
+            if value is not None:
                 raise _unsupported(
                     f"The '{allowlist_name}' parameter",
                     "Network access is all-or-nothing here: egress would be "
@@ -490,6 +520,7 @@ class _Sandbox:
                 "The gVisor backend does not allocate a terminal for exec'd "
                 "commands.",
             )
+        _validate_runtime(runtime)
         if gpu:
             # Reserving num_gpus without plumbing a device into the container is
             # the worst of both worlds: the GPU is taken from Ray's scheduler and
@@ -1105,13 +1136,18 @@ class _Sandbox:
         if self._detached:
             raise ClientClosed("Unable to perform operation on a detached sandbox")
 
-    # -- deprecated Modal aliases -----------------------------------------
+    # -- Modal's legacy filesystem aliases ---------------------------------
+    #
+    # Removed from Modal's client in favour of Sandbox.filesystem (deprecated
+    # first, then dropped in September 2026). Kept so code written against an
+    # older client still runs, or gets a directed error, rather than failing
+    # with AttributeError.
 
     async def open(self, path: str, mode: str = "r"):
         """Unsupported. Use the ``filesystem`` namespace.
 
         Defined rather than left off so that ported code gets a directed error
-        instead of ``AttributeError``. Modal deprecated this in favour of
+        instead of ``AttributeError``. Modal has removed this in favour of
         ``Sandbox.filesystem``, which is implemented here in full, so there is
         no reason to grow a ``FileIO`` handle to match it.
 
@@ -1124,22 +1160,22 @@ class _Sandbox:
         """
         raise _unsupported(
             "Sandbox.open()",
-            "Modal deprecated it in favour of Sandbox.filesystem. Use "
+            "Modal replaced it with Sandbox.filesystem. Use "
             "filesystem.read_bytes()/read_text() or "
             "filesystem.write_bytes()/write_text() instead.",
         )
 
     async def ls(self, path: str) -> List[str]:
-        """Deprecated. Use ``filesystem.list_files()``."""
+        """Legacy alias, removed from Modal. Use ``filesystem.list_files()``."""
         entries = await self.filesystem.list_files(path)
         return [entry.name for entry in entries]
 
     async def mkdir(self, path: str, parents: bool = False) -> None:
-        """Deprecated. Use ``filesystem.make_directory()``."""
+        """Legacy alias, removed from Modal. Use ``filesystem.make_directory()``."""
         await self.filesystem.make_directory(path, create_parents=parents)
 
     async def rm(self, path: str, recursive: bool = False) -> None:
-        """Deprecated. Use ``filesystem.remove()``."""
+        """Legacy alias, removed from Modal. Use ``filesystem.remove()``."""
         await self.filesystem.remove(path, recursive=recursive)
 
     def watch(

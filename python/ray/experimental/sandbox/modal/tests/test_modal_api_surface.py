@@ -7,6 +7,7 @@ no actor behind it, so nothing here needs runsc or a Ray cluster.
 
 import inspect
 import sys
+import typing
 
 import pytest
 
@@ -258,6 +259,7 @@ def test_create_refuses_a_readiness_probe_that_is_not_a_probe(value):
         Sandbox.create(image="busybox:latest", readiness_probe=value)
 
 
+@pytest.mark.parametrize("value", [["10.0.0.0/8"], []])
 @pytest.mark.parametrize(
     "name",
     [
@@ -267,16 +269,62 @@ def test_create_refuses_a_readiness_probe_that_is_not_a_probe(value):
         "cidr_allowlist",
     ],
 )
-def test_network_allowlists_are_refused_and_say_why(name):
+def test_network_allowlists_are_refused_and_say_why(name, value):
     """The one rejection with a security consequence.
 
     block_network=False egresses through the node with no destination
     filter, so quietly dropping an allowlist would leave the sandbox reaching
     private ranges and cloud instance metadata while the caller believes
-    egress is filtered.
+    egress is filtered. An empty allowlist most of all: on Modal it allows
+    nothing, and treating it as absent used to grant open egress.
     """
     with pytest.raises(NotImplementedError, match="block_network=True"):
-        Sandbox.create(image="busybox:latest", **{name: ["10.0.0.0/8"]})
+        Sandbox.create(image="busybox:latest", **{name: value})
+
+
+def test_an_outbound_policy_is_refused_with_the_allowlists():
+    """Modal's experimental outbound policy rewrites egress with secrets kept
+    outside the sandbox; ignoring it would leave egress unfiltered and the
+    headers it adds missing."""
+    with pytest.raises(NotImplementedError, match="block_network=True"):
+        Sandbox.create(image="busybox:latest", _experimental_outbound_policy=object())
+
+
+class _PassedValidation(Exception):
+    """Raised in place of connecting to Ray: every check before it passed."""
+
+
+def _stop_at_the_connection(monkeypatch):
+    def refuse():
+        raise _PassedValidation()
+
+    monkeypatch.setattr(sandbox_mod, "require_ray_connection", refuse)
+
+
+@pytest.mark.parametrize("runtime", [None, "gvisor"])
+def test_create_accepts_the_gvisor_runtime(runtime, monkeypatch):
+    """Every Sandbox here runs under gVisor, so asking for it is a no-op."""
+    _stop_at_the_connection(monkeypatch)
+    with pytest.raises(_PassedValidation):
+        Sandbox.create(image="busybox:latest", runtime=runtime, block_network=True)
+
+
+def test_create_refuses_the_vm_runtime():
+    with pytest.raises(NotImplementedError, match="gvisor"):
+        Sandbox.create(image="busybox:latest", runtime="vm")
+
+
+@pytest.mark.parametrize("runtime", ["kvm", "GVISOR", ""])
+def test_create_refuses_a_runtime_modal_does_not_know(runtime):
+    """InvalidError with Modal's own message, as Modal raises it."""
+    expected = f"runtime must be one of ['gvisor', 'vm'], got {runtime!r}"
+    with pytest.raises(InvalidError) as info:
+        Sandbox.create(image="busybox:latest", runtime=runtime)
+    assert str(info.value) == expected
+
+
+def test_sandbox_runtime_names_modal_runtimes():
+    assert typing.get_args(modal.types.SandboxRuntime) == ("gvisor", "vm")
 
 
 @pytest.mark.parametrize(
@@ -320,6 +368,7 @@ def test_create_accepts_no_parameter_modal_lacks():
         "region",
         "cpu",
         "memory",
+        "runtime",
         "block_network",
         "outbound_cidr_allowlist",
         "outbound_domain_allowlist",
@@ -340,6 +389,7 @@ def test_create_accepts_no_parameter_modal_lacks():
         "environment_name",
         "pty_info",
         "cidr_allowlist",
+        "_experimental_outbound_policy",
     }
     ours = set(inspect.signature(sandbox_mod._Sandbox.create).parameters)
     assert ours - modal_parameters == set()
@@ -359,7 +409,7 @@ def test_exec_refuses_every_pty_spelling(kwargs):
 def test_sandbox_open_points_at_the_filesystem_namespace():
     """Defined only so ported code gets a directed error, not AttributeError.
 
-    Modal deprecated Sandbox.open() in favour of Sandbox.filesystem, which is
+    Modal has removed Sandbox.open() in favour of Sandbox.filesystem, which is
     implemented here in full.
     """
     with pytest.raises(NotImplementedError, match="filesystem"):

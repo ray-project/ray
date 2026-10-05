@@ -315,18 +315,17 @@ def test_a_sandbox_without_a_main_command_still_execs():
         sandbox.terminate()
 
 
-def test_reading_output_twice_returns_it_twice(sandbox):
-    """Modal: the scenario of ``test_sandbox_exec_output_double_read``.
+def test_a_second_read_returns_nothing(sandbox):
+    """Modal: ``test_sandbox_exec_output_double_read``.
 
-    Modal's own unit test asserts an empty second read, but it runs against a
-    mock servicer that reads straight from the process pipe. Measured against
-    the real service, on both backends, the second ``read()`` returns the whole
-    output again: every read starts from the first byte.
+    Measured on Modal 1.6.1, on both backends: a StreamReader keeps one
+    position, so the second ``read()`` returns empty. (1.5.x re-read from the
+    first byte every time.)
     """
     process = sandbox.exec("sh", "-c", "echo hi")
 
     assert process.stdout.read() == "hi\n"
-    assert process.stdout.read() == "hi\n"
+    assert process.stdout.read() == ""
     assert process.wait() == 0
 
 

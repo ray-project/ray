@@ -9,13 +9,18 @@ decided here.
 import asyncio
 import codecs
 import collections
-import io
 import logging
 import sys
 import time
 from typing import AsyncGenerator, Deque, List, Optional, Tuple, Union
 
 import ray
+from ray.experimental.sandbox.modal._actor import (
+    _EXEC_OUTPUT_CAP,
+    _MAIN_OUTPUT_CAP,
+    _SANDBOX_OUTPUT_CAP,
+    _STREAM_BACKPRESSURE_OBJECTS,
+)
 from ray.experimental.sandbox.modal._sync import synchronize_api
 from ray.experimental.sandbox.modal.exception import (
     InvalidError,
@@ -35,15 +40,6 @@ TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE = 16 * 1024 * 1024
 # Modal's name for the cap above is the one on the right; this spelling came
 # first here and is kept so existing imports keep working.
 EXEC_MAX_BUFFER_SIZE = TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE
-
-# How many chunks the actor may produce before the client has consumed them.
-# Ray runs a streaming generator eagerly, so without this a chatty process
-# would push its whole output into the caller's memory store as fast as it can
-# write. At this bound the actor parks on an asyncio.Event until the client
-# catches up. Chunks run up to 1 MiB for bulk output (_MAX_YIELD_BYTES), so
-# this keeps at most ~8 MiB in flight per stream: enough to hide the
-# round-trip latency, little enough to stay bounded for an endless stream.
-_STREAM_BACKPRESSURE_OBJECTS = 8
 
 _DEVNULL_MESSAGE = "{} is not supported for a stream configured with StreamType.DEVNULL"
 _STDOUT_MESSAGE = "Output can only be retrieved using the PIPE stream type."
@@ -77,8 +73,8 @@ async def iter_stream(
             # Empty items are passed through rather than filtered here: an
             # evicted session reports the size of the hole it left as a
             # zero-length chunk at the offset its stream reached, and dropping
-            # it would turn a lost stream into a silently empty one. Consumers
-            # account for the offset first and skip the bytes after; see
+            # it would turn a lost stream into a silently empty one. The reader
+            # accounts for the offset first and skips the bytes after; see
             # _StreamReader._raw.
             yield await ref
         reached_eof = True
@@ -101,12 +97,19 @@ def _cancel_stream(gen) -> None:
         ray.cancel(gen)
 
 
+# What _StreamReader._pop_ready returns when nothing is decoded and waiting.
+_NOTHING_READY = object()
+
+
 class _StreamReader:
     """Reads one output stream of a Sandbox or container process.
 
-    Treat this as an *iterable*, not an iterator: the generator behind
-    ``__aiter__`` is created once and memoized, so a second full iteration
-    yields nothing.
+    One position per reader, as Modal's StreamReader keeps from 1.6: every
+    ``read()`` and every loop over it draws from the same place, so each byte
+    is delivered once. Past end of output ``read()`` returns empty and a loop
+    yields nothing. Stopping part-way -- a ``break``, ``aclose()`` -- keeps the
+    position, and the next read or loop resumes exactly there. Measured on
+    Modal 1.6.1, the same on its V1 and V2 backends.
     """
 
     def __init__(
@@ -136,12 +139,29 @@ class _StreamReader:
         self._stream_type = stream_type
         self._text = text
         self._by_line = by_line
-        self._read_gen: Optional["_Flatten"] = None
-        self._print_task: Optional[asyncio.Task] = None
-        # Absolute position in the stream, so a generator that is cancelled or
-        # replaced resumes exactly. Modal keeps the same state as
-        # `last_entry_id`.
+        # Bytes taken from the actor so far: where the next stream opens, and
+        # what the actor may free.
         self._offset = 0
+        self._eof = False
+        # Pulls take turns, so a loop and a read(), or two tasks, share one
+        # stream instead of colliding on it.
+        self._lock = asyncio.Lock()
+        # The open stream of decoded batches, whether it splits lines, and its
+        # items not handed out yet.
+        self._batches: Optional[AsyncGenerator[List, None]] = None
+        self._batches_split = True
+        self._ready: Deque[Union[str, bytes]] = collections.deque()
+        # Decoding state that outlives any one stream, so a character or a
+        # line cut where one stream closed carries on in the next.
+        self._decoder = (
+            codecs.getincrementaldecoder("utf-8")(errors="strict") if text else None
+        )
+        self._splitter = _LineSplitter() if by_line else None
+        # UTF-8 continuation bytes still to skip after a gap; see
+        # _decoded_batches.
+        self._skip = 0
+        self._ack_task: Optional[asyncio.Task] = None
+        self._print_task: Optional[asyncio.Task] = None
         # Private, with properties below: synchronize_api forwards only
         # class-level entries, so a plain instance attribute would be invisible
         # on the public blocking StreamReader.
@@ -159,59 +179,59 @@ class _StreamReader:
 
     @property
     def truncated(self) -> bool:
-        """Whether output was evicted before this reader reached it."""
+        """Whether output was dropped before this reader got it."""
         return self._truncated
 
     @property
     def bytes_lost(self) -> int:
-        """Total bytes evicted before this reader reached them."""
+        """Total bytes dropped before this reader got them."""
         return self._bytes_lost
 
     async def read(self) -> Union[str, bytes]:
-        """Read the stream from its start to end of output and return it.
+        """Read from where this reader stands to the end of output.
 
-        Every call reads the whole retained stream again, as Modal's does, and
-        never disturbs an ``async for`` in progress: the two have separate
-        cursors.
+        What an earlier ``read()`` or loop took is not read again, as on Modal:
+        a second ``read()`` after the end returns empty.
         """
         self._check_readable("read")
-        buffer = io.StringIO() if self._text else io.BytesIO()
-        # Line splitting only moves where chunk boundaries fall, and reading to
-        # end of stream joins every chunk back together -- so for this one
-        # caller it is re-chunking whose result is discarded. Skipping it is
-        # byte-for-byte identical, since a newline cannot occur inside a
-        # multi-byte UTF-8 sequence.
-        async for batch in self._decoded_batches(by_line=False, start=0):
-            for chunk in batch:
-                buffer.write(chunk)
-        return buffer.getvalue()
+        async with self._lock:
+            # Popped one at a time rather than copied and cleared: a blocking
+            # loop on another thread may pop from the same deque meanwhile.
+            parts = []
+            while (item := self._pop_ready()) is not _NOTHING_READY:
+                parts.append(item)
+            while True:
+                # Unsplit: everything is joined back together anyway, and
+                # splitting a Sandbox's own line-buffered output cost a 256
+                # MiB read about 25 seconds.
+                batch = await self._next_batch(split=False)
+                if batch is None:
+                    break
+                parts.extend(batch)
+        return ("" if self._text else b"").join(parts)
 
-    def __aiter__(self) -> "_Flatten":
+    def __aiter__(self) -> "_StreamIteration":
         self._check_readable("__aiter__")
-        if self._read_gen is None:
-            self._read_gen = _Flatten(self._decoded_batches())
-        return self._read_gen
+        return _StreamIteration(self)
 
     async def __anext__(self) -> Union[str, bytes]:
         # Checked here as well as in __aiter__, so a DEVNULL stream names the
         # method the caller actually used. (Modal's goes through __aiter__ and
         # names that; the exception type is the same either way.)
         self._check_readable("__anext__")
-        return await self.__aiter__().__anext__()
+        return await self._next_item()
 
     async def aclose(self) -> None:
-        """Release the stream. Safe to call more than once, whatever its type.
+        """Close the stream behind this reader. Safe to call more than once.
 
-        Modal's public ``aclose()`` only ever closes an iteration generator
-        that exists, so on a DEVNULL stream -- which never has one -- it is a
-        silent no-op rather than the refusal its read methods give.
+        The position is kept, as on Modal: a later read or loop reopens the
+        stream where this one stopped. On a DEVNULL stream, which never has
+        one, this is a silent no-op rather than the refusal its reads give.
         """
         if self._print_task is not None:
             self._print_task.cancel()
             self._print_task = None
-        if self._read_gen is not None:
-            await self._read_gen.aclose()
-            self._read_gen = None
+        await self._close_stream()
 
     # -- internals ---------------------------------------------------------
 
@@ -221,29 +241,79 @@ class _StreamReader:
         if self._stream_type == StreamType.STDOUT:
             raise InvalidError(_STDOUT_MESSAGE)
 
-    async def _raw(
-        self,
-        start: Optional[int] = None,
-        loss: Optional["_PassLoss"] = None,
-        mark_gaps: bool = False,
-    ) -> AsyncGenerator[Union[bytes, object], None]:
-        """Yield raw chunks from the actor, tracking position and gaps.
+    async def _next_item(self) -> Union[str, bytes]:
+        if self._ready:
+            return self._ready.popleft()
+        async with self._lock:
+            while not self._ready:
+                batch = await self._next_batch()
+                if batch is None:
+                    raise StopAsyncIteration
+                self._ready.extend(batch)
+            return self._ready.popleft()
 
-        With ``start`` None this continues the reader's own cursor, which is
-        what iteration uses. Otherwise it is an independent pass from
-        ``start``, as ``read()`` makes.
+    def _pop_ready(self):
+        """An item decoded and waiting, or _NOTHING_READY. Never waits.
 
-        ``loss`` collects what this pass lost, shared with a caller that
-        discards more at a gap. ``mark_gaps`` yields :data:`_GAP` just before
-        the first bytes after each gap, for a decoder that must not join the
-        bytes on either side of one.
+        Safe from another thread: a deque's pops and appends are atomic. The
+        blocking iterator takes items this way, so between its trips to the
+        event loop they stay here -- where a later read() finds what a loop
+        left behind.
+        """
+        try:
+            return self._ready.popleft()
+        except IndexError:
+            return _NOTHING_READY
+
+    async def _next_batch(
+        self, split: bool = True
+    ) -> Optional[List[Union[str, bytes]]]:
+        """The next decoded items from this reader's position; None at the end.
+
+        Called with the lock held. Opens a stream at the position if none is
+        open. ``split`` asks for lines, if this reader splits them at all;
+        read() asks for none. A stream open in the other mode is closed and
+        reopened at the same position.
+        """
+        while not self._eof:
+            if self._batches is not None and self._batches_split != split:
+                batches, self._batches = self._batches, None
+                await batches.aclose()
+            if self._batches is None:
+                self._batches = self._decoded_batches(split)
+                self._batches_split = split
+            try:
+                return await self._batches.__anext__()
+            except StopAsyncIteration:
+                self._batches = None
+            except BaseException:
+                # The stream is spent. The position stays where it got to, so
+                # a later read reopens there.
+                self._batches = None
+                raise
+        return None
+
+    async def _close_stream(self) -> None:
+        # A stream another pull is reading from is left for that pull to
+        # finish, as Modal's aclose() leaves it.
+        if self._lock.locked():
+            return
+        async with self._lock:
+            batches, self._batches = self._batches, None
+            if batches is not None:
+                await batches.aclose()
+
+    async def _raw(self, mark_gaps: bool) -> AsyncGenerator[Union[bytes, object], None]:
+        """Yield raw chunks from this reader's position, moving it as they go.
+
+        Ends at end of stream or at the exec's deadline. ``mark_gaps`` yields
+        :data:`_GAP` just before the first bytes after each gap, for a decoder
+        that must not join the bytes on either side of one.
         """
         if self._deadline_passed():
             # Answered here, without the actor, as Modal's client answers it.
             return
-        cursor = self._offset if start is None else start
-        if loss is None:
-            loss = _PassLoss()
+        cursor = self._offset
         stream = iter_stream(self._actor, self._exec_id, self._file_descriptor, cursor)
         try:
             with _sandbox_gone_as_not_found():
@@ -257,17 +327,18 @@ class _StreamReader:
                         )
                         return
                     if offset > cursor:
-                        # The actor dropped bytes this pass had not reached yet.
-                        loss.lost += offset - cursor
-                        self._note_gap(offset - cursor, loss.lost)
+                        # The actor dropped bytes this reader had not got yet.
+                        self._note_gap(offset - cursor)
+                        self._offset = cursor = offset
                         if mark_gaps:
                             yield _GAP
+                    # Moved before the bytes are handed on, never after: the
+                    # consumer finishes with a chunk before it can be closed,
+                    # and a reopen must start past what it got.
                     cursor = offset + len(chunk)
-                    if start is None:
-                        self._offset = cursor
-                    # After the accounting above, never before it: a zero-length
-                    # chunk exists only to carry an offset, and has nothing for a
-                    # decoder or a line splitter to do.
+                    self._offset = cursor
+                    # A zero-length chunk exists only to carry an offset, and
+                    # has nothing for a decoder or a line splitter to do.
                     if chunk:
                         yield chunk
         finally:
@@ -279,36 +350,35 @@ class _StreamReader:
     def _deadline_passed(self) -> bool:
         return self._deadline is not None and time.monotonic() >= self._deadline
 
-    def _note_gap(self, lost: int, pass_lost: int) -> None:
-        """Record output dropped before this reader reached it.
+    def _note_gap(self, lost: int) -> None:
+        """Record output dropped before this reader got it.
 
         Never raises: Modal reports a Sandbox's dropped output with a warning
         and carries on, and raising here would crash a program that runs clean
-        there. ``bytes_lost`` is the most any single pass lost, so reading the
-        same stream twice does not count one hole twice. Logged once rather
-        than per gap: a reader that stays behind gaps on every read, and the
-        figure is on ``bytes_lost``.
+        there. Logged once rather than per gap: a reader that stays behind gaps
+        on every read, and the running total is on ``bytes_lost``.
         """
         self._truncated = True
-        self._bytes_lost = max(self._bytes_lost, pass_lost)
+        self._bytes_lost += lost
         if not self._gap_logged:
             self._gap_logged = True
             logger.warning(
-                "Sandbox output was truncated: %d bytes on fd %d were no "
-                "longer retained when this reader reached them. A Sandbox's "
-                "own output keeps only its newest 256 MiB, as on Modal; an "
-                "exec's output is kept whole unless the sandbox had no room "
-                "to spill it (RAY_SANDBOX_OUTPUT_SPILL_LIMIT, or the node's "
-                "disk nearing full -- the sandbox's log says which), when the "
-                "oldest output goes to bound memory, finished commands' first. "
-                "Further gaps on this stream are counted in .bytes_lost but "
-                "not logged.",
+                "Sandbox output was truncated: %d bytes on fd %d were dropped "
+                "before this reader got them. Output read as it is produced is "
+                "never dropped; output nobody reads is held in memory up to a "
+                "bound -- the newest %d MiB of an exec'd command's stream, %d "
+                "MiB of the Sandbox's own, %d MiB across the whole sandbox -- "
+                "and the oldest goes first. Further gaps on this stream are "
+                "counted in .bytes_lost but not logged.",
                 lost,
                 self._file_descriptor,
+                _EXEC_OUTPUT_CAP // 2**20,
+                _MAIN_OUTPUT_CAP // 2**20,
+                _SANDBOX_OUTPUT_CAP // 2**20,
             )
 
     async def _decoded_batches(
-        self, by_line: Optional[bool] = None, start: Optional[int] = None
+        self, split: bool = True
     ) -> AsyncGenerator[List[Union[str, bytes]], None]:
         """Decode and line-split the raw stream, one chunk's items per list.
 
@@ -316,33 +386,30 @@ class _StreamReader:
         lines is thousands of them -- rather than one async step each: per
         line, a generator hop and, for blocking iteration, a task and a loop
         turn used to cost ~16 us, capping iteration near 60k lines/s.
-        :class:`_Flatten` hands them out singly again.
 
-        ``by_line`` overrides the reader's own setting, for a caller whose
-        output does not depend on where the chunk boundaries fall. ``start``
-        makes an independent pass; see :meth:`_raw`.
+        The decoder and line splitter are the reader's own, so what one stream
+        leaves half-done -- a character, a line -- the next one finishes. At a
+        clean end of stream the reader is marked done and the actor told.
+
+        Without ``split``, chunks are decoded whole; a line an earlier loop
+        left unfinished goes out first.
         """
-        if by_line is None:
-            by_line = self._by_line
-        decoder = (
-            codecs.getincrementaldecoder("utf-8")(errors="strict")
-            if self._text
-            else None
-        )
-        splitter = _LineSplitter() if by_line else None
-        loss = _PassLoss()
+        decoder = self._decoder
+        splitter = self._splitter if split else None
+        if not split and self._splitter is not None:
+            partial = decoder.decode(self._splitter.finish())
+            if partial:
+                yield [partial]
         # Only text needs to know where the gaps are: bytes join up anyway.
-        source = self._raw(start, loss=loss, mark_gaps=decoder is not None)
-        # UTF-8 continuation bytes still to skip after a gap; see below.
-        skip = 0
+        source = self._raw(mark_gaps=decoder is not None)
         try:
             async for chunk in source:
                 if chunk is _GAP:
                     # The bytes on either side of a gap do not join up. A
-                    # character can be cut at either edge -- a window moving
-                    # byte by byte, or a drop at a pipe read's boundary -- and
-                    # the strict decoder raised on the halves, failing the
-                    # read instead of returning what is still there.
+                    # character can be cut at either edge -- a drop at a pipe
+                    # read's boundary -- and the strict decoder raised on the
+                    # halves, failing the read instead of returning what is
+                    # still there.
                     items: List[Union[str, bytes]] = []
                     if splitter is not None:
                         # An unfinished line ends at the gap: what follows it
@@ -353,21 +420,19 @@ class _StreamReader:
                     held, _ = decoder.getstate()
                     decoder.reset()
                     if held:
-                        loss.lost += len(held)
-                        self._note_gap(len(held), loss.lost)
+                        self._note_gap(len(held))
                     # UTF-8 resynchronizes: at most three continuation bytes
                     # lead into the next character's first byte.
-                    skip = 3
+                    self._skip = 3
                     if items:
                         yield items
                     continue
-                if skip:
-                    cut = _continuation_prefix(chunk, skip)
+                if self._skip:
+                    cut = _continuation_prefix(chunk, self._skip)
                     if cut:
                         chunk = chunk[cut:]
-                        loss.lost += cut
-                        self._note_gap(cut, loss.lost)
-                    skip = 0 if chunk else skip - cut
+                        self._note_gap(cut)
+                    self._skip = 0 if chunk else self._skip - cut
                     if not chunk:
                         continue
                 if splitter is None:
@@ -375,7 +440,7 @@ class _StreamReader:
                     if item:
                         yield [item]
                     continue
-                items: List[Union[str, bytes]] = []
+                items = []
                 try:
                     # Split as bytes, then decode each line: the same lines,
                     # since a newline cannot occur inside a multi-byte UTF-8
@@ -390,15 +455,39 @@ class _StreamReader:
                 if items:
                     yield items
             # What is held back -- an unfinished line, bytes of a character
-            # cut off mid-sequence -- goes out only on normal completion: if
-            # the consumer stopped early, yielding here would fire inside a
-            # closing generator.
+            # cut off mid-sequence -- goes out only on a clean end: if the
+            # consumer stopped early, yielding here would fire inside a
+            # closing generator, and the next stream carries it on instead.
             rest = splitter.finish() if splitter is not None else b""
             tail = decoder.decode(rest, final=True) if decoder else rest
+            self._eof = True
+            self._send_ack()
             if tail:
                 yield [tail]
         finally:
             await source.aclose()
+
+    def _send_ack(self) -> None:
+        """Tell the actor this stream was read to the end, without waiting.
+
+        It frees what it kept back for chunks in flight, and a finished
+        command read to the end is released. Best-effort: an actor already
+        gone has nothing left to free.
+        """
+
+        async def ack():
+            try:
+                await self._actor.stream_ack.remote(
+                    self._exec_id, self._file_descriptor, self._offset
+                )
+            except Exception:
+                pass
+
+        try:
+            self._ack_task = asyncio.ensure_future(ack())
+        except RuntimeError:
+            # No running loop to send it from.
+            pass
 
     async def _print_all(self) -> None:
         """Pump the stream to the local stdout, for StreamType.STDOUT.
@@ -411,7 +500,7 @@ class _StreamReader:
         """
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         try:
-            async for chunk in self._raw():
+            async for chunk in self._raw(mark_gaps=False):
                 sys.stdout.write(decoder.decode(chunk))
                 sys.stdout.flush()
             # A character cut off by the end of the stream is held in the
@@ -421,6 +510,8 @@ class _StreamReader:
             if tail:
                 sys.stdout.write(tail)
                 sys.stdout.flush()
+            self._eof = True
+            self._send_ack()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -431,19 +522,39 @@ class _StreamReader:
             )
 
 
+class _StreamIteration:
+    """One ``for`` or ``async for`` over a StreamReader, at its shared position.
+
+    Every loop gets one of these, and all of them draw from the reader, so a
+    loop that stopped part-way is continued by the next loop or read().
+    ``pop_ready`` lets the blocking iterator take items already decoded
+    without a trip to the event loop.
+    """
+
+    __slots__ = ("_reader",)
+
+    # What pop_ready returns when nothing is waiting; _sync compares to it.
+    NOTHING_READY = _NOTHING_READY
+
+    def __init__(self, reader: _StreamReader):
+        self._reader = reader
+
+    def __aiter__(self) -> "_StreamIteration":
+        return self
+
+    async def __anext__(self) -> Union[str, bytes]:
+        return await self._reader._next_item()
+
+    def pop_ready(self):
+        return self._reader._pop_ready()
+
+    async def aclose(self) -> None:
+        await self._reader._close_stream()
+
+
 # Yielded by _StreamReader._raw, when asked, just before the first bytes after
 # a gap in the stream.
 _GAP = object()
-
-
-class _PassLoss:
-    """What one pass over a stream has lost so far: gaps, and the bytes of a
-    character a gap cut in two."""
-
-    __slots__ = ("lost",)
-
-    def __init__(self):
-        self.lost = 0
 
 
 def _continuation_prefix(chunk: bytes, limit: int) -> int:
@@ -485,36 +596,6 @@ class _LineSplitter:
         rest = bytes(self._partial)
         self._partial = bytearray()
         return rest
-
-
-class _Flatten:
-    """Hands out a batch generator's items one at a time.
-
-    ``take_ready`` gives up the items already produced without waiting, all at
-    once. The blocking iterator uses it (see ``_sync._BlockingIterator``) to
-    cross to its event loop once per batch instead of once per item.
-    """
-
-    def __init__(self, batches: AsyncGenerator[List, None]):
-        self._batches = batches
-        self._ready: Deque = collections.deque()
-
-    def __aiter__(self) -> "_Flatten":
-        return self
-
-    async def __anext__(self):
-        while not self._ready:
-            self._ready.extend(await self._batches.__anext__())
-        return self._ready.popleft()
-
-    def take_ready(self, limit: int) -> List:
-        """Up to ``limit`` items that are already here, oldest first."""
-        count = min(limit, len(self._ready))
-        return [self._ready.popleft() for _ in range(count)]
-
-    async def aclose(self) -> None:
-        self._ready.clear()
-        await self._batches.aclose()
 
 
 class _StreamWriter:

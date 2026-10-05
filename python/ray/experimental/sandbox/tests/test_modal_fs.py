@@ -410,6 +410,17 @@ def test_a_file_over_modals_limit_is_refused_without_reading_it(sandbox):
     assert time.monotonic() - started < 10
 
 
+def test_a_copy_over_modals_limit_is_refused_without_reading_it(sandbox, tmp_path):
+    """Modal's copy_to_local reads through the same command as read_bytes."""
+    sh(sandbox, "truncate -s 6G /tmp/sparse")
+    destination = tmp_path / "sparse"
+    started = time.monotonic()
+    with pytest.raises(SandboxFilesystemFileTooLargeError, match="6442450944 bytes"):
+        sandbox.filesystem.copy_to_local("/tmp/sparse", destination)
+    assert time.monotonic() - started < 10
+    assert list(tmp_path.iterdir()) == [], "nothing left behind locally"
+
+
 def test_a_file_past_one_reply_is_streamed_whole(sandbox):
     """Past 16 MiB a read streams; Ray's own limit used to stop at 128 MiB."""
     digest = sh(
@@ -422,9 +433,9 @@ def test_a_file_past_one_reply_is_streamed_whole(sandbox):
 
 
 def test_a_large_copy_to_local_arrives_whole(sandbox, tmp_path):
-    """The copy is paced by this side. Unpaced, it depended on the actor
-    spilling what had not been read yet, and on a disk too full to spill a
-    256 MiB copy failed within a second."""
+    """The copy is paced by this side, so the actor holds at most a bounded
+    stretch of it however far the reader lags. Unpaced, a reader behind by
+    more than the actor held lost bytes, and the copy failed."""
     digest = sh(
         sandbox,
         "head -c 67108864 /dev/urandom > /tmp/big && md5sum /tmp/big | cut -d' ' -f1",

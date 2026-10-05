@@ -13,12 +13,13 @@ client-side; nothing here knows about them.
 
 import asyncio
 import collections
+import itertools
 import logging
 import os
 import shutil
+import tempfile
 import time
 import uuid
-import weakref
 from typing import Any, Deque, Dict, List, Optional, Set, Tuple, Union
 
 import ray
@@ -34,68 +35,52 @@ logger = logging.getLogger(__name__)
 STDOUT_FD = 1
 STDERR_FD = 2
 
-# Per-stream output held in memory. A reader that keeps up is served from here
-# and never touches disk; older output moves to spill files (see
-# _OutputBuffer), or is dropped oldest-first where nothing can be spilled.
-_DEFAULT_BUFFER_LIMIT = 8 * 1024 * 1024
+# How many unread bytes one exec'd command's stdout or stderr may hold. Reading
+# consumes, as Modal's client does from 1.6: each byte is delivered once, and
+# what a reader has is freed, so a reader that keeps up holds next to nothing.
+# Past this the oldest unread output is dropped, and the reader is told so.
+# Modal's server keeps a whole unread exec output (measured at 4 GiB); here it
+# lives in this actor's memory, so output nobody reads while it is produced
+# keeps its newest 64 MiB.
+_EXEC_OUTPUT_CAP = 64 * 1024 * 1024
 
-# How much of its most recent output the Sandbox's own stdout and stderr keep.
-# Measured on Modal's V2 backend (its default from 1.6.0): a main process that
-# wrote 512 MiB, 1 GiB or 2 GiB unread got back exactly its newest 256 MiB each
-# time, the rest reported dropped -- a fixed window, not a fraction. An exec'd
-# command's output, by contrast, came back whole at 4 GiB, so exec streams set
-# no bound of their own.
-_MAIN_OUTPUT_RETAIN = 256 * 1024 * 1024
+# The same bound for the Sandbox's own stdout and stderr. Measured on Modal's
+# V2 backend: a main process that wrote 512 MiB, 1 GiB or 2 GiB unread got back
+# exactly its newest 256 MiB each time, the rest reported dropped -- a fixed
+# window, not a fraction.
+_MAIN_OUTPUT_CAP = 256 * 1024 * 1024
 
-# Spilled output is written to files of this size, so a stream that keeps only
-# its newest bytes frees disk a whole file at a time.
-_SPILL_SEGMENT_BYTES = 16 * 1024 * 1024
+# Unread output across every stream of one sandbox. The caps above bound one
+# stream; this bounds many at once, since all of it is in this actor's memory,
+# which Ray's memory monitor counts against the actor. Past it, finished
+# commands' oldest output goes first, then the oldest of the running stream
+# holding the most.
+_SANDBOX_OUTPUT_CAP = 512 * 1024 * 1024
 
-# Largest single write to a spill file. Bounds how long the pump can wait on
-# one flush, and how much is read back into memory to make it.
-_SPILL_WRITE_BYTES = 4 * 1024 * 1024
+# How far a paced stream -- one of the filesystem's transfers -- may run ahead
+# of its reader before its command is held back. Above what the streaming
+# window below can have in flight (8 chunks of up to 1 MiB): the reader's
+# position only reaches the actor through that window, so a smaller cap could
+# leave the pump waiting for an acknowledgement only more output would bring.
+_PACED_OUTPUT_CAP = 16 * 1024 * 1024
 
-# How far memory may run past its limit before a flush starts. Flushing the
-# moment it was crossed wrote whatever the last pipe read added -- for a
-# process printing a line at a time, one ~2 KB write per flush, each a thread
-# hop and a file open. Waiting for this much makes every flush a large one.
-_SPILL_BATCH_BYTES = 1024 * 1024
-
-# How much output one sandbox may spill, across all of its streams. Set from
-# the actor's environment, in any form parse_memory_bytes accepts ("8Gi",
-# "512Mi"); 0 turns spilling off.
-_SPILL_LIMIT_ENV = "RAY_SANDBOX_OUTPUT_SPILL_LIMIT"
-_DEFAULT_SPILL_LIMIT = 8 * 1024**3
-
-# Spilling also stops well short of Ray's own disk-full line. At 5% free (its
-# default local_fs_capacity_threshold of 0.95) the raylet stops spilling
-# objects, and object creation that needs spilling fails, so output must never
-# be what pushes a node there. The floor is that 5% plus headroom for Ray's own
-# spilling: 15% of the disk, but at most 16 GiB, so a large disk is not held
-# back by a fraction of it. A size in RAY_SANDBOX_OUTPUT_SPILL_MIN_FREE
-# replaces the whole floor; "0" leaves only the spill limit.
-_SPILL_MIN_FREE_ENV = "RAY_SANDBOX_OUTPUT_SPILL_MIN_FREE"
-_RAY_DISK_FULL_FREE_FRACTION = 0.05
-_SPILL_HEADROOM_FRACTION = 0.15
-_SPILL_MAX_HEADROOM = 16 * 1024**3
-
-# Beside the backend's /tmp/ray/sandbox, never inside a sandbox's bundle: that
-# tree is world-writable and partly mounted into the container, and output the
-# sandbox could rewrite is output the caller cannot trust.
-_SPILL_ROOT = "/tmp/ray/sandbox-output"
+# How many chunks a stream_output generator may run ahead of its consumer; the
+# client passes it as `_generator_backpressure_num_objects` (see io_streams,
+# which imports it from here so the two cannot disagree). Ray holds the
+# generator until its consumer has taken all but this many of the chunks it
+# yielded -- which is what lets stream_output free consumed output without the
+# client acknowledging each chunk. It also bounds what a chatty process pushes
+# into the caller's memory store: about 8 MiB in flight per stream.
+_STREAM_BACKPRESSURE_OBJECTS = 8
 
 # How many finished exec sessions stay readable. Only a bound on bookkeeping --
 # a finished session with little output costs a few kilobytes -- and set high
-# because Modal keeps an exec's output: a caller that starts a batch of
-# commands, waits for all of them and then reads each, must find every output
-# still there. What finished sessions hold in memory is bounded separately,
-# below.
+# because Modal keeps an exec's output until it is read: a caller that starts a
+# batch of commands, waits for all of them and then reads each, must find every
+# output still there. A session read to the end is released at once (see
+# _SandboxActor._retire_if_consumed); what unread ones hold is bounded by
+# _SANDBOX_OUTPUT_CAP.
 _MAX_RETAINED_EXECS = 1024
-
-# Output that finished sessions may hold in memory, together. Past it the
-# oldest finished session's output moves to spill files; only where the
-# sandbox cannot spill is a whole finished session dropped instead.
-_FINISHED_OUTPUT_MEMORY = 64 * 1024 * 1024
 
 # How many *exit codes* outlive the sessions they belong to. An entry is two
 # ints and a dict, so this costs kilobytes where the sessions it replaces cost
@@ -107,9 +92,9 @@ _READ_SIZE = 65536
 
 # Small pipe reads are gathered into chunks of about this size. A process
 # writing a line at a time hands the pump one line per read, and kept as its
-# own chunk each made memory ~100k tiny objects once a stream passed its 8 MiB
-# window: 2-3x the payload in object overhead, and a scan to find a reader's
-# cursor that cost ~7 ms of the actor's loop per read, measured.
+# own chunk each made memory ~100k tiny objects for 8 MiB of unread output:
+# 2-3x the payload in object overhead, and a scan to find a reader's cursor
+# that cost ~7 ms of the actor's loop per read, measured.
 _CHUNK_GATHER_BYTES = 64 * 1024
 
 # Cap on a single yield from `stream_output`. Above Ray's inline limit
@@ -159,32 +144,6 @@ _EXIT_CODE_EXEC_TIMEOUT = -1
 _EXIT_CODE_TERMINATED = 137
 
 
-class _Segment:
-    """One spill file, holding bytes ``[start, end)`` of its stream."""
-
-    __slots__ = ("path", "start", "end")
-
-    def __init__(self, path: str, start: int):
-        self.path = path
-        self.start = start
-        self.end = start
-
-    @property
-    def size(self) -> int:
-        return self.end - self.start
-
-
-def _append_file(path: str, data: bytes) -> None:
-    with open(path, "ab") as f:
-        f.write(data)
-
-
-def _read_file(path: str, offset: int, size: int) -> bytes:
-    with open(path, "rb") as f:
-        f.seek(offset)
-        return f.read(size)
-
-
 def _unlink_quietly(path: Optional[str]) -> None:
     if not path:
         return
@@ -205,135 +164,117 @@ def _read_pid(path: Optional[str]) -> Optional[int]:
         return None
 
 
+class _MemoryBudget:
+    """The unread output held across one sandbox's streams, against its cap.
+
+    Buffers add and subtract what they hold as they go, so the total is never
+    recomputed by walking every stream. Past the cap, ``relieve`` is called
+    with the excess and drops what it chooses.
+    """
+
+    def __init__(self, cap: int, relieve=None):
+        self.cap = cap
+        self.used = 0
+        self._relieve = relieve
+
+    def check(self) -> None:
+        if self.used > self.cap and self._relieve is not None:
+            self._relieve(self.used - self.cap)
+
+
 class _OutputBuffer:
-    """One output stream of a running process, as a cursor-addressed log.
+    """The unread output of one stream of a running process, in memory.
 
     A background task drains the OS pipe into this buffer, so the process never
-    waits on a reader. That is Modal's model: measured on Modal, a command left
+    waits on a reader -- Modal's model: measured on Modal, a command left
     gigabytes of output unread and still ran to completion.
 
-    Reads are addressed by absolute byte offset and do **not** consume: every
-    reader holds its own cursor, so two readers each see the whole stream and a
-    cancelled reader resumes exactly where it stopped.
+    Reading consumes, as Modal's client does from 1.6, where a StreamReader
+    keeps one cursor and so delivers each byte once: :meth:`ack` frees what
+    the reader has. What the buffer holds is therefore output nobody has read
+    yet, bounded by ``cap``. Past the cap the oldest unread bytes are dropped,
+    and never silently: offsets are absolute, so a reader whose cursor falls
+    behind ``_base`` is handed bytes that begin later than it asked for, and
+    sees the jump rather than a seamlessly spliced stream.
 
-    The newest ``limit`` bytes are held in memory, so a reader that keeps up is
-    never sent to disk. Older bytes go one of two ways:
-
-    * With a ``spill`` store, to segment files on the node's disk, where they
-      stay readable. ``retain`` bounds how much is kept: None keeps the whole
-      stream, as Modal does for an exec'd command; a number keeps only that
-      many of the newest bytes, as Modal does for a Sandbox's own output.
-    * Without one -- or once the store refuses more, because the sandbox hit
-      its spill limit or the disk is nearly full -- they are dropped.
-
-    Dropping is a pure cap, unaffected by who has read, and it is never hidden:
-    ``_base_offset`` advances past what is gone, and a reader whose cursor falls
-    behind it is told so by :meth:`read_from` rather than handed a seamlessly
-    spliced stream.
+    A paced stream never drops. Its pump waits instead, until its one reader is
+    within ``cap`` -- for the filesystem's transfers, which must arrive whole.
     """
 
     def __init__(
         self,
-        limit: int = _DEFAULT_BUFFER_LIMIT,
-        retain: Optional[int] = None,
-        spill: Optional["_SpillStore"] = None,
+        cap: int = _EXEC_OUTPUT_CAP,
         paced: bool = False,
+        budget: Optional[_MemoryBudget] = None,
+        on_drop=None,
     ):
-        # (start_offset, data) pairs for the bytes held in memory, which are
-        # always the newest: [_mem_start, _written). Offsets rather than a
-        # running sum, so locating a cursor is comparisons. Small reads are
-        # gathered into a growing bytearray at the tail (see _append).
+        # (start_offset, data) pairs, oldest first, for every byte still held.
+        # Offsets rather than a running sum, so locating a cursor is
+        # comparisons. Small reads are gathered into a growing bytearray at the
+        # tail (see _append).
         self._chunks: Deque[Tuple[int, Union[bytes, bytearray]]] = collections.deque()
-        self._limit = limit
-        # The limit as configured. _limit drops to 0 while a finished stream
-        # moves its memory to disk, and comes back if spilling stops.
-        self._memory_limit = limit
-        self._evacuating = False
-        # Memory is trimmed a chunk at a time, so a chunk must stay small next
-        # to the limit or the limit stops holding: a sixteenth of it at most.
-        self._gather_bytes = max(1, min(_CHUNK_GATHER_BYTES, limit // 16))
-        # Likewise for the batch a flush waits for: an eighth of the limit at
-        # most, so a small window still spills soon after it fills.
-        self._spill_batch_bytes = min(_SPILL_BATCH_BYTES, limit // 8)
-        self._retain = retain
-        self._spill = spill
-        self._spill_stopped = False
-        # Spilled bytes, oldest first and contiguous with memory: they span
-        # [_segments[0].start, _mem_start).
-        self._segments: List[_Segment] = []
-        # The segment a flush is writing to right now. Neither it nor the
-        # memory it is copying from may be released until the write lands.
-        self._busy_segment: Optional[_Segment] = None
-        self._flush_task: Optional[asyncio.Task] = None
-        # Absolute offset of the oldest byte still retained -- on disk or in
-        # memory -- of the oldest byte in memory, and the total ever fed.
-        self._base_offset = 0
-        self._mem_start = 0
+        self._cap = cap
+        # Memory is dropped a whole chunk at a time, so a chunk must stay small
+        # next to the cap or the cap stops holding: a sixteenth of it at most.
+        self._gather_bytes = max(1, min(_CHUNK_GATHER_BYTES, cap // 16))
+        # The oldest byte a reader can still get, past whatever was
+        # acknowledged or dropped. It may fall inside the first chunk.
+        self._base = 0
         self._written = 0
+        # How far the reader has acknowledged, and what was dropped unread.
+        self._acked = 0
+        self._lost = 0
         self._eof = False
         self._closed = False
         self._event = asyncio.Event()
-        # Paced: the stream has exactly one reader, and the pump waits for it
-        # rather than spilling or dropping -- for the filesystem's transfers,
-        # which must arrive whole. What the reader has passed is released.
         self._paced = paced
-        self._reader_cursor = 0
         self._reader_moved = asyncio.Event()
-        if spill is not None:
-            spill.register(self)
-
-    @property
-    def dropped(self) -> int:
-        """Bytes no longer retained, which a reader from offset 0 would miss."""
-        return self._base_offset
+        self._budget = budget
+        # Told why, whenever unread output is dropped.
+        self._on_drop = on_drop
 
     @property
     def written(self) -> int:
-        """Total bytes ever fed into this buffer, retained or not."""
+        """Total bytes ever fed into this buffer."""
         return self._written
 
     @property
-    def disk_bytes(self) -> int:
-        """Bytes of this stream currently held in spill files."""
-        return sum(segment.size for segment in self._segments)
+    def lost(self) -> int:
+        """Bytes dropped before the reader got them."""
+        return self._lost
 
     @property
     def memory_bytes(self) -> int:
-        """Bytes of this stream currently held in memory."""
-        return self._written - self._mem_start
+        """Bytes this stream currently holds."""
+        return self._written - self._chunks[0][0] if self._chunks else 0
 
     @property
-    def spill_files(self) -> int:
-        return len(self._segments)
+    def paced(self) -> bool:
+        return self._paced
 
     @property
-    def _spilling(self) -> bool:
-        return self._spill is not None and not self._spill_stopped
+    def consumed(self) -> bool:
+        """Whether the stream ended and its reader has acknowledged all of it."""
+        return self._eof and self._acked >= self._written
 
     def feed(self, data: bytes) -> None:
         if not data or self._closed:
             return
         self._append(data)
         self._written += len(data)
-        if self._retain is not None:
-            self._advance_base(self._written - self._retain)
-        if self._paced:
-            # Bounded by pace() instead: the pump waits for the reader.
-            pass
-        elif self._spilling:
-            # The disk writes happen off the event loop, in the flush task.
-            # pace() is what keeps the pump from running too far ahead of it.
-            # A flush waits for a batch past the limit, then takes memory back
-            # down to it, so each one writes a lot rather than a little.
-            if (
-                self._flush_task is None
-                and self._written - self._mem_start
-                > self._limit + self._spill_batch_bytes
-            ):
-                self._flush_task = asyncio.ensure_future(self._flush())
-        else:
-            self._drop_oldest_in_memory()
+        if self._budget is not None:
+            self._budget.used += len(data)
+        # Paced streams are bounded by pace() instead: the pump waits. Any
+        # other keeps exactly its newest ``cap`` unread bytes, as Modal's V2
+        # keeps exactly the newest 256 MiB of a Sandbox's own output.
+        if not self._paced and self._written - self._base > self._cap:
+            self._lose_until(
+                self._written - self._cap,
+                f"a stream's unread output passed its {self._cap // 2**20} MiB cap",
+            )
         self._event.set()
+        if self._budget is not None and not self._paced:
+            self._budget.check()
 
     def _append(self, data: bytes) -> None:
         """Hold ``data`` in memory, gathering small reads into one chunk.
@@ -352,222 +293,107 @@ class _OutputBuffer:
                 return
         self._chunks.append((self._written, bytearray(data)))
 
-    def move_to_disk(self) -> bool:
-        """Spill everything this stream holds in memory.
-
-        For a finished command's stream, which nothing appends to any more and
-        which a reader can serve from disk as well as from memory: finished
-        output is the least likely to be read, so it is the first to leave
-        memory. If spilling stops part-way, the stream keeps its usual window
-        in memory instead.
-
-        Returns:
-            False if the stream cannot spill, so its memory stays where it is.
-        """
-        if self._closed or self._paced or not self._spilling:
-            return False
-        self._evacuating = True
-        self._limit = 0
-        if self._flush_task is None and self._written > self._mem_start:
-            self._flush_task = asyncio.ensure_future(self._flush())
-        return True
-
     def feed_eof(self) -> None:
         self._eof = True
         self._event.set()
 
     async def pace(self) -> None:
-        """Hold the pump while spilling is more than a buffer behind it.
+        """Hold a paced stream's pump until its reader is within the cap.
 
-        This waits on the disk and never on a reader, so the process is slowed
-        to the speed of its storage at worst -- as Modal's own writer slowed,
-        without stalling, once a few gigabytes were unread. A paced stream is
-        the exception: it waits for its reader to come within a buffer.
+        Every other stream returns at once: its process is never held back,
+        and output past the cap is dropped instead, as feed() does.
         """
-        if self._paced:
-            while (
-                not self._closed and self._written - self._reader_cursor > self._limit
-            ):
-                self._reader_moved.clear()
-                await self._reader_moved.wait()
+        if not self._paced:
             return
+        while not self._closed and self._written - self._acked > self._cap:
+            self._reader_moved.clear()
+            await self._reader_moved.wait()
+
+    def ack(self, offset: int) -> None:
+        """Free everything before ``offset``, which the reader now has.
+
+        Args:
+            offset: The reader's position. Never moves backwards.
+        """
+        offset = min(offset, self._written)
+        if offset <= self._acked:
+            return
+        self._acked = offset
+        self._reader_moved.set()
+        if offset > self._base:
+            self._base = offset
+            self._release()
+
+    def drop_oldest(self, size: int, reason: str) -> int:
+        """Drop at least ``size`` bytes of memory from the oldest unread output.
+
+        Whole chunks only, so what is dropped is actually freed, and never the
+        newest, which may still be growing. A paced stream gives up nothing.
+
+        Args:
+            size: How many bytes of memory to free.
+            reason: Why, for the once-per-sandbox warning.
+
+        Returns:
+            The bytes of memory freed.
+        """
+        if self._paced or self._closed or size <= 0:
+            return 0
+        target, covered = self._base, 0
+        newest = len(self._chunks) - 1
+        for start, chunk in itertools.islice(self._chunks, max(newest, 0)):
+            target = start + len(chunk)
+            covered += len(chunk)
+            if covered >= size:
+                break
+        return self._lose_until(target, reason)
+
+    def _lose_until(self, offset: int, reason: str) -> int:
+        """Drop the unread output before ``offset``, and say why.
+
+        Args:
+            offset: The first byte to keep.
+            reason: Why, for the once-per-sandbox warning.
+
+        Returns:
+            The bytes of memory freed: chunks wholly behind ``offset``.
+        """
+        if offset <= self._base:
+            return 0
+        self._lost += offset - self._base
+        self._base = offset
+        if self._on_drop is not None:
+            self._on_drop(reason)
+        return self._release()
+
+    def _release(self) -> int:
+        """Free the chunks that now lie wholly behind the base.
+
+        Returns:
+            The bytes of memory freed.
+        """
+        freed = 0
         while (
-            self._flush_task is not None
-            and self._written - self._mem_start > 2 * self._limit
+            self._chunks and self._chunks[0][0] + len(self._chunks[0][1]) <= self._base
         ):
-            # Shielded: a pump cancelled while it waits (an exec deadline,
-            # teardown) must not take the flush down with it.
-            await asyncio.shield(self._flush_task)
+            _, chunk = self._chunks.popleft()
+            freed += len(chunk)
+        if freed and self._budget is not None:
+            self._budget.used -= freed
+        return freed
 
     def close(self) -> None:
-        """Release everything this stream holds. Its readers see the rest as lost."""
+        """Release everything this stream holds. Its reader sees the rest as lost."""
         if self._closed:
             return
         self._closed = True
-        for segment in self._segments:
-            if self._spill is not None:
-                self._spill.release(segment.size)
-            # The segment under an in-flight write is unlinked by the flush
-            # once the write lands; unlinking it now would let the write
-            # recreate the file behind us.
-            if segment is not self._busy_segment:
-                _unlink_quietly(segment.path)
-        self._segments.clear()
+        if self._budget is not None:
+            self._budget.used -= self.memory_bytes
         self._chunks.clear()
         self._eof = True
         self._event.set()
         # A paced pump waiting for a reader that will never come.
         self._reader_moved.set()
-
-    def drop_oldest_segment(self) -> bool:
-        """Give up this stream's oldest spill file, to make room for others.
-
-        The file being written is never the oldest while there is more than
-        one, so a stream with a single file has nothing to give.
-        """
-        if len(self._segments) < 2:
-            return False
-        self._advance_base(self._segments[0].end)
-        return True
-
-    def _advance_base(self, offset: int) -> None:
-        if offset <= self._base_offset:
-            return
-        self._base_offset = offset
-        self._release_behind_base()
-
-    def _release_behind_base(self) -> None:
-        """Free whatever now lies wholly behind the base."""
-        while (
-            self._segments
-            and self._segments[0].end <= self._base_offset
-            and self._segments[0] is not self._busy_segment
-        ):
-            self._unlink_segment(self._segments.pop(0))
-        # A flush copies from the head of memory, so the head stays put until
-        # its write lands; the flush releases it afterwards.
-        if self._busy_segment is None:
-            while (
-                len(self._chunks) > 1
-                and self._chunks[0][0] + len(self._chunks[0][1]) <= self._base_offset
-            ):
-                start, chunk = self._chunks.popleft()
-                self._mem_start = start + len(chunk)
-
-    def _unlink_segment(self, segment: _Segment) -> None:
-        _unlink_quietly(segment.path)
-        if self._spill is not None:
-            self._spill.release(segment.size)
-
-    def _drop_oldest_in_memory(self) -> None:
-        """Keep only the newest ``limit`` bytes, for a stream that cannot spill."""
-        dropped = False
-        while self._written - self._mem_start > self._limit and len(self._chunks) > 1:
-            start, chunk = self._chunks.popleft()
-            self._mem_start = start + len(chunk)
-            dropped = True
-        if dropped:
-            # Memory no longer continues from where the spill files end, so
-            # anything still spilled is older than the hole and goes too.
-            self._advance_base(self._mem_start)
-
-    def _stop_spilling(self, reason: str) -> None:
-        self._spill_stopped = True
-        if self._evacuating:
-            # Moving a finished stream to disk, with memory's limit at zero:
-            # dropping down to that would lose nearly everything. The stream
-            # keeps its usual window, and the actor decides what else goes.
-            self._evacuating = False
-            self._limit = self._memory_limit
-        self._spill.warn_dropping(reason)
-        # A file that was opened but never written to.
-        if self._segments and self._segments[-1].size == 0:
-            _unlink_quietly(self._segments.pop().path)
-        self._drop_oldest_in_memory()
-
-    async def _flush(self) -> None:
-        """Move memory beyond ``limit`` into spill files, oldest bytes first."""
-        store = self._spill
-        # The first write takes memory down to the limit. Another follows only
-        # once a whole batch has built up again behind it -- otherwise a slow
-        # producer's next line or two became a write of their own. A finished
-        # stream moving to disk (limit 0) writes everything regardless.
-        batch = 0
-        try:
-            while (
-                not self._closed
-                and self._spilling
-                and self._written - self._mem_start > self._limit + batch
-            ):
-                if not self._evacuating:
-                    batch = self._spill_batch_bytes
-                if self._segments and self._segments[-1].size < store.segment_bytes:
-                    segment = self._segments[-1]
-                else:
-                    segment = _Segment(store.new_path(), self._mem_start)
-                    self._segments.append(segment)
-                size = min(
-                    store.segment_bytes - segment.size,
-                    self._written - self._mem_start - self._limit,
-                    _SPILL_WRITE_BYTES,
-                )
-                refusal = store.reserve(size)
-                if refusal is not None:
-                    self._stop_spilling(refusal)
-                    return
-                if self._closed:
-                    # Making room evicted this stream's own finished session.
-                    store.release(size)
-                    return
-                data = self._peek(size)
-                self._busy_segment = segment
-                try:
-                    await asyncio.to_thread(_append_file, segment.path, data)
-                except OSError as exc:
-                    store.release(size)
-                    self._busy_segment = None
-                    self._stop_spilling(f"writing {segment.path} failed: {exc}")
-                    return
-                self._busy_segment = None
-                if self._closed:
-                    # close() ran during the write and left this file to us.
-                    store.release(size)
-                    _unlink_quietly(segment.path)
-                    return
-                self._take(size)
-                segment.end += size
-                self._release_behind_base()
-        except OSError as exc:
-            # Creating the spill directory failed.
-            if not self._closed:
-                self._stop_spilling(str(exc))
-        finally:
-            self._flush_task = None
-
-    def _peek(self, size: int) -> bytes:
-        """The oldest ``size`` bytes held in memory, left in place."""
-        pieces: List[bytes] = []
-        total = 0
-        for _, chunk in self._chunks:
-            if total + len(chunk) >= size:
-                pieces.append(chunk[: size - total])
-                break
-            pieces.append(chunk)
-            total += len(chunk)
-        return b"".join(pieces)
-
-    def _take(self, size: int) -> None:
-        """Remove the oldest ``size`` bytes from memory, once they are on disk."""
-        remaining = size
-        while remaining:
-            start, chunk = self._chunks[0]
-            if len(chunk) <= remaining:
-                self._chunks.popleft()
-                remaining -= len(chunk)
-            else:
-                self._chunks[0] = (start + remaining, chunk[remaining:])
-                remaining = 0
-        self._mem_start += size
 
     async def read_from(
         self, cursor: int, max_bytes: int = _MAX_YIELD_BYTES
@@ -581,13 +407,8 @@ class _OutputBuffer:
 
         Coalescing means a burst of pipe reads costs one yield rather than one
         per read, which is what lets a whole stream be served by a single task.
+        Reading does not free anything by itself; see :meth:`ack`.
         """
-        if self._paced and cursor > self._reader_cursor:
-            # The reader asks for more only once it has what came before, so
-            # this is how far it has got: release that, and let the pump on.
-            self._reader_cursor = cursor
-            self._advance_base(min(cursor, self._written))
-            self._reader_moved.set()
         loop = asyncio.get_running_loop()
         started = loop.time()
         while not self._closed and cursor >= self._written:
@@ -595,50 +416,14 @@ class _OutputBuffer:
                 return None
             self._event.clear()
             await self._event.wait()
-
-        coalesced = False
-        while True:
-            if self._closed:
-                # Dropped along with its session. Report where the stream had
-                # reached, so a reader part-way through sees the rest as lost
-                # rather than as a clean end.
-                return None if cursor >= self._written else (self._written, b"")
-            start = max(cursor, self._base_offset)
-            if start < self._mem_start:
-                result = await self._read_spilled(start, max_bytes)
-                if result is not None:
-                    return result
-                # The file went away under the read; the base has moved past
-                # it, so go round and resume from wherever it is now.
-                continue
-            if not coalesced:
-                coalesced = True
-                await self._coalesce(cursor, waited=loop.time() - started)
-                # A flush may have moved the bytes to disk meanwhile.
-                continue
-            return self._collect(start, max_bytes)
-
-    async def _read_spilled(
-        self, start: int, max_bytes: int
-    ) -> Optional[Tuple[int, bytes]]:
-        segment = next((s for s in self._segments if s.start <= start < s.end), None)
-        if segment is None:
-            # Nothing on disk covers it. Treat it as lost rather than loop.
-            self._advance_base(self._mem_start)
-            return None
-        size = min(max_bytes, segment.end - start)
-        try:
-            data = await asyncio.to_thread(
-                _read_file, segment.path, start - segment.start, size
-            )
-        except OSError:
-            data = b""
-        if len(data) != size:
-            if segment in self._segments:
-                # Gone from under us some other way than being released.
-                self._advance_base(segment.end)
-            return None
-        return start, data
+        if not self._closed:
+            await self._coalesce(cursor, waited=loop.time() - started)
+        if self._closed:
+            # Dropped along with its session. Report where the stream had
+            # reached, so a reader part-way through sees the rest as lost
+            # rather than as a clean end.
+            return None if cursor >= self._written else (self._written, b"")
+        return self._collect(cursor, max_bytes)
 
     async def _coalesce(self, cursor: int, waited: float) -> None:
         """Hold a small yield back to gather the rest of the burst behind it.
@@ -651,11 +436,6 @@ class _OutputBuffer:
         be a lone chunk regardless. That keeps interactive streams at their
         current latency and leaves bulk streams -- already past the target --
         untouched.
-
-        The size test is against what is unread *by this cursor*, not what the
-        buffer holds. Retention is no longer freed by reading, so testing the
-        buffer's own size would find it past the target almost immediately and
-        never coalesce anything.
         """
         if self._eof or self._written - cursor >= _COALESCE_TARGET_BYTES:
             return
@@ -679,9 +459,9 @@ class _OutputBuffer:
                 return
 
     def _collect(self, cursor: int, max_bytes: int) -> Tuple[int, bytes]:
-        # A cursor behind the window resumes at the oldest byte still held.
-        # The caller sees the jump in the returned offset.
-        start = max(cursor, self._base_offset)
+        # A cursor behind the base resumes at the oldest byte still held. The
+        # caller sees the jump in the returned offset.
+        start = max(cursor, self._base)
         pieces: List[bytes] = []
         total = 0
         for chunk_start, chunk in self._chunks:
@@ -706,189 +486,11 @@ class _OutputBuffer:
         return start, b"".join(pieces)
 
 
-class _SpillStore:
-    """The disk behind one sandbox's spilled output, shared by all its streams.
-
-    Space is claimed as it is written and returned as files are deleted,
-    against one limit per sandbox. Running out never blocks a writer. The store
-    first asks its owner to drop whole finished sessions, then takes the oldest
-    file of whichever stream holds the most, and only then refuses -- at which
-    point that stream drops its own oldest output in memory instead.
-    """
-
-    def __init__(
-        self,
-        directory: str,
-        limit: int,
-        segment_bytes: int = _SPILL_SEGMENT_BYTES,
-        min_free: Optional[int] = None,
-        relieve=None,
-    ):
-        self.directory = directory
-        self.segment_bytes = segment_bytes
-        self._limit = limit
-        # Free space to leave on the disk. None means the default floor for
-        # whatever disk the directory is on.
-        self._min_free = min_free
-        # Frees space by dropping one finished session; True if it did.
-        self._relieve = relieve
-        self._used = 0
-        self._next_file = 0
-        self._warned = False
-        self._buffers: "weakref.WeakSet[_OutputBuffer]" = weakref.WeakSet()
-
-    @property
-    def used(self) -> int:
-        """Bytes currently spilled, across every stream."""
-        return self._used
-
-    def register(self, buffer: _OutputBuffer) -> None:
-        self._buffers.add(buffer)
-
-    def new_path(self) -> str:
-        """A fresh file name. Creates the directory on first use."""
-        os.makedirs(self.directory, mode=0o700, exist_ok=True)
-        path = os.path.join(self.directory, f"{self._next_file:08d}.out")
-        self._next_file += 1
-        return path
-
-    def reserve(self, size: int) -> Optional[str]:
-        """Claim ``size`` bytes, making room if there is none.
-
-        Args:
-            size: How many bytes the caller is about to write.
-
-        Returns:
-            None once the bytes are claimed, otherwise why they cannot be.
-        """
-        while True:
-            refusal = self._refusal(size)
-            if refusal is None:
-                break
-            # Either way, output someone could still read is about to go.
-            if (self._relieve is not None and self._relieve()) or self._shed():
-                self.warn_dropping(refusal)
-                continue
-            return refusal
-        self._used += size
-        return None
-
-    def release(self, size: int) -> None:
-        self._used = max(0, self._used - size)
-
-    def warn_dropping(self, reason: str) -> None:
-        """Say once per sandbox why its output has started to be dropped.
-
-        Readers only learn that bytes are gone; this is the one place that
-        knows why, and so the one place that can say which knob to turn.
-        """
-        if self._warned:
-            return
-        self._warned = True
-        logger.warning(
-            "Sandbox output is being dropped: %s. The oldest goes first, "
-            "finished commands' before running ones', and readers see the "
-            "loss as truncated. Logged once per sandbox.",
-            reason,
-        )
-
-    def close(self) -> None:
-        shutil.rmtree(self.directory, ignore_errors=True)
-
-    def _refusal(self, size: int) -> Optional[str]:
-        """Why ``size`` more bytes cannot be spilled, or None if they can."""
-        if self._used + size > self._limit:
-            return (
-                f"the sandbox reached its spill limit of "
-                f"{self._limit / 2**20:.0f} MiB (raise {_SPILL_LIMIT_ENV} to "
-                f"keep more)"
-            )
-        try:
-            usage = shutil.disk_usage(_existing_ancestor(self.directory))
-        except OSError as exc:
-            return f"the free space under {self.directory} is unknown: {exc}"
-        floor = self._min_free
-        if floor is None:
-            floor = _default_min_free(usage.total)
-        if usage.free - size < floor:
-            return (
-                f"the disk under {self.directory} has "
-                f"{usage.free / 2**20:.0f} MiB free, and spilling keeps "
-                f"{floor / 2**20:.0f} MiB of it free for Ray's own object "
-                f"spilling (set {_SPILL_MIN_FREE_ENV} to change that)"
-            )
-        return None
-
-    def _shed(self) -> bool:
-        """Take the oldest file of the stream holding the most, if any can give."""
-        candidates = [buffer for buffer in self._buffers if buffer.spill_files > 1]
-        if not candidates:
-            return False
-        return max(candidates, key=lambda b: b.disk_bytes).drop_oldest_segment()
-
-
-def _existing_ancestor(path: str) -> str:
-    while not os.path.exists(path):
-        parent = os.path.dirname(path)
-        if parent == path:
-            break
-        path = parent
-    return path
-
-
-def _default_min_free(total: int) -> int:
-    """The free space spilling leaves on a disk of ``total`` bytes."""
-    headroom = min(total * _SPILL_HEADROOM_FRACTION, _SPILL_MAX_HEADROOM)
-    return int(total * _RAY_DISK_FULL_FREE_FRACTION + headroom)
-
-
-def _size_from_env(name: str, default: Optional[int]) -> Optional[int]:
-    """A size from the actor's environment, or ``default`` if unset or bad."""
-    raw = os.environ.get(name)
-    if not raw:
-        return default
-    try:
-        return max(parse_memory_bytes(raw) or 0, 0)
-    except ValueError:
-        logger.warning("Ignoring %s=%r: not a size.", name, raw)
-        return default
-
-
-def _spill_directory(instance_id: str) -> str:
-    # Keyed on this process as well as the sandbox, so a later sweep can tell
-    # whether the directory's owner is still alive.
-    return os.path.join(_SPILL_ROOT, f"{os.getpid()}-{instance_id}")
-
-
-def _sweep_stale_spill_directories() -> None:
-    """Delete spill directories whose actor process is gone.
-
-    terminate() removes its own, but an actor that is killed or crashes never
-    gets the chance, and nothing else on the node would ever reclaim them.
-    """
-    try:
-        names = os.listdir(_SPILL_ROOT)
-    except OSError:
-        return
-    for name in names:
-        pid, sep, _ = name.partition("-")
-        if not sep or not pid.isdigit() or int(pid) == os.getpid():
-            continue
-        try:
-            os.kill(int(pid), 0)
-        except ProcessLookupError:
-            shutil.rmtree(os.path.join(_SPILL_ROOT, name), ignore_errors=True)
-        except OSError:
-            # Alive, and someone else's.
-            continue
-
-
 class _RetiredExec:
     """What is kept about an exec session after its buffers are reclaimed.
 
-    Retaining whole sessions is expensive -- two buffers of up to
-    ``_DEFAULT_BUFFER_LIMIT`` each -- so only ``_MAX_RETAINED_EXECS`` of them
-    survive. But a client holding a ``ContainerProcess`` still has to be able to
+    A finished session is released once its output has been read, and its
+    unread output is bounded, so only ``_MAX_RETAINED_EXECS`` of them survive. But a client holding a ``ContainerProcess`` still has to be able to
     ask for its exit code however many other commands have run since, which is
     what Modal does and what dropping the session outright used to break.
 
@@ -995,8 +597,13 @@ class _SandboxActor:
             collections.OrderedDict()
         )
         self._main_exec_id: Optional[str] = None
-        # Disk for output that outgrows memory; set once the sandbox exists.
-        self._spill: Optional[_SpillStore] = None
+        # Unread output across every stream, against _SANDBOX_OUTPUT_CAP.
+        self._output_budget = _MemoryBudget(
+            _SANDBOX_OUTPUT_CAP, relieve=self._relieve_output_memory
+        )
+        self._output_drop_warned = False
+        # Where runsc writes the pids of exec'd commands; see _pid_file.
+        self._pid_dir: Optional[str] = None
         self._exit_reason: Optional[str] = None
         # Set alongside _exit_reason, so a waiter can wake on the sandbox
         # ending without polling for it.
@@ -1071,14 +678,6 @@ class _SandboxActor:
         # letting the actor handle drop only makes Ray kill the worker, which
         # strands the runsc container and its /tmp/ray/sandbox/<id> tree.
         try:
-            await asyncio.to_thread(_sweep_stale_spill_directories)
-            self._spill = _SpillStore(
-                _spill_directory(self._instance_id),
-                _size_from_env(_SPILL_LIMIT_ENV, _DEFAULT_SPILL_LIMIT),
-                min_free=_size_from_env(_SPILL_MIN_FREE_ENV, None),
-                relieve=self._relieve_spill_pressure,
-            )
-
             if self._timeout is not None and self._timeout > 0:
                 self._deadline_task = asyncio.ensure_future(self._enforce_deadline())
 
@@ -1123,8 +722,8 @@ class _SandboxActor:
     async def launch_main(self, main_command: List[str]) -> Optional[str]:
         """Start the sandbox's main process and bind its streams.
 
-        Its stdout and stderr keep only their newest ``_MAIN_OUTPUT_RETAIN``
-        bytes, as a Modal Sandbox's own streams do.
+        Its stdout and stderr hold up to ``_MAIN_OUTPUT_CAP`` unread bytes, the
+        newest, as a Modal Sandbox's own streams keep their newest 256 MiB.
 
         Args:
             main_command: The command to run as the main process.
@@ -1134,9 +733,7 @@ class _SandboxActor:
         """
         if not main_command:
             return None
-        self._main_exec_id = await self.exec_start(
-            main_command, retain=_MAIN_OUTPUT_RETAIN
-        )
+        self._main_exec_id = await self.exec_start(main_command, cap=_MAIN_OUTPUT_CAP)
         # Probe from the moment the main process is running: a readiness check
         # normally waits on something that process produces, so starting any
         # earlier only burns execs on a condition that cannot hold yet. Both
@@ -1432,16 +1029,13 @@ class _SandboxActor:
             self._exit_reason = "terminated"
             self._exit_event.set()
         await self._teardown()
-        # The caller kills this actor next, and a killed actor never runs
-        # __del__ -- so this is the last chance to reclaim spilled output.
-        # Nothing reads it afterwards: Modal answers NotFound for a terminated
-        # sandbox's output too.
+        # Nothing reads the output afterwards -- Modal answers NotFound for a
+        # terminated sandbox's output too -- so free it now rather than when
+        # the caller gets round to killing this actor.
         for session in self._execs.values():
             for buffer in session.buffers.values():
                 if buffer is not None:
                     buffer.close()
-        if self._spill is not None:
-            await asyncio.to_thread(self._spill.close)
         return self._outcome()
 
     async def _teardown(self) -> None:
@@ -1506,6 +1100,7 @@ class _SandboxActor:
             try:
                 await asyncio.to_thread(self._runtime.delete, self._instance_id)
                 self._deleted = True
+                self._remove_pid_dir()
             except Exception:
                 # Leave `_deleted` unset so __del__ and any later terminate()
                 # still try. Logged rather than swallowed: a container that
@@ -1530,11 +1125,7 @@ class _SandboxActor:
         same way. Synchronous and best-effort: there is no event loop to await
         on during interpreter teardown.
         """
-        if self._spill is not None:
-            try:
-                self._spill.close()
-            except Exception:
-                pass
+        self._remove_pid_dir()
         if self._deleted or self._runtime is None or self._instance_id is None:
             return
         self._deleted = True
@@ -1542,6 +1133,11 @@ class _SandboxActor:
             self._runtime.delete(self._instance_id)
         except Exception:
             pass
+
+    def _remove_pid_dir(self) -> None:
+        if self._pid_dir is not None:
+            shutil.rmtree(self._pid_dir, ignore_errors=True)
+            self._pid_dir = None
 
     # -- exec sessions -----------------------------------------------------
 
@@ -1555,18 +1151,17 @@ class _SandboxActor:
         stdout_devnull: bool = False,
         stderr_devnull: bool = False,
         timeout: Optional[float] = None,
-        retain: Optional[int] = None,
+        cap: int = _EXEC_OUTPUT_CAP,
         paced: bool = False,
         client_released: bool = False,
     ) -> str:
         """Launch a command and return its exec id.
 
-        ``retain`` keeps only that many of each stream's newest bytes; None,
-        the default for an exec'd command, keeps its whole output, spilling to
-        disk as needed.
+        ``cap`` bounds each stream's unread output; past it the oldest unread
+        bytes are dropped, and the command is never held back.
 
         ``paced`` makes stdout wait for its one reader instead: the command
-        blocks once it is a buffer ahead, and nothing is spilled or dropped.
+        blocks once it is ``_PACED_OUTPUT_CAP`` ahead, and nothing is dropped.
         That is wrong for a user's command, which Modal never holds back, and
         right for the filesystem's own transfers, which must arrive whole and
         have exactly one reader.
@@ -1607,9 +1202,13 @@ class _SandboxActor:
                 session.buffers[fd] = None
                 continue
             if paced and fd == STDOUT_FD:
-                buffer = _OutputBuffer(paced=True)
+                buffer = _OutputBuffer(_PACED_OUTPUT_CAP, paced=True)
             else:
-                buffer = _OutputBuffer(retain=retain, spill=self._spill)
+                buffer = _OutputBuffer(
+                    cap,
+                    budget=self._output_budget,
+                    on_drop=self._warn_output_dropped,
+                )
             session.buffers[fd] = buffer
             session.pump_tasks.append(asyncio.ensure_future(_pump(stream, buffer)))
         self._execs[exec_id] = session
@@ -1645,6 +1244,8 @@ class _SandboxActor:
         if pending:
             await asyncio.wait(pending, timeout=5)
         self._retire(exec_id)
+        if self._execs.get(exec_id) is session:
+            self._retire_if_consumed(exec_id, session)
         if exec_id == self._main_exec_id and self._exit_reason is None:
             # The main process exiting *is* the Sandbox's end, as on Modal:
             # the container goes, taking any other running command with it,
@@ -1746,45 +1347,72 @@ class _SandboxActor:
                 return pid
             await asyncio.sleep(_PID_FILE_POLL_SECONDS)
 
-    def _pid_file(self, exec_id: str) -> Optional[str]:
-        """Where runsc records one command's pid, in this actor's own directory."""
-        if self._spill is None:
-            return None
-        os.makedirs(self._spill.directory, mode=0o700, exist_ok=True)
-        return os.path.join(self._spill.directory, f"{exec_id}.pid")
+    def _pid_file(self, exec_id: str) -> str:
+        """Where runsc records one command's pid, in this actor's own directory.
+
+        Private (mkdtemp's 0700) and never inside the sandbox's bundle: runsc
+        writes the file from the host, so a directory the sandbox could write
+        to would let it plant a symlink there. Under the node's Ray temp
+        directory, made on first use and removed with the sandbox; an actor
+        that is SIGKILLed leaves behind only the pid files of the commands it
+        was running.
+        """
+        if self._pid_dir is None:
+            root = (
+                ray.get_runtime_context().get_temp_dir()
+                if ray.is_initialized()
+                else None
+            )
+            if root:
+                os.makedirs(root, exist_ok=True)
+            self._pid_dir = tempfile.mkdtemp(prefix="sandbox-pids-", dir=root)
+        return os.path.join(self._pid_dir, f"{exec_id}.pid")
 
     async def stream_output(self, exec_id: str, fd: int, start_offset: int = 0):
         """Yield ``(offset, data)`` from one stream until end of stream.
 
         A Ray streaming generator, so one long-lived task serves the whole
         stream: reading a process's output costs a single RPC rather than one
-        per chunk. The caller bounds how far this runs ahead by passing
+        per chunk. The caller passes ``_STREAM_BACKPRESSURE_OBJECTS`` as
         ``_generator_backpressure_num_objects``.
 
-        ``start_offset`` is where to resume, and it can only be supplied here,
-        at creation: a streaming generator is pull-only (``asend`` is not
-        supported), so a live one cannot be steered. Resuming means a fresh
-        call with the cursor the caller kept -- the same shape as Modal, whose
-        ``last_entry_id`` likewise only ever opens a new ``SandboxGetLogs``.
+        ``start_offset`` is where the caller's reader stands, and so also says
+        that it has everything before it: that is freed. It can only be
+        supplied here, at creation -- a streaming generator is pull-only, so a
+        live one cannot be steered -- and resuming means a fresh call, as
+        Modal's reader reopens its stream at its own offset.
+
+        Output the reader has taken is freed as the stream goes. Ray holds this
+        generator until its consumer has taken all but
+        ``_STREAM_BACKPRESSURE_OBJECTS`` of the chunks yielded so far, so once
+        the generator runs on after its n-th yield, chunks up to n - W are
+        surely the reader's. The last W stay, so a reader that stops part-way
+        -- a ``break``, an ``aclose()``, Ctrl-C -- and reopens at its own offset
+        loses nothing that was still in flight.
 
         Each item carries the absolute offset its bytes begin at, so a reader
-        overtaken by eviction sees the jump instead of a seamless splice.
+        overtaken by dropping sees the jump instead of a seamless splice.
         """
         session = self._execs.get(exec_id)
         if session is None:
-            # The whole session was evicted, so this stream is gone rather than
-            # empty. One zero-length item at the byte count the stream reached
-            # says so in the same language a buffer overrun does: the reader
-            # compares the offset against its own cursor, reports the gap on
-            # `truncated`/`bytes_lost`, and logs it.
+            # The whole session was released. If the reader had not reached
+            # its end, the rest is gone rather than empty: one zero-length item
+            # at the byte count the stream reached says so in the same language
+            # a dropped chunk does -- the reader compares the offset against
+            # its own cursor and reports the gap on `truncated`/`bytes_lost`.
             retired = self._require_retired(exec_id)
-            yield retired.written.get(fd, 0), b""
+            written = retired.written.get(fd, 0)
+            if start_offset < written:
+                yield written, b""
             return
         buffer = session.buffers.get(fd)
         if buffer is None:
             # The stream was configured DEVNULL: there is no output to serve.
             return
+        buffer.ack(start_offset)
         cursor = start_offset
+        # End offsets of the chunks yielded and possibly still in flight.
+        in_flight: Deque[int] = collections.deque()
         while True:
             result = await buffer.read_from(cursor)
             if result is None:
@@ -1792,6 +1420,32 @@ class _SandboxActor:
             offset, data = result
             cursor = offset + len(data)
             yield offset, data
+            in_flight.append(cursor)
+            if len(in_flight) > _STREAM_BACKPRESSURE_OBJECTS:
+                buffer.ack(in_flight.popleft())
+
+    async def stream_ack(self, exec_id: str, fd: int, offset: int) -> None:
+        """Note that a stream's reader has everything before ``offset``.
+
+        The client sends this when its reader reaches end of stream, without
+        waiting for a reply: what stream_output kept back for chunks in flight
+        is then freed, and a finished command whose every stream has been read
+        is released at once rather than when the retention bounds get to it.
+        Its exit code stays answerable, as for any released session.
+
+        Args:
+            exec_id: The exec whose stream was read.
+            fd: Which stream.
+            offset: How far the reader got.
+        """
+        session = self._execs.get(exec_id)
+        if session is None:
+            return
+        buffer = session.buffers.get(fd)
+        if buffer is None:
+            return
+        buffer.ack(offset)
+        self._retire_if_consumed(exec_id, session)
 
     async def write_stdin(
         self, exec_id: str, data: bytes, offset: Optional[int] = None
@@ -1914,18 +1568,16 @@ class _SandboxActor:
         return returncode
 
     def _retire(self, exec_id: str) -> None:
-        """Note that an exec finished, and bound what finished ones hold.
+        """Note that an exec finished, and bound how many finished ones remain.
 
-        Sessions cannot be released the moment they exit: their output stays
-        readable afterwards, which is how Modal behaves and how most callers
-        use exec. But nothing releases them either -- `exec_release` is reached
-        only from the filesystem helpers -- so a long-lived sandbox driving many
-        execs accumulates them. Two bounds apply. The count is only
-        bookkeeping, and set high: a batch of commands that all finish before
-        any is read must all still be readable, as on Modal, where the old cap
-        of sixteen lost the first finishers. The real cost is output held in
-        memory, bounded by _FINISHED_OUTPUT_MEMORY -- see
-        _trim_finished_output.
+        Sessions cannot be released the moment they exit: their unread output
+        stays readable afterwards, which is how Modal behaves and how most
+        callers use exec. One whose output has all been read is released by
+        _retire_if_consumed; the rest are bounded here by count, which is only
+        bookkeeping and set high -- a batch of commands that all finish before
+        any is read must all still be readable, as on Modal, where an old cap
+        of sixteen lost the first finishers. The output they hold is bounded by
+        _SANDBOX_OUTPUT_CAP.
         """
         if exec_id == self._main_exec_id:
             return
@@ -1937,7 +1589,6 @@ class _SandboxActor:
             session = self._execs.pop(evicted, None)
             if session is not None:
                 self._evict(evicted, session)
-        self._trim_finished_output()
 
     def _evict(self, exec_id: str, session: "_ExecSession") -> None:
         """Drop a finished session that is already out of the tables.
@@ -1949,42 +1600,28 @@ class _SandboxActor:
         self._entomb(exec_id, session)
         self._discard(session)
 
-    def _trim_finished_output(self) -> None:
-        """Keep finished sessions' in-memory output under its budget.
+    def _retire_if_consumed(self, exec_id: str, session: "_ExecSession") -> None:
+        """Release a finished session whose every stream has been read to the end.
 
-        Oldest first, each session's output moves to spill files, where a
-        reader still finds all of it. Only where it cannot -- no room to
-        spill, or spilling stopped -- is the whole session dropped instead,
-        its exit code kept, as sessions past the count cap are.
-
-        Sessions the client releases itself are left out of both the budget
-        and the eviction: a filesystem download's paced output can never move
-        to disk, and dropping it while its reader was still draining the tail
-        failed the transfer.
+        Reading consumes, so nothing it holds can be asked for again; keeping it
+        would only cost memory until the retention bounds came round to it. Its
+        exit code is kept, as for any released session. The main process is
+        never released (the sandbox's own exit code is read from it), nor is a
+        session its client releases itself.
         """
-        held = {
-            exec_id: _session_memory(self._execs[exec_id])
-            for exec_id in self._finished_execs
-            if exec_id in self._execs and not self._execs[exec_id].client_released
-        }
-        total = sum(held.values())
-        for exec_id in list(self._finished_execs):
-            if total <= _FINISHED_OUTPUT_MEMORY:
-                return
-            if not held.get(exec_id):
-                continue
-            session = self._execs[exec_id]
-            buffers = [
-                buffer
-                for buffer in session.buffers.values()
-                if buffer is not None and buffer.memory_bytes
-            ]
-            # Counted as freed once the move starts: the flush runs on.
-            if not all(buffer.move_to_disk() for buffer in buffers):
-                self._finished_execs.remove(exec_id)
-                del self._execs[exec_id]
-                self._evict(exec_id, session)
-            total -= held[exec_id]
+        if (
+            exec_id == self._main_exec_id
+            or session.client_released
+            or exec_id not in self._finished_execs
+        ):
+            return
+        if not all(
+            buffer is None or buffer.consumed for buffer in session.buffers.values()
+        ):
+            return
+        self._finished_execs.remove(exec_id)
+        del self._execs[exec_id]
+        self._evict(exec_id, session)
 
     def _entomb(self, exec_id: str, session: "_ExecSession") -> None:
         """Keep an evicted session's exit code and stream sizes."""
@@ -2079,36 +1716,64 @@ class _SandboxActor:
             stopping.add_done_callback(self._stop_tasks.discard)
         else:
             _unlink_quietly(session.pid_file)
-        # Including anything it spilled, which would otherwise hold disk for
-        # the life of the sandbox.
         for buffer in session.buffers.values():
             if buffer is not None:
                 buffer.close()
         return stopping
 
-    def _relieve_spill_pressure(self) -> bool:
-        """Free spill space by dropping the oldest finished session that holds any.
+    def _relieve_output_memory(self, excess: int) -> None:
+        """Drop unread output until the sandbox is back within its cap.
 
-        A finished command's output is the least likely to be read again, so
-        it goes before a running command loses any of its own. The exit code
-        survives, as it does when a session is evicted for any other reason.
+        Finished commands' output goes first, oldest command first: it is the
+        least likely to be read. Then the oldest output of whichever running
+        stream holds the most. Paced streams and sessions their client releases
+        itself are left alone; the filesystem's transfers must arrive whole,
+        and their pacing bounds them already.
+
+        Args:
+            excess: How many bytes over the cap the sandbox is.
         """
+        reason = (
+            f"the sandbox's unread output passed {_SANDBOX_OUTPUT_CAP // 2**20} MiB"
+        )
         for exec_id in list(self._finished_execs):
             session = self._execs.get(exec_id)
-            if (
-                session is None
-                or session.client_released
-                or not any(
-                    buffer is not None and buffer.disk_bytes
-                    for buffer in session.buffers.values()
-                )
-            ):
+            if session is None or session.client_released:
                 continue
-            self._finished_execs.remove(exec_id)
-            del self._execs[exec_id]
-            self._evict(exec_id, session)
-            return True
-        return False
+            for buffer in session.buffers.values():
+                if buffer is not None:
+                    excess -= buffer.drop_oldest(excess, reason)
+                    if excess <= 0:
+                        return
+        running = [
+            buffer
+            for session in self._execs.values()
+            if not session.client_released
+            for buffer in session.buffers.values()
+            if buffer is not None and not buffer.paced
+        ]
+        for buffer in sorted(running, key=lambda b: b.memory_bytes, reverse=True):
+            excess -= buffer.drop_oldest(excess, reason)
+            if excess <= 0:
+                return
+
+    def _warn_output_dropped(self, reason: str) -> None:
+        """Say once per sandbox why its output has started to be dropped.
+
+        Readers only learn that bytes are gone; this is the one place that
+        knows why.
+        """
+        if self._output_drop_warned:
+            return
+        self._output_drop_warned = True
+        logger.warning(
+            "Sandbox output is being dropped: %s. Reading consumes, so output "
+            "read while it is produced is never dropped; what nobody reads is "
+            "held in memory up to a bound, oldest unread output first to go, "
+            "finished commands' before running ones'. Readers see the loss as "
+            "truncated. Logged once per sandbox.",
+            reason,
+        )
 
     # -- one-shot helper ---------------------------------------------------
 
@@ -2181,7 +1846,7 @@ async def _pump(stream: asyncio.StreamReader, buffer: _OutputBuffer) -> None:
             if not chunk:
                 break
             buffer.feed(chunk)
-            # Waits only on the disk, never on a reader.
+            # Waits only for a paced stream's reader; any other returns at once.
             await buffer.pace()
     except asyncio.CancelledError:
         raise
@@ -2190,13 +1855,6 @@ async def _pump(stream: asyncio.StreamReader, buffer: _OutputBuffer) -> None:
         pass
     finally:
         buffer.feed_eof()
-
-
-def _session_memory(session: "_ExecSession") -> int:
-    """Bytes of output a session holds in memory, across its streams."""
-    return sum(
-        buffer.memory_bytes for buffer in session.buffers.values() if buffer is not None
-    )
 
 
 def _session_returncode(session: "_ExecSession") -> Optional[int]:

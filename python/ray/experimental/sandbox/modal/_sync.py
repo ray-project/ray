@@ -366,12 +366,6 @@ def _translate_args(args, kwargs):
 # so this never delays output that has not arrived.
 _ITER_BATCH_LIMIT = 256
 
-# The same bound for an iterator with a ``take_ready(limit)`` method, which
-# returns the items it already holds without waiting (see
-# ``io_streams._Flatten``). Those cost nothing to collect, so a crossing takes
-# far more of them: a 1 MiB chunk of short lines is thousands.
-_READY_BATCH_LIMIT = 4096
-
 
 class _Lookahead:
     """Items taken off a generator ahead of the caller, and the fetch in flight.
@@ -430,6 +424,16 @@ class _BlockingIterator:
 
     def __next__(self):
         state = self._state
+        pop_ready = getattr(self._agen, "pop_ready", None)
+        if pop_ready is not None and not state.buffer:
+            # An iterator that keeps its own ready items -- a StreamReader's
+            # loop -- hands them over from this thread, with no crossing. They
+            # stay with it rather than in a look-ahead here, so a `break`
+            # leaves them for the reader's next read() or loop, as on Modal.
+            # It says "nothing ready" with its own NOTHING_READY sentinel.
+            item = pop_ready()
+            if item is not getattr(self._agen, "NOTHING_READY", None):
+                return _translate_out(item)
         if not state.buffer and not state.exhausted:
             _loop_thread.run(self._fill())
         if not state.buffer:
@@ -444,21 +448,20 @@ class _BlockingIterator:
         leaves them there for the next loop instead of dropping them.
         """
         state = self._state
-        # An iterator that can say what it already holds hands it all over in
-        # one call; probing item by item below costs a task and a loop turn
-        # each, so only what it does not hold yet is probed for.
-        take_ready = getattr(self._agen, "take_ready", None)
-        limit = _ITER_BATCH_LIMIT if take_ready is None else _READY_BATCH_LIMIT
+        # An iterator that keeps its own ready items needs only one fetch:
+        # the rest of the batch that fetch decoded stays with it, for
+        # pop_ready to hand out without crossing.
+        keeps_ready = getattr(self._agen, "pop_ready", None) is not None
         task = state.pending or asyncio.ensure_future(self._agen.__anext__())
         state.pending = None
         try:
             # Shielded, so that cancelling this fill leaves the fetch running
             # rather than cancelling it too.
             state.buffer.append(await asyncio.shield(task))
+            if keeps_ready:
+                return
             while True:
-                if take_ready is not None:
-                    state.buffer.extend(take_ready(limit - len(state.buffer)))
-                if len(state.buffer) >= limit:
+                if len(state.buffer) >= _ITER_BATCH_LIMIT:
                     return
                 task = asyncio.ensure_future(self._agen.__anext__())
                 # One turn is all a ready item needs: a task runs until it

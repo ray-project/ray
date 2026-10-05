@@ -58,6 +58,17 @@ def test_exec_captures_stdout(sandbox):
     assert process.wait() == 0
 
 
+def test_asking_for_the_gvisor_runtime_runs_as_usual():
+    """runtime="gvisor" names what every Sandbox here already runs under."""
+    sb = modal.Sandbox.create("echo", "hi", image=IMAGE, runtime="gvisor")
+    try:
+        assert sb.stdout.read() == "hi\n"
+        sb.wait()
+        assert sb.returncode == 0
+    finally:
+        sb.terminate()
+
+
 def test_exec_captures_stderr_separately(sandbox):
     process = sandbox.exec("sh", "-c", "echo out; echo err >&2")
     assert process.stdout.read() == "out\n"

@@ -430,14 +430,34 @@ def test_a_stream_that_outgrows_the_limit_is_refused(monkeypatch):
     assert actor.released
 
 
-def test_copy_to_local_is_paced_and_uncapped(tmp_path):
+def test_copy_to_local_is_paced_and_held_to_modals_read_limit(tmp_path):
+    """Modal's copy reads through the same helper command as read_bytes, and
+    documents the same FileTooLargeError: the limit applies to copies too."""
     content = bytes(range(256)) * 3
     actor = ReadActor(content)
     destination = tmp_path / "out.bin"
     run(filesystem(actor).copy_to_local("/some/file", destination))
     assert destination.read_bytes() == content
     assert actor.stream_kwargs == {"paced": True, "client_released": True}
-    assert "head -c" not in actor.stream_command[2]
+    script = actor.stream_command[2]
+    # Refused up front past the limit, then read with cat.
+    assert f"-le {fs_mod.MAX_READ_FILE_BYTES} " in script
+    assert "head -c" not in script and 'cat "$p"' in script
+
+
+def test_a_copy_that_outgrows_the_limit_is_refused_and_leaves_nothing(
+    tmp_path, monkeypatch
+):
+    """stat under-reports /proc files, so what arrives is counted too; and the
+    destination is never left holding a partial file."""
+    monkeypatch.setattr(fs_mod, "MAX_READ_FILE_BYTES", 5)
+    actor = ReadActor(b"0123456789")
+    destination = tmp_path / "out.bin"
+    with pytest.raises(SandboxFilesystemFileTooLargeError):
+        run(filesystem(actor).copy_to_local("/proc/something", destination))
+    assert not destination.exists()
+    assert list(tmp_path.iterdir()) == [], "the temporary file was removed"
+    assert actor.released
 
 
 def test_a_namespace_kept_past_detach_fails_as_on_modal():

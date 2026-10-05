@@ -1,7 +1,8 @@
 """Unit tests for what survives an exec session being reclaimed.
 
 The actor keeps a bounded number of finished sessions (``_MAX_RETAINED_EXECS``),
-and bounds what their output holds in memory (``_FINISHED_OUTPUT_MEMORY``).
+releases one as soon as its output has been read to the end, and bounds the
+unread output it holds in memory (``_SANDBOX_OUTPUT_CAP``).
 These drive the real ``_SandboxActor`` implementation class
 with locally spawned processes standing in for ``runsc exec``, so they need
 neither runsc nor a Ray cluster -- what is under test is the bookkeeping around
@@ -20,13 +21,13 @@ import pytest
 from ray.experimental.sandbox.modal import _actor as actor_module
 from ray.experimental.sandbox.modal._actor import (
     _MAX_RETAINED_EXITS,
+    _STREAM_BACKPRESSURE_OBJECTS,
     STDERR_FD,
     STDOUT_FD,
     _ExecSession,
     _OutputBuffer,
     _pump,
     _SandboxActor,
-    _SpillStore,
 )
 from ray.experimental.sandbox.modal.exception import InvalidError, NotFoundError
 
@@ -547,102 +548,251 @@ def test_an_exec_exiting_does_not_end_the_sandbox():
     assert run(scenario()) is None
 
 
-# -- spilled output ----------------------------------------------------------
+# -- unread output: in memory, bounded ---------------------------------------
 #
 # Measured on Modal: a command that wrote 4 GiB with nobody reading ran to
-# completion, and all of it came back. These hold the actor to the same:
-# output past memory goes to disk rather than holding the command back or
-# being dropped.
+# completion. The actor never holds a command back either, but it keeps unread
+# output in memory: past a stream's cap the oldest goes, and the reader is told.
 
 _MIB = 1024 * 1024
 
 
-def attach_spill(actor, tmp_path, limit=1 << 30) -> _SpillStore:
-    actor._spill = _SpillStore(
-        str(tmp_path / "spill"),
-        limit,
-        segment_bytes=_MIB,
-        min_free=0,
-        relieve=actor._relieve_spill_pressure,
-    )
-    return actor._spill
-
-
-async def stream_length(actor, exec_id: str) -> int:
-    """Read one stream to the end, failing on any gap."""
-    total = 0
-    async for offset, chunk in actor.stream_output(exec_id, STDOUT_FD):
-        assert offset == total, f"gap at {total}: resumed at {offset}"
+async def read_stream(actor, exec_id: str, fd: int = STDOUT_FD):
+    """Read one stream to the end: (bytes received, offset gaps seen, end)."""
+    total, gaps, cursor = 0, 0, 0
+    async for offset, chunk in actor.stream_output(exec_id, fd):
+        if offset > cursor:
+            gaps += 1
         total += len(chunk)
-    return total
+        cursor = offset + len(chunk)
+    return total, gaps, cursor
 
 
 @requires_posix_shell
-def test_an_unread_chatty_command_runs_to_completion_and_loses_nothing(tmp_path):
+def test_an_unread_chatty_command_runs_to_completion_keeping_its_newest_output():
     async def scenario():
         actor = make_actor()
-        spill = attach_spill(actor, tmp_path)
-        exec_id = await start(
-            actor, "e1", "head -c 67108864 /dev/zero", limit=_MIB, spill=spill
-        )
+        exec_id = await start(actor, "e1", "head -c 8388608 /dev/zero", cap=_MIB)
         # Nothing is reading, yet the command must be able to finish.
         await asyncio.wait_for(actor._execs[exec_id].process.wait(), 60)
-        spilled = os.listdir(spill.directory)
-        total = await stream_length(actor, exec_id)
-        await actor.exec_release(exec_id)
-        return spilled, total, os.listdir(spill.directory), spill.used
+        await actor.exec_wait(exec_id, 60)
+        buffer = actor._execs[exec_id].buffers[STDOUT_FD]
+        return await read_stream(actor, exec_id), buffer.lost
 
-    spilled, total, after, used = run(scenario())
-    assert spilled, "output past memory should have gone to disk"
-    assert total == 64 * _MIB
-    assert after == [] and used == 0, "releasing the exec frees its files"
-
-
-@requires_posix_shell
-def test_spill_pressure_evicts_a_finished_session_before_live_output(tmp_path):
-    """A finished command's output goes before a running one loses a byte."""
-
-    async def scenario():
-        actor = make_actor()
-        # Room for one command's spill, not for two.
-        spill = attach_spill(actor, tmp_path, limit=12 * _MIB)
-        old = await start(
-            actor, "old", "head -c 8388608 /dev/zero; exit 3", limit=_MIB, spill=spill
-        )
-        await actor.exec_wait(old, 60)
-        new = await start(
-            actor, "new", "head -c 8388608 /dev/zero", limit=_MIB, spill=spill
-        )
-        await actor.exec_wait(new, 60)
-        total = await stream_length(actor, new)
-        return old in actor._execs, total, await actor.exec_wait(old, None)
-
-    old_still_held, total, old_code = run(scenario())
-    assert not old_still_held
-    assert total == 8 * _MIB
-    # Evicted for space, but its exit code still answers, as for any eviction.
-    assert old_code == 3
+    (total, gaps, end), lost = run(scenario())
+    assert end == 8 * _MIB, "the newest output, up to the very end"
+    assert 0 < total <= _MIB, "no more than the cap was kept"
+    assert gaps == 1 and lost == 8 * _MIB - total
 
 
 @requires_posix_shell
-def test_terminate_deletes_spilled_output(tmp_path):
-    """The caller kills the actor next, so terminate() is the last chance."""
+def test_output_read_while_it_is_produced_is_never_dropped():
+    """What the reader has is freed as it goes, so the cap bounds only what is
+    unread: 64 MiB through a 16 MiB cap arrives whole."""
 
     async def scenario():
         actor = make_actor()
-        spill = attach_spill(actor, tmp_path)
+        exec_id = await start(actor, "e1", "head -c 67108864 /dev/zero", cap=16 * _MIB)
+        result = await read_stream(actor, exec_id)
+        await actor.exec_wait(exec_id, 60)
+        return result
+
+    assert run(scenario()) == (64 * _MIB, 0, 64 * _MIB)
+
+
+@requires_posix_shell
+def test_terminate_frees_all_output():
+    async def scenario():
+        actor = make_actor()
         exec_id = await start(
-            actor, "e1", "head -c 8388608 /dev/zero", limit=_MIB, spill=spill
+            actor, "e1", "head -c 1048576 /dev/zero", budget=actor._output_budget
         )
         await actor.exec_wait(exec_id, 60)
-        assert os.listdir(spill.directory)
+        before = actor._output_budget.used
         await actor.terminate()
-        return os.path.exists(spill.directory)
+        return before, actor._output_budget.used
 
-    assert run(scenario()) is False
+    before, after = run(scenario())
+    assert before == _MIB
+    assert after == 0
 
 
-# -- finished output: bounded by memory, not by count ------------------------
+# -- reading releases ----------------------------------------------------------
+
+
+async def read_and_ack(actor, exec_id: str, fd: int) -> int:
+    """Read a stream to the end and acknowledge it, as the client does."""
+    _, _, end = await read_stream(actor, exec_id, fd)
+    await actor.stream_ack(exec_id, fd, end)
+    return end
+
+
+@requires_posix_shell
+def test_an_exec_read_to_the_end_is_released_and_keeps_its_exit_code():
+    async def scenario():
+        actor = make_actor()
+        exec_id = await start(actor, "e1", "echo out; echo err >&2; exit 4")
+        await actor.exec_wait(exec_id, None)
+        await read_and_ack(actor, exec_id, STDOUT_FD)
+        after_stdout = exec_id in actor._execs
+        await read_and_ack(actor, exec_id, STDERR_FD)
+        return (
+            after_stdout,
+            exec_id in actor._execs,
+            await actor.exec_wait(exec_id, None),
+            await actor.exec_poll(exec_id),
+        )
+
+    after_stdout, after_both, code, polled = run(scenario())
+    assert after_stdout, "stderr is still unread"
+    assert not after_both, "nothing left to read, so nothing kept"
+    assert (code, polled) == (4, 4)
+
+
+@requires_posix_shell
+def test_a_command_read_to_the_end_before_it_exits_is_released_on_exit():
+    async def scenario():
+        actor = make_actor()
+        # Both streams end before the command does.
+        exec_id = await start(actor, "e1", "echo out; exec 1>&- 2>&-; sleep 0.3")
+        await read_and_ack(actor, exec_id, STDOUT_FD)
+        await read_and_ack(actor, exec_id, STDERR_FD)
+        while_running = exec_id in actor._execs
+        code = await actor.exec_wait(exec_id, None)
+        return while_running, exec_id in actor._execs, code
+
+    assert run(scenario()) == (True, False, 0)
+
+
+@requires_posix_shell
+def test_the_main_process_is_never_released_by_reading():
+    """The sandbox's own exit code is read from it for as long as it exists."""
+
+    async def scenario():
+        actor = make_actor()
+        exec_id = await start(actor, "main", "echo out")
+        actor._main_exec_id = exec_id
+        await actor.exec_wait(exec_id, None)
+        await read_and_ack(actor, exec_id, STDOUT_FD)
+        await read_and_ack(actor, exec_id, STDERR_FD)
+        return exec_id in actor._execs
+
+    assert run(scenario()) is True
+
+
+def test_an_ack_for_an_exec_that_is_not_held_is_a_no_op():
+    async def scenario():
+        actor = make_actor()
+        await actor.stream_ack("unknown", STDOUT_FD, 10)
+
+    run(scenario())
+
+
+# -- the acknowledgement window ------------------------------------------------
+#
+# stream_output frees what its consumer has, without the consumer saying so
+# chunk by chunk: Ray holds the generator until its consumer has taken all but
+# _STREAM_BACKPRESSURE_OBJECTS of what it yielded.
+
+_W = _STREAM_BACKPRESSURE_OBJECTS
+
+
+def held_stream(chunks: int):
+    """An actor holding one finished stream of ``chunks`` 1 MiB chunks."""
+    actor = make_actor()
+    session = _ExecSession(_StubProcess())
+    buffer = _OutputBuffer(cap=1 << 40)
+    for _ in range(chunks):
+        buffer.feed(b"x" * _MIB)
+    buffer.feed_eof()
+    session.buffers[STDOUT_FD] = buffer
+    actor._execs["e1"] = session
+    return actor, buffer
+
+
+def test_stream_output_frees_what_is_more_than_the_window_behind():
+    async def scenario():
+        actor, buffer = held_stream(_W + 6)
+        stream = actor.stream_output("e1", STDOUT_FD)
+        taken = [await stream.__anext__() for _ in range(_W + 3)]
+        await stream.aclose()
+        return taken, buffer.memory_bytes, buffer.written
+
+    taken, held, written = run(scenario())
+    assert [offset for offset, _ in taken] == [i * _MIB for i in range(_W + 3)]
+    # Fetching item n resumed the generator after item n - 1, which freed what
+    # lies more than the window behind that: here, the first two chunks.
+    assert held == written - 2 * _MIB
+
+
+def test_reopening_at_an_offset_frees_everything_before_it():
+    async def scenario():
+        actor, buffer = held_stream(10)
+        stream = actor.stream_output("e1", STDOUT_FD, start_offset=6 * _MIB)
+        first = await stream.__anext__()
+        await stream.aclose()
+        return first[0], buffer.memory_bytes
+
+    first_offset, held = run(scenario())
+    assert first_offset == 6 * _MIB
+    assert held == 4 * _MIB
+
+
+def test_a_reader_that_stops_part_way_loses_nothing_still_in_flight():
+    """Took 10 chunks but got only 6 of them home -- a break, Ctrl-C -- then
+    reopened at its own position: the four in flight are still there."""
+
+    async def scenario():
+        actor, buffer = held_stream(_W + 6)
+        stream = actor.stream_output("e1", STDOUT_FD)
+        for _ in range(10):
+            await stream.__anext__()
+        await stream.aclose()
+        reopened = actor.stream_output("e1", STDOUT_FD, start_offset=6 * _MIB)
+        return [item async for item in reopened]
+
+    items = run(scenario())
+    assert items[0][0] == 6 * _MIB, "resumed exactly, no gap"
+    assert sum(len(chunk) for _, chunk in items) == (_W + 6 - 6) * _MIB
+
+
+# -- the sandbox-wide cap ------------------------------------------------------
+
+
+@requires_posix_shell
+def test_past_the_sandbox_cap_finished_output_goes_before_running_output():
+    async def scenario():
+        actor = make_actor()
+        actor._output_budget.cap = 3 * _MIB
+        kwargs = {"budget": actor._output_budget, "on_drop": actor._warn_output_dropped}
+        old = []
+        for i in range(2):
+            old.append(
+                await start(actor, f"old{i}", "head -c 1048576 /dev/zero", **kwargs)
+            )
+            await actor.exec_wait(old[-1], None)
+        live = await start(
+            actor, "live", "head -c 2097152 /dev/zero; sleep 2", **kwargs
+        )
+        # Let the running command's output arrive, unread.
+        buffer = actor._execs[live].buffers[STDOUT_FD]
+        for _ in range(500):
+            if buffer.written == 2 * _MIB:
+                break
+            await asyncio.sleep(0.01)
+        lost = [actor._execs[i].buffers[STDOUT_FD].lost for i in old]
+        result = (lost, buffer.lost, actor._output_budget.used)
+        actor._execs[live].process.kill()
+        await actor.exec_wait(live, None)
+        return result
+
+    lost_old, lost_live, used = run(scenario())
+    assert lost_live == 0, "a running command lost output while finished ones held some"
+    assert lost_old[0] > 0, "the oldest finished command's output went first"
+    assert used <= 3 * _MIB
+
+
+# -- finished output -----------------------------------------------------------
 
 _PRODUCTION_CAP = actor_module._MAX_RETAINED_EXECS
 
@@ -663,74 +813,6 @@ def test_a_batch_that_finishes_before_it_is_read_is_all_still_there(monkeypatch)
     assert run(scenario()) == [b"out%d\n" % i for i in range(40)]
 
 
-async def _settle_flushes(actor):
-    """Wait for any move of finished output to disk to land."""
-    for _ in range(500):
-        busy = [
-            buffer
-            for session in actor._execs.values()
-            for buffer in session.buffers.values()
-            if buffer is not None and buffer._flush_task is not None
-        ]
-        if not busy:
-            return
-        await asyncio.sleep(0.01)
-    raise AssertionError("flushes did not settle")
-
-
-@requires_posix_shell
-def test_finished_output_past_the_memory_budget_moves_to_disk_whole(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setattr(actor_module, "_FINISHED_OUTPUT_MEMORY", 256 * 1024)
-
-    async def scenario():
-        actor = make_actor()
-        spill = attach_spill(actor, tmp_path)
-        ids = []
-        for i in range(6):
-            # 128 KiB each: all of it fits the stream's own window, so only
-            # the budget for finished output sends any of it to disk.
-            ids.append(
-                await start(actor, f"e{i}", "head -c 131072 /dev/zero", spill=spill)
-            )
-            await actor.exec_wait(ids[-1], None)
-        await _settle_flushes(actor)
-        in_memory = sum(
-            actor_module._session_memory(actor._execs[exec_id]) for exec_id in ids
-        )
-        lengths = [await stream_length(actor, exec_id) for exec_id in ids]
-        return in_memory, spill.used, lengths
-
-    in_memory, spilled, lengths = run(scenario())
-    assert in_memory <= 256 * 1024
-    assert spilled >= 6 * 131072 - 256 * 1024
-    assert lengths == [131072] * 6, "moved to disk, and still read back whole"
-
-
-@requires_posix_shell
-def test_without_room_to_spill_the_oldest_finished_sessions_go_whole(monkeypatch):
-    """No spill store, as on a node too full to spill: the budget is kept by
-    dropping whole sessions, oldest first, and their exit codes survive."""
-    monkeypatch.setattr(actor_module, "_FINISHED_OUTPUT_MEMORY", 256 * 1024)
-
-    async def scenario():
-        actor = make_actor()
-        ids = []
-        for i in range(6):
-            ids.append(
-                await start(actor, f"e{i}", f"head -c 131072 /dev/zero; exit {i}")
-            )
-            await actor.exec_wait(ids[-1], None)
-        kept = [exec_id for exec_id in ids if exec_id in actor._execs]
-        codes = [await actor.exec_wait(exec_id, None) for exec_id in ids]
-        return kept, codes
-
-    kept, codes = run(scenario())
-    assert kept == ["e4", "e5"], "the newest fit the budget; the oldest went"
-    assert codes == list(range(6))
-
-
 class _ShellBackend:
     """Runs exec_start's command locally, as it is given."""
 
@@ -741,13 +823,13 @@ class _ShellBackend:
 @requires_posix_shell
 def test_a_finished_download_still_being_read_is_not_evicted_for_memory(monkeypatch):
     """A filesystem download's command exits with up to a buffer of output
-    still unread. Paced output can never move to disk, so the memory trim
-    evicted the whole session, and the transfer failed with its tail lost."""
-    monkeypatch.setattr(actor_module, "_FINISHED_OUTPUT_MEMORY", 1024 * 1024)
+    still unread. Its reader is draining the tail, so dropping any of it for
+    memory would fail the transfer: paced streams are left out of the cap."""
     size = 2_000_000
 
     async def scenario():
         actor = make_actor()
+        actor._output_budget.cap = 1024 * 1024
         actor._runtime = types.SimpleNamespace(backend=_ShellBackend())
         actor._instance_id = "sandbox"
         exec_id = await actor.exec_start(

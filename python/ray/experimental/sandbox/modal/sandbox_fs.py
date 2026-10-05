@@ -39,8 +39,8 @@ _COPY_CHUNK_SIZE = 1024 * 1024
 # chunk.
 _COPY_WINDOW = 8
 
-# The largest file read_bytes() and read_text() return: Modal's, which its
-# helper enforces before reading a byte. copy_to_local() has no such cap here.
+# The largest file read_bytes(), read_text() and copy_to_local() return:
+# Modal's, which its helper enforces before reading a byte.
 MAX_READ_FILE_BYTES = _fs.MAX_READ_FILE_BYTES
 
 # Files up to this size come back in the reply to a single call. Larger ones
@@ -345,7 +345,9 @@ class _SandboxFilesystem:
         """Copy a file out of the Sandbox, streaming its contents.
 
         The local file is written atomically: content lands in a sibling
-        temporary file that replaces the destination on success.
+        temporary file that replaces the destination on success. Subject to
+        Modal's read limit, as on Modal, whose copy reads through the same
+        helper command as ``read_bytes``.
 
         Args:
             remote_path: Absolute path to the file in the Sandbox.
@@ -355,6 +357,8 @@ class _SandboxFilesystem:
             SandboxFilesystemNotFoundError: The remote path does not exist.
             SandboxFilesystemIsADirectoryError: The remote path is a directory.
             SandboxFilesystemPermissionError: Read permission is denied.
+            SandboxFilesystemFileTooLargeError: The file exceeds
+                ``MAX_READ_FILE_BYTES`` (5 GiB), Modal's limit.
             SandboxFilesystemError: The command failed for any other reason.
             IsADirectoryError: ``local_path`` is a directory.
             NotADirectoryError: A component of ``local_path``'s parent is not a
@@ -372,13 +376,27 @@ class _SandboxFilesystem:
             sink = await asyncio.to_thread(open, temp_path, "wb")
             try:
                 try:
+                    received = 0
 
                     async def write(chunk: bytes) -> None:
+                        # Counted as it arrives, as read_bytes() counts it: the
+                        # command refuses a file stat says is too large before
+                        # reading it, but stat under-reports /proc files.
+                        nonlocal received
+                        received += len(chunk)
+                        if received > MAX_READ_FILE_BYTES:
+                            raise SandboxFilesystemFileTooLargeError(
+                                f"file exceeds the {MAX_READ_FILE_BYTES} byte "
+                                f"limit: {remote_path}"
+                            )
                         await asyncio.to_thread(sink.write, chunk)
 
-                    # Uncapped, unlike read_bytes(): nothing holds the file.
                     await self._stream_file(
-                        _fs.make_read_file_command(remote_path), remote_path, write
+                        _fs.make_read_file_command(
+                            remote_path, limit=MAX_READ_FILE_BYTES
+                        ),
+                        remote_path,
+                        write,
                     )
                 finally:
                     await asyncio.to_thread(sink.close)

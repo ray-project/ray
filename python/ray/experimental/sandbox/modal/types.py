@@ -2,9 +2,13 @@
 
 import enum
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from ray.util.annotations import PublicAPI
+
+# The runtimes a Sandbox can ask for, as Modal spells them. Only "gvisor" runs
+# here; Sandbox.create refuses "vm".
+SandboxRuntime = Literal["gvisor", "vm"]
 
 
 @PublicAPI(stability="alpha")
@@ -83,4 +87,10 @@ class FileWatchEvent:
     type: FileWatchEventType
 
 
-__all__ = ["FileType", "FileWatchEventType", "FileInfo", "FileWatchEvent"]
+__all__ = [
+    "FileType",
+    "FileWatchEventType",
+    "FileInfo",
+    "FileWatchEvent",
+    "SandboxRuntime",
+]
