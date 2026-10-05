@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from ray.data.aggregate import Mean, ValueCounter
+from ray.data.aggregate import Mean, TopKUnique
 from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import (
@@ -165,11 +165,16 @@ class SimpleImputer(SerializablePreprocessorBase):
                 aggregator_fn=Mean, columns=self._columns
             )
         elif self._strategy == "most_frequent":
+            # NOTE: Ties are broken by picking the smallest value, and a column
+            #       with no non-null values yields no most frequent value.
             self._stat_computation_plan.add_aggregator(
-                aggregator_fn=lambda col: ValueCounter(
-                    on=col, alias_name=f"most_frequent({col})"
+                aggregator_fn=lambda col: TopKUnique(
+                    on=col,
+                    k=1,
+                    ignore_nulls=True,
+                    alias_name=f"most_frequent({col})",
                 ),
-                post_process_fn=_most_frequent_from_value_counts,
+                post_process_fn=lambda top: top[0] if top else None,
                 columns=self._columns,
             )
 
@@ -270,39 +275,6 @@ class SimpleImputer(SerializablePreprocessorBase):
         )
 
 
-def _most_frequent_from_value_counts(
-    value_counts: Optional[Dict[str, List]],
-) -> Optional[Union[str, Number]]:
-    """Pick the most frequent non-null value from a ``ValueCounter`` result.
-
-    A column with no observed (non-null) values has no most frequent value, so
-    report None. ``_transform_pandas`` turns that into the same "Column x has
-    no fill value" error the ``"mean"`` strategy already raises. Null entries
-    are skipped explicitly: an Arrow-backed column reports nulls as
-    ``value_counts`` entries, and imputing a missing value with "null" would
-    defeat the purpose.
-
-    Ties are broken deterministically: among equally frequent values, the
-    smallest one wins (falling back to the string representation when values
-    aren't comparable).
-    """
-    if not value_counts or not value_counts.get("values"):
-        return None
-
-    pairs = [
-        (value, count)
-        for value, count in zip(value_counts["values"], value_counts["counts"])
-        if not (value is None or (isinstance(value, float) and np.isnan(value)))
-    ]
-    if not pairs:
-        return None
-
-    try:
-        return min(pairs, key=lambda pair: (-pair[1], pair[0]))[0]
-    except TypeError:
-        return min(pairs, key=lambda pair: (-pair[1], str(pair[0])))[0]
-
-
 def _get_most_frequent_values(
     dataset: "Dataset",
     columns: List[str],
@@ -312,7 +284,7 @@ def _get_most_frequent_values(
 
     .. note::
         No longer used by ``SimpleImputer``, which now fits via the distributed
-        :class:`~ray.data.aggregate.ValueCounter` aggregation. Kept for
+        :class:`~ray.data.aggregate.TopKUnique` aggregation. Kept for
         backwards compatibility and may be removed in a future release.
     """
 

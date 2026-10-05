@@ -1697,6 +1697,36 @@ def test_encoders_fit_via_aggregation():
         assert encoder.has_stats(), f"{type(encoder).__name__} should have stats"
 
 
+@pytest.mark.parametrize(
+    "make_encoder",
+    [
+        pytest.param(
+            lambda: OrdinalEncoder(["t"], encode_lists=False),
+            id="OrdinalEncoder_whole_lists",
+        ),
+        pytest.param(lambda: OneHotEncoder(["t"]), id="OneHotEncoder"),
+    ],
+)
+def test_whole_list_categories_across_multiple_partial_aggregates(make_encoder):
+    """With whole-list categories, partial aggregates from different blocks must
+    merge into whole lists, not into their inner elements."""
+    ctx = ray.data.DataContext.get_current()
+    original = ctx.shuffle_input_batch_bytes
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    ctx.shuffle_input_batch_bytes = 1
+    try:
+        lists = [["a", "b"], ["a", "b"], ["c"], ["a", "b"], ["d", "e"], ["c"]] * 3
+        ds = ray.data.from_items([{"t": v} for v in lists], override_num_blocks=6)
+
+        encoder = make_encoder().fit(ds)
+    finally:
+        ctx.shuffle_input_batch_bytes = original
+
+    stats = encoder.stats_["unique_values(t)"]
+    categories = {tuple(cat): idx for cat, idx in stats.items()}
+    assert categories == {("a", "b"): 0, ("c",): 1, ("d", "e"): 2}
+
+
 if __name__ == "__main__":
     import sys
 

@@ -656,6 +656,53 @@ def test_most_frequent_deterministic_tiebreak():
     assert imputer.stats_ == {"most_frequent(A)": "apple"}
 
 
+@pytest.mark.parametrize(
+    "column, expected",
+    [
+        pytest.param(
+            pd.array([None] * 6 + [1, 1, 2], dtype="Int64"), 1, id="int64_pd_na"
+        ),
+        pytest.param(
+            pd.array([None] * 6 + ["a", "a", "b"], dtype="string"),
+            "a",
+            id="string_pd_na",
+        ),
+        pytest.param(
+            np.array([np.nan] * 6 + [1, 1, 2], dtype=np.float32), 1.0, id="float32_nan"
+        ),
+        pytest.param(
+            np.array([np.nan] * 6 + [1, 1, 2], dtype=np.float64), 1.0, id="float64_nan"
+        ),
+    ],
+)
+def test_most_frequent_ignores_null_sentinels(column, expected):
+    """Missing values (None, NaN, pd.NA) are never the most frequent value, even
+    when they outnumber every real value."""
+    ds = ray.data.from_pandas(pd.DataFrame({"x": column}))
+
+    imputer = SimpleImputer(["x"], strategy="most_frequent").fit(ds)
+
+    assert imputer.stats_["most_frequent(x)"] == expected
+
+
+def test_most_frequent_across_multiple_partial_aggregates():
+    """The most frequent value is chosen from counts summed across blocks."""
+    ctx = ray.data.DataContext.get_current()
+    original = ctx.shuffle_input_batch_bytes
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    ctx.shuffle_input_batch_bytes = 1
+    try:
+        # "c" is never the top value of a single block but is the top overall.
+        values = ["a"] * 4 + ["c"] * 3 + ["b"] * 4 + ["c"] * 3 + ["a"] * 4 + ["c"] * 3
+        ds = ray.data.from_items([{"x": v} for v in values], override_num_blocks=3)
+
+        imputer = SimpleImputer(["x"], strategy="most_frequent").fit(ds)
+    finally:
+        ctx.shuffle_input_batch_bytes = original
+
+    assert imputer.stats_ == {"most_frequent(x)": "c"}
+
+
 if __name__ == "__main__":
     import sys
 
