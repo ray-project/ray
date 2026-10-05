@@ -753,6 +753,46 @@ def test_struct_with_arrow_variable_shaped_tensor_type(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
 )
+def test_struct_field_struct_in_one_block_non_struct_in_another():
+    """Nested fields that are structs in one block and non-structs in another
+    must raise a clear error instead of an internal TypeError (issue #61656)."""
+    t1 = pa.table(
+        {
+            "a": pa.array(
+                [{"n": {"y": 1}}],
+                type=pa.struct([("n", pa.struct([("y", pa.int64())]))]),
+            )
+        }
+    )
+    t2 = pa.table({"a": pa.array([{"n": 7}], type=pa.struct([("n", pa.int64())]))})
+
+    with pytest.raises(ValueError, match="the column is not a struct"):
+        concat([t1, t2])
+
+
+def test_struct_field_all_null_promoted_to_struct():
+    """An all-null nested field infers as the null type and must be promoted
+    to a null-filled struct, not crash (issue #61656)."""
+    t1 = pa.table(
+        {"a": pa.array([{"n": None}, {"n": None}], type=pa.struct([("n", pa.null())]))}
+    )
+    t2 = pa.table(
+        {
+            "a": pa.array(
+                [{"n": {"y": 1}}],
+                type=pa.struct([("n", pa.struct([("y", pa.int64())]))]),
+            )
+        }
+    )
+
+    result = concat([t1, t2])
+    assert result.column("a").to_pylist() == [
+        {"n": None},
+        {"n": None},
+        {"n": {"y": 1}},
+    ]
+
+
 def test_struct_with_diverging_primitive_types():
     """Test concatenating tables with struct fields that have diverging primitive types.
 

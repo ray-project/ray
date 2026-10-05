@@ -772,6 +772,20 @@ def _backfill_missing_fields(
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
 
+    # The unified type can be a struct while this block's column is not: an
+    # all-null column infers as the null type (and is promoted to the struct
+    # type during schema unification), while any other non-struct type is a
+    # genuine schema mismatch (issue #61656).
+    if pa.types.is_null(column.type):
+        return pa.nulls(len(column), type=unified_struct_type)
+    if not pa.types.is_struct(column.type):
+        raise ValueError(
+            f"Cannot align column of type {column.type!r} to the unified "
+            f"struct type {unified_struct_type!r}: the column is not a "
+            "struct. This usually means the same column (or nested field) "
+            "holds structs in some blocks and non-struct values in others."
+        )
+
     # Extract the current struct field names and their corresponding data
     current_fields = {
         field.name: column.field(i) for i, field in enumerate(column.type)
