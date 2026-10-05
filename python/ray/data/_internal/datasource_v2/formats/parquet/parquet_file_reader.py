@@ -26,6 +26,7 @@ from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
     FileReader,
+    _ScanGroup,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import _leaf_matches
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
@@ -386,39 +387,92 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
-        # Scan each row group on its own when a column's value depends on
-        # the row's position in the file (``RowHashColumn``); otherwise let
-        # pyarrow coalesce a file's groups into one scan.
-        per_row_group_offsets = any(
-            c.requires_read_unit_boundaries for c in self._synthesized_columns
-        )
         fragments: List[ReadUnitFragment] = []
         for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-            fragment: pds.ParquetFileFragment = path_to_fragment[path]
-            if chunk_metadata is None:
-                num_rows = None
-                if per_row_group_offsets:
-                    # The whole file is the unit; a column that positions rows
-                    # within their unit still needs its row count.
-                    num_rows = _with_io_retry(
-                        lambda: fragment.metadata.num_rows,
-                        f"read Parquet footer for {path}",
-                    )
-                fragments.append(
-                    ReadUnitFragment(
-                        fragment,
-                        ReadUnit(id=path, source=path, count=1, num_rows=num_rows),
-                    )
+            fragments.extend(
+                self._unit_fragments_for_manifest_row(
+                    path_to_fragment[path], path, chunk_metadata
                 )
-            else:
-                fragments.extend(
-                    _fragments_from_row_group_ids(
-                        fragment,
-                        chunk_metadata["unit_ids"],
-                        per_row_group_offsets=per_row_group_offsets,
-                    )
-                )
+            )
         return fragments
+
+    @property
+    def _needs_read_unit_boundaries(self) -> bool:
+        # A column whose value depends on the row's position in the file
+        # (``RowHashColumn``) needs each row group as its own read unit;
+        # otherwise a file's groups are one unit, scanned together.
+        return any(c.requires_read_unit_boundaries for c in self._synthesized_columns)
+
+    def _unit_fragments_for_manifest_row(
+        self,
+        fragment: pds.ParquetFileFragment,
+        path: str,
+        chunk_metadata: Optional[Dict[str, Any]],
+    ) -> List[ReadUnitFragment]:
+        """The read units of one manifest row; see :meth:`_get_fragments_to_read`."""
+        per_row_group_offsets = self._needs_read_unit_boundaries
+        if chunk_metadata is None:
+            num_rows = None
+            if per_row_group_offsets:
+                # The whole file is the unit; a column that positions rows
+                # within their unit still needs its row count.
+                num_rows = _with_io_retry(
+                    lambda: fragment.metadata.num_rows,
+                    f"read Parquet footer for {path}",
+                )
+            return [
+                ReadUnitFragment(
+                    fragment,
+                    ReadUnit(id=path, source=path, count=1, num_rows=num_rows),
+                )
+            ]
+        return _fragments_from_row_group_ids(
+            fragment,
+            chunk_metadata["unit_ids"],
+            per_row_group_offsets=per_row_group_offsets,
+        )
+
+    @override
+    def _get_scan_groups(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[_ScanGroup]:
+        """Scan a manifest row's row groups together even when each is its
+        own read unit, as long as no filter is pushed down.
+
+        Without a pushed-down filter every on-disk row comes out of the scan,
+        so a scan over several row groups splits back into per-row-group
+        tables at their footer row counts. pyarrow can then coalesce reads
+        across the row groups, as it does when no column needs read unit
+        boundaries. A pushed-down filter drops rows inside the scan, so the
+        boundaries can no longer be found and each row group is scanned on
+        its own.
+        """
+        if self._predicate is not None or not self._needs_read_unit_boundaries:
+            return super()._get_scan_groups(dataset, manifest)
+
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
+        scan_groups: List[_ScanGroup] = []
+        for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
+            fragment: pds.ParquetFileFragment = path_to_fragment[path]
+            units = self._unit_fragments_for_manifest_row(
+                fragment, path, chunk_metadata
+            )
+            if len(units) <= 1:
+                scan_groups.extend(_ScanGroup(u.fragment, (u,)) for u in units)
+                continue
+            # ``units`` are in ascending row group order, the order the
+            # combined scan returns rows in.
+            row_group_ids = [u.unit.index for u in units]
+            combined = _with_io_retry(
+                lambda: fragment.subset(row_group_ids=row_group_ids),
+                f"subset row groups {row_group_ids} of {path}",
+            )
+            scan_groups.append(_ScanGroup(combined, tuple(units)))
+        return scan_groups
 
     @override
     def _iter_fragment_tables(

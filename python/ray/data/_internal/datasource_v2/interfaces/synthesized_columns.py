@@ -75,10 +75,12 @@ class SynthesizedColumn(ABC):
         name: Column name as it appears in the output schema.
         type: Arrow type of the column; :meth:`compute` must return it.
         requires_read_unit_boundaries: Whether values depend on a row's
-            position within its read unit. ``True`` makes the reader scan
-            each unit (row group) separately and report a precise
-            :attr:`ReadUnitPosition.unit` /
-            :attr:`ReadUnitPosition.rows_before`.
+            position within its read unit. ``True`` makes each row group its
+            own unit and guarantees every batch comes from one unit, with a
+            precise :attr:`ReadUnitPosition.unit` /
+            :attr:`ReadUnitPosition.rows_before`. A reader may still scan
+            several units together and split the batches at unit boundaries
+            (Parquet does when no filter is pushed down).
             ``False`` (the default) lets it scan a file's row groups
             together, and the unit is the whole file.
     """
