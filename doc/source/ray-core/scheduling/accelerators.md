@@ -795,7 +795,14 @@ class Model:
 - `gpu_memory` can't be combined with `num_gpus`, and isn't supported inside placement groups.
 - For the autoscaler to launch nodes for `gpu_memory` requests, set the label under `labels` for each GPU node type.
 
-`gpu_memory` only reserves memory in the scheduler. To also cap the memory a process can allocate, run the [NVIDIA Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/index.html) on the node and set `RAY_ENABLE_MPS_GPU_MEMORY_LIMIT=1` in the environment of the Ray node. Ray then sets `CUDA_MPS_PINNED_DEVICE_MEM_LIMIT` for each task or actor that requests `gpu_memory`, before user code runs. An allocation past the limit fails with an out of memory error. Ray starts a new worker process for each `gpu_memory` task by default, so the limit applies before CUDA initializes.
+By default, `gpu_memory` only reserves memory in the scheduler. To also cap the memory each task or actor can allocate, set `RAY_enable_gpu_memory_isolation=1` in the environment of the Ray node. Ray then moves each process that requests `gpu_memory` into its own cgroup and caps that cgroup at the requested amount with [MPS memory partitioning](https://docs.nvidia.com/deploy/mps/mpsv3-memory-partitioning.html). The cap covers every process in the cgroup, including child processes, and an allocation past it fails with an out of memory error. The node needs:
+
+- {ref}`Resource isolation <resource-isolation>` enabled, since Ray creates the cgroups under its own cgroup hierarchy.
+- CUDA 13.4 or newer, cgroup v2, and GPUs without MIG.
+- The [MPS control daemon](https://docs.nvidia.com/deploy/mps/index.html) running, and `CUDA_MPS_PIPE_DIRECTORY` set for Ray to the daemon's pipe directory.
+- Permission to set limits. Ray runs `nvidia-smi memory-limits --set`, which needs root. If Ray doesn't run as root, set `RAY_gpu_memory_limit_command` to a command that does, for example `sudo -n nvidia-smi`.
+
+If Ray can't set the cap, the task or actor fails with an error instead of running without one.
 
 When Ray assigns accelerators of a node to tasks or actors with fractional resource requirements, it packs one accelerator before moving on to the next one to avoid fragmentation.
 
