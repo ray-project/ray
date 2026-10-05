@@ -20,11 +20,13 @@
 #include <string>
 
 #include "ray/asio/fake_periodical_runner.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -51,6 +53,7 @@ class PubSubHandlerTest : public ::testing::Test {
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         /*publisher_id=*/NodeID::FromRandom());
 
+    publisher_ = inner_publisher.get();
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
 
     auto obs_inner = std::make_unique<pubsub::Publisher>(
@@ -76,17 +79,138 @@ class PubSubHandlerTest : public ::testing::Test {
  protected:
   std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
   std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
+  pubsub::Publisher *publisher_ = nullptr;
 
- private:
   instrumented_io_context io_service_;
   // Declared before the publishers so it outlives the Publishers that hold a
   // ClockInterface& to it.
-  ray::Clock clock_;
+  ray::FakeClock clock_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
   std::unique_ptr<FakePeriodicalRunner> fake_obs_periodical_runner_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
 };
+
+TEST_F(PubSubHandlerTest, StrictPollRejectsUnknownSubscriberWithoutCreatingState) {
+  rpc::GcsSubscriberPollRequest request;
+  request.set_subscriber_id(UniqueID::FromRandom().Binary());
+  request.set_require_subscriber(true);
+
+  // Both polls must fail immediately. A rejected poll must not create state.
+  for (int i = 0; i < 2; ++i) {
+    rpc::GcsSubscriberPollReply reply;
+    int replies = 0;
+    pubsub_handler_->HandleGcsSubscriberPoll(
+        request,
+        &reply,
+        [&replies](const Status &status, std::function<void()>, std::function<void()>) {
+          ++replies;
+          EXPECT_TRUE(status.IsNotFound());
+          EXPECT_EQ(RayStatusToGrpcStatus(status).error_code(),
+                    grpc::StatusCode::ABORTED);
+        });
+    ASSERT_EQ(replies, 1);
+    EXPECT_TRUE(reply.publisher_id().empty());
+    EXPECT_TRUE(reply.pub_messages().empty());
+  }
+}
+
+TEST_F(PubSubHandlerTest, LegacyPollBeforeRegistrationReceivesMessages) {
+  const auto subscriber_id = UniqueID::FromRandom();
+  rpc::GcsSubscriberPollRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  rpc::GcsSubscriberPollReply reply;
+  int replies = 0;
+  pubsub_handler_->HandleGcsSubscriberPoll(
+      request,
+      &reply,
+      [&replies](const Status &status, std::function<void()>, std::function<void()>) {
+        ++replies;
+        EXPECT_TRUE(status.ok());
+      });
+  EXPECT_EQ(replies, 0);
+
+  rpc::GcsSubscriberCommandBatchRequest command_request;
+  command_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+  command->mutable_subscribe_message();
+  rpc::GcsSubscriberCommandBatchReply command_reply;
+  pubsub_handler_->HandleGcsSubscriberCommandBatch(
+      command_request,
+      &command_reply,
+      [](const Status &status, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(status.ok());
+      });
+
+  rpc::PubMessage message;
+  message.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+  message.mutable_node_info_message()->set_node_id(NodeID::FromRandom().Binary());
+  gcs_publisher_->GetPublisher().Publish(message);
+  ASSERT_EQ(replies, 1);
+  ASSERT_EQ(reply.pub_messages_size(), 1);
+  EXPECT_EQ(reply.pub_messages(0).node_info_message().node_id(),
+            message.node_info_message().node_id());
+}
+
+TEST_F(PubSubHandlerTest, StrictPollDetectsEvictionAndAcceptsRegistrationAgain) {
+  const auto subscriber_id = UniqueID::FromRandom();
+  rpc::GcsSubscriberCommandBatchRequest command_request;
+  command_request.set_subscriber_id(subscriber_id.Binary());
+  auto *command = command_request.add_commands();
+  command->set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+  command->mutable_subscribe_message();
+
+  rpc::GcsSubscriberPollRequest request;
+  request.set_subscriber_id(subscriber_id.Binary());
+  request.set_require_subscriber(true);
+
+  // Exercise both initial registration and recovery using the same subscriber ID.
+  for (int i = 0; i < 2; ++i) {
+    rpc::GcsSubscriberCommandBatchReply command_reply;
+    pubsub_handler_->HandleGcsSubscriberCommandBatch(
+        command_request,
+        &command_reply,
+        [](const Status &status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+        });
+
+    rpc::GcsSubscriberPollReply reply;
+    int replies = 0;
+    pubsub_handler_->HandleGcsSubscriberPoll(
+        request,
+        &reply,
+        [&replies](const Status &status, std::function<void()>, std::function<void()>) {
+          ++replies;
+          EXPECT_TRUE(status.ok());
+        });
+    EXPECT_EQ(replies, 0);
+    rpc::PubMessage message;
+    message.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
+    message.mutable_node_info_message()->set_node_id(NodeID::FromRandom().Binary());
+    gcs_publisher_->GetPublisher().Publish(message);
+    ASSERT_EQ(replies, 1);
+    ASSERT_EQ(reply.pub_messages_size(), 1);
+    EXPECT_EQ(reply.pub_messages(0).node_info_message().node_id(),
+              message.node_info_message().node_id());
+
+    clock_.AdvanceTime(absl::Milliseconds(RayConfig::instance().subscriber_timeout_ms()));
+    publisher_->CheckDeadSubscribers();
+
+    rpc::GcsSubscriberPollReply expired_reply;
+    int expired_replies = 0;
+    pubsub_handler_->HandleGcsSubscriberPoll(
+        request,
+        &expired_reply,
+        [&expired_replies](
+            const Status &status, std::function<void()>, std::function<void()>) {
+          ++expired_replies;
+          EXPECT_TRUE(status.IsNotFound());
+        });
+    ASSERT_EQ(expired_replies, 1);
+    EXPECT_TRUE(expired_reply.pub_messages().empty());
+  }
+}
 
 TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {
   // Test that HandleGcsSubscriberCommandBatch returns InvalidArgument for an invalid
