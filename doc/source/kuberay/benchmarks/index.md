@@ -11,7 +11,7 @@ myst:
 ```{toctree}
 :hidden:
 
-benchmarks/memory-scalability-benchmark
+memory-scalability-benchmark
 ```
 
 - {ref}`kuberay-mem-scalability`

@@ -17,7 +17,7 @@ overhead of mutual authentication and encryption. Testing has shown that this ov
 
 # Using mTLS with RayClusters
 
-For information on how to configure KubeRay to automatically provision and rotate certificates for mutual TLS, see the [KubeRay mTLS guide](kuberay-mtls.md).
+For information on how to configure KubeRay to automatically provision and rotate certificates for mutual TLS, see the [KubeRay mTLS guide](mtls.md).
 
 # Prerequisites
 
