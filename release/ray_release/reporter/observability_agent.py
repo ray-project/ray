@@ -1,6 +1,7 @@
 import html
 import json
 import os
+import re
 import subprocess
 from typing import Any, Dict, Optional
 
@@ -11,6 +12,7 @@ from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
+from ray_release.test_automation.state_machine import TestStateMachine
 from ray_release.util import ANYSCALE_HOST, anyscale_job_url, format_link
 
 # Result statuses that trigger the observability agent. These are the failures
@@ -77,6 +79,18 @@ ANNOTATION_STYLE = "info"
 # build page rather than the job it is about.
 ANNOTATION_SCOPE = "job"
 
+# Github rejects a longer comment body. The summary is the only part this
+# reporter does not control the length of, so it is what gets trimmed.
+GITHUB_COMMENT_LIMIT = 65536
+
+# Free of markdown, which the cut above it could leave dangling.
+TRUNCATION_NOTE = "\n\n... truncated to fit github's comment limit."
+
+# Holds the id of the job that took this build's comment. `repeated_run` and
+# manual retries put several jobs in one build, and build meta-data is the only
+# state they share. The annotation is deliberately not deduped this way.
+COMMENT_CLAIM_PREFIX = "obs-agent-commented-"
+
 # Logged with every analysis. Only the summary is logged; the agent posts the
 # full report to a slack thread, which is also where it collects its feedback,
 # from the people who know what actually broke.
@@ -86,6 +100,21 @@ FEEDBACK_REMINDER = (
     ">>> The observability agent is under active development: please rate that\n"
     ">>> report with the 'All good' or 'Needs correction' buttons in the thread."
 )
+
+# Regions github renders verbatim: it neither parses html nor autolinks inside
+# them, so _sanitize_summary leaves them alone.
+CODE_REGION = re.compile(
+    # A fence opener's info string may not contain a backtick, so ```x``` on one
+    # line is an inline span, not an unclosed fence swallowing the rest.
+    r"^```[^`\n]*$.*?(?:^```[^\n]*$|\Z)"
+    r"|^~~~[^\n]*$.*?(?:^~~~[^\n]*$|\Z)"
+    r"|`+[^`]*`+",
+    re.DOTALL | re.MULTILINE,
+)
+
+# Every buildkite-agent call talks to buildkite's api, so it can hang. Same 30s
+# as GitHubClient.TIMEOUT.
+BUILDKITE_AGENT_TIMEOUT = 30
 
 # Creating a debug session is a quick bookkeeping call, whereas the query runs
 # the actual analysis over the job's metrics and logs.
@@ -195,8 +224,8 @@ class ObservabilityAgentReporter(Reporter):
                 "\n>>> and its feedback buttons cannot be reached from here."
             )
 
-        self._annotate(test, job_id, debug_session_id, summary, slack_thread)
-
+        # Written before the remote calls below, so a hung github cannot cost
+        # the build an analysis it already has.
         analysis_file = self._write_analysis(message)
         if analysis_file:
             logger.info(
@@ -205,6 +234,283 @@ class ObservabilityAgentReporter(Reporter):
             )
         else:
             logger.info(message)
+
+        self._annotate(test, job_id, debug_session_id, summary, slack_thread)
+        self._comment_on_github_issue(test, result, summary, slack_thread)
+
+    def _comment_on_github_issue(
+        self,
+        test: Test,
+        result: Result,
+        summary: Optional[str],
+        slack_thread: Optional[str],
+    ) -> None:
+        """Comment the analysis on the test's github issue, if one is open.
+
+        The issue number only reaches this reporter because RayTestDBReporter
+        refreshes the test from S3 first. An unreachable github is
+        indistinguishable from no open issue -- see Test.get_open_github_issue.
+        """
+        # Before the repo handle, which costs an AWS Secrets Manager fetch that
+        # most failing tests have no issue to justify. `not`, as
+        # state_machine.py guards it: an empty number would reach /issues/.
+        issue_number = test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if not issue_number:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; no github issue is tracked for it"
+            )
+            return
+
+        # Before the claim, so a job with nothing to say does not take it.
+        if not summary and not slack_thread:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; the agent returned neither a summary nor a "
+                f"slack thread, so the comment would carry nothing"
+            )
+            return
+
+        try:
+            ray_repo = TestStateMachine.get_ray_repo()
+            # The issue itself, so commenting does not re-fetch it.
+            issue = test.get_open_github_issue(ray_repo)
+            if issue is None:
+                logger.info(
+                    f"Skip commenting the observability agent analysis for test "
+                    f"{test.get_name()}; no open github issue is known for it. "
+                    f"Issue {issue_number} is closed, or github could not be "
+                    f"reached -- a warning above says which"
+                )
+                return
+
+            # Last, so an unreachable github or a closed issue above does not
+            # consume this build's one comment.
+            if not self._claim_the_builds_comment(test):
+                return
+
+            try:
+                issue.create_comment(
+                    self._issue_comment(test, result, summary, slack_thread)
+                )
+            except Exception as e:
+                if self._is_transient(e):
+                    self._release_the_builds_comment(test)
+                raise
+        except Exception:
+            # glue.py does not guard the reporting loop.
+            logger.exception(
+                f"Could not comment the observability agent analysis on the "
+                f"github issue for test {test.get_name()}"
+            )
+            return
+
+        logger.info(
+            f"Commented the observability agent analysis on github issue "
+            f"{issue_number} for test {test.get_name()}"
+        )
+
+    def _meta_data(self, *args: str) -> Optional[str]:
+        """Run `buildkite-agent meta-data`; None if it failed or the key is unset.
+
+        Both mean no claim is recorded, so a broken agent falls open to
+        commenting rather than dropping the analysis.
+        """
+        try:
+            completed = subprocess.run(
+                ["buildkite-agent", "meta-data", *args],
+                capture_output=True,
+                text=True,
+                timeout=BUILDKITE_AGENT_TIMEOUT,
+            )
+        except Exception as e:
+            logger.warning(f"Could not run buildkite-agent meta-data: {e}")
+            return None
+        if completed.returncode != 0:
+            return None
+        return completed.stdout.strip()
+
+    def _claim_the_builds_comment(self, test: Test) -> bool:
+        """Take responsibility for this build's comment, if nobody else has.
+
+        There is no compare-and-set, so the claim is written and read back.
+        `set` is last-writer-wins: of two jobs that both found the key unset,
+        the later writer reads its own id back and the other stands down.
+
+        Narrowed, not closed -- both still post if one reads back before the
+        other writes at all.
+        """
+        if not os.environ.get("BUILDKITE"):
+            return True
+
+        # Two jobs writing the same constant would both read it back and both
+        # proceed, so without a job id the protocol cannot run. Fall open.
+        claimant = os.environ.get("BUILDKITE_JOB_ID")
+        if not claimant:
+            return True
+
+        key = f"{COMMENT_CLAIM_PREFIX}{test.get_name()}"
+        # The value, not `exists`: a release leaves the key with an empty one,
+        # since the agent cannot delete a key.
+        claimed_by = self._meta_data("get", key)
+        if claimed_by:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; job {claimed_by} already commented for "
+                f"this build"
+            )
+            return False
+
+        self._meta_data("set", key, claimant)
+
+        # None is a failed read-back, not a lost race -- the key was just
+        # written. Stand down only on positively reading another job's id.
+        winner = self._meta_data("get", key)
+        if winner is not None and winner != claimant:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; job {winner} claimed this build's comment "
+                f"at the same time and won"
+            )
+            return False
+        return True
+
+    def _release_the_builds_comment(self, test: Test) -> None:
+        """Give the claim back, so another job in this build can try."""
+        if not os.environ.get("BUILDKITE"):
+            return
+        self._meta_data("set", f"{COMMENT_CLAIM_PREFIX}{test.get_name()}", "")
+
+    @staticmethod
+    def _is_transient(error: Exception) -> bool:
+        """Whether retrying from another job could succeed.
+
+        Releasing on a permanent failure would make every remaining job fail
+        the same way -- an oversized body 422s every time.
+        """
+        from ray_release.github_client import GitHubException
+
+        if isinstance(error, GitHubException):
+            return error.status >= 500 or error.status == 429
+        return isinstance(error, (requests.Timeout, requests.ConnectionError))
+
+    @staticmethod
+    def _sanitize_summary(summary: str) -> str:
+        """Make the agent's prose safe to interpolate into a github comment.
+
+        In free-form text an `@name` notifies a real person, a `#123` backlinks
+        that issue, and anything read as an html tag (`<lambda>` in a traceback)
+        is dropped by github's sanitizer. The empty html comment breaks the
+        autolinks and renders as nothing.
+
+        `#` only before a digit, so url fragments survive. Code regions are
+        skipped -- rewriting there would show the markers literally.
+        """
+
+        def defuse(text: str) -> str:
+            # Escape first, so the markers inserted after it survive.
+            text = html.escape(text, quote=False)
+            text = text.replace("@", "@<!---->")
+            return re.sub(r"#(?=\d)", "#<!---->", text)
+
+        parts = []
+        position = 0
+        for code in CODE_REGION.finditer(summary):
+            parts.append(defuse(summary[position : code.start()]))
+            parts.append(code.group(0))
+            position = code.end()
+        parts.append(defuse(summary[position:]))
+        return "".join(parts)
+
+    @staticmethod
+    def _markdown_link(text: str, url: str) -> str:
+        """Link a url from the agent's response.
+
+        Only a plain http url is linked; anything else could close the link
+        early and have its tail read as markdown, so it is shown as code.
+        """
+        if ObservabilityAgentReporter._is_plain_url(url):
+            return f"[{text}](<{url}>)"
+        return f"{text}: `{url.replace('`', '')}`"
+
+    @staticmethod
+    def _is_plain_url(url: str) -> bool:
+        """Whether a url from the agent's response is safe as a link target."""
+        return bool(re.fullmatch(r"https?://[^\s<>()\[\]`]+", url))
+
+    def _issue_comment(
+        self,
+        test: Test,
+        result: Result,
+        summary: Optional[str],
+        slack_thread: Optional[str],
+    ) -> str:
+        """The comment body, laid out like the buildkite annotation.
+
+        The test is not named -- the comment is on its own issue. Each part is
+        dropped rather than left empty; the one case where that would leave
+        nothing worth posting is refused by _comment_on_github_issue.
+        """
+        lines = []
+        if result.buildkite_url:
+            lines.append(f"Latest run: {result.buildkite_url}")
+
+        summary_index = None
+        if summary:
+            if lines:
+                lines.append("")
+            lines.append("Observability Agent RCA:")
+            summary_index = len(lines) + 1
+            lines += ["", self._sanitize_summary(summary)]
+
+        if slack_thread:
+            lines += [
+                "",
+                f"{self._markdown_link('Full report and feedback', slack_thread)} "
+                "— rate it with the 'All good' or 'Needs correction' buttons in "
+                "the thread.",
+            ]
+
+        body = "\n".join(lines)
+        if len(body) <= GITHUB_COMMENT_LIMIT or summary_index is None:
+            return body
+
+        # The rest is this reporter's own text, so what it takes is what the
+        # summary must fit inside -- the slack link included.
+        overhead = len(body) - len(lines[summary_index])
+        lines[summary_index] = self._fit_summary(
+            summary, GITHUB_COMMENT_LIMIT - overhead
+        )
+        return "\n".join(lines)
+
+    @classmethod
+    def _fit_summary(cls, summary: str, budget: int) -> str:
+        """Sanitize the summary, trimmed to at most `budget` characters.
+
+        Trimmed raw and re-sanitized: sanitizing expands (`<` to four
+        characters, `@` to eight), so a raw budget would still overflow and
+        cutting sanitized text would cut through a half-written entity.
+
+        Each pass shortens in proportion to the overshoot, and by at least one
+        character so the loop ends. Subtracting the overshoot outright loses
+        the whole analysis for a summary full of `@` or `<`.
+        """
+        rendered = cls._sanitize_summary(summary)
+        if len(rendered) <= budget:
+            return rendered
+
+        room = budget - len(TRUNCATION_NOTE)
+        if room <= 0:
+            # No room for any of it; the rest of the comment still stands.
+            return ""
+
+        cut = room
+        while cut > 0:
+            rendered = cls._sanitize_summary(summary[:cut])
+            if len(rendered) <= room:
+                return rendered + TRUNCATION_NOTE
+            cut = min(cut - 1, room * cut // len(rendered))
+        return TRUNCATION_NOTE.strip()
 
     def _annotate(
         self,
@@ -216,14 +522,10 @@ class ObservabilityAgentReporter(Reporter):
     ) -> None:
         """Annotate the buildkite job with this attempt's analysis.
 
-        The annotation is scoped to the job, so each attempt of a retried test
-        annotates its own job and buildkite shows them together on the build
-        page: every attempt's report is kept, attributed to the attempt that
-        produced it.
-
-        `--append` is passed for the case of a job annotating twice under this
-        context. That does not happen today -- one release test job runs one
-        test once -- but replacing would be the wrong behaviour if it ever did.
+        Job-scoped, so each attempt of a retried test annotates its own job and
+        buildkite shows them together on the build page. `--append` is inert
+        today -- one job runs one test once -- but replacing would be wrong if
+        that ever changed.
         """
         if not os.environ.get("BUILDKITE"):
             return
@@ -284,7 +586,12 @@ class ObservabilityAgentReporter(Reporter):
         try:
             # Not check=True: an annotation is advisory, and a missing binary or
             # a non-zero exit must not change the outcome of the test run.
-            completed = subprocess.run(command, capture_output=True, text=True)
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=BUILDKITE_AGENT_TIMEOUT,
+            )
         except Exception as e:
             logger.warning(f"Could not annotate the buildkite job: {e}")
             return

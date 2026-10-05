@@ -57,13 +57,7 @@ Ray's unified compute framework consists of three layers:
 
 **Scale machine learning workloads**
 ^^^
-Build ML applications with a toolkit of libraries for distributed
-{doc}`data processing <../data/index>`,
-{doc}`model training <../train/train>`,
-{doc}`tuning <../tune/index>`,
-{doc}`reinforcement learning <../rllib/index>`,
-{doc}`model serving <../serve/index>`,
-and {doc}`more <../ray-more-libs/index>`.
+Build ML applications with a toolkit of libraries for distributed {doc}`data processing <../data/index>`, {doc}`model training <../train/train>`, {doc}`tuning <../tune/index>`, {doc}`reinforcement learning <../rllib/index>`, {doc}`model serving <../serve/index>`, and {doc}`more <../ray-more-libs/index>`.
 +++
 ```{button-ref} libraries-quickstart
 :color: primary
@@ -78,10 +72,7 @@ Ray AI Libraries
 
 **Build distributed applications**
 ^^^
-Build and run distributed applications with a
-{doc}`simple and flexible API <../ray-core/walkthrough>`.
-{doc}`Parallelize <../ray-core/walkthrough>` single machine code with
-little to zero code changes.
+Build and run distributed applications with a {doc}`simple and flexible API <../ray-core/walkthrough>`. {doc}`Parallelize <../ray-core/walkthrough>` single machine code with little to zero code changes.
 
 +++
 ```{button-ref} ../ray-core/walkthrough
@@ -97,12 +88,7 @@ Ray Core
 
 **Deploy large-scale workloads**
 ^^^
-Deploy workloads on {doc}`AWS, GCP, Azure <../cluster/getting-started>` or
-{doc}`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
-Use Ray cluster managers to run Ray on existing
-{doc}`Kubernetes <../cluster/kubernetes/index>`,
-{doc}`YARN <../cluster/vms/user-guides/community/yarn>`,
-or {doc}`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
+Deploy workloads on {doc}`AWS, GCP, Azure <../cluster/getting-started>` or {doc}`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`. Use Ray cluster managers to run Ray on existing {doc}`Kubernetes <../cluster/kubernetes/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, or {doc}`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
 +++
 ```{button-ref} ../cluster/getting-started
 :color: primary
