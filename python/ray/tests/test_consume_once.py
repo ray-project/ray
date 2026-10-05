@@ -1,4 +1,5 @@
 import sys
+import threading
 
 import pytest
 
@@ -34,6 +35,20 @@ class Consumer:
 class Holder:
     def __init__(self, *values, extra=None):
         self.values = values
+
+
+@ray.remote
+class Owner:
+    """Owns a consume-once ref and tries to hand it back to its caller."""
+
+    def __init__(self):
+        self.producer = Producer.remote()
+
+    def return_ref(self):
+        return self.producer.produce.options(_consume_once=True).remote(1)
+
+    def return_nested_ref(self):
+        return [self.producer.produce.options(_consume_once=True).remote(1)]
 
 
 @ray.remote
@@ -176,6 +191,133 @@ def test_consume_once_only_accepted_on_actor_method_options(
             @ray.method(_consume_once=True)
             def m(self):
                 pass
+
+
+def move_state(ref):
+    return ray._private.worker.global_worker.core_worker.get_move_state(ref)
+
+
+def test_move_state_transitions(ray_start_regular_shared):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+
+    ref = producer.produce.options(_consume_once=True).remote(1)
+    plain = producer.produce.remote(2)
+    assert move_state(ref) == "MOVABLE"
+    assert move_state(plain) == "NOT_MOVABLE"
+    assert move_state(ray.ObjectRef.nil()) is None
+
+    # Reads don't consume the ref.
+    assert ray.get(ref) == 1
+    assert move_state(ref) == "MOVABLE"
+
+    assert ray.get(consumer.consume.remote(ref)) == 1
+    assert move_state(ref) == "MOVED"
+    assert ray.get(ref) == 1
+
+    ray.get(consumer.consume.remote(plain))
+    assert move_state(plain) == "NOT_MOVABLE"
+
+
+def test_second_consumer_rejected(ray_start_regular_shared):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+    other_consumer = Consumer.remote()
+
+    ref = producer.produce.options(_consume_once=True).remote(1)
+    consumer.consume.remote(ref)
+    with pytest.raises(ValueError, match="already passed to an actor task"):
+        consumer.consume.remote(ref)
+    with pytest.raises(ValueError, match="already passed to an actor task"):
+        other_consumer.consume_all.remote(1, extra=ref)
+    # A moved ref still can't go to a normal task or an actor constructor.
+    with pytest.raises(ValueError, match="argument to a task"):
+        normal_task.remote(ref)
+    with pytest.raises(ValueError, match="argument to an actor constructor"):
+        Holder.remote(ref)
+
+
+def test_rejected_submit_moves_no_args(ray_start_regular_shared):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+
+    movable = producer.produce.options(_consume_once=True).remote(1)
+    moved = producer.produce.options(_consume_once=True).remote(2)
+    consumer.consume.remote(moved)
+
+    with pytest.raises(ValueError, match="already passed to an actor task"):
+        consumer.consume_all.remote(movable, moved)
+    assert move_state(movable) == "MOVABLE"
+    assert ray.get(consumer.consume.remote(movable)) == 1
+
+
+def test_repeated_arg_is_one_consumption(ray_start_regular_shared):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+
+    ref = producer.produce.options(_consume_once=True).remote(1)
+    assert ray.get(consumer.consume_all.remote(ref, ref, extra=ref)) == [1, 1, 1]
+    assert move_state(ref) == "MOVED"
+    with pytest.raises(ValueError, match="already passed to an actor task"):
+        consumer.consume.remote(ref)
+
+
+def test_concurrent_consumers_only_one_wins(ray_start_regular_shared):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+    ref = producer.produce.options(_consume_once=True).remote(1)
+
+    num_threads = 16
+    barrier = threading.Barrier(num_threads)
+    results = []
+
+    def consume():
+        barrier.wait()
+        try:
+            results.append(consumer.consume.remote(ref))
+        except ValueError as e:
+            results.append(e)
+
+    threads = [threading.Thread(target=consume) for _ in range(num_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    accepted = [r for r in results if isinstance(r, ray.ObjectRef)]
+    assert len(accepted) == 1
+    assert ray.get(accepted[0]) == 1
+    for r in results:
+        if not isinstance(r, ray.ObjectRef):
+            assert "already passed to an actor task" in str(r)
+
+
+@pytest.mark.parametrize("consumed", [False, True])
+def test_borrowing_rejected(ray_start_regular_shared, consumed):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+    ref = producer.produce.options(_consume_once=True).remote(1)
+    if consumed:
+        ray.get(consumer.consume.remote(ref))
+
+    match = "only be passed directly as an argument to one actor task"
+    with pytest.raises(ValueError, match=match):
+        consumer.consume.remote([ref])
+    with pytest.raises(ValueError, match=match):
+        consumer.consume.remote({"ref": ref})
+    with pytest.raises(ValueError, match=match):
+        consumer.consume.remote([ref, ref])
+    with pytest.raises(ValueError, match=match):
+        ray.put([ref])
+    assert move_state(ref) == ("MOVED" if consumed else "MOVABLE")
+
+
+@pytest.mark.parametrize("method", ["return_ref", "return_nested_ref"])
+def test_returning_consume_once_ref_rejected(ray_start_regular_shared, method):
+    owner = Owner.remote()
+
+    with pytest.raises(Exception, match="_consume_once=True"):
+        ray.get(getattr(owner, method).remote())
 
 
 if __name__ == "__main__":
