@@ -104,6 +104,7 @@ def _disk_shuffle_map_task(
     Returns:
         ShuffleHandle describing the on-disk shards for reducers to fetch.
     """
+    exec_stats_builder = BlockExecStats.builder()
     if block_transformer is not None:
         arrow_inputs = [
             TableBlockAccessor.try_convert_block_type(block, block_type=BlockType.ARROW)
@@ -207,6 +208,7 @@ def _disk_shuffle_map_task(
             writer.decoded_bytes_per_partition, num_partitions
         ),
         "schema": output_schema,
+        "exec_stats": exec_stats_builder.build(block_ser_time_s=0.0, task_idx=map_id),
     }
 
 
@@ -278,16 +280,20 @@ def _disk_shuffle_reduce_task(
             out.append(tables)
         return out
 
+    exec_stats_builder = BlockExecStats.builder()
+
     def _yield_with_stats(block: Block):
         """Yield ``block`` then its pickled metadata. The two-yield protocol
         lets the executor slot ``StreamingGeneratorStats`` in between for
         accurate ``block_ser_time_s``."""
-        exec_stats_builder = BlockExecStats.builder()
+        nonlocal exec_stats_builder
         exec_stats_builder.finish()
         gen_stats: StreamingGeneratorStats = yield block
         exec_stats = exec_stats_builder.build(
             block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
+            task_idx=partition_id,
         )
+        exec_stats_builder = BlockExecStats.builder()
         yield pickle.dumps(
             BlockMetadataWithSchema.from_block(
                 block,

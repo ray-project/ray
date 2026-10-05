@@ -22,11 +22,11 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/task_manager_interface.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/fake_actor_creator.h"
+#include "ray/core_worker/fake_task_manager_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/util/clock.h"
 
@@ -69,9 +69,9 @@ TaskSpecification BuildEmptyTaskSpec() {
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
-class MockTaskManager : public MockTaskManagerInterface {
+class FakeTaskManager : public FakeTaskManagerInterface {
  public:
-  MockTaskManager() {}
+  FakeTaskManager() {}
 
   void CompletePendingTask(const TaskID &,
                            const rpc::PushTaskReply &,
@@ -140,7 +140,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -158,7 +158,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -205,7 +205,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -251,7 +251,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -283,7 +283,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -319,7 +319,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -359,7 +359,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -400,7 +400,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -437,7 +437,7 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [](const ObjectID &object_id) {
@@ -471,7 +471,7 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   InstrumentedIOContextWithThread io_context("LocalDependencyResolverTest");
   Clock clock;
   auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
-  auto task_manager = std::make_shared<MockTaskManager>();
+  auto task_manager = std::make_shared<FakeTaskManager>();
   FakeActorCreator actor_creator;
 
   // `obj1` is a GPU object, and `obj2` is a normal object.
