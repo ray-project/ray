@@ -281,7 +281,8 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     # Count only text matched under this request's model: model IDs
                     # can share a prefix with each other.
                     matched_chars = max(len(matched_text) - len(key_prefix), 0)
-                    match_rate = matched_chars / len(input_text) if len(input_text) > 0 else 0.0
+                    # Empty text (e.g. image-only messages) has no prefix to match.
+                    match_rate = matched_chars / len(input_text) if input_text else 0.0
                     if match_rate < self._match_rate_threshold:
                         smallest_tenants_id_strings = ray.get(
                             self._tree_actor.get_smallest_tenants.remote(
@@ -387,7 +388,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             pending_request, candidate_replicas
         )
         if chosen_replicas[0]:
-            if pending_request.metadata.multiplexed_model_id:
+            if (
+                pending_request is not None
+                and pending_request.metadata.multiplexed_model_id
+            ):
                 spill_replicas = self._get_spill_replicas(
                     chosen_replicas[0], candidate_replicas
                 )

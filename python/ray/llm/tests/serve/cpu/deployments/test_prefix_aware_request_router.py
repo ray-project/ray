@@ -284,6 +284,21 @@ class TestPrefixAwareLogic:
         req = fake_pending_request(prompt="hello world", multiplexed_model_id="m1")
         assert await prefix_request_router._choose_replica_for_request(req) == r1
 
+    @pytest.mark.asyncio
+    async def test_image_only_request_uses_smallest_tenant(self, prefix_request_router):
+        """A request without text, e.g. image-only messages, gets the smallest tenant."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello")
+
+        image = {"type": "image_url", "image_url": {"url": "https://example.com/a.png"}}
+        req = fake_pending_request(messages=[{"role": "user", "content": [image]}])
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
 
 class TestMultiplexedRouting:
     """Tests for multiplexed requests, e.g. ones for LoRA adapters."""
