@@ -7,7 +7,10 @@ from typing import List, Optional
 from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
 )
-from ray._private.authentication.authentication_utils import is_token_auth_enabled
+from ray._private.authentication.authentication_utils import (
+    is_k8s_auth_enabled,
+    is_token_auth_enabled,
+)
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
@@ -25,10 +28,6 @@ _K8S_SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
 # API server address for TokenReview. Used in InitK8sClientConfig. Matches
 # kK8sServiceHostEnvVar and kK8sServicePortEnvVar in k8s_constants.h.
 _K8S_API_SERVER_ENV_VARS = ("KUBERNETES_SERVICE_HOST", "KUBERNETES_SERVICE_PORT")
-
-
-def _is_k8s_token_auth_enabled(env_vars: dict) -> bool:
-    return env_vars.get("RAY_ENABLE_K8S_TOKEN_AUTH", "").lower() in ("true", "1")
 
 
 async def _create_impl(image_uri: str, logger: logging.Logger):
@@ -138,7 +137,7 @@ def _modify_context_impl(
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
             env_vars["RAY_AUTH_TOKEN_PATH"] = token_path
 
-        if _is_k8s_token_auth_enabled(env_vars):
+        if is_k8s_auth_enabled():
             for sa_dir in (_RAY_SA_TOKEN_DIR, _K8S_SA_DIR):
                 if os.path.isdir(sa_dir):
                     container_command.extend(["-v", f"{sa_dir}:{sa_dir}:ro"])
