@@ -100,7 +100,7 @@ class AggregateFn:
             from the list. If not provided, the final accumulator state is returned
             as-is.
 
-    Example:
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import AggregateFn
         >>> # A simple aggregator that counts how many rows there are per group
@@ -440,8 +440,7 @@ def _fold_accumulator_column(
 class Count(VectorizedAggregateFnV2[int, int]):
     """Defines count aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Count
         >>> ds = ray.data.range(100)
@@ -513,8 +512,7 @@ class AsList(VectorizedAggregateFnV2[List, List]):
     """Listing aggregation combining all values within the group into a single
     list element.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import AsList
         >>> ds = ray.data.range(10)
@@ -574,8 +572,7 @@ class AsList(VectorizedAggregateFnV2[List, List]):
 class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
     """Defines sum aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Sum
         >>> ds = ray.data.range(100)
@@ -637,8 +634,7 @@ class Min(
 ):
     """Defines min aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Min
         >>> ds = ray.data.range(100)
@@ -709,8 +705,7 @@ class Max(
 ):
     """Defines max aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Max
         >>> ds = ray.data.range(100)
@@ -779,8 +774,7 @@ class Max(
 class Mean(AggregateFnV2[List[Union[int, float]], float]):
     """Defines mean (average) aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Mean
         >>> ds = ray.data.range(100)
@@ -869,8 +863,7 @@ class Std(AggregateFnV2[List[Union[int, float]], float]):
 
     See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Std
         >>> ds = ray.data.range(100)
@@ -972,8 +965,7 @@ class AbsMax(
 ):
     """Defines absolute max aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import AbsMax
         >>> ds = ray.data.range(100)
@@ -1053,8 +1045,7 @@ class AbsMax(
 class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
     """Defines Quantile aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Quantile
         >>> ds = ray.data.range(100)
@@ -1141,8 +1132,7 @@ class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
 class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
     """Defines unique aggregation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import Unique
         >>> ds = ray.data.range(100)
@@ -1285,8 +1275,7 @@ class CountDistinct(Unique):
     This aggregation computes the count of distinct values in a column.
     It is similar to SQL's COUNT(DISTINCT column_name) operation.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import CountDistinct
         >>> # Create a dataset with repeated values
@@ -1363,8 +1352,7 @@ class ValueCounter(AggregateFnV2):
     the unique values found in the column, and "counts" containing the corresponding
     count for each value.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import ValueCounter
         >>> # Create a dataset with repeated values
@@ -1564,8 +1552,7 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
     between 0.0 and 100.0, where 0.0 means no missing values and 100.0 means all values
     are missing.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import MissingValuePercentage
         >>> # Create a dataset with some missing values
@@ -1645,8 +1632,7 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
     a percentage value between 0.0 and 100.0, where 0.0 means no zero values and 100.0
     means all non-null values are zero.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import ZeroPercentage
         >>> # Create a dataset with some zero values
@@ -1772,8 +1758,7 @@ class ApproximateQuantile(AggregateFnV2):
 
         Null values in the target column are ignored when constructing the sketch.
 
-        Example:
-
+        Examples:
             >>> import ray
             >>> from ray.data.aggregate import ApproximateQuantile
             >>> # Create a dataset with some values
@@ -1862,8 +1847,7 @@ class ApproximateTopK(AggregateFnV2):
               results to miss items that should appear in the output.
             - The error bounds increase, reducing the accuracy of the reported counts.
 
-        Example:
-
+        Examples:
             >>> import ray
             >>> from ray.data.aggregate import ApproximateTopK
             >>> ds = ray.data.from_items([
@@ -1961,8 +1945,7 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
     Ties are broken deterministically: values with equal counts are ordered by
     value (ascending), with nulls last.
 
-    Example:
-
+    Examples:
         >>> import ray
         >>> from ray.data.aggregate import TopKUnique
         >>> ds = ray.data.from_items([
