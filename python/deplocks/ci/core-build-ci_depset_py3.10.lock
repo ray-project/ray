@@ -375,6 +375,7 @@ azure-mgmt-core==1.6.0 \
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
 azure-mgmt-network==29.0.0 \
     --hash=sha256:577fbc76a195f744b97bac4275e11279f7f3e63c659d98773f3b4a9a6e0943b9 \
     --hash=sha256:c04dc0d9f6b936abe4ec7c5fa9cee1514795b1f84d2742dead2115dcde33476c
@@ -384,6 +385,12 @@ azure-mgmt-network==29.0.0 \
 azure-mgmt-resource==24.0.0 \
     --hash=sha256:27b32cd223e2784269f5a0db3c282042886ee4072d79cedc638438ece7cd0df4 \
     --hash=sha256:cf6b8995fcdd407ac9ff1dd474087129429a1d90dbb1ac77f97c19b96237b265
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
+azure-mgmt-resource-deployments==2.0.0 \
+    --hash=sha256:2fb35ae81649fd391994898cd7b434ad10ab3db2f2c08005a2dc0ee3bed00a27 \
+    --hash=sha256:f039d1490818d337280f63a915bba54076b2b6569b83f3923cd5c5e2f3fc4387
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
@@ -2109,6 +2116,7 @@ isodate==0.7.2 \
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
     #   msrest
 itsdangerous==2.2.0 \
     --hash=sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef \
@@ -6369,6 +6377,7 @@ typing-extensions==4.15.0 \
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
     #   cfn-lint
     #   dulwich
     #   etils

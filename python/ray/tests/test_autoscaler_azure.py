@@ -1,8 +1,14 @@
 """Tests for Azure autoscaler availability zone functionality."""
 import copy
+import importlib.util
+import sys
+import types
 import unittest
 from unittest.mock import Mock, patch
 
+from azure.core.exceptions import ResourceNotFoundError
+
+from ray.autoscaler._private._azure import config as azure_config
 from ray.autoscaler._private._azure.node_provider import AzureNodeProvider
 
 
@@ -394,6 +400,134 @@ class TestAzureAvailabilityZonePrecedence(unittest.TestCase):
 
         self.assertEqual(zones, ["2"])
         self.assertEqual(source, "node config availability_zone")
+
+
+class TestAzureDeploymentsClient(unittest.TestCase):
+    """ARM deployments moved to azure-mgmt-resource-deployments in
+    azure-mgmt-resource 25.0.0. Ray uses the split client when it is installed
+    and falls back to the bundled azure-mgmt-resource<25 surface otherwise."""
+
+    OUTPUTS = {
+        "msi": {"value": "test-msi"},
+        "nsg": {"value": "test-nsg"},
+        "subnet": {"value": "test-subnet"},
+    }
+
+    def _bootstrap(self, resource_client):
+        config = {
+            "cluster_name": "test-cluster",
+            "provider": {
+                "resource_group": "test-rg",
+                "location": "westus2",
+                "subscription_id": "test-sub-id",
+            },
+        }
+        resource_client.resources.list_by_resource_group.return_value = []
+        resource_client.resources.get_by_id.side_effect = ResourceNotFoundError("nf")
+        with (
+            patch.object(azure_config, "AzureCliCredential"),
+            patch.object(
+                azure_config, "ResourceManagementClient", return_value=resource_client
+            ),
+        ):
+            return azure_config._configure_resource_group(config)
+
+    def test_create_node_uses_deployments_client(self):
+        provider_config = {
+            "resource_group": "test-rg",
+            "location": "westus2",
+            "subscription_id": "test-sub-id",
+            "unique_id": "abcd1234",
+            "msi": "test-msi",
+            "nsg": "test-nsg",
+            "subnet": "test-subnet",
+        }
+        with patch.object(
+            AzureNodeProvider,
+            "__init__",
+            lambda self, provider_config, cluster_name: None,
+        ):
+            provider = AzureNodeProvider(provider_config, "test-cluster")
+        provider.provider_config = provider_config
+        provider.cluster_name = "test-cluster"
+        provider._validate_zones_for_node_pool = Mock(return_value=[])
+        # The resource client has no `.deployments`, as in azure-mgmt-resource>=25.
+        provider.resource_client = Mock(spec=["resources", "resource_groups"])
+        provider.deployments_client = Mock(spec=["deployments"])
+        provider.deployments_client.deployments = Mock(spec=["begin_create_or_update"])
+
+        provider._create_node(
+            {"azure_arm_parameters": {"vmSize": "Standard_D2s_v3"}},
+            {"ray-node-kind": "worker"},
+            1,
+        )
+
+        begin_create = provider.deployments_client.deployments.begin_create_or_update
+        begin_create.assert_called_once()
+        kwargs = begin_create.call_args.kwargs
+        self.assertEqual(kwargs["resource_group_name"], "test-rg")
+        self.assertEqual(
+            kwargs["parameters"]["properties"]["mode"],
+            azure_config.DeploymentMode.INCREMENTAL,
+        )
+        begin_create.return_value.wait.assert_called_once()
+
+    def test_bootstrap_uses_deployments_client(self):
+        # The resource client has no `.deployments`, as in azure-mgmt-resource>=25.
+        resource_client = Mock(spec=["resources", "resource_groups", "providers"])
+        deployments_client = Mock(spec=["deployments"])
+        deployments_client.deployments = Mock(spec=["begin_create_or_update"])
+        begin_create = deployments_client.deployments.begin_create_or_update
+        begin_create.return_value.result.return_value.properties.outputs = self.OUTPUTS
+        client_cls = Mock(return_value=deployments_client)
+
+        with patch.object(azure_config, "DeploymentsMgmtClient", client_cls):
+            result = self._bootstrap(resource_client)
+
+        self.assertEqual(client_cls.call_args.args[1], "test-sub-id")
+        begin_create.assert_called_once()
+        kwargs = begin_create.call_args.kwargs
+        self.assertEqual(kwargs["resource_group_name"], "test-rg")
+        self.assertEqual(kwargs["deployment_name"], "ray-config")
+        self.assertEqual(
+            kwargs["parameters"]["properties"]["mode"],
+            azure_config.DeploymentMode.INCREMENTAL,
+        )
+        self.assertEqual(result["provider"]["msi"], "test-msi")
+
+    def test_bootstrap_legacy_fallback_without_deployments_package(self):
+        # azure-mgmt-resource<25 without azure-mgmt-resource-deployments: the
+        # deployment operations live on the resource client itself.
+        resource_client = Mock(spec=["resources", "resource_groups", "providers"])
+        resource_client.deployments = Mock(spec=["create_or_update"])
+        create = resource_client.deployments.create_or_update
+        create.return_value.result.return_value.properties.outputs = self.OUTPUTS
+
+        with patch.object(azure_config, "DeploymentsMgmtClient", None):
+            result = self._bootstrap(resource_client)
+            self.assertIs(
+                azure_config.get_deployments_client(resource_client, None, "sub"),
+                resource_client,
+            )
+
+        create.assert_called_once()
+        self.assertEqual(create.call_args.kwargs["resource_group_name"], "test-rg")
+        self.assertEqual(result["provider"]["nsg"], "test-nsg")
+
+    def test_incompatible_sdk_raises_actionable_error(self):
+        # Neither the split package nor the legacy deployments models exist.
+        blocked = {
+            "azure.mgmt.resource.deployments": None,
+            "azure.mgmt.resource.deployments.models": None,
+            "azure.mgmt.resource.resources.models": types.ModuleType("models"),
+        }
+        spec = importlib.util.spec_from_file_location(
+            "_azure_config_probe", azure_config.__file__
+        )
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, blocked):
+            with self.assertRaisesRegex(ImportError, "azure-mgmt-resource-deployments"):
+                spec.loader.exec_module(module)
 
 
 if __name__ == "__main__":
