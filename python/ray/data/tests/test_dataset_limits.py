@@ -78,6 +78,14 @@ def test_limit(ray_start_regular_shared, lazy):
         assert extract_values("id", ds.limit(i).take(200)) == list(range(i))
 
 
+@pytest.mark.parametrize("limit", [-1, -5])
+def test_limit_rejects_negative(ray_start_regular_shared, limit):
+    # A negative limit used to flow through and make count() return a negative
+    # number instead of raising.
+    with pytest.raises(ValueError, match="limit must be non-negative"):
+        ray.data.range(10).limit(limit)
+
+
 # NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
 # redundant files due to exponential ramp-up.
 @pytest.mark.parametrize("limit", [10, 20, 30, 60])

@@ -4473,6 +4473,8 @@ class Dataset:
         Returns:
             The truncated dataset.
         """
+        if limit < 0:
+            raise ValueError(f"limit must be non-negative, but got {limit}.")
         op = Limit(limit=limit, input_dependencies=[self._logical_plan.dag])
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_parent(self, logical_plan)
