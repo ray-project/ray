@@ -181,7 +181,9 @@ class RouterApplication:
                 f"Available models: {list(self._model_applications)}",
                 "NotFoundError",
             )
-        return await self._decide(model_id, _get_routing_payload_from_body(data), request)
+        return await self._decide(
+            model_id, _get_routing_payload_from_body(data), request
+        )
 
     async def _get_handle(self, model_id: str) -> DeploymentHandle:
         handle = self._handles.get(model_id)
