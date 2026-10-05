@@ -67,7 +67,7 @@ redirects:
   to: /serve/llm/user-guides/prefill-decode.html
   type: page
 - from: /serve/llm/api.html
-  to: /serve/api/index.html#llm-api
+  to: /serve/api/llm.html
   type: page
 - from: /serve/tutorials/intel-habana-gaudi-inference.html
   to: /serve/tutorials/intel-gaudi-inference.html
