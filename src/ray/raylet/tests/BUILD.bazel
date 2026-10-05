@@ -158,6 +158,24 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "gpu_memory_isolator_test",
+    size = "small",
+    srcs = ["gpu_memory_isolator_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
+        "//src/ray/raylet:gpu_memory_isolator",
+        "@boost//:asio",
+    ],
+)
+
+ray_cc_test(
     name = "node_manager_test",
     size = "small",
     srcs = ["node_manager_test.cc"],
