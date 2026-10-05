@@ -45,8 +45,6 @@ To learn the basics of KubeRay and run your first Ray application with it, see {
 * [RayService Quick Start](kuberay-rayservice-quickstart)
 * [RayCronJob Quick Start](kuberay-raycronjob-quickstart)
 
-For guides that don't depend on KubeRay, such as storage and container image pull latency, see {ref}`ray-on-kubernetes`.
-
 ## Learn more
 
 Use the following guides to deploy, configure, and operate Ray clusters with KubeRay.

@@ -8,13 +8,6 @@ myst:
 
 # Ray on Kubernetes
 
-```{toctree}
-:hidden:
-
-user-guides/storage
-user-guides/reduce-image-pull-latency
-```
-
 This section covers Ray on Kubernetes topics that sit outside the KubeRay docs. Each Ray node runs as a Kubernetes Pod.
 
 To deploy and manage Ray clusters on Kubernetes, use one of the following operators:
