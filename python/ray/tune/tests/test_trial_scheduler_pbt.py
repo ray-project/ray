@@ -29,6 +29,7 @@ from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
 from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
+from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
@@ -394,6 +395,45 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         np.random.seed(1000)
         results = tuner.fit()
         assert not results.errors
+
+    def testPauseTrialWhileSavingCachesCorrectDecision(self):
+        """Regression test for https://github.com/ray-project/ray/issues/57906
+        Pausing a saving trial with should_checkpoint=False should cache PAUSE, not STOP.
+        """
+        from ray.tune.tests.execution.utils import (
+            TestingTrial,
+            create_execution_test_objects,
+        )
+
+        register_mock_trainable()
+        runner, actor_manager, resource_manager = create_execution_test_objects()
+
+        trial = TestingTrial(MOCK_TRAINABLE_NAME, config={"a": 1})
+        trial.init_local_path()
+        runner.add_trial(trial)
+
+        # Set up a running trial with an actor
+        tracked_actor = actor_manager.add_actor(
+            cls=MOCK_TRAINABLE_NAME,
+            kwargs={},
+            resource_request=trial.placement_group_factory,
+        )
+        runner._trial_to_actor[trial] = tracked_actor
+        runner._actor_to_trial[tracked_actor] = trial
+        runner._set_trial_status(trial, Trial.RUNNING)
+
+        # Mark trial as currently saving
+        trial.temporary_state.saving_to = "fake_saving_marker"
+        assert trial.is_saving
+
+        # This should cache PAUSE, not STOP
+        runner._schedule_trial_pause(trial, should_checkpoint=False)
+
+        cached_decision = runner._cached_trial_decisions.get(trial.trial_id)
+        assert (
+            cached_decision == TrialScheduler.PAUSE
+        ), f"Expected PAUSE, got {cached_decision}"
+        assert trial.status == Trial.PAUSED
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
