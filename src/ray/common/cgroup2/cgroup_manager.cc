@@ -49,6 +49,8 @@ CgroupManager::CgroupManager(std::string base_cgroup,
       user_cgroup_ + std::filesystem::path::preferred_separator + kWorkersCgroupName;
   non_ray_cgroup_ =
       user_cgroup_ + std::filesystem::path::preferred_separator + kNonRayCgroupName;
+  gpu_workers_cgroup_ =
+      user_cgroup_ + std::filesystem::path::preferred_separator + kGpuWorkersCgroupName;
 }
 
 CgroupManager::~CgroupManager() {
@@ -64,6 +66,9 @@ CgroupManager::CgroupManager(CgroupManager &&other)
       user_cgroup_(std::move(other.user_cgroup_)),
       workers_cgroup_(std::move(other.workers_cgroup_)),
       non_ray_cgroup_(std::move(other.non_ray_cgroup_)),
+      gpu_workers_cgroup_(std::move(other.gpu_workers_cgroup_)),
+      gpu_workers_status_(std::move(other.gpu_workers_status_)),
+      gpu_worker_cgroups_(std::move(other.gpu_worker_cgroups_)),
       cleanup_operations_(std::move(other.cleanup_operations_)),
       cgroup_driver_(std::move(other.cgroup_driver_)) {}
 
@@ -74,6 +79,9 @@ CgroupManager &CgroupManager::operator=(CgroupManager &&other) {
   user_cgroup_ = std::move(other.user_cgroup_);
   workers_cgroup_ = std::move(other.workers_cgroup_);
   non_ray_cgroup_ = std::move(other.non_ray_cgroup_);
+  gpu_workers_cgroup_ = std::move(other.gpu_workers_cgroup_);
+  gpu_workers_status_ = std::move(other.gpu_workers_status_);
+  gpu_worker_cgroups_ = std::move(other.gpu_worker_cgroups_);
   cleanup_operations_ = std::move(other.cleanup_operations_);
   cgroup_driver_ = std::move(other.cgroup_driver_);
   return *this;
@@ -390,6 +398,71 @@ Status CgroupManager::AddProcessToWorkersCgroup(const std::string &pid) {
 
 Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
   return AddProcessToCgroup(system_leaf_cgroup_, pid);
+}
+
+Status CgroupManager::InitializeGpuWorkersCgroup() {
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(gpu_workers_cgroup_));
+  RegisterDeleteCgroup(gpu_workers_cgroup_);
+
+  StatusOr<std::unordered_set<std::string>> available_controllers =
+      cgroup_driver_->GetAvailableControllers(base_cgroup_);
+  RAY_RETURN_NOT_OK(available_controllers.status());
+  // Without dmem, the NVIDIA driver accounts GPU memory per cgroup on its own.
+  if (available_controllers->count(kDeviceMemoryController) > 0) {
+    for (const std::string *cgroup :
+         {&base_cgroup_, &node_cgroup_, &user_cgroup_, &gpu_workers_cgroup_}) {
+      StatusOr<std::unordered_set<std::string>> enabled_controllers =
+          cgroup_driver_->GetEnabledControllers(*cgroup);
+      RAY_RETURN_NOT_OK(enabled_controllers.status());
+      if (enabled_controllers->count(kDeviceMemoryController) > 0) {
+        continue;
+      }
+      RAY_RETURN_NOT_OK(
+          cgroup_driver_->EnableController(*cgroup, kDeviceMemoryController));
+      RegisterDisableController(*cgroup, kDeviceMemoryController);
+    }
+  }
+
+  cleanup_operations_.emplace_back([this]() {
+    for (const std::string &cgroup : gpu_worker_cgroups_) {
+      Status s = cgroup_driver_->MoveAllProcesses(cgroup, workers_cgroup_);
+      if (s.ok()) {
+        s = cgroup_driver_->DeleteCgroup(cgroup);
+      }
+      if (!s.ok()) {
+        RAY_LOG(WARNING) << absl::StrFormat(
+            "Failed to clean up cgroup %s with error %s.", cgroup, s.ToString());
+      }
+    }
+  });
+  return Status::OK();
+}
+
+StatusOr<std::string> CgroupManager::AddProcessToGpuWorkerCgroup(const std::string &name,
+                                                                 const std::string &pid) {
+  if (!gpu_workers_status_.has_value()) {
+    gpu_workers_status_ = InitializeGpuWorkersCgroup();
+  }
+  RAY_RETURN_NOT_OK(*gpu_workers_status_);
+  std::string cgroup =
+      gpu_workers_cgroup_ + std::filesystem::path::preferred_separator + name;
+  RAY_RETURN_NOT_OK(cgroup_driver_->CreateCgroup(cgroup));
+  gpu_worker_cgroups_.insert(cgroup);
+  RAY_RETURN_NOT_OK(cgroup_driver_->AddProcessToCgroup(cgroup, pid));
+  return cgroup;
+}
+
+Status CgroupManager::DeleteGpuWorkerCgroup(const std::string &name) {
+  std::string cgroup =
+      gpu_workers_cgroup_ + std::filesystem::path::preferred_separator + name;
+  auto it = gpu_worker_cgroups_.find(cgroup);
+  if (it == gpu_worker_cgroups_.end()) {
+    return Status::NotFound(absl::StrFormat("Cgroup %s was not created.", cgroup));
+  }
+  RAY_RETURN_NOT_OK(cgroup_driver_->MoveAllProcesses(cgroup, workers_cgroup_));
+  RAY_RETURN_NOT_OK(cgroup_driver_->DeleteCgroup(cgroup));
+  gpu_worker_cgroups_.erase(it);
+  return Status::OK();
 }
 
 std::string CgroupManager::GetSystemCgroupPath() const { return system_cgroup_; }
