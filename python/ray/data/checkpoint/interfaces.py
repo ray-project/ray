@@ -244,7 +244,7 @@ class CheckpointConfig:
 # and training ingest, but the checkpoint "write" configuration differs.
 @PublicAPI(stability="alpha")
 @dataclass
-class TrainingIngestCheckpointConfig:
+class DatasetCheckpointConfig:
     """Configuration for training ingest checkpointing.
 
     Args:

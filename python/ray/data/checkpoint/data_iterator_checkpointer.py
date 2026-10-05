@@ -16,7 +16,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import deepcopy_array
 from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
-from ray.data.checkpoint.interfaces import TrainingIngestCheckpointConfig
+from ray.data.checkpoint.interfaces import DatasetCheckpointConfig
 from ray.data.context import DataContext
 from ray.data.datasource import PartitionStyle, PathPartitionFilter
 
@@ -253,7 +253,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
 
     def __init__(
         self,
-        checkpoint_config: TrainingIngestCheckpointConfig,
+        checkpoint_config: DatasetCheckpointConfig,
         world_rank: int = 0,
         world_size: int = 1,
         state_dict: Optional[RowIDBasedStateDict] = None,

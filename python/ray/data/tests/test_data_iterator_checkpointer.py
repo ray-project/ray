@@ -14,7 +14,7 @@ from ray.data.checkpoint.data_iterator_checkpointer import (
     RowIDBasedDataIteratorCheckpointer,
     RowIDBasedStateDict,
 )
-from ray.data.checkpoint.interfaces import TrainingIngestCheckpointConfig
+from ray.data.checkpoint.interfaces import DatasetCheckpointConfig
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -59,14 +59,14 @@ def _read_checkpoint_files(root_path: Path) -> List[int]:
 
 def test_generate_id_column_not_implemented():
     with pytest.raises(NotImplementedError, match="generate_id_column"):
-        TrainingIngestCheckpointConfig(id_column="id", generate_id_column=True)
+        DatasetCheckpointConfig(id_column="id", generate_id_column=True)
 
 
 @pytest.mark.parametrize("checkpoint_path", [None, ""])
 def test_checkpoint_path_not_set(checkpoint_path):
     with pytest.raises(ValueError, match="`checkpoint_path` must be set"):
         RowIDBasedDataIteratorCheckpointer(
-            checkpoint_config=TrainingIngestCheckpointConfig(
+            checkpoint_config=DatasetCheckpointConfig(
                 id_column="id", checkpoint_path=checkpoint_path
             )
         )
@@ -74,7 +74,7 @@ def test_checkpoint_path_not_set(checkpoint_path):
 
 def test_basic(tmp_path):
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -99,7 +99,7 @@ def test_periodic_flush_on_file_size_threshold(tmp_path):
     in-memory row ids size exceeds a threshold.
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -125,7 +125,7 @@ def test_periodic_flush_on_file_size_threshold(tmp_path):
 def test_force_flush(tmp_path):
     """Tests forcing a flush of staged row IDs to a checkpoint file."""
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -152,7 +152,7 @@ def test_multi_worker_checkpoint_commit(tmp_path):
     world_size = 4
     checkpointers = [
         RowIDBasedDataIteratorCheckpointer(
-            checkpoint_config=TrainingIngestCheckpointConfig(
+            checkpoint_config=DatasetCheckpointConfig(
                 checkpoint_path=str(tmp_path), id_column="id"
             ),
             world_rank=i,
@@ -190,7 +190,7 @@ def test_state_dict_across_epoch_lifecycle(tmp_path):
     more than necessary if called multiple times in a row.
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -263,7 +263,7 @@ def test_end_epoch(tmp_path, delete_checkpoints_after_epoch):
     Ending an epoch should flush any staged row IDs to a checkpoint file.
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path),
             id_column="id",
             delete_checkpoints_after_epoch=delete_checkpoints_after_epoch,
@@ -306,7 +306,7 @@ def test_unfinished_epoch(tmp_path):
             ...
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -330,7 +330,7 @@ def test_checkpoint_path(tmp_path):
     """Test that the checkpoint path is correctly constructed."""
     world_rank = 1
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         ),
         world_rank=world_rank,
@@ -350,7 +350,7 @@ def test_setup_new_checkpoint_directory(tmp_path):
     if it exists before writing to it.
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -366,7 +366,7 @@ def test_setup_new_checkpoint_directory(tmp_path):
 def test_load_state_dict_from_mid_epoch(tmp_path):
     """Test that the checkpointer state can continue from a mid-epoch state dict."""
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         ),
         state_dict=RowIDBasedStateDict(
@@ -417,7 +417,7 @@ def test_load_state_dict_from_start_or_end_of_epoch(tmp_path):
 
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         ),
         state_dict=RowIDBasedStateDict(
@@ -457,7 +457,7 @@ def test_load_state_dict_equivalence(tmp_path, state_dict):
     returns the same state dict.
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         ),
         state_dict=RowIDBasedStateDict.from_dict(state_dict),
@@ -470,7 +470,7 @@ def test_load_state_dict_equivalence(tmp_path, state_dict):
 def test_flush_exception(mock_write_table, tmp_path, when_to_raise):
     """Test that the checkpointer raises an exception if a flush operation fails."""
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -498,7 +498,7 @@ def test_iter_batches_with_checkpointing(ray_start_10_cpus, tmp_path, reinit_ite
     A checkpoint is also created at the end of each epoch.
     """
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path), id_column="id"
         )
     )
@@ -591,7 +591,7 @@ def test_data_context_execution_idx_from_checkpoint(
     ), "Shuffle order should differ between epochs when reseed_after_epoch=True"
 
     checkpointer = RowIDBasedDataIteratorCheckpointer(
-        checkpoint_config=TrainingIngestCheckpointConfig(
+        checkpoint_config=DatasetCheckpointConfig(
             checkpoint_path=str(tmp_path / "checkpoints"), id_column="id"
         ),
         state_dict=RowIDBasedStateDict(
