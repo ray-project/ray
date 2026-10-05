@@ -413,10 +413,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceRequest &createUpdatedResources);
 
-  /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
-  /// This is called whenever there's an update to the resources on the local node.
-  void TryLocalInfeasibleTaskScheduling();
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
