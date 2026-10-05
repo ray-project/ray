@@ -269,4 +269,4 @@ Note that the machine calling `ray up` will not be considered as part of the Ray
 
 ## What's next?
 
-Check out our {doc}`Deployment section <../cluster/getting-started>` for more information on deploying Ray in different settings, including {doc}`Kubernetes <../cluster/kubernetes/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, and {doc}`SLURM <../cluster/vms/user-guides/community/slurm>`.
+Check out our {doc}`Deployment section <../cluster/getting-started>` for more information on deploying Ray in different settings, including {doc}`Kubernetes <../kuberay/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, and {doc}`SLURM <../cluster/vms/user-guides/community/slurm>`.
