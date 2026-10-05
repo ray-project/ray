@@ -14,9 +14,9 @@
 
 #include "ray/util/process.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <boost/process/child.hpp>
 #include <chrono>
 #include <cstdio>
@@ -65,7 +65,7 @@ TEST(UtilTest, GetAllProcsWithPpid) {
   auto child_procs = *maybe_child_procs;
   for (auto &child_proc : actual_child_procs) {
     pid_t pid = child_proc.id();
-    EXPECT_THAT(child_procs, ::testing::Contains(pid));
+    EXPECT_NE(std::find(child_procs.begin(), child_procs.end(), pid), child_procs.end());
   }
 
   // Clean up each child proc.

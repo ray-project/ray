@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import threading
 import time
@@ -33,6 +34,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -639,6 +641,7 @@ class StreamingExecutor(Executor, threading.Thread):
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
+            self._maybe_warn_output_splitter_memory_constrained()
             self._last_debug_log_time = time.time()
 
         for op, state in topology.items():
@@ -724,6 +727,25 @@ class StreamingExecutor(Executor, threading.Thread):
             assert len(input_q) == 0, error_msg.format(
                 "External Input", op.name, len(input_q)
             )
+
+    def _maybe_warn_output_splitter_memory_constrained(self) -> None:
+        """Let a terminal OutputSplitter (from `Dataset.streaming_split`) warn if
+        the blocks training workers need to have prefetched can take up a large
+        share of an operator's share of the object store."""
+        output_op, _ = self._output_node
+        if not isinstance(output_op, OutputSplitter):
+            return
+        limit = self._resource_manager.get_global_limits().object_store_memory
+        num_eligible_ops = sum(
+            self._resource_manager.is_op_eligible(op) for op in self._topology
+        )
+        # A limit of 0 means it isn't known yet (e.g., the cluster autoscaler
+        # hasn't reserved resources yet).
+        if not num_eligible_ops or math.isinf(limit) or limit <= 0:
+            return
+        output_op.maybe_warn_memory_constrained(
+            object_store_memory_share_per_op=limit / num_eligible_ops,
+        )
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but
