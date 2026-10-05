@@ -114,6 +114,103 @@ def _public_netns_supported() -> bool:
     return True
 
 
+@pytest.fixture(autouse=True)
+def _clear_overlayfs_detect_caches():
+    """Each test decides an overlayfs sandbox's user namespace, image mount
+    mode and subordinate ids afresh, so its stubs take effect."""
+    from ray.experimental.sandbox._internal import overlayfs
+
+    caches = (
+        overlayfs.UserNamespaceType.detect,
+        overlayfs.ImageMountMode.detect,
+        overlayfs.IdMaps.detect,
+    )
+    for cache in caches:
+        cache.cache_clear()
+    yield
+    for cache in caches:
+        cache.cache_clear()
+
+
+@pytest.fixture(scope="session")
+def ensure_overlayfs_mount(ensure_runsc):
+    """A host that can mount an overlayfs sandbox's kernel overlay (see
+    ``overlayfs.UserNamespaceType.detect`` and
+    ``overlayfs.ImageMountMode.detect``). Requested rather than autouse, so
+    only the overlayfs tests skip when the host can't."""
+    from ray.experimental.sandbox._internal import overlayfs
+    from ray.experimental.sandbox.exceptions import SandboxCreationError
+
+    try:
+        overlayfs.ImageMountMode.detect(overlayfs.UserNamespaceType.detect())
+    except SandboxCreationError as err:
+        pytest.skip(str(err))
+
+
+def _skip_unless_runsc_runs_in_private_userns(tmp_path):
+    """Skip unless runsc can start in the private user namespace an overlayfs
+    sandbox gets. For a worker running as a user other than root, that
+    namespace only maps the worker's own ids, so a runsc the worker reaches
+    only through a group, or through a directory owned by an unmapped user,
+    can't start inside it."""
+    from ray.experimental.sandbox._internal import overlayfs
+
+    runsc = shutil.which("runsc") or "runsc"
+    id_maps = overlayfs.IdMaps.detect()
+    overlay = overlayfs.RootfsOverlay(
+        image="",
+        image_mount_mode=overlayfs.ImageMountMode.FUSE,
+        userns=overlayfs.UserNamespaceType.PRIVATE,
+        id_maps=id_maps,
+        mountpoint=str(tmp_path / "mnt"),
+        tmpfs_dir=str(tmp_path / "tmpfs"),
+    )
+    res = subprocess.run(
+        overlay._wrap_in_private_userns([runsc, "--version"]),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if res.returncode != 0:
+        mapped = "only root" if id_maps is None else "its id maps"
+        pytest.skip(
+            f"{runsc} can't start in this worker's private user namespace, "
+            f"which maps {mapped}, so an overlayfs sandbox in "
+            f"one can't start here either: {res.stderr.strip()}"
+        )
+
+
+@pytest.fixture(
+    params=[
+        ("HOST", "KERNEL"),
+        ("HOST", "FUSE"),
+        ("PRIVATE", "FUSE"),
+    ],
+    ids=["host-kernel", "host-fuse", "private-fuse"],
+)
+def overlay_mount(request, monkeypatch, tmp_path, ensure_overlayfs_mount):
+    """Runs a test through each way of mounting an overlayfs sandbox's rootfs
+    this worker supports, as a (user namespace, image mount) pair."""
+    from ray.experimental.sandbox._internal import overlayfs
+
+    userns = overlayfs.UserNamespaceType[request.param[0]]
+    image_mount_mode = overlayfs.ImageMountMode[request.param[1]]
+    if userns is overlayfs.UserNamespaceType.HOST and not (
+        overlayfs._is_host_userns() and overlayfs._has_mount_privileges()
+    ):
+        pytest.skip("this worker can't mount in the host's user namespace")
+    mounted, errstr = overlayfs._probe_mount(userns, image_mount_mode)
+    if not mounted:
+        pytest.skip(f"this worker can't mount this way: {errstr}")
+    if userns is overlayfs.UserNamespaceType.PRIVATE:
+        _skip_unless_runsc_runs_in_private_userns(tmp_path)
+    monkeypatch.setattr(overlayfs.UserNamespaceType, "detect", lambda: userns)
+    monkeypatch.setattr(
+        overlayfs.ImageMountMode, "detect", lambda userns: image_mount_mode
+    )
+    return userns, image_mount_mode
+
+
 @pytest.fixture(scope="session")
 def ensure_slirp4netns(ensure_runsc):
     """slirp4netns plus a host that can actually run the network="public" path.
