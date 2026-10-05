@@ -15,7 +15,9 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "ray/common/cgroup2/cgroup_driver_interface.h"
@@ -112,6 +114,11 @@ class CgroupManager : public CgroupManagerInterface {
     @return Status::NotFound if the system cgroup does not exist.
   */
   Status AddProcessToSystemCgroup(const std::string &pid) override;
+
+  StatusOr<std::string> AddProcessToGpuWorkerCgroup(const std::string &name,
+                                                    const std::string &pid) override;
+
+  Status DeleteGpuWorkerCgroup(const std::string &name) override;
 
   /**
     @return the path to the system cgroup.
@@ -214,6 +221,8 @@ class CgroupManager : public CgroupManagerInterface {
                     const int64_t user_memory_high_bytes,
                     const int64_t user_memory_max_bytes);
 
+  Status InitializeGpuWorkersCgroup();
+
   // The Register* methods register a callback that will execute in the destructor
   // in FILO order. All callbacks required the cgroup_driver_ to be available to
   // remove the cgroup hierarchy.
@@ -232,6 +241,10 @@ class CgroupManager : public CgroupManagerInterface {
   std::string user_cgroup_;
   std::string workers_cgroup_;
   std::string non_ray_cgroup_;
+  std::string gpu_workers_cgroup_;
+
+  std::optional<Status> gpu_workers_status_;
+  std::unordered_set<std::string> gpu_worker_cgroups_;
 
   // This will be popped in reverse order to clean up all side-effects performed
   // during setup.

@@ -55,6 +55,11 @@ class FakeCgroupManager : public CgroupManagerInterface {
 
   Status AddProcessToWorkersCgroup(const std::string &) override { return Status::OK(); }
   Status AddProcessToSystemCgroup(const std::string &) override { return Status::OK(); }
+  StatusOr<std::string> AddProcessToGpuWorkerCgroup(const std::string &name,
+                                                    const std::string &) override {
+    return temp_dir_->GetPath() + "/" + name;
+  }
+  Status DeleteGpuWorkerCgroup(const std::string &) override { return Status::OK(); }
 
   std::string GetUserCgroupPath() const override { return temp_dir_->GetPath(); }
   std::string GetSystemCgroupPath() const override { return temp_dir_->GetPath(); }

@@ -35,8 +35,10 @@ namespace ray {
     ray-node_<node_id>
     |                 |
   system             user
-    |               |    |
-  leaf        workers  non-ray
+    |           |       |        |
+  leaf     workers  non-ray  gpu-workers
+                                 |
+                               <name>
 */
 class CgroupManagerInterface {
  public:
@@ -75,6 +77,21 @@ class CgroupManagerInterface {
     @return Status::NotFound if the system cgroup does not exist.
   */
   virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
+
+  /**
+    Creates gpu-workers/<name> under the user cgroup and moves the process into it. The
+    dmem controller is enabled down to it when the base cgroup offers dmem.
+
+    @return the path of the created cgroup.
+  */
+  virtual StatusOr<std::string> AddProcessToGpuWorkerCgroup(const std::string &name,
+                                                            const std::string &pid) = 0;
+
+  /**
+    Moves any processes left in gpu-workers/<name> into the workers cgroup and deletes
+    it.
+  */
+  virtual Status DeleteGpuWorkerCgroup(const std::string &name) = 0;
 
   /**
     @return the path to the system cgroup.
@@ -122,7 +139,9 @@ class CgroupManagerInterface {
   inline static const std::string kUserCgroupName = "user";
   inline static const std::string kWorkersCgroupName = "workers";
   inline static const std::string kNonRayCgroupName = "non-ray";
+  inline static const std::string kGpuWorkersCgroupName = "gpu-workers";
   inline static const std::string kLeafCgroupName = "leaf";
+  inline static const std::string kDeviceMemoryController = "dmem";
 
   // TODO(54703): Tune this value for a sane default. Expose a RayConfig for this
   // if necessary.
