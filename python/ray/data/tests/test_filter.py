@@ -565,15 +565,16 @@ def test_filter_udf_preserves_dictionary_encoded_column_type(
     original_type = ray.get(ds.to_arrow_refs()[0]).schema.field("category").type
     assert pa.types.is_dictionary(original_type)
 
-    filtered_ds = ds.filter(lambda row: True)
-    filtered_type = (
-        ray.get(filtered_ds.to_arrow_refs()[0]).schema.field("category").type
-    )
+    filtered_ds = ds.filter(lambda row: row["id"] != 2)
+    filtered_table = pa.concat_tables(ray.get(filtered_ds.to_arrow_refs()))
+    filtered_type = filtered_table.schema.field("category").type
 
     assert filtered_type == original_type, (
         f"filter() changed the on-disk type of 'category' from {original_type} "
         f"to {filtered_type}"
     )
+    assert filtered_table.column("id").to_pylist() == [1, 3]
+    assert filtered_table.column("category").to_pylist() == ["a", "a"]
 
 
 if __name__ == "__main__":
