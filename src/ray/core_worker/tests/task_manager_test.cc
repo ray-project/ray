@@ -14,7 +14,10 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -22,10 +25,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs_client/gcs_client.h"
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
@@ -33,8 +33,10 @@
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/util/clock.h"
 
@@ -138,39 +140,46 @@ rpc::ReportGeneratorItemReturnsRequest GetEoFTaskReturn(int64_t idx,
   return request;
 }
 
-class MockTaskEventBuffer : public worker::TaskEventBuffer {
+// Hand-written fake for TaskEventBuffer. Methods are no-ops with
+// trivial returns; RecordTaskStatusEventIfNeeded forwards to an optional hook so
+// tests can record the statuses passed to it.
+class FakeTaskEventBuffer : public worker::TaskEventBuffer {
  public:
-  MOCK_METHOD(void,
-              AddTaskEvent,
-              (std::unique_ptr<worker::TaskEvent> task_event),
-              (override));
+  void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
 
-  MOCK_METHOD(void, FlushEvents, (bool forced), (override));
+  void FlushEvents(bool forced) override {}
 
-  MOCK_METHOD(Status, Start, (bool manual_flush), (override));
+  Status Start(bool manual_flush) override { return Status::OK(); }
 
-  MOCK_METHOD(void, Stop, (), (override));
+  void Stop() override {}
 
-  MOCK_METHOD(bool, Enabled, (), (const, override));
+  bool Enabled() const override { return false; }
 
-  MOCK_METHOD(std::string, DebugString, (), (override));
+  std::string DebugString() override { return "FakeTaskEventBuffer"; }
 
-  MOCK_METHOD(
-      bool,
-      RecordTaskStatusEventIfNeeded,
-      (const TaskID &task_id,
-       const JobID &job_id,
-       int32_t attempt_number,
-       const TaskSpecification &spec,
-       rpc::TaskStatus status,
-       bool include_task_info,
-       std::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update),
-      (override));
+  bool RecordTaskStatusEventIfNeeded(
+      const TaskID &task_id,
+      const JobID &job_id,
+      int32_t attempt_number,
+      const TaskSpecification &spec,
+      rpc::TaskStatus status,
+      bool include_task_info,
+      std::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update)
+      override {
+    if (record_task_status_event_hook) {
+      return record_task_status_event_hook(status);
+    }
+    return false;
+  }
 
-  MOCK_METHOD(std::string, GetSessionName, (), (const, override));
+  std::string GetSessionName() const override { return "FakeTaskEventBuffer"; }
 
-  MOCK_METHOD(NodeID, GetNodeID, (), (const, override));
-  MOCK_METHOD(int64_t, GetCurrentTimestampNanos, (), (const, override));
+  NodeID GetNodeID() const override { return NodeID::Nil(); }
+
+  int64_t GetCurrentTimestampNanos() const override { return 0; }
+
+  // Optional hook to observe status events.
+  std::function<bool(rpc::TaskStatus)> record_task_status_event_hook;
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -179,10 +188,10 @@ class TaskManagerTest : public ::testing::Test {
                            int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
-        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        publisher_(std::make_shared<pubsub::FakePublisher>()),
         subscriber_(std::make_shared<pubsub::FakeSubscriber>()),
-        task_event_buffer_mock_(std::make_unique<MockTaskEventBuffer>()),
-        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
+        task_event_buffer_fake_(std::make_unique<FakeTaskEventBuffer>()),
+        fake_gcs_client_(std::make_shared<gcs::FakeGcsClient>()),
         reference_counter_(std::make_shared<ReferenceCounter>(
             addr_,
             publisher_.get(),
@@ -221,13 +230,13 @@ class TaskManagerTest : public ::testing::Test {
                const std::string &error_message,
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
-            *task_event_buffer_mock_.get(),
+            *task_event_buffer_fake_.get(),
             fake_ray_event_recorder_,
             [](const ActorID &actor_id)
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
             },
-            mock_gcs_client_,
+            fake_gcs_client_,
             fake_task_by_state_counter_,
             fake_total_lineage_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
@@ -272,35 +281,20 @@ class TaskManagerTest : public ::testing::Test {
   // test can assert whether the task ended up FAILED vs FINISHED. Call once at
   // the start of a test, before any status event is emitted.
   void RecordTaskStatuses(std::vector<rpc::TaskStatus> *out) {
-    EXPECT_CALL(*task_event_buffer_mock_,
-                RecordTaskStatusEventIfNeeded(::testing::_,
-                                              ::testing::_,
-                                              ::testing::_,
-                                              ::testing::_,
-                                              ::testing::_,
-                                              ::testing::_,
-                                              ::testing::_))
-        .Times(::testing::AnyNumber())
-        .WillRepeatedly(
-            [out](const TaskID &,
-                  const JobID &,
-                  int32_t,
-                  const TaskSpecification &,
-                  rpc::TaskStatus status,
-                  bool,
-                  std::optional<const worker::TaskStatusEvent::TaskStateUpdate>) {
-              out->push_back(status);
-              return false;
-            });
+    task_event_buffer_fake_->record_task_status_event_hook =
+        [out](rpc::TaskStatus status) {
+          out->push_back(status);
+          return false;
+        };
   }
 
   bool lineage_pinning_enabled_;
   bool did_queue_generator_resubmit_ = false;
   rpc::Address addr_;
-  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::FakePublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
-  std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
-  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
+  std::unique_ptr<FakeTaskEventBuffer> task_event_buffer_fake_;
+  std::shared_ptr<gcs::FakeGcsClient> fake_gcs_client_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   InstrumentedIOContextWithThread io_context_;
   Clock clock_;
@@ -1642,12 +1636,12 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
         return Status::OK();
       },
       /*max_lineage_bytes*/ 1024 * 1024,
-      *task_event_buffer_mock_.get(),
+      *task_event_buffer_fake_.get(),
       failing_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_,
+      fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
@@ -1716,12 +1710,12 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
         return Status::OK();
       },
       /*max_lineage_bytes*/ 1024 * 1024,
-      *task_event_buffer_mock_.get(),
+      *task_event_buffer_fake_.get(),
       retry_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_,
+      fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
@@ -1788,12 +1782,12 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
         return Status::OK();
       },
       /*max_lineage_bytes*/ 1024 * 1024,
-      *task_event_buffer_mock_.get(),
+      *task_event_buffer_fake_.get(),
       dyn_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
-      mock_gcs_client_,
+      fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
@@ -2687,7 +2681,10 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayFewerObjectsFailsLoudly) {
   // The replay must mark the task FAILED. This is the assertion that actually
   // proves the fix ran: a same-object-count replay records FINISHED here
   // instead.
-  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_NE(
+      std::find(
+          recorded_statuses.begin(), recorded_statuses.end(), rpc::TaskStatus::FAILED),
+      recorded_statuses.end());
 
   // The task must be FAILED. FailPendingTask erases it from
   // submissible_tasks_, so NumPendingTasks drops back to 0.
@@ -2767,7 +2764,10 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMoreObjectsFailsLoudly) {
                                /*set_in_plasma=*/true);
 
   // The task must be FAILED.
-  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_NE(
+      std::find(
+          recorded_statuses.begin(), recorded_statuses.end(), rpc::TaskStatus::FAILED),
+      recorded_statuses.end());
   ASSERT_EQ(manager_.NumPendingTasks(), 0);
   ASSERT_EQ(num_retries_, 1);
 
@@ -2809,7 +2809,10 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplayMismatchWithEmptyReturnsFail
                                caller_address,
                                /*is_application_error=*/false);
 
-  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_NE(
+      std::find(
+          recorded_statuses.begin(), recorded_statuses.end(), rpc::TaskStatus::FAILED),
+      recorded_statuses.end());
   ASSERT_EQ(manager_.NumPendingTasks(), 0);
   ASSERT_EQ(num_retries_, 1);
 }
@@ -2952,7 +2955,10 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayCountMismatchFails) 
                                caller_address,
                                /*is_application_error=*/true);
 
-  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FAILED));
+  ASSERT_NE(
+      std::find(
+          recorded_statuses.begin(), recorded_statuses.end(), rpc::TaskStatus::FAILED),
+      recorded_statuses.end());
   ASSERT_EQ(manager_.NumPendingTasks(), 0);
   ASSERT_EQ(num_retries_, 1);
 }
@@ -3023,9 +3029,14 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorReplaySameObjectsSucceeds) {
 
   // The task must NOT be failed - it should complete normally (FINISHED and
   // erased from submissible_tasks_ as non-retryable).
-  ASSERT_THAT(recorded_statuses, ::testing::Contains(rpc::TaskStatus::FINISHED));
-  ASSERT_THAT(recorded_statuses,
-              ::testing::Not(::testing::Contains(rpc::TaskStatus::FAILED)));
+  ASSERT_NE(
+      std::find(
+          recorded_statuses.begin(), recorded_statuses.end(), rpc::TaskStatus::FINISHED),
+      recorded_statuses.end());
+  ASSERT_EQ(
+      std::find(
+          recorded_statuses.begin(), recorded_statuses.end(), rpc::TaskStatus::FAILED),
+      recorded_statuses.end());
   ASSERT_EQ(manager_.NumPendingTasks(), 0);
   ASSERT_EQ(num_retries_, 1);
 }
@@ -5210,9 +5221,7 @@ TEST_F(TaskManagerTest, TestTaskRetriedOnNodePreemption) {
   node_info.set_node_id(node_id.Binary());
   node_info.mutable_death_info()->set_reason(
       rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
-              GetNodeAddressAndLiveness(node_id, false))
-      .WillOnce(::testing::Return(node_info));
+  fake_gcs_client_->fake_node_accessor->SetNodeAddressAndLiveness(node_id, node_info);
 
   // Task should be retried because the node was preempted, even with 0 retries left
   rpc::RayErrorInfo node_died_error;
@@ -5348,11 +5357,11 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       },
       capturing_push_error_callback,  // This will capture the error message
       1024 * 1024 * 1024,
-      *task_event_buffer_mock_.get(),
+      *task_event_buffer_fake_.get(),
       test_manager_recorder,
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
-      mock_gcs_client_,
+      fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
@@ -5384,11 +5393,11 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
   ASSERT_TRUE(will_retry);  // Should retry
 
   // Verify that the expected retry message was sent to the callback
-  EXPECT_THAT(captured_error_message,
-              testing::HasSubstr(
-                  "There are 2 retries remaining, so the task will be retried. Error:"));
-  EXPECT_THAT(captured_error_message,
-              testing::HasSubstr("Worker crashed during task execution"));
+  EXPECT_NE(captured_error_message.find(
+                "There are 2 retries remaining, so the task will be retried. Error:"),
+            std::string::npos);
+  EXPECT_NE(captured_error_message.find("Worker crashed during task execution"),
+            std::string::npos);
   EXPECT_EQ(captured_error_type, "WORKER_DIED");
 
   // Cleanup
@@ -5439,11 +5448,11 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       },
       failing_push_error_callback,  // This will fail
       1024 * 1024 * 1024,
-      *task_event_buffer_mock_.get(),
+      *task_event_buffer_fake_.get(),
       test_manager_recorder,
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
-      mock_gcs_client_,
+      fake_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
@@ -5483,7 +5492,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
   // Verify that the expected error log message is present
   std::string expected_log_message =
       "Failed to push error to driver for task " + spec.TaskId().Hex();
-  EXPECT_THAT(stderr_output, testing::HasSubstr(expected_log_message));
+  EXPECT_NE(stderr_output.find(expected_log_message), std::string::npos);
 
   // Cleanup
   test_manager.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);

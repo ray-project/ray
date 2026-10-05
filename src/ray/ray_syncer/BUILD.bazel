@@ -31,3 +31,12 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
+
+ray_cc_library(
+    name = "fake_ray_syncer",
+    testonly = True,
+    hdrs = ["fake_ray_syncer.h"],
+    deps = [
+        ":ray_syncer",
+    ],
+)
