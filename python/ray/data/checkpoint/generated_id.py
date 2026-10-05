@@ -14,7 +14,7 @@ make existing checkpoints unreadable.
 
 import posixpath
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, List, Union
+from typing import Dict, FrozenSet, List, Mapping, Union
 
 import numpy as np
 import pyarrow as pa
@@ -259,3 +259,60 @@ def _checkpoint_from_compacted(compacted: pa.Table) -> GeneratedIdCheckpoint:
                 mask, dtype=bool
             )
     return GeneratedIdCheckpoint(frozenset(done_unit_ids), partial_masks)
+
+
+def _drop_committed_rows(
+    table: pa.Table, id_column: str, partial_masks: Mapping[str, np.ndarray]
+) -> pa.Table:
+    """Drop the rows that the checkpoint's partial masks mark as committed.
+
+    Each row's generated ID names its file, row group and ``row_id``, so the
+    row group's mask (from :attr:`GeneratedIdCheckpoint.partial_masks`)
+    says whether the row is already committed. A table can hold rows of
+    several row groups. Rows past the end of a mask are kept.
+
+    Args:
+        table: Rows with a generated ID column.
+        id_column: Name of the generated ID column.
+        partial_masks: Masks of partly done row groups, keyed by read unit id.
+
+    Returns:
+        ``table`` without the committed rows.
+    """
+    if not partial_masks or table.num_rows == 0:
+        return table
+    ids = table[id_column]
+    keys = pa.table(
+        {
+            PATH_PREFIX_FIELD: pc.cast(
+                pc.struct_field(ids, PATH_PREFIX_FIELD), pa.string()
+            ),
+            FILE_NAME_FIELD: pc.cast(
+                pc.struct_field(ids, FILE_NAME_FIELD), pa.string()
+            ),
+            FRAGMENT_FIELD: pc.cast(pc.struct_field(ids, FRAGMENT_FIELD), pa.int32()),
+        }
+    )
+    row_ids = _id_field(ids, ROW_ID_FIELD, pa.int32())
+    drop = np.zeros(table.num_rows, dtype=bool)
+    row_groups = keys.group_by(list(keys.column_names)).aggregate([]).to_pylist()
+    for row_group in row_groups:
+        path = posixpath.join(row_group[PATH_PREFIX_FIELD], row_group[FILE_NAME_FIELD])
+        mask = partial_masks.get(_row_group_unit_id(path, row_group[FRAGMENT_FIELD]))
+        if mask is None:
+            continue
+        in_row_group = np.flatnonzero(
+            pc.and_(
+                pc.and_(
+                    pc.equal(keys[PATH_PREFIX_FIELD], row_group[PATH_PREFIX_FIELD]),
+                    pc.equal(keys[FILE_NAME_FIELD], row_group[FILE_NAME_FIELD]),
+                ),
+                pc.equal(keys[FRAGMENT_FIELD], row_group[FRAGMENT_FIELD]),
+            ).to_numpy(zero_copy_only=False)
+        )
+        positions = row_ids[in_row_group]
+        covered = positions < len(mask)
+        drop[in_row_group[covered]] = mask[positions[covered]]
+    if not drop.any():
+        return table
+    return table.filter(pa.array(~drop))

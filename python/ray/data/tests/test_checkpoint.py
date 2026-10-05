@@ -398,47 +398,44 @@ def test_read_parquet_adds_generated_id_column(
     assert "generated_id" not in opted_out.schema().names
 
 
-def test_generated_id_rerun_rereads_all_rows(
+def test_generated_id_plans_skip_at_the_source(
     ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
 ):
-    """Until restore is wired up for generated IDs, only the write side is
-    planned: a rerun that finds committed checkpoint files redoes every row
-    instead of sending struct IDs through the numpy-based ID filter."""
+    """Generated IDs never go through the actor-pool ``CheckpointFilter``:
+    ``ListFiles`` skips done files and row groups, and a step fused into the
+    read task drops done rows of partly done row groups."""
     ctx = ray.data.DataContext.get_current()
-    ckpt_path = str(tmp_path / "ckpt")
     ctx.checkpoint_config = CheckpointConfig(
-        checkpoint_path=ckpt_path,
-        generated_id_column="generated_id",
-        # Keep the committed checkpoint so the second run sees it.
-        delete_checkpoint_on_success=False,
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
     )
-    f_dir = generate_sample_data_parquet()
-
-    ray.data.read_parquet(f_dir).write_parquet(str(tmp_path / "out1"))
-    assert _committed_checkpoint_files(ckpt_path)
-
-    ds = ray.data.read_parquet(f_dir)
+    ds = ray.data.read_parquet(generate_sample_data_parquet())
     write_op = Write(
-        ParquetDatasink(str(tmp_path / "unused")),
+        ParquetDatasink(str(tmp_path / "out")),
         input_dependencies=[ds._logical_plan.dag],
     )
+
     physical_plan, _ = get_execution_plan(LogicalPlan(write_op, ctx))
-    assert not any("CheckpointFilter" in n for n in _physical_op_names(physical_plan))
 
-    out2 = str(tmp_path / "out2")
-    ray.data.read_parquet(f_dir).write_parquet(out2)
-    result = pq.read_table(out2)
-    assert sorted(result[ID_COL].to_pylist()) == list(range(SAMPLE_DATA_NUM_ROWS))
+    names = _physical_op_names(physical_plan)
+    assert not any("CheckpointFilter" in name for name in names)
+    assert "ListFiles" in names
+    # The step dropping committed rows of partly done row groups is fused
+    # into the read task.
+    assert any(
+        "ReadFiles" in name and "DropCommittedRows" in name for name in names
+    ), names
 
 
-def _write_generated_id_checkpoint(path, file_path, rows_by_row_group, num_rows=4):
+def _write_generated_id_checkpoint(
+    path, file_path, rows_by_row_group, num_rows=4, num_row_groups=3
+):
     """Write a checkpoint file holding the generated IDs of the given rows."""
     ids = pa.concat_arrays(
         [
             _build_generated_ids(
                 file_path,
                 row_group_index=row_group,
-                num_row_groups=3,
+                num_row_groups=num_row_groups,
                 row_group_num_rows=num_rows,
                 rows_before=row_id,
                 num_rows=1,
@@ -505,6 +502,223 @@ def test_generated_id_checkpoint_load_empty(ray_start_10_cpus_shared, tmp_path):
     assert checkpoint.partial_masks == {}
     with pytest.raises(NotImplementedError):
         manager.load_checkpoint()
+
+
+def _write_two_row_group_files(data_dir, num_files=3):
+    """Files of 2 row groups of 3 rows; ``x = file * 100 + row``."""
+    os.makedirs(data_dir, exist_ok=True)
+    paths = []
+    for file_index in range(num_files):
+        path = os.path.join(data_dir, f"f{file_index}.parquet")
+        pq.write_table(
+            pa.table({"x": [file_index * 100 + i for i in range(6)]}),
+            path,
+            row_group_size=3,
+        )
+        paths.append(path)
+    return paths
+
+
+def test_generated_id_resume_skips_committed_work(ray_start_10_cpus_shared, tmp_path):
+    """A fully committed file is never listed, a committed row group is never
+    read, a partly committed row group drops its committed rows, and a file
+    never seen is read in full."""
+    ctx = ray.data.DataContext.get_current()
+    f0, f1, f2 = _write_two_row_group_files(str(tmp_path / "in"))
+    ckpt_path = tmp_path / "ckpt"
+    ckpt_path.mkdir()
+    # f0: both row groups done. f1: row group 0 done, rows 0 and 2 of row
+    # group 1 done. f2: nothing.
+    _write_generated_id_checkpoint(
+        ckpt_path / "seed0.parquet",
+        f0,
+        [(0, [0, 1, 2]), (1, [0, 1, 2])],
+        num_rows=3,
+        num_row_groups=2,
+    )
+    _write_generated_id_checkpoint(
+        ckpt_path / "seed1.parquet",
+        f1,
+        [(0, [0, 1, 2]), (1, [0, 2])],
+        num_rows=3,
+        num_row_groups=2,
+    )
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(ckpt_path),
+        generated_id_column="generated_id",
+        delete_checkpoint_on_success=False,
+    )
+    out = str(tmp_path / "out")
+
+    ray.data.read_parquet(str(tmp_path / "in")).map_batches(
+        lambda batch: batch
+    ).write_parquet(out)
+
+    ctx.checkpoint_config = None
+    written = sorted(pq.read_table(out)["x"].to_pylist())
+    assert written == [104] + [200 + i for i in range(6)]
+
+
+def test_generated_id_recovery_no_missing_rows(ray_start_10_cpus_shared, tmp_path):
+    """Fail a job partway, rerun it: every row is written (at least once) and
+    the checkpoint is deleted after the successful rerun."""
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    ctx.raise_original_map_exception = True
+    ckpt_path = str(tmp_path / "ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=ckpt_path, generated_id_column="generated_id"
+    )
+    data_dir = str(tmp_path / "in")
+    _write_two_row_group_files(data_dir)
+    out = str(tmp_path / "out")
+
+    @ray.remote(num_cpus=0)
+    class Switch:
+        def __init__(self):
+            self._fail = True
+
+        def turn_off(self):
+            self._fail = False
+
+        def fail(self):
+            return self._fail
+
+    switch = Switch.remote()
+
+    class InjectedFailure(Exception):
+        pass
+
+    class FailOnce:
+        def __init__(self, switch):
+            self._fail = ray.get(switch.fail.remote())
+
+        def __call__(self, batch):
+            if self._fail and 103 in batch["x"]:
+                raise InjectedFailure("failing on x=103")
+            return batch
+
+    def run():
+        ray.data.read_parquet(data_dir).map_batches(
+            FailOnce,
+            fn_constructor_args=[switch],
+            concurrency=1,
+            batch_size=None,
+            num_cpus=1.1,  # Keep the map out of the read's fused stage.
+        ).write_parquet(out, concurrency=1)
+
+    with pytest.raises(InjectedFailure):
+        run()
+    ray.get(switch.turn_off.remote())
+    run()
+
+    assert read_ids_from_checkpoint_files(ctx.checkpoint_config) == []
+    ctx.checkpoint_config = None
+    written = set(pq.read_table(out)["x"].to_pylist())
+    assert written == {f * 100 + i for f in range(3) for i in range(6)}
+
+
+def test_generated_id_rerun_after_success_writes_nothing(
+    ray_start_10_cpus_shared, tmp_path
+):
+    """With the checkpoint kept, a rerun after a full success lists no files
+    and writes no rows."""
+    ctx = ray.data.DataContext.get_current()
+    data_dir = str(tmp_path / "in")
+    _write_two_row_group_files(data_dir)
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"),
+        generated_id_column="generated_id",
+        delete_checkpoint_on_success=False,
+    )
+    out = str(tmp_path / "out")
+
+    ray.data.read_parquet(data_dir).write_parquet(out)
+    ray.data.read_parquet(data_dir).write_parquet(out)
+
+    ctx.checkpoint_config = None
+    assert pq.read_table(out).num_rows == 18
+
+
+def test_generated_id_without_restore_reads_every_row(
+    ray_start_10_cpus_shared, tmp_path, monkeypatch
+):
+    """With ``_should_restore=False`` (e.g. a later training epoch), a run
+    ignores the kept checkpoint and reads every row, never loads the
+    checkpoint, and still writes checkpoints."""
+    ctx = ray.data.DataContext.get_current()
+    data_dir = str(tmp_path / "in")
+    _write_two_row_group_files(data_dir)
+    config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"),
+        generated_id_column="generated_id",
+        delete_checkpoint_on_success=False,
+    )
+    ctx.checkpoint_config = config
+    ray.data.read_parquet(data_dir).write_parquet(str(tmp_path / "out_1"))
+
+    config._should_restore = False
+
+    def fail_load(self):
+        raise AssertionError("The checkpoint must not be loaded.")
+
+    monkeypatch.setattr(
+        GeneratedIdColumnCheckpointManager, "load_generated_id_checkpoint", fail_load
+    )
+    out = str(tmp_path / "out_2")
+    ray.data.read_parquet(data_dir).write_parquet(out)
+
+    ctx.checkpoint_config = None
+    assert pq.read_table(out).num_rows == 18
+    checkpoint_files = _get_batch_based_files(config.checkpoint_path, config.filesystem)
+    assert sum(pq.read_metadata(f).num_rows for f in checkpoint_files) == 2 * 18
+
+
+def test_generated_id_rejects_non_parquet_input(
+    ray_start_10_cpus_shared, tmp_path, generate_sample_data_csv
+):
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
+    )
+
+    with pytest.raises(InvalidCheckpointingConfig, match="only Parquet"):
+        ray.data.read_csv(generate_sample_data_csv()).write_parquet(
+            str(tmp_path / "out")
+        )
+
+
+def test_generated_id_rejects_non_parquet_v2_read():
+    """A V2 read whose scanner isn't Parquet can't produce generated IDs."""
+    from ray.data._internal.logical.operators import InputData, ReadFiles
+    from ray.data._internal.planner.planner import Planner
+
+    read_files = ReadFiles(
+        datasource_name="JSONv2",
+        scanner=object(),
+        schema=pa.schema([]),
+        parallelism=-1,
+        input_dependencies=[InputData(input_data=[])],
+    )
+    write_op = Write(ParquetDatasink("unused"), input_dependencies=[read_files])
+
+    with pytest.raises(InvalidCheckpointingConfig, match="'JSONv2' data"):
+        Planner._validate_generated_id_plan(
+            LogicalPlan(write_op, ray.data.DataContext.get_current())
+        )
+
+
+def test_generated_id_rejects_v1_read_path(ray_start_10_cpus_shared, tmp_path):
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_datasource_v2 = False
+    data_dir = str(tmp_path / "in")
+    _write_two_row_group_files(data_dir)
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
+    )
+
+    with pytest.raises(InvalidCheckpointingConfig, match="V2 datasource"):
+        ray.data.read_parquet(data_dir).write_parquet(str(tmp_path / "out"))
 
 
 def test_generated_id_pending_cleanup_before_rerun(

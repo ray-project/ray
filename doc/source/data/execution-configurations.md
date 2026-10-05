@@ -89,3 +89,23 @@ ctx.checkpoint_config = CheckpointConfig(
     delete_checkpoint_on_success=False,  # Preserves checkpoints after successful runs
 )
 ```
+
+#### Checkpoint without an ID column
+
+Checkpointing needs a way to identify each input row. If your dataset has a unique ID column, pass it as `id_column`. If it doesn't, set `generated_id_column` instead, and Ray Data generates an ID for every row from where it lives in its Parquet file: the file, the row group, and the row's position in that row group.
+
+```python
+ctx.checkpoint_config = CheckpointConfig(
+    generated_id_column="row_id",
+    checkpoint_path="s3://my-bucket/ray-data-checkpoints",
+)
+```
+
+When a job resumes, Ray Data skips committed work before reading it. It doesn't list files whose rows are all committed, doesn't read row groups whose rows are all committed, and processes only the uncommitted rows of a partly committed row group.
+
+Keep the following in mind when you use generated row IDs:
+
+- Ray Data generates row IDs only for Parquet inputs that `ray.data.read_parquet` reads on the V2 datasource path, which is the default. For other inputs, running the dataset raises an error. Use `id_column` for them instead.
+- Checkpointing suits pipelines where each input row produces one output row, such as `map`-style batch inference that ends in a file write. Ray Data processes each input row at least once. It doesn't checkpoint join or aggregation state.
+- Run the same pipeline when you resume, including any filters. Filters that Ray Data pushes into the read decide the position each row gets.
+- Ray Data writes the generated ID column to the output. If you select columns, keep the generated column, or the write fails.
