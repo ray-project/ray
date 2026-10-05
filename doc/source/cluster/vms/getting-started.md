@@ -118,7 +118,7 @@ Make sure to grant the necessary permissions to the RAM user and set the AccessK
 
 :::{tab-item} vSphere
 :sync: vSphere
-Make sure Ray supervisor service is up and running as per `the Ray-on-VCF docs <https://github-vcf.devops.broadcom.net/vcf/vmray>`
+Make sure Ray supervisor service is up and running as per [the Ray-on-VCF docs](https://github-vcf.devops.broadcom.net/vcf/vmray)
 :::
 ::::
 :::::
