@@ -4159,7 +4159,7 @@ class AlgorithmConfig(_Config):
                 unscaling). The class must implement the following methods to be
                 compatible with a `TorchLearner`. These methods/APIs match exactly those
                 of torch's own `torch.amp.GradScaler` (see here for more details
-                https://pytorch.org/docs/stable/amp.html#gradient-scaling):
+                https://docs.pytorch.org/docs/stable/amp.html#gradient-scaling):
                 `scale([loss])` to scale the loss by some factor.
                 `get_scale()` to get the current scale factor value.
                 `step([optimizer])` to unscale the grads (divide by the scale factor)
@@ -4168,7 +4168,7 @@ class AlgorithmConfig(_Config):
                 adjust the scale factor).
             _torch_lr_scheduler_classes: A list of `torch.lr_scheduler.LRScheduler`
                 (see here for more details
-                https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
+                https://docs.pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
                 and are stepped in the same sequence as defined here. Note, most
