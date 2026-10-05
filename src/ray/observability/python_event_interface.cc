@@ -207,7 +207,7 @@ std::string SerializeEventsToRayEventsDataJson(
       continue;
     }
     std::string json_str;
-    google::protobuf::util::Status status = google::protobuf::util::MessageToJsonString(
+    auto status = google::protobuf::util::MessageToJsonString(
         ray_event_or.value(), &json_str, options);
     if (!status.ok()) {
       // TODO: We can support an input param to control whether we raise an exception
