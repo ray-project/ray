@@ -8,7 +8,7 @@ myst:
 
 # Choose a programming model
 
-Ray's tasks, actors, and objects support different ways to organize a distributed application. Two common shapes are a single controller and single-program multiple-data (SPMD) execution. You can also combine both shapes in one application.
+Ray's tasks, actors, and objects support different ways to organize a distributed application. Two common shapes are a single controller and single-program, multiple-data (SPMD) execution. You can also combine both shapes in one application.
 
 This page describes the shape of an application. It doesn't prescribe a programming model for a particular Ray library or workload.
 
@@ -37,7 +37,7 @@ Use this shape when you can split the input into partitions and apply the same c
 
 ## Can you combine both shapes?
 
-Yes. A driver can create a group of actors, assign each actor a different input partition, and ask every actor to run the same method. The driver still coordinates the group, so the application combines a single controller with SPMD workers.
+Yes. A driver can create a group of actors, assign each actor a different input partition, and invoke the same method on every actor. The driver still coordinates the group, so the application combines a single controller with SPMD workers.
 
 Choose the boundary between the controller and the workers based on the responsibilities in your application. Keep coordination in the driver when it depends on global state or intermediate results. Move repeated, partitioned computation into tasks or actors when each worker can make progress from its own input.
 
