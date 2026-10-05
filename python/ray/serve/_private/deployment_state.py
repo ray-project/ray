@@ -56,7 +56,7 @@ from ray.serve._private.common import (
     ReplicaState,
     RequestRoutingInfo,
     RunningReplicaInfo,
-    push_freshness_window_s,
+    _push_freshness_window_s,
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
@@ -828,7 +828,7 @@ class PushedHealthTracker:
         """
         pending = self._pushed.received_at if self._pushed is not None else 0.0
         newest = max(self._applied_push_received_at, pending)
-        window_s = push_freshness_window_s(health_check_period_s)
+        window_s = _push_freshness_window_s(health_check_period_s)
         return self._timer.time() - newest < window_s
 
     def _take_fresh_push(self, health_check_period_s: float) -> Optional[PushedHealth]:
@@ -838,7 +838,7 @@ class PushedHealthTracker:
         pushed = self._pushed
         self._pushed = None
         self._consumed_push_checked_at = pushed.checked_at
-        window_s = push_freshness_window_s(health_check_period_s)
+        window_s = _push_freshness_window_s(health_check_period_s)
         if self._timer.time() - pushed.received_at > window_s:
             return None  # stale; the pull path stays the fallback
         if pushed.received_at < self._applied_probe_started_at:
