@@ -80,14 +80,20 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
-    # Performance carries all four metric fields. Values are None in this
-    # hermetic run (no cluster / Prometheus); the delta math is covered by
-    # test_compute_delta and the query path by the query_prometheus_counter tests.
+    # Values are None in this hermetic run (no cluster / Prometheus / scheduling
+    # steps); the delta math is covered by test_compute_delta, the query path by
+    # the query_prometheus_counter tests, and the memory / object-lost fields by
+    # test_memory_and_object_lost_stats_in_payload.
     assert set(entry["performance"]) == {
         "bytes_spilled",
         "node_deaths",
         "oom_kills",
         "unexpected_worker_kills",
+        "object_reconstruction_attempts",
+        "task_retries",
+        "object_store_memory_bytes",
+        "task_max_uss_bytes",
+        "num_object_lost_task_failures",
     }
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
@@ -452,6 +458,32 @@ def test_session_scoped_metric_query():
         collector._session_scoped_metric_query("m", None, {"State": "Spilled"})
         == "sum(m{State='Spilled'})"
     )
+
+
+@pytest.mark.parametrize(
+    "reader,expected_promql",
+    [
+        (
+            collector.cluster_object_reconstruction_attempts,
+            "sum(ray_object_recovery_attempts_total"
+            "{Type='Reconstruct',SessionName='s1'})",
+        ),
+        (
+            collector.cluster_task_retries,
+            "sum(ray_task_submissions_total{IsRetry='true',SessionName='s1'})",
+        ),
+    ],
+)
+def test_reconstruction_counter_queries(monkeypatch, reader, expected_promql):
+    """The lineage reconstruction readers query the core worker counters with
+    the label filters used by the Ray dashboard."""
+    queries = []
+    monkeypatch.setattr(collector, "_session_name", lambda: "s1")
+    monkeypatch.setattr(
+        collector, "query_prometheus_counter", lambda q: queries.append(q) or 7
+    )
+    assert reader() == 7
+    assert queries == [expected_promql]
 
 
 def test_poller_snapshots():
