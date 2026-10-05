@@ -11,6 +11,9 @@ exceptions.rst
 cli.rst
 sandboxes.md
 ../../ray-observability/reference/cli.rst
-../../ray-observability/reference/api.rst
+state.rst
 direct-transport.rst
+job-submission.md
+compiled-graph.rst
+autoscaler.md
 ```
