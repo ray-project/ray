@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/constants.h"
@@ -45,7 +44,7 @@
 namespace ray {
 namespace gcs {
 
-class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+class FakeGcsActorScheduler : public gcs::GcsActorScheduler {
  public:
   using gcs::GcsActorScheduler::GcsActorScheduler;
 
@@ -95,8 +94,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
     raylet_client_pool_ = std::make_shared<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_client_; });
     worker_client_ = std::make_shared<rpc::FakeCoreWorkerClient>();
-    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
@@ -132,7 +131,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         local_node_id_);
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
-    gcs_actor_scheduler_ = std::make_shared<MockedGcsActorScheduler>(
+    gcs_actor_scheduler_ = std::make_shared<FakeGcsActorScheduler>(
         io_context_->GetIoService(),
         *gcs_actor_table_,
         *gcs_node_manager_,
@@ -267,7 +266,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_resource_usage_gauge_;
   ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<MockedGcsActorScheduler> gcs_actor_scheduler_;
+  std::shared_ptr<FakeGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;
   std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;

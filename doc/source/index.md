@@ -12,7 +12,7 @@ Getting Started <ray-overview/getting-started>
 Installation <ray-overview/installation>
 Use Cases <ray-overview/use-cases>
 Examples <ray-overview/examples/index>
-Ecosystem <ray-overview/ray-libraries>
+KubeRay <kuberay/index>
 Ray Core <ray-core/walkthrough>
 Ray Data <data/index>
 Ray Train <train/train>
@@ -21,6 +21,7 @@ Ray Serve <serve/index>
 Ray RLlib <rllib/index>
 More Libraries <ray-more-libs/index>
 APIs <apis/index>
+Ecosystem <ray-overview/ray-libraries>
 Ray Clusters <cluster/getting-started>
 Monitoring and Debugging <ray-observability/index>
 Developer Guides <ray-contribute/index>
