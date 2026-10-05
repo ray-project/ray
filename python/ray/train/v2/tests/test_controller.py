@@ -1031,7 +1031,9 @@ class _StubReservationScalingPolicy(MockScalingPolicy):
         return self._reserved_label_selectors
 
 
-def _reservation_controller(monkeypatch, reserved_label_selectors, **scaling_kwargs):
+def _reservation_controller(
+    monkeypatch, reserved_label_selectors, callbacks=None, **scaling_kwargs
+):
     monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
     _CapturingWorkerGroup.contexts = []
     # `_start_worker_group` reads `placement_strategy` off the scaling policy but
@@ -1046,6 +1048,7 @@ def _reservation_controller(monkeypatch, reserved_label_selectors, **scaling_kwa
         train_run_context=create_dummy_run_context(scaling_config=scaling_config),
         scaling_policy=scaling_policy,
         failure_policy=MockFailurePolicy(failure_config=None),
+        callbacks=callbacks,
     )
     return controller, scaling_policy
 
@@ -1080,6 +1083,51 @@ def test_worker_group_start_pins_to_the_reservation(monkeypatch):
     (context,) = _CapturingWorkerGroup.contexts
     assert context.label_selector == pins
     assert context.placement_strategy == "STRICT_SPREAD"
+
+
+def test_worker_group_start_uses_the_decision_pins(monkeypatch):
+    """Pins that came with the decision are applied as-is, without polling the
+    coordinator again."""
+    pins = [{"ray.io/node-id": "node-a"}, {"ray.io/node-id": "node-b"}]
+    controller, scaling_policy = _reservation_controller(
+        monkeypatch, reserved_label_selectors=None, num_workers=2
+    )
+
+    controller._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1},
+        reserved_label_selectors=pins,
+    )
+
+    assert scaling_policy.reservation_queries == 0
+    (context,) = _CapturingWorkerGroup.contexts
+    assert context.label_selector == pins
+
+
+def test_callback_label_selector_wins_over_decision_pins(monkeypatch):
+    """The coordinator picks nodes by resource fit and never matches label
+    selectors against node labels, so its pins can name a node that violates a
+    callback's selector. The callback's selector wins."""
+
+    class _SelectorCallback(ControllerCallback):
+        def on_controller_start_worker_group(self, *, scaling_config, num_workers):
+            return {"subcluster": "mine"}
+
+    controller, _ = _reservation_controller(
+        monkeypatch,
+        reserved_label_selectors=None,
+        callbacks=[_SelectorCallback()],
+        num_workers=2,
+    )
+
+    controller._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1},
+        reserved_label_selectors=[{"ray.io/node-id": f"node-{i}"} for i in range(2)],
+    )
+
+    (context,) = _CapturingWorkerGroup.contexts
+    assert context.label_selector == [{"subcluster": "mine"}] * 2
 
 
 @pytest.mark.parametrize(
