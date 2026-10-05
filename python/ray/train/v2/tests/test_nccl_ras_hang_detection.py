@@ -4,8 +4,8 @@ Each test deliberately induces one class of NCCL desync inside a real
 ``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the
 :class:`NCCLRASCallback` registered, and asserts the callback's whole-job
 behavior: query RAS on a worker -> parse -> classify per communicator -> capture
-diagnostics (per-rank stack traces and PyTorch Flight Recorder dumps) -> raise
-:class:`NCCLHangError`.
+diagnostics (per-rank stack traces and PyTorch Flight Recorder dumps plus
+per-node `nvidia-smi` snapshots) -> raise :class:`NCCLHangError`.
 """
 import os
 import shutil
@@ -323,8 +323,27 @@ def _assert_outcome(err, expectation):
 
 
 def diagnostics_dir(storage_path, tool) -> Path:
-    """Where the callback uploads one tool's per-rank files for a run."""
+    """Where the callback uploads one tool's files for a run."""
     return Path(storage_path) / EXPERIMENT_NAME / "hang_detector" / tool
+
+
+def assert_hang_diagnostics(err, storage_path, num_workers):
+    """Every rank has a stack trace and this single-node cluster a GPU snapshot."""
+    assert "hang_detector/stack_traces" in str(err)
+    assert "hang_detector/nvidia_smi" in str(err)
+    assert "hang_detector/flight_recorder" in str(err)
+
+    stack_traces = os.listdir(diagnostics_dir(storage_path, "stack_traces"))
+    assert set(stack_traces) == {f"rank_{i}.log" for i in range(num_workers)}
+
+    # One file per node, not per rank, and these workers share a node.
+    node_ip = ray.util.get_node_ip_address()
+    assert os.listdir(diagnostics_dir(storage_path, "nvidia_smi")) == [f"{node_ip}.log"]
+
+    flight_recorder_dir = diagnostics_dir(storage_path, "flight_recorder")
+    assert set(os.listdir(flight_recorder_dir)) == {
+        f"rank_{i}.json" for i in range(4)
+    }
 
 
 @pytest.mark.parametrize("train_func, expectation", TWO_WORKER_SCENARIOS)
@@ -333,14 +352,7 @@ def test_hang_scenarios(train_func, expectation, ray_start_4_cpus_2_gpus, tmp_pa
     _assert_outcome(err, expectation)
 
     if isinstance(err, NCCLHangError):
-        assert "hang_detector/stack_traces" in str(err)
-        assert "hang_detector/flight_recorder" in str(err)
-        flight_recorder_dir = diagnostics_dir(tmp_path, "flight_recorder")
-        stack_traces_dir = diagnostics_dir(tmp_path, "stack_traces")
-
-        # Every rank is accounted for, whatever it was doing at the time.
-        assert set(os.listdir(flight_recorder_dir)) == {"rank_0.json", "rank_1.json"}
-        assert set(os.listdir(stack_traces_dir)) == {"rank_0.log", "rank_1.log"}
+        assert_hang_diagnostics(err, tmp_path, num_workers=2)
 
 
 @pytest.mark.skipif(
@@ -352,16 +364,7 @@ def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus, tmp_path):
     _assert_outcome(err, HANG)
 
     if isinstance(err, NCCLHangError):
-        assert "hang_detector/stack_traces" in str(err)
-        assert "hang_detector/flight_recorder" in str(err)
-        flight_recorder_dir = diagnostics_dir(tmp_path, "flight_recorder")
-        stack_traces_dir = diagnostics_dir(tmp_path, "stack_traces")
-
-        # Every rank is accounted for, whatever it was doing at the time.
-        assert set(os.listdir(flight_recorder_dir)) == {
-            f"rank_{i}.json" for i in range(4)
-        }
-        assert set(os.listdir(stack_traces_dir)) == {f"rank_{i}.log" for i in range(4)}
+        assert_hang_diagnostics(err, tmp_path, num_workers=4)
 
 
 if __name__ == "__main__":

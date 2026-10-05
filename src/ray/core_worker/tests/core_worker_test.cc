@@ -158,7 +158,9 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
-        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+        [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+          core_worker_->FreeObjectOnNodesAsync(object_id, locations);
+        },
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
@@ -1322,8 +1324,8 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
                                      object_size,
                                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
-  // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
-  // bumps the sequence id by 1
+  // No raylet has subscribed to this object yet, so this update is skipped and
+  // consumes no sequence id.
   reference_counter_->AddObjectLocation(object_id, node_id);
 
   rpc::PubsubLongPollingRequest request;
@@ -1387,11 +1389,11 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
-    // Subscribe snapshot is seq 2; coalesced retry snapshot is seq 3.
+    // Subscribe snapshot is seq 1; coalesced retry snapshot is seq 2.
     EXPECT_EQ(msg.sequence_id(), expected_sequence_id);
   };
-  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/2);
-  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/3);
+  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/1);
+  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/2);
 }
 
 class HandleWaitForActorRefDeletedRetriesTest
@@ -1737,6 +1739,305 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
   EXPECT_EQ(fire_count, 1);
 }
 
+namespace {
+
+struct WaitAsyncCallbackResult {
+  Status status = Status::OK();
+  int calls = 0;
+};
+
+void OnWaitAsyncDone(Status status, void *callback_arg) {
+  WaitAsyncCallbackResult *result = static_cast<WaitAsyncCallbackResult *>(callback_arg);
+  result->status = std::move(status);
+  result->calls += 1;
+}
+
+void AddOwnedObjectForWaitAsync(
+    const std::shared_ptr<CoreWorker> &core_worker,
+    const std::shared_ptr<ReferenceCounterInterface> &reference_counter,
+    const ObjectID &object_id) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker->GetWorkerID().Binary());
+  reference_counter->AddOwnedObject(object_id,
+                                    {},
+                                    owner_address,
+                                    "",
+                                    0,
+                                    LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                    true);
+}
+
+void DrainIoUntilWaitAsyncDone(instrumented_io_context &io_service,
+                               WaitAsyncCallbackResult &result) {
+  while (result.calls == 0) {
+    ASSERT_GT(io_service.run_one(), 0);
+  }
+}
+
+}  // namespace
+
+TEST_F(CoreWorkerTest, WaitAsyncUnknownOwner) {
+  ObjectID object_id = ObjectID::FromRandom();
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsObjectUnknownOwner());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  // Already-present objects still complete asynchronously: GetAsync posts the
+  // callback to the io context rather than running it on the calling thread.
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncBecomesReadyLater) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_EQ(result.calls, 0);
+  ASSERT_FALSE(io_service_.poll_one());
+
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReady) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncInlinedObjectReady) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  ObjectID object_id = CreateInlineObjectInMemoryStoreAndRefCounter(
+      *memory_store_, *reference_counter_, owner_address);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncBorrowedObjectReady) {
+  ObjectID object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  owner_address.set_ip_address("127.0.0.1");
+  owner_address.set_port(1);
+  reference_counter_->AddLocalReference(object_id, "");
+  ASSERT_TRUE(
+      reference_counter_->AddBorrowedObject(object_id, ObjectID::Nil(), owner_address));
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncLastRefDroppedLeavesCallbackPending) {
+  // Same as GetAsync: dropping the last ref does not complete the wait.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_->RemoveLocalReference(object_id);
+  ASSERT_EQ(result.calls, 0);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    ASSERT_EQ(memory_store_->object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  memory_store_->Put(*MakeRayObject("data", "meta"), object_id, /*has_reference=*/false);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncRemainingRefKeepsWait) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  reference_counter_->AddLocalReference(object_id, "");
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+
+  // One local ref remains.
+  core_worker_->RemoveLocalReference(object_id);
+  ASSERT_EQ(result.calls, 0);
+
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncCancel) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+
+  // Second cancel is a no-op.
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+
+  // After cancel, a new wait on the same ref can still complete.
+  WaitAsyncCallbackResult result2;
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  uint64_t handle2 = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result2);
+  ASSERT_NE(handle2, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result2);
+  ASSERT_EQ(result2.calls, 1);
+  ASSERT_TRUE(result2.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_->CancelAllWaitAsync();
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+
+  // Second shutdown is a no-op (callback already ran; map is empty).
+  core_worker_->CancelAllWaitAsync();
+  ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncAfterShutdownFailsFast) {
+  // Once CancelAllWaitAsync has latched, io_service_ is about to stop. A new
+  // wait must report shutdown synchronously instead of registering a callback
+  // that would never be posted -- otherwise the caller hangs forever.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  core_worker_->CancelAllWaitAsync();
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_EQ(handle, 0u);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+
+  // Nothing was registered with the memory store, so the object arriving
+  // afterwards must not invoke the callback a second time.
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
+  // Completing a wait must deregister its memory-store GetAsync callback.
+  // Otherwise the registration survives until an object that may never
+  // arrive shows up.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    ASSERT_EQ(memory_store_->object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    EXPECT_FALSE(memory_store_->object_async_get_requests_.contains(object_id));
+  }
+
+  // The object arriving afterwards must not resurrect anything.
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncPostedCompletionAfterWorkerDestroyed) {
+  // GetAsync posts to io_service_, which outlives CoreWorker in this fixture.
+  // The completion holds the wait table, not ``this``; after destroy it misses.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_.reset();
+
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 0);
+}
+
 TEST_F(CoreWorkerTest, FreeLocalObjectsCoalescesWhileInFlight) {
   const NodeID node_id = core_worker_->GetCurrentNodeId();
 
@@ -1792,6 +2093,39 @@ TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
   }
   EXPECT_EQ(total, kNumObjects);  // Nothing dropped past the warn threshold.
   warn_objects = prev;
+}
+
+// Tests that if a raylet location report to the owner arrives after the ref was dropped,
+// we still free that copy.
+TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
+  const NodeID node_id = core_worker_->GetCurrentNodeId();
+  auto report_location = [&](const ObjectID &object_id) {
+    rpc::UpdateObjectLocationBatchRequest request;
+    request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+    request.set_node_id(node_id.Binary());
+    auto *update = request.add_object_location_updates();
+    update->set_object_id(object_id.Binary());
+    update->set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
+    rpc::UpdateObjectLocationBatchReply reply;
+    core_worker_->HandleUpdateObjectLocationBatch(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  EXPECT_TRUE(local_raylet_client_->free_local_objects_batches.empty());
+
+  report_location(object_id);
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
 }
 
 }  // namespace core

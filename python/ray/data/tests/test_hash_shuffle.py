@@ -13,7 +13,10 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.hash_aggregate import HashAggregateOperator
-from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShuffleOperator,
+    _derive_max_shuffle_aggregators,
+)
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import JoinType
@@ -21,6 +24,28 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import AggregateFnV2, Count, Sum
 from ray.data.block import BlockAccessor, BlockMetadata
+from ray.data.context import DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+
+
+@pytest.mark.parametrize(
+    "num_cpus,max_aggregators,expected",
+    [
+        (0, None, 1),
+        (0, 4, 1),
+        (2.5, 4, 3),
+        (8, 4, 4),
+        (
+            2 * DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
+            None,
+            DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
+        ),
+    ],
+)
+def test_derive_max_shuffle_aggregators(num_cpus, max_aggregators, expected):
+    ctx = DataContext(max_hash_shuffle_aggregators=max_aggregators)
+    resources = ExecutionResources(cpu=num_cpus)
+
+    assert _derive_max_shuffle_aggregators(resources, ctx) == expected
 
 
 def _create_aggregator_pool_for_test(op, estimated_dataset_bytes: Optional[int]):
