@@ -63,7 +63,6 @@ class TorchCheckpoint(FrameworkCheckpoint):
             A :class:`TorchCheckpoint` containing the specified state dictionary.
 
         Examples:
-
             >>> import torch
             >>> import torch.nn as nn
             >>> from ray.train.torch import TorchCheckpoint
@@ -125,7 +124,6 @@ class TorchCheckpoint(FrameworkCheckpoint):
             A :class:`TorchCheckpoint` containing the specified model.
 
         Examples:
-
             >>> from ray.train.torch import TorchCheckpoint
             >>> import torch
             >>> # Create model identity and send a random tensor to it
