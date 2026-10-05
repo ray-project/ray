@@ -1,10 +1,12 @@
-.. meta::
-   :description: Run Ray clusters on an LSF-managed HPC system using the community-supported deployment steps.
+---
+myst:
+  html_meta:
+    description: "Run Ray clusters on an LSF-managed HPC system using the community-supported deployment steps."
+---
 
-.. _ray-LSF-deploy:
+(ray-LSF-deploy)=
 
-Deploying on LSF
-================
+# Deploying on LSF
 
 This document describes a couple high-level steps to run Ray clusters on LSF.
 
@@ -16,6 +18,4 @@ This document describes a couple high-level steps to run Ray clusters on LSF.
 
 Steps 1-4 have been automated and can be easily run as a script, please refer to below github repo to access script and run sample workloads:
 
-- `ray_LSF`_ Ray with LSF. Users can start up a Ray cluster on LSF, and run DL workloads through that either in a batch or interactive mode.
-
-.. _`ray_LSF`: https://github.com/IBMSpectrumComputing/ray-integration
+- [ray_LSF](https://github.com/IBMSpectrumComputing/ray-integration) Ray with LSF. Users can start up a Ray cluster on LSF, and run DL workloads through that either in a batch or interactive mode.
