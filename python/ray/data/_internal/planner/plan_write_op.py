@@ -149,8 +149,12 @@ def _plan_write_op_internal(
     )
     ref_bundler = None
     # Keep Write separate so custom hooks receive the schema after upstream transforms.
-    # File datasinks are initialized before execution by Dataset.write_datasink.
-    supports_fusion = on_start is None or isinstance(datasink, _FileDatasink)
+    # The default file hook only handles file setup and doesn't use the schema.
+    supports_fusion = on_start is None or (
+        isinstance(datasink, _FileDatasink)
+        and type(on_start) is MethodType
+        and on_start.__func__ is _FileDatasink.on_write_start
+    )
     if min_bytes_per_bundle is not None:
         ref_bundler = RebundleQueue(EstimateBytes(min_bytes_per_bundle))
         supports_fusion = False

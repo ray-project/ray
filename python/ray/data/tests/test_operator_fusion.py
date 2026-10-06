@@ -883,6 +883,47 @@ def test_write_fusion_with_default_start_hook(
         assert "ReadRange->Map(<lambda>)->Write" in ds._write_ds.stats()
 
 
+def test_write_fusion_with_custom_file_start_hook(
+    ray_start_regular_shared_2_cpus, tmp_path
+):
+    import pyarrow.dataset as pads
+
+    from ray.data._internal.datasource.csv_datasink import CSVDatasink
+
+    class SchemaCheckingCSVDatasink(CSVDatasink):
+        def __init__(self, path):
+            super().__init__(path)
+            self.start_schemas = []
+            self.schema = None
+
+        def on_write_start(self, schema=None):
+            self.start_schemas.append(schema)
+            super().on_write_start(schema)
+            if schema is not None:
+                self.schema = schema
+
+        def write_block_to_file(self, block, file):
+            assert self.schema == block.to_arrow().schema
+            super().write_block_to_file(block, file)
+
+    path = tmp_path / "output"
+    sink = SchemaCheckingCSVDatasink(str(path))
+    ds = ray.data.range(8, override_num_blocks=2).map(
+        lambda row: dict(row, added=row["id"] + 1)
+    )
+    ds.write_datasink(sink)
+
+    # File setup runs first without a schema, then Write initializes with its input.
+    assert len(sink.start_schemas) == 2
+    assert sink.start_schemas[0] is None
+    assert sink.start_schemas[1].names == ["id", "added"]
+    assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
+    rows = pads.dataset(str(path), format="csv").to_table().to_pylist()
+    assert sorted(rows, key=lambda row: row["id"]) == [
+        {"id": i, "added": i + 1} for i in range(8)
+    ]
+
+
 def test_write_fusion_with_wrapped_start_hook(ray_start_regular_shared_2_cpus):
     from ray.data.block import BlockAccessor
     from ray.data.datasource.datasink import Datasink
