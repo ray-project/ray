@@ -789,6 +789,141 @@ def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
+@pytest.mark.parametrize("input_type", ["materialized", "read", "shuffle", "filter"])
+def test_write_start_receives_transformed_schema(
+    ray_start_regular_shared_2_cpus, restore_data_context, input_type
+):
+    import pyarrow as pa
+
+    from ray.data.block import BlockAccessor
+    from ray.data.datasource.datasink import Datasink
+
+    expected_schema = pa.schema([("id", pa.int64()), ("added", pa.int64())])
+    if input_type == "filter":
+        expected_schema = pa.schema([("id", pa.int64())])
+
+    class SchemaCheckingDatasink(Datasink):
+        def __init__(self):
+            self.schema = None
+            self.start_calls = 0
+            self.rows_written = 0
+
+        def on_write_start(self, schema=None):
+            assert schema == expected_schema
+            self.schema = schema
+            self.start_calls += 1
+
+        def write(self, blocks, ctx):
+            assert self.schema == expected_schema
+            rows = 0
+            for block in blocks:
+                accessor = BlockAccessor.for_block(block)
+                assert accessor.to_arrow().schema == self.schema
+                rows += accessor.num_rows()
+            return rows
+
+        def on_write_complete(self, write_result):
+            self.rows_written = sum(write_result.write_returns)
+
+    if input_type == "filter":
+        # Row-based filtering rebuilds Arrow blocks, promoting int32 to int64.
+        ds = ray.data.from_arrow(pa.table({"id": pa.array(range(8), type=pa.int32())}))
+        ds = ds.filter(lambda row: row["id"] >= 0)
+    elif input_type == "materialized":
+        ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
+    else:
+        ds = ray.data.range(8, override_num_blocks=2)
+        if input_type == "shuffle":
+            DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+            ds = ds.repartition(2, keys=["id"])
+
+    if input_type != "filter":
+        ds = ds.map(lambda row: dict(row, added=row["id"] + 1))
+    sink = SchemaCheckingDatasink()
+    ds.write_datasink(sink)
+
+    assert sink.start_calls == 1
+    assert sink.rows_written == 8
+
+
+@pytest.mark.parametrize("instance_hook", [False, True])
+def test_write_fusion_with_default_start_hook(
+    ray_start_regular_shared_2_cpus, instance_hook
+):
+    from ray.data.block import BlockAccessor
+    from ray.data.datasource.datasink import Datasink
+
+    class CountingDatasink(Datasink):
+        def __init__(self):
+            self.rows_written = 0
+
+        def write(self, blocks, ctx):
+            return sum(BlockAccessor.for_block(block).num_rows() for block in blocks)
+
+        def on_write_complete(self, result):
+            self.rows_written = sum(result.write_returns)
+
+    sink = CountingDatasink()
+    schemas = []
+    if instance_hook:
+        # An instance override must not be mistaken for the base no-op method.
+        sink.on_write_start = lambda schema: schemas.append(schema)
+
+    ds = ray.data.range(8, override_num_blocks=2).map(
+        lambda row: dict(row, added=row["id"] + 1)
+    )
+    ds.write_datasink(sink)
+
+    assert sink.rows_written == 8
+    if instance_hook:
+        assert len(schemas) == 1
+        assert schemas[0].names == ["id", "added"]
+        assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
+    else:
+        assert "ReadRange->Map(<lambda>)->Write" in ds._write_ds.stats()
+
+
+def test_write_fusion_with_wrapped_start_hook(ray_start_regular_shared_2_cpus):
+    from ray.data.block import BlockAccessor
+    from ray.data.datasource.datasink import Datasink
+
+    class HookProxy:
+        def __init__(self, wrapped):
+            self.wrapped = wrapped
+
+        def __getattr__(self, name):
+            return getattr(object.__getattribute__(self, "wrapped"), name)
+
+        def __call__(self, schema=None):
+            self.wrapped.__self__.schema = schema
+            return self.wrapped(schema)
+
+    class CountingDatasink(Datasink):
+        def __init__(self):
+            self.schema = None
+            self.rows_written = 0
+
+        def write(self, blocks, ctx):
+            assert self.schema is not None
+            assert self.schema.names == ["id", "added"]
+            return sum(BlockAccessor.for_block(block).num_rows() for block in blocks)
+
+        def on_write_complete(self, result):
+            self.rows_written = sum(result.write_returns)
+
+    sink = CountingDatasink()
+    # Forwarding __func__ does not make a callable wrapper a no-op hook.
+    sink.on_write_start = HookProxy(sink.on_write_start)
+    ds = ray.data.range(8, override_num_blocks=2).map(
+        lambda row: dict(row, added=row["id"] + 1)
+    )
+    ds.write_datasink(sink)
+
+    assert sink.schema.names == ["id", "added"]
+    assert sink.rows_written == 8
+    assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
+
+
 @pytest.mark.parametrize(
     "up_use_actor, up_concurrency, down_use_actor, down_concurrency, should_fuse",
     [
