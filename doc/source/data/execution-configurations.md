@@ -28,7 +28,7 @@ import ray
 
 ```{testcode}
 ctx = ray.data.DataContext.get_current()
-ctx.execution_options.verbose_progress = True
+ctx.execution_options.preserve_order = True
 ```
 
 The following are some of the most important options:
@@ -61,7 +61,7 @@ ctx.verbose_stats_logs = True
 Many {class}`~ray.data.DataContext` options are for advanced use cases or debugging, and you usually don't need to modify them. The following are some of the most important options:
 
 * `max_errored_blocks`: The maximum number of blocks that can have errors. A negative value means no limit. Set this option to tolerate application-level exceptions in block processing tasks. UDFs can raise these exceptions, for example on corrupted data samples, and IO errors can also cause them. Ray Data drops the data in the failed blocks. Use this option to keep a long-running job from failing because of a small number of bad blocks. By default, Ray Data tolerates no blocks with errors.
-* `write_file_retry_on_errors`: A list of error message fragments that trigger a retry when writing files. Use it to handle transient errors when writing to remote storage systems. By default, Ray Data retries on common transient AWS S3 errors.
+* `retried_io_errors`: A list of error message patterns that trigger a retry when reading or writing files. Ray Data matches each pattern first as literal text and then as a regular expression. Use it to handle transient errors from remote storage systems. By default, Ray Data retries on common transient AWS S3 errors. This option replaces the deprecated `write_file_retry_on_errors`.
 * `verbose_stats_logs`: Whether stats logs are verbose. Verbose logs include fields such as `extra_metrics` in the stats output, which are otherwise excluded. Off by default.
 * `log_internal_stack_trace`: Whether to write the full internal stack frames from Ray Data and Ray Core to the Ray Data log file when logging a user-code error. Ray Data always omits these internal frames from `stdout`, and by default also omits them from the log file. Set this to `True` to include them in the log file. Off by default.
 * `raise_original_map_exception`: Whether to raise the original exception from a map UDF instead of wrapping it in a `UserCodeException`.

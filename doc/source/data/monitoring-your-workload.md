@@ -35,16 +35,13 @@ Keep the following in mind when you read the progress bars:
 
 ### Configure the progress bar
 
-To reduce the progress bar output or turn the progress bars off entirely, use one of the following three settings:
+To configure the progress bars, use the following settings:
 
 * Disable operator-level progress bars: Set `DataContext.get_current().enable_operator_progress_bars = False`. Ray Data then shows only the global progress bar.
 * Disable all progress bars: Set `DataContext.get_current().enable_progress_bars = False`. This setting disables all Ray Data progress bars for dataset execution.
 * Disable `ray_tqdm`: Set `DataContext.get_current().use_ray_tqdm = False`. Ray Data then uses the base `tqdm` library instead of its custom distributed `tqdm` implementation. This setting can help when you debug logging issues in a distributed setting.
 
-By default, Ray Data truncates operator names longer than 100 characters, so that long names don't make the progress bar too wide to fit on the screen. To change this behavior, do one of the following:
-
-* To turn off this behavior and show the full operator name, set `DataContext.get_current().enable_progress_bar_name_truncation = False`.
-* To change the truncation threshold, update the constant `ray.data._internal.progress_bar.ProgressBar.MAX_NAME_LENGTH = 42`.
+By default, Ray Data truncates operator names longer than 100 characters, so that long names don't make the progress bar too wide to fit on the screen. To turn off truncation and show the full operator name, set `DataContext.get_current().enable_progress_bar_name_truncation = False`.
 
 :::{tip}
 To use the experimental console UI for progress bars, set `DataContext.get_current().enable_rich_progress_bars = True` or set the `RAY_DATA_ENABLE_RICH_PROGRESS_BARS=1` environment variable.
@@ -374,7 +371,7 @@ These metrics track resource allocation and scheduling behavior in the streaming
 
 During execution, Ray Data periodically logs updates to `ray-data.log`.
 
-Every five seconds, Ray Data logs the execution progress of every operator in the dataset. For more frequent updates, set `RAY_DATA_TRACE_SCHEDULING=1` so that Ray Data logs the progress after it dispatches each task.
+Every five seconds, Ray Data logs the execution progress of every operator in the dataset.
 
 ```text
 Execution Progress:

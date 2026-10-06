@@ -8,7 +8,7 @@ myst:
 
 # Working with LLMs
 
-Use the {ref}`ray.data.llm <llm-ref>` module to run scalable batch inference on Ray Data datasets. The module supports two modes. It can run a vLLM or SGLang inference engine directly, or it can query hosted endpoints through {class}`~ray.data.llm.ServeDeploymentProcessorConfig`.
+Use the {ref}`ray.data.llm <llm-ref>` module to run scalable batch inference on Ray Data datasets. The module can run a vLLM or SGLang inference engine directly, query OpenAI-compatible endpoints through {class}`~ray.data.llm.HttpRequestProcessorConfig`, or send requests to a Ray Serve deployment through {class}`~ray.data.llm.ServeDeploymentProcessorConfig`.
 
 To get started, see the following sections:
 
@@ -231,7 +231,7 @@ Ray Data LLM forwards `mm_processor_kwargs` to vLLM, which calls the model's Hug
 The following arguments configure multimodal inputs:
 
 - `engine_kwargs.limit_mm_per_prompt={"video": 1}`: Caps the number of videos per request.
-- `engine_kwargs.mm_processor_kwargs.size`: Sets the per-frame resize budget. The Hugging Face processor resizes inputs to fall between `shortest_edge` and `longest_edge` in total pixels.
+- `engine_kwargs.mm_processor_kwargs.size`: Sets the resize budget for each input. The Hugging Face processor resizes each input so that its total pixel count falls between `shortest_edge` and `longest_edge`. For a video, the total counts the pixels in all frames.
 - `engine_kwargs.mm_processor_kwargs.do_sample_frames=False`: Skips the Hugging Face processor's own frame sampling because `media_io_kwargs` already produced the final frames. Set this option whenever frame sampling already happened upstream.
 - `prepare_multimodal_stage.model_config_kwargs.allowed_local_media_path`: Required for `file://` or local-path media inputs.
 - `prepare_multimodal_stage.model_config_kwargs.media_io_kwargs`: Configures frame sampling at decode time.
@@ -713,10 +713,6 @@ ImportError: libcudart.so.12: cannot open shared object file: No such file or di
 Remove the incompatible package, or make sure the installed `nixl_ep` package is compatible with the CUDA runtime and vLLM build in your environment.
 :::
 
-:::{note}
-Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see {ref}`usage stats collection <ref-usage-stats>`.
-:::
-
 ### Get help
 
 If this guide doesn't cover your issue, use the following resources:
@@ -726,3 +722,7 @@ If this guide doesn't cover your issue, use the following resources:
 - [Ray Discourse Forum](https://discuss.ray.io): Ask questions and share knowledge.
 - [Ray LLM Office Hours](https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month): Learn about new Ray LLM features, ask questions, and get guidance from the team.
   - [Past Office Hours Recordings](https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN): View recordings from previous sessions.
+
+## Usage data collection
+
+Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see {ref}`usage stats collection <ref-usage-stats>`.

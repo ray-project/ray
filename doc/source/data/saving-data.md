@@ -78,6 +78,7 @@ Then, create a `GCSFileSystem` and specify a URI with the `gcs://` scheme.
 ```{testcode}
 :skipif: True
 
+import gcsfs
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -102,6 +103,7 @@ Then, create an `AzureBlobFileSystem` and specify a URI with the `az://` scheme.
 ```{testcode}
 :skipif: True
 
+import adlfs
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -220,7 +222,7 @@ Convert a dataset to a pandas DataFrame, or to a DataFrame from a distributed da
 
 ### Convert datasets to pandas
 
-To convert a {class}`~ray.data.dataset.Dataset` to a pandas DataFrame, call {meth}`Dataset.to_pandas() <ray.data.Dataset.to_pandas>`. Your data must fit in memory on the head node.
+To convert a {class}`~ray.data.dataset.Dataset` to a pandas DataFrame, call {meth}`Dataset.to_pandas() <ray.data.Dataset.to_pandas>`. The whole dataset must fit in the memory of the process that calls `to_pandas()`.
 
 ```{testcode}
 import ray
