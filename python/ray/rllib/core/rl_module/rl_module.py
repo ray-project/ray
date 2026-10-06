@@ -391,7 +391,7 @@ class RLModule(Checkpointable, abc.ABC):
         model_config: A config dict to specify features of this RLModule.
         catalog_class: An optional `Catalog` subclass used to build the RLModule's
             sub-components (encoder, heads, action distribution classes). Deprecated.
-        **kwargs: Forwarded to the `Checkpointable` base class constructor.
+        **kwargs: Unused. Accepted for forward compatibility.
 
     Attributes:
         action_dist_cls: An optional ray.rllib.core.distribution.distribution.
@@ -711,15 +711,14 @@ class RLModule(Checkpointable, abc.ABC):
         """Returns the state dict of the module.
 
         Args:
-            components: An optional collection of string keys to be included in the
-                returned state. This might be useful, if getting certain components
-                of the state is expensive (e.g. reading/compiling the weights of a
-                large NN) and at the same time, these components are not required by
-                the caller.
-            not_components: An optional collection of string keys to be excluded in
-                the returned state, even if the same string is part of `components`.
-                This is useful to get the complete state of the class, except for some
-                very large sub-components.
+            components: Ignored by the default `RLModule` and `TorchRLModule`
+                implementations. Subclasses that have sub-components, such as
+                `MultiRLModule`, use this to select which sub-components to include
+                in the returned state.
+            not_components: Ignored by the default `RLModule` and `TorchRLModule`
+                implementations. Subclasses that have sub-components, such as
+                `MultiRLModule`, use this to exclude sub-components from the
+                returned state.
             inference_only: Whether the returned state should be an inference-only
                 state (w/o those model components that are not needed for action
                 computations, such as a value function or a target network).

@@ -304,8 +304,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
         Yields:
             SingleAgentEpisode: All SingleAgentEpisodes in the input list, whereby
-                MultiAgentEpisodes will be broken down into their individual
-                SingleAgentEpisode components.
+            MultiAgentEpisodes will be broken down into their individual
+            SingleAgentEpisode components.
         """
         list_indices = defaultdict(int)
 

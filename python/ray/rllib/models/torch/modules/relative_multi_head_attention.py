@@ -19,7 +19,7 @@ class RelativePositionEmbedding(nn.Module):
     Args:
         out_dim: The number of nodes to go into the first Tranformer
             layer with.
-        **kwargs: Forwarded to the `nn.Module` constructor.
+        **kwargs: Unused. Accepted for API compatibility.
     """
 
     def __init__(self, out_dim: int, **kwargs):
