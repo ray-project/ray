@@ -53,7 +53,7 @@ Claude Code sends a model name with each request. That name must match `model_lo
 
 ## Point Claude Code at the application
 
-In the shell where you run Claude Code, set the following variables. Replace `<serve-host>` with the address of the node that runs Serve.
+Set the following variables, then start Claude Code from the same shell with the served model. Replace `<serve-host>` with the address of the node that runs Serve.
 
 ```bash
 export ANTHROPIC_BASE_URL=http://<serve-host>:8000
