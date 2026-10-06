@@ -90,6 +90,90 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     assert entry["detected_issues"] == []
 
 
+def test_memory_and_object_lost_stats_in_payload(reset_collector, mock_record):
+    """Object store usage is sampled per scheduling step, and task USS and
+    object-lost failures are aggregated across operators at execution end."""
+    from ray.data._internal.execution.interfaces import ExecutionResources
+    from ray.data._internal.execution.interfaces.distribution_tracker import (
+        DistributionTracker,
+    )
+
+    def make_op(uss_samples, num_object_lost):
+        op = MagicMock()
+        tracker = DistributionTracker()
+        for sample in uss_samples:
+            tracker.add_sample(sample)
+        op.metrics.max_uss_bytes = tracker
+        op.metrics.num_tasks_failed_object_lost = num_object_lost
+        return op
+
+    executor = MagicMock()
+    executor.issue_detector_manager = None
+    executor._topology = {make_op([100, 300], 1): None, make_op([200], 2): None}
+
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    for used in (10, 30, 20):
+        executor._resource_manager.get_global_usage.return_value = ExecutionResources(
+            object_store_memory=used
+        )
+        callback.on_execution_step(executor)
+    callback.after_execution_fails(executor, RuntimeError("boom"))
+
+    perf = json.loads(mock_record[-1][1])["executions"][0]["performance"]
+    assert perf["object_store_memory_bytes"] == {
+        "num_samples": 3,
+        "min": 10,
+        "max": 30,
+        "mean": 20,
+        "sum": 60,
+        "variance": 100,
+    }
+    assert perf["task_max_uss_bytes"] == {
+        "num_samples": 3,
+        "min": 100,
+        "max": 300,
+        "mean": 200,
+        "sum": 600,
+        "variance": 10000,
+    }
+    assert perf["num_object_lost_task_failures"] == 3
+
+
+def test_execution_step_no_op_when_disabled(
+    reset_collector, mock_record, executor, monkeypatch
+):
+    """No samples are taken when usage collection is disabled."""
+    monkeypatch.setenv("RAY_DATA_USAGE_DISABLED", "1")
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.on_execution_step(executor)
+    assert callback._object_store_memory.num_samples == 0
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_context_records_seed_input_lineage_recovery(
+    reset_collector, mock_record, executor, restore_data_context, enabled
+):
+    """The seed-input lineage recovery opt-in is recorded in ``env.context``."""
+    ray.data.DataContext.get_current().enable_seed_input_lineage_recovery = enabled
+    ds = ray.data.range(1)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+
+    _, payload_json = mock_record[-1]
+    context = json.loads(payload_json)["executions"][0]["env"]["context"]
+    assert context == {"enable_seed_input_lineage_recovery": enabled}
+
+
+def test_context_whitelist_in_sync():
+    """Every name in ``_CONTEXT_WHITELIST`` must exist on ``DataContext``."""
+    ctx = ray.data.DataContext.get_current()
+    assert [n for n in collector._CONTEXT_WHITELIST if not hasattr(ctx, n)] == []
+
+
 def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
     """Detected issues are recorded as (issue_type, operator) pairs, serialized
     as a list of ``{"issue_type", "operator"}`` objects in the payload."""
