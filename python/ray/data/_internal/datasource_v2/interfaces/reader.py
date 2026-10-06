@@ -25,10 +25,8 @@ class Reader(ABC, Generic[InputSplit]):
         This method is called on workers to perform the actual read operation.
         It should respect all pushdowns configured on this reader.
 
-        Implement this directly when ``pyarrow.dataset`` cannot decode the
-        format (images, audio, video, text, NumPy, TFRecords, Avro) or the
-        source is not files at all. ``FileReader`` covers Parquet, CSV, JSON,
-        ORC and Arrow IPC. Your implementation should:
+        Implement this directly when ``FileReader`` does not decode your
+        format or the source is not files at all. Your implementation should:
 
             1. Open each entry of ``input_split`` and decode it.
             2. Apply every pushdown this reader was configured with.

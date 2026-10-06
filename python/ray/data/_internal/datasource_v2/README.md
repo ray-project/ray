@@ -106,10 +106,10 @@ classDiagram
         finalize()
     }
     class RoundRobinPartitioner {
-        whole files, estimated sizes
+        deals whole files into buckets
     }
     class OnlineBinPacker {
-        FileChunk rows, exact sizes
+        pool of open bins, splits at read units
     }
     class InMemorySizeEstimator {
         estimate_in_memory_sizes(manifest)
@@ -141,8 +141,8 @@ Never extend `DataSourceV2` directly.
 | `<Name>DatasourceV2` | `paths`, `filesystem`, `_get_file_indexer`, `get_file_partitioner`, `infer_schema`, `create_scanner` | `paths` (one label the indexer interprets), `_get_file_indexer`, `get_file_partitioner`, `infer_schema(None)`, `create_scanner` |
 | Indexer | `NonSamplingFileIndexer` as is | implement `FileIndexer.list_files`: ask the catalog, emit manifest rows |
 | Partitioner | `RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)` | `None` (one task per listing block) or `OnlineBinPacker` |
-| `<Name>Scanner` | `ArrowFileScanner` when `pyarrow.dataset` decodes the format (Parquet, CSV, JSON, ORC, Arrow IPC); otherwise `FileScanner` plus the `Supports*` mixins your reader honours | `Scanner` plus the `Supports*` mixins your reader honours |
-| Reader | `FileReader(format=...)` for the `pyarrow.dataset` formats; otherwise implement `Reader.read` | implement `Reader.read` |
+| `<Name>Scanner` | `ArrowFileScanner` when `FileReader` decodes the format; otherwise `FileScanner` plus the `Supports*` mixins your reader honours | `Scanner` plus the `Supports*` mixins your reader honours |
+| Reader | `FileReader(format=...)` when it decodes the format; otherwise implement `Reader.read` | implement `Reader.read` |
 
 Wire it up in `read_api.py` under the `use_datasource_v2` branch of the
 matching `read_*` function, which calls `_read_datasource_v2(datasource, ...)`.

@@ -34,9 +34,11 @@ class FilePartitioner(ABC):
     Implementations must be deterministic to ensure consistent partitioning across
     retries.
 
-    ``RoundRobinPartitioner`` (estimated sizes, whole files) and
-    ``OnlineBinPacker`` (exact sizes, splits files at read-unit boundaries) in
-    ``common/`` cover most formats.
+    ``RoundRobinPartitioner`` and ``OnlineBinPacker`` in ``common/`` are two
+    packing strategies that work on any manifest, however its sizes were
+    obtained: round robin deals whole files into buckets up to a size target;
+    the bin packer keeps a pool of open bins and splits files at read-unit
+    boundaries when the rows carry chunk metadata.
 
     Implement this class when neither grouping fits, for example one read
     task per hive partition. Your implementation should:
