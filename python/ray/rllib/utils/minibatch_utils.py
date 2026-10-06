@@ -356,8 +356,10 @@ class ShardEpisodesIterator:
 
         Yields:
             A sub-list of Episodes of size roughly `len(episodes) / num_shards`. The
-            yielded sublists might have slightly different total sums of episode
-            lengths, in order to not have to drop even a single timestep.
+            yielded sublists might have different total sums of episode lengths, in
+            order to not have to drop even a single timestep: a multi-agent episode is
+            only cut where every agent keeps timesteps in both pieces, and goes into a
+            shard whole if there is no such env step.
         """
         sublists = [[] for _ in range(self._num_shards)]
         lengths = [0 for _ in range(self._num_shards)]
@@ -367,52 +369,43 @@ class ShardEpisodesIterator:
             episode = self._episodes[episode_index]
             min_index = lengths.index(min(lengths))
 
-            # Add the whole episode if it fits within the target length
-            if lengths[min_index] + len(episode) <= self._target_lengths[min_index]:
+            remaining_length = self._target_lengths[min_index] - lengths[min_index]
+            # Cut the episode if it does not fit within the target length, ...
+            pieces = None
+            if len(episode) > remaining_length > 0:
+                pieces = self._split(episode, remaining_length)
+            # ... unless the shard is full already or no env step works for a cut:
+            # then the episode goes into the shard whole.
+            if pieces is None:
                 sublists[min_index].append(episode)
                 lengths[min_index] += len(episode)
                 episode_index += 1
-            # Otherwise, slice the episode
             else:
-                remaining_length = self._target_lengths[min_index] - lengths[min_index]
-                if remaining_length > 0:
-                    slice_part, remaining_part = self._split(episode, remaining_length)
-                    sublists[min_index].append(slice_part)
-                    lengths[min_index] += len(slice_part)
-                    if remaining_part is None:
-                        episode_index += 1
-                    else:
-                        self._episodes[episode_index] = remaining_part
-                else:
-                    assert remaining_length == 0
-                    sublists[min_index].append(episode)
-                    episode_index += 1
+                slice_part, remaining_part = pieces
+                sublists[min_index].append(slice_part)
+                lengths[min_index] += len(slice_part)
+                self._episodes[episode_index] = remaining_part
 
         for sublist in sublists:
             yield sublist
 
     def _split(self, episode: EpisodeType, at: int):
-        """Cuts `episode` into its first `at` timesteps and the rest.
+        """Cuts `episode` in two, the first piece holding about `at` env steps.
 
-        Cutting a multi-agent episode right at the env step where one agent's
-        episode ended would keep that agent in the second piece with no timesteps
-        (its last observation sits in the lookback buffer), and the Learner
-        connector pipeline cannot build a batch from such an agent. So the cut
-        moves forward to the next env step at which every agent keeps at least one
-        timestep in each piece it appears in.
+        Cutting a multi-agent episode where one agent's episode ended, or began, can
+        leave that agent in one of the pieces without timesteps, and the Learner
+        connector pipeline cannot build a batch from such an agent. So the cut goes
+        to the env step nearest to `at` -- the earlier one on a tie -- at which every
+        agent keeps at least one timestep in each piece it appears in.
 
         Args:
             episode: The episode to cut.
-            at: The number of env steps the first piece holds, unless the cut has to
-                move forward.
+            at: The number of env steps the first piece should hold.
 
         Returns:
-            The two pieces, or `(episode, None)` if there is no such env step, in
-            which case the episode goes into the shard whole.
+            The two pieces, or None if no env step works for a cut.
         """
-        # Agents that have no timesteps to begin with are not the cut's doing.
-        already_empty = _agents_without_timesteps(episode)
-        for cut in range(at, len(episode)):
+        for cut in _cut_candidates(episode, at):
             # Note that the first slice will automatically "inherit" the lookback
             # buffer size of the episode. However, the second slice might need a
             # user defined lookback buffer (into the first slice).
@@ -420,12 +413,53 @@ class ShardEpisodesIterator:
             second = episode.slice(
                 slice(cut, None), len_lookback_buffer=self._len_lookback_buffer
             )
-            emptied = (
-                _agents_without_timesteps(first) | _agents_without_timesteps(second)
-            ) - already_empty
-            if not emptied:
+            # With a lookback of more than one env step, the second piece can also
+            # hold an agent that only observed before the cut, which
+            # `_cut_candidates` does not rule out.
+            if not (
+                _agents_without_timesteps(first) or _agents_without_timesteps(second)
+            ):
                 return first, second
-        return episode, None
+        return None
+
+
+def _cut_candidates(episode: EpisodeType, at: int) -> List[int]:
+    """The env steps `episode` may be cut at, nearest to `at` first.
+
+    A cut at env step `c` makes a first piece of the env steps before `c` and a
+    second one of `c` and after. A piece holds an agent if the agent observes in it,
+    the observation that ends the piece included, but holds timesteps of the agent
+    only if the agent also acts in it. So a cut is ruled out if an agent observes up
+    to it but only acts from it on, or observes from it on but only acted before it.
+    Ties go to the earlier env step.
+
+    Args:
+        episode: The episode to cut.
+        at: The env step the cut should be at.
+
+    Returns:
+        The env steps that are not ruled out, ordered by their distance to `at`.
+    """
+    agent_episodes = getattr(episode, "agent_episodes", None)
+    if agent_episodes is None:
+        # A single-agent episode can be cut anywhere.
+        return [at]
+    ruled_out = set()
+    for agent_id, agent_episode in agent_episodes.items():
+        mapping = episode.env_t_to_agent_t[agent_id]
+        observed = [
+            t for t in range(len(mapping)) if mapping[t] != episode.SKIP_ENV_TS_TAG
+        ]
+        # An agent acts on every observation but its last one.
+        acted = [t for t in observed if mapping[t] < agent_episode.t]
+        if not acted:
+            continue
+        ruled_out.update(range(observed[0], acted[0] + 1))
+        ruled_out.update(range(acted[-1] + 1, observed[-1] + 1))
+    return sorted(
+        (c for c in range(1, len(episode)) if c not in ruled_out),
+        key=lambda c: (abs(c - at), c),
+    )
 
 
 def _agents_without_timesteps(episode: EpisodeType) -> set:

@@ -11,6 +11,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
     ShardBatchIterator,
     ShardEpisodesIterator,
+    _cut_candidates,
 )
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -303,54 +304,79 @@ class TestMinibatchUtils(unittest.TestCase):
         check([len(e) for e in shards[2]], [35, 10])  # 45
         check([len(e) for e in shards[3]], [21, 15, 5, 1, 3])  # 45
 
-    def test_shard_episodes_iterator_leaves_every_agent_a_timestep(self):
+    def test_shard_episodes_iterator_cuts_where_every_agent_keeps_a_timestep(self):
         """A cut must not leave an agent in a piece without timesteps.
 
-        Cutting a multi-agent episode right at the env step where one agent's
-        episode ended keeps that agent in the second piece with zero timesteps (its
-        last observation sits in the lookback buffer), which the Learner connector
-        pipeline cannot build a batch from. The sharder moves such a cut instead.
+        Cutting a multi-agent episode right where one agent's episode ended keeps
+        that agent in the second piece without timesteps, and cutting where one
+        began puts its first observation into the first piece without an action.
+        The Learner connector pipeline cannot build a batch from either, so the
+        sharder cuts at the nearest env step that works instead.
         """
         space = gym.spaces.Box(-1.0, 1.0, (4,), np.float32)
         obs = np.zeros(4, np.float32)
-        episode = MultiAgentEpisode(
-            observation_space={0: space, 1: space},
-            action_space={0: gym.spaces.Discrete(2), 1: gym.spaces.Discrete(2)},
-            agent_module_ids={0: "p0", 1: "p1"},
+
+        def episode(spans):
+            """A 6 env step episode in which agent `a` acts in `range(*spans[a])`."""
+            ep = MultiAgentEpisode(
+                observation_space={a: space for a in spans},
+                action_space={a: gym.spaces.Discrete(2) for a in spans},
+                agent_module_ids={a: f"p{a}" for a in spans},
+            )
+            ep.add_env_reset(
+                observations={a: obs for a, (b, _) in spans.items() if b == 0}
+            )
+            for t in range(6):
+                acting = [a for a, (b, e) in spans.items() if b <= t < e]
+                ep.add_env_step(
+                    observations={
+                        a: obs for a, (b, e) in spans.items() if b <= t + 1 <= e
+                    },
+                    actions={a: 0 for a in acting},
+                    rewards={a: 1.0 for a in acting},
+                    terminateds={a: True for a in acting if t + 1 == spans[a][1] < 6},
+                )
+            ep.to_numpy()
+            return ep
+
+        # Agent 1 starts at env step 2, so a cut there is ruled out.
+        self.assertEqual(
+            [1, 3, 4, 5], _cut_candidates(episode({0: (0, 6), 1: (2, 6)}), 2)
         )
-        episode.add_env_reset(observations={0: obs, 1: obs})
-        # Agent 1's episode ends after 3 env steps, agent 0's after 6.
-        for t in range(6):
-            agents = [0, 1] if t < 3 else [0]
-            episode.add_env_step(
-                observations={a: obs for a in agents},
-                actions={a: 0 for a in agents},
-                rewards={a: 1.0 for a in agents},
-                terminateds={1: True} if t == 2 else {},
-            )
-        episode.to_numpy()
-
-        # Two shards of 3 env steps each: the balanced cut is exactly where agent
-        # 1's episode ended.
-        shards = ShardEpisodesIterator([episode], num_shards=2, len_lookback_buffer=1)
-        pieces = [piece for shard in shards for piece in shard]
-
-        for piece in pieces:
-            lengths = {aid: len(e) for aid, e in piece.agent_episodes.items()}
-            self.assertTrue(
-                all(lengths.values()), f"agent without timesteps: {lengths}"
-            )
-        # No timestep is lost or duplicated.
-        self.assertEqual(len(episode), sum(len(piece) for piece in pieces))
-        for aid, agent_episode in episode.agent_episodes.items():
-            self.assertEqual(
-                len(agent_episode),
-                sum(
-                    len(p.agent_episodes[aid])
-                    for p in pieces
-                    if aid in p.agent_episodes
-                ),
-            )
+        # Agent 1's episode ends after env step 2, so a cut at 3 is ruled out, and the
+        # sharder's two shards of 3 env steps each cut at 2 instead.
+        ends_early = episode({0: (0, 6), 1: (0, 3)})
+        self.assertEqual([2, 4, 1, 5], _cut_candidates(ends_early, 3))
+        for len_lookback_buffer, layout in [(1, [[2, 1], [3]]), (3, [[2], [4]])]:
+            with self.subTest(len_lookback_buffer=len_lookback_buffer):
+                shards = list(
+                    ShardEpisodesIterator(
+                        [ends_early],
+                        num_shards=2,
+                        len_lookback_buffer=len_lookback_buffer,
+                    )
+                )
+                self.assertEqual(layout, [[len(p) for p in shard] for shard in shards])
+                pieces = [piece for shard in shards for piece in shard]
+                for piece in pieces:
+                    lengths = {a: len(e) for a, e in piece.agent_episodes.items()}
+                    self.assertTrue(
+                        all(lengths.values()), f"agent without timesteps: {lengths}"
+                    )
+                # No timestep is lost or duplicated, ...
+                for a, agent_episode in ends_early.agent_episodes.items():
+                    self.assertEqual(
+                        len(agent_episode),
+                        sum(
+                            len(p.agent_episodes[a])
+                            for p in pieces
+                            if a in p.agent_episodes
+                        ),
+                    )
+                # ... and slicing leaves the episode's agent-to-module mapping alone.
+                self.assertEqual(
+                    {0: "p0", 1: "p1"}, ends_early._agent_to_module_mapping
+                )
 
 
 if __name__ == "__main__":

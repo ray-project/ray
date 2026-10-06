@@ -8,6 +8,7 @@ import pytest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
@@ -464,6 +465,67 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             )
             learner_0_weights, learner_1_weights = weights(DEFAULT_MODULE_ID)
             check(learner_0_weights, learner_1_weights)
+        finally:
+            learner_group.shutdown()
+
+    def test_learners_train_on_a_multi_agent_episode_cut_between_them(self):
+        """A multi-agent episode cut between two Learners trains on both of them.
+
+        Cut right where one agent's episode ended, a piece keeps that agent without
+        timesteps. The Learner connector pipeline then raised on the Learner that got
+        it, while its peer waited in the group agreement -- as this test then does,
+        rather than fail.
+        """
+        space = gym.spaces.Box(-1.0, 1.0, (4,), np.float32)
+        obs = np.zeros(4, np.float32)
+        episode = MultiAgentEpisode(
+            observation_space={0: space, 1: space},
+            action_space={0: gym.spaces.Discrete(2), 1: gym.spaces.Discrete(2)},
+            agent_module_ids={0: "p0", 1: "p1"},
+        )
+        episode.add_env_reset(observations={0: obs, 1: obs})
+        # Agent 1's episode ends after 3 of the 6 env steps, where an even cut falls.
+        for t in range(6):
+            agents = [0, 1] if t < 3 else [0]
+            episode.add_env_step(
+                observations={a: obs for a in agents},
+                actions={a: 0 for a in agents},
+                rewards={a: 1.0 for a in agents},
+                terminateds={1: True} if t == 2 else {},
+                extra_model_outputs={
+                    a: {
+                        Columns.ACTION_LOGP: np.float32(np.log(0.5)),
+                        Columns.ACTION_DIST_INPUTS: np.zeros(2, np.float32),
+                    }
+                    for a in agents
+                },
+            )
+        episode.to_numpy()
+        config = (
+            PPOConfig()
+            .update_from_dict(REMOTE_CONFIGS["multi-cpu-ddp"])
+            .multi_agent(
+                policies={"p0", "p1"},
+                policy_mapping_fn=lambda aid, *args, **kwargs: f"p{aid}",
+            )
+            .rl_module(
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={"p0": RLModuleSpec(), "p1": RLModuleSpec()}
+                )
+            )
+        )
+        learner_group = config.build_learner_group(
+            env=MultiAgentCartPole({"num_agents": 2})
+        )
+        try:
+            results = MetricsLogger.peek_results(
+                learner_group.update(episodes=[episode])
+            )
+            # Both Learners train both modules.
+            self.assertEqual(
+                [True, True],
+                [result["p1"][NUM_MODULE_STEPS_TRAINED] > 0 for result in results],
+            )
         finally:
             learner_group.shutdown()
 

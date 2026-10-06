@@ -1637,7 +1637,9 @@ class MultiAgentEpisode:
                 aid: eid.id_ for aid, eid in self.agent_episodes.items()
             },
             agent_t_started=agent_t_started,
-            agent_module_ids=self._agent_to_module_mapping,
+            # A copy: the slice drops agents that are done before it starts, which
+            # must not drop them from this episode's mapping as well.
+            agent_module_ids=dict(self._agent_to_module_mapping),
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
 
