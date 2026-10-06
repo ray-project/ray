@@ -335,7 +335,9 @@ def assert_hang_diagnostics(err, storage_path, num_workers):
     assert set(stack_traces) == {f"rank_{i}.log" for i in range(num_workers)}
     # One file per node, not per rank, and these workers share a node.
     node_ip = ray.util.get_node_ip_address()
-    assert os.listdir(diagnostics_dir(storage_path, "nvidia_smi")) == [f"{node_ip}.log"]
+    assert os.listdir(diagnostics_dir(storage_path, "nvidia_smi")) == [
+        f"node_{node_ip}.log"
+    ]
 
 
 @pytest.mark.parametrize("train_func, expectation", TWO_WORKER_SCENARIOS)
