@@ -61,6 +61,26 @@ def test_writer_drains_own_transfers_first():
         assert not guard._reads.get("a")
 
 
+def test_writers_on_different_agents_do_not_deadlock():
+    guard = _AgentGuard()
+    barrier = threading.Barrier(2)
+    removed = []
+
+    def remove(held, target):
+        guard.set_handle(held, guard.acquire_read(held), "handle")
+        barrier.wait(TIMEOUT_S)
+        with guard.write(target, wait_done=lambda handle: None):
+            removed.append(target)
+
+    threads = [
+        run_in_thread(lambda: remove("x", "y")),
+        run_in_thread(lambda: remove("y", "x")),
+    ]
+    for t in threads:
+        t.join(TIMEOUT_S)
+    assert sorted(removed) == ["x", "y"]
+
+
 def test_thread_with_transfers_is_not_blocked_by_waiting_writer():
     guard = _AgentGuard()
     first = guard.acquire_read("a")

@@ -118,7 +118,7 @@ class _AgentGuard:
     In-flight transfers are readers and never block each other. Removing a remote
     agent is the writer: it kills every transfer on that agent, so it must wait for
     them. A writer cannot wait for its own thread's transfers, since only that thread
-    completes them, so it drains those first.
+    completes them, so it first drains all of them, on every agent.
     """
 
     def __init__(self):
@@ -162,15 +162,18 @@ class _AgentGuard:
     def write(self, agent: str, wait_done: Callable[[Any], None]):
         me = threading.get_ident()
         with self._cond:
+            # Drain every agent, not just this one: a thread waiting here must hold no
+            # reads, or two writers on different agents can wait on each other.
             own = [
-                (key, handle)
-                for key, (t, handle) in self._reads.get(agent, {}).items()
+                (reader_agent, key, handle)
+                for reader_agent, reads in self._reads.items()
+                for key, (t, handle) in reads.items()
                 if t == me
             ]
-        for key, handle in own:
+        for reader_agent, key, handle in own:
             if handle is not None:
                 wait_done(handle)
-            self.release_read(agent, key)
+            self.release_read(reader_agent, key)
         with self._cond:
             self._waiting_writers[agent] += 1
             self._cond.wait_for(
@@ -584,7 +587,9 @@ class NixlTensorTransport(TensorTransportManager):
                 elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
                     evicted_agent_name, _ = self._remote_agents.popitem(last=False)
                     with self._agent_guard.write(evicted_agent_name, self._wait_done):
-                        nixl_agent.remove_remote_agent(evicted_agent_name)
+                        # Another thread may have re-added it while we waited.
+                        if evicted_agent_name not in self._remote_agents:
+                            nixl_agent.remove_remote_agent(evicted_agent_name)
 
                 self._remote_agents[remote_name] = remote_agent_meta_version
 
