@@ -425,7 +425,7 @@ class Node:
             # We retry in a loop in case it takes longer than expected.
             time.sleep(0.1)
             start_time = time.monotonic()
-            raylet_start_wait_time_s = 30
+            raylet_start_wait_time_s = ray_constants.RAY_RAYLET_START_WAIT_TIME_S
             while True:
                 try:
                     # Will raise a RuntimeError if the node info is not available.
