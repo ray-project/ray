@@ -459,12 +459,27 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   RAY_CHECK(it != placement_group_leasing_in_progress_.end());
   placement_group_leasing_in_progress_.erase(it);
 
-  // Add a prepared bundle locations to committed bundle locations.
+  // A node can die after its commit reply but before the last reply of this placement
+  // group returns. GcsPlacementGroupManager::OnNodeDead only reschedules bundles in the
+  // committed index, so bundles on dead nodes must be treated as uncommitted here.
+  auto committed_bundle_locations = std::make_shared<BundleLocations>();
+  for (const auto &iter : *prepared_bundle_locations) {
+    const auto &node_id = iter.second.first;
+    if (!gcs_node_manager_.GetAliveNode(node_id).has_value()) {
+      RAY_LOG(INFO) << "Node " << node_id << " died before placement group "
+                    << placement_group_id << " finished committing bundle index "
+                    << iter.first.second << ", the bundle will be rescheduled.";
+      lease_status_tracker->MarkBundleUncommitted(node_id, iter.second.second);
+      continue;
+    }
+    committed_bundle_locations->emplace(iter.first, iter.second);
+  }
+
   committed_bundle_location_index_.AddBundleLocations(placement_group_id,
-                                                      prepared_bundle_locations);
+                                                      committed_bundle_locations);
   cluster_resource_scheduler_.GetClusterResourceManager()
       .GetBundleLocationIndex()
-      .AddOrUpdateBundleLocations(prepared_bundle_locations);
+      .AddOrUpdateBundleLocations(committed_bundle_locations);
   // NOTE: If the placement group scheduling has been cancelled, we just need to destroy
   // the committed bundles. The reason is that only `RemovePlacementGroup` will mark the
   // state of placement group as `CANCELLED` and it will also destroy all prepared and
@@ -807,11 +822,15 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
     const std::shared_ptr<const BundleSpecification> &bundle,
     const Status &status) {
   commit_request_returned_count_ += 1;
-  // If the request succeeds, record it.
-  const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
-    uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
+    MarkBundleUncommitted(node_id, bundle);
   }
+}
+
+void LeaseStatusTracker::MarkBundleUncommitted(
+    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle) {
+  uncommitted_bundle_locations_->emplace(bundle->BundleId(),
+                                         std::make_pair(node_id, bundle));
 }
 
 bool LeaseStatusTracker::AllCommitRequestReturned() const {

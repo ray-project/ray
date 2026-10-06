@@ -1106,6 +1106,66 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeErrorDuringCommittingResources) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadBeforeSuccessfulCommitReply) {
+  auto node = GenNodeInfo(0);
+  const auto node_id = NodeID::FromBinary(node->node_id());
+  AddNode(node);
+
+  auto placement_group =
+      MakeStrictPackPlacementGroup(/*bundles_count=*/2, /*cpu_per_bundle=*/1);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+
+  // The node is removed while the commit RPC is in flight.
+  // GcsPlacementGroupManager::OnNodeDead only reschedules bundles returned by
+  // GetAndRemoveBundlesOnNode, and none are committed yet.
+  RemoveNode(node);
+  ASSERT_TRUE(scheduler_->GetAndRemoveBundlesOnNode(node_id).empty());
+
+  // The raylet replied OK before shutting down.
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(Status::OK()));
+
+  CheckPlacementGroupSize(0, GcsPlacementGroupStatus::SUCCESS);
+  CheckPlacementGroupSize(1, GcsPlacementGroupStatus::FAILURE);
+  ASSERT_EQ(placement_group->GetUnplacedBundles().size(), 2);
+  ASSERT_TRUE(scheduler_->GetBundlesOnNode(node_id).empty());
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadBeforeOtherCommitRepliesReturn) {
+  auto node0 = GenNodeInfo(0);
+  auto node1 = GenNodeInfo(1);
+  const auto node0_id = NodeID::FromBinary(node0->node_id());
+  const auto node1_id = NodeID::FromBinary(node1->node_id());
+  AddNode(node0);
+  AddNode(node1);
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_SPREAD),
+      "",
+      counter_,
+      clock_);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+
+  // node0 commits successfully, then dies while node1's commit is still in flight.
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(Status::OK()));
+  RemoveNode(node0);
+  ASSERT_TRUE(scheduler_->GetAndRemoveBundlesOnNode(node0_id).empty());
+
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(Status::OK()));
+
+  CheckPlacementGroupSize(0, GcsPlacementGroupStatus::SUCCESS);
+  CheckPlacementGroupSize(1, GcsPlacementGroupStatus::FAILURE);
+  ASSERT_EQ(placement_group->GetUnplacedBundles().size(), 1);
+  ASSERT_TRUE(scheduler_->GetBundlesOnNode(node0_id).empty());
+  auto bundles_on_node1 = scheduler_->GetBundlesOnNode(node1_id);
+  ASSERT_EQ(bundles_on_node1[placement_group->GetPlacementGroupID()].size(), 1);
+}
+
 TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
   auto node0 = GenNodeInfo(0);
   auto node1 = GenNodeInfo(1);
