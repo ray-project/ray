@@ -54,8 +54,8 @@ class ArrowAggSpec(NamedTuple):
     # (agg_index, source_col, block) -> block with a derived indicator column
     # appended (e.g. percentages).
     prep: Optional[Callable] = None
-    # Integer "sum" inputs are accumulated in decimal128. PyArrow's sum kernel
-    # otherwise wraps in int64. Non-integer columns are left alone.
+    # Widen integer "sum" inputs to decimal128 when native accumulation may
+    # overflow. Non-integer columns are left alone.
     widen_integers: bool = False
 
 

@@ -204,10 +204,7 @@ def _make_vectorized_aggregating_reduce_fn(
                 col = agg.get_target_column()
                 if spec.prep is not None:
                     combined = spec.prep(i, col, combined)
-                source_col = col
-                if spec.widen_integers:
-                    combined, source_col = retarget_sum_column(combined, col, i)
-                agg_specs += spec.raw_agg_specs(i, source_col, opts)
+                agg_specs += spec.raw_agg_specs(i, col, opts)
             else:
                 assert spec.merge_specs is not None  # reduction specs define it
                 agg_specs += spec.merge_specs(out_cols, opts)

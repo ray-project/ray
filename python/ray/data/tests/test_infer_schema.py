@@ -1,8 +1,9 @@
 """Integration tests for ``LogicalOperator.infer_schema()`` (Phase 1).
 
 Asserts that ``Dataset.schema()`` resolves the output schema **without**
-falling back to a ``limit(1)`` execution for every non-UDF chain. UDF
-chains (``map``, ``map_batches``, ``flat_map``) correctly return ``None``.
+falling back to a ``limit(1)`` execution when output types are statically
+known. UDF chains (``map``, ``map_batches``, ``flat_map``) and integer sums
+whose output type depends on overflow correctly return ``None``.
 
 The headline guarantee is verified by calling ``ds.schema(fetch_if_missing=False)``
 through the public API: this disables the ``limit(1)`` fallback in
@@ -197,12 +198,12 @@ class TestAggregate:
         ds = (
             ray.data.read_parquet(str(parquet_path))
             .groupby("k")
-            .aggregate(Sum("a"), Mean("b"), Count("a"), Max("a"), Min("a"))
+            .aggregate(Sum("b"), Mean("b"), Count("a"), Max("a"), Min("a"))
         )
         assert _static_schema(ds) == pa.schema(
             [
                 pa.field("k", pa.string()),
-                pa.field("sum(a)", pa.int64()),
+                pa.field("sum(b)", pa.float64()),
                 pa.field("mean(b)", pa.float64()),
                 pa.field("count(a)", pa.int64(), nullable=False),
                 pa.field("max(a)", pa.int32()),
@@ -228,12 +229,30 @@ class TestAggregate:
         ds = (
             ray.data.read_parquet(str(parquet_path))
             .groupby("k")
-            .aggregate(Sum("a"))
+            .aggregate(Sum("b"))
             .sort("k")
         )
         assert _static_schema(ds) == pa.schema(
-            [pa.field("k", pa.string()), pa.field("sum(a)", pa.int64())]
+            [pa.field("k", pa.string()), pa.field("sum(b)", pa.float64())]
         )
+
+    @pytest.mark.parametrize("value", [1, 2**62])
+    def test_integer_sum_resolves_output_schema_from_values(
+        self, ray_start_regular_shared_2_cpus, value
+    ):
+        table = pa.table({"k": ["x"] * 8, "a": pa.array([value] * 8, type=pa.int64())})
+        ds = ray.data.from_arrow(table).groupby("k").aggregate(Sum("a"))
+        # Input type alone cannot determine whether the sum will overflow.
+        assert _static_schema(ds) is None
+        result = ds.materialize()
+        schema = result.schema().base_schema
+        assert schema.names == ["k", "sum(a)"]
+        output_type = schema.field("sum(a)").type
+        if value == 1:
+            assert output_type == pa.int64()
+        else:
+            assert pa.types.is_decimal(output_type) and output_type.scale == 0
+        assert int(result.take_all()[0]["sum(a)"]) == value * 8
 
 
 class TestNAry:
@@ -368,13 +387,13 @@ class TestEndToEndStaticResolution:
             .select_columns(["a", "b", "k"])
             .with_column("s", col("a") + col("b"))
             .groupby("k")
-            .aggregate(Sum("a"), Mean("b"))
+            .aggregate(Sum("b"), Mean("b"))
             .sort("k")
         )
         assert _static_schema(ds) == pa.schema(
             [
                 pa.field("k", pa.string()),
-                pa.field("sum(a)", pa.int64()),
+                pa.field("sum(b)", pa.float64()),
                 pa.field("mean(b)", pa.float64()),
             ]
         )

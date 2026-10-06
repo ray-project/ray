@@ -64,6 +64,23 @@ def test_integer_sum_preserves_native_type(dtype):
     assert result.to_pylist() == [{"g": 0, "sum(v)": 3, "mean(v)": 1.5, "max(v)": 2}]
 
 
+@pytest.mark.parametrize(
+    "dtype", [pa.int64(), pa.uint64(), pa.dictionary(pa.int8(), pa.int64())]
+)
+def test_integer_sum_output_field_is_unresolved(dtype):
+    assert Sum("v").output_field(pa.schema([pa.field("v", dtype)])) is None
+
+
+@pytest.mark.parametrize(
+    "dtype", [pa.float64(), pa.decimal128(20, 0), pa.decimal128(20, 2)]
+)
+def test_noninteger_sum_output_field_preserves_kernel_type(dtype):
+    expected_type = pc.call_function("sum", [pa.array([], type=dtype)]).type
+    assert Sum("v").output_field(pa.schema([pa.field("v", dtype)])) == pa.field(
+        "sum(v)", expected_type
+    )
+
+
 @pytest.mark.parametrize("unsigned", [False, True])
 @pytest.mark.parametrize("dictionary", [False, True])
 def test_overflow_and_cancellation_across_partials(unsigned, dictionary):

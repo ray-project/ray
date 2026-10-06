@@ -656,9 +656,9 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
             sum_array,
         )
 
-        # PyArrow's sum kernel wraps integer overflow. Accumulate integers in
-        # decimal128. Values that fit in int64 still come back as int64 so
-        # existing callers are unchanged.
+        # PyArrow's sum kernel wraps integer overflow. Widen risky inputs to
+        # decimal128, then restore the native signed/unsigned sum type when
+        # the result fits. Safe inputs retain native accumulation.
         output_type = integer_sum_type(self._column.type)
         if output_type is None:
             res = pac.sum(self._column, skip_nulls=ignore_nulls)

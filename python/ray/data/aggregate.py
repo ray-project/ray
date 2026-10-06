@@ -611,7 +611,9 @@ class AsList(VectorizedAggregateFnV2[List, List]):
 
 
 @PublicAPI
-class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
+class Sum(
+    VectorizedAggregateFnV2[Union[int, float, Decimal], Union[int, float, Decimal]]
+):
     """Defines sum aggregation.
 
     Example:
@@ -653,7 +655,7 @@ class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> Union[int, float]:
+    def aggregate_block(self, block: Block) -> Union[int, float, Decimal]:
         return _store_integral_sum(
             BlockAccessor.for_block(block).sum(
                 self._target_col_name, self._ignore_nulls
@@ -661,11 +663,25 @@ class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
         )
 
     def combine(
-        self, current_accumulator: Union[int, float], new: Union[int, float]
-    ) -> Union[int, float]:
+        self,
+        current_accumulator: Union[int, float, Decimal],
+        new: Union[int, float, Decimal],
+    ) -> Union[int, float, Decimal]:
         return current_accumulator + new
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        from ray.data._internal.arrow_aggregation import integer_sum_type
+
+        if self._target_col_name is not None:
+            try:
+                input_type = input_schema.field(self._target_col_name).type
+            except (KeyError, ValueError):
+                return None
+            if integer_sum_type(input_type) is not None:
+                # Integer sums keep their native type when representable and
+                # widen to decimal128 on overflow. The output type therefore
+                # depends on the values and cannot be inferred from the schema.
+                return None
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.sum)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
