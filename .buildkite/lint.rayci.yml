@@ -72,13 +72,28 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - clang_format
-      - pre_commit
       - dashboard_format
       - copyright_format
       - bazel_team
       - bazel_buildifier
       - pytest_format
       - test_coverage
+
+  # `pre_commit` sits outside the matrix above so it can carry an extra tag.
+  # Its whitespace and end-of-file hooks read every text file that
+  # .pre-commit-config.yaml doesn't exclude, so config files such as .vale.ini
+  # and doc/redirects/*.yaml can fail it even though nothing else in the lint
+  # matrix reads them. always.rules.txt emits `pre_commit` for those paths, so
+  # this step runs for them without the rest of the matrix.
+  - label: ":lint-roller: lint: pre_commit"
+    key: lint-pre-commit
+    tags:
+      - lint
+      - pre_commit
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh pre_commit
 
   - label: ":lint-roller: pre-commit pydoclint"
     key: pydoclint-small

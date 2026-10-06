@@ -195,7 +195,10 @@ The following example hash shuffles rows based on the `id` column:
 ```{testcode}
 import ray
 
+ds = ray.data.range(1000)
+
 hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
+hash_shuffled_ds.materialize()
 ```
 
 :::{tip}

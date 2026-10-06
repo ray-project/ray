@@ -60,7 +60,6 @@ ray_cc_test(
     srcs = ["task_receiver_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//:ray_mock",
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:common",
