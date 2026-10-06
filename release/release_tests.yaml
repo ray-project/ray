@@ -4722,6 +4722,27 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_prefix_cache.yaml
 
+# Routing cost of PrefixCacheAffinityRouter with replicas that reply immediately,
+# on a CPU node: throughput, latency and router event loop stalls.
+- name: llm_serve_prefix_router_overhead_benchmark
+  frequency: weekly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      # For ray.llm's dependencies. The benchmark uses no GPU.
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_cpu_single_node.yaml
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python prefix_router_overhead_benchmark.py
+
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
