@@ -31,7 +31,7 @@ python/ray/experimental/rdt/rdt_manager.py: core_python cgraphs_direct_transport
 
 # === RLlib ===
 
-rllib/rllib.py: rllib rllib_gpu rllib_directly
+python/ray/rllib/rllib.py: rllib rllib_gpu rllib_directly
 
 # === Python Core ===
 
@@ -254,12 +254,8 @@ doc/redirects/README.md:
 # pulled in the rllib component tests); release/*.md emitted `tools`. The global
 # rule also subsumes the standalone README.rst/SECURITY.md/CONTRIBUTING.rst skip
 # entries and the release/*.md route, which were removed as dead code.
-# TODO: RLlib currently lives at the repo-root rllib/ tree. When it migrates
-# under python/ray/rllib/, update the rllib/ paths in this section (the two
-# READMEs here and the rllib/algorithms/ppo/ppo.py guard below) along with the
-# rllib/ entry in test.rules.txt.
-rllib/README.rst:
-rllib/algorithms/ppo/README.md:
+python/ray/rllib/README.md:
+python/ray/rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
 python/ray/tune/README.rst:
 src/ray/design_docs/task_states.rst:
@@ -272,7 +268,7 @@ SECURITY.md:
 # owner. The skip is prose-only and must not swallow a real change in the same
 # directory. If any of these starts emitting nothing, the global prose pattern
 # has grown too broad.
-rllib/algorithms/ppo/ppo.py: rllib rllib_gpu rllib_directly
+python/ray/rllib/algorithms/ppo/ppo.py: rllib rllib_gpu rllib_directly
 python/ray/data/read_api.py: data
 release/benchmarks/config.yaml: tools
 

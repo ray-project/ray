@@ -75,7 +75,7 @@ doc/source/ray-observability/reference/
 # sit next to the code they describe. None of it can change tested code, so a
 # content-only prose change triggers no library test steps. The post-merge
 # documentation build is the coverage for the doc/ pages. A prose file next to
-# source, such as a package README under rllib/ or python/ray/, used to match
+# source, such as a package README under python/ray/, used to match
 # that directory's rule below and fan out to the whole library suite. The two
 # global patterns here stop that.
 #
@@ -156,7 +156,6 @@ ci/docker/min.build.wanda.yaml
 @ min_build
 ;
 
-rllib/
 python/ray/rllib/
 ci/ray_ci/rllib.tests.yml
 @ rllib rllib_gpu rllib_directly

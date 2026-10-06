@@ -59,6 +59,9 @@ extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
     "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
+    # Stops MyST {eval-rst} blocks from pickling the build environment into
+    # doctrees (see _ext/myst_eval_rst_doctree.py).
+    "myst_eval_rst_doctree",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -423,6 +426,7 @@ all_toc_libs = [
 ]
 all_toc_libs += [
     "cluster",
+    "kuberay",
     "tune",
     "data",
     "train",
@@ -883,11 +887,15 @@ _intersphinx_targets = {
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
     ),
     "torch": (
-        "https://docs.pytorch.org/docs/stable/",
-        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt
-        # so cross-references only resolve to symbols that version ships. Bump this
-        # with that pin, then re-run _intersphinx/refresh.py torch.
-        "https://docs.pytorch.org/docs/2.9/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt.
+        # The inventory is derived from this base, so cross-references resolve only
+        # to symbols that version ships and link to that version's pages. Don't
+        # pair a pinned inventory with docs/stable/: stable serves the newest
+        # release, and PyTorch renames pages between releases, so the emitted links
+        # would 404. Bump this with the requirements pin, then re-run
+        # _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.10/",
+        None,
     ),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }

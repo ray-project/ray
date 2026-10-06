@@ -228,8 +228,11 @@ def create_app(
     async def require_bearer_token(request: Request) -> None:
         if token is None:
             return
-        provided = request.headers.get("authorization", "")
-        if not hmac.compare_digest(provided, f"Bearer {token}"):
+        # Compared as bytes: compare_digest refuses str with non-ASCII
+        # characters, which a client can put in the header. Starlette
+        # decodes headers as latin-1, so encoding back yields the raw value.
+        provided = request.headers.get("authorization", "").encode("latin-1")
+        if not hmac.compare_digest(provided, f"Bearer {token}".encode("utf-8")):
             raise _ApiError(401, "unauthorized", "invalid or missing bearer token")
 
     public = APIRouter(prefix="/api/v1")

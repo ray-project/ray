@@ -279,6 +279,7 @@ Then, create a `GCSFileSystem` and specify URIs with the `gs://` scheme.
 ```{testcode}
 :skipif: True
 
+import gcsfs
 import ray
 
 filesystem = gcsfs.GCSFileSystem(project="my-google-project")
@@ -322,7 +323,7 @@ import ray
 
 ds = ray.data.read_parquet(
     "az://ray-example-data/iris.parquet",
-    adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
+    filesystem=adlfs.AzureBlobFileSystem(account_name="azureopendatastorage"),
 )
 
 print(ds.schema())
@@ -1077,10 +1078,10 @@ To read data from BigQuery, call {func}`~ray.data.read_bigquery` and specify the
 
 import ray
 
-# Read the entire dataset. Do not specify query.
+# Read an entire table, specified as "dataset_id.table_id". Do not specify query.
 ds = ray.data.read_bigquery(
     project_id="my_gcloud_project_id",
-    dataset="bigquery-public-data.ml_datasets.iris",
+    dataset="my_dataset.my_table",
 )
 
 # Read from a SQL query of the dataset. Do not specify dataset.
@@ -1130,7 +1131,6 @@ ds = ray.data.read_mongo(
 
 # Write back to MongoDB.
 ds.write_mongo(
-    MongoDatasource(),
     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
     database="my_db",
     collection="my_collection",

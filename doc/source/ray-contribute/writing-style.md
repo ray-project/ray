@@ -89,7 +89,7 @@ Match the grammatical form of items in a series and avoid redundant conjunctions
 
 ### Use contractions
 
-Contractions read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't. Avoid contractions in a warning or an error message, where the extra weight of the full form helps.
+Always use contractions. They read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't.
 
 Never use "would've," "could've," "should've," "ain't," or "y'all."
 
@@ -396,7 +396,7 @@ Look up the form here rather than deriving it. The `Core.Terms` Vale rule flags 
 
 ## Writing Ray on Kubernetes and KubeRay docs
 
-Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/cluster/kubernetes/` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
+Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/kuberay/` and in `doc/source/cluster/kubernetes.md` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
 
 When two rules conflict in this domain, follow this order:
 

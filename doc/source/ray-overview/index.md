@@ -88,7 +88,7 @@ Ray Core
 
 **Deploy large-scale workloads**
 ^^^
-Deploy workloads on {doc}`AWS, GCP, Azure <../cluster/getting-started>` or {doc}`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`. Use Ray cluster managers to run Ray on existing {doc}`Kubernetes <../cluster/kubernetes/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, or {doc}`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
+Deploy workloads on {doc}`AWS, GCP, Azure <../cluster/getting-started>` or {doc}`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`. Use Ray cluster managers to run Ray on existing {doc}`Kubernetes <../kuberay/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, or {doc}`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
 +++
 ```{button-ref} ../cluster/getting-started
 :color: primary
