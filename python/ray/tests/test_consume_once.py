@@ -1,3 +1,4 @@
+import pickle
 import sys
 import threading
 
@@ -49,6 +50,36 @@ class Owner:
 
     def return_nested_ref(self):
         return [self.producer.produce.options(_consume_once=True).remote(1)]
+
+    def raise_with_ref(self):
+        ref = self.producer.produce.options(_consume_once=True).remote(1)
+        raise RuntimeError("boom", ref)
+
+    def yield_ref(self):
+        yield 1
+        yield self.producer.produce.options(_consume_once=True).remote(1)
+
+    def ping(self):
+        return "alive"
+
+
+@ray.remote
+class AsyncOwner:
+    def __init__(self):
+        self.producer = Producer.remote()
+
+    async def raise_with_ref(self):
+        ref = self.producer.produce.options(_consume_once=True).remote(1)
+        raise RuntimeError("boom", ref)
+
+    async def ping(self):
+        return "alive"
+
+
+@ray.remote
+def raise_with_ref_task():
+    ref = Producer.remote().produce.options(_consume_once=True).remote(1)
+    raise RuntimeError("boom", ref)
 
 
 @ray.remote
@@ -301,13 +332,13 @@ def test_borrowing_rejected(ray_start_regular_shared, consumed):
         ray.get(consumer.consume.remote(ref))
 
     match = "only be passed directly as an argument to one actor task"
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(pickle.PicklingError, match=match):
         consumer.consume.remote([ref])
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(pickle.PicklingError, match=match):
         consumer.consume.remote({"ref": ref})
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(pickle.PicklingError, match=match):
         consumer.consume.remote([ref, ref])
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(pickle.PicklingError, match=match):
         ray.put([ref])
     assert move_state(ref) == ("MOVED" if consumed else "MOVABLE")
 
@@ -318,6 +349,51 @@ def test_returning_consume_once_ref_rejected(ray_start_regular_shared, method):
 
     with pytest.raises(Exception, match="_consume_once=True"):
         ray.get(getattr(owner, method).remote())
+
+
+def assert_unserializable_cause(error):
+    # The original exception can't be sent, so the cause becomes a RayError that
+    # explains why, and the caller can't catch it as a RuntimeError.
+    assert not isinstance(error, RuntimeError)
+    assert "RuntimeError isn't serializable" in str(error.cause)
+    assert "_consume_once=True" in str(error.cause)
+
+
+@pytest.mark.parametrize("owner_kind", ["sync", "threaded", "async"])
+def test_exception_carrying_consume_once_ref_keeps_actor_alive(
+    ray_start_regular_shared, owner_kind
+):
+    if owner_kind == "sync":
+        owner = Owner.remote()
+    elif owner_kind == "threaded":
+        owner = Owner.options(max_concurrency=4).remote()
+    else:
+        owner = AsyncOwner.remote()
+
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ray.get(owner.raise_with_ref.remote())
+    assert_unserializable_cause(exc_info.value)
+    assert ray.get(owner.ping.remote()) == "alive"
+
+
+def test_exception_carrying_consume_once_ref_in_normal_task(
+    ray_start_regular_shared,
+):
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ray.get(raise_with_ref_task.remote())
+    assert_unserializable_cause(exc_info.value)
+
+
+def test_streaming_generator_yielding_consume_once_ref_rejected(
+    ray_start_regular_shared,
+):
+    owner = Owner.remote()
+
+    gen = owner.yield_ref.remote()
+    assert ray.get(next(gen)) == 1
+    with pytest.raises(ray.exceptions.RayTaskError, match="_consume_once=True"):
+        ray.get(next(gen))
+    assert ray.get(owner.ping.remote()) == "alive"
 
 
 if __name__ == "__main__":
