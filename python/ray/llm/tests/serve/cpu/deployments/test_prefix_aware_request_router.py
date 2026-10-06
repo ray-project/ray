@@ -4,6 +4,7 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
     PrefixCacheAffinityRouter,
@@ -122,6 +123,19 @@ class SlowPrefixTreeActor(PrefixTree):
 
     def get_tenant_to_char_count(self):
         return self.tenant_to_char_count
+
+
+@ray.remote
+class BlockingPrefixTreeActor(PrefixTree):
+    """Prefix tree actor whose prefix matches wait until a signal is sent."""
+
+    def __init__(self, signal):
+        super().__init__()
+        self._signal = signal
+
+    def prefix_match(self, *args, **kwargs):
+        ray.get(self._signal.wait.remote())
+        return super().prefix_match(*args, **kwargs)
 
 
 @ray.remote
@@ -350,7 +364,8 @@ class TestNonBlockingTreeCalls:
 
     @pytest.mark.asyncio
     async def test_replica_removed_during_tree_lookup_is_not_chosen(self):
-        tree_actor = SlowPrefixTreeActor.remote(delay_s=0.5)
+        signal = SignalActor.remote()
+        tree_actor = BlockingPrefixTreeActor.remote(signal)
         router = make_router(tree_actor)
         r1 = FakeRunningReplica("r1")
         r1.set_queue_len_response(0)
@@ -364,12 +379,17 @@ class TestNonBlockingTreeCalls:
                 fake_pending_request(prompt="hello world")
             )
         )
-        # Let the routing task send its lookup, which will match r2, then
-        # remove r2 while the lookup is still in flight.
-        await asyncio.sleep(0.1)
+
+        # Hold the lookup, which will match r2, until r2 is removed.
+        async def lookup_waiting():
+            return await signal.cur_num_waiters.remote() == 1
+
+        await async_wait_for_condition(lookup_waiting)
         router.update_replicas([r1])
+        await signal.send.remote()
         assert await asyncio.wait_for(routing, timeout=10) == r1
         ray.kill(tree_actor)
+        ray.kill(signal)
 
 
 class TestLoadCheck:
