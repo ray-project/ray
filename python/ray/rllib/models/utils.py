@@ -90,7 +90,7 @@ def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "t
 
     This function relies fully on the specified initializer classes and
     functions in the frameworks `torch` and `tf2` (see for `torch`
-    https://pytorch.org/docs/stable/nn.init.html and for `tf2` see
+    https://docs.pytorch.org/docs/stable/nn.init.html and for `tf2` see
     https://www.tensorflow.org/api_docs/python/tf/keras/initializers).
 
     Note, for framework `torch` the in-place initializers are needed, i.e. names
@@ -127,7 +127,7 @@ def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "t
                 "Not an in-place initializer: Torch weight initializers "
                 "need to be provided as their in-place version, i.e. "
                 "<initializaer_name> + '_'. See "
-                "https://pytorch.org/docs/stable/nn.init.html. "
+                "https://docs.pytorch.org/docs/stable/nn.init.html. "
                 f"User provided {name}."
             )
 

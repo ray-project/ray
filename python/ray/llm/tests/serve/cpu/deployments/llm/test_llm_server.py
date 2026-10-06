@@ -4,14 +4,15 @@ import sys
 import time
 from types import SimpleNamespace
 from typing import AsyncGenerator, Optional
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from vllm.entrypoints.openai.cli_args import make_arg_parser
+from starlette.datastructures import State
+from vllm.entrypoints.launchers.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
-from vllm.v1.engine.exceptions import EngineDeadError, EngineGenerateError
+from vllm.v1.engine.exceptions import EngineDeadError
 
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -654,6 +655,9 @@ class TestGetDeploymentOptions:
             serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
             == "bar"
         )
+        env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
         assert (
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
@@ -689,10 +693,30 @@ class TestGetDeploymentOptions:
             serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
             == "bar"
         )
+        env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
         assert (
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
         )
+
+    def test_serve_llm_replica_loop_env_overrides_are_respected(self):
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD": "1",
+                    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "1",
+                }
+            },
+        )
+
+        env_vars = LLMServer.get_deployment_options(llm_config)["ray_actor_options"][
+            "runtime_env"
+        ]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "1"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "1"
 
     def test_deferred_placement_group_for_tpu_topology(self):
         """Test that Serve skips PG creation when deferred placement group is required."""
@@ -818,13 +842,9 @@ class TestBuildAsgiApp:
         engine._vllm_args = vllm_args
         engine._engine_client = SimpleNamespace(model_config=None)
         engine._token_receiver = None
+        engine._app_state = State()
 
-        # init_app_state needs a live engine; supply only what the handler reads.
-        with patch(
-            "vllm.entrypoints.openai.api_server.init_app_state",
-            new_callable=AsyncMock,
-        ):
-            app = await engine.build_asgi_app()
+        app = await engine.build_asgi_app()
         app.state.args = vllm_args
         app.state.engine_client = SimpleNamespace(errored=True, is_running=False)
 
@@ -836,38 +856,6 @@ class TestBuildAsgiApp:
 
         assert response.status_code == 500
         assert "EngineCore encountered an issue" in response.json()["error"]["message"]
-
-    # TODO(jeffreywang): Remove this when we upgrade vLLM to 0.28.0 (https://github.com/vllm-project/vllm/pull/52394).
-    @pytest.mark.asyncio
-    async def test_wrapped_bad_request_is_400(self):
-        from vllm.platforms import current_platform
-
-        if not current_platform.device_type:
-            current_platform.device_type = "cpu"
-
-        vllm_args = make_arg_parser(FlexibleArgumentParser()).parse_args([])
-        engine = VLLMEngine.__new__(VLLMEngine)
-        engine._vllm_args = vllm_args
-        engine._engine_client = SimpleNamespace(model_config=None)
-        engine._token_receiver = None
-
-        with patch(
-            "vllm.entrypoints.openai.api_server.init_app_state",
-            new_callable=AsyncMock,
-        ):
-            app = await engine.build_asgi_app()
-        app.state.args = vllm_args
-        app.state.engine_client = SimpleNamespace(errored=False, is_running=True)
-
-        @app.get("/bad_request")
-        async def bad_request():
-            exc = EngineGenerateError()
-            exc.__cause__ = ValueError('Grammar error: unsupported type "str"')
-            raise exc
-
-        response = TestClient(app, raise_server_exceptions=False).get("/bad_request")
-
-        assert response.status_code == 400
 
 
 if __name__ == "__main__":

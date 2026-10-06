@@ -1739,11 +1739,16 @@ grpcio==1.74.0 \
     #   google-api-core
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   ray
     #   tensorboard
     #   tensorflow
+grpcio-reflection==1.62.3 \
+    --hash=sha256:a48ef37df81a3bada78261fc92ef382f061112f989d1312398b945cc69838b9c \
+    --hash=sha256:cb84682933c400bddf94dd94f928d1c6570f500b6dd255973d4bfb495b82585f
+    # via ray
 grpcio-status==1.62.3 \
     --hash=sha256:289bdd7b2459794a12cf95dc0cb727bd4a1742c37bd823f760236c937e53a485 \
     --hash=sha256:f9049b762ba8de6b1086789d8315846e094edac2c50beaf462338b301a8fd4b8
@@ -3522,6 +3527,7 @@ protobuf==4.25.8 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-proto

@@ -35,10 +35,6 @@ gradient descent on.
 
 [See implementation here](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/appo/appo.py)
 
-### Decentralized Distributed PPO (DDPPO)
-
-[See implementation here](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ddppo/ddppo.py)
-
 
 ## Documentation & Implementation:
 

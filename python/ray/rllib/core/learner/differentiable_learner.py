@@ -31,6 +31,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics import (
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
@@ -52,6 +53,7 @@ from ray.rllib.utils.typing import (
     StateDict,
     TensorType,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -166,7 +168,9 @@ class DifferentiableLearner(Checkpointable):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            The gradients in the same (dict) format as `params`.
+            The gradients of the modules in `loss_per_module`, in the (dict) format of
+            `params`. A module that had no data in the minibatch has no loss term and
+            therefore no entry; `apply_gradients` passes its parameters through.
         """
 
     @OverrideToImplementCustomLogic
@@ -183,11 +187,13 @@ class DifferentiableLearner(Checkpointable):
         optimizer or directly within the `MultiRLModule`).
 
         Args:
-            gradients: A dictionary containing named gradients for each module id.
+            gradients: A dictionary containing named gradients for each module id
+                that took part in this update (see `compute_gradients`).
             params: A dictionary containing named parameters for each module id.
 
         Returns:
-            The updated parameters in the same (dict) format as `params`.
+            The updated parameters in the same (dict) format as `params`, for every
+            module in `params`: those without gradients pass through unchanged.
         """
 
     @OverrideToImplementCustomLogic
@@ -334,8 +340,6 @@ class DifferentiableLearner(Checkpointable):
         training_data.solve_refs()
         assert training_data.batches is None, "`training_data.batches` must be None!"
 
-        self._weights_seq_no += 1
-
         batch_iter = self._create_iterator_if_necessary(
             training_data=training_data,
             num_total_minibatches=self.learner_config.num_total_minibatches,
@@ -343,6 +347,14 @@ class DifferentiableLearner(Checkpointable):
             minibatch_size=self.learner_config.minibatch_size,
             shuffle_batch_per_epoch=self.learner_config.shuffle_batch_per_epoch,
         )
+
+        # `None` means: skip this update. The weights keep their sequence number.
+        if batch_iter is None:
+            if not _no_metrics_reduce:
+                return params, {}, self.metrics.reduce()
+            return params, {}, {}
+
+        self._weights_seq_no += 1
 
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
@@ -417,7 +429,7 @@ class DifferentiableLearner(Checkpointable):
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         **kwargs,
-    ) -> Iterable:
+    ) -> Optional[Iterable]:
         """Provides a batch iterator."""
 
         # Data iterator provided.
@@ -468,16 +480,47 @@ class DifferentiableLearner(Checkpointable):
             for module_id in list(batch.policy_batches.keys()):
                 if not self.should_module_be_updated(module_id, batch):
                     del batch.policy_batches[module_id]
+            # A module with no rows cannot produce minibatches, and there is nobody to
+            # stay in step with here, so drop it and train on whatever is left -- what
+            # `Learner` does when it has no peers. Without this, such a module reaches
+            # `MiniBatchCyclicIterator` and raises.
+            for module_id in list(batch.policy_batches.keys()):
+                if len(batch.policy_batches[module_id]) == 0:
+                    del batch.policy_batches[module_id]
+            # Deliberately NOT `Learner`'s `_should_skip_update` + group sync: this runs
+            # inside the meta-learner's inner loop on every rank and computes gradients
+            # with `torch.autograd.grad`, which never engages DDP's all-reduce, so a
+            # lone skip is lockstep-safe and a collective here would only add a sync
+            # point per inner step.
             if not batch.policy_batches:
-                return {}
+                if log_once("differentiable_learner_empty_train_batch"):
+                    logger.warning(
+                        "The train batch of this DifferentiableLearner is empty (no "
+                        "timesteps for any module). This can happen if sampled episodes "
+                        "are lost (e.g., due to EnvRunner or node failures) or if "
+                        "`policies_to_train` excludes all modules. Skipping this inner "
+                        "update: no gradients are computed and the parameters are passed "
+                        "through unchanged."
+                    )
+                self.metrics.log_value(
+                    (ALL_MODULES, LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME),
+                    1,
+                    reduce="lifetime_sum",
+                )
+                return None
 
             batch = self._set_slicing_by_batch_id(batch, value=True)
 
             if minibatch_size:
                 batch_iter_cls = MiniBatchCyclicIterator
             elif num_epochs > 1:
-                # `minibatch_size` was not set but `num_epochs` > 1.
-                minibatch_size = batch.count
+                # `minibatch_size` was not set but `num_epochs` > 1, so one minibatch
+                # is the whole batch: per module, all of its rows. Not `batch.count`,
+                # which is env steps -- a different unit that only coincides with the
+                # rows when there is a single module.
+                minibatch_size = max(
+                    (len(b) for b in batch.policy_batches.values()), default=0
+                )
                 # Note that there is no need to shuffle here, b/c we don't have
                 # minibatches.
                 batch_iter_cls = MiniBatchCyclicIterator
@@ -595,6 +638,12 @@ class DifferentiableLearner(Checkpointable):
 
         # Call the learner connector on the given `episodes` (if we have one).
         if training_data.episodes is not None:
+            # No episodes at all: nothing to build a batch from. Hand back an empty
+            # batch for `_create_iterator_if_necessary` to skip, instead of running the
+            # connector pipeline on no episodes: pieces such as
+            # `AddOneTsToEpisodesAndTruncate` index `episodes[0]` and would raise.
+            if len(training_data.episodes) == 0:
+                return MultiAgentBatch(policy_batches={}, env_steps=0)
             # If we want to learn from Episodes, we must have a LearnerConnector
             # pipeline to translate into a train batch first.
             if self._learner_connector is None:

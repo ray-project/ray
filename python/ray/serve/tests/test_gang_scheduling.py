@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import threading
@@ -889,15 +890,25 @@ class TestGangFailureRecovery:
         ray.init(num_cpus=1)
         serve.start()
         target_replica_collector = Accumulator.remote()
+        target_signal = SignalActor.remote()
 
         @serve.deployment(
             num_replicas=4,
             ray_actor_options={"num_cpus": 0.1},
             health_check_period_s=1,
-            health_check_timeout_s=1,
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
         class HealthFailureDeployment:
+            async def __init__(self):
+                self._should_fail = False
+                self._watcher = asyncio.create_task(self._wait_for_target())
+
+            async def _wait_for_target(self):
+                await target_signal.wait.remote()
+                targets = await target_replica_collector.get.remote()
+                my_id = serve.get_replica_context().replica_id.unique_id
+                self._should_fail = my_id in targets
+
             def __call__(self):
                 ctx = serve.get_replica_context()
                 gc = ctx.gang_context
@@ -907,14 +918,9 @@ class TestGangFailureRecovery:
                 }
 
             def check_health(self):
-                targets = ray.get(target_replica_collector.get.remote())
-                if not targets:
-                    return
-                target_id = targets[-1]
                 # Only 1 replica fails; its sibling stays healthy.
                 # The gang-aware cleanup must stop the sibling too.
-                ctx = serve.get_replica_context()
-                if ctx.replica_id.unique_id == target_id:
+                if self._should_fail:
                     raise RuntimeError("Intentional health check failure.")
 
         app_name = "gang_health_failure_app"
@@ -952,6 +958,7 @@ class TestGangFailureRecovery:
 
         # Trigger failure for only 1 replica in the target gang.
         ray.get(target_replica_collector.add.remote(target_ctx["replica_id"]))
+        ray.get(target_signal.send.remote())
 
         client = serve.context._get_global_client()
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
@@ -1234,6 +1241,58 @@ class TestGangControllerRecovery:
 
         for app_name in app_names:
             serve.delete(app_name)
+        serve.shutdown()
+
+    def test_gang_pg_removed_after_controller_recovery(self, ray_cluster):
+        """A recovered gang replica holds no PG handle, so deletion must still
+        clean the gang PG up."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangRecoveryCleanup:
+            def __call__(self):
+                return "ok"
+
+        app_name = "gang_recovery_cleanup_app"
+        pg_name_prefix = f"{GANG_PG_NAME_PREFIX}{app_name}_GangRecoveryCleanup_"
+
+        def gang_pgs_live():
+            return any(
+                name.startswith(pg_name_prefix)
+                for name in get_all_live_placement_group_names()
+            )
+
+        serve.run(GangRecoveryCleanup.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
+        wait_for_condition(gang_pgs_live, timeout=WAIT_TIMEOUT_S)
+
+        # Restart the controller with the replicas left alive: recovery looks a
+        # replica's PG up by actor name, which never matches a gang PG.
+        controller = serve.context._get_global_client()._controller
+        original_controller_pid = ray.get(controller.get_pid.remote())
+        ray.kill(controller, no_restart=False)
+
+        def controller_restarted():
+            try:
+                pid = ray.get(controller.get_pid.remote(), timeout=5)
+                return pid != original_controller_pid
+            except Exception:
+                return False
+
+        wait_for_condition(controller_restarted, timeout=WAIT_TIMEOUT_S)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
+
+        serve.delete(app_name)
+        wait_for_condition(lambda: not gang_pgs_live(), timeout=WAIT_TIMEOUT_S)
         serve.shutdown()
 
     @pytest.mark.parametrize("same_gang", [True, False])
