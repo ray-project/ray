@@ -129,7 +129,10 @@ def test_list_and_read_orc_files_with_partition_columns(tmp_path):
     assert rows[1]["path"].endswith("year=2024/data.orc")
 
 
-def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
+@pytest.mark.parametrize("use_datasource_v2", [False, True])
+def test_read_orc_routes_to_v2_and_forwards_read_options(
+    monkeypatch, tmp_path, use_datasource_v2
+):
     result = object()
     captured = {}
 
@@ -139,7 +142,12 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
         return result
 
     monkeypatch.setattr(read_api, "_read_datasource_v2", _read_datasource_v2)
-    monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(
+        read_api.DataContext.get_current(), "use_orc_datasource_v2", True
+    )
+    monkeypatch.setattr(
+        read_api.DataContext.get_current(), "use_datasource_v2", use_datasource_v2
+    )
     partition_filter = Mock()
 
     actual = read_api.read_orc(
@@ -178,7 +186,10 @@ def test_read_orc_routes_to_v1_when_v2_is_disabled(monkeypatch, tmp_path):
 
     monkeypatch.setattr(read_api, "ORCDatasource", FakeORCDatasource)
     monkeypatch.setattr(read_api, "read_datasource", _read_datasource)
-    monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", False)
+    monkeypatch.setattr(
+        read_api.DataContext.get_current(), "use_orc_datasource_v2", False
+    )
+    monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", True)
 
     actual = read_api.read_orc(
         str(tmp_path), include_paths=True, parallelism=2, override_num_blocks=3

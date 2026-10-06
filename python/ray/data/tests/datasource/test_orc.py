@@ -168,7 +168,7 @@ def test_read_orc_v2_unifies_schema_and_hive_partitions(
     from ray.data.context import DataContext
     from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
-    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "use_orc_datasource_v2", True)
 
     for year in ("2023", "2024"):
         partition_dir = tmp_path / f"year={year}"
@@ -203,7 +203,7 @@ def test_read_orc_v2_unifies_schema_and_hive_partitions(
 def test_read_orc_v1_fallback(ray_start_regular_shared, tmp_path, monkeypatch):
     from ray.data.context import DataContext
 
-    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", False)
+    monkeypatch.setattr(DataContext.get_current(), "use_orc_datasource_v2", False)
     path = os.path.join(tmp_path, "data.orc")
     _write_orc(path, pa.table({"id": [1, 2]}))
 
@@ -404,6 +404,27 @@ def test_orc_write_rejects_non_positive_min_rows_per_file(
         ValueError, match="min_rows_per_file must be a positive integer"
     ):
         ray.data.range(1).write_orc(tmp_path, min_rows_per_file=min_rows_per_file)
+
+
+def test_read_orc_default_preserves_columns_outside_v2_sample(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    # Enabling Parquet V2 must not migrate existing ORC reads implicitly.
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    assert DataContext.get_current().use_orc_datasource_v2 is False
+    for index in range(20):
+        table = {"id": [index]}
+        if index == 19:
+            table["extra"] = ["late"]
+        _write_orc(str(tmp_path / f"part-{index:02d}.orc"), pa.table(table))
+    rows = sorted(
+        ray.data.read_orc(str(tmp_path), override_num_blocks=1).take_all(),
+        key=lambda row: row["id"],
+    )
+    assert len(rows) == 20
+    assert rows[-1] == {"id": 19, "extra": "late"}
 
 
 if __name__ == "__main__":

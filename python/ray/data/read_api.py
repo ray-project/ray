@@ -2878,6 +2878,11 @@ def read_orc(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from records stored in ORC files.
 
+    Note:
+        The experimental V2 reader is opt-in through
+        :attr:`~ray.data.context.DataContext.use_orc_datasource_v2`.
+        It samples file schemas and may omit columns absent from the sample.
+
     Examples:
         Read an ORC file in remote storage or local storage.
 
@@ -2946,7 +2951,7 @@ def read_orc(
         :class:`~ray.data.Dataset` holding records from the ORC files.
     """
 
-    if DataContext.get_current().use_datasource_v2:
+    if DataContext.get_current().use_orc_datasource_v2:
         from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
             OrcDatasourceV2,
         )
