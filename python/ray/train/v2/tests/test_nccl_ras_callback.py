@@ -1562,7 +1562,10 @@ def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic
     workers = callback._worker_group.get_workers()
     calls = scripted_fan_out(
         monkeypatch,
-        [DiagnosticResult(rank, value=diagnostic.ok(f"dump {rank}")) for rank in (0, 1)],
+        [
+            DiagnosticResult(rank, value=diagnostic.ok(f"dump {rank}"))
+            for rank in (0, 1)
+        ],
     )
 
     fs_path = getattr(callback, diagnostic.method)()
@@ -1632,7 +1635,11 @@ def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
     ((queried, *_),) = calls
     assert queried == [workers[0], workers[2]]
     ((_, files),) = uploads
-    assert files == {"node_10.0.0.1.log": "node 1 GPUs", "node_10.0.0.2.log": "node 2 GPUs"}
+    assert files == {
+        "node_10.0.0.1.log": "node 1 GPUs",
+        "node_10.0.0.2.log": "node 2 GPUs",
+    }
+
 
 @pytest.mark.parametrize(
     "method,has_workers,fr_armed",
