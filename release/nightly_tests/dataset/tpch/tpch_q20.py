@@ -72,7 +72,7 @@ def main(args):
         ps_forest = partsupp.join(
             forest_parts,
             join_type="left_semi",
-            num_partitions=16,
+            num_partitions=200,
             on=("ps_partkey",),
             right_on=("p_partkey",),
         )
@@ -95,7 +95,7 @@ def main(args):
         ps_li = ps_forest.join(
             li_agg,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=200,
             on=("ps_partkey", "ps_suppkey"),
             right_on=("l_partkey", "l_suppkey"),
         )
@@ -108,7 +108,7 @@ def main(args):
         canadian_suppliers = supplier.join(
             nation_filtered,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=200,
             on=("s_nationkey",),
             right_on=("n_nationkey",),
         ).select_columns(["s_suppkey", "s_name", "s_address"])
@@ -116,7 +116,7 @@ def main(args):
         result = canadian_suppliers.join(
             qualified_ps,
             join_type="left_semi",
-            num_partitions=16,
+            num_partitions=200,
             on=("s_suppkey",),
             right_on=("ps_suppkey",),
         )

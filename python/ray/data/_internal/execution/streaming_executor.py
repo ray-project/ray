@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import threading
 import time
@@ -24,10 +25,12 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
+from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -56,6 +59,7 @@ from ray.data._internal.operator_schema_exporter import (
 )
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
+from ray.data._internal.stats_summary_actor import report_stats_summary
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
@@ -244,9 +248,12 @@ class StreamingExecutor(Executor, threading.Thread):
         # Constructed once per executor (not per scheduling iteration) so the
         # guard's idle-detection state accumulates across scheduling iterations.
         self._output_backpressure_guard = OutputBackpressureGuard(
-            self._topology, self._resource_manager
+            self._topology,
+            self._resource_manager,
+            release_interval_s=(
+                self._data_context.output_backpressure_guard_release_interval_s
+            ),
         )
-
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
@@ -269,6 +276,10 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._resource_manager,
             config=self._data_context.autoscaling_config,
+        )
+        self._no_progress_guard = NoProgressGuard(
+            self._topology,
+            self._data_context.execution_no_progress_timeout_s,
         )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
@@ -338,9 +349,10 @@ class StreamingExecutor(Executor, threading.Thread):
             )
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
-            stats_summary_string = self._final_stats.to_summary().to_string(
-                include_parent=False
-            )
+            final_summary = self._final_stats.to_summary()
+            if self._data_context.enable_stats_summary_collection:
+                report_stats_summary(final_summary)
+            stats_summary_string = final_summary.to_string(include_parent=False)
             # Reset the scheduling loop duration gauge + resource manager budgets/usages.
             self._resource_manager.update_usages()
             self.update_metrics(0)
@@ -366,9 +378,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
-            # Queues have been drained; any remaining Ray Core callbacks that fire
-            # after this point should be no-ops.
-            self._block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
@@ -563,6 +572,7 @@ class StreamingExecutor(Executor, threading.Thread):
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
+            self._maybe_warn_output_splitter_memory_constrained()
             self._last_debug_log_time = time.time()
 
         for op, state in topology.items():
@@ -583,8 +593,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
 
-        # Keep going until all operators run to completion.
-        return not all(op.has_completed() for op in topology)
+        # Check until all oprators have completed.
+        should_continue = not all(op.has_completed() for op in topology)
+        self._no_progress_guard.check()
+        return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.
@@ -646,6 +658,25 @@ class StreamingExecutor(Executor, threading.Thread):
             assert len(input_q) == 0, error_msg.format(
                 "External Input", op.name, len(input_q)
             )
+
+    def _maybe_warn_output_splitter_memory_constrained(self) -> None:
+        """Let a terminal OutputSplitter (from `Dataset.streaming_split`) warn if
+        the blocks training workers need to have prefetched can take up a large
+        share of an operator's share of the object store."""
+        output_op, _ = self._output_node
+        if not isinstance(output_op, OutputSplitter):
+            return
+        limit = self._resource_manager.get_global_limits().object_store_memory
+        num_eligible_ops = sum(
+            self._resource_manager.is_op_eligible(op) for op in self._topology
+        )
+        # A limit of 0 means it isn't known yet (e.g., the cluster autoscaler
+        # hasn't reserved resources yet).
+        if not num_eligible_ops or math.isinf(limit) or limit <= 0:
+            return
+        output_op.maybe_warn_memory_constrained(
+            object_store_memory_share_per_op=limit / num_eligible_ops,
+        )
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but

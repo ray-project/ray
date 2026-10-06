@@ -1,10 +1,13 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Serve Llama 2 7B and 70B on Intel Gaudi HPUs with Ray Serve, on a single accelerator or sharded across several."
 ---
 
 # Serve Llama2-7b/70b on a single or multiple Intel Gaudi Accelerator
 
-[Intel Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Intel Habana Labs. See [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://developer.habana.ai/) for more details.
+[Intel Gaudi AI Processors (HPUs)](https://habana.ai) are AI hardware accelerators designed by Intel Habana Labs. See [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/index.html) and [Gaudi Developer Docs](https://www.intel.com/content/www/us/en/developer/platform/gaudi/overview.html) for more details.
 
 This tutorial has two examples:
 

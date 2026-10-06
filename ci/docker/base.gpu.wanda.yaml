@@ -13,5 +13,6 @@ build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - PYTHON
   - CUDA_VERSION
+  - RAYCI_IMAGE_PIP_INDEX_URL
 tags:
   - cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON

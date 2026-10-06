@@ -32,6 +32,7 @@ from ray.data._internal.util import (
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
     rows_same,
+    unify_block_metadata_schema,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
@@ -224,19 +225,22 @@ def test_memory_tracing(enabled):
     trace_allocation(ref1, "test1")
     trace_allocation(ref2, "test2")
     trace_allocation(ref3, "test5")
-    trace_deallocation(ref1, "test3", free=False)
-    trace_deallocation(ref2, "test4", free=True)
+    trace_deallocation(ref1, "test3")
+    trace_deallocation(ref2, "test4")
+    # Objects are no longer eagerly freed; both remain retrievable. The
+    # deallocation is only recorded for the leak report.
     ray.get(ref1)
-    with pytest.raises(ray.exceptions.ObjectFreedError):
-        ray.get(ref2)
+    ray.get(ref2)
     report = leak_report()
     print(report)
 
     if enabled:
-        assert "Leaked object, created at test1" in report, report
+        # ref3 (test5) was never deallocated, so it's reported as leaked.
         assert "Leaked object, created at test5" in report, report
+        # ref1/ref2 were deallocated, so they're reported as freed (not leaked).
+        assert "Leaked object, created at test1" not in report, report
+        assert "Freed object from test1 at test3" in report, report
         assert "Freed object from test2 at test4" in report, report
-        assert "skipped dealloc at test3" in report, report
     else:
         assert "test1" not in report, report
         assert "test2" not in report, report
@@ -366,6 +370,65 @@ def test_iterate_with_retry_unwrap_cause():
     assert attempts == 1
 
 
+@pytest.mark.parametrize("retryable", [False, True])
+def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    monkeypatch.setattr("random.random", lambda: 1)
+
+    attempts = 0
+
+    class MockIterable:
+        def __init__(self):
+            nonlocal attempts
+            attempts += 1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise OSError(
+                "When testing for existence of bucket 'my-bucket': "
+                "AWS Error ACCESS_DENIED during HeadBucket operation: No response body."
+            )
+
+    max_attempts = 3
+    with pytest.raises(OSError) as exc_info:
+        list(
+            iterate_with_retry(
+                MockIterable,
+                description="get file info for ['data/file.parquet']",
+                match=["ACCESS_DENIED"] if retryable else ["SLOW_DOWN"],
+                max_attempts=max_attempts,
+            )
+        )
+
+    if retryable:
+        assert attempts == 3
+        retry_line = (
+            "Failed to get file info for ['data/file.parquet'] after 3/3 "
+            "attempts (total backoff 6.0s)."
+        )
+    else:
+        assert attempts == 1
+        retry_line = (
+            "Failed to get file info for ['data/file.parquet'] after 1/3 "
+            "attempts (total backoff 0.0s)."
+        )
+    assert str(exc_info.value) == (
+        "When testing for existence of bucket 'my-bucket': "
+        "AWS Error ACCESS_DENIED during HeadBucket operation: No response body.\n"
+        f"{retry_line}\n"
+        "This looks like an AWS S3 permissions error. Make sure your "
+        "credentials have the correct permissions. If this problem persists, "
+        "try refreshing your credentials, or use s3fs with boto3 (pass "
+        "`filesystem=s3fs.S3FileSystem()` to the read/write API).\n"
+        "To change retry attempts, backoff, or which errors are retried, "
+        "configure `ray.data.DataContext.get_current()` (`retried_io_errors` "
+        "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
+        "if you believe this to be transient."
+    )
+
+
 def test_iterate_with_retry_matches_class_name():
     """Patterns can match the exception class name (e.g., 'RateLimit')."""
 
@@ -411,11 +474,35 @@ def test_iterate_with_retry_matches_class_name():
         ("[unclosed", "some error message", False),
         # No match at all.
         ("rate limit", "connection refused", False),
+        # PyArrow's S3FileSystem spelling of a transient credential-lookup
+        # failure; retried by default via DEFAULT_RETRIED_IO_ERRORS (DATA-3602).
+        (
+            "AWS Error ACCESS_DENIED during HeadBucket operation",
+            "OSError: When testing for existence of bucket "
+            "'ray-data-write-benchmark': AWS Error ACCESS_DENIED during "
+            "HeadBucket operation: No response body",
+            True,
+        ),
     ],
 )
 def test_matches_error(pattern, error_message, expected):
     """Retry helper matches substring first, then regex; invalid patterns do not raise."""
     assert matches_error(pattern, error_message) is expected
+
+
+def test_unify_block_metadata_schema_all_empty_blocks():
+    """Blocks are not filtered on num_rows when unifying schemas: an empty
+    block still carries a valid schema (issue #59946)."""
+    from ray.data.block import BlockMetadataWithSchema
+
+    empty = pa.table({"apples": pa.array([], pa.int32())})
+    empty_meta = BlockMetadataWithSchema.from_block(empty)
+    assert unify_block_metadata_schema([empty_meta]) == empty.schema
+
+    # Empty-block schemas participate in unification (int32 promotes to int64).
+    non_empty = pa.table({"apples": pa.array([1], pa.int64())})
+    non_empty_meta = BlockMetadataWithSchema.from_block(non_empty)
+    assert unify_block_metadata_schema([empty_meta, non_empty_meta]) == non_empty.schema
 
 
 def test_find_partition_index_single_column_ascending():

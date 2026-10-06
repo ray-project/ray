@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
-BlockTransformer = Callable[[Block], Block]
+BlockTransformer = Callable[["pa.Table"], "pa.Table"]
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
@@ -150,7 +150,15 @@ def _shuffle_map_task(
         if not tables:
             partition_bufs.append(empty_shard)
             continue
-        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        merged = (
+            transform_pyarrow.concat(
+                tables,
+                promote_types=True,
+                preserve_order=True,
+            )
+            if len(tables) > 1
+            else tables[0]
+        )
         shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
         partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
@@ -291,35 +299,45 @@ def _shuffle_reduce_task(
 
     output_buffer: Optional[BlockOutputBuffer] = None
 
+    exec_stats_builder = BlockExecStats.builder()
+
     def _yield_with_stats(block: Block):
         """Yield a block then its pickled metadata (streaming-gen protocol)."""
+        exec_stats_builder.finish()
 
         def build_metadata(block_ser_time_s):
-            exec_stats = BlockExecStats.builder()
-            exec_stats.finish()
-            return BlockMetadataWithSchema.from_block(
+            nonlocal exec_stats_builder
+            meta = BlockMetadataWithSchema.from_block(
                 block,
-                block_exec_stats=exec_stats.build(block_ser_time_s=block_ser_time_s),
+                block_exec_stats=exec_stats_builder.build(
+                    block_ser_time_s=block_ser_time_s,
+                    task_idx=partition_id,
+                ),
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
+            exec_stats_builder = BlockExecStats.builder()
+            return meta
 
         yield from yield_block_with_stats(block, build_metadata)
 
     def _flush(tables_by_input: List[List[pa.Table]]):
         nonlocal output_buffer
-        if output_buffer is None:
+        if output_buffer is None and target_max_block_size is not None:
             output_buffer = BlockOutputBuffer(
                 OutputBlockSizeOption.of(
                     target_max_block_size=target_max_block_size,
                 )
             )
         for block in reduce_fn(partition_id, tables_by_input):
-            output_buffer.add_block(block)
             # Yield raw blocks: a fused map (and `_yield_with_stats`) is applied
             # downstream of ``_reduce_output_blocks``.
-            yield from output_buffer.iter_ready_blocks()
+            if output_buffer is None:
+                yield block
+            else:
+                output_buffer.add_block(block)
+                yield from output_buffer.iter_ready_blocks()
 
     def _reduce_output_blocks():
         # Gather every input's full shard list, then call reduce_fn exactly once
@@ -343,10 +361,21 @@ def _shuffle_reduce_task(
     else:
         assert map_task_context is not None and data_context is not None
         with DataContext.current(data_context), TaskContext.current(map_task_context):
+            from ray.data._internal.execution.operators.map_transformer import (
+                TransformClock,
+            )
+
             map_transformer.override_target_max_block_size(
                 map_task_context.target_max_block_size_override
             )
             for block in map_transformer.apply_transform(
-                _reduce_output_blocks(), map_task_context
+                _reduce_output_blocks(),
+                map_task_context,
+                clock=TransformClock(),
             ):
+                if BlockAccessor.for_block(block).num_rows() == 0:
+                    # An unfused MapOperator bundles empty inputs with non-empty
+                    # ones, so it never emits an empty block for them; a fused
+                    # map sees one partition per task and would. Drop them.
+                    continue
                 yield from _yield_with_stats(block)

@@ -303,6 +303,22 @@ class MinMaxScaler(SerializablePreprocessorBase):
         def column_min_max_scaler(s: pd.Series):
             s_min = self.stats_[f"min({s.name})"]
             s_max = self.stats_[f"max({s.name})"]
+
+            # A column with no observed values has no minimum or maximum, so
+            # `fit` stores None for both and there is no range to scale into.
+            # Propagate nulls, as `StandardScaler` does for an uncomputable mean
+            # or std.
+            #
+            # Without this, `s_max - s_min` raises `TypeError` on two Nones. The
+            # user does not see that error, though: this function is applied by
+            # `DataFrame.transform`, which responds to a per-column failure by
+            # retrying with the whole frame, and the retry fails on `s.name`
+            # instead -- reporting `'DataFrame' object has no attribute 'name'`,
+            # which names neither the column nor the missing values.
+            if s_min is None or s_max is None:
+                s[:] = np.nan
+                return s
+
             diff = s_max - s_min
 
             # Handle division by zero and near-zero values for numerical stability.
@@ -433,6 +449,18 @@ class MaxAbsScaler(SerializablePreprocessorBase):
     def _transform_pandas(self, df: pd.DataFrame):
         def column_abs_max_scaler(s: pd.Series):
             s_abs_max = self.stats_[f"abs_max({s.name})"]
+
+            # A column with no observed values has no absolute maximum, so
+            # `fit` stores None and there is nothing to scale by. Propagate
+            # nulls, as `StandardScaler` does for an uncomputable mean or std.
+            #
+            # Dividing by None below already produces this result for an
+            # Arrow-backed column, because pandas treats None as a null scalar
+            # there, but it raises `TypeError` for a NumPy-backed one. Stating
+            # the case explicitly makes the two agree.
+            if s_abs_max is None:
+                s[:] = np.nan
+                return s
 
             # Handle division by zero.
             # All values are 0.
@@ -606,7 +634,17 @@ class RobustScaler(SerializablePreprocessorBase):
 
         self.stats_ = {}
         for col in self._columns:
-            low_q, med_q, high_q = aggregated[f"approx_quantile({col})"]
+            quantiles_for_column = aggregated[f"approx_quantile({col})"]
+
+            # A column with no observed values has no quantiles: the sketch is
+            # empty and the aggregation returns nothing to unpack. Store None
+            # for each statistic and let `_transform_pandas` propagate nulls,
+            # rather than failing here with `not enough values to unpack`.
+            if not quantiles_for_column or len(quantiles_for_column) != len(quantiles):
+                low_q = med_q = high_q = None
+            else:
+                low_q, med_q, high_q = quantiles_for_column
+
             self.stats_[f"low_quantile({col})"] = low_q
             self.stats_[f"median({col})"] = med_q
             self.stats_[f"high_quantile({col})"] = high_q
@@ -618,6 +656,12 @@ class RobustScaler(SerializablePreprocessorBase):
             s_low_q = self.stats_[f"low_quantile({s.name})"]
             s_median = self.stats_[f"median({s.name})"]
             s_high_q = self.stats_[f"high_quantile({s.name})"]
+
+            # No quantiles, so nothing to centre or scale by. See `_fit`.
+            if s_low_q is None or s_median is None or s_high_q is None:
+                s[:] = np.nan
+                return s
+
             diff = s_high_q - s_low_q
 
             # Handle division by zero.

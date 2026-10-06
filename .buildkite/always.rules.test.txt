@@ -2,9 +2,66 @@
 #
 # Format: file_path: tag1 tag2 tag3
 #
-# This rules file adds "always lint" to all files via wildcard fallthrough.
+# This rules file adds "always lint" to all files via wildcard fallthrough,
+# except documentation prose and static image assets, which emit "always"
+# alone so the code-oriented lint matrix in lint.rayci.yml is filtered out.
 
 # Any file gets always lint tags
 some/random/file.txt: always lint
 python/ray/actor.py: always lint
-doc/source/index.rst: always lint
+
+# Documentation prose emits always without lint. doc/source/index.md is the
+# case that regressed the 27-minute Markdown-only build this rule addresses.
+doc/source/index.md: always
+doc/source/ray-contribute/getting-involved.md: always
+doc/README.md: always
+
+# Static image assets are prose-adjacent: a diagram swap cannot fail a
+# code-oriented lint check either.
+doc/source/images/ray-logo.png: always
+doc/source/data/images/dataset-arch.svg: always
+
+# Claude Code skills and agent files participate in no build. This holds for
+# both the doc subtree and the repo-root .claude/, which is Markdown plus a
+# settings JSON with no target of its own.
+doc/.claude/skills/sphinx-fix/SKILL.md: always
+.claude/skills/backport-docs/SKILL.md: always
+.claude/settings.json: always
+
+# Python and YAML under doc/source/ emit always without lint, because the
+# pre-commit global exclude hides doc/source/ from pre_commit and pydoclint,
+# and no other code-oriented check reads it.
+doc/source/conf.py: always
+doc/source/_ext/llms_txt.py: always
+doc/source/cluster/kubernetes/configs/loki.log.yaml: always
+doc/source/data/examples.yml: always
+
+# The doc/source/ exemption doesn't extend to other code under doc/. BUILD
+# files feed buildifier, pre-commit sees doc/*.py outside doc/source/, and
+# notebooks stay on the catch-all.
+doc/source/ray-core/examples/batch_prediction.ipynb: always lint
+doc/source/data/examples/BUILD.bazel: always lint
+doc/BUILD.bazel: always lint
+doc/test_no_new_rst.py: always lint
+
+# Config that pre-commit's whitespace hooks can see emits pre_commit, which
+# selects the pre_commit step alone rather than the whole lint matrix.
+doc/redirects/current.yaml: always pre_commit
+.vale.ini: always pre_commit
+.vale/styles/Google/AMPM.yml: always pre_commit
+
+# Neighbors of those paths stay on their own rules.
+doc/load_doc_cache.py: always lint
+
+# Prose outside doc/ is not exempt; the exemption is scoped to doc/.
+python/ray/data/README.md: always lint
+
+# The two inputs to `lint: doc_readme` add pypi_readme, which is the step's
+# only trigger. README.rst also shows that prose outside doc/ is not exempt
+# from the code-oriented lint matrix.
+README.rst: always lint pypi_readme
+python/setup.py: always lint pypi_readme
+
+# No other path emits pypi_readme, including neighbors of the two inputs.
+python/ray/setup-dev.py: always lint
+python/requirements.txt: always lint

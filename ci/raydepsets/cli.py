@@ -390,6 +390,8 @@ class DependencySetManager:
         if output:
             args.extend(["-o", output])
         self.exec_uv_cmd("compile", args, stdin)
+        if output:
+            _drop_emitted_index_url(self.get_path(output))
 
     def subset(
         self,
@@ -521,6 +523,37 @@ class DependencySetManager:
         """Remove the temporary directory used for lock file comparisons."""
         if self.temp_dir:
             shutil.rmtree(self.temp_dir)
+
+
+def _drop_emitted_index_url(lock_file_path: Path) -> None:
+    """Remove the primary index URL that uv emits into a lock file.
+
+    uv runs with --emit-index-url, which is what records the --extra-index-url
+    entries a depset resolves against (PyTorch, libtpu) inside the lock file, and
+    those have to stay: they are not PyPI, so nothing else supplies them at
+    install time. It also emits the primary --index-url, and a requirements
+    file's index URL beats both PIP_INDEX_URL and a --index-url given on the
+    command line. Emitting it therefore pins every install to whichever index
+    compiled the lock, which is not something a checked-in file should decide --
+    a caching mirror in front of PyPI cannot be configured, and a mirror URL that
+    did get written here would be unreachable for everyone outside it.
+
+    Dropping it leaves the primary index to the installing environment, which
+    falls back to PyPI when nothing is set, so resolution is unchanged. It also
+    keeps the lock files byte-identical whether they were compiled through a
+    mirror or straight from PyPI, which is what `--check` requires.
+    """
+    if not lock_file_path.exists():
+        return
+    lines = lock_file_path.read_text().splitlines(keepends=True)
+    kept = [line for line in lines if not line.startswith("--index-url ")]
+    if len(kept) == len(lines):
+        return
+    # Removing the first line can leave the file starting on the blank line that
+    # separated the emitted options from the requirements.
+    while kept and not kept[0].strip():
+        kept.pop(0)
+    lock_file_path.write_text("".join(kept))
 
 
 def _get_bytes(packages: List[str]) -> bytes:

@@ -94,7 +94,8 @@ def gpu_task() -> Dict[str, Any]:
     return {
         "gpu_ids": gpu_ids,
         "pid": os.getpid(),
-        "oneapi_selector": os.environ.get("ONEAPI_DEVICE_SELECTOR"),
+        "ze_affinity_mask": os.environ.get("ZE_AFFINITY_MASK"),
+        "selector": os.environ.get("ONEAPI_DEVICE_SELECTOR"),
     }
 
 
@@ -106,6 +107,7 @@ def cluster_probe_task() -> Dict[str, Any]:
         "node_ip": ray.util.get_node_ip_address(),
         "worker_id": context.get_worker_id(),
         "gpu_ids": context.get_accelerator_ids().get("GPU", []),
+        "ze_affinity_mask": os.environ.get("ZE_AFFINITY_MASK"),
         "selector": os.environ.get("ONEAPI_DEVICE_SELECTOR"),
     }
 
@@ -118,7 +120,7 @@ def assert_valid_gpu_binding(result: Dict[str, Any], label: str) -> None:
 
 
 def _validate_gpu_binding_common(
-    result: Dict[str, Any], label: str, selector_key: str = "oneapi_selector"
+    result: Dict[str, Any], label: str, ze_key: str = "ze_affinity_mask"
 ) -> int:
     """Validate basic GPU binding properties shared by single- and multi-GPU tests."""
 
@@ -127,17 +129,30 @@ def _validate_gpu_binding_common(
 
     primary_gpu_id = int(gpu_ids[0])
 
-    selector = result.get(selector_key)
-    assert selector, f"ONEAPI_DEVICE_SELECTOR not set in environment for {label}."
-    selector_lower = selector.lower()
+    # ZE_AFFINITY_MASK carries the physical device IDs (bare, e.g. "0" or "1,3").
+    # This is the primary env var and must match what Ray assigned.
+    ze_mask = result.get(ze_key)
+    assert ze_mask is not None, f"ZE_AFFINITY_MASK not set in environment for {label}."
+    ze_gpu_ids = {int(x) for x in ze_mask.split(",")}
     assert (
-        "level_zero:" in selector_lower
-    ), f"ONEAPI_DEVICE_SELECTOR should target GPU devices for {label}, got: {selector}."
+        primary_gpu_id in ze_gpu_ids
+    ), f"ZE_AFFINITY_MASK does not reference bound GPU id for {label}: {ze_mask}."
 
-    selector_gpu_ids = {int(match) for match in re.findall(r"\b\d+\b", selector_lower)}
-    assert (
-        primary_gpu_id in selector_gpu_ids
-    ), f"ONEAPI_DEVICE_SELECTOR does not reference bound GPU id for {label}: {selector}."
+    # ONEAPI_DEVICE_SELECTOR carries re-indexed sequential IDs (e.g. "level_zero:0")
+    # because ZE_AFFINITY_MASK has already re-indexed devices before it applies.
+    # Check it is present and has the correct format — but do not compare its IDs
+    # to the physical gpu_ids since they are intentionally different.
+    selector = result.get("selector")
+    if selector is not None:
+        assert (
+            "level_zero:" in selector.lower()
+        ), f"ONEAPI_DEVICE_SELECTOR should target GPU devices for {label}, got: {selector}."
+        expected_count = len(gpu_ids)
+        selector_ids = re.findall(r"\b\d+\b", selector)
+        assert len(selector_ids) == expected_count, (
+            f"ONEAPI_DEVICE_SELECTOR should have {expected_count} re-indexed id(s) "
+            f"for {label}, got: {selector}."
+        )
 
     return primary_gpu_id
 
@@ -215,7 +230,7 @@ def test_scale_out_task_distribution(ray_gpu_session, num_nodes) -> None:
     }
 
     for result in probe_results:
-        _validate_gpu_binding_common(result, "scale-out probe task", "selector")
+        _validate_gpu_binding_common(result, "scale-out probe task", "ze_affinity_mask")
 
     assert len(node_ids) == num_nodes or len(node_ips) == num_nodes, (
         f"Expected probe tasks to execute on {num_nodes} distinct nodes, "

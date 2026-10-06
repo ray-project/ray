@@ -45,7 +45,7 @@
       "architecture": "x86_64"
     },
     "python": ["3.12"],
-    "architectures": ["x86_64"],
+    "architectures": ["x86_64", "aarch64"],
     "platforms": ["cu13.0.0-cudnn"]
   }
 }

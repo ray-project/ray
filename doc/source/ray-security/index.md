@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Security model and best practices for Ray, covering the Dashboard/Jobs/Client trust model, gRPC communication, and token authentication."
+    description: "Security model and best practices for Ray, covering the dashboard/Jobs/Client trust model, gRPC communication, and token authentication."
 ---
 
 (security)=
@@ -15,24 +15,24 @@ token-auth
 ```
 
 ::::{note}
-For the latest Ray security alerts, see the [Security Advisories](https://github.com/ray-project/ray/security/advisories) page on GitHub.
+Use the [**Report a vulnerability**](https://github.com/ray-project/ray/security/advisories/new) form or email [security@anyscale.com](mailto:security@anyscale.com) to report a new security issue. For the current Ray security alerts, check [Security Advisories](https://github.com/ray-project/ray/security/advisories) on GitHub.
 ::::
 
 Ray is an easy-to-use framework to run arbitrary code across one or more nodes in a Ray Cluster. Ray provides fault-tolerance, optimized scheduling, task orchestration, and auto-scaling to run a given workload.
 
 To achieve performant and distributed workloads, Ray components require intra-cluster communication. This communication includes central tenets like distributed memory and node-heartbeats, as well as auxiliary functions like metrics and logs. Ray leverages gRPC for a majority of this communication.
 
-Ray offers additional services to improve the developer experience. These services include Ray Dashboard (to allow for cluster introspection and debugging), Ray Jobs (hosted alongside the Dashboard, which services Ray Job submissions), and Ray Client (to allow for local, interactive development with a remote cluster). These services provide complete access to the Ray Cluster and the underlying compute resources.
+Ray offers additional services to improve the developer experience. These services include Ray dashboard (to allow for cluster introspection and debugging), Ray Jobs (hosted alongside the dashboard, which services Ray Job submissions), and Ray Client (to allow for local, interactive development with a remote cluster). These services provide complete access to the Ray Cluster and the underlying compute resources.
 
 :::{admonition} Ray allows any clients to run arbitrary code. Be extremely careful about what is allowed to access your Ray Cluster
 :class: caution
 
-If you expose these services (Ray Dashboard, Ray Jobs, Ray Client), anybody who can access the associated ports can execute arbitrary code on your Ray Cluster. This can happen:
+If you expose these services (Ray dashboard, Ray Jobs, Ray Client), anybody who can access the associated ports can execute arbitrary code on your Ray Cluster. This can happen:
 * Explicitly: By submitting a Ray Job, or using the Ray Client
-* Indirectly: By calling the Dashboard REST APIs of these services
+* Indirectly: By calling the dashboard REST APIs of these services
 * Implicitly: Ray extensively uses cloudpickle for serialization of arbitrary Python objects. See [the pickle documentation](https://docs.python.org/3/library/pickle.html) for more details on Pickle's security model.
 
-The Ray Dashboard, Ray Jobs and Ray Client are developer tools that you should only use with the necessary access controls in place to restrict access to trusted parties only.
+The Ray dashboard, Ray Jobs and Ray Client are developer tools that you should only use with the necessary access controls in place to restrict access to trusted parties only.
 :::
 
 ## Personas
@@ -48,7 +48,7 @@ When considering the security responsibilities of running Ray, think about the d
 ### Deploy Ray clusters in a controlled network environment
 * Network traffic between core Ray components and additional Ray components should always be in a controlled, isolated network. Access to additional services should be gated with strict network controls and/or external authentication/authorization proxies.
 * gRPC communication can be encrypted with TLS, but it's not a replacement for network isolation.
-* Platform providers are responsible for ensuring that Ray runs in sufficiently controlled network environments and that developers can access features like Ray Dashboard in a secure manner.
+* Platform providers are responsible for ensuring that Ray runs in sufficiently controlled network environments and that developers can access features like Ray dashboard in a secure manner.
 ### Only execute trusted code within Ray
 * Ray faithfully executes code that is passed to it – Ray doesn’t differentiate between a tuning experiment, a rootkit install, or an S3 bucket inspection.
 * Ray developers are responsible for building their applications with this understanding in mind.

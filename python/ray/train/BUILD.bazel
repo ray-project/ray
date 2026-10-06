@@ -919,7 +919,9 @@ py_test(
 
 py_test(
     name = "test_e2e_wandb_integration",
-    size = "small",
+    # Two full ``TorchTrainer.fit()`` runs (2 workers, 3 epochs) plus a
+    # ``ray.init`` per parameterization do not fit in small's 60s budget.
+    size = "medium",
     srcs = ["tests/test_e2e_wandb_integration.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [

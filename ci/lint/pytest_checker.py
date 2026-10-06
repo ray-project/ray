@@ -13,6 +13,17 @@ def parse_json(data: str) -> dict:
     return json.loads(data)
 
 
+def as_list(value) -> list:
+    """xq collapses a repeated XML element to a single object.
+
+    A query matching exactly one rule yields a dict rather than a list, and a
+    query matching none omits the key entirely.
+    """
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
 def treat_path(path: str) -> Path:
     """Treat bazel paths to filesystem paths"""
     path = path[2:].replace(":", "/")
@@ -65,19 +76,19 @@ def get_paths_from_parsed_data(parsed_data: dict) -> list:
     # https://docs.bazel.build/versions/main/be/python.html#py_test
 
     paths = []
-    for rule in parsed_data["query"]["rule"]:
+    for rule in as_list(parsed_data["query"].get("rule")):
         name = rule["@name"]
         if "label" in rule and rule["label"]["@name"] == "main":
             paths.append((name, treat_path(rule["label"]["@value"])))
         else:
-            list_args = {e["@name"]: e for e in rule["list"]}
+            list_args = {e["@name"]: e for e in as_list(rule["list"])}
             label = list_args["srcs"]["label"]
             if isinstance(label, dict):
                 paths.append((name, treat_path(label["@value"])))
             else:
                 # list
                 string_name = next(
-                    x["@value"] for x in rule["string"] if x["@name"] == "name"
+                    x["@value"] for x in as_list(rule["string"]) if x["@name"] == "name"
                 )
                 main_path = next(
                     x["@value"] for x in label if string_name in x["@value"]

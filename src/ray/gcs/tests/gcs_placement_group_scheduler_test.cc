@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
@@ -60,8 +59,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }
     gcs_table_storage_ =
         std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
-    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
         std::make_unique<pubsub::FakePublisher>());
     auto local_node_id = NodeID::FromRandom();
@@ -253,7 +252,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
     // Make sure the resources are not used.
     for (const auto &[node_id, node] : resource_view_before_scheduling) {
-      if (node.GetLocalView().total != node.GetLocalView().available) {
+      if (node.GetLocalView().total != node.GetLocalView().GetAvailable()) {
         return false;
       }
     }
@@ -308,11 +307,10 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   double GcsAvailableCpu(const NodeID &node_id) {
-    auto resources = cluster_resource_scheduler_->GetClusterResourceManager()
-                         .GetNodeResources(scheduling::NodeID(node_id.Binary()))
-                         .available.GetResourceMap();
-    auto it = resources.find("CPU");
-    return it != resources.end() ? it->second : 0.0;
+    return cluster_resource_scheduler_->GetClusterResourceManager()
+        .GetNodeResources(scheduling::NodeID(node_id.Binary()))
+        .GetAvailableSum(scheduling::ResourceID::CPU())
+        .Double();
   }
 
   std::shared_ptr<GcsPlacementGroup> MakeStrictPackPlacementGroup(int bundles_count,
@@ -1385,24 +1383,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   RemoveNode(node0);
   RemoveNode(node1);
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
-}
-
-TEST_F(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource) {
-  auto create_placement_group_request = GenCreatePlacementGroupRequest(
-      /*name=*/"", /*strategy=*/rpc::PlacementStrategy::SPREAD, /*bundles_count=*/1);
-  auto placement_group = std::make_shared<GcsPlacementGroup>(
-      create_placement_group_request, "", counter_, clock_);
-  int wildcard_resource_count = 0;
-  for (const auto &bundle_spec : placement_group->GetBundles()) {
-    for (const auto &resource_entry : bundle_spec->GetFormattedResources()) {
-      if (scheduler_->IsPlacementGroupWildcardResource(resource_entry.first)) {
-        wildcard_resource_count++;
-      }
-    }
-  }
-  // The bundle should have two wildcard resources (CPU_group_{placement_group_id} and
-  // bundle_group_{placement_group_id}).
-  ASSERT_EQ(wildcard_resource_count, 2);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead) {

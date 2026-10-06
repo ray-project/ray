@@ -28,12 +28,14 @@ class AcceleratorManager(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_visible_accelerator_ids_env_var() -> str:
+    def get_visible_accelerator_ids_env_var() -> Optional[str]:
         """Get the env var that sets the ids of visible accelerators of this family.
 
         Returns:
             The env var for setting visible accelerator ids: e.g.,
-                CUDA_VISIBLE_DEVICES for NVIDIA GPUs.
+                CUDA_VISIBLE_DEVICES for NVIDIA GPUs. Returns None for accelerator
+                families that have no visible-devices env var (e.g. Apple Silicon
+                MPS, which exposes a single device that cannot be selected or hidden).
         """
 
     @staticmethod

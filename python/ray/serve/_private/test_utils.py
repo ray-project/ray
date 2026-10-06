@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import glob
+import json
 import os
 import random
 import socket
@@ -8,7 +9,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 from unittest.mock import Mock
 
 import grpc
@@ -26,11 +27,13 @@ from ray._common.test_utils import (
 )
 from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
+from ray.exceptions import TaskCancelledError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
     DeploymentID,
     DeploymentStatus,
+    Duration,
     ReplicaID,
     RequestProtocol,
     RunningReplicaInfo,
@@ -38,6 +41,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -48,6 +52,7 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaState,
+    ReplicaStateContainer,
 )
 from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -65,6 +70,8 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
+# Created by serve_instance_with_signal in ray/serve/tests/conftest.py.
+SERVE_INSTANCE_SIGNAL_ACTOR_NAME = "signal123"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
 
 
@@ -91,12 +98,12 @@ def skip_if_haproxy(reason: str):
 # is called in the controller's init function, instead of in the control
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
-dead_replicas_context = set()
+dead_replicas_context: Set[ReplicaID] = set()
 # Replicas registered in this set will report `was_initialized() == False` to
 # the controller during recovery, simulating the case where a previous
 # controller crashed before the actor finished its initial setup.
-uninitialized_replicas_context = set()
-replica_rank_context: Dict[str, ReplicaRank] = {}
+uninitialized_replicas_context: Set[ReplicaID] = set()
+replica_rank_context: Dict[str, Optional[ReplicaRank]] = {}
 
 
 class MockTimer(TimerBase):
@@ -122,11 +129,11 @@ class MockTimer(TimerBase):
 
 
 class MockAsyncTimer:
-    def __init__(self, start_time: Optional[float] = 0):
+    def __init__(self, start_time: float = 0):
         self.reset(start_time=start_time)
         self._num_sleepers = 0
 
-    def reset(self, start_time: 0):
+    def reset(self, start_time: float = 0):
         self._curr = start_time
 
     def time(self) -> float:
@@ -201,7 +208,12 @@ class MockClusterNodeInfoCache:
     def get_total_resources_per_node(self):
         return self.total_resources_per_node
 
-    def add_node(self, node_id: str, resources: Dict = None, labels: Dict = None):
+    def add_node(
+        self,
+        node_id: str,
+        resources: Optional[Dict] = None,
+        labels: Optional[Dict] = None,
+    ):
         self.alive_node_ids.add(node_id)
         self.total_resources_per_node[node_id] = deepcopy(resources) or {}
         self.available_resources_per_node[node_id] = deepcopy(resources) or {}
@@ -257,7 +269,7 @@ class FakeRunningReplica(RunningReplica):
         self._exception: Optional[Exception] = None
 
         self.get_queue_len_was_cancelled = False
-        self.queue_len_deadline_history = list()
+        self.queue_len_deadline_history: List[float] = list()
         self.num_get_queue_len_calls = 0
 
     @property
@@ -395,12 +407,8 @@ class MockDeploymentHandle:
     def options(self, *args, **kwargs):
         return self
 
-    def __eq__(self, dep: Tuple[str]):
-        other_deployment_name, other_app_name = dep
-        return (
-            self._deployment_name == other_deployment_name
-            and self._app_name == other_app_name
-        )
+    def __eq__(self, other: object) -> bool:
+        return other == (self._deployment_name, self._app_name)
 
     def _set_request_protocol(self, protocol: RequestProtocol):
         self._protocol = protocol
@@ -490,6 +498,11 @@ class MockDeploymentActorWrapper:
         self.killed = True
 
 
+# Gang PG names passed to `MockReplicaActorWrapper.remove_gang_placement_group`.
+# The call is a staticmethod, so there is no instance to record it on.
+REMOVED_GANG_PG_NAMES: List[str] = []
+
+
 class MockReplicaActorWrapper:
     def __init__(
         self,
@@ -514,23 +527,24 @@ class MockReplicaActorWrapper:
         self.force_stopped_counter = 0
         # Will be set when `check_health()` is called.
         self.health_check_called = False
+        self._push_stands_in_for_probe = False
         # Returned by the health check.
         self.healthy = True
         self._is_cross_language = False
         self._actor_handle = MockActorHandle()
-        self._node_id = None
+        self._node_id: Optional[str] = None
         self._node_ip = None
         self._node_instance_id = None
         self._node_id_is_set = False
-        self._log_file_path = None
-        self._actor_id = None
+        self._log_file_path: Optional[str] = None
+        self._actor_id: Optional[str] = None
         self._internal_grpc_port = None
         self._http_port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
-        self._docs_path = None
+        self._docs_path: Optional[str] = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
-        self._assign_rank_callback = None
+        self._assign_rank_callback: Optional[Callable[..., ReplicaRank]] = None
         self._ingress = False
         self._gang_context = None
         self._gang_pg_index = None
@@ -644,7 +658,7 @@ class MockReplicaActorWrapper:
     def set_status(self, status: ReplicaStartupStatus):
         self.status = status
 
-    def set_ready(self, version: DeploymentVersion = None):
+    def set_ready(self, version: Optional[DeploymentVersion] = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
         # Mirror the real actor: a started replica has allocated a log file.
         self._log_file_path = "serve/replica.log"
@@ -676,7 +690,7 @@ class MockReplicaActorWrapper:
     def start(
         self,
         deployment_info: DeploymentInfo,
-        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        assign_rank_callback: Callable[..., ReplicaRank],
         gang_placement_group=None,
         gang_pg_index=None,
         gang_context=None,
@@ -714,7 +728,7 @@ class MockReplicaActorWrapper:
     def reconfigure(
         self,
         version: DeploymentVersion,
-        rank: ReplicaRank = None,
+        rank: Optional[ReplicaRank] = None,
     ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
@@ -737,7 +751,7 @@ class MockReplicaActorWrapper:
         self._unrecoverable = self.replica_id in uninitialized_replicas_context
         return True
 
-    def check_ready(self) -> ReplicaStartupStatus:
+    def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         # If the controller's async `was_initialized` probe came back False,
         # report a failed-but-unrecoverable startup so the reconciler drops
         # and replaces the replica without recording a deploy failure.
@@ -779,7 +793,7 @@ class MockReplicaActorWrapper:
         # Only used to print a warning.
         return {}
 
-    def graceful_stop(self) -> None:
+    def graceful_stop(self) -> Duration:
         # `started` is only set after a successful `check_ready` transition
         # to RUNNING. A replica force-stopped while still RECOVERING (e.g.,
         # because the `was_initialized` probe failed) is a legitimate stop.
@@ -790,12 +804,39 @@ class MockReplicaActorWrapper:
     def check_stopped(self) -> bool:
         return self.done_stopping
 
+    @staticmethod
+    def remove_gang_placement_group(pg_name: str):
+        REMOVED_GANG_PG_NAMES.append(pg_name)
+
     def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
     def check_health(self):
+        if self._push_stands_in_for_probe:
+            # A fresh push means the real wrapper would not arm a probe.
+            self._push_stands_in_for_probe = False
+            return self.healthy
         self.health_check_called = True
         return self.healthy
+
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ) -> None:
+        """Match ActorReplicaWrapper, stubbing only the verdict.
+
+        The real arbitration lives in PushedHealthTracker and is tested there; here
+        the push sets the verdict directly so end-to-end tests can exercise the
+        manager's routing and the state machine.
+        """
+        self.pushed_health = (checked_at, healthy, consecutive_failures)
+        self._push_stands_in_for_probe = True
+        self.healthy = (
+            healthy
+            or (consecutive_failures or 0) < REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        )
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
@@ -822,7 +863,7 @@ class GetPID:
         return os.getpid()
 
 
-get_pid_entrypoint = GetPID.bind()
+get_pid_entrypoint = GetPID.bind()  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
 
 def check_ray_stopped():
@@ -834,7 +875,14 @@ def check_ray_stopped():
 
 
 def check_ray_started():
-    return requests.get("http://localhost:8265/api/ray/version").status_code == 200
+    from ray._private.test_utils import request_with_auth_token
+
+    return (
+        request_with_auth_token(
+            "GET", "http://localhost:8265/api/ray/version"
+        ).status_code
+        == 200
+    )
 
 
 def check_deployment_status(
@@ -969,7 +1017,7 @@ def check_replica_counts(
     controller: ActorHandle,
     deployment_id: DeploymentID,
     total: Optional[int] = None,
-    by_state: Optional[List[Tuple[ReplicaState, int, Callable]]] = None,
+    by_state: Optional[List[Tuple[ReplicaState, int, Optional[Callable]]]] = None,
 ):
     """Uses _dump_replica_states_for_testing to check replica counts.
 
@@ -984,8 +1032,11 @@ def check_replica_counts(
     Returns:
         True when all assertions pass (raises ``AssertionError`` otherwise).
     """
-    replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment_id)
+    replicas = cast(
+        ReplicaStateContainer,
+        ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)  # type: ignore[attr-defined]
+        ),
     )
 
     if total is not None:
@@ -1011,7 +1062,7 @@ def check_replica_counts(
     return True
 
 
-@ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)
+@ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)  # type: ignore[call-overload]  # pyrefly: ignore[unexpected-keyword]
 class TelemetryStorage:
     def __init__(self):
         self.reports_received = 0
@@ -1039,7 +1090,7 @@ class TelemetryReceiver:
         return True
 
 
-receiver_app = TelemetryReceiver.bind()
+receiver_app = TelemetryReceiver.bind()  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
 
 def start_telemetry_app():
@@ -1056,7 +1107,7 @@ def start_telemetry_app():
     to access the latest telemetry reports.
     """
 
-    storage = TelemetryStorage.remote()
+    storage = TelemetryStorage.remote()  # pyrefly: ignore[missing-attribute]
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
 
@@ -1065,7 +1116,9 @@ def check_telemetry(
     tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
 ):
     storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
-    report = ray.get(storage_handle.get_report.remote())
+    report = cast(
+        Dict[str, Any], ray.get(storage_handle.get_report.remote())  # type: ignore[attr-defined]
+    )
     print(report["extra_usage_tags"])
     assert tag.get_value_from_report(report) == expected
     return True
@@ -1172,11 +1225,13 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         yield
         await asyncio.sleep(100)
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, TaskCancelledError):
+        # A cancelled task surfaces as TaskCancelledError on an in-flight
+        # `.remote()` await, which is not an asyncio.CancelledError.
         cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
-        ray._raylet.async_task_id.set(None)
-        await signal_actor.send.remote()
+        ray._raylet.async_task_id.set(None)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        await signal_actor.send.remote()  # type: ignore[attr-defined]
 
     if not cancelled:
         raise RuntimeError(
@@ -1231,19 +1286,21 @@ class FakeGrpcContext:
 
 
 class FakeGauge:
-    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+    def __init__(
+        self, name: Optional[str] = None, tag_keys: Optional[Tuple[str, ...]] = None
+    ):
         self.name = name
-        self.values = dict()
+        self.values: Dict[str, Any] = dict()
 
-        self.tags = tag_keys or ()
-        self.default_tags = dict()
+        self.tags: Tuple[str, ...] = tag_keys or ()
+        self.default_tags: Dict[str, str] = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
 
-    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+    def set(self, value: Union[int, float], tags: Optional[Dict[str, str]] = None):
         merged_tags = self.default_tags.copy()
         merged_tags.update(tags or {})
         assert set(merged_tags.keys()) == set(self.tags)
@@ -1258,7 +1315,7 @@ class FakeGauge:
         d[merged_tags[self.tags[-1]]] = value
 
     def get_value(self, tags: Dict[str, str]):
-        value = self.values
+        value: Any = self.values
         for tag in self.tags:
             tag_value = tags[tag]
             value = value.get(tag_value)
@@ -1269,19 +1326,23 @@ class FakeGauge:
 
 
 class FakeCounter:
-    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+    def __init__(
+        self, name: Optional[str] = None, tag_keys: Optional[Tuple[str, ...]] = None
+    ):
         self.name = name
-        self.counts = dict()
+        self.counts: Dict[str, Any] = dict()
 
-        self.tags = tag_keys or ()
-        self.default_tags = dict()
+        self.tags: Tuple[str, ...] = tag_keys or ()
+        self.default_tags: Dict[str, str] = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
 
-    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+    def inc(
+        self, value: Union[int, float] = 1.0, tags: Optional[Dict[str, str]] = None
+    ):
         merged_tags = self.default_tags.copy()
         merged_tags.update(tags or {})
         assert set(merged_tags.keys()) == set(self.tags)
@@ -1296,13 +1357,13 @@ class FakeCounter:
         key = merged_tags[self.tags[-1]]
         d[key] = d.get(key, 0) + value
 
-    def get_count(self, tags: Dict[str, str]) -> int:
-        value = self.counts
+    def get_count(self, tags: Dict[str, str]) -> Optional[int]:
+        value: Any = self.counts
         for tag in self.tags:
             tag_value = tags[tag]
             value = value.get(tag_value)
             if value is None:
-                return
+                return None
 
         return value
 
@@ -1324,9 +1385,10 @@ def check_num_alive_nodes(target: int):
 def get_deployment_details(
     deployment_name: str,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    _client: ServeControllerClient = None,
-):
+    _client: Optional[ServeControllerClient] = None,
+) -> Dict[str, Any]:
     client = _client or _get_global_client()
+    assert client is not None
     details = client.get_serve_details()
     return details["applications"][app_name]["deployments"][deployment_name]
 
@@ -1509,7 +1571,9 @@ def check_target_groups_ready(
     possible that target groups are not ready immediately. An example is when the controller
     is recovering from a crash.
     """
-    target_groups = ray.get(client._controller.get_target_groups.remote(app_name))
+    target_groups = ray.get(
+        client._controller.get_target_groups.remote(app_name)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+    )
     target_groups = [
         target_group
         for target_group in target_groups
@@ -1544,6 +1608,7 @@ def get_application_urls(
         The URLs of the application.
     """
     client = _get_global_client()
+    assert client is not None
     serve_details = client.get_serve_details()
     assert (
         app_name in serve_details["applications"]
@@ -1556,7 +1621,7 @@ def get_application_urls(
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
-        client._controller.get_target_groups.remote(app_name, from_proxy_manager)
+        client._controller.get_target_groups.remote(app_name, from_proxy_manager)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
     )
     target_groups = [
         target_group
@@ -1648,6 +1713,13 @@ def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
 # Metrics test utilities
 TEST_METRICS_EXPORT_PORT = 9999
 
+# A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
+# needs room for several full-length attempts. A newly registered series is the slow
+# thing to surface, so its debut gets the larger budget and value checks the smaller.
+METRICS_FIRST_EXPORT_TIMEOUT_S = 90
+METRICS_WAIT_TIMEOUT_S = 45
+METRICS_RETRY_INTERVAL_MS = 1000
+
 
 def get_metric_float(
     metric: str,
@@ -1668,8 +1740,10 @@ def get_metric_float(
         timeseries,
         timeout=timeout,
     ).get(metric, [])
+    # None (no tag filter) matches any sample, per the docstring.
+    tags_to_match = expected_tags or {}
     for sample in samples:
-        if expected_tags.items() <= sample.labels.items():
+        if tags_to_match.items() <= sample.labels.items():
             return sample.value
     return -1
 
@@ -1735,7 +1809,116 @@ def get_metric_dictionaries(
 
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
-        if sample.name == name:
-            metric_dicts.append(sample.labels)
+        if sample.name == name:  # pyrefly: ignore[missing-attribute]
+            metric_dicts.append(sample.labels)  # pyrefly: ignore[missing-attribute]
 
     return metric_dicts
+
+
+def extract_tags(line: str) -> Dict[str, str]:
+    """Extracts any tags from the metrics line."""
+
+    try:
+        tags_string = line.replace("{", "}").split("}")[1]
+    except IndexError:
+        # No tags were found in this line.
+        return {}
+
+    detected_tags = {}
+    for tag_pair in tags_string.split(","):
+        sanitized_pair = tag_pair.replace('"', "")
+        tag, value = sanitized_pair.split("=")
+        detected_tags[tag] = value
+
+    return detected_tags
+
+
+def check_sum_metric_eq(
+    metric_name: str,
+    expected: float,
+    tags: Optional[Dict[str, str]] = None,
+    timeseries: Optional[PrometheusTimeseries] = None,
+) -> bool:
+    if tags is None:
+        tags = {}
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+
+    metrics = fetch_prometheus_metric_timeseries(
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+    )
+    metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
+    metric_samples = metrics.get(metric_name, None)
+    if metric_samples is None:
+        metric_sum = 0
+    else:
+        metric_samples = [
+            sample for sample in metric_samples if tags.items() <= sample.labels.items()
+        ]
+        metric_sum = sum(sample.value for sample in metric_samples)
+
+    # Check the metrics sum to the expected number
+    assert float(metric_sum) == float(expected), (
+        f"The following metrics don't sum to {expected}: "
+        f"{json.dumps(metric_samples, indent=4)}\n."
+        f"All metrics: {json.dumps(metrics, indent=4)}"
+    )
+
+    # # For debugging
+    if metric_samples:
+        print(f"The following sum to {expected} for '{metric_name}' and tags {tags}:")
+        for sample in metric_samples:
+            print(sample)
+
+    return True
+
+
+def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
+    """Waits on a predicate that scrapes, pacing retries so a loaded dashboard
+    agent is not hammered while it catches up."""
+    wait_for_condition(
+        predicate,
+        timeout=budget_s,
+        retry_interval_ms=METRICS_RETRY_INTERVAL_MS,
+        **kwargs,
+    )
+
+
+def wait_for_metric_export(metric_name, timeseries, count=None):
+    """Waits for a series to surface, which is the slow step; count=None accepts
+    any number of samples."""
+
+    def check():
+        metrics = get_metric_samples(metric_name, timeseries=timeseries)
+        if count is None:
+            assert metrics, f"Metric {metric_name} not exported yet"
+        else:
+            assert (
+                len(metrics) == count
+            ), f"Expected {count} {metric_name}, got {len(metrics)}"
+        return True
+
+    wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
+
+
+def check_metric_float(**kwargs):
+    """Bounds each scrape to one PROMETHEUS_METRICS_TIMEOUT_S; the shared helper's
+    own 20s default is larger than most callers' retry budgets."""
+    return check_metric_float_eq(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
+
+
+def get_metric_value(**kwargs):
+    """Value-reading sibling of check_metric_float, bounded the same way."""
+    return get_metric_float(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
+
+
+def get_metric_samples(metric_name, timeseries=None):
+    """One bounded scrape with no internal wait, so the caller paces its own retries."""
+    return get_metric_dictionaries(
+        metric_name,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        timeseries=timeseries,
+        wait=False,
+    )

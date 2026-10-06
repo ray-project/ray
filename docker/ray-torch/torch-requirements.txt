@@ -1,0 +1,20 @@
+torch
+torchvision
+torchmetrics
+pytest
+locust
+openai
+google-api-python-client
+transformers
+datasets
+daft
+sentence-transformers
+grpcio
+jupytext
+langchain-text-splitters
+
+#vllm==0.21.0 # cuda-tile doesn't have a python 3.14 wheel (21st May)
+cupy-cuda12x
+llvmlite
+numba
+dm-tree

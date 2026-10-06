@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_resource_load_puller.h"
 
 #include <atomic>
+#include <future>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,7 +24,6 @@
 #include "absl/synchronization/mutex.h"
 #include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
-#include "ray/common/test_utils.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
@@ -31,7 +31,7 @@ namespace gcs {
 
 namespace {
 
-class MockRayletClient : public rpc::FakeRayletClient {
+class FakeRayletClientForTest : public rpc::FakeRayletClient {
  public:
   void GetResourceLoad(const rpc::ClientCallback<rpc::GetResourceLoadReply> &) override {
     num_calls_++;
@@ -60,11 +60,11 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
                         /*enable_lag_probe=*/false,
                         /*used_for_health_check=*/false) {}
 
-  std::shared_ptr<MockRayletClient> ClientFor(const NodeID &node_id) {
+  std::shared_ptr<FakeRayletClientForTest> ClientFor(const NodeID &node_id) {
     absl::MutexLock lock(&mutex_);
     auto &client = clients_[node_id];
     if (client == nullptr) {
-      client = std::make_shared<MockRayletClient>();
+      client = std::make_shared<FakeRayletClientForTest>();
     }
     return client;
   }
@@ -91,16 +91,20 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
 
   void PullOnPullThread(GcsResourceLoadPuller &puller,
                         std::vector<rpc::Address> raylet_addresses) {
+    auto done = std::make_shared<std::promise<void>>();
+    auto future = done->get_future();
     pull_io_thread_.GetIoService().post(
-        [&puller, raylet_addresses = std::move(raylet_addresses)]() mutable {
+        [&puller, done, raylet_addresses = std::move(raylet_addresses)]() mutable {
           puller.Pull(std::move(raylet_addresses));
+          done->set_value();
         },
         "GcsResourceLoadPullerTest.pull");
+    future.wait();
   }
 
   InstrumentedIOContextWithThread pull_io_thread_;
   absl::Mutex mutex_;
-  absl::flat_hash_map<NodeID, std::shared_ptr<MockRayletClient>> clients_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<FakeRayletClientForTest>> clients_;
   absl::flat_hash_map<NodeID, int> factory_calls_;
   std::unique_ptr<rpc::RayletClientPool> pool_;
 };
@@ -113,19 +117,14 @@ TEST_F(GcsResourceLoadPullerTest, DisconnectsRayletsThatLeftTheSnapshot) {
   auto puller = MakePuller();
 
   PullOnPullThread(*puller, {AddressOf(node1), AddressOf(node2)});
-  ASSERT_TRUE(WaitForCondition(
-      [&]() {
-        return ClientFor(node1)->NumCalls() == 1 && ClientFor(node2)->NumCalls() == 1;
-      },
-      10000));
+  EXPECT_EQ(ClientFor(node1)->NumCalls(), 1);
+  EXPECT_EQ(ClientFor(node2)->NumCalls(), 1);
 
   PullOnPullThread(*puller, {AddressOf(node2)});
-  ASSERT_TRUE(
-      WaitForCondition([&]() { return ClientFor(node2)->NumCalls() == 2; }, 10000));
+  EXPECT_EQ(ClientFor(node2)->NumCalls(), 2);
 
   PullOnPullThread(*puller, {AddressOf(node1), AddressOf(node2)});
-  ASSERT_TRUE(
-      WaitForCondition([&]() { return ClientFor(node1)->NumCalls() == 2; }, 10000));
+  EXPECT_EQ(ClientFor(node1)->NumCalls(), 2);
   EXPECT_EQ(FactoryCalls(node1), 2);
   EXPECT_EQ(FactoryCalls(node2), 1);
 }

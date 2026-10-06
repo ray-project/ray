@@ -17,7 +17,6 @@ dm_control==1.0.12; python_version < "3.12"
 pettingzoo==1.24.3
 pymunk==6.2.1
 tinyscaler==1.2.8
-shimmy==2.0.0
 supersuit==3.9.3
 
 # For tests on minigrid.
