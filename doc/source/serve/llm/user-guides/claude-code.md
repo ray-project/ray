@@ -62,11 +62,9 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.5-0.8b
 claude --model qwen3.5-0.8b
 ```
 
-`--model` sets the model for the main session. Claude Code sends background requests with its configured Haiku model. Pin `ANTHROPIC_DEFAULT_HAIKU_MODEL` to the only model this application serves, or those requests fail with a model-not-found error.
+Claude Code requires a credential even when the local endpoint doesn't check authentication, so any non-empty `ANTHROPIC_API_KEY` works.
 
-If you configure a subagent with its own model, set that model to `qwen3.5-0.8b` too. Otherwise those requests fail with a model-not-found error.
-
-Claude Code requires a credential even when the local endpoint doesn't check authentication. Any non-empty `ANTHROPIC_API_KEY` works.
+`--model` sets the model for the main session. Claude Code sends background requests with its configured Haiku model, so pin `ANTHROPIC_DEFAULT_HAIKU_MODEL` to the only model this application serves. If you configure a subagent with its own model, set that model to `qwen3.5-0.8b` too. Otherwise, the background and subagent requests fail with a model-not-found error.
 
 ## Limitations
 
