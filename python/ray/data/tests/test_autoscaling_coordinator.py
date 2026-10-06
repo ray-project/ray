@@ -993,6 +993,152 @@ def test_strict_pack_forwards_one_summed_bundle_to_the_autoscaler():
     assert call.kwargs["label_selectors"] == [{"zone": "a", "market": "spot"}]
 
 
+@pytest.mark.parametrize("autoscaler_version", [1, 2])
+@pytest.mark.parametrize(
+    "strategies,expected_nodes",
+    [
+        ([ResourceRequestStrategy.PACK], 1),
+        ([ResourceRequestStrategy.SPREAD], 1),
+        ([ResourceRequestStrategy.STRICT_PACK], 1),
+        ([ResourceRequestStrategy.STRICT_SPREAD], 4),
+        ([ResourceRequestStrategy.STRICT_SPREAD] * 2, 4),
+    ],
+)
+def test_forwarded_strategy_drives_autoscaling(
+    autoscaler_version, strategies, expected_nodes
+):
+    """A large node must not satisfy a request for several distinct nodes.
+
+    Separate STRICT_SPREAD jobs can share nodes when their resources fit.
+    Exercise the resource-constraint path used by request_resources, without
+    relying on a pending placement group to supply the missing topology.
+    """
+    nodes = []
+    coord = _make_coordinator(nodes)
+    for i, strategy in enumerate(strategies):
+        coord.request_resources(
+            requester_id=f"train-{i}",
+            resources=[{"GPU": 1}] * 4,
+            expire_after_s=10,
+            strategy=strategy,
+        )
+    bundles = coord._send_resources_request.call_args.args[0]
+    node_resources = {"GPU": 8}
+
+    if autoscaler_version == 1:
+        from functools import partial
+
+        from ray.autoscaler._private.node_provider_availability_tracker import (
+            NodeAvailabilitySummary,
+        )
+        from ray.autoscaler._private.resource_demand_scheduler import (
+            _default_utilization_scorer,
+            get_nodes_for,
+        )
+
+        to_launch, residual = get_nodes_for(
+            node_types={"worker": {"resources": node_resources, "max_workers": 8}},
+            existing_nodes={},
+            head_node_type="head",
+            max_to_add=8,
+            resources=bundles,
+            utilization_scorer=partial(
+                _default_utilization_scorer,
+                node_availability_summary=NodeAvailabilitySummary({}),
+            ),
+        )
+        assert residual == []
+    else:
+        from ray.autoscaler.v2.scheduler import (
+            NodeTypeConfig,
+            ResourceDemandScheduler,
+            SchedulingRequest,
+        )
+        from ray.autoscaler.v2.utils import ResourceRequestUtil
+        from ray.core.generated.autoscaler_pb2 import ClusterResourceConstraint
+
+        reply = ResourceDemandScheduler(Mock()).schedule(
+            SchedulingRequest(
+                disable_launch_config_check=True,
+                node_type_configs={
+                    "worker": NodeTypeConfig(
+                        name="worker",
+                        resources=node_resources,
+                        min_worker_nodes=0,
+                        max_worker_nodes=8,
+                    )
+                },
+                cluster_resource_constraints=[
+                    ClusterResourceConstraint(
+                        resource_requests=ResourceRequestUtil.group_by_count(
+                            [ResourceRequestUtil.make(bundle) for bundle in bundles]
+                        )
+                    )
+                ],
+            )
+        )
+        assert not reply.infeasible_cluster_resource_constraints
+        to_launch = {
+            request.instance_type: request.count for request in reply.to_launch
+        }
+
+    assert to_launch == {"worker": expected_nodes}
+    # Feed the planned capacity back into the real reservation allocator.
+    nodes.extend(_nodes(**{f"n{i}": node_resources for i in range(expected_nodes)}))
+    for i, strategy in enumerate(strategies):
+        reserved = coord.get_reserved_resources(f"train-{i}", recompute=True)
+        assert sum(resources["GPU"] for resources in reserved.values()) == 4
+        if strategy == ResourceRequestStrategy.STRICT_SPREAD:
+            assert len(reserved) == 4
+
+
+def test_strict_spread_preserves_resources_and_selectors():
+    coord = _make_coordinator([])
+    resources = [{"GPU": 1}, {"GPU": 2}]
+    selectors = [{"zone": "a"}, {"zone": "b"}]
+    coord.request_resources(
+        requester_id="train",
+        resources=resources,
+        label_selectors=selectors,
+        expire_after_s=10,
+        strategy=ResourceRequestStrategy.STRICT_SPREAD,
+    )
+    call = coord._send_resources_request.call_args
+    assert call.kwargs["label_selectors"] == selectors
+    assert resources == [{"GPU": 1}, {"GPU": 2}]
+    assert coord._ongoing_reqs["train"].requested_resources == resources
+    implicit_resources = set(call.args[0][0]) - {"GPU"}
+    assert len(implicit_resources) == 1
+    resource = implicit_resources.pop()
+    assert resource.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX)
+    assert call.args[0] == [{**bundle, resource: 1} for bundle in resources]
+
+    # Refreshing demand keeps the same per-requester constraint.
+    coord._merge_and_send_requests()
+    assert coord._send_resources_request.call_args == call
+
+
+@pytest.mark.parametrize("cleanup", ["cancel", "expire"])
+def test_strict_spread_constraint_is_removed_with_request(cleanup):
+    now = 0
+    coord = _make_coordinator([])
+    coord._get_current_time = lambda: now
+    for requester, timeout in [("short", 1), ("long", 10)]:
+        coord.request_resources(
+            requester_id=requester,
+            resources=[{"GPU": 1}] * 2,
+            expire_after_s=timeout,
+            strategy=ResourceRequestStrategy.STRICT_SPREAD,
+        )
+    bundles = coord._send_resources_request.call_args.args[0]
+    if cleanup == "cancel":
+        coord.cancel_request("short")
+    else:
+        now = 2
+        coord._merge_and_send_requests()
+    assert coord._send_resources_request.call_args.args[0] == bundles[2:]
+
+
 def test_tick_survives_a_failing_request():
     """`_tick` runs on a bare thread, so an exception escaping it would
     silently stop autoscaling for every requester on the cluster."""
