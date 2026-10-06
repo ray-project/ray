@@ -22,12 +22,26 @@ first frame is not one, its frames from its last keyframe in the look-back
 before the time range are prepended. Without such a keyframe the channel starts
 at its first keyframe. A channel whose codec is not recognised keeps all its
 messages, and one with no keyframe at all is dropped with a warning.
+
+Decoded rows prime their decoders the same way: from the last keyframe of the
+frames read back (``last_keyframe``), dropping the output.
 """
 
 import bisect
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_coarse_layout import _Entry
 from ray.data._internal.datasource_v2.formats.mcap.mcap_video import (
@@ -138,6 +152,16 @@ def _lead_in(
         if messages.is_keyframe_at(index):
             return messages.entries[index:end]
     return []
+
+
+def last_keyframe(
+    messages: Sequence[Tuple[Any, ...]], codec: VideoCodec
+) -> Optional[int]:
+    """The index of the last message a decoder can start on, if any."""
+    for index in range(len(messages) - 1, -1, -1):
+        if is_keyframe(messages[index][2].data, codec):
+            return index
+    return None
 
 
 @dataclass(frozen=True)

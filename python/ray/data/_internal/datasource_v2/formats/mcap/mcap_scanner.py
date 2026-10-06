@@ -12,6 +12,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     DEFAULT_MAX_LEAD_IN_NS,
     MESSAGE_GRANULARITY,
     MCAPSelection,
+    VideoOptions,
     WindowSpec,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
@@ -41,14 +42,18 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
 
     At ``message`` granularity, the planned ``schema`` fixes what ``data``
     holds in every block: decoded JSON values when every selected channel of
-    the sampled files is JSON-encoded, and the payload bytes otherwise.
+    the sampled files is JSON-encoded, and the payload bytes otherwise. With
+    ``video`` at ``window`` granularity, ``decoded_topics`` names the topics
+    the planned schema gives frame columns.
     """
 
     schema: pa.Schema
     selection: MCAPSelection = MCAPSelection()
     granularity: str = MESSAGE_GRANULARITY
     window: Optional[WindowSpec] = None
+    video: Optional[VideoOptions] = None
     video_topics: FrozenSet[str] = frozenset()
+    decoded_topics: Tuple[str, ...] = ()
     include_metadata: bool = True
     include_row_id: bool = False
     log_time_order: bool = True
@@ -109,7 +114,9 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
             selection=self.selection,
             granularity=self.granularity,
             window=self.window,
+            video=self.video,
             video_topics=self.video_topics,
+            decoded_topics=self.decoded_topics,
             include_metadata=self.include_metadata,
             include_row_id=self.include_row_id,
             log_time_order=self.log_time_order,

@@ -8,6 +8,8 @@ selection, and emits one row per chunk (``MCAPSummaryIndexer``).
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
+With ``video``, it asks a ``VideoPlanner`` (``mcap_video_planning``) for the
+frame type, or at ``window`` granularity for the topics to decode.
 
 ``read_granularity`` picks what one row is. ``message`` gives one row per
 message. ``window``, ``topic`` and ``file`` pack the messages of a time window,
@@ -29,6 +31,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -57,6 +60,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     WINDOW_GRANULARITY,
     MCAPSelection,
     TimeRange,
+    VideoOptions,
     WindowSpec,
     max_lead_in_ns,
 )
@@ -64,6 +68,9 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
     DEFAULT_MAX_ROW_BYTES,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
+from ray.data._internal.datasource_v2.formats.mcap.mcap_video_planning import (
+    VideoPlanner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -114,6 +121,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         include_paths: bool = False,
         read_granularity: str = MESSAGE_GRANULARITY,
         window: Optional[WindowSpec] = None,
+        video: Optional[VideoOptions] = None,
         video_topics: Optional[Iterable[str]] = None,
         filesystem: Optional["FileSystem"] = None,
         partitioning: Optional[Partitioning] = None,
@@ -124,7 +132,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
     ):
         super().__init__(name="MCAP", category=DatasourceCategory.FILE_BASED)
         _check_import(self, module="mcap", package="mcap")
-        _validate_granularity(read_granularity, window)
+        _validate_granularity(read_granularity, window, video)
 
         # Captured against the original paths: resolution below strips the
         # ``local://`` scheme (see ``ParquetDatasourceV2``).
@@ -141,6 +149,10 @@ class MCAPDatasourceV2(FileDataSourceV2):
         self._include_row_id = include_row_id
         self._granularity = read_granularity
         self._window = window
+        self._video = video
+        # With ``video`` at ``window`` granularity, the topics that get frame
+        # columns. Settled by ``infer_schema``.
+        self._decoded_topics: Tuple[str, ...] = ()
         self._partitioning = partitioning
         self._partition_filter = partition_filter
         self._file_extensions = (
@@ -239,36 +251,16 @@ class MCAPDatasourceV2(FileDataSourceV2):
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
         """The schema of the rows, plus partition and synthesized columns.
 
-        At ``message`` granularity every column but ``data`` has a fixed type.
-        ``data`` holds decoded JSON values when every selected channel of the
-        sampled files is JSON-encoded, and the raw payload bytes (``binary``)
-        otherwise. The reader follows this one decision for every file, so a
-        selection that mixes encodings keeps every payload as bytes. Coarse rows
-        have a fixed schema.
+        The sampled files settle the row columns that vary, and every read task
+        follows that plan: the type of ``data`` in message rows, or with
+        ``video`` the type of their ``frame`` column and which topics get frame
+        columns in window rows. Every other row column has a fixed type.
         """
         assert sample is not None, "MCAP always receives a sample"
         if self._granularity == MESSAGE_GRANULARITY:
-            data_type = (
-                infer_data_type(
-                    self._selection,
-                    self._filesystem,
-                    sample.paths.tolist(),
-                    self._listed_paths,
-                )
-                if len(sample) > 0
-                else None
-            )
-            schema = message_schema(
-                include_metadata=self._include_metadata,
-                include_row_id=self._include_row_id,
-                data_type=data_type,
-            )
+            schema = self._infer_message_schema(sample)
         else:
-            schema = coarse_row_schema(
-                self._granularity,
-                include_metadata=self._include_metadata,
-                include_row_id=self._include_row_id,
-            )
+            schema = self._infer_coarse_schema(sample)
         partitioning = self.resolve_partitioning(sample)
         if partitioning is not None and len(sample) > 0:
             partition_kv = PathPartitionParser(partitioning)(sample.paths.tolist()[0])
@@ -286,6 +278,59 @@ class MCAPDatasourceV2(FileDataSourceV2):
             elif schema.field(idx).type != column.type:
                 schema = schema.set(idx, pa.field(column.name, column.type))
         return schema
+
+    def _infer_message_schema(self, sample: FileManifest) -> pa.Schema:
+        """The schema of message rows.
+
+        ``data`` holds decoded JSON values when every selected channel of the
+        sampled files is JSON-encoded, and the raw payload bytes (``binary``)
+        otherwise. The reader follows this one decision for every file, so a
+        selection that mixes encodings keeps every payload as bytes. With
+        ``video``, a ``frame`` column replaces ``data``.
+        """
+        data_type: Optional[pa.DataType] = None
+        frame_type: Optional[pa.DataType] = None
+        if self._video is not None:
+            frame_type = self._video_planner().frame_type(sample.paths.tolist())
+        elif len(sample) > 0:
+            data_type = infer_data_type(
+                self._selection,
+                self._filesystem,
+                sample.paths.tolist(),
+                self._listed_paths,
+            )
+        return message_schema(
+            include_metadata=self._include_metadata,
+            include_row_id=self._include_row_id,
+            data_type=data_type,
+            frame_type=frame_type,
+        )
+
+    def _infer_coarse_schema(self, sample: FileManifest) -> pa.Schema:
+        """The schema of window, topic and file rows."""
+        decoded: Tuple[str, ...] = ()
+        if self._video is not None:
+            # Settled here, so every task decodes the same topics.
+            self._decoded_topics = decoded = self._video_planner().decoded_topics(
+                sample.paths.tolist()
+            )
+        return coarse_row_schema(
+            self._granularity,
+            include_metadata=self._include_metadata,
+            include_row_id=self._include_row_id,
+            decoded_topics=decoded,
+        )
+
+    def _video_planner(self) -> VideoPlanner:
+        """The planner of the decoded columns, for a read with ``video``."""
+        assert self._video is not None
+        return VideoPlanner(
+            self._selection,
+            self._filesystem,
+            self._video,
+            self._video_topics,
+            owner=self,
+        )
 
     def _listed_paths(self) -> Iterator[str]:
         """The files the read lists, in listing order."""
@@ -314,7 +359,9 @@ class MCAPDatasourceV2(FileDataSourceV2):
             selection=self._selection,
             granularity=self._granularity,
             window=self._window,
+            video=self._video,
             video_topics=self._video_topics,
+            decoded_topics=self._decoded_topics,
             include_metadata=self._include_metadata,
             include_row_id=self._include_row_id,
             log_time_order=self._log_time_order,
@@ -348,7 +395,9 @@ def _listed_video_topics(
     return listed
 
 
-def _validate_granularity(granularity: str, window: Optional[WindowSpec]) -> None:
+def _validate_granularity(
+    granularity: str, window: Optional[WindowSpec], video: Optional[VideoOptions]
+) -> None:
     """Reject option combinations that cannot mean anything."""
     if granularity not in GRANULARITIES:
         raise ValueError(
@@ -363,4 +412,15 @@ def _validate_granularity(granularity: str, window: Optional[WindowSpec]) -> Non
     if granularity != WINDOW_GRANULARITY and window is not None:
         raise ValueError(
             f"window applies to read_granularity='window', not {granularity!r}"
+        )
+    if video is not None and granularity not in (
+        MESSAGE_GRANULARITY,
+        WINDOW_GRANULARITY,
+    ):
+        raise ValueError(
+            "video decodes the video topics into frames and applies to "
+            "read_granularity='message' (one frame per row) and 'window' (a "
+            f"window's frames per topic), not {granularity!r}: a decoded "
+            f"{granularity} row would hold minutes to hours of frames in one "
+            "value that cannot be cut into blocks"
         )

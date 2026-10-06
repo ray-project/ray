@@ -12,7 +12,8 @@ codec and keyframes are found::
               (JPEG/PNG signature, H.264/H.265 NAL headers,
                AV1 OBUs, VP9 key frame)
       | none
-              no codec: window rows take the whole look-back span as lead-in
+              no codec: window rows take the whole look-back span as lead-in,
+              and decoded rows skip the frames until a payload names one
     keyframe? from the payload bytes, per codec (is_keyframe)
 
 The known video schemas are ``VIDEO_SCHEMA_NAMES``. The recognised codecs are
@@ -59,6 +60,8 @@ _VP9_SYNC_CODE = 0x498342
 # holds a sequence header OBU is one a decoder can start on.
 _AV1_SEQUENCE_HEADER = 1
 _AV1_OBU_TYPES = frozenset({1, 2, 3, 4, 5, 6, 7, 8, 15})
+# OBUs that carry picture data: a frame header, a tile group, a frame.
+_AV1_PICTURE_OBUS = frozenset({3, 4, 6})
 
 # Schema names whose channels carry video: Foxglove's ``CompressedVideo`` and
 # ``CompressedImage`` in their ROS 2, ROS 1 and protobuf names, and ROS's
@@ -114,6 +117,19 @@ def is_video_channel(
 ) -> bool:
     """Whether a channel carries video: a known video schema, or a listed topic."""
     return schema_name in VIDEO_SCHEMA_NAMES or topic in video_topics
+
+
+def require_video_channel(
+    topic: str, schema_name: Optional[str], video_topics: AbstractSet[str], path: str
+) -> None:
+    """Fail a decode request for a channel that is not video."""
+    if not is_video_channel(topic, schema_name, video_topics):
+        raise ValueError(
+            f"Cannot decode topic {topic!r} in {path!r}: it is not a video topic. "
+            f"Its schema {schema_name!r} is not a known video schema. List it in "
+            "video_topics=[...] if it carries video, or pass topics=[...] to "
+            "select only the video topics."
+        )
 
 
 # -- Annex-B (H.264 / H.265) ---------------------------------------------------
@@ -656,6 +672,27 @@ def channel_codec(
     if codec is not None:
         return codec
     return stream_codec(itertools.chain((first,), remaining))
+
+
+def carries_picture(payload: bytes, codec: VideoCodec) -> bool:
+    """Whether the payload holds coded picture data, not only parameter sets.
+
+    A recorder may write the parameter sets (SPS, PPS, VPS) in a message of
+    their own ahead of a keyframe. A decoder fed such a message has nothing to
+    output, which is not an error. A VP9 frame is always a picture. An AV1
+    temporal unit is one when it holds a frame or tile group OBU.
+    """
+    if codec.every_frame_is_a_keyframe or codec is VideoCodec.VP9:
+        return True
+    if codec is VideoCodec.H264:
+        return any(1 <= (first & 0x1F) <= 5 for first, _ in _nal_headers(payload))
+    if codec is VideoCodec.H265:
+        return any(((first >> 1) & 0x3F) <= 31 for first, _ in _nal_headers(payload))
+    for frame in _embedded_frames(payload):
+        types = _av1_obu_types(frame)
+        if types is not None:
+            return bool(_AV1_PICTURE_OBUS & set(types))
+    return True
 
 
 def is_keyframe(payload: bytes, codec: VideoCodec) -> bool:
