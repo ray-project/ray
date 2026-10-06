@@ -12,6 +12,6 @@ myst:
 stability
 api-policy
 getting-involved
-../ray-core/configure
+../core/configure
 whitepaper
 ```

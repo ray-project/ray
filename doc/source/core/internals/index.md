@@ -13,13 +13,13 @@ This section provides a look into some of Ray Core internals. It's primarily int
 ```{toctree}
 :maxdepth: 1
 
-internals/task-lifecycle
-internals/streaming-generator
-internals/autoscaler-v2
-internals/rpc-fault-tolerance
-internals/token-authentication
-internals/metric-exporter
-internals/ray-event-exporter
-internals/port-service-discovery
-internals/object-spilling
+task-lifecycle
+streaming-generator
+autoscaler-v2
+rpc-fault-tolerance
+token-authentication
+metric-exporter
+ray-event-exporter
+port-service-discovery
+object-spilling
 ```
