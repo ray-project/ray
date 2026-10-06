@@ -217,7 +217,7 @@ frontend http_frontend
     http-request del-header {{ ingress_request_router_header_prefix }} -m beg if is_router_request
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if is_router_request
     http-request lua.route_via_router_application if is_router_request
-    http-request return status 503 content-type text/plain lf-string "Router application failed: %[var(txn.router_failed)]" hdr X-Serve-Reason %[var(txn.router_failed)] if is_router_request !{ var(txn.router_backend) -m found }
+    http-request return status 503 content-type text/plain lf-string "Router application failed: %[var(txn.router_failed)]" hdr X-Serve-Reason %[var(txn.router_failed)] hdr Retry-After 1 if is_router_request !{ var(txn.router_backend) -m found }
     {%- endif %}
     {%- if has_ingress_request_router %}
     # Set txn.ingress_request_router_app to the first matching router-bearing

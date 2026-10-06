@@ -103,6 +103,10 @@ local function reply_with(txn, status, head, body)
     local reply = txn:reply()
     reply:set_status(status)
     reply:add_header("content-type", content_type or "text/plain")
+    local retry_after = response_header(head, "retry-after")
+    if retry_after then
+        reply:add_header("retry-after", retry_after)
+    end
     reply:set_body(body)
     txn:done(reply)
 end
