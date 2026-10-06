@@ -205,10 +205,29 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         return ""
 
-    async def _is_load_imbalanced(
-        self, candidate_replicas: List[RunningReplica]
-    ) -> bool:
-        """Returns whether replica queue lengths differ by more than the threshold."""
+    def _send_tree_lookup(
+        self, input_text: str, candidate_replicas: List[RunningReplica]
+    ) -> ray.ObjectRef:
+        """Sends the prefix tree lookup for a request's text among the candidates."""
+        return self._tree_actor.prefix_match_or_smallest_tenants.remote(
+            input_text,
+            [r.replica_id.to_full_id_str() for r in candidate_replicas],
+            self._match_rate_threshold,
+        )
+
+    async def _send_tree_lookup_if_balanced(
+        self, input_text: str, candidate_replicas: List[RunningReplica]
+    ) -> Optional[ray.ObjectRef]:
+        """Sends the prefix tree lookup unless the candidates' load is imbalanced.
+
+        Load is imbalanced when queue lengths differ by more than
+        imbalanced_threshold. Returns None then, because prefix matching is
+        skipped.
+        """
+        if self._imbalanced_threshold == float("inf"):
+            # Load can't be imbalanced, so don't check queue lengths.
+            return self._send_tree_lookup(input_text, candidate_replicas)
+
         # Start Sphinx tag: __begin_load_balance_component__
         # Check for imbalanced load.
         highest_queue_len = 0
@@ -225,6 +244,14 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     lowest_queue_len = min(lowest_queue_len, queue_len)
         else:
             not_in_cache = candidate_replicas
+        # Probing more replicas can only widen the range of queue lengths, so if the
+        # cached ones already differ too much, load is imbalanced.
+        if highest_queue_len - lowest_queue_len > self._imbalanced_threshold:
+            return None
+
+        # Send the lookup before probing, so the actor round trip overlaps the
+        # probes.
+        tree_lookup = self._send_tree_lookup(input_text, candidate_replicas)
         if len(not_in_cache) > 0:
             for r, queue_len in await self._probe_queue_lens(
                 not_in_cache,
@@ -234,12 +261,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     continue
                 highest_queue_len = max(highest_queue_len, queue_len)
                 lowest_queue_len = min(lowest_queue_len, queue_len)
-
-        is_imbalanced = (
-            highest_queue_len - lowest_queue_len > self._imbalanced_threshold
-        )
+        if highest_queue_len - lowest_queue_len > self._imbalanced_threshold:
+            return None
         # End Sphinx tag: __end_load_balance_component__
-        return is_imbalanced
+        return tree_lookup
 
     async def _prefix_match_best_replicas(
         self,
@@ -261,17 +286,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
                 # Start Sphinx tag: __begin_prefix_match_component__
-                # Send the tree lookup before the load check, so the actor round trip
-                # overlaps with any queue length probes.
-                candidate_replica_ids_strings = [
-                    r.replica_id.to_full_id_str() for r in candidate_replicas
-                ]
-                tree_lookup = self._tree_actor.prefix_match_or_smallest_tenants.remote(
-                    input_text,
-                    candidate_replica_ids_strings,
-                    self._match_rate_threshold,
+                tree_lookup = await self._send_tree_lookup_if_balanced(
+                    input_text, candidate_replicas
                 )
-                if not await self._is_load_imbalanced(candidate_replicas):
+                if tree_lookup is not None:
                     # Await rather than ray.get, which would block the event loop
                     # that every router in this process shares.
                     chosen_replica_id_strings = (await tree_lookup) or []
