@@ -19,6 +19,8 @@ from typing import (
 )
 
 from fastapi import HTTPException
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
 from ray import serve
@@ -30,6 +32,7 @@ from ray.llm._internal.serve.constants import (
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
+    get_llm_serve_runtime_env,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
@@ -50,6 +53,7 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
 )
 from ray.llm._internal.serve.utils.server_utils import (
+    get_response_for_error,
     get_serve_request_id,
 )
 from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
@@ -75,6 +79,39 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
+
+
+class _ResolveLoRAMiddleware:
+    """Resolve a requested LoRA before the native engine handles HTTP."""
+
+    def __init__(self, app: ASGIApp, *, server: "LLMServer") -> None:
+        self.app = app
+        self._server = server
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and serve.get_multiplexed_model_id():
+            try:
+                await self._server._maybe_resolve_lora_from_multiplex()
+            except HTTPException as exc:
+                # User middleware runs outside Starlette's ExceptionMiddleware.
+                error = get_response_for_error(exc, get_serve_request_id())
+                response = JSONResponse(
+                    error.model_dump(), status_code=exc.status_code, headers=exc.headers
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+def _add_middleware_to_built_app(app, middleware_cls, **options) -> None:
+    """Add a middleware to an app that already built its middleware stack.
+
+    vLLM's `build_app` eagerly builds the app stack, so calling `add_middleware` afterward fails.
+    Clearing the cached stack lets Starlette rebuild it lazily with the new middleware, while keeping
+    `app` as a FastAPI app so subclasses can still add routes.
+    """
+    app.middleware_stack = None
+    app.add_middleware(middleware_cls, **options)
 
 
 def _merge_replica_actor_and_child_actor_bundles(
@@ -291,6 +328,8 @@ class LLMServer(LLMServerProtocol):
 
     async def __serve_build_asgi_app__(self):
         app = await self.engine.build_asgi_app()
+        # Native vLLM ASGI handlers bypass LLMServer's LoRA-resolving methods.
+        _add_middleware_to_built_app(app, _ResolveLoRAMiddleware, server=self)
         _add_openai_models_retrieve_route(app, self._llm_config)
         return app
 
@@ -876,6 +915,9 @@ class LLMServer(LLMServerProtocol):
             **ray_actor_options.get("runtime_env", {}),
             **(llm_config.runtime_env if llm_config.runtime_env else {}),
         }
+        ray_actor_options["runtime_env"] = get_llm_serve_runtime_env(
+            ray_actor_options["runtime_env"]
+        )
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
