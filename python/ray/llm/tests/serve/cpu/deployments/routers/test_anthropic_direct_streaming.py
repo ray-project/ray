@@ -46,7 +46,7 @@ class TestAnthropicDirectStreaming:
     ):
         llm_config = llm_config_with_mock_engine
         llm_config.deployment_config = {
-            "num_replicas": 1,
+            "num_replicas": 2,
             "ray_actor_options": {"num_cpus": 0.1},
         }
         yield run_app_through_haproxy(
