@@ -1,7 +1,6 @@
 from typing import Iterator
 
 import pyarrow as pa
-import pyarrow.dataset as pds
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_reader import FileReader
@@ -32,10 +31,6 @@ class OrcFileReader(FileReader):
                 )
                 table = table.select(column_names)
             yield table
-
-    @override
-    def _make_format(self) -> pds.OrcFileFormat:
-        return pds.OrcFileFormat()
 
     @override
     def _on_batch_read(self, table: pa.Table) -> None:
