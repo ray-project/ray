@@ -704,25 +704,32 @@ def test_seeding_stays_inside_the_tree(tmp_path):
     host_tmp.mkdir()
     host_tmp_mode = host_tmp.stat().st_mode
     (root / "etc").symlink_to(host_etc)  # absolute host path
-    (root / "tmp").symlink_to(host_tmp)
     (root / "dev").symlink_to("../escape")  # climbs past the root
+    # tmp gets a tree of its own, linked relatively: tmp_path is often
+    # under /tmp, and in the image a /tmp naming a path under /tmp is a
+    # symlink loop, which seeding rightly gives up on.
+    tmp_root = tmp_path / "tmp-rootfs"
+    tmp_root.mkdir()
+    (tmp_root / "tmp").symlink_to("../host-tmp")
 
-    image_utils._seed_tmp(str(root))
-    image_utils._seed_mountpoints(str(root))
+    for tree in (root, tmp_root):
+        image_utils._seed_tmp(str(tree))
+        image_utils._seed_mountpoints(str(tree))
 
     assert os.listdir(host_etc) == []
     assert os.listdir(host_tmp) == []
     assert host_tmp.stat().st_mode == host_tmp_mode
     assert not (tmp_path / "escape").exists()
-    # In the image, /etc -> /<abs> makes /etc/hosts /<abs>/hosts; same for /tmp.
+    # In the image, /etc -> /<abs> makes /etc/hosts /<abs>/hosts.
     inside_etc = root / str(host_etc).lstrip("/")
-    inside_tmp = root / str(host_tmp).lstrip("/")
     for name in ("resolv.conf", "hosts", "hostname"):
         assert (inside_etc / name).is_file()
-    assert (inside_tmp / ".ray-sandbox-keep").is_file()
-    assert (inside_tmp.stat().st_mode & 0o7777) == 0o1777
     assert (root / "escape" / "pts").is_dir()
     assert (root / "escape" / "shm").is_dir()
+    # And /tmp -> ../host-tmp is /host-tmp: ".." stops at the root.
+    inside_tmp = tmp_root / "host-tmp"
+    assert (inside_tmp / ".ray-sandbox-keep").is_file()
+    assert (inside_tmp.stat().st_mode & 0o7777) == 0o1777
 
 
 def test_pull_requires_mkfs_erofs_with_tar_support(tmp_path, monkeypatch):
