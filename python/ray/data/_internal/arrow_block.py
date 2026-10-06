@@ -645,10 +645,42 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         return res.as_py() if as_py else res
 
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        import pyarrow as pa
         import pyarrow.compute as pac
 
-        res = pac.sum(self._column, skip_nulls=ignore_nulls)
-        return res.as_py() if as_py else res
+        from ray.data._internal.arrow_aggregation import (
+            _INT64_MAX,
+            _INT64_MIN,
+            _INTEGER_SUM_TYPE,
+            integer_sum_type,
+            sum_array,
+        )
+
+        # PyArrow's sum kernel wraps integer overflow. Accumulate integers in
+        # decimal128. Values that fit in int64 still come back as int64 so
+        # existing callers are unchanged.
+        output_type = integer_sum_type(self._column.type)
+        if output_type is None:
+            res = pac.sum(self._column, skip_nulls=ignore_nulls)
+            return res.as_py() if as_py else res
+
+        res = sum_array(self._column, skip_nulls=ignore_nulls)
+        if not res.is_valid:
+            if as_py:
+                return None
+            return pa.scalar(None, type=output_type)
+
+        value = int(res.as_py())
+        if as_py:
+            return value
+        lower, upper = (
+            (0, (1 << 64) - 1)
+            if pa.types.is_unsigned_integer(output_type)
+            else (_INT64_MIN, _INT64_MAX)
+        )
+        if lower <= value <= upper:
+            return pa.scalar(value, type=output_type)
+        return pa.scalar(value, type=_INTEGER_SUM_TYPE)
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         import pyarrow.compute as pac
