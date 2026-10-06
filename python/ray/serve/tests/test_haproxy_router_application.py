@@ -497,12 +497,15 @@ async def test_returns_router_error_to_client(router_cluster, status):
     url, router, _ = router_cluster
     error = {"error": {"message": "nope", "code": status}}
     router.response = (status, json.dumps(error))
+    if status == 503:
+        router.response_headers = {"Retry-After": "7"}
 
     resp = _chat(url, {})
 
     assert resp.status_code == status
     assert resp.headers["content-type"] == "application/json"
     assert resp.json() == error
+    assert resp.headers.get("retry-after") == ("7" if status == 503 else None)
 
 
 @pytest.mark.asyncio
@@ -564,6 +567,7 @@ async def test_fails_closed_on_bad_decision(router_cluster, status, decision, re
 
     assert resp.status_code == 503
     assert resp.headers["x-serve-reason"] == reason
+    assert resp.headers["retry-after"] == "1"
     assert resp.text == f"Router application failed: {reason}"
 
 
