@@ -14,11 +14,11 @@ import pytest
 
 from ray.train.v2._internal.callbacks import nccl_ras
 from ray.train.v2._internal.callbacks.nccl_ras import (
+    DiagnosticResult,
     NCCLRASCallback,
     RASPoller,
     RASQueryError,
     RASReport,
-    WorkerDump,
     dump_flight_recorder,
     dump_stack_trace,
     fan_out_to_workers,
@@ -1625,8 +1625,8 @@ def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
     calls = scripted_fan_out(
         monkeypatch,
         [
-            WorkerDump(0, value={"ok": True, "stdout": "node 1 GPUs"}),
-            WorkerDump(2, value={"ok": True, "stdout": "node 2 GPUs"}),
+            DiagnosticResult(0, value={"ok": True, "stdout": "node 1 GPUs"}),
+            DiagnosticResult(2, value={"ok": True, "stdout": "node 2 GPUs"}),
         ],
     )
 
@@ -1635,8 +1635,7 @@ def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
     ((queried, *_),) = calls
     assert queried == [workers[0], workers[2]]
     ((_, files),) = uploads
-    assert files == {"10.0.0.1.log": "node 1 GPUs", "10.0.0.2.log": "node 2 GPUs"}
-
+    assert files == {"node_10.0.0.1.log": "node 1 GPUs", "node_10.0.0.2.log": "node 2 GPUs"}
 
 @pytest.mark.parametrize(
     "method,has_workers,fr_armed",

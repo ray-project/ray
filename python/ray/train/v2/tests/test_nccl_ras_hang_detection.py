@@ -338,7 +338,9 @@ def assert_hang_diagnostics(err, storage_path, num_workers):
 
     # One file per node, not per rank, and these workers share a node.
     node_ip = ray.util.get_node_ip_address()
-    assert os.listdir(diagnostics_dir(storage_path, "nvidia_smi")) == [f"{node_ip}.log"]
+    assert os.listdir(diagnostics_dir(storage_path, "nvidia_smi")) == [
+        f"node_{node_ip}.log"
+    ]
 
     flight_recorder_dir = diagnostics_dir(storage_path, "flight_recorder")
     assert set(os.listdir(flight_recorder_dir)) == {

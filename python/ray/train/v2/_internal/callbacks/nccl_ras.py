@@ -531,13 +531,13 @@ class RASPoller:
 
 
 @dataclass
-class WorkerDump:
-    """One worker's answer to a fan-out diagnostic call.
+class DiagnosticResult:
+    """The results from a diagnostic (nvidia-smi, py-spy, etc) from a node or worker.
 
     Attributes:
         rank: The worker's world rank.
-        value: What the worker-side function returned, or ``None`` if it didn't.
-        error: Why this rank has no value, or ``None`` when it does.
+        value: What the diagnostic function returned, or ``None`` if it didn't.
+        error: Why this diagnostic has no value, or ``None`` when it does.
     """
 
     rank: int
@@ -547,7 +547,7 @@ class WorkerDump:
 
 def fan_out_to_workers(
     workers: List[Worker], fn: Callable[..., Any], *fn_args, timeout_s: float
-) -> List[WorkerDump]:
+) -> List[DiagnosticResult]:
     """Run ``fn`` on every worker in parallel and collect what each returned.
 
     Args:
@@ -559,7 +559,7 @@ def fan_out_to_workers(
     Returns:
         The worker dumps collected, not necessarily in order.
     """
-    dumps: Dict[int, WorkerDump] = {}
+    dumps: Dict[int, DiagnosticResult] = {}
     refs: Dict[ray.ObjectRef, int] = {}
 
     for worker in workers:
@@ -568,7 +568,7 @@ def fan_out_to_workers(
             refs[worker.execute_async(fn, *fn_args)] = rank
         except Exception as e:  # noqa: BLE001
             logger.info("Failed to launch %s on rank %d: %s", fn.__name__, rank, e)
-            dumps[rank] = WorkerDump(rank, error=f"failed to launch: {e}")
+            dumps[rank] = DiagnosticResult(rank, error=f"failed to launch: {e}")
 
     if refs:
         _, not_ready = ray.wait(list(refs), num_returns=len(refs), timeout=timeout_s)
@@ -581,16 +581,16 @@ def fan_out_to_workers(
                     rank,
                     timeout_s,
                 )
-                dumps[rank] = WorkerDump(
+                dumps[rank] = DiagnosticResult(
                     rank, error=f"timed out after {timeout_s:.0f}s"
                 )
                 continue
 
             try:
-                dumps[rank] = WorkerDump(rank, value=ray.get(ref))
+                dumps[rank] = DiagnosticResult(rank, value=ray.get(ref))
             except Exception as e:  # noqa: BLE001
                 logger.info("Failed to collect %s on rank %d: %s", fn.__name__, rank, e)
-                dumps[rank] = WorkerDump(rank, error=f"failed to collect: {e}")
+                dumps[rank] = DiagnosticResult(rank, error=f"failed to collect: {e}")
 
     return list(dumps.values())
 
@@ -635,7 +635,7 @@ def dump_stack_trace(pyspy_timeout_s: float) -> str:
 
 
 def run_nvidia_smi(timeout_s: float) -> Dict[str, Any]:
-    """Snapshot `nvidia-smi -q` on the current (worker) node using .
+    """Snapshot `nvidia-smi -q` on the current (worker) node.
 
     Args:
         timeout_s: Timeout for the ``nvidia-smi`` subprocess.
@@ -960,7 +960,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             message += (
                 "  - The per-node `nvidia-smi` snapshots show every GPU's power, "
                 "temperature, clocks and ECC state at the moment of the hang, to "
-                f"rule hardware in or out ({nvidia_smi_dir})\n"
+                f"rule hardware out issues ({nvidia_smi_dir})\n"
             )
         if flight_recorder_dir:
             message += (
@@ -1097,7 +1097,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def dump_workers_stack_traces(self) -> Optional[str]:
         """Fan out a native stack dump to every worker and write it to the log dir.
 
-        Every rank gets a ``rank_<world_rank>.log`` in the uploaded folder. A rank
+        Every rank gets a ``rank_<worker rank>.log`` in the uploaded folder. A rank
         whose dump could not be launched, timed out, or failed to collect gets a
         one-line placeholder saying so users know why it failed.
 
@@ -1111,7 +1111,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         dumps = fan_out_to_workers(
             workers,
             dump_stack_trace,
-            _STACK_DUMP_TIMEOUT_S - 5,
+            _STACK_DUMP_TIMEOUT_S - 1,
             timeout_s=_STACK_DUMP_TIMEOUT_S,
         )
         files = {
@@ -1123,14 +1123,13 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def dump_nodes_nvidia_smi(self) -> Optional[str]:
         """Snapshot every node's GPUs and write the reports to the log dir.
 
-        The GPUs belong to the node rather than the rank, so exactly one worker
-        per node is queried and each node gets a ``{node_ip}.log``. A node with
+        GPUs belong to the node rather than the rank, so exactly one worker
+        per node is queried and each node gets a ``node_<node ip>.log``. A node with
         no snapshot (e.g. ``nvidia-smi`` is missing there) gets a one-line
         placeholder saying why, so mixed clusters are never silent.
 
         Returns:
-            The path to the folder with the snapshots, or ``None`` when there
-            are no workers to query.
+            The path to the folder with the snapshots.
         """
         node_workers: Dict[str, Worker] = {}
         node_ips: Dict[int, str] = {}
@@ -1143,7 +1142,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         dumps = fan_out_to_workers(
             list(node_workers.values()),
             run_nvidia_smi,
-            _NVIDIA_SMI_TIMEOUT_S - 5,
+            _NVIDIA_SMI_TIMEOUT_S - 1,
             timeout_s=_NVIDIA_SMI_TIMEOUT_S,
         )
 
@@ -1151,10 +1150,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         for dump in dumps:
             node_ip = node_ips[dump.rank]
             if dump.error is None and dump.value["ok"]:
-                files[f"{node_ip}.log"] = dump.value["stdout"]
+                files[f"node_{node_ip}.log"] = dump.value["stdout"]
             else:
                 reason = dump.error if dump.error is not None else dump.value["reason"]
-                files[f"{node_ip}.log"] = f"no `nvidia-smi` snapshot: {reason}\n"
+                files[f"node_{node_ip}.log"] = f"no `nvidia-smi` snapshot: {reason}\n"
 
         return self.upload_diagnostics(_NVIDIA_SMI_TOOL, files)
 

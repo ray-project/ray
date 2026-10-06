@@ -1,5 +1,5 @@
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pytest
 from vllm.distributed.kv_events import (
@@ -10,6 +10,9 @@ from vllm.distributed.kv_events import (
 )
 
 from ray._common.test_utils import async_wait_for_condition
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    REQUEST_TOKEN_IDS_KWARG,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     _MODEL_NAME,
     _TENANT_ID,
@@ -17,11 +20,16 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_worker_id,
 )
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentTargetInfo,
     ReplicaID,
+    RequestMetadata,
     RunningReplicaInfo,
 )
+from ray.serve._private.request_router import PendingRequest
+from ray.serve._private.test_utils import FakeRunningReplica
+from ray.serve.llm.request_router import KVAwareRouter
 
 BLOCK_SIZE = 16
 MAX_NUM_BATCHED_TOKENS = 8192
@@ -49,18 +57,26 @@ class _TestKVTokenTracker(KVTokenTracker):
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
 
-    async def get_kv_overlap_blocks(self, token_ids: List[int]) -> Dict[int, int]:
+    async def get_kv_overlap_blocks(
+        self, token_ids: List[int], lora_name: Optional[str] = None
+    ) -> Dict[int, int]:
         """(Test only) Per-worker device-tier KV overlap blocks for a token sequence.
 
         Returns the number of leading blocks of ``token_ids`` each worker has cached.
         """
-        scores = await self.get_kv_overlap_scores(token_ids)
+        scores = await self.get_kv_overlap_scores(token_ids, lora_name)
         return {
             worker_id: score["device_blocks"] for worker_id, score in scores.items()
         }
 
-    async def get_kv_overlap_scores(self, token_ids: List[int]) -> Dict[int, dict]:
-        """(Test only) Per-worker overlap across every KV storage tier."""
+    async def get_kv_overlap_scores(
+        self, token_ids: List[int], lora_name: Optional[str] = None
+    ) -> Dict[int, dict]:
+        """(Test only) Per-worker overlap across every KV storage tier.
+
+        ``lora_name`` picks the LoRA namespace to score in; the selection
+        service salts its KV hashes with it.
+        """
         if self._svc is None:
             return {}
         scores = await self._svc.overlap_scores(
@@ -68,6 +84,7 @@ class _TestKVTokenTracker(KVTokenTracker):
                 "model_name": _MODEL_NAME,
                 "tenant_id": _TENANT_ID,
                 "token_ids": list(token_ids),
+                "lora_name": lora_name,
             }
         )
         return {worker["worker_id"]: worker for worker in scores["workers"]}
@@ -129,7 +146,9 @@ class FakeReplica:
     def replay_endpoint(self) -> str:
         return f"tcp://127.0.0.1:{self._replay_port}"
 
-    def publish_stored(self, block_hashes, token_ids, medium="GPU") -> None:
+    def publish_stored(
+        self, block_hashes, token_ids, medium="GPU", lora_name=None
+    ) -> None:
         self._pub.publish(
             KVEventBatch(
                 ts=1.0,
@@ -141,7 +160,8 @@ class FakeReplica:
                         block_size=BLOCK_SIZE,
                         lora_id=None,
                         medium=medium,
-                        lora_name=None,
+                        # vLLM sets this to the name of the request's adapter.
+                        lora_name=lora_name,
                     )
                 ],
             )
@@ -197,14 +217,16 @@ async def wait_registered(tracker, worker_ids):
     )
 
 
-async def wait_for_overlap(tracker, token_ids, predicate, publish=None, timeout=30):
+async def wait_for_overlap(
+    tracker, token_ids, predicate, publish=None, timeout=30, lora_name=None
+):
     """Poll the tracker's overlap view until ``predicate`` holds."""
 
     async def condition():
         if publish is not None:
             publish()
         try:
-            overlap = await tracker.get_kv_overlap_blocks(list(token_ids))
+            overlap = await tracker.get_kv_overlap_blocks(list(token_ids), lora_name)
         except Exception:
             return False
         return predicate(overlap)
@@ -408,6 +430,80 @@ class TestKvEventIngestion:
             )
             assert selection["worker_id"] == worker_a
             assert selection["overlap_tokens"] >= BLOCK_SIZE
+        finally:
+            a.close()
+            b.close()
+
+    @pytest.mark.asyncio
+    async def test_lora_adapters_index_into_separate_namespaces(self):
+        """Two replicas cache the same tokens under different adapter names.
+
+        vLLM stamps the adapter name on its KV events and the selection service
+        salts its block hashes with it, so each adapter matches only the replica
+        that served it and the base model matches neither.
+        """
+        tracker = _LocalKVTokenTracker()
+        a = FakeReplica(23915)
+        b = FakeReplica(23916)
+        worker_a = get_worker_id("replica-A")
+        worker_b = get_worker_id("replica-B")
+        try:
+            tracker._on_deployment_targets(
+                targets(
+                    running_replica("replica-A", a.endpoint(), a.replay_endpoint()),
+                    running_replica("replica-B", b.endpoint(), b.replay_endpoint()),
+                )
+            )
+            await wait_registered(tracker, [worker_a, worker_b])
+
+            # Identical tokens on both replicas; only the adapter name differs.
+            token_ids = list(range(2 * BLOCK_SIZE))
+            await wait_for_overlap(
+                tracker,
+                token_ids,
+                lambda overlap: overlap.get(worker_a) == 2,
+                publish=lambda: a.publish_stored(
+                    [601, 602], token_ids, lora_name="adapter-a"
+                ),
+                lora_name="adapter-a",
+            )
+            await wait_for_overlap(
+                tracker,
+                token_ids,
+                lambda overlap: overlap.get(worker_b) == 2,
+                publish=lambda: b.publish_stored(
+                    [701, 702], token_ids, lora_name="adapter-b"
+                ),
+                lora_name="adapter-b",
+            )
+
+            # Neither adapter sees the other's blocks
+            overlap_a = await tracker.get_kv_overlap_blocks(token_ids, "adapter-a")
+            overlap_b = await tracker.get_kv_overlap_blocks(token_ids, "adapter-b")
+            assert overlap_a[worker_b] == 0
+            assert overlap_b[worker_a] == 0
+            # The base model sees neither.
+            base_overlap = await tracker.get_kv_overlap_blocks(token_ids)
+            assert set(base_overlap.values()) == {0}
+
+            # Scoring the same prompt under each adapter picks its replica.
+            for index, (lora_name, expected) in enumerate(
+                (("adapter-a", worker_a), ("adapter-b", worker_b))
+            ):
+                selection = await tracker.select_worker(
+                    f"req-lora-{index}",
+                    token_ids,
+                    [worker_a, worker_b],
+                    lora_name=lora_name,
+                )
+                assert selection["worker_id"] == expected
+                assert selection["effective_prefill_tokens"] == 0
+
+            # The base model has nothing cached, so it still pays full prefill.
+            selection = await tracker.select_worker(
+                "req-lora-base", token_ids, [worker_a, worker_b]
+            )
+            assert selection["effective_prefill_tokens"] == len(token_ids)
         finally:
             a.close()
             b.close()
@@ -674,6 +770,144 @@ class TestKvEventIngestion:
         finally:
             a.close()
             b.close()
+
+
+async def register_replicas(
+    tracker, replicas: Dict[str, FakeReplica]
+) -> Dict[str, int]:
+    """Advertise ``replicas`` to the tracker; return their worker ids by name."""
+    tracker._on_deployment_targets(
+        targets(
+            *(
+                running_replica(name, replica.endpoint(), replica.replay_endpoint())
+                for name, replica in replicas.items()
+            )
+        )
+    )
+    worker_ids = {name: get_worker_id(name) for name in replicas}
+    await wait_registered(tracker, list(worker_ids.values()))
+    return worker_ids
+
+
+async def cache_for_adapter(
+    tracker, replica, worker_id, block_hashes, token_ids, adapter
+):
+    """Publish ``token_ids`` from ``replica`` under ``adapter`` until indexed."""
+    await wait_for_overlap(
+        tracker,
+        token_ids,
+        lambda overlap: overlap.get(worker_id) == len(block_hashes),
+        publish=lambda: replica.publish_stored(
+            block_hashes, token_ids, lora_name=adapter
+        ),
+        lora_name=adapter,
+    )
+
+
+def kv_aware_router(tracker, replica_adapters: Dict[str, set]) -> KVAwareRouter:
+    """A KVAwareRouter over Serve replicas advertising the given adapter ids."""
+    router = KVAwareRouter(
+        deployment_id=DeploymentID(name="llm", app_name="app"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_actor_id="fake-actor-id",
+    )
+    router._kv_token_tracker = tracker
+    router.update_replicas(
+        [
+            FakeRunningReplica(name, model_ids=adapters)
+            for name, adapters in replica_adapters.items()
+        ]
+    )
+    return router
+
+
+async def route(router, request_id, adapter, token_ids) -> str:
+    """Route one LoRA request; return the chosen replica's unique id."""
+    pending = PendingRequest(
+        args=[],
+        kwargs={REQUEST_TOKEN_IDS_KWARG: list(token_ids)},
+        metadata=RequestMetadata(
+            request_id=request_id,
+            internal_request_id=request_id,
+            multiplexed_model_id=adapter,
+        ),
+    )
+    ranks = await router.choose_replicas(router._replicas_list, pending)
+    return ranks[0][0].replica_id.unique_id
+
+
+class TestLoraRouting:
+    """LoRA requests are scored in their adapter's KV namespace, among the
+    replicas that hold the adapter."""
+
+    @pytest.mark.asyncio
+    async def test_routes_to_adapter_replica_with_most_overlap(self):
+        """Among replicas holding the adapter, the one caching the most of the
+        prompt for that adapter wins. Base-model cache on an adapter replica and
+        a larger adapter cache on a replica without the adapter do not count."""
+        tracker = _LocalKVTokenTracker()
+        replicas = {
+            "r1": FakeReplica(23922),
+            "r2": FakeReplica(23923),
+            "r3": FakeReplica(23924),
+        }
+        adapter = "base:adapter-a"
+        try:
+            workers = await register_replicas(tracker, replicas)
+            token_ids = list(range(3 * BLOCK_SIZE))
+            await cache_for_adapter(
+                tracker, replicas["r1"], workers["r1"], [911, 912, 913], token_ids, None
+            )
+            await cache_for_adapter(
+                tracker,
+                replicas["r2"],
+                workers["r2"],
+                [914, 915],
+                token_ids[: 2 * BLOCK_SIZE],
+                adapter,
+            )
+            await cache_for_adapter(
+                tracker,
+                replicas["r3"],
+                workers["r3"],
+                [914, 915, 916],
+                token_ids,
+                adapter,
+            )
+            router = kv_aware_router(
+                tracker, {"r1": {adapter}, "r2": {adapter}, "r3": set()}
+            )
+
+            assert await route(router, "req-overlap", adapter, token_ids) == "r2"
+        finally:
+            for replica in replicas.values():
+                replica.close()
+
+    @pytest.mark.asyncio
+    async def test_routes_to_least_loaded_adapter_replica(self):
+        """With equal adapter overlap, the less loaded adapter replica wins."""
+        tracker = _LocalKVTokenTracker()
+        replicas = {"r1": FakeReplica(23925), "r2": FakeReplica(23926)}
+        adapter = "base:adapter-a"
+        try:
+            workers = await register_replicas(tracker, replicas)
+            token_ids = list(range(2 * BLOCK_SIZE))
+            for name, replica in replicas.items():
+                await cache_for_adapter(
+                    tracker,
+                    replica,
+                    workers[name],
+                    [921, 922],
+                    token_ids,
+                    adapter,
+                )
+            router = kv_aware_router(tracker, {"r1": {adapter}, "r2": {adapter}})
+
+            await book_uncached_load(tracker, workers["r2"], count=8, base=700_000)
+            assert await route(router, "req-load", adapter, token_ids) == "r1"
+        finally:
+            for replica in replicas.values():
+                replica.close()
 
 
 if __name__ == "__main__":

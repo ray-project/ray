@@ -31,7 +31,7 @@ File new RLlib-related PRs through [Ray's GitHub repo](https://github.com/ray-pr
 
 ### Contributing algorithms
 
-These guidelines cover merging new algorithms into RLlib. RLlib accepts contributions at two levels. The first is an [example script](https://github.com/ray-project/ray/tree/master/rllib/examples), possibly with additional classes in other files. The second is a fully integrated RLlib algorithm in [rllib/algorithms](https://github.com/ray-project/ray/tree/master/rllib/algorithms).
+These guidelines cover merging new algorithms into RLlib. RLlib accepts contributions at two levels. The first is an [example script](https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples), possibly with additional classes in other files. The second is a fully integrated RLlib algorithm in [rllib/algorithms](https://github.com/ray-project/ray/tree/master/python/ray/rllib/algorithms).
 
 * An example algorithm has three requirements:
     - It must subclass `Algorithm` and implement the `training_step()` method.
@@ -42,7 +42,7 @@ These guidelines cover merging new algorithms into RLlib. RLlib accepts contribu
     - It must provide substantial new capabilities that you can't add to existing algorithms.
     - It should support custom RLModules.
     - It should use RLlib abstractions and support distributed execution.
-    - It should include at least one [tuned hyperparameter example](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms). The CI tests this example.
+    - It should include at least one [tuned hyperparameter example](https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/algorithms). The CI tests this example.
 
 Both integrated and contributed algorithms ship with the `ray` PyPI package, and Ray's automated tests cover them.
 
@@ -73,7 +73,7 @@ Objects and methods annotated with `@PublicAPI` or `@DeveloperAPI` on the new AP
 
 ## Benchmarks
 
-The [rl-experiments repo](https://github.com/ray-project/rl-experiments) holds many training-run results, and [examples/algorithms](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms) lists working hyperparameter configurations sorted by algorithm. Benchmark results help the community. If you have results that might interest others, open a pull request to either repo.
+The [rl-experiments repo](https://github.com/ray-project/rl-experiments) holds many training-run results, and [examples/algorithms](https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/algorithms) lists working hyperparameter configurations sorted by algorithm. Benchmark results help the community. If you have results that might interest others, open a pull request to either repo.
 
 ## Debugging RLlib
 
