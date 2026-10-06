@@ -8,6 +8,8 @@ import pytest
 
 import ray
 from ray._common.usage import usage_lib
+from ray.data._internal.execution.lineage_tracker import LineageTracker
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.issue_detection.issue_detector import IssueType
 from ray.data._internal.usage import collector, poller, util
 from ray.data._internal.usage.actor import _UsageCollectionActor
@@ -36,6 +38,7 @@ def executor():
     # StreamingExecutor the callback receives at runtime.
     executor = MagicMock()
     executor.issue_detector_manager = None
+    executor.ray_data_reconstruction_enabled = False
     return executor
 
 
@@ -88,6 +91,108 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     }
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
+
+
+def test_memory_and_object_lost_stats_in_payload(reset_collector, mock_record):
+    """Object store usage is sampled per scheduling step, and task USS and
+    object-lost failures are aggregated across operators at execution end."""
+    from ray.data._internal.execution.interfaces import ExecutionResources
+    from ray.data._internal.execution.interfaces.distribution_tracker import (
+        DistributionTracker,
+    )
+
+    def make_op(uss_samples, num_object_lost):
+        op = MagicMock()
+        tracker = DistributionTracker()
+        for sample in uss_samples:
+            tracker.add_sample(sample)
+        op.metrics.max_uss_bytes = tracker
+        op.metrics.num_tasks_failed_object_lost = num_object_lost
+        return op
+
+    executor = MagicMock()
+    executor.issue_detector_manager = None
+    executor._topology = {make_op([100, 300], 1): None, make_op([200], 2): None}
+
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    for used in (10, 30, 20):
+        executor._resource_manager.get_global_usage.return_value = ExecutionResources(
+            object_store_memory=used
+        )
+        callback.on_execution_step(executor)
+    callback.after_execution_fails(executor, RuntimeError("boom"))
+
+    perf = json.loads(mock_record[-1][1])["executions"][0]["performance"]
+    assert perf["object_store_memory_bytes"] == {
+        "num_samples": 3,
+        "min": 10,
+        "max": 30,
+        "mean": 20,
+        "sum": 60,
+        "variance": 100,
+    }
+    assert perf["task_max_uss_bytes"] == {
+        "num_samples": 3,
+        "min": 100,
+        "max": 300,
+        "mean": 200,
+        "sum": 600,
+        "variance": 10000,
+    }
+    assert perf["num_object_lost_task_failures"] == 3
+
+
+def test_execution_step_no_op_when_disabled(
+    reset_collector, mock_record, executor, monkeypatch
+):
+    """No samples are taken when usage collection is disabled."""
+    monkeypatch.setenv("RAY_DATA_USAGE_DISABLED", "1")
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.on_execution_step(executor)
+    assert callback._object_store_memory.num_samples == 0
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_context_records_ray_data_reconstruction(
+    reset_collector, mock_record, executor, enabled
+):
+    """Reconstruction is recorded as what the executor ran with, which is off
+    when the DAG doesn't support it even if the context requested it."""
+    executor.ray_data_reconstruction_enabled = enabled
+    ds = ray.data.range(1)
+    UsageCallback(ds._logical_plan).before_execution_starts(executor)
+
+    _, payload_json = mock_record[-1]
+    context = json.loads(payload_json)["executions"][0]["env"]["context"]
+    assert context == {"enable_ray_data_reconstruction": enabled}
+
+
+def test_executor_reconstruction_enabled_follows_lineage_tracker():
+    executor = StreamingExecutor(ray.data.DataContext.get_current())
+    assert executor.ray_data_reconstruction_enabled is False
+    executor._lineage_tracker = LineageTracker()
+    assert executor.ray_data_reconstruction_enabled is True
+
+
+def test_context_field_reader_error_recorded_as_none():
+    def fail(executor):
+        raise RuntimeError("boom")
+
+    assert collector.collect_context(MagicMock(), {"field": fail}) == {"field": None}
+
+
+def test_context_whitelist_reads_real_executor(reset_collector, mock_record):
+    """Every whitelisted reader works against a real ``StreamingExecutor``."""
+    ray.data.range(1).materialize()
+
+    _, payload_json = mock_record[-1]
+    context = json.loads(payload_json)["executions"][0]["env"]["context"]
+    assert context.keys() == collector._CONTEXT_WHITELIST.keys()
+    assert None not in context.values()
 
 
 def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
