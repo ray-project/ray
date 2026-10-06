@@ -365,7 +365,10 @@ class TestChatDecision:
         try:
             response = await _chat(router, {"model": "model-a"})
             assert response.status_code == 503
-            assert _body(response)["error"]["type"] == "ServiceUnavailableError"
+            assert response.headers["retry-after"] == "1"
+            error = _body(response)["error"]
+            assert error["type"] == "ServiceUnavailableError"
+            assert "'model-a' (application 'llm-model-a')" in error["message"]
             # The lookup keeps retrying after the request times out.
             assert not router._handles["model-a"].done()
             # Other models are unaffected.
@@ -432,6 +435,7 @@ class TestChatDecision:
 
             response = await _chat(router, {"model": "model-a"})
             assert response.status_code == 503
+            assert response.headers["retry-after"] == "1"
             assert _body(response)["error"]["type"] == "ServiceUnavailableError"
         finally:
             patcher.stop()

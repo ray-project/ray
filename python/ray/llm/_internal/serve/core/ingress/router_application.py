@@ -45,6 +45,8 @@ HANDLE_RETRY_INITIAL_S = 0.5
 HANDLE_RETRY_MAX_S = 5.0
 # How often to re-log an application that is still unavailable.
 HANDLE_RETRY_LOG_INTERVAL_S = 300.0
+# Clients retry after this many seconds while a model application starts.
+RETRY_AFTER_S = 1
 
 # The router is an independent, lightweight Serve deployment on the request path
 # for every model application. These are starting points that should be tuned
@@ -63,17 +65,27 @@ DEFAULT_INGRESS_OPTIONS = {
 
 
 def _response(
-    content: Dict[str, Any], status_code: int = status.HTTP_200_OK
+    content: Dict[str, Any],
+    status_code: int = status.HTTP_200_OK,
+    headers: Optional[Dict[str, str]] = None,
 ) -> JSONResponse:
     """Return a response that HAProxy should pass directly to the client."""
     return JSONResponse(
         content,
         status_code=status_code,
-        headers={SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER: "1"},
+        headers={
+            SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER: "1",
+            **(headers or {}),
+        },
     )
 
 
-def _error(status_code: int, message: str, type: str) -> JSONResponse:
+def _error(
+    status_code: int,
+    message: str,
+    type: str,
+    headers: Optional[Dict[str, str]] = None,
+) -> JSONResponse:
     """Return an error in the OpenAI ingress's shape."""
     return _response(
         {
@@ -85,6 +97,7 @@ def _error(status_code: int, message: str, type: str) -> JSONResponse:
             }
         },
         status_code=status_code,
+        headers=headers,
     )
 
 
@@ -267,8 +280,10 @@ class RouterApplication:
             )
             return _error(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
-                "No replica is available to serve the request. Try again later.",
+                f"Model '{model_id}' (application '{application_name}') is not "
+                "available yet. Try again later.",
                 "ServiceUnavailableError",
+                headers={"Retry-After": str(RETRY_AFTER_S)},
             )
         return {"application": application_name, "replica_id": replica_id}
 
