@@ -214,7 +214,11 @@ def test_unavailable_model_application(applications):
 
     def unavailable():
         response = _chat(BODY_MODEL, raise_for_status=False)
-        return response.status_code == 503 and response.json()["error"]["code"] == 503
+        return (
+            response.status_code == 503
+            and response.json()["error"]["code"] == 503
+            and response.headers.get("retry-after") == "1"
+        )
 
     wait_for_condition(unavailable, timeout=60)
     _chat(ROUND_ROBIN_MODEL)
