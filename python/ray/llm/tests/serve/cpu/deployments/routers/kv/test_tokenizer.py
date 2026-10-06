@@ -38,7 +38,8 @@ _BASH_INPUT_SCHEMA = {
 }
 
 # A Claude Code /v1/messages body: a system prompt led by the per-request
-# billing header, Anthropic tool definitions, and a tool_use/tool_result turn.
+# billing header, an inline system reminder, Anthropic tool definitions, and a
+# tool_use/tool_result turn.
 CLAUDE_CODE_BODY = {
     "model": "m",
     "max_tokens": 32000,
@@ -53,6 +54,7 @@ CLAUDE_CODE_BODY = {
     ],
     "messages": [
         {"role": "user", "content": [{"type": "text", "text": "List the files."}]},
+        {"role": "system", "content": "Plan mode is off."},
         {
             "role": "assistant",
             "content": [
@@ -84,6 +86,44 @@ CLAUDE_CODE_BODY = {
         }
     ],
     "metadata": {"user_id": "u"},
+}
+
+# OpenAI chat bodies with part types vLLM's chat parser accepts that share a
+# name with Anthropic content blocks.
+OPENAI_THINKING_BODY = {
+    "model": "m",
+    "messages": [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "Greet back."},
+                {"type": "text", "text": "Hello."},
+            ],
+        },
+        {"role": "user", "content": "Again."},
+    ],
+}
+OPENAI_TOOL_REFERENCE_BODY = {
+    "model": "m",
+    "messages": [
+        {"role": "user", "content": "Find a tool."},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "c",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": "{}"},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "c",
+            "content": [{"type": "tool_reference", "name": "f"}],
+        },
+    ],
 }
 
 
@@ -163,6 +203,8 @@ class TestIsAnthropicMessagesPayload:
                     {"type": "function", "function": {"name": "f", "parameters": {}}}
                 ],
             },
+            OPENAI_THINKING_BODY,
+            OPENAI_TOOL_REFERENCE_BODY,
         ],
     )
     def test_openai_bodies(self, payload):
@@ -177,10 +219,18 @@ class TestBuildTokenizeRequest:
         request = build_tokenize_request(CLAUDE_CODE_BODY)
         assert request is not None
         # The billing header changes on every request, so it is dropped from
-        # the system prompt to keep the session's prefix stable.
+        # the system prompt to keep the session's prefix stable. By default
+        # (no custom chat template) the inline system reminder is merged into
+        # the leading system message, as the engine's handler does.
+        assert [m["role"] for m in request.messages] == [
+            "system",
+            "user",
+            "assistant",
+            "tool",
+        ]
         assert request.messages[0] == {
             "role": "system",
-            "content": "You are Claude Code.",
+            "content": "You are Claude Code.Plan mode is off.",
         }
         assert request.messages[2]["tool_calls"][0]["function"] == {
             "name": "Bash",
@@ -194,6 +244,28 @@ class TestBuildTokenizeRequest:
         assert request.tools[0].function.name == "Bash"
         assert request.tools[0].function.parameters == _BASH_INPUT_SCHEMA
         assert request.tool_choice == "auto"
+
+    def test_keeps_inline_system_messages_without_merge(self):
+        """A chat template that accepts system messages anywhere keeps the
+        inline system reminder in place, as the engine's handler does."""
+        request = build_tokenize_request(CLAUDE_CODE_BODY, merge_inline_system=False)
+        assert [m["role"] for m in request.messages] == [
+            "system",
+            "user",
+            "system",
+            "assistant",
+            "tool",
+        ]
+        assert request.messages[0]["content"] == "You are Claude Code."
+        assert request.messages[2]["content"] == "Plan mode is off."
+
+    @pytest.mark.parametrize(
+        "payload", [OPENAI_THINKING_BODY, OPENAI_TOOL_REFERENCE_BODY]
+    )
+    def test_openai_body_with_shared_part_types_builds_chat_request(self, payload):
+        """thinking and tool_reference parts are valid OpenAI chat parts in
+        vLLM, so these bodies still route on tokens through the chat path."""
+        assert isinstance(build_tokenize_request(payload), ChatCompletionRequest)
 
     def test_anthropic_count_tokens_body_returns_none(self):
         """A /v1/messages/count_tokens body (no max_tokens) runs no prefill,

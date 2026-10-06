@@ -44,8 +44,10 @@ class TokenizeError(Exception):
 
 # Content block types only the Anthropic Messages API has. OpenAI chat bodies
 # carry tool calls on the message (``tool_calls``, role ``tool``) instead.
+# ``thinking`` and ``tool_reference`` are left out: vLLM's OpenAI chat parser
+# accepts those part types too.
 _ANTHROPIC_ONLY_BLOCK_TYPES = frozenset(
-    {"tool_use", "tool_result", "tool_reference", "thinking", "redacted_thinking"}
+    {"tool_use", "tool_result", "redacted_thinking"}
 )
 
 

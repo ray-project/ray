@@ -169,8 +169,9 @@ _BASH_TOOL_SCHEMA = {
 
 
 def _claude_code_body(billing_hash: str = "1a2b3") -> dict:
-    """A Claude Code /v1/messages body: billing-header-led system prompt,
-    Anthropic tool definitions, and a tool_use/tool_result turn."""
+    """A Claude Code /v1/messages body: billing-header-led system prompt, an
+    inline system reminder, Anthropic tool definitions, and a
+    tool_use/tool_result turn."""
     return {
         "model": "test-model",
         "max_tokens": 1024,
@@ -189,6 +190,7 @@ def _claude_code_body(billing_hash: str = "1a2b3") -> dict:
         ],
         "messages": [
             {"role": "user", "content": [{"type": "text", "text": "List the files."}]},
+            {"role": "system", "content": " Plan mode is off."},
             {
                 "role": "assistant",
                 "content": [
@@ -224,13 +226,17 @@ def _claude_code_body(billing_hash: str = "1a2b3") -> dict:
 
 
 # The OpenAI chat request vLLM's /v1/messages handler converts the body above
-# into, written out by hand.
+# into, written out by hand. With no custom chat template, the inline system
+# reminder is merged into the leading system message.
 _EQUIVALENT_CHAT_BODY = {
     "model": "test-model",
     "messages": [
         {
             "role": "system",
-            "content": "You are Claude Code. Use tools to inspect the repo.",
+            "content": (
+                "You are Claude Code. Use tools to inspect the repo. "
+                "Plan mode is off."
+            ),
         },
         {"role": "user", "content": "List the files."},
         {
