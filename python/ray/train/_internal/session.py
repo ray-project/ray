@@ -208,7 +208,7 @@ class _TrainSession:
         # Queue for sending results from training actor to main thread.
         self._inter_actor_queue: Optional[ray_queue.Queue[Dict]] = None
 
-        # Open `get` on the inter-actor queue, kept across polls.
+        # Open `_QueueActor.get` call on the inter-actor queue, kept across polls.
         self._pending_inter_actor_get: Optional[ray.ObjectRef] = None
 
         # Queue for raising exceptions from runner thread to main thread.
@@ -250,7 +250,7 @@ class _TrainSession:
 
         Raises any Exception from training.
         """
-        # Resolve the open inter-actor `get` so the queue actor can exit.
+        # Resolve the open `_QueueActor.get` call so the queue actor can exit.
         self._wake_pending_inter_actor_get()
 
         # Set the stop event for the training thread to gracefully exit.
@@ -335,7 +335,7 @@ class _TrainSession:
         result = None
         if self._inter_actor_queue is not None:
             inter_actor_item = self._poll_inter_actor_queue()
-            if inter_actor_item:
+            if inter_actor_item is not None:
                 # Must release continue_lock to allow report to work.
                 self.continue_lock.release()
                 self.report(inter_actor_item)
@@ -348,10 +348,10 @@ class _TrainSession:
     def _poll_inter_actor_queue(self) -> Optional[Dict]:
         """Wait up to ``_RESULT_FETCH_TIMEOUT`` for the next inter-actor item.
 
-        One ``get`` stays open across polls. A ``get`` with a timeout raises
-        ``Empty`` in the queue actor each time the queue is empty, and Ray records
-        every one of those as a failed task. This waits even when the caller does
-        not block, since a new ``get`` needs a round trip.
+        Keeps one ``_QueueActor.get`` call open across polls and checks it with
+        ``ray.wait``. The call has no timeout, so it only returns once an item
+        arrives. Waits even when the caller does not block, because a new call
+        needs a round trip to return an item that is already queued.
         """
         if self._pending_inter_actor_get is None:
             self._pending_inter_actor_get = self._inter_actor_queue.actor.get.remote()
@@ -365,7 +365,7 @@ class _TrainSession:
         return ray.get(pending_get)
 
     def _wake_pending_inter_actor_get(self):
-        """Resolve the open inter-actor ``get`` with ``None``, which polling skips."""
+        """Wake the open ``_QueueActor.get`` call with ``None``, which polling skips."""
         pending_get = self._pending_inter_actor_get
         self._pending_inter_actor_get = None
         if pending_get is None or ray.wait([pending_get], timeout=0)[0]:

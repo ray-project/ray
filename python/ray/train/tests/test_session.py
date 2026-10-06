@@ -213,8 +213,8 @@ def test_get_result_from_queues(session, block, put_result_queue, put_actor_queu
 
 
 def test_inter_actor_queue_keeps_one_open_get(session):
-    """Polling an empty inter-actor queue keeps one `get` open, and `finish`
-    resolves it."""
+    """Polling an empty inter-actor queue keeps one `_QueueActor.get` call open,
+    and `finish` resolves it."""
     session._get_or_create_inter_actor_queue()
     assert session._get_result_from_queues(block=True) is None
     open_get = session._pending_inter_actor_get
@@ -224,6 +224,12 @@ def test_inter_actor_queue_keeps_one_open_get(session):
     session.finish()
     assert session._pending_inter_actor_get is None
     assert ray.get(open_get, timeout=5) is None
+
+
+def test_empty_inter_actor_metrics_are_reported(session):
+    """An empty metrics dict on the inter-actor queue still becomes a result."""
+    session._get_or_create_inter_actor_queue().put({}, block=True)
+    assert session._get_result_from_queues(block=True) is not None
 
 
 def test_no_start(session):
