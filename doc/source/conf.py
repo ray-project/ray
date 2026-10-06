@@ -59,6 +59,9 @@ extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
     "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
+    # Stops MyST {eval-rst} blocks from pickling the build environment into
+    # doctrees (see _ext/myst_eval_rst_doctree.py).
+    "myst_eval_rst_doctree",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
