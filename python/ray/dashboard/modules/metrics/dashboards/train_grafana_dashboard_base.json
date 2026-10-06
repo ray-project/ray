@@ -46,6 +46,46 @@
       },
 
       {
+        "name": "window",
+        "label": "Window",
+        "type": "interval",
+        "description": "Averaging window for rate() calculations. Use a smaller window to surface spikes, a larger window to smooth out the whole run.",
+        "query": "30s,1m,5m,15m",
+        "options": [
+          {
+            "selected": false,
+            "text": "30s",
+            "value": "30s"
+          },
+          {
+            "selected": true,
+            "text": "1m",
+            "value": "1m"
+          },
+          {
+            "selected": false,
+            "text": "5m",
+            "value": "5m"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "15m"
+          }
+        ],
+        "current": {
+          "selected": true,
+          "text": "1m",
+          "value": "1m"
+        },
+        "auto": false,
+        "auto_count": 30,
+        "auto_min": "10s",
+        "refresh": 2,
+        "hide": 0
+      },
+
+      {
         "name": "SessionName",
         "type": "query",
         "description": "Filter queries to specific ray sessions.",

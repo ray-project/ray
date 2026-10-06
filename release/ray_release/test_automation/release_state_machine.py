@@ -57,6 +57,7 @@ class ReleaseTestStateMachine(TestStateMachine):
     """
 
     def _create_github_issue(self) -> None:
+        repo_name = self.ray_repo.full_name
         labels = [
             "P0",
             "bug",
@@ -65,6 +66,7 @@ class ReleaseTestStateMachine(TestStateMachine):
             "stability",
             "triage",
             self.test.get_oncall(),
+            repo_name,
         ]
         labels.append(WEEKLY_RELEASE_BLOCKER_TAG)
         issue_number = self.ray_repo.create_issue(

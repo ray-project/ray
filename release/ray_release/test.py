@@ -15,7 +15,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
-    from ray_release.github_client import GitHubRepo
+    from ray_release.github_client import GitHubIssue, GitHubRepo
 
 from ray_release.anyscale_util import Anyscale
 from ray_release.aws import s3_put_rayci_test_data
@@ -42,6 +42,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
+DATAPLANE_ECR_TORCH_REPO = "anyscale/ray-torch"
 
 MACOS_TEST_PREFIX = "darwin:"
 LINUX_TEST_PREFIX = "linux:"
@@ -52,18 +53,6 @@ WINDOWS_BISECT_DAILY_RATE_LIMIT = 3
 BISECT_DAILY_RATE_LIMIT = 10
 
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
-
-
-def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
-    env_dict = {}
-    for env in env_list:
-        # an env can be "a=b" or just "a"
-        eq_pos = env.find("=")
-        if eq_pos < 0:
-            env_dict[env] = os.environ.get(env, "")
-        else:
-            env_dict[env[:eq_pos]] = env[eq_pos + 1 :]
-    return env_dict
 
 
 class TestState(enum.Enum):
@@ -359,29 +348,57 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
+    def get_open_github_issue(
+        self, ray_github: "GitHubRepo"
+    ) -> Optional["GitHubIssue"]:
+        """
+        Returns this test's tracked github issue if it is open, else None.
+
+        Returns the issue rather than a bool so that a caller which goes on to
+        act on it -- commenting, say -- does not have to fetch the same issue a
+        second time, and cannot act on a different version of it than the one
+        this check passed.
+
+        Checking that the issue is open is required rather than defensive:
+        ReleaseTestStateMachine._close_github_issue closes the issue but leaves
+        KEY_GITHUB_ISSUE_NUMBER on the test, so a recovered test keeps a number
+        pointing at a closed issue indefinitely.
+
+        A failure to reach GitHub answers None. The caller can only read that as
+        "no open issue is known here", never as "this test has no open issue".
+        """
+        import requests
+
+        from ray_release.github_client import GitHubException
+
+        issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
+        if not issue_number:
+            return None
+        try:
+            issue = ray_github.get_issue(issue_number)
+        # RequestException too: GitHubClient's timeout raises requests.Timeout,
+        # not GitHubException, and is_jailed_with_open_issue is called from
+        # filter.py with no guard around it.
+        except (GitHubException, requests.RequestException) as e:
+            logger.warning(
+                f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
+            )
+            return None
+        return issue if issue.state == "open" else None
+
+    def has_open_github_issue(self, ray_github: "GitHubRepo") -> bool:
+        """
+        Returns whether this test has a tracked github issue that is open.
+        """
+        return self.get_open_github_issue(ray_github) is not None
+
     def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
         """
         Returns whether this test is jailed with open issue.
         """
-        from ray_release.github_client import GitHubException
-
-        # is jailed
-        state = self.get_state()
-        if state != TestState.JAILED:
-            return False
-
-        # has open issue
-        issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
-        if issue_number is None:
-            return False
-        try:
-            issue = ray_github.get_issue(issue_number)
-            return issue.state == "open"
-        except GitHubException as e:
-            logger.warning(
-                f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
-            )
-            return False
+        return self.get_state() == TestState.JAILED and self.has_open_github_issue(
+            ray_github
+        )
 
     def is_stable(self) -> bool:
         """
@@ -449,6 +466,8 @@ class Test(dict):
             return byod_type[len("llm-") :]
         if byod_type.startswith("gpu-"):
             return byod_type[len("gpu-") :]
+        if byod_type.startswith("torch-"):
+            return byod_type[len("torch-") :]
         return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
@@ -461,7 +480,8 @@ class Test(dict):
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """Returns the runtime environment variables for the BYOD cluster."""
-        return _convert_env_list_to_dict(self._get_byod_config().get("runtime_env", []))
+        runtime_env = self._get_byod_config().get("runtime_env") or {}
+        return {name: str(value) for name, value in runtime_env.items()}
 
     def get_ray_version(self) -> Optional[str]:
         """
@@ -574,12 +594,17 @@ class Test(dict):
     def use_byod_llm_image(self) -> bool:
         return self.get_byod_type().startswith("llm-")
 
+    def use_byod_torch_image(self) -> bool:
+        return self.get_byod_type().startswith("torch-")
+
     def get_byod_repo(self) -> str:
         """Returns the byod repo to use for this test."""
         if self.use_byod_ml_image():
             return DATAPLANE_ECR_ML_REPO
         if self.use_byod_llm_image():
             return DATAPLANE_ECR_LLM_REPO
+        if self.use_byod_torch_image():
+            return DATAPLANE_ECR_TORCH_REPO
         return DATAPLANE_ECR_REPO
 
     def get_byod_ecr(self) -> str:

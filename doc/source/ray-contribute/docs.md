@@ -4,6 +4,8 @@ myst:
     description: "How to contribute to the Ray documentation: building the docs locally, the Google developer style guide enforced by Vale, and the conventions for writing and previewing pages. Use this when editing or adding Ray documentation."
 ---
 
+(docs-contribute)=
+
 # Contributing to the Ray documentation
 
 There are many ways to contribute to the Ray documentation, and we're always looking for new contributors. Even if you want to fix a typo or expand a section, feel free to do so!
@@ -16,6 +18,8 @@ This document walks you through everything you need to do to get started.
 The Ray documentation follows a house style guide that covers voice, word choice, sentence structure, headings, lists, links, and formatting. Read it before you write or edit a page. See {ref}`documentation-style`.
 
 The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale enforces an automated subset of the Google guide in CI. For more information, see [How to use Vale](vale).
+
+(build-ray-docs)=
 
 ## Building the Ray documentation
 
@@ -132,7 +136,7 @@ Esbonio also works with neovim. [See the lspconfig repository for installation i
 
 The Ray documentation is built with the [`sphinx`](https://www.sphinx-doc.org/) build system. We use the [PyData Sphinx Theme](https://pydata-sphinx-theme.readthedocs.io/en/stable/) for the documentation.
 
-We use [`myst-parser`](https://myst-parser.readthedocs.io/en/latest/) so you can write Ray documentation in either Sphinx's native [reStructuredText (rST)](https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html) or [Markedly Structured Text (MyST)](https://myst-parser.readthedocs.io/en/latest/). You can convert the two formats to each other, so the choice is up to you. MyST is [common markdown compliant](https://myst-parser.readthedocs.io/en/latest/syntax/reference.html#commonmark-block-tokens). Most developers are familiar with `md` syntax, so if you intend to add a new document, we recommend starting from an `.md` file.
+We use [`myst-parser`](https://myst-parser.readthedocs.io/en/latest/) so Ray documentation supports both Sphinx's native [reStructuredText (rST)](https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html) and [Markedly Structured Text (MyST)](https://myst-parser.readthedocs.io/en/latest/). New pages must be MyST Markdown (`.md`). A lint check rejects newly added `.rst` files, though edits to existing `.rst` files are fine. MyST is [CommonMark-compliant](https://myst-parser.readthedocs.io/en/latest/syntax/reference.html#commonmark-block-tokens), and you can convert between the two formats, so existing rST pages are straightforward to work with.
 
 The Ray documentation also fully supports executable formats such as [Jupyter Notebooks](https://jupyter.org/). Many of our examples are notebooks with [MyST markdown cells](https://myst-nb.readthedocs.io/en/latest/index.html).
 
@@ -152,7 +156,7 @@ This structure is reflected in the [Ray documentation source code](https://githu
 
 Each type of documentation listed above has its own purpose, but ultimately our documentation comes down to _two types_ of documents:
 
-- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.rst) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
+- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.md) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in the browser like `.md` or `.rst` files, but have the added benefit that users can run the code themselves.
 
 ## Fixing typos and improving explanations
@@ -166,14 +170,14 @@ We use [Sphinx's autodoc extension](https://www.sphinx-doc.org/en/master/usage/e
 For example, here's how you can add a function or class reference using `autofunction` and `autoclass`:
 
 ```markdown
-.. autofunction:: ray.tune.integration.docker.DockerSyncer
+.. autofunction:: ray.tune.register_env
 
-.. autoclass:: ray.tune.integration.keras.TuneReportCallback
+.. autoclass:: ray.tune.Tuner
 ```
 
-The above snippet comes from the [Tune API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/integration.rst), which you can look at for reference.
+These directives appear throughout the API reference, such as the [Tune API documentation](https://github.com/ray-project/ray/tree/master/doc/source/tune/api), which you can look at for reference.
 
-If you want to change the content of the API documentation, you must edit the function or class signatures directly in the source code. For example, in the above `autofunction` call, to change the API reference for `ray.tune.integration.docker.DockerSyncer`, you would [change the following source file](https://github.com/ray-project/ray/blob/7f1bacc7dc9caf6d0ec042e39499bbf1d9a7d065/python/ray/tune/integration/docker.py#L15-L38).
+If you want to change the content of the API documentation, you must edit the function or class signatures directly in the source code. For example, in the above `autofunction` call, to change the API reference for `ray.tune.register_env`, you would edit its docstring in the [source file](https://github.com/ray-project/ray/blob/master/python/ray/tune/registry.py).
 
 To show the usage of APIs, it's important to have small usage examples embedded in the API documentation. These should be self-contained and run out of the box, so a user can copy and paste them into a Python interpreter and play around with them. For example, if applicable, they should point to example data. Users often rely on these examples to build their applications. To learn more about writing examples, read [How to write code snippets](writing-code-snippets).
 
@@ -185,7 +189,7 @@ The API reference is generated from your source code: autodoc imports the module
 
 **Heavy dependencies are mocked, so keep your imports safe.** The docs build installs only a light dependency set, not Ray's full runtime. Heavy or optional libraries such as `torch`, `tensorflow`, and `pandas` are replaced by mock objects, listed in `autodoc_mock_imports` in `doc/source/conf.py`, so autodoc can import your module without importing those libraries. If your module imports a heavy dependency at import time and that library isn't mocked, the API-ref build fails. Note that Sphinx's autodoc sets `typing.TYPE_CHECKING` to `True` during the build to resolve type annotations, so imports guarded by `if TYPE_CHECKING:` will still be executed and can cause failures if not mocked. A mock can also stand in for an object incorrectly and abort the whole module import, which surfaces as a confusing, unrelated error. To avoid both, import heavy dependencies lazily inside the function or method that needs them rather than at module top level. If you add a public API that puts a new heavy dependency in a signature, add that library to `autodoc_mock_imports`.
 
-**Type annotations link to external docs through intersphinx.** When a public signature is annotated with a type from an external library, such as `numpy.ndarray` or `torch.Tensor`, the build turns it into a link to that library's own documentation using the `intersphinx_mapping` in `doc/source/conf.py`. The link resolves only if the library is in that mapping. If you add a public API whose signature references a new external library and you want its types linked, add the library to `intersphinx_mapping` (and, per the point above, usually to `autodoc_mock_imports` too). Annotations that don't resolve render as plain text; they don't fail the build.
+**Type annotations link to external docs through intersphinx.** When a public signature is annotated with a type from an external library, such as `numpy.ndarray` or `torch.Tensor`, the build turns it into a link to that library's own documentation using the `intersphinx_mapping` in `doc/source/conf.py`. The link resolves only if the library is in that mapping. If you add a public API whose signature references a new external library and you want its types linked, add the library to `intersphinx_mapping` (and, per the point above, usually to `autodoc_mock_imports` too). Annotations that don't resolve render as plain text; they don't fail the build. That holds for third-party types, which resolve as `py:class` and fall under a blanket `nitpick_ignore_regex` entry. It does not hold for `None` and `typing.*` annotations, which Sphinx emits as `py:obj`. Since there is no blanket ignore rule for `py:obj`, they build cleanly only because the `python` intersphinx target resolves them.
 
 ## Adding code to an `.rST` or `.md` file
 
@@ -219,7 +223,11 @@ For this to work, you must add the new document explicitly to a parent document'
 
 Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](https://docs.ray.io/en/latest/tune/tutorials/overview.html) as a panel, and the same goes for [all Tune examples](https://docs.ray.io/en/latest/tune/examples/index.html). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
 
+(creating-notebook-example)=
+
 ## Creating a notebook example
+
+This section covers authoring a notebook. To publish a finished example and set up CI so it keeps working, see {ref}`publishing-examples`.
 
 To add a new executable example to the Ray documentation, you can start from our [MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) or [Jupyter notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.ipynb). You could also download the document you're reading right now and start modifying it. Click the download button at the top of this page to get the `.ipynb` file. All the example notebooks in Ray Tune are automatically tested by our CI system, provided you place them in the [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples). If you have questions about how to test your notebook when contributing to other Ray sub-projects, ask in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub when opening your pull request.
 
@@ -244,45 +252,28 @@ If you write a notebook in `.md` format, you need this YAML front matter at the 
 
 ````markdown
 ```python
+from ray.rllib.algorithms.ppo import PPOConfig
 
-import ray
-import ray.rllib.agents.ppo as ppo
-from ray import serve
+# Configure PPO on the CartPole environment.
+config = PPOConfig().environment("CartPole-v1")
 
-def train_ppo_model():
-    trainer = ppo.PPOTrainer(
-        config={"framework": "torch", "num_workers": 0},
-        env="CartPole-v0",
-    )
-    # Train for one iteration
-    trainer.train()
-    trainer.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
-
-
-checkpoint_path = train_ppo_model()
+# Build the algorithm and train it for one iteration.
+algo = config.build_algo()
+algo.train()
 ```
 ````
 
 Putting this markdown block into your document renders as follows in the browser:
 
 ```python
-import ray
-import ray.rllib.agents.ppo as ppo
-from ray import serve
+from ray.rllib.algorithms.ppo import PPOConfig
 
-def train_ppo_model():
-    trainer = ppo.PPOTrainer(
-        config={"framework": "torch", "num_workers": 0},
-        env="CartPole-v0",
-    )
-    # Train for one iteration
-    trainer.train()
-    trainer.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
+# Configure PPO on the CartPole environment.
+config = PPOConfig().environment("CartPole-v1")
 
-
-checkpoint_path = train_ppo_model()
+# Build the algorithm and train it for one iteration.
+algo = config.build_algo()
+algo.train()
 ```
 
 ### Tags for your notebook
@@ -349,7 +340,7 @@ In the same way, you can convert `.ipynb` notebooks to `.md` notebooks with `--t
 ## How to use Vale
 ### What is Vale?
 
-[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). It's only enforced on the Ray Data documentation.
+[Vale](https://vale.sh/) checks whether your writing adheres to the [Google developer documentation style guide](https://developers.google.com/style). CI enforces it on the Ray Data documentation and the example gallery.
 
 Vale catches typos and grammatical errors. It also enforces stylistic rules such as "use contractions" and "use second person." For the full list of rules, see the [configuration in the Ray repository](https://github.com/ray-project/ray/tree/master/.vale/styles/Google).
 
@@ -369,7 +360,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Install the Vale VS Code extension by following these [installation instructions](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode).
 
@@ -391,7 +382,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Run Vale in your terminal.
 
@@ -427,7 +418,7 @@ To add custom terminology, complete the following steps:
 2. If it doesn't already exist, create a text file named `accept.txt`. For example, `.vale/styles/Vocab/Data/accept.txt`.
 3. Add your term to `accept.txt`. Vale accepts Regex.
 
-For more information, see [Vocabularies](https://vale.sh/docs/topics/vocab/) in the Vale documentation.
+For more information, see [Vocabularies](https://vale.sh/docs/keys/vocab) in the Vale documentation.
 
 ### How to handle false Google.WordList errors
 
@@ -438,7 +429,7 @@ Vale errors if you use a word that isn't on [Google's word list](https://develop
                       'check'.
 ```
 
-If you want to use the word anyway, modify the appropriate field in the [WordList configuration](https://github.com/ray-project/ray/blob/81c169bde2414fe4237f3d2f05fc76fccfd52dee/.vale/styles/Google/WordList.yml#L41).
+If you want to use the word anyway, modify the appropriate field in the [WordList configuration](https://github.com/ray-project/ray/blob/master/.vale/styles/Google/WordList.yml).
 
 ## Troubleshooting
 
@@ -449,6 +440,20 @@ If you run into a problem building the docs, following these steps can help isol
 3. **Match the Read the Docs Python version.** The docs build system doesn't keep the same dependency and Python version requirements as Ray. Read the Docs builds with the Python version pinned in `.readthedocs.yaml` (currently 3.11), so use that same version locally; building with a different version can surface or hide warnings that then behave differently on Read the Docs.
 4. **Enable breakpoints in Sphinx.** Add `-P` to the `SPHINXOPTS` in `doc/Makefile` to tell `sphinx` to stop when it encounters a breakpoint, and remove `-j auto` to disable parallel builds. Now you can put breakpoints in the modules you're trying to import, or in `sphinx` code itself, which can help isolate stubborn build issues.
 5. **[Incremental build] Side navigation bar doesn't reflect new pages.** If you're adding new pages, they should always show up in the side navigation bar on index pages. However, incremental builds with `make local` skip rebuilding many other pages, so Sphinx doesn't update the side navigation bar on those pages. To build docs with a correct side navigation bar on all pages, consider using `make develop`.
+
+(backport-docs-to-release)=
+
+## Getting a docs change onto the released version
+
+`docs.ray.io/en/latest` is built from the newest `releases/X.Y.Z` branch, not from `master`. A docs change merged to `master` appears on `docs.ray.io/en/master` right away, but only reaches the default `/latest` site once it's cherry-picked onto the current release branch.
+
+If a merged docs change should be live on the released version — for example, documentation for a feature that has already shipped — open a cherry-pick pull request against the `releases/X.Y.Z` branch:
+
+- Base the PR on `releases/X.Y.Z` and title it `[cherry-pick][X.Y.Z][docs] ...` to match the branch's convention.
+- Apply the commits with `git cherry-pick -x --signoff` to preserve provenance and the required DCO sign-off.
+- Before you start, check that the change isn't already backported under a different commit (`git log --oneline <remote>/releases/X.Y.Z --grep "#<PR>)"`) and that no cherry-pick PR is already open against the branch.
+
+If you use Claude Code, the `/backport-docs` skill walks through this end to end, including the build-safety checks. See {ref}`agent-development`.
 
 ## Where to go from here?
 

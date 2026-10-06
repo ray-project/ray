@@ -80,7 +80,6 @@ For example:
     Scheduler.validate
     Scheduler.get_current_value
     Scheduler.update
-    Scheduler._create_tensor_variable
 
 
 Framework Utilities

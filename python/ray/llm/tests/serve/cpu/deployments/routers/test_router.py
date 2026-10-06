@@ -2,7 +2,7 @@ import sys
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call as mock_call, patch
 
 import openai
 import pytest
@@ -25,6 +25,9 @@ from ray.llm._internal.serve.core.ingress.router import (
     _parse_routing_payload,
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_METADATA_KEY,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -56,9 +59,11 @@ class _DirectRouterReplica:
         unique_id: str,
         full_id: Optional[str] = None,
         endpoint: Optional[tuple] = ("127.0.0.1", 8000),
+        routing_stats: Optional[dict] = None,
     ):
         self.replica_id = _DirectRouterReplicaId(unique_id, full_id)
         self.backend_http_endpoint = endpoint
+        self.routing_stats = routing_stats or {}
 
 
 def _new_direct_router(handle=None):
@@ -66,6 +71,7 @@ def _new_direct_router(handle=None):
     router._handle = handle or MagicMock()
     # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
     router._tokenizer = None
+    router._base_model_id = None
     return router
 
 
@@ -137,7 +143,7 @@ class TestDirectStreamingLLMRouter:
         """A parseable body becomes a routing payload passed positionally."""
         router = _new_direct_router()
         router._pick_replica = AsyncMock(
-            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
         )
 
         body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
@@ -167,7 +173,7 @@ class TestDirectStreamingLLMRouter:
         warns once per replica."""
         router = _new_direct_router()
         router._pick_replica = AsyncMock(
-            return_value=("127.0.0.1", 9001, "DeploymentName#replica")
+            return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
         )
 
         # Truncated prefix is not valid JSON so json.loads fails.
@@ -227,9 +233,27 @@ class TestDirectStreamingLLMRouter:
         handle.choose_replica = _choose_replica_returning(replica)
         router = _new_direct_router(handle)
 
-        host, port, replica_id = await router._pick_replica(handle=handle)
+        host, port, replica_id, token_endpoint = await router._pick_replica(
+            handle=handle
+        )
 
         assert (host, port, replica_id) == ("10.0.0.1", 8123, "DeploymentName#r1")
+        assert token_endpoint is None
+
+    @pytest.mark.asyncio
+    async def test_pick_replica_returns_prompt_token_endpoint(self):
+        replica = _DirectRouterReplica(
+            "r1",
+            full_id="DeploymentName#r1",
+            routing_stats={KV_TOKEN_METADATA_KEY: {"endpoint": "tcp://10.0.0.1:7557"}},
+        )
+        handle = MagicMock()
+        handle.choose_replica = _choose_replica_returning(replica)
+        router = _new_direct_router(handle)
+
+        *_, token_endpoint = await router._pick_replica(handle=handle)
+
+        assert token_endpoint == "tcp://10.0.0.1:7557"
 
     @pytest.mark.asyncio
     async def test_pick_replica_forwards_payload_positionally(self):
@@ -335,9 +359,9 @@ class TestRoutingPayload:
         Async so a running event loop exists for the ``PendingRequest`` default
         ``asyncio.Future``.
         """
-        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (  # noqa: E501
+        from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
             PrefixCacheAffinityRouter,
-        )
+        )  # noqa: E501
         from ray.serve._private.request_router.common import PendingRequest
 
         # __new__ avoids the tree-actor setup in __init__. The method under test
@@ -483,6 +507,32 @@ class TestOpenAiIngress:
         )
 
         await router.check_health()
+
+    def test_model_handles_use_grpc(self, llm_config: LLMConfig):
+        default_handle = MagicMock()
+        base_handle = MagicMock()
+        lora_handle = MagicMock()
+        default_handle.options.side_effect = [base_handle, lora_handle]
+
+        router = OpenAiIngress(
+            llm_deployments={llm_config.model_id: default_handle},
+            model_cards={
+                llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+            },
+        )
+
+        assert router._get_configured_serve_handle(llm_config.model_id) is base_handle
+
+        lora_model_id = f"{llm_config.model_id}:adapter"
+        assert router._get_configured_serve_handle(lora_model_id) is lora_handle
+        assert default_handle.options.call_args_list == [
+            mock_call(stream=True, _by_reference=False),
+            mock_call(
+                stream=True,
+                multiplexed_model_id=lora_model_id,
+                _by_reference=False,
+            ),
+        ]
 
     @pytest.mark.asyncio
     async def test_raw_request_info_passed_to_deployment_handle(

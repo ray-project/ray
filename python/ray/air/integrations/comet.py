@@ -176,7 +176,7 @@ class CometLoggerCallback(LoggerCallback):
         experiment = self._trial_experiments[trial]
         step = result["training_iteration"]
 
-        config_update = result.pop("config", {}).copy()
+        config_update = (result.get("config") or {}).copy()
         config_update.pop("callbacks", None)  # Remove callbacks
         for k, v in config_update.items():
             if isinstance(v, dict):
@@ -191,6 +191,13 @@ class CometLoggerCallback(LoggerCallback):
         episode_logs = {}
 
         flat_result = flatten_dict(result, delimiter="/")
+        # "config" is logged separately via log_parameters above; remove
+        # the flattened config keys so they are not double-logged as metrics.
+        flat_result = {
+            k: v
+            for k, v in flat_result.items()
+            if k != "config" and not k.startswith("config/")
+        }
         for k, v in flat_result.items():
             if any(self._check_key_name(k, item) for item in self._to_exclude):
                 continue

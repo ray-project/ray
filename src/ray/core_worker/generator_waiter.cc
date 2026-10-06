@@ -34,7 +34,7 @@ Status TaskGeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
     return Status::OK();
   }
 
-  absl::MutexLock lock(&mutex_);
+  mutex_.Lock();
 
   auto return_status = Status::OK();
   auto total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
@@ -45,13 +45,20 @@ Status TaskGeneratorBackpressureWaiter::WaitUntilObjectConsumed() {
     while (!backpressure_disabled_ &&
            total_object_unconsumed >= backpressure_threshold_) {
       backpressure_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
-      total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
+      // Release before check_signals(): it acquires the GIL, and callers may take
+      // this mutex while holding the GIL (async generators). Opposite order
+      // deadlocks.
+      mutex_.Unlock();
       return_status = check_signals_();
+      mutex_.Lock();
       if (!return_status.ok()) {
         break;
       }
+      // Re-read under the lock; consumption may have progressed while unlocked.
+      total_object_unconsumed = total_objects_generated_ - total_objects_consumed_;
     }
   }
+  mutex_.Unlock();
   return return_status;
 }
 
@@ -65,15 +72,19 @@ bool TaskGeneratorBackpressureWaiter::IsBackpressured() const {
 }
 
 Status TaskGeneratorBackpressureWaiter::WaitAllObjectsReported() {
-  absl::MutexLock lock(&mutex_);
+  mutex_.Lock();
   auto return_status = Status::OK();
   while (!backpressure_disabled_ && num_object_reports_in_flight_ > 0) {
     all_objects_reported_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
+    // See WaitUntilObjectConsumed: never call check_signals while holding mutex_.
+    mutex_.Unlock();
     return_status = check_signals_();
+    mutex_.Lock();
     if (!return_status.ok()) {
       break;
     }
   }
+  mutex_.Unlock();
   return return_status;
 }
 
@@ -138,7 +149,7 @@ ActorWideGeneratorBackpressureWaiter::ActorWideGeneratorBackpressureWaiter(
 
 Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
     ActorTaskBackpressureMetadata &metadata, int64_t num_objects) {
-  absl::MutexLock lock(&mutex_);
+  mutex_.Lock();
   // Wait until the shared budget is below the cap, then admit the whole group
   // of `num_objects`. A single group is admitted even if it overshoots the cap
   // (mirrors the per-task waiter, which reports a full grouped yield before
@@ -146,16 +157,24 @@ Status ActorWideGeneratorBackpressureWaiter::ReserveActorWideSlot(
   while (metadata.task_alive &&
          total_objects_generated_ - total_objects_consumed_ >= backpressure_threshold_) {
     backpressure_cond_var_.WaitWithTimeout(&mutex_, absl::Seconds(1));
+    // Release before check_signals(): it acquires the GIL. Async generators call
+    // TryReserveSlot / IsBackpressured while holding the GIL, so holding both
+    // locks in opposite order deadlocks (mutex_ then GIL vs GIL then mutex_).
+    mutex_.Unlock();
     auto status = check_signals_();
+    mutex_.Lock();
     if (!status.ok()) {
+      mutex_.Unlock();
       return status;
     }
   }
   if (!metadata.task_alive) {
+    mutex_.Unlock();
     return Status::OK();
   }
   total_objects_generated_ += num_objects;
   metadata.per_task_generated += num_objects;
+  mutex_.Unlock();
   return Status::OK();
 }
 

@@ -6,10 +6,16 @@ import pytest
 
 import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
+    _maybe_setup_kv_aware_routing,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     configure_kv_events_for_kv_routing,
+    enable_native_kv_offload_events,
     get_kv_event_routing_stats,
+    get_prompt_token_routing_stats,
+    get_token_channel_endpoints,
     resolve_kv_event_source_endpoint,
 )
 from ray.serve.llm.request_router import KVAwareRouter
@@ -41,9 +47,16 @@ def ray_instance():
 
 
 class TestConfigureKvEvents:
-    def test_configure_enables_events_and_pins_seed(self):
-        """KV-aware config turns on engine ZMQ KV events and pins the hash seed."""
-        llm_config = make_kv_aware_llm_config()
+    def test_configure_enables_events_and_pins_runtime_env(self):
+        """KV-aware config enables events and required vLLM process settings."""
+        llm_config = make_kv_aware_llm_config(
+            runtime_env={
+                "env_vars": {
+                    "EXISTING_ENV": "value",
+                    "VLLM_USE_SIMPLE_KV_OFFLOAD": "1",
+                }
+            }
+        )
         configure_kv_events_for_kv_routing(llm_config)
 
         assert llm_config.engine_kwargs["kv_events_config"] == {
@@ -53,6 +66,55 @@ class TestConfigureKvEvents:
             "replay_endpoint": "tcp://*:6557",
         }
         assert llm_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "0"
+        assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "0"
+        assert llm_config.runtime_env["env_vars"]["EXISTING_ENV"] == "value"
+
+    def test_non_kv_aware_router_preserves_kv_offload_config(self):
+        """Non-KV-aware routers retain the user's KV offload configuration."""
+        llm_config = make_kv_aware_llm_config(
+            runtime_env={
+                "env_vars": {
+                    "EXISTING_ENV": "value",
+                    "VLLM_USE_SIMPLE_KV_OFFLOAD": "1",
+                }
+            },
+            engine_kwargs={
+                "kv_offloading_size": 2.0,
+                "kv_offloading_backend": "native",
+            },
+        )
+        llm_config.deployment_config["request_router_config"][
+            "request_router_class"
+        ] = "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+
+        _maybe_setup_kv_aware_routing(llm_config.deployment_config, llm_config)
+
+        assert "kv_events_config" not in llm_config.engine_kwargs
+        assert llm_config.engine_kwargs["kv_offloading_size"] == 2.0
+        assert llm_config.engine_kwargs["kv_offloading_backend"] == "native"
+        assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "1"
+
+    @pytest.mark.parametrize(
+        "offload_size, expected",
+        [
+            (2.0, {"existing": "value", "self_describing_kv_events": True}),
+            (None, {"existing": "value"}),
+        ],
+    )
+    def test_native_offload_event_configuration(self, offload_size, expected):
+        """Only native CPU offload enables complete CPU-tier KV events."""
+        extra_config = {"existing": "value"}
+        vllm_config = SimpleNamespace(
+            cache_config=SimpleNamespace(
+                kv_offloading_size=offload_size,
+                kv_offloading_backend="native",
+            ),
+            kv_transfer_config=SimpleNamespace(kv_connector_extra_config=extra_config),
+        )
+
+        enable_native_kv_offload_events(vllm_config)
+
+        assert extra_config == expected
 
     @pytest.mark.parametrize(
         "engine_kwargs, local_rank, expected_port, expected_replay_port",
@@ -116,6 +178,24 @@ class TestConfigureKvEvents:
             )
             == {}
         )
+
+    def test_prompt_token_endpoint_offsets_by_replica_rank(self, ray_instance):
+        """The token channel gets its own per-replica ZMQ port."""
+        llm_config = make_kv_aware_llm_config(
+            experimental_configs={"KV_TOKEN_PORT_BASE": 7700}
+        )
+        replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=3))
+        with mock.patch("ray.serve.get_replica_context", return_value=replica_context):
+            endpoints = get_token_channel_endpoints(llm_config)
+
+        node_ip = ray.util.get_node_ip_address()
+        assert endpoints == ("tcp://*:7703", f"tcp://{node_ip}:7703")
+
+    def test_prompt_token_routing_stats_advertise_endpoint(self):
+        assert get_prompt_token_routing_stats("tcp://10.0.0.1:7557") == {
+            "kv_token_metadata": {"endpoint": "tcp://10.0.0.1:7557"}
+        }
+        assert get_prompt_token_routing_stats(None) == {}
 
 
 if __name__ == "__main__":

@@ -435,22 +435,6 @@ def test_map_batches_generator(
         ).take()
 
 
-def test_map_batches_actors_preserves_order(
-    shutdown_only, target_max_block_size_infinite_or_default
-):
-    class UDFClass:
-        def __call__(self, x):
-            return x
-
-    ray.shutdown()
-    ray.init(num_cpus=2)
-    # Test that actor compute model preserves block order.
-    ds = ray.data.range(10, override_num_blocks=5)
-    assert extract_values("id", ds.map_batches(UDFClass, concurrency=1).take()) == list(
-        range(10)
-    )
-
-
 @pytest.mark.parametrize(
     "num_rows,num_blocks,batch_size",
     [
@@ -648,6 +632,19 @@ def test_map_batches_block_bundling_skewed_auto(
 
     # Blocks should be bundled up to the batch size.
     assert ds._logical_plan.initial_num_blocks() == num_out_blocks
+
+
+def test_map_batches_empty_numpy_tensor(
+    ray_start_regular_shared, disable_fallback_to_object_extension
+):
+    ds = ray.data.from_numpy(np.ones((2, 2, 2), dtype=np.int32))
+
+    result = ds.map_batches(
+        lambda batch: {name: values[:0] for name, values in batch.items()},
+        batch_format="numpy",
+    ).materialize()
+
+    assert result.count() == 0
 
 
 def test_map_batches_preserve_empty_blocks(

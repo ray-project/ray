@@ -26,7 +26,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/object_manager",
+        "//src/ray/object_manager:object_manager_interface",
         "//src/ray/util:counter_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -103,6 +103,23 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "worker_pool_interface",
+    hdrs = ["worker_pool_interface.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":runtime_env_agent_client",
+        ":worker_interface",
+        "//src/ray/common:id",
+        "//src/ray/common:lease",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/raylet_ipc_client:client_connection",
+        "@boost//:optional",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "worker_pool",
     srcs = ["worker_pool.cc"],
     hdrs = ["worker_pool.h"],
@@ -111,6 +128,7 @@ ray_cc_library(
         ":metrics",
         ":runtime_env_agent_client",
         ":worker_interface",
+        ":worker_pool_interface",
         "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common:constants",
         "//src/ray/common:lease",
@@ -128,7 +146,20 @@ ray_cc_library(
         "//src/ray/util:process_utils",
         "@boost//:system",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_worker_pool",
+    testonly = True,
+    hdrs = ["fake_worker_pool.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_pool_interface",
     ],
 )
 
@@ -367,6 +398,7 @@ ray_cc_binary(
         ":local_object_manager_interface",
         ":metrics",
         ":raylet_lib",
+        ":worker_pool",
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/asio:periodical_runner",
         "//src/ray/common:lease",
@@ -405,5 +437,17 @@ ray_cc_library(
     deps = [
         "//src/ray/observability:metrics",
         "//src/ray/stats:stats_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_local_lease_manager",
+    testonly = True,
+    hdrs = ["fake_local_lease_manager.h"],
+    deps = [
+        ":metrics",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/raylet/scheduling:local_lease_manager_interface",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

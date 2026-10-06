@@ -100,12 +100,16 @@ wget --quiet \
 $HOME/anaconda3/bin/conda init
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> $HOME/.bashrc
 rm /tmp/miniforge.sh
-$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
-$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.6
+# libffi needs a floor (>=3.4.6), not an exact pin, and must be solved
+# together with python: an exact pin in a separate step re-solves the env and
+# downgrades python to whatever patch release tolerates that libffi — on 3.14
+# that's 3.14.0, which fatally crashes Ray async actors running on fiber
+# stacks (python/cpython#141944, fixed upstream in 3.14.2).
+$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION "libffi>=3.4.6"
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/0.11.33/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH

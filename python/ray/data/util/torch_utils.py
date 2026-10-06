@@ -1,6 +1,6 @@
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -352,6 +352,30 @@ def arrow_batch_to_tensors(
 
 
 @torch.no_grad()
+def pin_tensors_to_memory(batch: TensorBatchType) -> TensorBatchType:
+    """Recursively pin CPU tensors in a TensorBatchType. Preserves structure.
+
+    No-op for tensors that are already pinned or not on CPU (e.g. CUDA tensors).
+
+    Args:
+        batch: A tensor or collection of tensors to pin. Can be any
+            TensorBatchType variant.
+
+    Returns:
+        The batch with the same structure, with CPU tensors pinned.
+    """
+    if _is_tensor(batch):
+        if batch.device.type == "cpu" and not batch.is_pinned():
+            return batch.pin_memory()
+        return batch
+    elif isinstance(batch, Mapping):
+        return {k: pin_tensors_to_memory(v) for k, v in batch.items()}
+    elif isinstance(batch, (list, tuple)):
+        return type(batch)(pin_tensors_to_memory(v) for v in batch)
+    return batch
+
+
+@torch.no_grad()
 def concat_tensors_to_device(
     tensor_sequence: Sequence[torch.Tensor],
     device: Optional[Union[str, "torch.device"]] = None,
@@ -444,11 +468,12 @@ def move_tensors_to_device(
     batch: TensorBatchType,
     device: Optional[Union[str, "torch.device"]] = None,
     non_blocking: bool = DEFAULT_TENSOR_NON_BLOCKING_TRANSFER,
+    concat: bool = True,
 ) -> TensorBatchReturnType:
     """Move tensors to the specified device.
 
-    Concatenate nested lists/tuples of tensors along the first (batch) dimension.
-    For example, for the input
+    By default, concatenate nested lists/tuples of tensors along the first
+    (batch) dimension. For example, for the input
     ((feature_0_chunk_0,), (feature_1_chunk_0, feature_1_chunk_1))
     the output will be (feature_0_chunk_0, feature_1_chunk_0+1)
     where each feature is concatenated along the batch dimension.
@@ -464,6 +489,11 @@ def move_tensors_to_device(
         device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
+        concat: If True (the default), nested sequences of tensors are
+            concatenated along the first (batch) dimension during the
+            transfer, which requires each sequence's tensors to share dtype
+            and trailing shape. If False, every tensor is moved individually
+            and the input structure is preserved.
 
     Returns:
         The input tensors moved to the specified device
@@ -476,12 +506,24 @@ def move_tensors_to_device(
     elif _is_tensor_sequence(batch):
         return type(batch)([t.to(device, non_blocking=non_blocking) for t in batch])
     elif _is_nested_tensor_sequence(batch):
+        if not concat:
+            return type(batch)(
+                [
+                    move_tensors_to_device(t, device, non_blocking, concat=False)
+                    for t in batch
+                ]
+            )
         return type(batch)(
             [concat_tensors_to_device(t, device, non_blocking) for t in batch]
         )
     elif _is_tensor_mapping(batch):
         return {k: t.to(device, non_blocking=non_blocking) for k, t in batch.items()}
     elif _is_tensor_sequence_mapping(batch):
+        if not concat:
+            return {
+                k: move_tensors_to_device(v, device, non_blocking, concat=False)
+                for k, v in batch.items()
+            }
         return {
             k: concat_tensors_to_device(v, device, non_blocking)
             for k, v in batch.items()
@@ -495,3 +537,23 @@ def move_tensors_to_device(
             "Dict[str, torch.Tensor], "
             "Mapping[str, List/Tuple[torch.Tensor]]"
         )
+
+
+def convert_tensors_to_numpy(batch: TensorBatchType) -> Any:
+    """Recursively convert every Torch tensor in ``batch`` to a NumPy array,
+    preserving the surrounding dict/sequence structure.
+
+    Raises ``TypeError`` on non-tensor leaves (the default
+    ``TorchInference.finalize`` error path).
+    """
+    if _is_tensor(batch):
+        return batch.detach().cpu().numpy()
+    elif isinstance(batch, Mapping):
+        return {k: convert_tensors_to_numpy(v) for k, v in batch.items()}
+    elif isinstance(batch, (list, tuple)):
+        return type(batch)(convert_tensors_to_numpy(v) for v in batch)
+    raise TypeError(
+        "The default `finalize` only supports Torch tensors nested in "
+        f"dicts/sequences; got {_get_type_str(batch)}. Override `finalize` "
+        "to convert the output yourself."
+    )

@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 from math import ceil
@@ -35,7 +36,13 @@ def get_local_state_client():
     )
 
     gcs_client = ray._private.worker.global_worker.gcs_client
-    return StateDataSourceClient(gcs_channel, gcs_client)
+    node = ray._private.worker.global_worker.node
+    return StateDataSourceClient(
+        gcs_channel,
+        gcs_client,
+        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
+        dashboard_session_name=node.session_name,
+    )
 
 
 @pytest.fixture

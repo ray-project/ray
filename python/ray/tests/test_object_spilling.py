@@ -157,7 +157,7 @@ def test_default_config(shutdown_only):
     )
     ray.shutdown()
 
-    # Make sure config is not initalized if spilling is not enabled..
+    # Make sure config is not initialized if spilling is not enabled..
     ray.init(
         num_cpus=0,
         object_store_memory=75 * 1024 * 1024,

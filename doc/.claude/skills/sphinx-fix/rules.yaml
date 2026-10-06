@@ -114,7 +114,7 @@ rules:
   - id: unknown-document
     title: "{doc}/toctree reference to an unknown document"
     tier: 3
-    safety: mechanical
+    safety: judgment
     match: any
     categories:
       - ref.doc
@@ -196,7 +196,7 @@ rules:
     signatures:
       - "py:\\w+ reference target not found:"
     cause: "A Python-domain role ({meth}/{class}/{func}/{obj}/{exc}/:py:*:) points at an object not in the resolved API inventory. Two very different roots: (1) the object is documented elsewhere but its autosummary stub was not generated, or its module aborted import, so the inventory entry is missing -- these arrive as a large flood sharing an object prefix and are DOWNSTREAM symptoms, not separate defects; (2) the reference is genuinely wrong -- a renamed, moved, or mistyped target, or a stdlib/third-party name that needs intersphinx."
-    fix: "Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name."
+    fix: "Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name. For a third-party target that DOES exist upstream, suspect a stale committed inventory snapshot: upstream added the symbol after doc/source/_intersphinx/<project>.inv was last refreshed. Fix by running `python doc/source/_intersphinx/refresh.py <project>` and committing the updated .inv, not by editing the reference."
     target_extract: "py:\\w+ reference target not found: (?P<target>\\S+)"
     version_sphinx: ">=8.0,<9"
     notes: "Categories confirmed on real Ray RtD builds (ref.meth, ref.obj, ref.func, ref.python); the signature carries the rest of the py domain (ref.exc, ref.attr). safety=judgment: both the correct target and the correct root (edit one reference vs revert a restructuring) need a human decision -- never auto-apply. A correlated flood sharing an object prefix with autosummary-stub-not-found warnings is that rule's masked downstream; triage the tier-2 root, not each reference."
@@ -219,7 +219,7 @@ rules:
   - id: docutils-inline-markup
     title: "Unbalanced inline emphasis/strong markup"
     tier: 3
-    safety: mechanical
+    safety: judgment
     match: any
     categories:
       - docutils
@@ -231,16 +231,16 @@ rules:
     notes: "Category docutils confirmed on real Ray RtD builds. No target extraction: the message does not carry the offending text, so locate the unbalanced marker at the cited docstring."
 
   - id: intersphinx-inventory-unreachable
-    title: "intersphinx inventory not fetchable (network/transient)"
+    title: "intersphinx inventory not fetchable (missing snapshot + network)"
     tier: 3
     safety: judgment
     match: any
     signatures:
       - "failed to reach any of the inventories"
-    cause: "Sphinx could not download an external intersphinx objects.inv (for example docs.python.org or spark.apache.org). On the RtD build network this is usually a transient connectivity failure, not a defect in the docs; with fail_on_warning it still fails the build."
-    fix: "Re-run the build first -- this is usually transient. If it persists, the inventory URL in intersphinx_mapping (conf.py) is unreachable or wrong: confirm the URL. This is not a per-page content fix."
+    cause: "Sphinx exhausted every inventory location for a project. Each entry in intersphinx_mapping lists the committed snapshot at doc/source/_intersphinx/<project>.inv FIRST and the upstream URL as fallback, so this warning means BOTH failed: the snapshot is missing or unreadable AND the network fetch failed. A present, readable snapshot cannot produce this warning -- it needs no network. So this is no longer merely transient: it points at a missing snapshot with a flaky network hiding behind it."
+    fix: "Check that doc/source/_intersphinx/<project>.inv exists and is committed (it should start with the bytes '# Sphinx inventory version'). If it is missing, that is the defect -- run `python doc/source/_intersphinx/refresh.py <project>` and commit it. If the snapshot is present and intact, the local read itself failed (permissions, a bad exclude_patterns change, or the file was truncated); re-check the snapshot before blaming the network. Only if the project is absent from _intersphinx_targets is the upstream URL in conf.py the thing to confirm. This is not a per-page content fix."
     version_sphinx: ">=8.0,<9"
-    notes: "Untagged (no [category]); signature-only. The URL and error detail sit on an unindented continuation line the parser does not capture as a warning record, so match on the WARNING line. safety=judgment: re-run vs investigate intersphinx_mapping is a human call."
+    notes: "Untagged (no [category]); signature-only. The URL and error detail sit on an unindented continuation line the parser does not capture as a warning record, so match on the WARNING line. safety=judgment: missing-snapshot vs local-read-failure vs genuinely-wrong-URL needs a human call. Pre-dates DOC-1050 as a pure network/transient rule; since snapshots are committed, 're-run the build' is NO LONGER the first move -- a green re-run just means the network came back and the missing snapshot is still missing."
 
   - id: literalinclude-out-of-range
     title: "literalinclude line/marker out of range"
