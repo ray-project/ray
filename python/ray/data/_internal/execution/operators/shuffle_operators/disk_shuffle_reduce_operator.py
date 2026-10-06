@@ -154,6 +154,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         remote_args.update(user_args)
         if user_runtime_env is not None:
             remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
+        remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args
 

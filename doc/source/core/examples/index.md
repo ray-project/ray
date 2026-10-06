@@ -25,7 +25,7 @@ Below are examples for using Ray Core for a variety use cases.
 ```{list-table}
 * - {doc}`A Gentle Introduction to Ray Core by Example <gentle_walkthrough>`
 * - {doc}`Using Ray for Highly Parallelizable Tasks <highly_parallel>`
-* - {doc}`Monte Carlo Estimation of π <monte_carlo_pi>`
+* - {doc}`Monte Carlo Estimation of π <monte-carlo-pi>`
 ```
 
 

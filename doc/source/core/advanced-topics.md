@@ -20,7 +20,7 @@ cross-language
 using-ray-with-jupyter
 ray-dag
 miscellaneous
-runtime_env_auth
+runtime-env-auth
 user-spawn-processes
 head-node-memory-management
 ```
