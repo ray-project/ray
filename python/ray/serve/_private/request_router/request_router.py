@@ -1008,17 +1008,15 @@ class RequestRouter(ABC):
                 timeout=queue_len_response_deadline_s,
                 return_when=asyncio.ALL_COMPLETED,
             )
-        except asyncio.CancelledError:
-            # `asyncio.wait` leaves its tasks running when the caller is cancelled
-            # (e.g. a routing task whose request was fulfilled by another task).
-            # Cancel them so `get_queue_len` cancels the in-flight RPC.
+        finally:
+            # `asyncio.wait` cancels none of its tasks, on the deadline or when the
+            # caller is cancelled (e.g. a routing task whose request was fulfilled by
+            # another task). Cancel them all so `get_queue_len` cancels its RPC.
             for t in get_queue_len_tasks:
                 t.cancel()
-            raise
         for t in pending:
             replica = task_to_replica[t]
             result.append((replica, None))
-            t.cancel()
             logger.warning(
                 f"Failed to get queue length from {replica.replica_id} "
                 f"within {queue_len_response_deadline_s}s. If this happens repeatedly "
