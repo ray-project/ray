@@ -75,6 +75,8 @@ IDEs and static type checkers can't infer the original type `T` from `ActorClass
 Add the `@ray.method` decorator to actor methods to get type hints for them through the `ActorProxy[T]` type, including their arguments and return types.
 
 ```python
+import ray
+from ray import ObjectRef
 from ray.actor import ActorClass, ActorProxy
 
 class DemoRay:

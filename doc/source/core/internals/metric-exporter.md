@@ -74,7 +74,7 @@ Ray uses two recording mechanisms, depending on the metric type:
 - **Lock ordering**: The recorder registers callbacks after it releases the mutex. This ordering prevents deadlocks between the recorder's mutex and the internal locks of the OpenTelemetry SDK. For details, see [RegisterGaugeMetric()](https://github.com/ray-project/ray/blob/05e7efd5ef71dca7a396e6b5f15c8ff16960c5db/src/ray/observability/open_telemetry_metric_recorder.cc#L183-L195).
 - **Lazy registration**: Registering a metric multiple times is safe. The recorder checks whether a metric is already registered before it creates a new instrument.
 
-C++ components record metrics through the [Metric::Record()](https://github.com/ray-project/ray/blob/05e7efd5ef71dca7a396e6b5f15c8ff16960c5db/src/ray/stats/metric.cc#L111) method, which forwards to [OpenTelemetryMetricRecorder::SetMetricValue()](https://github.com/ray-project/ray/blob/05e7efd5ef71dca7a396e6b5f15c8ff16960c5db/src/ray/stats/metric.cc#L135).
+C++ components record metrics through the [Metric::Record()](https://github.com/ray-project/ray/blob/05e7efd5ef71dca7a396e6b5f15c8ff16960c5db/src/ray/stats/metric.cc#L111) method, which forwards to [OpenTelemetryMetricRecorder::SetMetricValue()](https://github.com/ray-project/ray/blob/05e7efd5ef71dca7a396e6b5f15c8ff16960c5db/src/ray/observability/open_telemetry_metric_recorder.cc#L269).
 
 ## Metric export from C++ (OTLP gRPC)
 

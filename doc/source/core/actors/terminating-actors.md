@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Terminate Ray actors from a handle or from inside the actor, and how actor cleanup runs when ray.shutdown is called."
+    description: "Terminate Ray actors from a handle or from inside the actor, and clean up actor resources with the __ray_shutdown__ method."
 ---
 
 # Terminating actors
@@ -131,7 +131,7 @@ Ray doesn't garbage-collect actors in C++ yet, so this is currently the only way
 :::
 ::::
 
-This method of termination waits for any previously submitted tasks to finish executing, then exits the process gracefully with `sys.exit`.
+This method of termination waits for any previously submitted tasks to finish executing, then exits the process gracefully. In Python, the actor exits through `sys.exit`.
 
 
 
