@@ -277,21 +277,40 @@ class ResourceManager:
         """Return the global pending resource usage at the current time."""
         return self._global_pending_usage
 
-    def get_global_usage_excluding_output_backpressure(self) -> ExecutionResources:
-        """Return the global usage, excluding ops in task output backpressure and
-        their downstream ineligible ops (e.g., ``Limit``).
+    def get_global_usage_excluding_consumer_blocked_ops(self) -> ExecutionResources:
+        """Return the global usage, excluding ops blocked on a slow consumer.
 
-        These ops' tasks are paused waiting on downstream consumers, so adding
-        cluster capacity can't relieve their usage.
+        An op is excluded if it's blocked on downstream and all its downstream ops
+        are excluded too, i.e., the chain of blocked ops ends at the consumer.
         """
         excluded_ops = set()
-        for op in self._op_usages:
-            if op.in_task_output_backpressure:
+        # Visit downstream ops first.
+        for op in reversed(self._topology):
+            if self._is_blocked_on_downstream(op) and all(
+                downstream_op in excluded_ops
+                for downstream_op in self.get_downstream_eligible_ops(op)
+            ):
                 excluded_ops.add(op)
                 excluded_ops.update(self._get_downstream_ineligible_ops(op))
 
         return ExecutionResources.combine_sum(
             usage for op, usage in self._op_usages.items() if op not in excluded_ops
+        )
+
+    def _is_blocked_on_downstream(self, op: PhysicalOperator) -> bool:
+        """Whether the op is waiting for its outputs to be read downstream."""
+        if op.in_task_output_backpressure:
+            return True
+        if op.num_active_tasks() > 0 or not op.in_task_submission_backpressure:
+            return False
+        # More nodes help if the budget can't fit another task's CPU, GPU, or memory.
+        budget = (
+            self._op_resource_allocator.get_budget(op)
+            if self._op_resource_allocator is not None
+            else None
+        )
+        return budget is None or op.incremental_resource_usage().satisfies_limit(
+            budget, ignore_object_store_memory=True
         )
 
     def get_global_limits(self) -> ExecutionResources:

@@ -1141,6 +1141,11 @@ class PhysicalOperator(Operator):
         """Whether reading this operator's task outputs is currently blocked."""
         return self._in_task_output_backpressure
 
+    @property
+    def in_task_submission_backpressure(self) -> bool:
+        """Whether submitting new tasks for this operator is currently blocked."""
+        return self._in_task_submission_backpressure
+
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []

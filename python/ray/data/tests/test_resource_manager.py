@@ -546,17 +546,18 @@ class TestResourceManager:
         total_obj_store = resource_manager.get_global_usage().object_store_memory
         assert total_obj_store == 300
 
-    def test_global_usage_excluding_output_backpressure(self, restore_data_context):
+    def test_global_usage_excluding_consumer_blocked_ops(self, restore_data_context):
         o1 = InputDataBuffer(DataContext.get_current(), [])
         cpu_op = mock_map_op(o1, name="CpuMap")
         gpu_op = mock_map_op(cpu_op, name="GpuMap")
         limit_op = LimitOperator(100, gpu_op, DataContext.get_current())
-        for op, usage in [
-            (cpu_op, ExecutionResources(cpu=4)),
-            (gpu_op, ExecutionResources(gpu=2)),
+        for op, usage, per_task in [
+            (cpu_op, ExecutionResources(cpu=4), ExecutionResources(cpu=1)),
+            (gpu_op, ExecutionResources(gpu=2), ExecutionResources(gpu=1)),
         ]:
             op.current_logical_usage = MagicMock(return_value=usage)
             op.running_logical_usage = MagicMock(return_value=usage)
+            op.incremental_resource_usage = MagicMock(return_value=per_task)
 
         counter = StubBlockRefCounter()
         topo = build_streaming_topology(limit_op, ExecutionOptions(), counter)
@@ -571,21 +572,46 @@ class TestResourceManager:
         counter.on_block_produced(None, 200, gpu_op.id)
         counter.on_block_produced(None, 50, limit_op.id)
         resource_manager.update_usages()
+        # Each budget fits one more task.
+        budgets = {
+            cpu_op: ExecutionResources(cpu=1),
+            gpu_op: ExecutionResources(gpu=1),
+        }
+        resource_manager._op_resource_allocator.get_budget = budgets.get
 
         def usage():
-            u = resource_manager.get_global_usage_excluding_output_backpressure()
+            u = resource_manager.get_global_usage_excluding_consumer_blocked_ops()
             return u.cpu, u.gpu, u.object_store_memory
 
         assert usage() == (4, 2, 350)
 
-        # Slow consumer: the GPU op and its downstream ineligible Limit are excluded.
+        # Slow consumer: the GPU op and the Limit after it are excluded.
         gpu_op.notify_in_task_output_backpressure(True)
         assert usage() == (4, 0, 100)
 
-        # GPU-bound: the CPU op waits on the GPU op, whose usage still counts.
-        gpu_op.notify_in_task_output_backpressure(False)
+        # The backpressure reaches the CPU op too.
         cpu_op.notify_in_task_output_backpressure(True)
-        assert usage() == (0, 2, 250)
+        assert usage() == (0, 0, 0)
+
+        # GPU-bound: the CPU op waits on a GPU op that isn't blocked, so both count.
+        gpu_op.notify_in_task_output_backpressure(False)
+        assert usage() == (4, 2, 350)
+
+        # Slow consumer, tasks done: the ops sit idle with outputs filling budgets.
+        cpu_op.notify_in_task_output_backpressure(False)
+        gpu_op.notify_in_task_submission_backpressure(True)
+        assert usage() == (4, 0, 100)
+        cpu_op.notify_in_task_submission_backpressure(True)
+        assert usage() == (0, 0, 0)
+
+        # An idle op that can't fit a GPU task needs more nodes, so both ops count.
+        budgets[gpu_op] = ExecutionResources.zero()
+        assert usage() == (4, 2, 350)
+        budgets[gpu_op] = ExecutionResources(gpu=1)
+
+        # An op that still has running tasks isn't blocked, so both ops count.
+        gpu_op.num_active_tasks = MagicMock(return_value=1)
+        assert usage() == (4, 2, 350)
 
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""

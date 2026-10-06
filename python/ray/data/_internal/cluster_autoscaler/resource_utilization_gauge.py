@@ -42,10 +42,10 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
 
-    # Ignore usage of ops in task output backpressure when deciding to scale up.
-    # Their tasks are paused on downstream consumers, so more nodes won't help.
-    EXCLUDE_OUTPUT_BACKPRESSURED_USAGE: bool = env_bool(
-        "RAY_DATA_AUTOSCALING_EXCLUDE_OUTPUT_BACKPRESSURED_USAGE", True
+    # When deciding to scale up, ignore usage of ops that are blocked on a slow
+    # consumer of the dataset. More nodes won't speed up the consumer.
+    EXCLUDE_CONSUMER_BLOCKED_USAGE: bool = env_bool(
+        "RAY_DATA_AUTOSCALING_EXCLUDE_CONSUMER_BLOCKED_USAGE", True
     )
 
     def __init__(
@@ -54,11 +54,11 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
         *,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         execution_id: Optional[str] = None,
-        exclude_output_backpressured_usage: bool = EXCLUDE_OUTPUT_BACKPRESSURED_USAGE,
+        exclude_consumer_blocked_usage: bool = EXCLUDE_CONSUMER_BLOCKED_USAGE,
     ):
         self._resource_manager = resource_manager
         self._execution_id = execution_id
-        self._exclude_output_backpressured_usage = exclude_output_backpressured_usage
+        self._exclude_consumer_blocked_usage = exclude_consumer_blocked_usage
 
         self._cluster_cpu_util_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
@@ -103,8 +103,8 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
     def observe(self):
         """Report the cluster utilization based on global usage / global limits.
 
-        Exported metrics use the raw usage; the rolling averages used for
-        autoscaling may exclude output-backpressured ops.
+        Exported metrics use the raw usage. The rolling averages used for
+        autoscaling may exclude ops blocked on a slow consumer.
         """
 
         def save_div(numerator, denominator):
@@ -124,8 +124,8 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
         )
 
         scaling_usage = (
-            self._resource_manager.get_global_usage_excluding_output_backpressure()
-            if self._exclude_output_backpressured_usage
+            self._resource_manager.get_global_usage_excluding_consumer_blocked_ops()
+            if self._exclude_consumer_blocked_usage
             else global_usage
         )
 
