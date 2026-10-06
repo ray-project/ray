@@ -58,7 +58,7 @@ def test_writer_drains_own_transfers_first():
 
     with guard.write("a", wait_done=drained.append):
         assert sorted(drained) == ["x", "y"]
-        assert not guard._reads["a"]
+        assert not guard._reads.get("a")
 
 
 def test_thread_with_transfers_is_not_blocked_by_waiting_writer():

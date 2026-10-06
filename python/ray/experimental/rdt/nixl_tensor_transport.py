@@ -151,7 +151,11 @@ class _AgentGuard:
 
     def release_read(self, agent: str, key: int) -> None:
         with self._cond:
-            self._reads.get(agent, {}).pop(key, None)
+            reads = self._reads.get(agent)
+            if reads is not None:
+                reads.pop(key, None)
+                if not reads:
+                    del self._reads[agent]
             self._cond.notify_all()
 
     @contextmanager
@@ -173,6 +177,8 @@ class _AgentGuard:
                 lambda: agent not in self._writing and not self._reads.get(agent)
             )
             self._waiting_writers[agent] -= 1
+            if not self._waiting_writers[agent]:
+                del self._waiting_writers[agent]
             self._writing.add(agent)
         try:
             yield
