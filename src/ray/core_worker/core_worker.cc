@@ -2687,8 +2687,8 @@ Status CoreWorker::SubmitActorTask(
         actor_id.Hex()));
   }
 
-  // Nothing after this commit to MOVED can fail, so a committed move always has a consuming
-  // task.
+  // Nothing after this commit to MOVED can fail, so a committed move always has a
+  // consuming task.
   std::vector<ObjectID> arg_ids;
   for (const std::unique_ptr<TaskArg> &arg : args) {
     if (std::optional<ObjectID> arg_id = arg->GetReferenceId()) {
