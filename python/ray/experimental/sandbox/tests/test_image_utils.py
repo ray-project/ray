@@ -1,10 +1,15 @@
+import hashlib
+import http.server
 import io
 import json
 import mmap
 import os
+import re
 import sys
 import tarfile
+import threading
 import urllib.error
+import urllib.parse
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -295,35 +300,130 @@ def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
     )
 
 
-def test_pull_and_extract_remote_image(tmp_path):
+@pytest.fixture
+def fake_docker_hub(monkeypatch):
+    """A local registry serving ``library/busybox`` in place of Docker Hub.
+
+    ``RAY_SANDBOX_REGISTRY_MIRROR`` sends Docker Hub pulls to it, so the pull
+    tests never touch the network. It serves every step of a real pull: the
+    bearer-token challenge, a multi-arch index, the image manifest and config,
+    and blobs behind a redirect that refuses the registry token, as presigned
+    object storage does. Yields the contents of the image's ``bin/busybox``.
+    """
+    arch = get_platform_arch()
+    token = "fake-hub-token"
+    busybox = b"\x7fELF fake busybox"
+    blobs = {}
+
+    def add_blob(data):
+        digest = f"sha256:{hashlib.sha256(data).hexdigest()}"
+        blobs[digest] = data
+        return digest
+
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w:gz") as tar:
+        _add_member(tar, "bin/busybox", busybox, mode=0o755)
+    config = add_blob(json.dumps({"architecture": arch, "os": "linux"}).encode())
+    manifest = json.dumps(
+        {
+            "config": {"digest": config},
+            "layers": [{"digest": add_blob(layer.getvalue())}],
+        }
+    ).encode()
+    manifest_digest = f"sha256:{hashlib.sha256(manifest).hexdigest()}"
+    # Another platform is listed first: the pull must pick the host's.
+    other_arch = "arm64" if arch == "amd64" else "amd64"
+    index = json.dumps(
+        {
+            "manifests": [
+                {
+                    "digest": f"sha256:{'0' * 64}",
+                    "platform": {"os": "linux", "architecture": other_arch},
+                },
+                {
+                    "digest": manifest_digest,
+                    "platform": {"os": "linux", "architecture": arch},
+                },
+            ]
+        }
+    ).encode()
+    manifests = {"latest": index, manifest_digest: manifest}
+
+    class Registry(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def _reply(self, code, body=b"", headers=()):
+            self.send_response(code)
+            for name, value in headers:
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path = urllib.parse.urlsplit(self.path).path
+            auth = self.headers.get("Authorization")
+            match = re.fullmatch(r"/v2/library/busybox/(manifests|blobs)/([^/]+)", path)
+            if path == "/token":
+                self._reply(200, json.dumps({"token": token}).encode())
+            elif path.startswith("/storage/"):
+                blob = blobs.get(path[len("/storage/") :])
+                if auth:
+                    # S3: "Only one auth mechanism allowed".
+                    self._reply(400)
+                elif blob is None:
+                    self._reply(404)
+                else:
+                    self._reply(200, blob)
+            elif auth != f"Bearer {token}":
+                realm = f"http://127.0.0.1:{self.server.server_port}/token"
+                challenge = f'Bearer realm="{realm}",service="fake-hub"'
+                self._reply(401, headers=[("Www-Authenticate", challenge)])
+            elif match and match[1] == "manifests" and match[2] in manifests:
+                self._reply(200, manifests[match[2]])
+            elif match and match[1] == "blobs" and match[2] in blobs:
+                self._reply(307, headers=[("Location", f"/storage/{match[2]}")])
+            else:
+                self._reply(404)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Registry)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv(
+        "RAY_SANDBOX_REGISTRY_MIRROR", f"http://127.0.0.1:{server.server_port}"
+    )
+    yield busybox
+    server.shutdown()
+    server.server_close()
+
+
+def test_pull_and_extract_remote_image(tmp_path, fake_docker_hub):
     images_dir = tmp_path / "images"
     image_dir = pull_and_extract_container_image(
         "busybox:latest", images_dir=str(images_dir)
     )
     assert os.path.exists(image_dir)
     assert os.path.exists(os.path.join(image_dir, ".extracted"))
-    tree = _image_tree(image_dir)
-    assert "bin/sh" in tree or "bin/busybox" in tree
+    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
     # Only the image is cached: no extracted tree, and no archive doubling
     # its footprint.
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
 
 
-def test_pull_and_extract_docker_io_prefixed_image(tmp_path):
+def test_pull_and_extract_docker_io_prefixed_image(tmp_path, fake_docker_hub):
     images_dir = tmp_path / "images"
     image_dir = pull_and_extract_container_image(
         "docker.io/library/busybox:latest", images_dir=str(images_dir)
     )
     assert os.path.exists(image_dir)
     assert os.path.exists(os.path.join(image_dir, ".extracted"))
-    tree = _image_tree(image_dir)
-    assert "bin/sh" in tree or "bin/busybox" in tree
+    assert _image_file(image_dir, "bin/busybox") == fake_docker_hub
 
 
-def test_pull_nonexistent_image(tmp_path):
+def test_pull_nonexistent_image(tmp_path, fake_docker_hub):
     images_dir = tmp_path / "images"
-    with pytest.raises(SandboxCreationError):
+    with pytest.raises(SandboxCreationError, match="HTTP Error 404"):
         pull_and_extract_container_image(
             "nonexistent_image_12345_xyz:latest",
             images_dir=str(images_dir),
