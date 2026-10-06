@@ -53,14 +53,18 @@ To instantiate an actor from the `ActorClass[DemoRay]` type, call `ActorDemoRay.
 The handle provides type hints for the actor methods, including their arguments and return types.
 
 ```python
+import ray
+from ray import ObjectRef
+from ray.actor import ActorProxy
 
 actor: ActorProxy[DemoRay] = ActorDemoRay.remote(1)
 
+@ray.remote
 def func(actor: ActorProxy[DemoRay]) -> int:
     b: ObjectRef[int] = actor.calculate.remote(1, 2)
     return ray.get(b)
 
-a = func.remote()
+a = func.remote(actor)
 print(ray.get(a))
 ```
 

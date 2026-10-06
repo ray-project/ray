@@ -162,7 +162,7 @@ Ray supports fractional resource requirements. For example, if your task or acto
 ```
 
 :::{note}
-GPU, TPU, and `neuron_cores` resource requirements greater than 1 must be whole numbers. For example, `num_gpus=1.5` is invalid.
+GPU resource requirements greater than 1 must be whole numbers. For example, `num_gpus=1.5` is invalid. Some accelerators are stricter: `neuron_cores` requirements must always be whole numbers, and TPU requirements must be 1, 2, 4, or 8.
 :::
 
 :::{tip}

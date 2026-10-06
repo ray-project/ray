@@ -191,7 +191,7 @@ Switching RDT to a different tensor transport takes only a few lines of code cha
 The main code differences are the following:
 
 1. The {func}`@ray.method <ray.method>` uses `tensor_transport="nccl"` instead of `tensor_transport="gloo"`.
-1. The code uses the {func}`ray.experimental.collective.create_collective_group <ray.experimental.collective.create_collective_group>` function to create a collective group.
+1. The code passes `backend="nccl"` to the {func}`ray.experimental.collective.create_collective_group <ray.experimental.collective.create_collective_group>` function, instead of `backend="torch_gloo"`.
 1. The code creates the tensor on the GPU with the `.cuda()` method.
 
 ### Usage with NIXL (CPUs or NVIDIA GPUs)

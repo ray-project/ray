@@ -91,7 +91,7 @@ To revert to the legacy worker killing policy, set the environment variable `RAY
 
 The memory monitor avoids infinite loops of task retries by ensuring that at least one task can run for each caller on each node. If it can't ensure this, the workload fails with an OOM error. This is only an issue for tasks, because the memory monitor doesn't retry actors indefinitely. If the workload fails, see {ref}`how to address memory issues <troubleshooting-out-of-memory>` to adjust the workload so that it passes. For a code example, see the {ref}`last task <last-task-example>` example later on this page.
 
-When the policy needs to kill a worker, it first prioritizes tasks that are retryable, meaning {ref}`max_retries <task-fault-tolerance>` or {ref}`max_restarts <actor-fault-tolerance>` is greater than 0. This prioritization minimizes workload failure. Actors aren't retryable by default, because {ref}`max_restarts <actor-fault-tolerance>` defaults to 0. Therefore, by default, the policy prefers to kill tasks before actors.
+When the policy needs to kill a worker, it first prioritizes workers that are retryable, meaning the task's {ref}`max_retries <task-fault-tolerance>` or the actor's {ref}`max_restarts <actor-fault-tolerance>` isn't 0. This prioritization minimizes workload failure. Actors aren't retryable by default, because {ref}`max_restarts <actor-fault-tolerance>` defaults to 0. Therefore, by default, the policy prefers to kill tasks before actors.
 
 When multiple callers have created tasks, the policy picks a task from the caller with the most running tasks. If two callers have the same number of tasks, it picks the caller whose earliest task has a later start time. This rule ensures fairness so that each caller can make progress.
 

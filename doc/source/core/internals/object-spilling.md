@@ -37,7 +37,7 @@ The system consists of three main interaction layers:
 
 1. **Detection in the Plasma store thread**: The `CreateRequestQueue` within the Plasma store monitors memory usage. When an allocation fails with an out-of-memory (OOM) error, it triggers a callback to the raylet. This design ensures that I/O operations never block the single-threaded object store.
 
-1. **Orchestration in the raylet main thread**: The `LocalObjectManager` in the raylet receives the spill request. It decides *what* to spill, based on least recently used (LRU) ordering and pinning status. It also decides *when* to spill, batching requests for efficiency. It manages the state of all local objects, which can be Pinned, PendingSpill, or Spilled.
+1. **Orchestration in the raylet main thread**: The `LocalObjectManager` in the raylet receives the spill request. It decides *what* to spill from the pinned primary copies that no worker is actively using. It doesn't order the candidates by recency. It also decides *when* to spill, batching requests for efficiency. It manages the state of all local objects, which can be Pinned, PendingSpill, or Spilled.
 
 1. **Execution in IO worker processes**: A pool of Python `IO Workers` performs the disk or network I/O. The raylet communicates with these workers through gRPC. This separation keeps the raylet's main loop responsive to other cluster events, such as heartbeats and scheduling, even if I/O is slow, for example when writing to S3.
 
@@ -201,7 +201,7 @@ The Plasma store retries `ProcessCreateRequests()` periodically, at an interval 
 
 ### Proactive: Threshold-based spilling
 
-The reactive OOM path fires only *after* the store is already full. To avoid hitting that cliff, Ray also spills objects proactively before the store is full. [NodeManager::SpillIfOverPrimaryObjectsThreshold](https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L2400) checks whether the fraction of primary object bytes in the store exceeds `object_spilling_threshold`, which defaults to 0.8. If it does, it calls `SpillObjectUptoMaxThroughput()`.
+The reactive OOM path fires only *after* the store is already full. To avoid hitting that cliff, Ray also spills objects proactively before the store is full. [NodeManager::SpillIfOverPrimaryObjectsThreshold](https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L2400) checks whether the fraction of primary object bytes in the store is at least `object_spilling_threshold`, which defaults to 0.8. If so, it calls `SpillObjectUptoMaxThroughput()`.
 
 Two places invoke this check:
 
@@ -601,11 +601,11 @@ The following diagram shows the delete path, which runs when an object goes out 
 The following configuration parameters control object spilling:
 
 - `object_spilling_config`: JSON string specifying the storage backend. Empty string disables spilling.
-- `object_spilling_threshold`: Fraction of available object store memory, from 0.0 to 1.0, at which spilling begins. Default: `0.8`.
+- `object_spilling_threshold`: Fraction of object store capacity, from 0.0 to 1.0, that primary objects can occupy before spilling begins. Default: `0.8`.
 - `min_spilling_size`: Minimum bytes to accumulate before triggering a spill batch.
 - `max_spilling_file_size_bytes`: Maximum bytes allowed in a single fused spill file. The limit is enabled when the value is greater than 0. When enabled, `TryToSpillObjects` stops fusing objects once adding the next object would exceed this limit, though the first object is always included. When enabled, the value must be at least `min_spilling_size`. The default, `-1`, disables the limit.
 - `max_fused_object_count`: Maximum number of objects fused into a single spill file. Default: `2000`.
-- `max_io_workers`: Maximum number of concurrent spill or restore IO worker processes.
+- `max_io_workers`: Maximum number of IO worker processes per type. The spill and restore pools each have this limit.
 - `oom_grace_period_s`: Seconds to wait after OOM before using the fallback allocator.
 - `free_objects_batch_size`: Number of freed objects to batch before flushing.
 - `free_objects_period_milliseconds`: Interval for flushing freed objects.
