@@ -55,6 +55,7 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
+    _SELF_HEALTH_SNAPSHOT,
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     ReplicaID,
@@ -439,6 +440,9 @@ class ReplicaMetricsManager:
         self._pending_health_push_started_at: float = 0.0
         # What the outstanding heartbeat carries; only meaningful while one is.
         self._pending_health_push_healthy: bool = True
+        # When a metric report last went out carrying health, so the heartbeat can
+        # stand down while the reports are doing its job.
+        self._last_health_carrying_report_at: float = 0.0
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -716,7 +720,7 @@ class ReplicaMetricsManager:
             return False
         return time.time() - started_s < RAY_SERVE_MAX_PUSH_IN_FLIGHT_S
 
-    def start_self_health_pusher(self, eval_fn: Callable, period_s: float):
+    def start_self_health_pusher(self, eval_fn: Callable, period_s: float) -> None:
         """Periodically run the local health check and push the result.
 
         eval_fn raises when unhealthy. The check runs at half the configured period
@@ -731,7 +735,17 @@ class ReplicaMetricsManager:
             period_s * 0.5,
         )
 
-    async def _eval_and_push_self_health(self):
+    def reports_carry_health(self) -> bool:
+        """Whether a metric report carried health more recently than this heartbeat's
+        own cadence, which is the only case where the heartbeat adds nothing."""
+        window_s = self._health_check_period_s / 2
+        last = max(
+            self._last_health_carrying_report_at,
+            _SELF_HEALTH_SNAPSHOT.get("carried_at", 0.0),
+        )
+        return window_s > 0 and time.time() - last < window_s
+
+    async def _eval_and_push_self_health(self) -> None:
         # Invariant: the pusher registers this task only after setting the callable,
         # so narrow the Optional for the type checkers.
         eval_fn = self._eval_self_health_fn
@@ -768,6 +782,17 @@ class ReplicaMetricsManager:
             self._consecutive_failures += 1
             self._last_counted_failure_at = counted_at
         checked_at = time.time()
+        # Publish for the in-process Router to carry on its handle report.
+        _SELF_HEALTH_SNAPSHOT.update(
+            replica_id=self._replica_id.to_full_id_str(),
+            healthy=healthy,
+            checked_at=checked_at,
+            failures=self._consecutive_failures,
+        )
+        if healthy and self.reports_carry_health():
+            # An unhealthy result is never suppressed: the controller needs it to
+            # replace the replica, and a report may not be due for a while.
+            return
 
         with self._metrics_push_lock:
             in_flight = self._push_blocked(
@@ -1092,6 +1117,11 @@ class ReplicaMetricsManager:
             replica_id=self._replica_id,
             timestamp=time.time(),
             metrics=new_metrics,
+            # All three from the snapshot the self-check publishes, so they describe
+            # one evaluation rather than a verdict paired with a later count.
+            healthy=_SELF_HEALTH_SNAPSHOT.get("healthy"),
+            health_checked_at=_SELF_HEALTH_SNAPSHOT.get("checked_at"),
+            health_consecutive_failures=_SELF_HEALTH_SNAPSHOT.get("failures"),
         )
         with self._metrics_push_lock:
             if self._push_blocked(
@@ -1099,6 +1129,10 @@ class ReplicaMetricsManager:
                 self._pending_metrics_push_started_at,
             ):
                 return  # Previous push still in flight, skip and try again later
+            if replica_metric_report.healthy is not None:
+                # Only now is it true that a report carried health; marking it at
+                # construction would suppress heartbeats for a push that was skipped.
+                self._last_health_carrying_report_at = time.time()
             self._pending_metrics_push_started_at = time.time()
             self._pending_metrics_push_ref = (
                 # Actor methods are resolved dynamically on the actor handle.
@@ -2400,7 +2434,7 @@ class Replica:
             extra={"log_to_stderr": False},
         )
 
-    def _start_self_health_pusher(self):
+    def _start_self_health_pusher(self) -> None:
         if not RAY_SERVE_ENABLE_PUSH_HEALTH:
             # Leave _self_health_active False so remote probes keep running the user
             # check themselves, exactly as they do without this feature.
@@ -2428,7 +2462,7 @@ class Replica:
             self._deployment_config.health_check_period_s
         )
 
-    async def check_health(self):
+    async def check_health(self) -> None:
         if self._cached_verdict_answers_probe():
             if not self._healthy:
                 raise RuntimeError(
@@ -2437,7 +2471,7 @@ class Replica:
             return
         await self._run_user_health_check()
 
-    async def _run_user_health_check(self):
+    async def _run_user_health_check(self) -> None:
         # Recovery can re-enter while the periodic task is part way through, and both
         # write _healthy, so serialize them and let the later verdict stand. Waiters
         # run their own check rather than adopting the one they waited on: a probe the
@@ -2445,7 +2479,7 @@ class Replica:
         async with self._health_check_lock:
             await self._run_user_health_check_locked()
 
-    async def _run_user_health_check_locked(self):
+    async def _run_user_health_check_locked(self) -> None:
         evaluated = False
         try:
             # Runs the user-defined check_health on the user code loop if defined.
@@ -3695,7 +3729,7 @@ class ReplicaActor:
         await self._replica_impl.initialize(deployment_config, rank, gang_context)
         return self._replica_impl.get_metadata()
 
-    async def check_health(self):
+    async def check_health(self) -> None:
         await self._replica_impl.check_health()
 
     async def record_routing_stats(self) -> Dict[str, Any]:

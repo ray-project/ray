@@ -8,6 +8,7 @@ import pytest
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private import autoscaling_metrics_merge as merge
 from ray.serve._private.common import (
+    _SELF_HEALTH_SNAPSHOT,
     DeploymentID,
     ReplicaID,
     TimeStampedValue,
@@ -1423,13 +1424,13 @@ class TestSelfHealthPush:
         from ray.serve._private.replica import ReplicaMetricsManager
 
         m = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
-        m._self_health_checked_at = None
         m._health_check_period_s = 10.0
         m._consecutive_failures = 0
         m._last_counted_failure_at = 0.0
         m._pending_health_push_ref = None
         m._pending_health_push_started_at = 0.0
         m._pending_health_push_healthy = True
+        m._last_health_carrying_report_at = 0.0
         m._metrics_push_lock = threading.Lock()
         m._controller_handle = Mock()
         m._metrics_pusher = MetricsPusher()
@@ -1590,6 +1591,85 @@ class TestSelfHealthPush:
         assert (
             m._controller_handle.record_replica_health.remote.call_args.args[2] is False
         )
+
+    @pytest.mark.asyncio
+    async def test_carriage_suppresses_a_healthy_heartbeat(self):
+        m = self._manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        m._last_health_carrying_report_at = time.time()  # a report just carried health
+        await m._eval_and_push_self_health()
+        # The check still ran and published, it just did not need its own heartbeat.
+        assert _SELF_HEALTH_SNAPSHOT["healthy"] is True
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_carriage_never_suppresses_unhealthy(self):
+        m = self._manager()
+
+        async def bad():
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = bad
+        m._last_health_carrying_report_at = time.time()
+        await m._eval_and_push_self_health()
+        # The controller needs this to replace the replica; a report may be far off.
+        m._controller_handle.record_replica_health.remote.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stale_carriage_does_not_suppress(self):
+        m = self._manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        # Older than the heartbeat's own cadence, so the heartbeat has to take over.
+        m._last_health_carrying_report_at = time.time() - m._health_check_period_s
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_report_that_was_never_sent_does_not_suppress(self):
+        """Regression: marking carriage when the report is built rather than sent lets
+        a push the in-flight guard skipped silence the heartbeat too."""
+        m = self._manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        assert not m.reports_carry_health()  # nothing has carried anything yet
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_called_once()
+
+    def test_the_replica_report_carries_health(self, monkeypatch):
+        """The replica's own report carries health too, so a fleet whose replicas
+        push metrics needs no heartbeat at all."""
+        from types import SimpleNamespace
+
+        import ray.serve._private.replica as replica_mod
+
+        m = self._manager()
+        _SELF_HEALTH_SNAPSHOT.update(healthy=False, checked_at=77.0, failures=2)
+        m._pending_metrics_push_ref = None
+        m._pending_metrics_push_started_at = 0.0
+        m._autoscaling_config = SimpleNamespace(look_back_period_s=30.0)
+        m._metrics_store = SimpleNamespace(
+            data={}, prune_keys_and_compact_data=lambda ts: None
+        )
+        monkeypatch.setattr(replica_mod, "compress_metric_report", lambda r: r)
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m._push_autoscaling_metrics()
+        sent = m._controller_handle.record_autoscaling_metrics_from_replica.remote.call_args.args[
+            0
+        ]
+        assert sent.healthy is False
+        assert sent.health_checked_at == 77.0
+        assert sent.health_consecutive_failures == 2
 
     def test_self_check_runs_at_half_the_period(self, monkeypatch):
         from types import SimpleNamespace

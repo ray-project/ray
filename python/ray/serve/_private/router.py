@@ -37,6 +37,7 @@ from ray.exceptions import (
 )
 from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
+    _SELF_HEALTH_SNAPSHOT,
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
@@ -447,6 +448,10 @@ class RouterMetricsManager:
                 if RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS
                 else compress_metric_report(report)
             )
+            if report.health_replica_id is not None:
+                # Stamped once the payload exists, so a report that failed to encode
+                # does not stand the replica's heartbeat down for nothing.
+                _SELF_HEALTH_SNAPSHOT["carried_at"] = time.time()
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_handle.remote(
                     payload
@@ -517,7 +522,20 @@ class RouterMetricsManager:
                 ] = self.metrics_store.data.get(
                     replica_id, [TimeStampedValue(timestamp, num_requests)]
                 )
+        carried = {}
+        if self._handle_source == DeploymentHandleSource.REPLICA:
+            # The replica in this process publishes its self-health for us to carry,
+            # which saves it a heartbeat of its own.
+            snap = _SELF_HEALTH_SNAPSHOT
+            if snap.get("replica_id"):
+                carried = {
+                    "health_replica_id": snap["replica_id"],
+                    "healthy": snap["healthy"],
+                    "health_checked_at": snap["checked_at"],
+                    "health_consecutive_failures": snap["failures"],
+                }
         handle_metric_report = HandleMetricReport(
+            **carried,
             deployment_id=self._deployment_id,
             handle_id=self._handle_id,
             actor_id=self._self_actor_id,
