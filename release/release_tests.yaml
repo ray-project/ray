@@ -242,6 +242,26 @@
     num_retries: 3
     script: python hello_world.py
 
+- name: "hello_world_cu133_py{{python}}"
+  python: "{{python}}"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+  matrix:
+    setup:
+      python: ["3.10", "3.11", "3.12", "3.13"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu-cu133
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    num_retries: 3
+    script: python hello_world.py
+
 #######################
 # SSH sanity checks
 #######################

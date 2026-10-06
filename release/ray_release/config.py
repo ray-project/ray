@@ -48,7 +48,15 @@ RELEASE_TEST_CONFIG_FILES = [
     "release/release_multimodal_inference_benchmarks_tests.yaml",
 ]
 
-ALLOWED_BYOD_TYPES = ["gpu", "gpu-cu130", "cpu", "cu123", "llm-cu130", "torch-cu128"]
+ALLOWED_BYOD_TYPES = [
+    "gpu",
+    "gpu-cu130",
+    "gpu-cu133",
+    "cpu",
+    "cu123",
+    "llm-cu130",
+    "torch-cu128",
+]
 
 NEW_COMPUTE_CONFIG_KEYS = {
     "cloud",
