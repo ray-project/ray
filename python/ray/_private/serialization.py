@@ -212,6 +212,9 @@ class SerializationContext:
                 "MOVABLE",
                 "MOVED",
             ):
+                # raise PicklingError for the case when ref is wrapped in ` raise Exception(ref)`,
+                # since RayTaskError catches PicklingError. Another alternative would be to use
+                # ValueError, but it escapes RayTaskError and leads to actor death.
                 raise pickle.PicklingError(
                     f"Object {obj.hex()} was created with _consume_once=True. It can "
                     "only be passed directly as an argument to one actor task, not "
