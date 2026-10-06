@@ -363,7 +363,9 @@ def build_openai_router_app(
             "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 on the Ray cluster."
         )
 
-    from ray.llm._internal.serve.core.ingress.applications import RouterApplication
+    from ray.llm._internal.serve.core.ingress.router_application import (
+        RouterApplication,
+    )
 
     args = OpenAIRouterArgs.model_validate(router_args)
     return serve.deployment(

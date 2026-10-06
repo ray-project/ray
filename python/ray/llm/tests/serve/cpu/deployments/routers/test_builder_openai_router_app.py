@@ -4,8 +4,8 @@ import pytest
 
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.core.ingress import builder as builder_module
-from ray.llm._internal.serve.core.ingress.applications import RouterApplication
 from ray.llm._internal.serve.core.ingress.builder import build_openai_router_app
+from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.build_app import build_app
 
