@@ -1,4 +1,5 @@
 import sys
+import time
 from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any, List, Optional, Tuple
@@ -12628,23 +12629,24 @@ class TestPushedHealthTracker:
 
 
 def _push_health_wrapper():
-    """A real ActorReplicaWrapper with the collaborators check_health touches."""
-    w = ActorReplicaWrapper.__new__(ActorReplicaWrapper)
-    w._actor_handle = Mock()
-    w._actor_handle.check_health.remote.return_value = "probe_ref"
-    w._probe_ref = None
-    w._probe_started_at = time.time()
-    w._consecutive_health_check_failures = 0
-    w._suppressed_probe_timeouts = 0
-    w._healthy = True
-    w._replica_id = "test_replica"
-    w._pushed_health_tracker = PushedHealthTracker()
-    w._version = SimpleNamespace(
-        deployment_config=SimpleNamespace(
-            health_check_period_s=10.0, health_check_timeout_s=30.0
-        )
+    """A real ActorReplicaWrapper and the MockTimer driving its push tracker.
+
+    Only the tracker is on the mock clock. check_health reads the wall clock for the
+    probe timeout, so a test that fakes a timed-out probe sets _probe_started_at
+    against time.time().
+    """
+    timer = MockTimer(start_time=1000.0)
+    wrapper = ActorReplicaWrapper(
+        version=deployment_version("1"),
+        replica_id=ReplicaID(
+            "abc123",
+            deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+        ),
     )
-    return w
+    wrapper._actor_handle = Mock()
+    wrapper._actor_handle.check_health.remote.return_value = "probe_ref"
+    wrapper._pushed_health_tracker = PushedHealthTracker(timer=timer)
+    return wrapper, timer
 
 
 class TestPushedHealthWrapper:
@@ -12657,18 +12659,7 @@ class TestPushedHealthWrapper:
     """
 
     def _wrapper(self):
-        timer = MockTimer(start_time=1000.0)
-        wrapper = ActorReplicaWrapper(
-            version=deployment_version("1"),
-            replica_id=ReplicaID(
-                "abc123",
-                deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
-            ),
-        )
-        wrapper._actor_handle = Mock()
-        wrapper._actor_handle.check_health.remote.return_value = "probe_ref"
-        wrapper._pushed_health_tracker = PushedHealthTracker(timer=timer)
-        return wrapper, timer
+        return _push_health_wrapper()
 
     def test_a_fresh_push_stops_a_probe_from_starting(self):
         bare, _ = self._wrapper()
@@ -12730,7 +12721,10 @@ class TestIngestLagGate:
     def _publish(self, dsm, clock, count):
         for i in range(int(count)):
             dsm.record_replica_health(
-                ReplicaID(f"r{i}", TEST_DEPLOYMENT_ID), clock[0], healthy=True
+                ReplicaID(f"r{i}", TEST_DEPLOYMENT_ID),
+                clock[0],
+                healthy=True,
+                consecutive_failures=0,
             )
 
     def test_a_scale_up_part_way_through_a_window_does_not_read_as_lag(
@@ -12911,7 +12905,7 @@ class TestIngestLagGate:
         assert ds.expected_push_rate() == 0.0
 
     def _timed_out_probe(self, monkeypatch):
-        w = _push_health_wrapper()
+        w, _ = _push_health_wrapper()
         w._probe_ref = "probe_ref"
         w._probe_started_at = time.time() - 60.0  # well past the timeout
         monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
@@ -12929,7 +12923,7 @@ class TestIngestLagGate:
         assert w._consecutive_health_check_failures == 1
 
     def test_application_failure_is_counted_even_while_behind(self, monkeypatch):
-        w = _push_health_wrapper()
+        w, _ = _push_health_wrapper()
         w._probe_ref = "probe_ref"
         w._probe_started_at = time.time()
         monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
@@ -12943,7 +12937,7 @@ class TestIngestLagGate:
         assert w._consecutive_health_check_failures == 1
 
     def test_actor_crash_is_reported_even_while_behind(self, monkeypatch):
-        w = _push_health_wrapper()
+        w, _ = _push_health_wrapper()
         w._probe_ref = "probe_ref"
         w._probe_started_at = time.time()
         monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
