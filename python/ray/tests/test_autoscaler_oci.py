@@ -12,6 +12,7 @@ import sys
 import threading
 import types
 from typing import Any, Dict, List
+from unittest import mock
 
 import click
 import pytest
@@ -1241,14 +1242,22 @@ def test_tenancy_of_compartment_walks_parents(fake_oci):
     assert provider.client.tenancy_of_compartment(TENANCY) == TENANCY
 
 
-def test_tenancy_of_compartment_falls_back_to_caller_tenancy(fake_oci, caplog):
+def test_tenancy_of_compartment_falls_back_to_caller_tenancy(fake_oci):
     """Principals without `inspect compartments` on the ancestors get 404
     from get_compartment; the caller's own tenancy is used instead."""
+    from ray.autoscaler._private._oci import utils as oci_utils
+
     fake_oci.deny_get_compartment = True
     provider = _provider(fake_oci)
-    with caplog.at_level("WARNING"):
+    # Patch the module logger rather than using caplog: `import ray` sets
+    # propagate=False on the "ray" logger, so records from
+    # ray.autoscaler._private._oci never reach caplog's root-logger handler.
+    with mock.patch.object(oci_utils.logger, "warning") as warning:
         assert provider.client.tenancy_of_compartment(COMPARTMENT) == TENANCY
-    assert "assuming it belongs to the caller's tenancy" in caplog.text
+    assert any(
+        "assuming it belongs to the caller's tenancy" in call.args[0]
+        for call in warning.call_args_list
+    )
 
     # Instance principals know their tenancy through the signer.
     provider = _provider(
