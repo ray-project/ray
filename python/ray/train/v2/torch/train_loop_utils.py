@@ -276,7 +276,7 @@ def prepare_data_loader(
         at the beginning of each epoch before creating the DataLoader iterator
         is necessary to make shuffling work properly across multiple epochs.
         Otherwise, the same ordering will be always used.
-        See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
+        See: https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
 
     Example:
 
@@ -420,7 +420,7 @@ def enable_reproducibility(seed: int = 0) -> None:
     .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
         completely reproducible results across executions. To learn more, read
         the `PyTorch notes on randomness
-        <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+        <https://docs.pytorch.org/docs/stable/notes/randomness.html>`_.
     """
     torch.manual_seed(seed)
     random.seed(seed)

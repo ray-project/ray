@@ -258,6 +258,15 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
     "AWS Error SERVICE_UNAVAILABLE",
+    # PyArrow's S3FileSystem surfaces a transient credential-lookup failure
+    # (e.g. an empty IMDS response under load) as ACCESS_DENIED on the
+    # bucket-existence check that `create_dir` runs before a write, e.g.
+    # "AWS Error ACCESS_DENIED during HeadBucket operation" (DATA-3602).
+    # Deliberately not the bare "AWS Error ACCESS_DENIED": a genuine per-object
+    # denial (HeadObject) on a read must still fail fast so the credentials hint
+    # in `_handle_read_os_error` is shown promptly instead of after ~3 minutes
+    # of retries.
+    "AWS Error ACCESS_DENIED during HeadBucket operation",
 )
 
 DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
