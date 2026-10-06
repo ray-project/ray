@@ -457,11 +457,12 @@ def test_build_serve_application_puts_router_marker_on_ingress_args():
         pass
 
     @serve.deployment
+    @serve._router_application
     class Router:
         def __init__(self, helper):
             pass
 
-    app = Router.bind(Helper.bind())._as_router_application()
+    app = Router.bind(Helper.bind())
     deploy_args = _build_serve_application_deploy_args(app)
     assert {
         args["deployment_name"]: args["router_application"] for args in deploy_args
