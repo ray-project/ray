@@ -396,6 +396,31 @@ class TestDatasetSummary:
         # Median of [1, 0, 1].
         assert stats["approx_quantile[0]"] == pytest.approx(1.0)
 
+    def test_boolean_workarounds_handle_dictionary_encoding(self):
+        """The 0/1 casts for Std/ZeroPercentage must also apply to
+        dictionary-encoded booleans, which ``DataType.is_boolean_type`` treats
+        as boolean."""
+        import numpy as np
+        import pyarrow as pa
+
+        from ray.data._internal.arrow_aggregation import _zero_indicator
+        from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
+        from ray.data.aggregate import ZeroPercentage
+
+        flags = pa.array([True, False, True, None]).dictionary_encode()
+
+        indicator = _zero_indicator(pa.chunked_array([flags]))
+        assert indicator.to_pylist() == [0, 1, 0, None]
+
+        zero_count, non_null_count = ZeroPercentage(on="flag").aggregate_block(
+            pa.table({"flag": flags})
+        )
+        assert (zero_count, non_null_count) == (1, 3)
+
+        accessor = ArrowBlockColumnAccessor(pa.chunked_array([flags]))
+        ssd = accessor.sum_of_squared_diffs_from_mean(ignore_nulls=True, mean=2 / 3)
+        assert ssd == pytest.approx(np.sum((np.array([1, 0, 1]) - 2 / 3) ** 2))
+
     def test_zero_percentage_on_pandas_boolean_block(self):
         """ZeroPercentage must handle pandas blocks, whose column accessor
         returns a plain Python list rather than an Arrow container, including

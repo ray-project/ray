@@ -20,6 +20,7 @@ import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
+from ray.data._internal.arrow_aggregation import is_boolean_arrow_type
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
@@ -681,7 +682,7 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
             return None
 
         column = self._column
-        if pyarrow.types.is_boolean(column.type):
+        if is_boolean_arrow_type(column.type):
             # Treat booleans as 0/1: `subtract` has no boolean kernel.
             column = pac.cast(column, pyarrow.float64())
 
