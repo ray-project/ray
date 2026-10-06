@@ -5537,6 +5537,11 @@ class DeploymentState:
         info = self._target_state.info
         if info is None:
             return 0.0
+        if info.deployment_config.deployment_language != DeploymentLanguage.PYTHON:
+            # The self-health pusher is Python replica code, so a Java deployment
+            # never heartbeats. Counting it as owing would read as controller lag and
+            # suppress probe timeouts for replicas that only ever answer probes.
+            return 0.0
         running = self._replicas.count(states=[ReplicaState.RUNNING])
         if not running:
             return 0.0

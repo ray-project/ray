@@ -88,6 +88,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import LoggingConfig, ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
@@ -12824,6 +12825,7 @@ class TestIngestLagGate:
                 deployment_config=SimpleNamespace(
                     health_check_period_s=period_s,
                     autoscaling_config=autoscaling,
+                    deployment_language=DeploymentLanguage.PYTHON,
                 )
             )
         )
@@ -12897,6 +12899,16 @@ class TestIngestLagGate:
         self._publish(dsm, clock, 20)  # two thirds of them arrive
         clock[0] += dsm.PUSH_RATE_WINDOW_S
         assert not dsm.refresh_ingest_lag(1.0)
+
+    def test_a_java_deployment_owes_nothing(self):
+        """Its replicas are Java actors with no Python pusher, so counting them as
+        owing would read as controller lag and suppress their probe timeouts."""
+        ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=None)
+        assert ds.expected_push_rate() == 10.0  # Python: 100 replicas / 10s
+        ds._target_state.info.deployment_config.deployment_language = (
+            DeploymentLanguage.JAVA
+        )
+        assert ds.expected_push_rate() == 0.0
 
     def test_expected_rate_is_zero_without_a_target_or_replicas(self):
         ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=5.0, running=0)
