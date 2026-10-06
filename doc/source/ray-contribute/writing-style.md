@@ -372,7 +372,7 @@ The "Capitalize Ray components and product names" rule earlier in this guide cov
 
 ### Ray Core terms
 
-Look up the form here rather than deriving it. The `Core.Terms` Vale rule flags most of the "Not" column. To check a page by hand, run `vale doc/source/core/`.
+Look up the form here rather than deriving it. The `Core.Terms` and `Core.Capitalization` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/core/`.
 
 | Use | Not | Note |
 |---|---|---|
