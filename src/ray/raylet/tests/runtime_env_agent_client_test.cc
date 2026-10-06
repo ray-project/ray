@@ -847,6 +847,37 @@ TEST(RuntimeEnvAgentClientTest, RetriesOnConnectionClosedWhileIdle) {
   EXPECT_EQ(http_server_thread.accepts(), 2);
 }
 
+// A well-formed error response leaves the socket usable, so it must not cost a port.
+TEST(RuntimeEnvAgentClientTest, ReusesConnectionAfterNonOkStatus) {
+  int port = GetFreePort();
+  HttpServerThread http_server_thread(
+      [](const http::request<http::string_body> &request,
+         http::response<http::string_body> &response) {
+        ReplyOkKeepingAlive(request, response);
+        response.result(http::status::internal_server_error);
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+  auto client = MakeClient(ioc, port);
+
+  int failed = 0;
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
+    ASSERT_FALSE(successful);
+    failed += 1;
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful2) {
+      ASSERT_FALSE(successful2);
+      failed += 1;
+    });
+  });
+
+  ioc.run();
+  EXPECT_EQ(failed, 2);
+  EXPECT_EQ(http_server_thread.accepts(), 1);
+}
+
 // The whole point of reusing connections: many requests must not cost many ports.
 TEST(RuntimeEnvAgentClientTest, BoundsConnectionsUnderLoad) {
   int port = GetFreePort();

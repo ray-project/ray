@@ -196,7 +196,11 @@ class Connection : public std::enable_shared_from_this<Connection> {
 
   void Failed(ray::Status status) {
     Close();
-    Finish(/*reusable=*/false,
+    ReportFailure(std::move(status));
+  }
+
+  void ReportFailure(ray::Status status) {
+    Finish(connected_,
            [fail_callback = std::move(request_.fail_callback),
             status = std::move(status)]() mutable { fail_callback(std::move(status)); });
   }
@@ -259,18 +263,21 @@ class Connection : public std::enable_shared_from_this<Connection> {
     }
 
     // Decide the socket's fate before handing control back, because the callbacks may
-    // start the next request on this connection.
-    if (!res_.keep_alive()) {
+    // start the next request on this connection. `need_eof` covers both reasons a
+    // response forbids reuse: the agent asked to close, or the body ends only at EOF.
+    if (res_.need_eof()) {
       Close();
     }
 
     if (http::to_status_class(res_.result()) == http::status_class::successful) {
       Succeeded(std::move(res_).body());
     } else {
-      Failed(ray::Status::IOError(absl::StrCat("HTTP request returns non-ok status code ",
-                                               res_.result_int(),
-                                               ", body",
-                                               std::move(res_).body())));
+      // The agent answered, so the socket itself is still usable.
+      ReportFailure(
+          ray::Status::IOError(absl::StrCat("HTTP request returns non-ok status code ",
+                                            res_.result_int(),
+                                            ", body",
+                                            std::move(res_).body())));
     }
   }
 
