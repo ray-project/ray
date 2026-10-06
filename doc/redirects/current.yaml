@@ -951,6 +951,27 @@ redirects:
 - from: /core/fault_tolerance/*
   to: /core/fault-tolerance/:splat
   type: page
+- from: /ray-observability/reference/api.html
+  to: /core/api/state.html
+  type: page
+- from: /ray-observability/reference/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /cluster/running-applications/job-submission/jobs-package-ref.html
+  to: /core/api/job-submission.html
+  type: page
+- from: /cluster/running-applications/job-submission/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /core/compiled-graph/compiled-graph-api.html
+  to: /core/api/compiled-graph.html
+  type: page
+- from: /core/compiled-graph/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /cluster/running-applications/autoscaling/reference.html
+  to: /core/api/autoscaler.html
+  type: page
 - from: /ray-core/*
   to: /core/:splat
   type: page
