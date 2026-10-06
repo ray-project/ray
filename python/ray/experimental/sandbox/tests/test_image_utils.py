@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import mmap
@@ -5,6 +6,7 @@ import os
 import sys
 import tarfile
 import urllib.error
+import urllib.parse
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -824,6 +826,121 @@ def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
     pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
+
+
+# -- digest verification -----------------------------------------------------
+
+
+def _sha256(data):
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def _fake_registry(tamper=None):
+    """Blobs and manifests of a one-layer image, keyed by URL path.
+
+    ``tamper`` names the piece served with content other than its digest
+    promises: "layer", "config", "platform manifest", or "manifest".
+    """
+    layer = io.BytesIO()
+    with tarfile.open(fileobj=layer, mode="w") as tar:
+        payload = b"hello from the layer\n"
+        info = tarfile.TarInfo("hello.txt")
+        info.size = len(payload)
+        tar.addfile(info, io.BytesIO(payload))
+    layer = layer.getvalue()
+    config = json.dumps({"config": {"Env": ["PATH=/bin"], "Cmd": ["sh"]}}).encode()
+    manifest = json.dumps(
+        {
+            "schemaVersion": 2,
+            "config": {"digest": _sha256(config)},
+            "layers": [{"digest": _sha256(layer)}],
+        }
+    ).encode()
+    index = json.dumps(
+        {
+            "schemaVersion": 2,
+            "manifests": [
+                {
+                    "digest": _sha256(manifest),
+                    "platform": {"os": "linux", "architecture": get_platform_arch()},
+                }
+            ],
+        }
+    ).encode()
+    served = {
+        f"/v2/team/app/blobs/{_sha256(layer)}": layer,
+        f"/v2/team/app/blobs/{_sha256(config)}": config,
+        f"/v2/team/app/manifests/{_sha256(manifest)}": manifest,
+        "/v2/team/app/manifests/1.0": index,
+        f"/v2/team/app/manifests/{_sha256(index)}": index,
+    }
+    altered = {
+        "layer": f"/v2/team/app/blobs/{_sha256(layer)}",
+        "config": f"/v2/team/app/blobs/{_sha256(config)}",
+        "platform manifest": f"/v2/team/app/manifests/{_sha256(manifest)}",
+        "manifest": f"/v2/team/app/manifests/{_sha256(index)}",
+    }
+    if tamper is not None:
+        path = altered[tamper]
+        original = served[path]
+        # Still well-formed, so only the digest check can tell: the layer's
+        # file changes in place, and JSON gains a space.
+        if tamper == "layer":
+            served[path] = original.replace(b"hello", b"HELLO")
+        else:
+            served[path] = b"{ " + original[1:]
+        assert served[path] != original
+    return served, _sha256(index)
+
+
+def _serve(served):
+    def urlopen(req, timeout=None):
+        path = urllib.parse.urlparse(req.full_url).path
+        if path not in served:
+            raise urllib.error.HTTPError(req.full_url, 404, "not found", {}, None)
+        return io.BytesIO(served[path])
+
+    return urlopen
+
+
+@pytest.mark.parametrize(
+    "tamper,reference",
+    [
+        (None, "fake.registry.test/team/app:1.0"),
+        ("layer", "fake.registry.test/team/app:1.0"),
+        ("config", "fake.registry.test/team/app:1.0"),
+        ("platform manifest", "fake.registry.test/team/app:1.0"),
+        # The top-level manifest has a digest to check only when the image is
+        # referenced by one.
+        ("manifest", "fake.registry.test/team/app@{index_digest}"),
+    ],
+)
+def test_pulled_content_must_match_its_digest(tmp_path, tamper, reference):
+    """A blob that is not what its descriptor names is refused, and nothing is
+    cached: a mirror, a proxy or a truncated transfer must not decide what
+    every sandbox built from the image runs."""
+    served, index_digest = _fake_registry(tamper)
+    image = reference.format(index_digest=index_digest)
+    images_dir = str(tmp_path / "images")
+
+    with patch.object(image_utils, "get_registry_auth_headers", return_value={}):
+        with patch("urllib.request.urlopen", side_effect=_serve(served)):
+            if tamper is None:
+                image_dir = pull_and_extract_container_image(image, images_dir)
+                assert _image_file(image_dir, "hello.txt") == b"hello from the layer\n"
+                return
+            with pytest.raises(
+                SandboxCreationError, match=f"Digest mismatch on the {tamper}"
+            ):
+                pull_and_extract_container_image(image, images_dir)
+
+    image_dir = os.path.join(images_dir, sanitize_image_name(image))
+    assert not os.path.exists(os.path.join(image_dir, ".extracted"))
+    assert not any(".tmp." in name for name in os.listdir(images_dir))
+
+
+def test_an_unrecognized_digest_algorithm_is_not_a_mismatch():
+    image_utils._verify_digest("sha512:abcd", "ffff", "img", "layer")
 
 
 def test_dir_size_counts_hard_links_once(tmp_path):

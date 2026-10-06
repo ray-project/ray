@@ -359,6 +359,135 @@ Keep the following in mind:
 * **The mirror is authoritative.** Unlike Docker's registry-mirrors behavior, Ray does not fall back to Docker Hub. If the mirror is unreachable or does not contain the image, the pull fails.
 * **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow. If your mirror normally requires authentication, expose it to Ray through network-level access instead, such as a VPC endpoint or cluster-internal service.
 
+(ray-sandbox-modal-api)=
+
+## Modal-compatible API
+
+`ray.experimental.sandbox.modal` presents the [Modal Sandbox API](https://modal.com/docs/guide/sandbox) on top of Ray Sandboxes. Use it to move an existing Modal-based agent or RL workload onto a Ray cluster without rewriting its call sites, or when you want a live process handle rather than the buffered `ExecResult` that {func}`~ray.experimental.sandbox.create` returns.
+
+The two APIs differ in shape. The core API gives you an `ActorHandle`, so every call goes through `ray.get(...)`. The Modal-compatible API gives you an object with ordinary methods, and `exec()` returns a process you can stream from and write to while it runs:
+
+```python
+from ray.experimental.sandbox import modal
+
+sandbox = modal.Sandbox.create(image="python:3.13-slim", timeout=120)
+
+# Output arrives as the command produces it, not only when it exits.
+process = sandbox.exec("bash", "-c", "for i in 1 2 3; do echo step $i; sleep 1; done")
+for line in process.stdout:
+    print(line, end="")
+assert process.wait() == 0
+
+sandbox.terminate()
+```
+
+### Streams and stdin
+
+`exec()` returns a `ContainerProcess` whose `stdout` and `stderr` you can read whole or iterate, and whose `stdin` accepts input while the command runs:
+
+```python
+process = sandbox.exec("cat")
+process.stdin.write(b"piped in\n")
+process.stdin.write_eof()
+process.stdin.drain()
+print(process.stdout.read())  # "piped in\n"
+process.wait()
+```
+
+Pass `stdout=modal.StreamType.DEVNULL` to discard a stream, or `StreamType.STDOUT` to have it printed locally as it arrives. Use `text=False` for bytes instead of decoded text, and `bufsize=1` to iterate a line at a time.
+
+Reading consumes, as in Modal's client from 1.6: a `StreamReader` keeps one position, which `read()` and every loop over it share, so each byte comes back once. A second `read()` after the end returns empty, and a loop that breaks off part-way is continued exactly by the next `read()` or loop.
+
+### Filesystem
+
+`sandbox.filesystem` is a full path-based namespace. All paths must be absolute:
+
+```python
+sandbox.filesystem.write_text("hello\n", "/tmp/hello.txt")
+print(sandbox.filesystem.read_text("/tmp/hello.txt"))
+
+info = sandbox.filesystem.stat("/tmp/hello.txt")
+print(info.name, info.size, info.permissions)
+
+for entry in sandbox.filesystem.list_files("/tmp"):
+    print(entry.name, entry.type)
+
+sandbox.filesystem.make_directory("/tmp/a/b/c")
+sandbox.filesystem.copy_from_local("local.json", "/tmp/input.json")
+sandbox.filesystem.copy_to_local("/tmp/output.txt", "local_output.txt")
+sandbox.filesystem.remove("/tmp/a", recursive=True)
+```
+
+Failures raise typed errors — `SandboxFilesystemNotFoundError`, `SandboxFilesystemIsADirectoryError`, `SandboxFilesystemNotADirectoryError`, `SandboxFilesystemDirectoryNotEmptyError`, `SandboxFilesystemPathAlreadyExistsError`, and `SandboxFilesystemPermissionError` — all deriving from `SandboxFilesystemError`.
+
+Note that the write methods take the data first, matching Modal: `write_text(data, remote_path)`.
+
+### Async
+
+Every method blocks by default and also carries an `.aio` variant that runs on your own event loop:
+
+```python
+import asyncio
+from ray.experimental.sandbox import modal
+
+async def main():
+    sandbox = await modal.Sandbox.create.aio(image="python:3.13-slim")
+    process = await sandbox.exec.aio("echo", "hello")
+    async for line in process.stdout:
+        print(line, end="")
+    await process.wait.aio()
+    await sandbox.terminate.aio()
+
+asyncio.run(main())
+```
+
+An `.aio` call runs on your event loop, so an object's streams belong to the loop that first reads them. Don't read one object's streams through both the blocking and the `.aio` forms, and don't carry an object into a second `asyncio.run()`. A blocking call made inside a running event loop stalls that loop, and warns with `modal.exception.AsyncUsageWarning`, as on Modal.
+
+### Exit codes
+
+`Sandbox.returncode` reflects the most recent `wait()` or `poll()` and follows Modal's conventions:
+
+| Outcome | Exit code |
+| --- | --- |
+| Main process exited normally | Its own exit code |
+| Main process killed by signal *N* | `128 + N` |
+| Sandbox hit its `timeout` | `124`, and `wait()` raises `SandboxTimeoutError` |
+| Sandbox was terminated while running | `137`, and `wait()` raises `SandboxTerminatedError` |
+| `exec(timeout=...)` elapsed | `-1` on that process, with no exception raised |
+
+`ContainerProcess.returncode` differs deliberately from `Sandbox.returncode`: it raises `InvalidError` until you call `wait()`. To check a still-running process without blocking, use `poll()`.
+
+### What isn't supported
+
+A Ray sandbox is owned by the handle that created it and there's no hosted control plane behind it, so the parts of Modal's API that depend on one raise `NotImplementedError` rather than failing quietly:
+
+| Modal feature | Status |
+| --- | --- |
+| `Sandbox.create`, `exec`, `wait`, `poll`, `terminate`, `returncode` | Supported |
+| `stdout` / `stderr` / `stdin`, `StreamType`, `text`, `bufsize` | Supported |
+| `filesystem.*` except `watch()` | Supported |
+| `App`, and the `app` / `name` arguments | Accepted and ignored |
+| `Image` | Supported as a reference to a registry image or a local OCI tar, cached on each node like any sandbox image and pulled again with `force_build=True`. Layer builders such as `pip_install()` aren't available. |
+| `cpu`, `memory`, `timeout`, `workdir`, `env`, `block_network` | Supported |
+| `readiness_probe`, `wait_until_ready()` | Supported with `Probe.with_exec()`. `Probe.with_tcp()` isn't. |
+| `from_id`, `from_name`, `list`, `get_tags`, `set_tags` | Not supported — sandboxes aren't registered anywhere |
+| `tunnels`, `create_connect_token`, and the `*_ports` arguments | Not supported — the backend publishes no ports |
+| `snapshot_filesystem`, `snapshot_directory`, `mount_image`, `unmount_image` | Not supported |
+| `secrets`, `volumes`, `network_file_systems`, `proxy` | Not supported |
+| `cloud`, `region`, `idle_timeout`, `pty` | Not supported |
+| `gpu` | Not supported — no GPU device is passed into the sandbox, so a reservation would go unused |
+| `outbound_cidr_allowlist`, `outbound_domain_allowlist`, `inbound_cidr_allowlist`, `_experimental_outbound_policy` | Not supported — network access is all-or-nothing, so use `block_network=True`. An empty allowlist is refused too, since on Modal it allows nothing. |
+| `runtime` | `"gvisor"` accepted, since every sandbox runs under gVisor; `"vm"` isn't supported |
+| `filesystem.watch()` | Not supported — needs inotify inside the sandbox |
+
+Three behavioral differences worth knowing:
+
+* **Writable by default.** `Sandbox.create()` here defaults to `readonly=False`, so the filesystem is writable like Modal's. Writes land in a per-sandbox copy-on-write overlay, so the base image is never modified and sandboxes sharing an image can't see each other's changes. The core {func}`~ray.experimental.sandbox.create` API defaults to `readonly=True` instead.
+* **Network on by default.** Modal sandboxes have internet access unless you pass `block_network=True`, so this API defaults to `network="public"`: a network namespace private to the sandbox, which can still reach anything the node can reach, including other Ray nodes. The core API defaults to `network="none"`. Pass `block_network=True` for untrusted code.
+* **Unread output is held in memory, up to a bound.** Output you read as it's produced is never dropped. Output nobody reads stays in the sandbox's actor: the newest 64 MiB of each `exec` stream, the newest 256 MiB of the sandbox's own stdout and stderr, and 512 MiB across the sandbox, finished commands' oldest output first to go. Modal keeps an `exec` command's whole unread output on its servers. A reader that lost output reports it on `truncated` and `bytes_lost` rather than raising.
+
+The filesystem layer runs POSIX shell commands inside the sandbox, so the image needs `/bin/sh` and the usual `stat`, `readlink`, and `cat` utilities. Both busybox-based and GNU coreutils images work; a distroless image with no shell doesn't.
+
 ## Networking and DNS
 
 Sandboxes support four network modes. The default is `none`, which follows the safe-defaults principle. Use `public` when a sandbox needs internet access.
@@ -437,7 +566,7 @@ The Ray Sandboxes subsystem has the following layers:
 * **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
 * **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
 * **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
-* **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
+* **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray-<uid>/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
 ## Security and isolation model
 
