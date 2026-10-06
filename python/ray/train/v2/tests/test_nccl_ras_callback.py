@@ -14,11 +14,11 @@ import pytest
 
 from ray.train.v2._internal.callbacks import nccl_ras
 from ray.train.v2._internal.callbacks.nccl_ras import (
+    DiagnosticResult,
     NCCLRASCallback,
     RASPoller,
     RASQueryError,
     RASReport,
-    WorkerDump,
     dump_stack_trace,
     fan_out_to_workers,
     parse_ras_addr,
@@ -1386,7 +1386,7 @@ def test_stack_traces_upload_one_file_per_rank(monkeypatch, uploads):
     # wait times out with nothing to show for it.
     for worker in workers.values():
         worker.execute_async.assert_called_once_with(
-            nccl_ras.dump_stack_trace, nccl_ras._STACK_DUMP_TIMEOUT_S - 5
+            nccl_ras.dump_stack_trace, nccl_ras._STACK_DUMP_TIMEOUT_S - 1
         )
 
 
@@ -1654,8 +1654,8 @@ def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
     calls = scripted_fan_out(
         monkeypatch,
         [
-            WorkerDump(0, value={"ok": True, "stdout": "node 1 GPUs"}),
-            WorkerDump(2, value={"ok": True, "stdout": "node 2 GPUs"}),
+            DiagnosticResult(0, value={"ok": True, "stdout": "node 1 GPUs"}),
+            DiagnosticResult(2, value={"ok": True, "stdout": "node 2 GPUs"}),
         ],
     )
 
@@ -1663,13 +1663,16 @@ def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
 
     assert fs_path == "/exp/hang_detector/nvidia_smi"
     assert uploads == [
-        (fs_path, {"10.0.0.1.log": "node 1 GPUs", "10.0.0.2.log": "node 2 GPUs"})
+        (
+            fs_path,
+            {"node_10.0.0.1.log": "node 1 GPUs", "node_10.0.0.2.log": "node 2 GPUs"},
+        )
     ]
     ((queried, fn, fn_args, timeout_s),) = calls
     assert [worker.metadata.node_ip for worker in queried] == ["10.0.0.1", "10.0.0.2"]
     assert (fn, fn_args, timeout_s) == (
         nccl_ras.run_nvidia_smi,
-        (nccl_ras._NVIDIA_SMI_TIMEOUT_S - 5,),
+        (nccl_ras._NVIDIA_SMI_TIMEOUT_S - 1,),
         nccl_ras._NVIDIA_SMI_TIMEOUT_S,
     )
 
@@ -1677,9 +1680,11 @@ def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
 @pytest.mark.parametrize(
     "bad_dump,expected_reason",
     [
-        (WorkerDump(0, error="timed out after 30s"), "timed out after 30s"),
+        (DiagnosticResult(0, error="timed out after 30s"), "timed out after 30s"),
         (
-            WorkerDump(0, value={"ok": False, "reason": "`nvidia-smi -q` exited 9"}),
+            DiagnosticResult(
+                0, value={"ok": False, "reason": "`nvidia-smi -q` exited 9"}
+            ),
             "exited 9",
         ),
     ],
@@ -1693,14 +1698,15 @@ def test_nvidia_smi_failed_node_gets_placeholder(
     workers = [make_worker(0, node_ip="10.0.0.1"), make_worker(1, node_ip="10.0.0.2")]
     callback = make_diagnostics_callback(workers)
     scripted_fan_out(
-        monkeypatch, [bad_dump, WorkerDump(1, value={"ok": True, "stdout": "GPUs"})]
+        monkeypatch,
+        [bad_dump, DiagnosticResult(1, value={"ok": True, "stdout": "GPUs"})],
     )
 
     callback.dump_nodes_nvidia_smi()
 
     ((_, files),) = uploads
-    assert expected_reason in files["10.0.0.1.log"]
-    assert files["10.0.0.2.log"] == "GPUs"
+    assert expected_reason in files["node_10.0.0.1.log"]
+    assert files["node_10.0.0.2.log"] == "GPUs"
 
 
 def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
@@ -1711,7 +1717,7 @@ def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
 
     def local_fan_out(workers, fn, *fn_args, timeout_s):
         return [
-            WorkerDump(worker.distributed_context.world_rank, value=fn(*fn_args))
+            DiagnosticResult(worker.distributed_context.world_rank, value=fn(*fn_args))
             for worker in workers
         ]
 
@@ -1720,14 +1726,17 @@ def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
     callback.dump_nodes_nvidia_smi()
 
     ((_, files),) = uploads
-    assert files["10.0.0.1.log"] == "Driver Version : 580.65.06\n"
+    assert files["node_10.0.0.1.log"] == "Driver Version : 580.65.06\n"
 
 
 def test_stack_traces_upload_per_rank(monkeypatch, uploads):
     callback = make_diagnostics_callback()
     calls = scripted_fan_out(
         monkeypatch,
-        [WorkerDump(0, value="stack 0"), WorkerDump(1, error="timed out after 30s")],
+        [
+            DiagnosticResult(0, value="stack 0"),
+            DiagnosticResult(1, error="timed out after 30s"),
+        ],
     )
 
     fs_path = callback.dump_workers_stack_traces()
@@ -1739,7 +1748,7 @@ def test_stack_traces_upload_per_rank(monkeypatch, uploads):
     ((_, fn, fn_args, timeout_s),) = calls
     assert (fn, fn_args, timeout_s) == (
         nccl_ras.dump_stack_trace,
-        (nccl_ras._STACK_DUMP_TIMEOUT_S - 5,),
+        (nccl_ras._STACK_DUMP_TIMEOUT_S - 1,),
         nccl_ras._STACK_DUMP_TIMEOUT_S,
     )
 
