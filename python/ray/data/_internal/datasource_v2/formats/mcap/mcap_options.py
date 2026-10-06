@@ -34,20 +34,27 @@ if TYPE_CHECKING:
 # Name of the deterministic per-row id column (see ``MCAPReader``).
 ROW_ID_COLUMN = "row_id"
 
-# What one output row is. ``message`` is one message per row. The other three
-# pack the messages of one time window, one topic or the whole of one file into
-# a row of lists.
-RowType = Literal["message", "window", "topic", "file"]
+# What one output row is. ``message`` is one message per row. ``window``,
+# ``topic`` and ``file`` pack the messages of one time window, one topic or the
+# whole of one file into a row of lists. ``attachment`` and ``metadata`` are one
+# Attachment or Metadata record per row. Those records live outside the message
+# stream.
+RowType = Literal["message", "window", "topic", "file", "attachment", "metadata"]
 MESSAGE_GRANULARITY = "message"
 WINDOW_GRANULARITY = "window"
 TOPIC_GRANULARITY = "topic"
 FILE_GRANULARITY = "file"
+ATTACHMENT_GRANULARITY = "attachment"
+METADATA_GRANULARITY = "metadata"
 GRANULARITIES: Tuple[str, ...] = (
     MESSAGE_GRANULARITY,
     WINDOW_GRANULARITY,
     TOPIC_GRANULARITY,
     FILE_GRANULARITY,
+    ATTACHMENT_GRANULARITY,
+    METADATA_GRANULARITY,
 )
+RECORD_GRANULARITIES: Tuple[str, ...] = (ATTACHMENT_GRANULARITY, METADATA_GRANULARITY)
 
 _NS_PER_S = 1_000_000_000
 

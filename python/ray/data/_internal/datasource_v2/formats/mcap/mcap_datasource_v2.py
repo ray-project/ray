@@ -15,6 +15,8 @@ frame type, or at ``window`` granularity for the topics to decode.
 message. ``window``, ``topic`` and ``file`` pack the messages of a time window,
 a topic or a whole file into one row of parallel lists. Each such row decodes
 and checkpoints on its own. ``mcap_coarse_layout`` defines the layouts.
+``attachment`` and ``metadata`` give one row per record of that kind
+(``mcap_records``).
 
 Format specification: https://mcap.dev/spec
 """
@@ -56,6 +58,8 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     FILE_GRANULARITY,
     GRANULARITIES,
     MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
+    RECORD_GRANULARITIES,
     TOPIC_GRANULARITY,
     WINDOW_GRANULARITY,
     MCAPSelection,
@@ -67,6 +71,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
     DEFAULT_MAX_ROW_BYTES,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_records import record_schema
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
 from ray.data._internal.datasource_v2.formats.mcap.mcap_video_planning import (
     VideoPlanner,
@@ -132,7 +137,13 @@ class MCAPDatasourceV2(FileDataSourceV2):
     ):
         super().__init__(name="MCAP", category=DatasourceCategory.FILE_BASED)
         _check_import(self, module="mcap", package="mcap")
-        _validate_granularity(read_granularity, window, video)
+        _validate_granularity(
+            read_granularity,
+            window,
+            video,
+            selects_channels=bool(topics) or bool(message_types),
+            has_time_range=time_range is not None,
+        )
 
         # Captured against the original paths: resolution below strips the
         # ``local://`` scheme (see ``ParquetDatasourceV2``).
@@ -259,6 +270,10 @@ class MCAPDatasourceV2(FileDataSourceV2):
         assert sample is not None, "MCAP always receives a sample"
         if self._granularity == MESSAGE_GRANULARITY:
             schema = self._infer_message_schema(sample)
+        elif self._granularity in RECORD_GRANULARITIES:
+            schema = record_schema(
+                self._granularity, include_row_id=self._include_row_id
+            )
         else:
             schema = self._infer_coarse_schema(sample)
         partitioning = self.resolve_partitioning(sample)
@@ -396,13 +411,28 @@ def _listed_video_topics(
 
 
 def _validate_granularity(
-    granularity: str, window: Optional[WindowSpec], video: Optional[VideoOptions]
+    granularity: str,
+    window: Optional[WindowSpec],
+    video: Optional[VideoOptions],
+    *,
+    selects_channels: bool = False,
+    has_time_range: bool = False,
 ) -> None:
     """Reject option combinations that cannot mean anything."""
     if granularity not in GRANULARITIES:
         raise ValueError(
             f"read_granularity must be one of {list(GRANULARITIES)}, got "
             f"{granularity!r}"
+        )
+    if granularity in RECORD_GRANULARITIES and selects_channels:
+        raise ValueError(
+            "topics and message_types select messages; they do not apply to "
+            f"read_granularity={granularity!r}"
+        )
+    if granularity == METADATA_GRANULARITY and has_time_range:
+        raise ValueError(
+            "Metadata records carry no timestamp; time_range does not apply to "
+            "read_granularity='metadata'"
         )
     if granularity == WINDOW_GRANULARITY and window is None:
         raise ValueError(

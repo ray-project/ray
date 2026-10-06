@@ -10,10 +10,12 @@ reads each file's summary and emits listing rows:
 - ``topic``: one listing block per (file, topic), naming the chunks that hold
   the topic. Each block is one read task.
 - ``file``: one whole-file block per file.
+- ``attachment`` and ``metadata``: one row per indexed record of that kind.
 
 A file whose summary shows it cannot match the selection is dropped before any
-payload is read. A file whose summary is missing, has no chunk index or lists
-no channels is listed as one whole-file row.
+payload is read. A file whose summary cannot place what the granularity needs
+is listed as one whole-file row: no summary, chunk index or channel records for
+messages, and no record index for records.
 """
 
 import logging
@@ -34,8 +36,10 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
     FILE_GRANULARITY,
     MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     TOPIC_GRANULARITY,
     MCAPSelection,
 )
@@ -44,9 +48,12 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_pushdown import (
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     _DEFAULT_SUMMARY_IO_CONCURRENCY,
+    attachment_unit_id,
     chunk_run,
     chunk_unit_id,
+    metadata_unit_id,
     read_summaries,
+    record_run,
     topic_run_metadata,
     topic_unit_id,
 )
@@ -159,14 +166,23 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
     ) -> Iterator[FileManifest]:
         """The listing blocks of one file; nothing when it cannot match.
 
-        A file whose summary is missing, has no chunk index or lists no channels
-        is one whole-file row at every granularity, and the reader finds its
-        topics itself.
+        At the message-based granularities, a file whose summary is missing,
+        has no chunk index or lists no channels is one whole-file row, and the
+        reader finds its topics itself.
         """
         path = file_info.path
         assert file_info.size is not None
         size: int = file_info.size
 
+        if self._granularity in (ATTACHMENT_GRANULARITY, METADATA_GRANULARITY):
+            yield from self._record_manifests(
+                path,
+                size,
+                summary,
+                excluded_read_unit_ids,
+                selection or self._selection,
+            )
+            return
         if summary is None or not summary.chunk_indexes or not summary.channels:
             # Without a summary, a chunk index or channel records, nothing says
             # which chunk holds what.
@@ -195,6 +211,76 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         yield from self._chunk_manifests(
             file_info, summary, selected, excluded_read_unit_ids, selection
         )
+
+    def _record_manifests(
+        self,
+        path: str,
+        size: int,
+        summary: Optional["Summary"],
+        excluded_read_unit_ids: AbstractSet[str],
+        selection: MCAPSelection,
+    ) -> Iterator[FileManifest]:
+        """Listing rows for a file's Attachment or Metadata records, one each.
+
+        The summary indexes both kinds by byte offset. A file whose statistics
+        count zero records of the kind yields nothing. A file without a summary,
+        or whose records were written without an index, is one whole-file row
+        that the reader scans.
+        """
+        attachments = self._granularity == ATTACHMENT_GRANULARITY
+        if summary is not None and (
+            summary.attachment_indexes if attachments else summary.metadata_indexes
+        ):
+            yield from self._indexed_record_manifests(
+                path, size, summary, excluded_read_unit_ids, selection
+            )
+        elif not self._statistics_rule_out_records(summary):
+            yield _whole_file_manifest(path, size)
+
+    def _indexed_record_manifests(
+        self,
+        path: str,
+        size: int,
+        summary: "Summary",
+        excluded_read_unit_ids: AbstractSet[str],
+        selection: MCAPSelection,
+    ) -> Iterator[FileManifest]:
+        """One listing block with a row per indexed record.
+
+        Records in ``excluded_read_unit_ids`` are skipped, and so are
+        attachments whose ``log_time`` is outside ``time_range``.
+        """
+        runs = []
+        if self._granularity == ATTACHMENT_GRANULARITY:
+            for attachment in summary.attachment_indexes:
+                if not selection.overlaps(attachment.log_time, attachment.log_time):
+                    continue
+                if (
+                    attachment_unit_id(path, attachment.offset)
+                    in excluded_read_unit_ids
+                ):
+                    continue
+                runs.append(record_run(attachment.offset, attachment.data_size))
+        else:
+            for metadata in summary.metadata_indexes:
+                if metadata_unit_id(path, metadata.offset) in excluded_read_unit_ids:
+                    continue
+                runs.append(record_run(metadata.offset, metadata.length))
+        if runs:
+            yield FileManifest.construct_manifest(
+                paths=[path] * len(runs),
+                sizes=[size] * len(runs),
+                chunk_metadatas=[run.to_metadata() for run in runs],
+            )
+
+    def _statistics_rule_out_records(self, summary: Optional["Summary"]) -> bool:
+        """Whether the statistics count zero records of the granularity's kind."""
+        statistics = summary.statistics if summary is not None else None
+        if statistics is None:
+            return False
+        if self._granularity == ATTACHMENT_GRANULARITY:
+            return statistics.attachment_count == 0
+        return statistics.metadata_count == 0
 
     def _topic_manifests(
         self,

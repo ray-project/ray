@@ -10,8 +10,10 @@ from typing_extensions import override
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
 from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
     DEFAULT_MAX_LEAD_IN_NS,
     MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     MCAPSelection,
     VideoOptions,
     WindowSpec,
@@ -98,19 +100,21 @@ class MCAPScanner(
         """Whether ``count()`` can be answered from the summaries.
 
         A summary's ``Statistics`` counts messages per channel, so a selection
-        by topic or message type is exact from metadata. A time range is not:
-        the statistics say nothing about how many messages fall inside it.
-        Coarse rows are windows, topics or files, which no statistic counts.
-        Decoded rows are frames, not messages: ``fps`` thins them and
-        undecodable ones are dropped.
+        by topic or message type is exact from metadata. It also counts
+        attachments and metadata records. It cannot say how many records fall
+        inside a time range, and it does not count window, topic or file rows.
         """
-        return (
-            self.granularity == MESSAGE_GRANULARITY
-            and self.video is None
-            and self.limit is None
-            and self.partition_predicate is None
-            and self.selection.time_range is None
-        )
+        if self.limit is not None or self.partition_predicate is not None:
+            return False
+        if self.granularity == METADATA_GRANULARITY:
+            return True
+        if self.granularity in (MESSAGE_GRANULARITY, ATTACHMENT_GRANULARITY):
+            if self.video is not None:
+                # Decoded rows are frames, not messages: ``fps`` thins them and
+                # undecodable ones are dropped.
+                return False
+            return self.selection.time_range is None
+        return False
 
     @override
     def push_filters(self, predicate: Expr) -> Tuple["MCAPScanner", Optional[Expr]]:
