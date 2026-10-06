@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
 
 if PYDANTIC_INSTALLED:
-    from pydantic import field_validator
+    from pydantic import ConfigDict, field_validator
 
     # TODO(aguo): Use these pydantic models in the dashboard API as well.
     class ProcessGPUInfo(BaseModel):
@@ -61,12 +61,18 @@ if PYDANTIC_INSTALLED:
 
     class CpuTimes(BaseModel):
         """
-        CPU times information based on psutil.scputimes.
+        CPU times information based on psutil's ``Process.cpu_times()``.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
+
+        The four fields below are reported on every platform. Linux reports an
+        additional ``iowait``, so extras are preserved rather than dropped;
+        see ``MemoryInfo`` for why that matters.
         """
+
+        model_config = ConfigDict(extra="allow")
 
         user: float
         system: float
@@ -75,21 +81,31 @@ if PYDANTIC_INSTALLED:
 
     class MemoryInfo(BaseModel):
         """
-        Memory information based on psutil.svmem.
+        Memory information based on psutil's ``Process.memory_info()``.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
         to update the relevant code in the dashboard API and UI as well.
+
+        Only ``rss`` and ``vms`` are reported on every platform. The rest of
+        the field set is platform-specific: macOS reports ``pfaults`` and
+        ``pageins``, Linux reports ``shared``/``text``/``lib``/``data``/
+        ``dirty``, and Windows reports ``num_page_faults``/``wset``/... Those
+        fields are therefore carried through as extras instead of being
+        declared. Declaring one platform's fields here serializes them as
+        ``null`` on every other platform -- the dashboard renders each key of
+        this object and cannot format ``null`` -- while silently dropping the
+        fields the running platform does report.
         """
+
+        model_config = ConfigDict(extra="allow")
 
         rss: float
         vms: float
-        pfaults: Optional[float] = None
-        pageins: Optional[float] = None
 
     class MemoryFullInfo(MemoryInfo):
         """
-        Memory full information based on psutil.smem.
+        Memory full information based on psutil's ``Process.memory_full_info()``.
         NOTE: Backwards compatibility for this model must be maintained.
         If broken, the downstream dashboard API and UI code will break.
         If you must make a backwards-incompatible change, you must make sure
