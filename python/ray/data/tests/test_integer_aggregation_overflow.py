@@ -1,21 +1,235 @@
 from decimal import Decimal
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
 
 import ray
+from ray.data._internal.arrow_aggregation import (
+    integer_sum_metadata,
+    widen_integer_sum_partials,
+)
 from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
 from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    _fallback_aggregating_reduce_fn,
+    _fallback_aggregating_transformer,
     _make_vectorized_aggregating_reduce_fn,
     _make_vectorized_aggregating_transformer,
 )
 from ray.data._internal.pandas_block import PandasBlockColumnAccessor
-from ray.data.aggregate import Max, Mean, Sum, Unique
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data.aggregate import Count, Max, Mean, Min, Sum, Unique
+from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def _serialize_partial(partial):
+    partial = BlockAccessor.for_block(partial).to_arrow()
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, partial.schema) as writer:
+        writer.write_table(partial)
+    return pa.ipc.open_stream(sink.getvalue()).read_all()
+
+
+@pytest.mark.parametrize("invalid_name", ["missing", "duplicate"])
+def test_integer_sum_metadata_skips_invalid_fields(invalid_name):
+    table = pa.table(
+        [pa.array([1, 2]), pa.array([3, 4]), pa.array([5, 6]), pa.array([7, 8])],
+        names=["v", "duplicate", "duplicate", "last"],
+    ).replace_schema_metadata(
+        {
+            **integer_sum_metadata(invalid_name, pa.int64()),
+            **integer_sum_metadata("v", pa.int64()),
+            b"unrelated": b"preserved",
+        }
+    )
+    result = widen_integer_sum_partials(table)
+    assert result.column(0).type == pa.decimal128(38, 0)
+    assert result.column(0).to_pylist() == [Decimal(1), Decimal(2)]
+    assert result.schema.metadata == table.schema.metadata
+    for i in range(1, table.num_columns):
+        assert result.column(i).equals(table.column(i))
+
+
+@pytest.mark.parametrize("dtype", ["Int64", "UInt64"])
+@pytest.mark.parametrize("values", ["mixed_nulls", "all_nulls", "overflow"])
+@pytest.mark.parametrize("ignore_nulls", [False, True])
+@pytest.mark.parametrize("as_py", [False, True])
+def test_pandas_nullable_integer_sum(dtype, values, ignore_nulls, as_py):
+    value = 2**63 if dtype == "UInt64" else 2**62
+    data = {
+        "mixed_nulls": [value, None, value],
+        "all_nulls": [None, None],
+        "overflow": [value, value],
+    }[values]
+    result = PandasBlockColumnAccessor(pd.Series(data, dtype=dtype)).sum(
+        ignore_nulls=ignore_nulls, as_py=as_py
+    )
+    if values == "all_nulls":
+        assert result is None
+    elif values == "mixed_nulls" and not ignore_nulls:
+        if as_py:
+            assert result is None
+        else:
+            assert type(result) is float and np.isnan(result)
+    else:
+        assert result == 2 * value and type(result) is int
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+@pytest.mark.parametrize("unsigned", [False, True])
+@pytest.mark.parametrize("dictionary", [False, True])
+def test_integer_sum_schema_is_stable_across_reducers(
+    ray_start_regular_shared_2_cpus, fallback, unsigned, dictionary
+):
+    dtype = pa.uint64() if unsigned else pa.int64()
+    value = 2**63 if unsigned else 2**62
+    aggs = (Sum("v"), Sum("v"), Sum("v", alias_name="total"), Mean("v"))
+    if fallback:
+        aggs += (Unique("v"),)
+    map_builder = (
+        _fallback_aggregating_transformer
+        if fallback
+        else _make_vectorized_aggregating_transformer
+    )
+    reduce_builder = (
+        _fallback_aggregating_reduce_fn
+        if fallback
+        else _make_vectorized_aggregating_reduce_fn
+    )
+    transform = map_builder(("g",), aggs)
+    reduce_fn = reduce_builder(("g",), aggs)
+    assert transform is not None and reduce_fn is not None
+    groups = [[1, 2], [value, value], [None, None]]
+    if not unsigned:
+        groups += [[-value, -value], [value, -value]]
+    outputs = []
+    for g, values in enumerate(groups):
+        table = pa.table({"g": [g] * len(values), "v": pa.array(values, type=dtype)})
+        if dictionary:
+            table = table.set_column(1, "v", table["v"].dictionary_encode())
+        partial = _serialize_partial(transform(table))
+        output = list(reduce_fn(g, [[partial]]))[0]
+        assert isinstance(output, pa.Table)
+        assert not output.schema.metadata
+        row = output.to_pylist()[0]
+        expected = sum(v for v in values if v is not None) if g != 2 else None
+        for name in ["sum(v)", "sum(v)_2", "total"]:
+            assert output[name].type == pa.decimal128(38, 0)
+            assert row[name] == expected
+            assert row[name] is None or isinstance(row[name], Decimal)
+        assert row["mean(v)"] == (
+            expected / len(values) if expected is not None else None
+        )
+        outputs.append(output)
+    # Fallback Mean keeps its existing null type for an all-null partition.
+    # Integer sum fields must agree even when sibling fields need promotion.
+    sums = [output.select(["g", "sum(v)", "sum(v)_2", "total"]) for output in outputs]
+    assert pa.unify_schemas([output.schema for output in sums]) == sums[0].schema
+    assert pa.concat_tables(sums).num_rows == len(groups)
+
+
+@pytest.mark.parametrize("input_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("scale", [0, 2])
+def test_fallback_integer_sum_compaction_preserves_provenance(
+    ray_start_regular_shared_2_cpus, input_format, scale
+):
+    class CustomSum(Sum):
+        def _arrow_agg_spec(self):
+            return None
+
+    aggs = (
+        Sum("v"),
+        Sum("d"),
+        Mean("v"),
+        Count("v"),
+        Min("v"),
+        Max("v"),
+        CustomSum("small", alias_name="custom"),
+    )
+    table = pa.table(
+        {
+            "g": [0, 0, 1],
+            "v": pa.array([2**62, 2**62, 1]),
+            "d": pa.array([Decimal(2)] * 3, type=pa.decimal128(20, scale)),
+            "small": [1, 2, 3],
+        }
+    )
+    source = table if input_format == "arrow" else table.to_pandas()
+    accessor = BlockAccessor.for_block(source)
+    partial = _serialize_partial(accessor._aggregate(SortKey("g"), aggs))
+    compacted, metadata = BlockAccessor.for_block(partial)._combine_aggregated_blocks(
+        [partial, partial], SortKey("g"), aggs, finalize=False
+    )
+    assert compacted.schema.metadata == partial.schema.metadata
+    assert metadata.schema == compacted.schema
+    final, metadata = BlockAccessor.for_block(compacted)._combine_aggregated_blocks(
+        [_serialize_partial(compacted), partial], SortKey("g"), aggs
+    )
+    assert isinstance(final, pa.Table)
+    assert not final.schema.metadata
+    assert metadata.schema == final.schema
+    assert final["sum(v)"].type == pa.decimal128(38, 0)
+    assert final["sum(d)"].type == pa.decimal128(2 + scale, scale)
+    assert final["custom"].type == pa.int64()
+    rows = {row["g"]: row for row in final.to_pylist()}
+    assert rows[0]["sum(v)"] == 3 * 2**63
+    assert rows[1]["sum(v)"] == 3
+    assert rows[0]["sum(d)"] == Decimal(12)
+    assert rows[0]["mean(v)"] == float(2**62)
+    assert rows[0]["count(v)"] == 6
+    assert rows[0]["min(v)"] == rows[0]["max(v)"] == 2**62
+    assert rows[0]["custom"] == 9
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+def test_distributed_integer_sum_schema_and_parquet(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+    tmp_path,
+    fallback,
+):
+    # Many groups and explicit hash partitions force small and oversized sums
+    # into different output blocks. Row collection alone misses this failure.
+    values = [2**62 if g == 0 else g + 1 for g in range(16)] * 2
+    table = pa.table({"g": list(range(16)) * 2, "v": pa.array(values)})
+    aggs = (Sum("v"), Mean("v"), Max("v"))
+    if fallback:
+        aggs += (Unique("v"),)
+    result = (
+        ray.data.from_arrow([table] * 4)
+        .groupby("g", num_partitions=8)
+        .aggregate(*aggs)
+        .materialize()
+    )
+    # Legacy hash shuffle also emits empty blocks with an empty schema.
+    blocks = [block for block in ray.get(result.to_arrow_refs()) if block.num_rows > 0]
+    assert len(blocks) > 1
+    schema = result.schema().base_schema
+    for block in blocks:
+        assert block.schema == schema
+        assert not block.schema.metadata
+    assert schema.field("sum(v)").type == pa.decimal128(38, 0)
+    expected = {g: 8 * (2**62 if g == 0 else g + 1) for g in range(16)}
+
+    def check_rows(rows):
+        assert {row["g"]: row["sum(v)"] for row in rows} == expected
+        assert all(isinstance(row["sum(v)"], Decimal) for row in rows)
+        assert all(row["mean(v)"] == row["max(v)"] for row in rows)
+
+    check_rows(result.take_all())
+    batches = list(result.iter_batches(batch_size=100, batch_format="pyarrow"))
+    assert all(batch.schema == schema for batch in batches)
+    check_rows([row for batch in batches for row in batch.to_pylist()])
+    check_rows(result.sort("g").take_all())
+    check_rows(result.repartition(1).take_all())
+    result.write_parquet(str(tmp_path), min_rows_per_file=1000, concurrency=1)
+    check_rows(ray.data.read_parquet(str(tmp_path)).take_all())
 
 
 def _vectorized_result(tables, aggs):
@@ -32,6 +246,7 @@ def _vectorized_result(tables, aggs):
         serialized.append(pa.ipc.open_stream(sink.getvalue()).read_all())
     blocks = list(reduce_fn(0, [serialized]))
     assert len(blocks) == 1
+    assert isinstance(blocks[0], pa.Table)
     assert not blocks[0].schema.metadata
     return blocks[0]
 
@@ -60,8 +275,10 @@ def test_integer_sum_preserves_native_type(dtype):
     assert null is not None and not null.is_valid and null.type == expected_type
     table = pa.table({"g": [0, 0, 0], "v": column})
     result = _vectorized_result([table], (Sum("v"), Mean("v"), Max("v")))
-    assert result["sum(v)"].type == expected_type
-    assert result.to_pylist() == [{"g": 0, "sum(v)": 3, "mean(v)": 1.5, "max(v)": 2}]
+    assert result["sum(v)"].type == pa.decimal128(38, 0)
+    assert result.to_pylist() == [
+        {"g": 0, "sum(v)": Decimal(3), "mean(v)": 1.5, "max(v)": 2}
+    ]
 
 
 @pytest.mark.parametrize(
@@ -104,7 +321,7 @@ def test_overflow_and_cancellation_across_partials(unsigned, dictionary):
         negative = pa.table({"g": [0] * 4, "v": pa.array([-value] * 4, type=dtype)})
         result = _vectorized_result([table, negative], (Sum("v"), Mean("v")))
         assert result.to_pylist() == [{"g": 0, "sum(v)": 0, "mean(v)": 0.0}]
-        assert result["sum(v)"].type == pa.int64()
+        assert result["sum(v)"].type == pa.decimal128(38, 0)
 
 
 @pytest.mark.parametrize(
@@ -341,6 +558,7 @@ def _grouped_means(tables, *, ignore_nulls=True, on="v", keys=("g",)):
     partials = [transform(table) for table in tables]
     blocks = list(reduce_fn(0, [partials]))
     assert len(blocks) == 1
+    assert isinstance(blocks[0], pa.Table)
     rows = blocks[0].to_pylist()
     return {row[keys[0]]: row[f"mean({on})"] for row in rows}
 

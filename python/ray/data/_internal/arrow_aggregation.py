@@ -192,26 +192,24 @@ def widen_integer_sum_partials(block: "pa.Table") -> "pa.Table":
         if not key.startswith(_INTEGER_SUM_METADATA_PREFIX):
             continue
         name = key[len(_INTEGER_SUM_METADATA_PREFIX) :].decode()
-        widened = cast_column_for_exact_sum(block[name])
-        if widened is not None:
-            block = block.set_column(block.schema.get_field_index(name), name, widened)
+        index = block.schema.get_field_index(name)
+        # Metadata can outlive a projection, and duplicate names are ambiguous.
+        if index < 0:
+            continue
+        column = block.column(index)
+        if column.type != _INTEGER_SUM_TYPE:
+            widened = pc.cast(column, _INTEGER_SUM_TYPE)
+            block = block.set_column(
+                index, block.schema.field(index).with_type(_INTEGER_SUM_TYPE), widened
+            )
     return block
 
 
 def _finalize_sum(merged: "pa.Table", component_cols: Tuple[str, ...]):
-    col = merged[component_cols[0]]
-    # Reduced integer sums are decimal128. Cast back to the source's native
-    # signed/unsigned sum type when possible; retain decimals on overflow.
-    metadata = merged.schema.metadata or {}
-    output_type = metadata.get(
-        _INTEGER_SUM_METADATA_PREFIX + component_cols[0].encode()
-    )
-    if output_type is None:
-        return col
-    try:
-        return pc.cast(col, pa.type_for_alias(output_type.decode()), safe=True)
-    except pa.ArrowInvalid:
-        return col
+    # Integer partials were normalized to decimal128 before reduction. Retain
+    # that type even for small totals so all output partitions share a schema.
+    # Original decimal inputs keep their kernel's type and scale.
+    return merged[component_cols[0]]
 
 
 # --- spec builders (an AggregateFn picks one in its _arrow_agg_spec) ----------

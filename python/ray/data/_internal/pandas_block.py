@@ -291,7 +291,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         # matching ``ArrowBlockColumnAccessor.sum``.
         if pd.api.types.is_integer_dtype(self._column.dtype):
             if not ignore_nulls and bool(self._column.isna().any()):
-                return np.nan
+                return None if as_py else np.nan
             import pyarrow as pa
 
             from ray.data._internal.arrow_aggregation import sum_array

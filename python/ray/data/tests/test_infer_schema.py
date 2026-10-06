@@ -237,21 +237,18 @@ class TestAggregate:
         )
 
     @pytest.mark.parametrize("value", [1, 2**62])
-    def test_integer_sum_resolves_output_schema_from_values(
+    def test_integer_sum_materializes_consistent_output_schema(
         self, ray_start_regular_shared_2_cpus, value
     ):
         table = pa.table({"k": ["x"] * 8, "a": pa.array([value] * 8, type=pa.int64())})
         ds = ray.data.from_arrow(table).groupby("k").aggregate(Sum("a"))
-        # Input type alone cannot determine whether the sum will overflow.
+        # Sum.output_field remains conservative without grouping context.
         assert _static_schema(ds) is None
         result = ds.materialize()
         schema = result.schema().base_schema
         assert schema.names == ["k", "sum(a)"]
         output_type = schema.field("sum(a)").type
-        if value == 1:
-            assert output_type == pa.int64()
-        else:
-            assert pa.types.is_decimal(output_type) and output_type.scale == 0
+        assert output_type == pa.decimal128(38, 0)
         assert int(result.take_all()[0]["sum(a)"]) == value * 8
 
 

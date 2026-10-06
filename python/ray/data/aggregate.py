@@ -616,6 +616,11 @@ class Sum(
 ):
     """Defines sum aggregation.
 
+    Grouped integer sums use ``decimal128(38, 0)`` columns and return
+    :class:`~decimal.Decimal` values, including for totals that fit in int64.
+    This keeps the output schema consistent across partitions. ``Dataset.sum``
+    returns Python integers for integer inputs.
+
     Example:
 
         .. testcode::
@@ -678,9 +683,9 @@ class Sum(
             except (KeyError, ValueError):
                 return None
             if integer_sum_type(input_type) is not None:
-                # Integer sums keep their native type when representable and
-                # widen to decimal128 on overflow. The output type therefore
-                # depends on the values and cannot be inferred from the schema.
+                # Keyed integer sums use decimal128; keyless sums can retain
+                # native integers. This method has no grouping context, so
+                # conservatively defer the schema to the actual output blocks.
                 return None
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.sum)
 

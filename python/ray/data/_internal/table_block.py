@@ -337,6 +337,35 @@ class TableBlockAccessor(BlockAccessor):
         if self.num_rows() == 0 and not is_global_aggregation:
             return self._empty_table()
 
+        from ray.data._internal.arrow_aggregation import (
+            integer_sum_metadata,
+            widen_integer_sum_partials,
+        )
+        from ray.data.aggregate import Sum, _is_integer_aggregation_input
+
+        sum_metadata = {}
+        if not is_global_aggregation:
+            import pyarrow as pa
+
+            schema = self.schema()
+            for agg, name in zip(aggs, resolved_agg_col_names):
+                column = agg.get_target_column() if type(agg) is Sum else None
+                if column is not None and _is_integer_aggregation_input(
+                    self._table, column
+                ):
+                    input_type = (
+                        schema.field(column).type
+                        if isinstance(schema, pa.Schema)
+                        else (
+                            pa.uint64()
+                            if pd.api.types.is_unsigned_integer_dtype(
+                                self._table[column].dtype
+                            )
+                            else pa.int64()
+                        )
+                    )
+                    sum_metadata.update(integer_sum_metadata(name, input_type))
+
         builder = self.builder()
 
         # TODO add multi-threading support
@@ -376,9 +405,15 @@ class TableBlockAccessor(BlockAccessor):
 
             builder.add(row)
 
-        # TODO convert to Arrow to avoid during combination (protocol
-        #      relies on blocks being Arrow)
-        return builder.build()
+        result = builder.build()
+        if sum_metadata:
+            # Only built-in grouped integer sums use a fixed decimal type.
+            # Keep provenance through serialization and intermediate reductions.
+            result = BlockAccessor.for_block(result).to_arrow()
+            result = widen_integer_sum_partials(
+                result.replace_schema_metadata(sum_metadata)
+            )
+        return result
 
     @classmethod
     def _combine_aggregated_blocks(
@@ -408,6 +443,10 @@ class TableBlockAccessor(BlockAccessor):
             If key is None then the k column is omitted.
         """
 
+        from ray.data._internal.arrow_aggregation import (
+            _INTEGER_SUM_METADATA_PREFIX,
+            widen_integer_sum_partials,
+        )
         from ray.data._internal.arrow_block import ArrowBlockAccessor
 
         stats = BlockExecStats.builder()
@@ -428,6 +467,17 @@ class TableBlockAccessor(BlockAccessor):
 
         # Normalize blocks to make sure these are of the Arrow type
         blocks = cls.normalize_block_types(blocks, target_block_type=BlockType.ARROW)
+
+        sum_metadata = {}
+        if sort_key.get_columns():
+            # A column is integer-derived only if all contributing partials
+            # record that provenance. Original decimal sums remain unmarked.
+            sum_metadata = {
+                key: value
+                for key, value in (blocks[0].schema.metadata or {}).items()
+                if key.startswith(_INTEGER_SUM_METADATA_PREFIX)
+                and all(key in (block.schema.metadata or {}) for block in blocks)
+            }
 
         # Combine input blocks, sort resulting block (if needed)
         #
@@ -473,6 +523,12 @@ class TableBlockAccessor(BlockAccessor):
             builder.add(row)
 
         final_block = builder.build()
+        if sum_metadata:
+            final_block = widen_integer_sum_partials(
+                final_block.replace_schema_metadata(sum_metadata)
+            )
+            if finalize:
+                final_block = final_block.replace_schema_metadata(None)
 
         return final_block, BlockMetadataWithSchema.from_block(
             final_block, block_exec_stats=stats.build()
