@@ -467,7 +467,7 @@ A Ray sandbox is owned by the handle that created it and there's no hosted contr
 | `stdout` / `stderr` / `stdin`, `StreamType`, `text`, `bufsize` | Supported |
 | `filesystem.*` except `watch()` | Supported |
 | `App`, and the `app` / `name` arguments | Accepted and ignored |
-| `Image` | Supported as a reference to a registry image or a local OCI tar, cached on each node like any sandbox image and pulled again with `force_build=True`. Layer builders such as `pip_install()` aren't available. |
+| `Image` | Supported as a reference to a registry image or a local root-filesystem tar (such as `docker export` output, not a `docker save` archive), which carries no Env, CMD or WORKDIR. Cached on each node like any sandbox image and pulled again with `force_build=True`. Layer builders such as `pip_install()` aren't available. |
 | `cpu`, `memory`, `timeout`, `workdir`, `env`, `block_network` | Supported |
 | `readiness_probe`, `wait_until_ready()` | Supported with `Probe.with_exec()`. `Probe.with_tcp()` isn't. |
 | `from_id`, `from_name`, `list`, `get_tags`, `set_tags` | Not supported — sandboxes aren't registered anywhere |
@@ -566,7 +566,7 @@ The Ray Sandboxes subsystem has the following layers:
 * **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
 * **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
 * **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
-* **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray-<uid>/sandbox/images`, and builds OCI `config.json` runtime specifications.
+* **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local root-filesystem tar archives, caches each as an EROFS image under `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
 ## Security and isolation model
 

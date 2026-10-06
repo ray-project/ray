@@ -943,11 +943,11 @@ def pull_and_extract_container_image(
 def _verify_digest(expected: str, actual_sha256: str, image: str, what: str) -> None:
     """Refuse content that does not match the digest the manifest named for it.
 
-    Blobs are content-addressed, so a mismatch means a mirror, a proxy or a
-    truncated transfer handed back something other than what was asked for;
-    caching it would run that in every sandbox built from this image. Only
-    ``sha256:`` is checked: an algorithm this code does not implement is
-    passed over rather than treated as a mismatch.
+    A registry names each blob by the sha256 of its bytes, so a mismatch
+    means a mirror, a proxy or a truncated transfer handed back something
+    other than what was asked for; caching it would run that in every sandbox
+    built from this image. Only ``sha256:`` is checked: an algorithm this code
+    does not implement is passed over rather than treated as a mismatch.
 
     Args:
         expected: The descriptor's digest, ``algorithm:hex``.

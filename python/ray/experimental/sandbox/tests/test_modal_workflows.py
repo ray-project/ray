@@ -252,12 +252,11 @@ def test_a_sandbox_that_outlives_its_timeout_reports_it():
 def test_concurrent_sandboxes_from_one_image_stay_isolated():
     """The storage model, asserted from the outside.
 
-    Every sandbox from an image shares one read-only root filesystem, and since
-    the content-addressed store landed, identical files across images share an
-    inode. Both are safe only because a container's writes go to its own
-    overlay. If that ever stopped holding, this is the test that catches it:
-    each sandbox writes to the *same path* and must still read back its own
-    value.
+    Every sandbox from an image mounts the same cached, read-only EROFS image
+    as its root filesystem. That is safe only because a container's writes go
+    to its own overlay. If that ever stopped holding, this is the test that
+    catches it: each sandbox writes to the *same path* and must still read
+    back its own value.
     """
     count = 4
 
