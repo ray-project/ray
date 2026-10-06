@@ -19,7 +19,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.interfaces import DatasetCheckpointConfig
 from ray.data.context import DataContext
 from ray.data.datasource import PartitionStyle, PathPartitionFilter
-from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.datasource.path_util import _filesystem_root_from_uri
 
 logger = logging.getLogger(__name__)
 
@@ -273,9 +273,9 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         self._id_column = checkpoint_config.id_column
         if checkpoint_config.override_filesystem:
             self._fs = checkpoint_config.override_filesystem
-            # Strip the URI scheme (e.g., `s3://`), since pyarrow filesystems
-            # expect paths without it.
-            self._checkpoint_path_unwrapped = _unwrap_protocol(
+            # Convert the URI (e.g., `s3://bucket/path`) to the path form that
+            # pyarrow filesystems expect, matching `FileSystem.from_uri` below.
+            self._checkpoint_path_unwrapped = _filesystem_root_from_uri(
                 checkpoint_config.checkpoint_path
             )
         else:
