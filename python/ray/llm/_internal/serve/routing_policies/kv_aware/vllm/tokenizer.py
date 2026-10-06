@@ -3,9 +3,9 @@ from typing import Any, Dict, List, Optional, Union
 import jinja2
 from pydantic import ValidationError
 from vllm.entrypoints.chat_utils import load_chat_template
-from vllm.entrypoints.openai.cli_args import FrontendArgs
-from vllm.entrypoints.openai.engine.protocol import ErrorResponse
-from vllm.exceptions import VLLMClientError
+from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.serve.engine.protocol import ErrorResponse
+from vllm.exceptions import VLLMClientError, VLLMValidationError
 from vllm.renderers import renderer_from_config
 from vllm.renderers.inputs.preprocess import extract_prompt_components
 from vllm.renderers.online_renderer import OnlineRenderer
@@ -76,7 +76,10 @@ def build_tokenize_request(
             "falling back to token-less routing."
         )
         return None
-    except ValidationError as e:
+    except (ValidationError, VLLMValidationError) as e:
+        # vLLM's request validators can reject sampling params before prompt
+        # rendering. Route without tokens so the engine returns its normal
+        # client error; failing the router consultation would become a 500.
         logger.warning("Unsupported tokenize request, falling back: %s", e)
         return None
 

@@ -32,6 +32,7 @@ pre_commit() {
     shellcheck
     docstyle
     check-import-order
+    data-tests-location
     check-cpp-files-inclusion
     end-of-file-fixer
     check-json
@@ -149,6 +150,10 @@ documentation_style() {
 
 doc_no_new_rst() {
   python doc/test_no_new_rst.py
+}
+
+ray_repo_links() {
+  python ci/lint/check_ray_repo_links.py
 }
 
 "$@"
