@@ -366,11 +366,7 @@ def build_openai_router_app(
     from ray.llm._internal.serve.core.ingress.applications import RouterApplication
 
     args = OpenAIRouterArgs.model_validate(router_args)
-    return (
-        serve.deployment(
-            RouterApplication,
-            **RouterApplication.get_deployment_options(),
-        )
-        .bind(model_applications=args.model_applications)
-        ._as_router_application()
-    )
+    return serve.deployment(
+        RouterApplication,
+        **RouterApplication.get_deployment_options(),
+    ).bind(model_applications=args.model_applications)

@@ -29,7 +29,6 @@ def test_builds_marked_router_application():
     assert app._bound_deployment.init_kwargs == {
         "model_applications": model_applications
     }
-    assert app._is_router_application
     assert app._ingress_request_router is None
     built = build_app(app, name="main", route_prefix="/")
     assert built.is_router_application
@@ -77,7 +76,7 @@ def test_builder_accepts_declarative_yaml_args():
         {"model_applications": {"model-a": "llm-model-a"}},
     )
 
-    assert app._is_router_application
+    assert build_app(app, name="main", route_prefix="/").is_router_application
     assert app._bound_deployment.init_kwargs == {
         "model_applications": {"model-a": "llm-model-a"}
     }
