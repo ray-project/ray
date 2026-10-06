@@ -761,7 +761,7 @@ class PushedHealth(NamedTuple):
     checked_at: float
     received_at: float
     healthy: bool
-    consecutive_failures: Optional[int]
+    consecutive_failures: int
 
 
 class HealthSource(Enum):
@@ -806,7 +806,7 @@ class PushedHealthTracker:
         self,
         checked_at: float,
         healthy: bool,
-        consecutive_failures: Optional[int] = None,
+        consecutive_failures: int,
     ) -> None:
         """Stash the newest pushed result.
 
@@ -847,16 +847,14 @@ class PushedHealthTracker:
         return pushed
 
     @staticmethod
-    def _mirror_failures(pushed: PushedHealth, probed_failures: int) -> Optional[int]:
-        """The count to apply for a pushed failure, or None to let the caller count.
+    def _mirror_failures(pushed: PushedHealth, probed_failures: int) -> int:
+        """The count to apply for a pushed failure.
 
         The replica owns the count, so the controller copies it rather than adding a
         strike of its own; the same count arriving twice is then simply the same
         count. max() stops a push stream that starts mid-run from lowering what the
         controller already probed.
         """
-        if pushed.consecutive_failures is None:
-            return None
         return max(probed_failures, pushed.consecutive_failures)
 
     def resolve(
@@ -1891,7 +1889,7 @@ class ActorReplicaWrapper:
         self,
         checked_at: float,
         healthy: bool,
-        consecutive_failures: Optional[int] = None,
+        consecutive_failures: int,
     ) -> None:
         """Stash the replica's latest pushed self-health observation."""
         self._pushed_health_tracker.record(checked_at, healthy, consecutive_failures)
@@ -2418,7 +2416,7 @@ class DeploymentReplica:
         self,
         checked_at: float,
         healthy: bool,
-        consecutive_failures: Optional[int] = None,
+        consecutive_failures: int,
     ) -> None:
         """Stash the replica's pushed self-health for the next health check."""
         self._actor.record_pushed_health(checked_at, healthy, consecutive_failures)
@@ -5499,7 +5497,7 @@ class DeploymentState:
         replica_id: ReplicaID,
         checked_at: float,
         healthy: bool,
-        consecutive_failures: Optional[int] = None,
+        consecutive_failures: int,
     ) -> None:
         """Hand a pushed self-health result to the replica it describes.
 
@@ -6559,7 +6557,7 @@ class DeploymentStateManager:
         replica_id: ReplicaID,
         checked_at: float,
         healthy: bool,
-        consecutive_failures: Optional[int] = None,
+        consecutive_failures: int,
     ) -> None:
         """Route a replica's pushed self-health to the replica itself."""
         deployment_state = self._deployment_states.get(replica_id.deployment_id)

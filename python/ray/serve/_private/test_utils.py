@@ -813,7 +813,7 @@ class MockReplicaActorWrapper:
         self,
         checked_at: float,
         healthy: bool,
-        consecutive_failures: Optional[int] = None,
+        consecutive_failures: int,
     ) -> None:
         """Match ActorReplicaWrapper, stubbing only the verdict.
 

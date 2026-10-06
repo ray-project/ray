@@ -412,7 +412,7 @@ class ServeController:
         replica_id: ReplicaID,
         checked_at: float,
         healthy: bool,
-        consecutive_failures: Optional[int] = None,
+        consecutive_failures: int,
     ):
         """Self-health heartbeat from a replica, standing in for a pull probe."""
         self.deployment_state_manager.record_replica_health(
