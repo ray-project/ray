@@ -781,6 +781,20 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(1, 0, "minuscule")
         test_concurrency(33, 0, "small")
 
+    def testExplicitConcurrencyGroup(self):
+        # The explicit group wins over the resource-based lookup.
+        with patch(
+            "ray_release.buildkite.concurrency.get_test_resources",
+            lambda *args, **kwargs: (12800, 9),
+        ):
+            test = Test(
+                {"name": "test_1", "concurrency_group": "llm-serve", "concurrency": 4}
+            )
+            self.assertEqual(get_concurrency_group(test), ("llm-serve", 4))
+
+            test = Test({"name": "test_1", "concurrency_group": "llm-serve"})
+            self.assertEqual(get_concurrency_group(test), ("llm-serve", 1))
+
     def testConcurrencyGroupSmokeTest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cluster_config_full = {

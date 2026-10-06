@@ -4655,6 +4655,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4676,6 +4678,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4703,6 +4707,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4729,6 +4735,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4750,6 +4758,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4775,6 +4785,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4798,6 +4810,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4824,6 +4838,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4844,6 +4860,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4864,6 +4882,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4886,6 +4906,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4907,6 +4929,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4928,6 +4952,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4950,6 +4976,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4970,6 +4998,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -4990,6 +5020,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5014,6 +5046,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5035,6 +5069,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5056,6 +5092,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5077,6 +5115,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5098,6 +5138,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5123,6 +5165,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5144,6 +5188,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5169,6 +5215,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5191,6 +5239,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5213,6 +5263,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:
@@ -5283,6 +5335,8 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
+  concurrency_group: llm-serve-h100
+  concurrency: 4
 
   cluster:
     byod:

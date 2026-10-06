@@ -101,6 +101,11 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
+    # An explicit group lets tests that share a scarce resource cap how many
+    # of them run at once, independent of their compute config.
+    if test.get("concurrency_group"):
+        return test["concurrency_group"], test.get("concurrency", 1)
+
     if test.get("env", None) == "gce":
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
     else:
