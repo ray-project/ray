@@ -29,6 +29,7 @@ steps:
       cuda:
         - "12.3.2-cudnn9"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -114,6 +115,7 @@ steps:
       gpu:
         - "cu12.3.2-cudnn9"
         - "cu13.0.0-cudnn"
+        - "cu13.3.1-cudnn"
       python:
         # This list should be kept in sync with the list of supported Python in
         # release test suite
@@ -174,6 +176,7 @@ steps:
       gpu:
         - cu12.3.2-cudnn9
         - cu13.0.0-cudnn
+        - cu13.3.1-cudnn
       python:
         - "3.10"
         - "3.11"
