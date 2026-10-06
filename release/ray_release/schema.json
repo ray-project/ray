@@ -58,6 +58,13 @@
 				},
 				"alert": {
 					"type": "string"
+				},
+				"concurrency_group": {
+					"type": "string"
+				},
+				"concurrency": {
+					"type": "integer",
+					"minimum": 1
 				}
 			},
 			"required": [
