@@ -91,7 +91,7 @@ Python is 👍
 
 A runtime environment can be described by a Python `dict`:
 
-```{literalinclude} /ray-core/doc_code/runtime_env_example.py
+```{literalinclude} /core/doc_code/runtime_env_example.py
 :language: python
 :start-after: __runtime_env_pip_def_start__
 :end-before: __runtime_env_pip_def_end__
@@ -99,7 +99,7 @@ A runtime environment can be described by a Python `dict`:
 
 Alternatively, you can use {class}`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>`:
 
-```{literalinclude} /ray-core/doc_code/runtime_env_example.py
+```{literalinclude} /core/doc_code/runtime_env_example.py
 :language: python
 :start-after: __strong_typed_api_runtime_env_pip_def_start__
 :end-before: __strong_typed_api_runtime_env_pip_def_end__
@@ -119,7 +119,7 @@ There are two primary scopes for which you can specify a runtime environment:
 
 You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using the {ref}`Ray Jobs API <jobs-overview>`, or submitting a {ref}`KubeRay RayJob <kuberay-rayjob-quickstart>`:
 
-```{literalinclude} /ray-core/doc_code/runtime_env_example.py
+```{literalinclude} /core/doc_code/runtime_env_example.py
 :language: python
 :start-after: __ray_init_start__
 :end-before: __ray_init_end__
@@ -178,7 +178,7 @@ The default is option 1. To change the behavior to option 2, add `"eager_install
 
 You can specify different runtime environments per-actor or per-task using `.options()` or the `@ray.remote` decorator:
 
-```{literalinclude} /ray-core/doc_code/runtime_env_example.py
+```{literalinclude} /core/doc_code/runtime_env_example.py
 :language: python
 :start-after: __per_task_per_actor_start__
 :end-before: __per_task_per_actor_end__

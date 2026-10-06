@@ -4,7 +4,7 @@ Deploy on a Ray cluster whose worker nodes have gVisor's ``runsc`` on PATH:
 
     serve run ray.experimental.sandbox.http.app:build_app
 
-or as an Anyscale service (see ``doc/source/ray-core/sandboxes.md``). Bearer
+or as an Anyscale service (see ``doc/source/core/sandboxes.md``). Bearer
 auth is enforced when the environment variable named by
 ``SandboxAPISettings.token_env_var`` (default ``RAY_SANDBOX_API_TOKEN``) is
 set; an Anyscale service can leave it unset because the platform edge already
@@ -228,8 +228,11 @@ def create_app(
     async def require_bearer_token(request: Request) -> None:
         if token is None:
             return
-        provided = request.headers.get("authorization", "")
-        if not hmac.compare_digest(provided, f"Bearer {token}"):
+        # Compared as bytes: compare_digest refuses str with non-ASCII
+        # characters, which a client can put in the header. Starlette
+        # decodes headers as latin-1, so encoding back yields the raw value.
+        provided = request.headers.get("authorization", "").encode("latin-1")
+        if not hmac.compare_digest(provided, f"Bearer {token}".encode("utf-8")):
             raise _ApiError(401, "unauthorized", "invalid or missing bearer token")
 
     public = APIRouter(prefix="/api/v1")
