@@ -163,7 +163,7 @@ class UsageCallback(ExecutionCallback):
         return UsageInfo(
             id=self._execution_id,
             started_at=self._started_at,
-            env=collector.collect_env(),
+            env=collector.collect_env(self._executor),
             workload=self._workload,
             performance=performance,
             detected_issues=collector.collect_issues(
