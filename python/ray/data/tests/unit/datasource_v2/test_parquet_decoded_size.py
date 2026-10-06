@@ -1,9 +1,9 @@
 """Tests for Arrow decoded-size estimation from Parquet footer metadata.
 
 The point of the estimator is accuracy against what a read task actually
-materializes, so most of these compare against a real ``pa.Table.nbytes`` rather
-than against a hand-computed formula -- a formula test would pass just as happily
-with the wrong formula.
+materializes, so most of these compare against the buffers a real decode
+allocates rather than against a hand-computed formula -- a formula test would
+pass just as happily with the wrong formula.
 """
 
 import datetime
@@ -17,7 +17,6 @@ from ray.data._internal.datasource_v2.chunkers.parquet_decoded_size import (
     build_leaf_profiles,
     decoded_size_or_fallback,
     estimate_row_group_decoded_size,
-    parquet_leaf_fixed_width,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_size_statistics import (
     LeafSizeStats,
@@ -32,15 +31,19 @@ pq = pytest.importorskip("pyarrow.parquet")
 
 N = 5000
 
-# Arrow allocates a validity bitmap for some null-free optional leaves anyway, so
-# the estimate can sit a bitmap's worth (1/8 byte per value) below the real
-# nbytes. That is ~1.5% on an 8-byte type and irrelevant against a bin budget of
-# hundreds of megabytes, but it means "exact" here means "within a bitmap".
+# Tolerance for the end-to-end bin tests only, which compare totals across
+# several row groups and bins; the per-case matrix below is exact.
 _TOLERANCE = 0.02
 
 
+def _tensor_table():
+    from ray.data.extensions.tensor_extension import ArrowTensorArray
+
+    return pa.table({"t": ArrowTensorArray.from_numpy(np.zeros((N, 4), np.float32))})
+
+
 def _cases():
-    """The measured case matrix: every branch of the width table and the gate."""
+    """The measured case matrix: every leaf layout and nesting shape."""
     return {
         "int64-plain": pa.table({"a": pa.array(np.arange(N, dtype="int64"))}),
         # Dictionary-encoded on disk, so uncompressed size badly understates it.
@@ -59,6 +62,10 @@ def _cases():
         "string-large-values": pa.table(
             {"a": pa.array(["x" * 50_000 for _ in range(20)])}
         ),
+        # 64-bit offsets, recovered from the embedded Arrow schema.
+        "large-string": pa.table(
+            {"a": pa.array([f"v{i}" for i in range(N)], pa.large_string())}
+        ),
         "mixed-int-string": pa.table(
             {
                 "i": pa.array(np.arange(N, dtype="int64")),
@@ -68,6 +75,33 @@ def _cases():
         "list-int64": pa.table(
             {"a": pa.array([[1, 2, 3]] * N, type=pa.list_(pa.int64()))}
         ),
+        # Null and empty lists write a level entry but own no child slot.
+        "list-empty-and-null": pa.table(
+            {
+                "a": pa.array(
+                    [None if i % 5 == 0 else [1, 2][: i % 3] for i in range(N)],
+                    type=pa.list_(pa.int64()),
+                )
+            }
+        ),
+        "list-of-list": pa.table(
+            {
+                "a": pa.array(
+                    [[[1, 2], [], None][: i % 4] for i in range(N)],
+                    type=pa.list_(pa.list_(pa.int64())),
+                )
+            }
+        ),
+        # Written as a repeated group, but decoded without an offsets buffer.
+        "fixed-size-list": pa.table(
+            {
+                "a": pa.FixedSizeListArray.from_arrays(
+                    pa.array(np.zeros(N * 4, dtype=np.float32)), 4
+                )
+            }
+        ),
+        # Ray's default tensor type: extension over large_list<float>.
+        "tensor": _tensor_table(),
         "decimal128": pa.table({"a": pa.array(range(N), type=pa.decimal128(10, 2))}),
         "timestamp": pa.table(
             {"a": pa.array(np.arange(N, dtype="int64"), type=pa.timestamp("us"))}
@@ -84,7 +118,78 @@ def _cases():
                 )
             }
         ),
+        # A bitmap on the struct and another on the child, which also marks the
+        # slots under a null struct.
+        "struct-nulls-at-two-levels": pa.table(
+            {
+                "a": pa.array(
+                    [
+                        None if i % 3 == 0 else {"x": None if i % 5 == 0 else i}
+                        for i in range(N)
+                    ],
+                    type=pa.struct([("x", pa.int64())]),
+                )
+            }
+        ),
+        # Two leaves under one list: its offsets must be counted once.
+        "list-of-struct": pa.table(
+            {
+                "a": pa.array(
+                    [[{"x": j, "y": "q"} for j in range(i % 3)] for i in range(N)],
+                    type=pa.list_(pa.struct([("x", pa.int64()), ("y", pa.string())])),
+                )
+            }
+        ),
+        "map": pa.table(
+            {
+                "a": pa.array(
+                    [[(f"k{j}", j) for j in range(i % 3)] for i in range(N)],
+                    type=pa.map_(pa.string(), pa.int64()),
+                )
+            }
+        ),
+        # Required leaves carry no SizeStatistics at all.
+        "required-columns": pa.table(
+            {
+                "i": pa.array(np.arange(N, dtype="int64")),
+                "st": pa.array(
+                    [{"x": i} for i in range(N)],
+                    type=pa.struct([pa.field("x", pa.int32(), nullable=False)]),
+                ),
+                "s": pa.array([f"s{i}" for i in range(N)]),
+            },
+            schema=pa.schema(
+                [
+                    pa.field("i", pa.int64(), nullable=False),
+                    pa.field(
+                        "st",
+                        pa.struct([pa.field("x", pa.int32(), nullable=False)]),
+                        nullable=False,
+                    ),
+                    pa.field("s", pa.string()),
+                ]
+            ),
+        ),
     }
+
+
+def _write(table, path, **kwargs):
+    # One row group, so the estimate is compared against exactly one decode.
+    pq.write_table(table, path, row_group_size=len(table), **kwargs)
+    return path
+
+
+def _allocated(path, columns=None):
+    """Bytes PyArrow allocates decoding ``path``, one row group at a time.
+
+    ``get_total_buffer_size`` rather than ``nbytes``: ``nbytes`` leaves out a
+    nested array's own validity bitmap, so it understates what a decode costs.
+    """
+    parquet_file = pq.ParquetFile(str(path))
+    return sum(
+        parquet_file.read_row_group(rg, columns=columns).get_total_buffer_size()
+        for rg in range(parquet_file.num_row_groups)
+    )
 
 
 def _estimate_whole_file(path, leaf_indices=None):
@@ -106,20 +211,18 @@ def _estimate_whole_file(path, leaf_indices=None):
     return total
 
 
-@pytest.mark.parametrize("label", list(_cases()))
-def test_estimate_matches_actual_nbytes(tmp_path, label):
-    table = _cases()[label]
-    path = tmp_path / f"{label}.parquet"
-    # One row group, so the estimate is compared against exactly one table.
-    pq.write_table(table, path, row_group_size=len(table))
-
-    estimate = _estimate_whole_file(path)
-    actual = pq.read_table(str(path)).nbytes
-
-    assert estimate == pytest.approx(actual, rel=_TOLERANCE), (
-        f"{label}: estimated {estimate}, actual {actual} "
-        f"(ratio {estimate / actual:.3f})"
+def _estimate_row_group_0(path, size_stats):
+    metadata = pq.read_metadata(str(path))
+    return estimate_row_group_decoded_size(
+        metadata.row_group(0), build_leaf_profiles(metadata.schema), None, size_stats
     )
+
+
+@pytest.mark.parametrize("label", list(_cases()))
+def test_estimate_matches_allocated_bytes(tmp_path, label):
+    path = _write(_cases()[label], tmp_path / f"{label}.parquet")
+
+    assert _estimate_whole_file(path) == _allocated(path)
 
 
 @pytest.mark.parametrize("label", list(_cases()))
@@ -130,12 +233,10 @@ def test_estimate_beats_the_fixed_encoding_ratio(tmp_path, label):
     far under-sizing dictionary-encoded data and far over-sizing plain numerics --
     which is what makes it unusable for a decision as final as bin assignment.
     """
-    table = _cases()[label]
-    path = tmp_path / f"{label}.parquet"
-    pq.write_table(table, path, row_group_size=len(table))
+    path = _write(_cases()[label], tmp_path / f"{label}.parquet")
 
     metadata = pq.read_metadata(str(path))
-    actual = pq.read_table(str(path)).nbytes
+    actual = _allocated(path)
     uncompressed = sum(
         metadata.row_group(rg).column(leaf).total_uncompressed_size
         for rg in range(metadata.num_row_groups)
@@ -151,18 +252,29 @@ def test_estimate_beats_the_fixed_encoding_ratio(tmp_path, label):
 
 def test_estimate_is_scoped_to_projected_leaves(tmp_path):
     """A projection must size only the leaves the read task decodes."""
-    path = tmp_path / "mixed.parquet"
-    table = _cases()["mixed-int-string"]
-    pq.write_table(table, path, row_group_size=len(table))
+    path = _write(_cases()["mixed-int-string"], tmp_path / "mixed.parquet")
 
     int_only = _estimate_whole_file(path, leaf_indices=[0])
     string_only = _estimate_whole_file(path, leaf_indices=[1])
     both = _estimate_whole_file(path, leaf_indices=None)
 
     assert int_only + string_only == both
-    assert int_only == pytest.approx(
-        pq.read_table(str(path), columns=["i"]).nbytes, rel=_TOLERANCE
-    )
+    assert int_only == _allocated(path, columns=["i"])
+
+
+def test_shared_ancestor_is_counted_once(tmp_path):
+    """Leaves under one list share its offsets; per-leaf sizing double-counts."""
+    path = _write(_cases()["list-of-struct"], tmp_path / "list-of-struct.parquet")
+
+    x_only = _estimate_whole_file(path, leaf_indices=[0])
+    y_only = _estimate_whole_file(path, leaf_indices=[1])
+    both = _estimate_whole_file(path, leaf_indices=[0, 1])
+
+    # The list's offsets (and the struct, which has no nulls and so no buffers)
+    # appear in each single-leaf estimate but only once in the joint one.
+    rows_with_list = N  # every row holds a (possibly empty) list
+    assert x_only + y_only - both == 4 * (rows_with_list + 1)
+    assert both == _allocated(path)
 
 
 def test_multiple_row_groups_sum_to_whole_file(tmp_path):
@@ -171,9 +283,51 @@ def test_multiple_row_groups_sum_to_whole_file(tmp_path):
     pq.write_table(table, path, row_group_size=len(table) // 4)
 
     assert pq.read_metadata(str(path)).num_row_groups == 4
-    assert _estimate_whole_file(path) == pytest.approx(
-        pq.read_table(str(path)).nbytes, rel=_TOLERANCE
-    )
+    assert _estimate_whole_file(path) == _allocated(path)
+
+
+def test_arrow_dictionary_is_bounded_not_hydrated(tmp_path):
+    """A dictionary column decodes to indices plus one copy of each value.
+
+    The footer has no distinct-value count, so the dictionary is bounded by the
+    chunk's uncompressed size, which holds the dictionary page. That overshoots
+    by the index pages; sizing it fully hydrated overshoots by orders of
+    magnitude.
+    """
+    values = pa.array([f"{i % 50:0200d}" for i in range(N)]).dictionary_encode()
+    path = _write(pa.table({"a": values}), tmp_path / "dictionary.parquet")
+
+    estimate = _estimate_whole_file(path)
+    actual = _allocated(path)
+    hydrated = 200 * N
+
+    assert actual <= estimate <= 1.25 * actual
+    assert estimate < hydrated / 10
+
+
+@pytest.mark.parametrize(
+    "arrow_type, values, write_kwargs, keeps_bitmap",
+    [
+        (pa.int64(), [1, 2], {}, True),
+        (pa.float32(), [1.0, 2.0], {}, True),
+        (pa.timestamp("ns"), [1, 2], {}, True),
+        (pa.int8(), [1, 2], {}, False),
+        (pa.date32(), [datetime.date(2020, 1, 1)] * 2, {}, False),
+        (pa.string(), ["a", "b"], {}, False),
+        # INT96 timestamps are converted, not zero-copied, so they drop it.
+        (pa.timestamp("ns"), [1, 2], {"use_deprecated_int96_timestamps": True}, False),
+    ],
+)
+def test_null_free_optional_leaf_bitmap_follows_pyarrow(
+    tmp_path, arrow_type, values, write_kwargs, keeps_bitmap
+):
+    """PyArrow keeps an all-valid bitmap only on types it decodes zero-copy."""
+    table = pa.table({"a": pa.array(values * (N // 2), type=arrow_type)})
+    path = _write(table, tmp_path / "bitmap.parquet", **write_kwargs)
+
+    decoded = pq.ParquetFile(str(path)).read_row_group(0).column(0).chunk(0)
+    assert (decoded.buffers()[0] is not None) == keeps_bitmap
+    assert _estimate_whole_file(path) == _allocated(path)
 
 
 # ---------------------------------------------------------------------------
@@ -182,33 +336,17 @@ def test_multiple_row_groups_sum_to_whole_file(tmp_path):
 
 
 def test_returns_none_without_size_statistics(tmp_path):
-    path = tmp_path / "flat.parquet"
-    table = _cases()["string-high-cardinality"]
-    pq.write_table(table, path, row_group_size=len(table))
-    metadata = pq.read_metadata(str(path))
+    path = _write(_cases()["string-high-cardinality"], tmp_path / "flat.parquet")
 
-    assert (
-        estimate_row_group_decoded_size(
-            metadata.row_group(0), build_leaf_profiles(metadata.schema), None, None
-        )
-        is None
-    )
+    assert _estimate_row_group_0(path, None) is None
 
 
 def test_returns_none_when_byte_array_leaf_lacks_unencoded_bytes(tmp_path):
     """A BYTE_ARRAY leaf's character bytes exist nowhere else in the footer."""
-    path = tmp_path / "strings.parquet"
-    table = _cases()["string-high-cardinality"]
-    pq.write_table(table, path, row_group_size=len(table))
-    metadata = pq.read_metadata(str(path))
+    path = _write(_cases()["string-high-cardinality"], tmp_path / "strings.parquet")
     stripped = [LeafSizeStats(None, (), (0, N))]
 
-    assert (
-        estimate_row_group_decoded_size(
-            metadata.row_group(0), build_leaf_profiles(metadata.schema), None, stripped
-        )
-        is None
-    )
+    assert _estimate_row_group_0(path, stripped) is None
 
 
 def test_fixed_width_leaf_needs_no_unencoded_bytes(tmp_path):
@@ -218,36 +356,76 @@ def test_fixed_width_leaf_needs_no_unencoded_bytes(tmp_path):
     it everywhere would silently disable exact sizing for every flat numeric
     schema while still paying the decode cost.
     """
-    path = tmp_path / "ints.parquet"
-    table = _cases()["int64-plain"]
-    pq.write_table(table, path, row_group_size=len(table))
-    metadata = pq.read_metadata(str(path))
+    path = _write(_cases()["int64-plain"], tmp_path / "ints.parquet")
 
-    estimate = estimate_row_group_decoded_size(
-        metadata.row_group(0),
-        build_leaf_profiles(metadata.schema),
-        None,
-        [LeafSizeStats(None, (), (0, N))],
-    )
-    assert estimate == N * 8
+    estimate = _estimate_row_group_0(path, [LeafSizeStats(None, (), (0, N))])
+    # Values plus the all-valid bitmap PyArrow keeps on a zero-copy int64.
+    assert estimate == N * 8 + N // 8
 
 
-def test_missing_leaf_entry_returns_none(tmp_path):
-    path = tmp_path / "mixed.parquet"
-    table = _cases()["mixed-int-string"]
-    pq.write_table(table, path, row_group_size=len(table))
-    metadata = pq.read_metadata(str(path))
+def test_required_leaf_needs_no_size_statistics(tmp_path):
+    """PyArrow writes no SizeStatistics for a required fixed-width leaf.
+
+    Its size is the row count times its width, so a missing entry there must
+    not send the whole row group -- strings beside it included -- to fallback.
+    """
+    path = _write(_cases()["required-columns"], tmp_path / "required.parquet")
+    size_stats = read_size_statistics(pq.read_metadata(str(path)))[0]
+
+    assert size_stats[0] is None
+    assert _estimate_row_group_0(path, size_stats) == _allocated(path)
+
+
+def test_missing_entry_for_optional_leaf_returns_none(tmp_path):
+    """Anywhere but a required flat leaf, a missing entry is a fallback.
+
+    A writer always has histograms to record for an optional leaf, so ``None``
+    there means the walk gave up -- and must not turn into a number.
+    """
+    path = _write(_cases()["int64-plain"], tmp_path / "ints.parquet")
+
+    assert _estimate_row_group_0(path, [None]) is None
+
+
+def test_missing_entry_returns_none(tmp_path):
+    path = _write(_cases()["mixed-int-string"], tmp_path / "mixed.parquet")
 
     # Two leaves in the read set, only one entry available.
-    assert (
-        estimate_row_group_decoded_size(
-            metadata.row_group(0),
-            build_leaf_profiles(metadata.schema),
-            None,
-            [LeafSizeStats(None, (), (0, N))],
-        )
-        is None
+    assert _estimate_row_group_0(path, [LeafSizeStats(None, (), (0, N))]) is None
+
+
+def test_list_leaf_without_repetition_histogram_returns_none(tmp_path):
+    """Without it there is no list length to size offsets or children from."""
+    path = _write(_cases()["list-int64"], tmp_path / "list.parquet")
+    (stats,) = read_size_statistics(pq.read_metadata(str(path)))[0]
+    stripped = stats._replace(repetition_level_histogram=())
+
+    assert _estimate_row_group_0(path, [stats]) is not None
+    assert _estimate_row_group_0(path, [stripped]) is None
+
+
+def test_histogram_disagreeing_with_footer_returns_none(tmp_path):
+    """Histogram totals must match the footer's own value and row counts."""
+    path = _write(_cases()["list-int64"], tmp_path / "list.parquet")
+    (stats,) = read_size_statistics(pq.read_metadata(str(path)))[0]
+    definition = stats.definition_level_histogram
+    off_by_one = stats._replace(
+        definition_level_histogram=definition[:-1] + (definition[-1] + 1,)
     )
+
+    assert _estimate_row_group_0(path, [off_by_one]) is None
+
+
+def test_unmodeled_arrow_type_returns_none(tmp_path):
+    """A type whose layout is not modeled sends the whole file to fallback."""
+    path = _write(
+        pa.table({"a": pa.array(["a", "b"] * 10, pa.string_view())}),
+        tmp_path / "view.parquet",
+    )
+    metadata = pq.read_metadata(str(path))
+
+    assert build_leaf_profiles(metadata.schema) is None
+    assert _estimate_row_group_0(path, read_size_statistics(metadata)[0]) is None
 
 
 def test_decoded_size_or_fallback_reproduces_the_old_math():
@@ -259,64 +437,48 @@ def test_decoded_size_or_fallback_reproduces_the_old_math():
 
 
 # ---------------------------------------------------------------------------
-# Width table
+# Leaf widths
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "arrow_type, values, expected_width",
+    "arrow_type, values",
     [
-        # INT32 storage narrowed by the logical INT annotation's bit width.
-        (pa.int8(), [1, 2], 1),
-        (pa.uint8(), [1, 2], 1),
-        (pa.int16(), [1, 2], 2),
-        (pa.uint16(), [1, 2], 2),
-        (pa.int32(), [1, 2], 4),
-        (pa.int64(), [1, 2], 8),
-        (pa.float32(), [1.0, 2.0], 4),
-        (pa.float64(), [1.0, 2.0], 8),
-        # INT64 storage, and Arrow keeps 8 bytes.
-        (pa.timestamp("us"), [1, 2], 8),
-        (pa.date32(), [datetime.date(2020, 1, 1), datetime.date(2021, 2, 3)], 4),
-        # FIXED_LEN_BYTE_ARRAY variants, all identified by logical type.
-        (pa.decimal128(10, 2), [Decimal("1.00"), Decimal("2.50")], 16),
-        (pa.decimal256(50, 2), [Decimal("1.00"), Decimal("2.50")], 32),
-        (pa.binary(7), [b"1234567", b"abcdefg"], 7),
-        (pa.float16(), np.array([1.0, 2.0], dtype=np.float16), 2),
+        (pa.int8(), [1, 2]),
+        (pa.uint8(), [1, 2]),
+        (pa.int16(), [1, 2]),
+        (pa.uint16(), [1, 2]),
+        (pa.int32(), [1, 2]),
+        (pa.uint32(), [1, 2]),
+        (pa.int64(), [1, 2]),
+        (pa.uint64(), [1, 2]),
+        (pa.float32(), [1.0, 2.0]),
+        (pa.float64(), [1.0, 2.0]),
+        (pa.timestamp("us"), [1, 2]),
+        (pa.date32(), [datetime.date(2020, 1, 1), datetime.date(2021, 2, 3)]),
+        # Stored as INT32 days and decoded as date32, so 4 bytes, not 8.
+        (pa.date64(), [datetime.date(2020, 1, 1), datetime.date(2021, 2, 3)]),
+        (pa.time64("us"), [1, 2]),
+        (pa.duration("ms"), [1, 2]),
+        (pa.decimal128(10, 2), [Decimal("1.00"), Decimal("2.50")]),
+        (pa.decimal256(50, 2), [Decimal("1.00"), Decimal("2.50")]),
+        (pa.binary(7), [b"1234567", b"abcdefg"]),
+        (pa.float16(), np.array([1.0, 2.0], dtype=np.float16)),
     ],
 )
-def test_fixed_width_table(tmp_path, arrow_type, values, expected_width):
-    path = tmp_path / "widths.parquet"
-    pq.write_table(pa.table({"a": pa.array(values, type=arrow_type)}), path)
+def test_fixed_width_types_are_exact(tmp_path, arrow_type, values):
+    array = pa.array(values, type=arrow_type)
+    table = pa.table({"a": pa.concat_arrays([array] * (N // 2))})
+    path = _write(table, tmp_path / "widths.parquet")
 
-    column = pq.read_metadata(str(path)).schema.column(0)
-    assert parquet_leaf_fixed_width(column) == expected_width
-
-
-def test_variable_width_leaves_have_no_fixed_width(tmp_path):
-    path = tmp_path / "variable.parquet"
-    pq.write_table(
-        pa.table(
-            {
-                "s": pa.array(["a", "bb"]),
-                # BOOLEAN is bit-packed, so it has no whole-byte per-value width.
-                "b": pa.array([True, False]),
-            }
-        ),
-        path,
-    )
-    schema = pq.read_metadata(str(path)).schema
-
-    assert parquet_leaf_fixed_width(schema.column(0)) is None
-    assert parquet_leaf_fixed_width(schema.column(1)) is None
+    assert _estimate_whole_file(path) == _allocated(path)
 
 
 def test_null_free_optional_bool_is_not_double_counted(tmp_path):
     """Keying the validity bitmap off nullability instead of actual nulls would
     estimate a null-free ``bool`` column at 2.00x its real size."""
-    path = tmp_path / "bools.parquet"
     table = pa.table({"a": pa.array([i % 2 == 0 for i in range(N)])})
-    pq.write_table(table, path, row_group_size=N)
+    path = _write(table, tmp_path / "bools.parquet")
 
     # Data buffer only: one bit per value, no bitmap.
     assert _estimate_whole_file(path) == N // 8
@@ -381,14 +543,14 @@ def test_bins_land_near_target_block_size(tmp_path, label):
     # Several row groups, so the packer has boundaries to cut on.
     pq.write_table(table, path, row_group_size=len(table) // 10)
 
-    actual_nbytes = pq.read_table(str(path)).nbytes
+    actual_bytes = _allocated(path)
     # A budget that must yield roughly four bins if sizing is right.
-    target = actual_nbytes // 4
+    target = actual_bytes // 4
 
     totals = _bin_decoded_totals(_pack_through_footer_reader([path], target))
 
     # Sizing is accurate in aggregate: the bins account for the real Arrow bytes.
-    assert sum(totals) == pytest.approx(actual_nbytes, rel=_TOLERANCE)
+    assert sum(totals) == pytest.approx(actual_bytes, rel=_TOLERANCE)
     # And each bin lands at or under the budget. Bins may undershoot, since a bin
     # seals as soon as no further row group fits.
     for total in totals:
@@ -415,8 +577,8 @@ def test_dictionary_encoded_strings_would_collapse_into_one_bin_when_sized_on_di
         metadata.row_group(rg).column(0).total_uncompressed_size
         for rg in range(metadata.num_row_groups)
     )
-    actual_nbytes = pq.read_table(str(path)).nbytes
-    target = actual_nbytes // 4
+    actual_bytes = _allocated(path)
+    target = actual_bytes // 4
 
     # Sizing on uncompressed bytes, the whole file fits in one bin many times over.
     assert uncompressed < target
@@ -432,13 +594,13 @@ def test_multiple_files_share_bins_by_decoded_size(tmp_path):
         pq.write_table(table, path, row_group_size=len(table) // 4)
         paths.append(path)
 
-    per_file_nbytes = pq.read_table(str(paths[0])).nbytes
-    manifests = _pack_through_footer_reader(paths, per_file_nbytes * 2)
+    per_file_bytes = _allocated(paths[0])
+    manifests = _pack_through_footer_reader(paths, per_file_bytes * 2)
     totals = _bin_decoded_totals(manifests)
 
-    assert sum(totals) == pytest.approx(per_file_nbytes * 4, rel=_TOLERANCE)
+    assert sum(totals) == pytest.approx(per_file_bytes * 4, rel=_TOLERANCE)
     for total in totals:
-        assert total <= per_file_nbytes * 2
+        assert total <= per_file_bytes * 2
     # Every row group is accounted for exactly once across the bins.
     covered = [
         (str(path), rg_id)

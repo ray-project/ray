@@ -188,8 +188,9 @@ class FooterReader:
         # The decoded size is what a read task's Arrow block actually costs, so
         # it is what the bin budget wants. ``None`` (the estimator's answer to
         # ``leaf_profiles``/``size_stats`` of ``None``, i.e. a footer with no
-        # usable SizeStatistics) leaves consumers on the uncompressed value; the
-        # uncompressed number is recorded either way so both stay comparable.
+        # usable SizeStatistics or a schema the estimator does not model) leaves
+        # consumers on the uncompressed value; the uncompressed number is
+        # recorded either way so both stay comparable.
         decoded = estimate_row_group_decoded_size(
             row_group, leaf_profiles, leaf_indices, size_stats
         )
@@ -363,7 +364,8 @@ class FooterReader:
         # when the writer emitted no SizeStatistics or the walk failed its
         # cross-check, which leaves every row group of this file on the
         # uncompressed sizing. The leaf profiles hoist the estimator's
-        # schema-derived facts out of the per-row-group loop.
+        # schema-derived facts -- including the Arrow schema conversion -- out
+        # of the per-row-group loop.
         size_stats = read_size_statistics(metadata) if rg_indices else None
         leaf_profiles = build_leaf_profiles(schema) if size_stats is not None else None
 
