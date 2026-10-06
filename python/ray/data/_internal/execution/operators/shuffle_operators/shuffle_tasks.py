@@ -299,19 +299,26 @@ def _shuffle_reduce_task(
 
     output_buffer: Optional[BlockOutputBuffer] = None
 
+    exec_stats_builder = BlockExecStats.builder()
+
     def _yield_with_stats(block: Block):
         """Yield a block then its pickled metadata (streaming-gen protocol)."""
+        exec_stats_builder.finish()
 
         def build_metadata(block_ser_time_s):
-            exec_stats = BlockExecStats.builder()
-            exec_stats.finish()
-            return BlockMetadataWithSchema.from_block(
+            nonlocal exec_stats_builder
+            meta = BlockMetadataWithSchema.from_block(
                 block,
-                block_exec_stats=exec_stats.build(block_ser_time_s=block_ser_time_s),
+                block_exec_stats=exec_stats_builder.build(
+                    block_ser_time_s=block_ser_time_s,
+                    task_idx=partition_id,
+                ),
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
+            exec_stats_builder = BlockExecStats.builder()
+            return meta
 
         yield from yield_block_with_stats(block, build_metadata)
 

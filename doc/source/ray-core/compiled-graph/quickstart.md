@@ -193,7 +193,7 @@ Of course, you can also do this yourself, but there are advantages to using Comp
 
 - Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to multiple GPUs requires one copy to a shared memory buffer, and then one host-to-device copy per destination GPU.
 
-- In the future, this can be further optimized through techniques such as [memory pinning](https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html), using zero-copy deserialization when the CPU is the destination, etc.
+- In the future, this can be further optimized through techniques such as [memory pinning](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html), using zero-copy deserialization when the CPU is the destination, etc.
 
 
 ## GPU to GPU communication
