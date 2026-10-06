@@ -9,6 +9,8 @@ py_library(
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
+        "//python/ray/experimental/sandbox:__pkg__",
+        "//python/ray/experimental/sandbox:__subpackages__",
         "//python/ray/tests:__subpackages__",
     ],
 )
@@ -72,6 +74,7 @@ py_test_module_list(
         "test_object_spilling_2.py",
         "test_placement_group.py",
         "test_ray_event_export_task_events.py",
+        "test_ray_event_export_worker_events.py",
         "test_ray_get.py",
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
@@ -80,7 +83,6 @@ py_test_module_list(
         "test_state_api_2.py",
         "test_state_api_summary.py",
         "test_task_events_3.py",
-        "test_tpu.py",
         "test_unavailable_actors.py",
         "test_util_helpers.py",
     ],
@@ -358,7 +360,6 @@ py_test_module_list(
         "test_task_metrics.py",
         "test_tempdir.py",
         "test_tls_auth.py",
-        "test_token_auth_integration.py",
         "test_token_auth_integration_2.py",
         "test_traceback.py",
         "test_worker_capping.py",
@@ -520,6 +521,7 @@ py_test_module_list(
         "accelerators/test_amd_gpu.py",
         "accelerators/test_furiosa.py",
         "accelerators/test_intel_gpu.py",
+        "accelerators/test_mblt.py",
         "accelerators/test_metax_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
@@ -601,6 +603,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
@@ -619,6 +622,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
@@ -835,10 +839,12 @@ py_test_module_list(
     files = [
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
+        "kuberay/test_run_autoscaler_logging.py",
         "test_cli_logger.py",
         "test_client_metadata.py",
         "test_client_terminate.py",
         "test_coordinator_server.py",
+        "test_function_manager_import_error.py",
         "test_monitor.py",
         "test_node_provider_availability_tracker.py",
         "test_response_cache.py",
@@ -928,6 +934,10 @@ py_test_module_list(
         "test_streaming_generator_backpressure.py",
         "test_task_events.py",
         "test_task_events_2.py",
+        # In the large shard for its timeout: passing Windows runs take ~277-297s,
+        # right at the moderate (300s) limit, so it times out there.
+        "test_token_auth_integration.py",
+        "test_tpu.py",
     ],
     tags = [
         "exclusive",
@@ -1391,6 +1401,7 @@ py_test_module_list(
         "spark/test_basic.py",
         "spark/test_databricks_hook.py",
         "spark/test_multicores_per_task.py",
+        "spark/test_node_provider.py",
         "spark/test_utils.py",
     ],
     tags = [

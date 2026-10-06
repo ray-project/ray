@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 
 import pytest
 
@@ -294,6 +295,81 @@ def test_async_callback(ray_start_regular_shared):
     wait_for_condition(lambda: "completed-2" in global_set)
 
 
+@pytest.mark.skipif(
+    client_mode_should_convert(),
+    reason="_on_ready and _ready are not supported on Ray Client ObjectRefs.",
+)
+@pytest.mark.asyncio
+async def test_async_wait_for_object_ref_ready(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    ready_task = asyncio.create_task(ref._ready())
+    _, pending = await asyncio.wait({ready_task}, timeout=1)
+    assert ready_task in pending, "_ready resolved before the object was produced"
+    await signal.send.remote()
+    assert await ready_task is ref
+    assert await ref == "secret"
+
+
+@pytest.mark.skipif(
+    client_mode_should_convert(),
+    reason="_on_ready and _ready are not supported on Ray Client ObjectRefs.",
+)
+@pytest.mark.asyncio
+async def test_async_wait_for_object_ref_ready_cancel(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    ready_task = asyncio.create_task(ref._ready())
+    _, pending = await asyncio.wait({ready_task}, timeout=1)
+    assert ready_task in pending, "_ready resolved before the object was produced"
+    ready_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await ready_task
+    await signal.send.remote()
+    assert await ref == "secret"
+
+
+@pytest.mark.skipif(
+    client_mode_should_convert(),
+    reason="_on_ready and _ready are not supported on Ray Client ObjectRefs.",
+)
+def test_on_ready_ref_drop_does_not_invoke_callback(ray_start_regular_shared):
+    """Dropping the ObjectRef leaves _on_ready pending, same as _on_completed."""
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    done = threading.Event()
+    seen = []
+
+    def cb(exc):
+        seen.append(exc)
+        done.set()
+
+    ref._on_ready(cb)
+    del ref
+    assert not done.wait(timeout=1), "_on_ready ran when the ref was dropped"
+    ray.get(signal.send.remote())
+    assert done.wait(timeout=10), "_on_ready was not invoked after the object was ready"
+    assert seen == [None]
+
+
 @pytest.mark.parametrize("raise_in_callback", [False, True])
 @pytest.mark.skipif(
     client_mode_should_convert(), reason="Different ref counting in Ray client."
@@ -432,6 +508,55 @@ def test_asyncio_actor_argument_collision(ray_start_regular_shared):
     assert (
         ray.get(a.hi_sync.remote(task_id="TEST", specified_cgname="test2"))
         == "Hi from sync: TEST! cgname: test2."
+    )
+
+
+def test_async_actor_finalizes_objects_dropped_on_fiber(ray_start_regular_shared):
+    """Objects dropped as an async-actor task returns must be finalized promptly.
+
+    Async-actor tasks execute on boost fiber stacks. CPython's C-stack overflow
+    checks are keyed on the bounds it recorded for the *thread*, so a fiber stack
+    can be mistaken for an exhausted one -- and on CPython 3.14 the deallocator
+    then parks every object it frees on a per-thread-state list that is never
+    drained, leaking the task's entire object graph.
+
+    A task's return value is serialized on the fiber, so the last reference the
+    actor process holds to the payload below is released there. If deallocation
+    is being deferred, the payload's finalizer never runs.
+
+    max_concurrency > 1 is required for coverage rather than realism: with a
+    single fiber, anchoring once at task entry would suffice, so only interleaved
+    fibers exercise the re-anchoring that happens after a fiber resumes.
+    """
+
+    class Payload:
+        pass
+
+    @ray.remote(max_concurrency=2)
+    class Probe:
+        def __init__(self, unused):
+            # Taking a constructor argument is deliberate: it makes the creation
+            # task deserialize arguments, which is one of the paths that reaches
+            # the fiber bookkeeping from a thread that is not running a fiber.
+            self._finalizers = []
+
+        async def make_payload(self):
+            payload = Payload()
+            self._finalizers.append(weakref.finalize(payload, lambda: None))
+            return payload
+
+        async def num_finalized(self):
+            return sum(not f.alive for f in self._finalizers)
+
+    num_tasks = 50
+    probe = Probe.remote("unused")
+    ray.get([probe.make_payload.remote() for _ in range(num_tasks)])
+
+    num_finalized = ray.get(probe.num_finalized.remote())
+    assert num_finalized == num_tasks, (
+        f"{num_tasks - num_finalized} of {num_tasks} payloads returned by an async "
+        "actor were never finalized in the actor process, so their deallocation is "
+        "being deferred and never completed"
     )
 
 

@@ -26,6 +26,13 @@ from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
+# Windows CI runs these on a shared, heavily loaded shard where multi-node
+# convergence routinely overruns wait_for_condition's 10s default.
+WAIT_TIMEOUT_S = 60
+# Per-request budget, kept well under WAIT_TIMEOUT_S: request_with_retries already
+# retries internally, and these run in loops of 10.
+REQUEST_TIMEOUT_S = 30
+
 
 @pytest.fixture
 def shutdown_ray():
@@ -129,17 +136,25 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
             len(
                 {
                     a.node_id
-                    for a in list_actors(address=cluster.address)
+                    for a in list_actors(
+                        address=cluster.address, filters=[("STATE", "=", "ALIVE")]
+                    )
                     if a.class_name.startswith("ServeReplica")
                 }
             )
             == 1
         )
 
-    wait_for_condition(check_replicas_on_worker_nodes)
+    wait_for_condition(check_replicas_on_worker_nodes, timeout=WAIT_TIMEOUT_S)
 
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(list_actors(address=cluster.address)) == 5)
+    wait_for_condition(
+        lambda: len(
+            list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
+        )
+        == 5,
+        timeout=WAIT_TIMEOUT_S,
+    )
     assert len(ray.nodes()) == 2
 
     # Set up gRPC channels.
@@ -152,7 +167,10 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensures ListApplications method on the head node is succeeding.
     wait_for_condition(
-        ping_grpc_list_applications, channel=head_node_channel, app_names=[app_name]
+        ping_grpc_list_applications,
+        channel=head_node_channel,
+        app_names=[app_name],
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Ensures Healthz method on the head node is succeeding.
@@ -163,7 +181,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
         ping_grpc_list_applications,
         channel=worker_node_channel,
         app_names=[app_name],
-        timeout=30,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Ensures Healthz method on the worker node is succeeding.
@@ -178,11 +196,15 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
             list_actors(address=cluster.address, filters=[("STATE", "=", "ALIVE")])
         )
         == 3,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Ensures ListApplications method on the head node is succeeding.
     wait_for_condition(
-        ping_grpc_list_applications, channel=head_node_channel, app_names=[]
+        ping_grpc_list_applications,
+        channel=head_node_channel,
+        app_names=[],
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Ensures Healthz method on the head node is succeeding.
@@ -194,6 +216,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
         channel=worker_node_channel,
         app_names=[],
         test_draining=True,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Ensures Healthz method on the worker node is draining.
@@ -228,7 +251,10 @@ def test_drain_and_undrain_http_proxy_actors(
     serve.run(HelloModel.options(num_replicas=2).bind())
 
     # 3 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(list_actors()) == 6)
+    wait_for_condition(
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 6,
+        timeout=WAIT_TIMEOUT_S,
+    )
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -255,6 +281,7 @@ def test_drain_and_undrain_http_proxy_actors(
     wait_for_condition(
         condition_predictor=check_proxy_status,
         proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
+        timeout=WAIT_TIMEOUT_S,
     )
 
     serve.run(HelloModel.options(num_replicas=2).bind())
@@ -262,6 +289,7 @@ def test_drain_and_undrain_http_proxy_actors(
     wait_for_condition(
         condition_predictor=check_proxy_status,
         proxy_status_to_count={ProxyStatus.HEALTHY: 3},
+        timeout=WAIT_TIMEOUT_S,
     )
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
@@ -275,7 +303,7 @@ def test_drain_and_undrain_http_proxy_actors(
     # 1 proxy should be draining and eventually be drained.
     wait_for_condition(
         condition_predictor=check_proxy_status,
-        timeout=40,
+        timeout=WAIT_TIMEOUT_S,
         proxy_status_to_count={ProxyStatus.HEALTHY: 2},
     )
 
@@ -298,10 +326,10 @@ def test_http_proxy_failure(serve_instance):
 
     serve.run(function.bind())
 
-    assert request_with_retries(timeout=1.0).text == "hello1"
+    assert request_with_retries(timeout=REQUEST_TIMEOUT_S).text == "hello1"
 
     for _ in range(10):
-        response = request_with_retries(timeout=30)
+        response = request_with_retries(timeout=REQUEST_TIMEOUT_S)
         assert response.text == "hello1"
 
     _kill_http_proxies()
@@ -313,12 +341,12 @@ def test_http_proxy_failure(serve_instance):
 
     def check_new():
         for _ in range(10):
-            response = request_with_retries(timeout=30)
+            response = request_with_retries(timeout=REQUEST_TIMEOUT_S)
             if response.text != "hello2":
                 return False
         return True
 
-    wait_for_condition(check_new)
+    wait_for_condition(check_new, timeout=WAIT_TIMEOUT_S)
 
 
 if __name__ == "__main__":

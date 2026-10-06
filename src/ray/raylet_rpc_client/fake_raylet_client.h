@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <limits>
 #include <list>
 #include <memory>
@@ -114,9 +115,8 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  bool ReplyCancelWorkerLease(bool success = true) {
+  bool ReplyCancelWorkerLease() {
     CancelWorkerLeaseReply reply;
-    reply.set_success(success);
     if (cancel_callbacks.size() == 0) {
       return false;
     } else {
@@ -317,7 +317,12 @@ class FakeRayletClient : public RayletClientInterface {
 
   void IsLocalWorkerDead(
       const WorkerID &worker_id,
-      const ClientCallback<IsLocalWorkerDeadReply> &callback) override {}
+      const ClientCallback<IsLocalWorkerDeadReply> &callback) override {
+    num_is_local_worker_dead_requests += 1;
+    if (is_local_worker_dead_hook) {
+      is_local_worker_dead_hook(worker_id, callback);
+    }
+  }
 
   std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
 
@@ -338,8 +343,24 @@ class FakeRayletClient : public RayletClientInterface {
     num_cancel_local_task_requested += 1;
   }
 
-  void FreeLocalObjects(const FreeLocalObjectsRequest &request) override {
+  void FreeLocalObjects(
+      const FreeLocalObjectsRequest &request,
+      const ClientCallback<FreeLocalObjectsReply> &callback = {}) override {
     num_free_local_objects_requested += 1;
+    free_local_objects_batches.push_back(request.object_ids_size());
+    if (callback != nullptr) {
+      free_local_objects_callbacks.push_back(callback);
+    }
+  }
+
+  bool ReplyFreeLocalObjects(const Status &status = Status::OK()) {
+    if (free_local_objects_callbacks.empty()) {
+      return false;
+    }
+    auto callback = free_local_objects_callbacks.front();
+    callback(status, FreeLocalObjectsReply());
+    free_local_objects_callbacks.pop_front();
+    return true;
   }
 
   int num_workers_requested = 0;
@@ -354,7 +375,14 @@ class FakeRayletClient : public RayletClientInterface {
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;
   int num_free_local_objects_requested = 0;
+  // Object count of each FreeLocalObjects RPC, and the still-pending replies.
+  std::vector<int> free_local_objects_batches;
+  std::list<ClientCallback<FreeLocalObjectsReply>> free_local_objects_callbacks = {};
   int num_release_unused_bundles_requested = 0;
+  int num_is_local_worker_dead_requests = 0;
+  // Optional hook to drive IsLocalWorkerDead callbacks; no-op by default.
+  std::function<void(const WorkerID &, const ClientCallback<IsLocalWorkerDeadReply> &)>
+      is_local_worker_dead_hook;
   NodeID node_id_ = NodeID::FromRandom();
   std::vector<ActorID> killed_actors;
   absl::flat_hash_map<std::string, double> last_resize_local_resource_instances_request;

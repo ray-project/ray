@@ -122,6 +122,50 @@ steps:
       ARCH_SUFFIX: "-aarch64"
     depends_on: raycudabase-aarch64($)
 
+  - name: ray-llmbase-aarch64
+    label: "wanda: ray-llm-py{{array.python}}-cu{{array.cuda}}-base (aarch64)"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: docker/ray-llm/cuda.wanda.yaml
+    depends_on: raycudabase-aarch64($)
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      ARCH_SUFFIX: "-aarch64"
+    instance_type: builder-arm64
+
+  - name: ray-llmbaseextra-aarch64
+    label: "wanda: ray-llm-py{{array.python}}-cu{{array.cuda}}-base-extra (aarch64)"
+    wanda: docker/base-extra/cuda.wanda.yaml
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      IMAGE_TYPE: "ray-llm"
+      ARCH_SUFFIX: "-aarch64"
+    depends_on: ray-llmbase-aarch64($)
+    instance_type: builder-arm64
+
+  - name: llmbuild-aarch64
+    label: "wanda: llmbuild (aarch64)"
+    wanda: ci/docker/llm.build.aarch64.wanda.yaml
+    depends_on: oss-ci-base_build-aarch64(python=3.12)
+    env:
+      PYTHON: "3.12"
+      RAY_CUDA_CODE: "cpu"
+    tags: cibase
+    instance_type: builder-arm64
+
   # NOTE(andrew-anyscale): dashboard is architecture agnostic, but wanda pulls
   # images for the architecture of the machine running the build. In the future,
   # we can remove the arch suffix and pull from the x86_64 image to avoid
@@ -172,6 +216,7 @@ steps:
       JDK_SUFFIX: "-jdk"
       RAY_JAVA_IMAGE: "cr.ray.io/rayproject/ray-java-build-aarch64"
       RAY_DASHBOARD_IMAGE: "cr.ray.io/rayproject/ray-dashboard-aarch64"
+      WHEEL_NAME_SUFFIX: ""
     tags:
       - release_wheels
       - linux_wheels
@@ -443,20 +488,110 @@ steps:
       - oss
       - skip-on-premerge
 
+  - name: ray-llm-image-cuda-build-aarch64
+    label: "wanda: ray-llm py{{array.python}} cu{{array.cuda}} (aarch64)"
+    wanda: ci/docker/ray-llm-image-cuda.wanda.yaml
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      ARCH_SUFFIX: "-aarch64"
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - ray-wheel-build-aarch64($)
+      - ray-llmbase-aarch64($)
+    instance_type: builder-arm64
+
+  - name: ray-llm-extra-image-cuda-build-aarch64
+    label: "wanda: ray-llm-extra py{{array.python}} cu{{array.cuda}} (aarch64)"
+    wanda: ci/docker/ray-llm-extra-image-cuda.wanda.yaml
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      ARCH_SUFFIX: "-aarch64"
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    depends_on:
+      - ray-wheel-build-aarch64($)
+      - ray-llmbaseextra-aarch64($)
+    instance_type: builder-arm64
+
+  - label: ":crane: publish: ray-llm py{{array.python}} {{array.platform}} (aarch64)"
+    key: ray_llm_images_cuda_push_aarch64
+    instance_type: small  # x86_64 instance since crane is currently only x86_64
+    commands:
+      - bazel run //.buildkite:copy_files -- --destination docker_login
+      - bazel run //ci/ray_ci/automation:push_ray_image --
+        --python-version {{array.python}}
+        --platform {{array.platform}}
+        --image-type ray-llm
+        --architecture aarch64
+    array:
+      python:
+        - "3.12"
+      platform:
+        - cu13.0.0-cudnn
+    depends_on:
+      - ray-llm-image-cuda-build-aarch64($)
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+      - skip-on-premerge
+
+  - label: ":crane: publish: ray-llm-extra py{{array.python}} {{array.platform}} (aarch64)"
+    key: ray_llm_extra_images_cuda_push_aarch64
+    instance_type: small  # x86_64 instance since crane is currently only x86_64
+    commands:
+      - bazel run //.buildkite:copy_files -- --destination docker_login
+      - bazel run //ci/ray_ci/automation:push_ray_image --
+        --python-version {{array.python}}
+        --platform {{array.platform}}
+        --image-type ray-llm-extra
+        --architecture aarch64
+    array:
+      python:
+        - "3.12"
+      platform:
+        - cu13.0.0-cudnn
+    depends_on:
+      - ray-llm-extra-image-cuda-build-aarch64($)
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+      - skip-on-premerge
+
   - label: ":ray: core: wheel-aarch64 tests"
     tags: linux_wheels
     instance_type: medium-arm64
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
         --build-type wheel-aarch64
-        --build-name oss-ci-base_build-aarch64
+        --build-name oss-ci-base_build-aarch64-py3.10
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
         --python-version 3.10
     depends_on:
       - manylinux-aarch64
-      - oss-ci-base_build-aarch64
+      - oss-ci-base_build-aarch64(python=3.10)
       - forge-aarch64
       - ray-wheel-build-aarch64(python=3.10)
     job_env: forge-aarch64
@@ -467,14 +602,34 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve
         --build-type wheel-aarch64
-        --build-name oss-ci-base_build-aarch64
+        --build-name oss-ci-base_build-aarch64-py3.10
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
         --python-version 3.10
     depends_on:
       - manylinux-aarch64
-      - oss-ci-base_build-aarch64
+      - oss-ci-base_build-aarch64(python=3.10)
       - forge-aarch64
       - ray-wheel-build-aarch64(python=3.10)
+    job_env: forge-aarch64
+
+  - label: ":llm: llm: wheel-aarch64 tests"
+    if: '!(build.pull_request.labels includes "docs-go")'
+    tags:
+      - llm
+      - linux_wheels
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
+        --build-type wheel-aarch64
+        --build-name llmbuild-aarch64
+        --parallelism-per-worker 3
+        --except-tags gpu
+        --python-version 3.12
+    depends_on:
+      - manylinux-aarch64
+      - llmbuild-aarch64
+      - forge-aarch64
+      - ray-wheel-build-aarch64(python=3.12)
     job_env: forge-aarch64

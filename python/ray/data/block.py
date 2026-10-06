@@ -236,14 +236,41 @@ class BlockExecStats:
         default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
     )
 
-    # Absolute wall-clock timestamp when block generation started.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation started. Monotonic with an undefined, per-machine reference
+    # point: only differences between readings taken on the same node are
+    # meaningful. Never compare across nodes; use `start_unix_time_s` for that.
     start_time_s: Optional[float] = None
-    # Absolute wall-clock timestamp when block generation finished.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation finished. Same caveats as `start_time_s`.
     end_time_s: Optional[float] = None
+    # `time.time()` on the producing worker when block generation started.
+    # Shares an epoch across nodes, so it is safe to compare across blocks
+    # produced on different machines. Not monotonic (NTP can step it); derive
+    # the block's end as `start_unix_time_s + wall_time_s` rather than reading
+    # the clock twice.
+    start_unix_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
-    # Time spent inside UDF while generating block.
-    udf_time_s: Optional[float] = 0
+    # Time spent in the map transform chain while generating this block: the
+    # whole chain, not just the user's functions. The three fields below
+    # decompose it and sum back to it.
+    block_transform_time_s: Optional[float] = 0
+    # Time spent turning input blocks into the batches or rows the transforms
+    # consume.
+    input_prep_time_s: Optional[float] = None
+    # Time spent inside the stage bodies themselves, whether the caller wrote
+    # them or Ray Data supplied them, with the formatting and block building
+    # around them excluded.
+    function_body_time_s: Optional[float] = None
+    # Time spent assembling transform output back into blocks. Includes
+    # materializing Python objects into Arrow, which is why it is not covered by
+    # `block_ser_time_s`.
+    output_build_time_s: Optional[float] = None
+    # The same total split per fused stage instead of per phase, in chain
+    # order. `None` unless `DataContext.per_stage_map_timing` is set and the
+    # chain has more than one stage.
+    stage_time_s: Optional[Tuple[float, ...]] = None
     # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
@@ -263,6 +290,7 @@ class _BlockExecStatsBuilder:
 
     def __init__(self):
         self._start_time = time.perf_counter()
+        self._start_unix_time = time.time()
         self._start_cpu = time.process_time()
         self._end_time = None
         self._end_cpu = None
@@ -279,6 +307,7 @@ class _BlockExecStatsBuilder:
         return BlockExecStats(
             start_time_s=self._start_time,
             end_time_s=self._end_time,
+            start_unix_time_s=self._start_unix_time,
             wall_time_s=self._end_time - self._start_time,
             cpu_time_s=self._end_cpu - self._start_cpu,
             **kwargs,
@@ -719,7 +748,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn", ...]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -734,7 +763,7 @@ class BlockAccessor:
     def _combine_aggregated_blocks(
         blocks: List[Block],
         sort_key: "SortKey",
-        aggs: Tuple["AggregateFn"],
+        aggs: Tuple["AggregateFn", ...],
         finalize: bool = True,
     ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Aggregate partially combined and sorted blocks."""
@@ -830,7 +859,7 @@ class BlockColumnAccessor:
 
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a sum of the values in the column"""
-        return NotImplementedError()
+        raise NotImplementedError()
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a min of the values in the column"""

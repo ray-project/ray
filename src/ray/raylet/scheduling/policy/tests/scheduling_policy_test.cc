@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
@@ -21,7 +20,6 @@ namespace ray {
 
 namespace raylet {
 
-using ::testing::_;
 using namespace ray::raylet_scheduling_policy;
 
 NodeResources CreateNodeResources(double available_cpu,
@@ -31,9 +29,9 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), available_cpu)
-      .Set(ResourceID::Memory(), available_memory)
-      .Set(ResourceID::GPU(), available_gpu);
+  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
+  resources.SetAvailableResource(ResourceID::Memory(), available_memory);
+  resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
       .Set(ResourceID::GPU(), total_gpu);
@@ -244,7 +242,7 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), 2.0);
+  resources.SetAvailableResource(ResourceID::CPU(), 2.0);
   resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsAvailable(task_req1));
   ASSERT_TRUE(resources.IsAvailable(task_req2));
@@ -253,17 +251,17 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
     resources.total.Set(ResourceID::CPU(), 2.0);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
   }
   {
     // Basic test of max
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 1)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
+    resources.SetAvailableResource(ResourceID::GPU(), 1);
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -274,10 +272,10 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     // Skip GPU
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 0)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
+    resources.SetAvailableResource(ResourceID::GPU(), 0);
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)

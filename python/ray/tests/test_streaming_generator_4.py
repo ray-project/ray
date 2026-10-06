@@ -418,18 +418,36 @@ def test_streaming_generator_replay_inconsistent_fails_fast(ray_start_cluster):
     1. Head + worker node. A detached actor on the head tracks the attempt
        number across cluster changes.
     2. Generator runs on the worker; first attempt yields 3 objects (pins EOF
-       to 3); the replay yields only 2.
+       to 3); the replay raises immediately with no yields (reports the app
+       exception as stream index 0 → actual count 1).
     3. Kill the worker (drops the produced objects); add a fresh worker.
     4. ray.get on the original refs forces lineage reconstruction; the replay's
        object count mismatches the pinned EOF, and the task fails fast.
+    5. refs[0] already holds the reported app exception (plasma does not
+       overwrite), so ray.get raises RayTaskError; remaining refs raise
+       StreamingGeneratorReplayInconsistentError.
     """
-    from ray.exceptions import StreamingGeneratorReplayInconsistentError
+    from ray.exceptions import (
+        RayTaskError,
+        StreamingGeneratorReplayInconsistentError,
+    )
+
+    # Yields must exceed max_direct_call_object_size so they live in plasma and
+    # are lost with the worker (forcing reconstruction). The threshold is kept
+    # large enough that the replay's RayTaskError can still be inlined to the
+    # owner; otherwise MarkTaskReturnObjectsFailed seals
+    # STREAMING_GENERATOR_REPLAY_INCONSISTENT into local plasma for index 0
+    # before the worker-plasma exception is fetched.
+    system_config = {
+        **RECONSTRUCTION_CONFIG,
+        "max_direct_call_object_size": 10_000,
+    }
 
     cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=0,
         resources={"head": 1},
-        _system_config=RECONSTRUCTION_CONFIG,
+        _system_config=system_config,
         enable_object_reconstruction=True,
     )
     ray.init(address=cluster.address)
@@ -452,14 +470,12 @@ def test_streaming_generator_replay_inconsistent_fails_fast(ray_start_cluster):
     @ray.remote(num_returns="streaming", resources={"worker": 1}, max_retries=-1)
     def gen():
         attempt = ray.get(ray.get_actor("counter").next.remote())
-        # First attempt yields 3 objects → EOF pinned to 3. Replay yields 2 →
-        # mismatch is what this test exercises.
-        num_objects = 3 if attempt == 1 else 2
-        for i in range(num_objects):
-            # Large enough to exceed max_direct_call_object_size (100 bytes)
-            # so the objects live in the object store and are lost with the
-            # worker node, forcing reconstruction.
-            yield np.zeros(1024, dtype=np.uint8) + i
+        # First attempt yields 3 objects → EOF pinned to 3. Replay raises with
+        # no yields → reports 1 stream item (the exception) → count mismatch.
+        if attempt > 1:
+            raise ValueError("intentional replay failure")
+        for i in range(3):
+            yield np.zeros(20_000, dtype=np.uint8) + i
 
     gen_ref = gen.remote()
     refs = list(gen_ref)
@@ -472,14 +488,17 @@ def test_streaming_generator_replay_inconsistent_fails_fast(ray_start_cluster):
     cluster.add_node(num_cpus=1, resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    # Reading any original ref forces reconstruction; the replay's object count
-    # doesn't match the pinned EOF, so the task fails fast with our new error
-    # instead of hanging on the third (never-produced) object.
-    with pytest.raises(
-        StreamingGeneratorReplayInconsistentError,
-        match=r"produced 2 objects, expected 3",
-    ):
-        for ref in refs:
+    # Reading any original ref forces reconstruction. The replay reports only
+    # the app exception at index 0 (count 1 ≠ 3), so the task fails fast.
+    # Index 0 keeps the already-written RayTaskError; later indexes get
+    # StreamingGeneratorReplayInconsistentError.
+    with pytest.raises(RayTaskError, match="intentional replay failure"):
+        ray.get(refs[0])
+    for ref in refs[1:]:
+        with pytest.raises(
+            StreamingGeneratorReplayInconsistentError,
+            match=r"produced 1 objects, expected 3",
+        ):
             ray.get(ref)
 
 

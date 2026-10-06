@@ -118,10 +118,6 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                              LocalGCReply *reply,
                              SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDeleteObjects(DeleteObjectsRequest request,
-                                   DeleteObjectsReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleSpillObjects(SpillObjectsRequest request,
                                   SpillObjectsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;

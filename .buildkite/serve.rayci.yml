@@ -122,11 +122,11 @@ steps:
       - forge
       - ray-wheel-build(python=3.10)
 
-  - label: ":ray-serve: serve: doc tests"
+  - label: ":ray-serve: serve: docs example tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - serve
-      - doc
+      - serve_doc
     instance_type: large
     commands:
       # doc tests
@@ -253,11 +253,11 @@ steps:
         --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
     depends_on: servebuild-multipy(python=3.10)
 
-  - label: ":ray-serve: serve: doc gpu tests"
+  - label: ":ray-serve: serve: docs example gpu tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - serve
-      - doc
+      - serve_doc
       - gpu
     instance_type: gpu
     commands:
