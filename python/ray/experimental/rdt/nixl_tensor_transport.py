@@ -147,7 +147,8 @@ class _AgentGuard:
 
     def set_handle(self, agent: str, key: int, handle: Any) -> None:
         with self._cond:
-            self._reads[agent][key][1] = handle
+            if agent in self._reads and key in self._reads[agent]:
+                self._reads[agent][key][1] = handle
 
     def release_read(self, agent: str, key: int) -> None:
         with self._cond:
