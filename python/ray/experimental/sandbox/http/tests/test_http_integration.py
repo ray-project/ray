@@ -43,6 +43,7 @@ def api_base_url():
     if not hasattr(serve, "run"):
         pytest.skip("ray.serve is present but not fully installed")
 
+    previous_token = os.environ.get("RAY_SANDBOX_API_TOKEN")
     os.environ["RAY_SANDBOX_API_TOKEN"] = _TOKEN
 
     import ray
@@ -55,6 +56,11 @@ def api_base_url():
     finally:
         serve.shutdown()
         ray.shutdown()
+        # Restored so the token does not leak into later test modules.
+        if previous_token is None:
+            os.environ.pop("RAY_SANDBOX_API_TOKEN", None)
+        else:
+            os.environ["RAY_SANDBOX_API_TOKEN"] = previous_token
 
 
 def _wait_for(fetch, accept, timeout: float = 300.0):
