@@ -1,0 +1,73 @@
+"""Tests for the public HiveServer2 read API."""
+
+import sys
+from types import SimpleNamespace
+from typing import Any, Callable, cast
+
+import pyarrow as pa
+import pytest
+
+from ray.data.read_api import read_hive
+
+
+def test_public_api_passes_task_options_and_repartitions(monkeypatch):
+    from ray.data import read_api
+
+    class FakeDataset:
+        context = SimpleNamespace(max_errored_blocks=3)
+        repartition_count = None
+
+        def repartition(self, count):
+            self.repartition_count = count
+            return self
+
+    dataset = FakeDataset()
+    calls = []
+    monkeypatch.setattr(
+        read_api,
+        "_read_datasource_v2",
+        lambda datasource, **kwargs: calls.append((datasource, kwargs)) or dataset,
+    )
+    schema = pa.schema([("id", pa.int64())])
+    result = read_hive(
+        host="hs2",
+        auth_mechanism="NOSASL",
+        query="SELECT id FROM events",
+        schema=schema,
+        num_cpus=2,
+        resources={"custom": 1},
+        override_num_blocks=4,
+    )
+    assert result is dataset
+    assert calls[0][0].infer_schema(None) == schema
+    assert calls[0][1]["parallelism"] == 1
+    assert calls[0][1]["ray_remote_args"] == {"max_retries": 0}
+    assert calls[0][1]["num_cpus"] == 2
+    assert calls[0][1]["resources"] == {"custom": 1}
+    assert dataset.context.max_errored_blocks == 0
+    assert dataset.repartition_count == 4
+
+
+@pytest.mark.parametrize("block_count", [0, -1, True, 1.5])
+def test_public_api_rejects_invalid_block_counts(block_count):
+    with pytest.raises(ValueError, match="override_num_blocks"):
+        read_hive(
+            host="hs2",
+            auth_mechanism="NOSASL",
+            query="SELECT id FROM events",
+            schema=pa.schema([("id", pa.int64())]),
+            override_num_blocks=block_count,
+        )
+
+
+def test_public_api_requires_authentication_selection():
+    with pytest.raises(TypeError, match="auth_mechanism"):
+        cast(Callable[..., Any], read_hive)(
+            host="hs2",
+            query="SELECT id FROM events",
+            schema=pa.schema([("id", pa.int64())]),
+        )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

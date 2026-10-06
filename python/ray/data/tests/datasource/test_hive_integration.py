@@ -6,14 +6,20 @@ import uuid
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
+from typing import Optional, TypedDict, cast
 
 import pyarrow as pa
 import pytest
 
 import ray
 import ray.data
-from ray.data._internal.datasource.hive_contract import HiveConnectionOptions
-from ray.data._internal.datasource.hive_hs2 import _connect as connect_read_hive
+from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
+    HiveAuthMechanism,
+    HiveConnectionOptions,
+)
+from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
+    _connect as connect_read_hive,
+)
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
 _AUTH = os.environ.get("RAY_HIVE_TEST_AUTH", "PLAIN").upper()
@@ -24,7 +30,20 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _connection_options():
+class _ConnectionOptions(TypedDict):
+    """Connection keywords shared by the HS2 client and public read API."""
+
+    host: str
+    port: int
+    auth_mechanism: HiveAuthMechanism
+    user: str
+    password: Optional[str]
+    kerberos_service_name: str
+    use_ssl: bool
+    ca_cert: Optional[str]
+
+
+def _connection_options() -> _ConnectionOptions:
     if _AUTH not in ("NOSASL", "PLAIN", "GSSAPI"):
         pytest.fail("RAY_HIVE_TEST_AUTH must be NOSASL, PLAIN, or GSSAPI")
     password = os.environ.get("HIVE_TEST_PASSWORD") or os.environ.get(
@@ -38,21 +57,23 @@ def _connection_options():
     ssl_setting = os.environ.get("RAY_HIVE_TEST_USE_SSL", "false").lower()
     if ssl_setting not in ("true", "false", "1", "0"):
         pytest.fail("RAY_HIVE_TEST_USE_SSL must be true or false")
-    options = dict(
-        host=_HOST,
-        port=int(os.environ.get("RAY_HIVE_TEST_PORT", "10000")),
-        auth_mechanism=_AUTH,
-        user=os.environ.get("RAY_HIVE_TEST_USER", "hive"),
-        password=password,
-        kerberos_service_name=os.environ.get("RAY_HIVE_TEST_KERBEROS_SERVICE", "hive"),
-        use_ssl=ssl_setting in ("true", "1"),
-        ca_cert=os.environ.get("RAY_HIVE_TEST_CA_CERT"),
-    )
+    options: _ConnectionOptions = {
+        "host": cast(str, _HOST),
+        "port": int(os.environ.get("RAY_HIVE_TEST_PORT", "10000")),
+        "auth_mechanism": cast(HiveAuthMechanism, _AUTH),
+        "user": os.environ.get("RAY_HIVE_TEST_USER", "hive"),
+        "password": password,
+        "kerberos_service_name": os.environ.get(
+            "RAY_HIVE_TEST_KERBEROS_SERVICE", "hive"
+        ),
+        "use_ssl": ssl_setting in ("true", "1"),
+        "ca_cert": os.environ.get("RAY_HIVE_TEST_CA_CERT"),
+    }
     HiveConnectionOptions(**options)
     return options
 
 
-def _connect(options):
+def _connect(options: _ConnectionOptions):
     return connect_read_hive(HiveConnectionOptions(**options))
 
 
@@ -88,7 +109,9 @@ def test_hive_table_query_limit_and_repartition():
         "VALUES (1, 'a'), (2, 'b')",
     ) as (table, cursor):
         cursor.execute(f"SELECT COUNT(*) FROM {table}")
-        assert cursor.fetchone()[0] == 2
+        count_row = cursor.fetchone()
+        assert count_row is not None
+        assert count_row[0] == 2
 
         ray.init(num_cpus=2, include_dashboard=False)
         try:
@@ -180,10 +203,15 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
             "RAY_HIVE_TEST_WRONG_HOST must route to the same TLS-enabled HiveServer2"
         )
 
+    mismatched_host_options = options.copy()
+    mismatched_host_options["host"] = wrong_host
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
-        connect_read_hive(HiveConnectionOptions(**{**options, "host": wrong_host}))
+        connect_read_hive(HiveConnectionOptions(**mismatched_host_options))
+
+    untrusted_ca_options = options.copy()
+    untrusted_ca_options["ca_cert"] = None
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
-        connect_read_hive(HiveConnectionOptions(**{**options, "ca_cert": None}))
+        connect_read_hive(HiveConnectionOptions(**untrusted_ca_options))
 
 
 if __name__ == "__main__":

@@ -3,8 +3,8 @@
 The read path behind `ray.data.read_*` when
 `DataContext.use_datasource_v2 = True`. A datasource says *where* the data is
 and *how* to decode it; the framework does listing, planning, pushdown, task
-grouping and execution. Parquet is the only format on it today and is the
-reference implementation.
+grouping and execution. Parquet is the file-based reference implementation.
+Hive uses the metadata-backed path to stream one HiveServer2 query per execution.
 
 ## Layout
 

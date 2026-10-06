@@ -35,11 +35,6 @@ from ray.data._internal.datasource.databricks_credentials import (
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.hive_contract import (
-    HiveAuthMechanism,
-    HiveConnectionOptions,
-    HiveReadSpec,
-)
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -76,6 +71,11 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
+from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
+    HiveAuthMechanism,
+    HiveConnectionOptions,
+    HiveReadSpec,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -4059,7 +4059,9 @@ def read_hive(
     ):
         raise ValueError("override_num_blocks must be a positive integer")
 
-    from ray.data._internal.datasource_v2.hive_datasource import HiveDatasource
+    from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+        HiveDatasourceV2,
+    )
 
     spec = HiveReadSpec(
         connection=HiveConnectionOptions(
@@ -4079,7 +4081,7 @@ def read_hive(
         limit=limit,
     )
     dataset = _read_datasource_v2(
-        HiveDatasource(spec),
+        HiveDatasourceV2(spec),
         parallelism=1,
         num_cpus=num_cpus,
         memory=memory,

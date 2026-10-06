@@ -6,7 +6,7 @@ from typing import Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 
-from ray.data._internal.datasource.hive_contract import (
+from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveConnectionOptions,
     HiveReadSpec,
 )

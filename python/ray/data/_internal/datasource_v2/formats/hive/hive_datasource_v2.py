@@ -4,8 +4,11 @@ from typing import AbstractSet, Iterable, Iterator, List, Optional
 
 import pyarrow as pa
 
-from ray.data._internal.datasource.hive_contract import HiveReadSpec
-from ray.data._internal.datasource.hive_hs2 import infer_table_schema, read_hs2_batches
+from ray.data._internal.datasource_v2.formats.hive.hive_contract import HiveReadSpec
+from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
+    infer_table_schema,
+    read_hs2_batches,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     DataSourceWithMetadata,
@@ -72,7 +75,7 @@ class _HiveScanner(Scanner[FileManifest]):
         return _HiveReader(self._spec, self._schema)
 
 
-class HiveDatasource(DataSourceWithMetadata[FileManifest]):
+class HiveDatasourceV2(DataSourceWithMetadata[FileManifest]):
     """Read a table or trusted query through one data operation per execution."""
 
     def __init__(self, spec: HiveReadSpec):

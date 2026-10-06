@@ -1,9 +1,10 @@
 from dataclasses import FrozenInstanceError
+from typing import Any, Callable, cast
 
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource.hive_contract import (
+from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveConnectionOptions,
     HiveReadSpec,
 )
@@ -27,7 +28,7 @@ def test_table_and_query_modes():
     assert query.table_identifier is None
     assert query.schema == schema
     with pytest.raises(FrozenInstanceError):
-        query.limit = 1
+        cast(Any, query).limit = 1
 
 
 @pytest.mark.parametrize(
@@ -106,17 +107,23 @@ def test_read_spec_rejects_unsupported_inputs(kwargs, message):
 )
 def test_connection_options_reject_unsupported_inputs(kwargs, message):
     with pytest.raises(ValueError, match=message):
-        HiveConnectionOptions(**{"auth_mechanism": "NOSASL", **kwargs})
+        cast(Callable[..., HiveConnectionOptions], HiveConnectionOptions)(
+            **{"auth_mechanism": "NOSASL", **kwargs}
+        )
 
 
 def test_authentication_selection_is_required():
     with pytest.raises(TypeError, match="auth_mechanism"):
-        HiveConnectionOptions(host="hive.example.com")
+        cast(Callable[..., HiveConnectionOptions], HiveConnectionOptions)(
+            host="hive.example.com"
+        )
 
 
 def test_read_spec_requires_connection_options():
     with pytest.raises(TypeError, match="connection"):
-        HiveReadSpec("hive.example.com", table="events")
+        cast(Callable[..., HiveReadSpec], HiveReadSpec)(
+            "hive.example.com", table="events"
+        )
 
 
 def test_supported_auth_profiles_and_secret_redaction():
