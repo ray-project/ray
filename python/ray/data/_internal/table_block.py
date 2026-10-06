@@ -1,4 +1,5 @@
 import collections
+from decimal import Decimal
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -344,6 +345,7 @@ class TableBlockAccessor(BlockAccessor):
         from ray.data.aggregate import Sum, _is_integer_aggregation_input
 
         sum_metadata = {}
+        integer_sum_columns: Set[str] = set()
         if not is_global_aggregation:
             import pyarrow as pa
 
@@ -364,6 +366,7 @@ class TableBlockAccessor(BlockAccessor):
                             else pa.int64()
                         )
                     )
+                    integer_sum_columns.add(name)
                     sum_metadata.update(integer_sum_metadata(name, input_type))
 
         builder = self.builder()
@@ -401,6 +404,10 @@ class TableBlockAccessor(BlockAccessor):
 
             for i, accumulator in enumerate(accumulators):
                 agg_col_name = resolved_agg_col_names[i]
+                if agg_col_name in integer_sum_columns and accumulator is not None:
+                    # Pandas infers float64 for integers mixed with nulls.
+                    # Preserve exact values before building or compacting rows.
+                    accumulator = Decimal(accumulator)
                 row[agg_col_name] = accumulator
 
             builder.add(row)

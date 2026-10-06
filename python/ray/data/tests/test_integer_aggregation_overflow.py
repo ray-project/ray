@@ -80,6 +80,158 @@ def test_pandas_nullable_integer_sum(dtype, values, ignore_nulls, as_py):
         assert result == 2 * value and type(result) is int
 
 
+@pytest.mark.parametrize(
+    "dtype,values",
+    [
+        pytest.param("Int64", [1], id="small"),
+        pytest.param("Int64", [2**53 + 1], id="signed-precision"),
+        pytest.param("UInt64", [2**53 + 1], id="unsigned-precision"),
+        pytest.param("Int64", [-(2**53 + 1)], id="negative"),
+        pytest.param("Int64", [2**63 - 1], id="signed-boundary"),
+        pytest.param("UInt64", [2**64 - 1], id="unsigned-boundary"),
+        pytest.param("Int64", [2**62 + 1] * 2, id="overflow"),
+        pytest.param("Int64", [2**62 + 1, -(2**62)], id="cancellation"),
+    ],
+)
+@pytest.mark.parametrize("ignore_nulls", [False, True])
+@pytest.mark.parametrize("compact_builder", [False, True])
+def test_pandas_integer_sum_mixed_null_groups(
+    ray_start_regular_shared_2_cpus,
+    monkeypatch,
+    dtype,
+    values,
+    ignore_nulls,
+    compact_builder,
+):
+    # The valid and null groups must share one Pandas partial. Otherwise its
+    # builder cannot coerce the integer-plus-null sum column to float64.
+    source = pd.DataFrame(
+        {
+            "g": [0] * len(values) + [1, 1, 2, 2],
+            "v": pd.Series(values + [None, None, values[0], None], dtype=dtype),
+        }
+    )
+    aggs = (
+        Sum("v", ignore_nulls),
+        Sum("v", ignore_nulls),
+        Sum("v", ignore_nulls, alias_name="total"),
+        Count("v", ignore_nulls=True),
+        Mean("v", ignore_nulls),
+    )
+    if compact_builder:
+        monkeypatch.setattr(
+            "ray.data._internal.table_block.MAX_UNCOMPACTED_SIZE_BYTES", 0
+        )
+    expected = {
+        0: sum(values),
+        1: None,
+        2: values[0] if ignore_nulls else None,
+    }
+
+    def check(block, multiplier):
+        assert isinstance(block, pa.Table)
+        rows = {row["g"]: row for row in block.to_pylist()}
+        assert set(rows) == set(expected)
+        for name in ["sum(v)", "sum(v)_2", "total"]:
+            assert block[name].type == pa.decimal128(38, 0)
+            assert {g: row[name] for g, row in rows.items()} == {
+                g: Decimal(value * multiplier) if value is not None else None
+                for g, value in expected.items()
+            }
+        assert rows[0]["count(v)"] == multiplier * len(values)
+        assert rows[1]["count(v)"] == 0
+        assert rows[2]["count(v)"] == multiplier
+
+    partial = BlockAccessor.for_block(source)._aggregate(SortKey("g"), aggs)
+    check(partial, 1)
+    partial = _serialize_partial(partial)
+    compacted, metadata = BlockAccessor.for_block(partial)._combine_aggregated_blocks(
+        [partial, partial], SortKey("g"), aggs, finalize=False
+    )
+    check(compacted, 2)
+    assert compacted.schema.metadata == partial.schema.metadata
+    assert metadata.schema == compacted.schema
+    final, metadata = BlockAccessor.for_block(compacted)._combine_aggregated_blocks(
+        [_serialize_partial(compacted), partial], SortKey("g"), aggs
+    )
+    assert isinstance(final, pa.Table)
+    check(final, 3)
+    assert not final.schema.metadata
+    assert metadata.schema == final.schema
+    rows = {row["g"]: row for row in final.to_pylist()}
+    assert rows[0]["mean(v)"] == sum(values) / len(values)
+    assert rows[1]["mean(v)"] is None
+    assert rows[2]["mean(v)"] == (float(values[0]) if ignore_nulls else None)
+
+
+@pytest.mark.parametrize("dtype", ["Int64", "UInt64"])
+@pytest.mark.parametrize("ignore_nulls", [False, True])
+def test_distributed_pandas_integer_sum_mixed_null_groups(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+    monkeypatch,
+    tmp_path,
+    dtype,
+    ignore_nulls,
+):
+    monkeypatch.setattr(
+        ray.data.context.DataContext.get_current(), "enable_pandas_block", True
+    )
+    value = 2**53 + 1
+    source = pd.DataFrame(
+        {
+            "g": [0, 1, 1, 2, 2],
+            "v": pd.Series([value, None, None, value, None], dtype=dtype),
+        }
+    )
+    ds = ray.data.from_pandas([source] * 4)
+    refs = [
+        ref for bundle in ds.iter_internal_ref_bundles() for ref in bundle.block_refs
+    ]
+    assert all(isinstance(block, pd.DataFrame) for block in ray.get(refs))
+    # The collection aggregation forces the Python fallback in shuffle-v2.
+    result = (
+        ds.groupby("g", num_partitions=2)
+        .aggregate(
+            Sum("v", ignore_nulls),
+            Sum("v", ignore_nulls, alias_name="total"),
+            Count("v", ignore_nulls=True),
+            Unique("g"),
+        )
+        .materialize()
+    )
+    schema = result.schema().base_schema
+    assert schema.field("sum(v)").type == pa.decimal128(38, 0)
+    assert schema.field("total").type == pa.decimal128(38, 0)
+    for block in ray.get(result.to_arrow_refs()):
+        # Legacy sort shuffle can retain empty Pandas blocks with no schema.
+        if BlockAccessor.for_block(block).num_rows():
+            assert isinstance(block, pa.Table)
+            assert block.schema == schema
+            assert not block.schema.metadata
+    expected = {
+        0: Decimal(4 * value),
+        1: None,
+        2: Decimal(4 * value) if ignore_nulls else None,
+    }
+
+    def check(rows):
+        for name in ["sum(v)", "total"]:
+            assert {row["g"]: row[name] for row in rows} == expected
+        assert {row["g"]: row["count(v)"] for row in rows} == {0: 4, 1: 0, 2: 4}
+        assert {row["g"]: row["unique(g)"] for row in rows} == {0: [0], 1: [1], 2: [2]}
+
+    check(result.take_all())
+    batches = list(result.iter_batches(batch_format="pyarrow", batch_size=100))
+    assert all(batch.schema == schema for batch in batches)
+    check([row for batch in batches for row in batch.to_pylist()])
+    check(result.sort("g").take_all())
+    check(result.repartition(1).take_all())
+    result.write_parquet(str(tmp_path), min_rows_per_file=1000, concurrency=1)
+    check(ray.data.read_parquet(str(tmp_path)).take_all())
+
+
 @pytest.mark.parametrize("fallback", [False, True])
 @pytest.mark.parametrize("unsigned", [False, True])
 @pytest.mark.parametrize("dictionary", [False, True])
