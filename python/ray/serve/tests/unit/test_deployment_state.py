@@ -64,6 +64,7 @@ from ray.serve._private.deployment_state import (
     DeploymentTargetState,
     DeploymentVersion,
     HealthSource,
+    ProbeOutcome,
     PushedHealthTracker,
     ReplicaHealthCheckResponse,
     ReplicaStartupStatus,
@@ -12934,30 +12935,22 @@ class TestIngestLagGate:
         assert w.check_health(ingest_lagging=False) is True
         assert w._consecutive_health_check_failures == 1
 
-    def test_application_failure_is_counted_even_while_behind(self, monkeypatch):
+    def _resolving_to(self, monkeypatch, response):
+        """A wrapper whose probe resolved to `response` without timing out."""
         w, _ = _push_health_wrapper()
-        w._probe_ref = "probe_ref"
-        w._probe_started_at = time.time()
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(
+            w, "_resolve_active_probe", lambda: ProbeOutcome(response, False)
+        )
+        return w
 
-        def _raise(ref):
-            raise ds_mod.RayError()
-
-        monkeypatch.setattr(ds_mod.ray, "get", _raise)
+    def test_application_failure_is_counted_even_while_behind(self, monkeypatch):
         # The probe came back; the replica really did fail its check.
+        w = self._resolving_to(monkeypatch, ReplicaHealthCheckResponse.APP_FAILURE)
         assert w.check_health(ingest_lagging=True) is True
         assert w._consecutive_health_check_failures == 1
 
     def test_actor_crash_is_reported_even_while_behind(self, monkeypatch):
-        w, _ = _push_health_wrapper()
-        w._probe_ref = "probe_ref"
-        w._probe_started_at = time.time()
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
-
-        def _crashed(ref):
-            raise ds_mod.RayActorError()
-
-        monkeypatch.setattr(ds_mod.ray, "get", _crashed)
+        w = self._resolving_to(monkeypatch, ReplicaHealthCheckResponse.ACTOR_CRASHED)
         assert w.check_health(ingest_lagging=True) is False
 
     @pytest.mark.parametrize("gang", [False, True], ids=["dirty-set", "gang"])
@@ -13033,10 +13026,11 @@ class TestIngestLagGate:
         w = self._timed_out_probe(monkeypatch)
         assert w.check_health(ingest_lagging=True) is True
         assert w._suppressed_probe_timeouts == 1
-        w._probe_ref = "probe_ref"
-        w._probe_started_at = time.time()
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
-        monkeypatch.setattr(ds_mod.ray, "get", lambda ref: None)
+        monkeypatch.setattr(
+            w,
+            "_resolve_active_probe",
+            lambda: ProbeOutcome(ReplicaHealthCheckResponse.SUCCEEDED, False),
+        )
         assert w.check_health(ingest_lagging=True) is True
         assert w._suppressed_probe_timeouts == 0
 

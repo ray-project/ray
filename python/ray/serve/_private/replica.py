@@ -729,9 +729,10 @@ class ReplicaMetricsManager:
         )
 
     async def _eval_and_push_self_health(self):
+        # Invariant: the pusher registers this task only after setting the callable,
+        # so narrow the Optional for the type checkers.
         eval_fn = self._eval_self_health_fn
-        if eval_fn is None:
-            return  # the pusher registers this task only after setting the callable
+        assert eval_fn is not None
         if self._self_consecutive_failures >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD:
             # Latched: the controller will replace this replica, so stop re-running the
             # user check (parity with pull probes, which cease at the threshold) while
