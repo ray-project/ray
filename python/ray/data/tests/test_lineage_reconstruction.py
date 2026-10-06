@@ -313,7 +313,12 @@ def test_reconstruction_stamp_survives_schema_divergence():
     meta = BlockMetadata(num_rows=2, size_bytes=16, exec_stats=None, input_files=None)
     # The same column comes back all nulls on the re-run, so it is inferred as null.
     bundle = RefBundle(
-        blocks=[BlockEntry(ray.ObjectRef(b"1" * 28), meta)],
+        blocks=(
+            BlockEntry(
+                ray.ObjectRef(b"1" * 28),  # pyrefly: ignore[bad-argument-type]
+                meta,
+            ),
+        ),
         schema=pa.schema([("x", pa.null())]),
         owns_blocks=True,
         reconstruction_stamp=stamp,
