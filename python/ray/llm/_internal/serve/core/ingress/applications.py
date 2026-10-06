@@ -8,6 +8,7 @@ and directly serves lightweight global control-plane responses.
 import asyncio
 import copy
 import json
+import time
 from types import SimpleNamespace
 from typing import Any, Dict, Mapping, Optional
 
@@ -15,6 +16,7 @@ from fastapi import FastAPI, Request, status
 from starlette.responses import JSONResponse
 
 from ray import serve
+from ray.exceptions import RayActorError
 from ray.llm._internal.serve.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     get_llm_serve_runtime_env,
@@ -38,6 +40,11 @@ logger = get_logger(__name__)
 CHOOSE_REPLICA_TIMEOUT_S = 0.8 * RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
 # Pick-only waits silently with no replicas; then reserve, which registers demand.
 PICK_ONLY_TIMEOUT_S = 0.5
+# Backoff for resolving a model application that is not deployed yet.
+HANDLE_RETRY_INITIAL_S = 0.5
+HANDLE_RETRY_MAX_S = 5.0
+# How often to re-log an application that is still unavailable.
+HANDLE_RETRY_LOG_INTERVAL_S = 300.0
 
 # The router is an independent, lightweight Serve deployment on the request path
 # for every model application. These are starting points that should be tuned
@@ -107,8 +114,11 @@ class RouterApplication:
 
     def __init__(self, model_applications: Mapping[str, str]):
         self._model_applications = dict(model_applications)
-        self._handles: Dict[str, DeploymentHandle] = {}
-        self._handle_locks: Dict[str, asyncio.Lock] = {}
+        # Resolve every handle in parallel without gating router health on them.
+        self._handles: Dict[str, "asyncio.Task[DeploymentHandle]"] = {
+            model_id: asyncio.create_task(self._resolve_handle(app_name))
+            for model_id, app_name in self._model_applications.items()
+        }
 
     async def check_health(self):
         pass
@@ -189,28 +199,42 @@ class RouterApplication:
             model_id, _get_routing_payload_from_body(data), request
         )
 
-    async def _get_handle(self, model_id: str) -> DeploymentHandle:
-        handle = self._handles.get(model_id)
-        if handle is not None:
-            return handle
-
-        lock = self._handle_locks.setdefault(model_id, asyncio.Lock())
-        async with lock:
-            # Another request may have completed the lookup while this one waited.
-            handle = self._handles.get(model_id)
-            if handle is not None:
-                return handle
-
-            handle = await asyncio.to_thread(
-                serve.get_app_handle, self._model_applications[model_id]
-            )
-            # Start tracking replicas now rather than inside choose_replica.
-            # Initialize on the replica's event loop after the blocking controller
-            # lookup returns.
-            if not handle.is_initialized:
-                handle._init()
-            self._handles[model_id] = handle
-            return handle
+    @staticmethod
+    async def _resolve_handle(app_name: str) -> DeploymentHandle:
+        """Look up the application's handle, retrying until it is deployed."""
+        backoff_s = HANDLE_RETRY_INITIAL_S
+        first_failure_s = None
+        last_log_s = 0.0
+        while True:
+            try:
+                handle = await asyncio.to_thread(serve.get_app_handle, app_name)
+                break
+            # Not deployed yet (or misnamed), no controller yet, or controller restarting.
+            except (RayServeException, RayActorError) as e:
+                now = time.monotonic()
+                if first_failure_s is None:
+                    first_failure_s = last_log_s = now
+                    logger.warning(
+                        "Model application %s is not available yet; retrying: %r",
+                        app_name,
+                        e,
+                    )
+                elif now - last_log_s >= HANDLE_RETRY_LOG_INTERVAL_S:
+                    last_log_s = now
+                    logger.warning(
+                        "Model application %s is still not available after %.0fs: %r",
+                        app_name,
+                        now - first_failure_s,
+                        e,
+                    )
+                await asyncio.sleep(backoff_s)
+                backoff_s = min(backoff_s * 2, HANDLE_RETRY_MAX_S)
+        if first_failure_s is not None:
+            logger.info("Model application %s is now available.", app_name)
+        # Start tracking replicas now, on the replica's event loop.
+        if not handle.is_initialized:
+            handle._init()
+        return handle
 
     async def _decide(
         self,
@@ -222,7 +246,7 @@ class RouterApplication:
         try:
 
             async def resolve_and_choose() -> str:
-                handle = await self._get_handle(model_id)
+                handle = await asyncio.shield(self._handles[model_id])
                 session_id = session_id_from_headers(request.headers)
                 if session_id:
                     handle = handle.options(session_id=session_id)

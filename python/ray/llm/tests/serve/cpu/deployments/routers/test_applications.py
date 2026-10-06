@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from starlette.datastructures import Headers
 
+from ray.exceptions import RayActorError
 from ray.llm._internal.serve.constants import get_llm_serve_runtime_env
 from ray.llm._internal.serve.core.ingress import applications as applications_module
 from ray.llm._internal.serve.core.ingress.applications import RouterApplication
@@ -80,6 +81,13 @@ class FakeHandle:
         yield MagicMock(_replica=SimpleNamespace(replica_id=replica_id))
 
 
+@pytest.fixture(autouse=True)
+def _no_real_app_handles():
+    """Background lookups may outlive a test's own patch; never reach Serve."""
+    with patch.object(applications_module.serve, "get_app_handle", FakeHandle):
+        yield
+
+
 def _new(cls, *args):
     """Run a `serve.ingress` class's user constructor."""
     obj = cls.__new__(cls)
@@ -101,6 +109,11 @@ def _new_router(model_apps=MODEL_APPS, missing_apps=None):
     patcher.start()
     router = _new(RouterApplication, model_apps)
     return router, handles, patcher
+
+
+def _cancel_handle_tasks(router):
+    for task in router._handles.values():
+        task.cancel()
 
 
 def _body(response) -> Dict:
@@ -194,26 +207,28 @@ class TestChatDecision:
             patcher.stop()
 
     @pytest.mark.asyncio
-    async def test_lazily_resolves_and_caches_application_handle(self):
+    async def test_resolves_handles_at_startup_and_reuses_them(self):
         router, handles, patcher = _new_router()
         try:
-            assert handles == {}
-            await _chat(router, {"model": "model-a"})
+            await asyncio.gather(*router._handles.values())
+            assert set(handles) == set(MODEL_APPS.values())
+            assert all(handle.initialized for handle in handles.values())
+
             first_handle = handles["llm-model-a"]
             await _chat(router, {"model": "model-a"})
+            await _chat(router, {"model": "model-a"})
 
-            assert handles == {"llm-model-a": first_handle}
+            assert handles["llm-model-a"] is first_handle
             assert len(first_handle.calls) == 2
         finally:
             patcher.stop()
 
     @pytest.mark.asyncio
-    async def test_concurrent_requests_share_application_handle_lookup(self):
-        lookup_count = 0
+    async def test_early_requests_share_startup_lookup(self):
+        lookups: Dict[str, int] = {}
 
         def get_app_handle(app_name):
-            nonlocal lookup_count
-            lookup_count += 1
+            lookups[app_name] = lookups.get(app_name, 0) + 1
             return FakeHandle(app_name)
 
         async def to_thread(func, *args):
@@ -229,7 +244,7 @@ class TestChatDecision:
                 _chat(router, {"model": "model-a"}),
             )
 
-        assert lookup_count == 1
+        assert lookups == {app_name: 1 for app_name in MODEL_APPS.values()}
         assert decisions[0]["replica_id"] == decisions[1]["replica_id"]
 
     @pytest.mark.asyncio
@@ -262,8 +277,11 @@ class TestChatDecision:
 
         with patch.object(applications_module.asyncio, "to_thread", blocked_to_thread):
             router = _new(RouterApplication, MODEL_APPS)
-            response = await _chat(router, {"model": "model-a"})
-            assert response.status_code == 503
+            try:
+                response = await _chat(router, {"model": "model-a"})
+                assert response.status_code == 503
+            finally:
+                _cancel_handle_tasks(router)
 
     @pytest.mark.asyncio
     async def test_body_without_routing_field_load_balances(self):
@@ -330,14 +348,62 @@ class TestChatDecision:
             patcher.stop()
 
     @pytest.mark.asyncio
-    async def test_missing_application(self):
+    async def test_missing_application(self, monkeypatch):
+        monkeypatch.setattr(applications_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.1)
+        monkeypatch.setattr(applications_module, "HANDLE_RETRY_INITIAL_S", 0.01)
         router, _, patcher = _new_router(missing_apps={"llm-model-a"})
         try:
             response = await _chat(router, {"model": "model-a"})
             assert response.status_code == 503
             assert _body(response)["error"]["type"] == "ServiceUnavailableError"
+            # The lookup keeps retrying after the request times out.
+            assert not router._handles["model-a"].done()
+            # Other models are unaffected.
+            assert "replica_id" in await _chat(router, {"model": "org/model-b"})
         finally:
+            _cancel_handle_tasks(router)
             patcher.stop()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [RayServeException("Application does not exist."), RayActorError()],
+    )
+    async def test_application_deployed_after_router(self, monkeypatch, error):
+        monkeypatch.setattr(applications_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        deployed = False
+
+        def get_app_handle(app_name):
+            if not deployed:
+                raise error
+            return FakeHandle(app_name)
+
+        with patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+            router = _new(RouterApplication, MODEL_APPS)
+            try:
+                await asyncio.sleep(0.05)
+                deployed = True
+                decision = await _chat(router, {"model": "model-a"})
+                assert decision["application"] == "llm-model-a"
+            finally:
+                _cancel_handle_tasks(router)
+
+    @pytest.mark.asyncio
+    async def test_unexpected_lookup_error_is_not_retried(self, monkeypatch):
+        monkeypatch.setattr(applications_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        lookups = 0
+
+        def get_app_handle(app_name):
+            nonlocal lookups
+            lookups += 1
+            raise TypeError("bug")
+
+        with patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+            router = _new(RouterApplication, {"model-a": "llm-model-a"})
+            with pytest.raises(TypeError, match="bug"):
+                await _chat(router, {"model": "model-a"})
+            await asyncio.sleep(0.05)
+            assert lookups == 1
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
