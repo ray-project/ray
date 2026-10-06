@@ -303,7 +303,7 @@ async def run_load(
     rng = random.Random(config.seed + 1)
     records: List[Dict[str, Any]] = []
     sent: Counter = Counter()
-    in_flight = set()
+    tasks: List[asyncio.Task] = []
     start = time.perf_counter()
     steady_from = start + config.warmup_s
     stop_at = steady_from + config.duration_s
@@ -326,17 +326,16 @@ async def run_load(
     while time.perf_counter() < stop_at:
         phase = "cold" if time.perf_counter() < steady_from else "steady"
         sent[phase] += 1
-        task = asyncio.ensure_future(send(*workload.sample(rng), phase))
-        in_flight.add(task)
-        task.add_done_callback(in_flight.discard)
+        tasks.append(asyncio.ensure_future(send(*workload.sample(rng), phase)))
         next_send += rng.expovariate(config.rate)
         await asyncio.sleep(max(0.0, next_send - time.perf_counter()))
-    if in_flight:
-        done, pending = await asyncio.wait(in_flight, timeout=config.drain_timeout_s)
-        for task in pending:
-            task.cancel()
-        for task in done:
-            task.result()  # Raise request errors.
+    done, pending = await asyncio.wait(tasks, timeout=config.drain_timeout_s)
+    for task in pending:
+        task.cancel()
+    # Check every request, including those that finished while traffic was still
+    # being sent, so a failed request raises its error.
+    for task in done:
+        task.result()
     return records, sent
 
 
