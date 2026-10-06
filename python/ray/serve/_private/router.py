@@ -35,6 +35,7 @@ from ray.exceptions import (
     RayTaskError,
     TaskCancelledError,
 )
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -50,6 +51,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
@@ -435,9 +437,19 @@ class RouterMetricsManager:
             if self._pending_metrics_push_ref is not None:
                 if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
                     return  # Previous push still in flight, skip and try again later
+            # Handle reports carry every replica this handle routes to, so they
+            # are the wide ones worth encoding columnar (see should_encode_columnar).
+            # The flag is the kill switch: the controller reads either format, so
+            # flipping it back needs a restart, not a redeploy.
+            report = self._get_metrics_report()
+            payload = (
+                autoscaling_metrics_codec.encode(report)
+                if RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS
+                else compress_metric_report(report)
+            )
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_handle.remote(
-                    compress_metric_report(self._get_metrics_report())
+                    payload
                 )
             )
 
@@ -1304,6 +1316,19 @@ class AsyncioRouter:
                 finally:
                     await candidates.aclose()
                 slot_token = None
+                # Pick-only callers send the request themselves (e.g. the
+                # direct-streaming LLM ingress router through HAProxy), so this
+                # pick is the routing decision. Report it so stateful policies
+                # (e.g. PrefixCacheAffinityRouter) can update their state.
+                try:
+                    self._active_request_router.on_request_routed(
+                        pr, replica.replica_id, None
+                    )
+                except Exception:
+                    logger.warning(
+                        "on_request_routed failed for pick-only selection; continuing.",
+                        exc_info=True,
+                    )
 
             selection = ReplicaSelection(
                 replica_id=replica.replica_id.unique_id,

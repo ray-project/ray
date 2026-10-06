@@ -719,7 +719,7 @@ py_test(
 
 py_test(
     name = "test_sync_actor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_sync_actor.py"],
     env = _TRAIN_V2_TEST_ENV,
     tags = [

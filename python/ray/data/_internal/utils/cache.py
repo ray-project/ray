@@ -35,14 +35,14 @@ def _disable_timed_cache_for_tests():
 
 
 def timed_cache(
-    ttl: float, get_time_fn: Callable[[], float] = time.time
+    ttl: float, get_time_fn: Callable[[], float] = time.monotonic
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator that caches function results for a given TTL (in seconds).
 
     Args:
         ttl: Time-to-live in seconds for each cache entry.
         get_time_fn: Callable returning the current time in seconds, used to
-            measure cache entry age. Defaults to ``time.time``.
+            measure cache entry age. Defaults to ``time.monotonic``.
 
     Returns:
         A decorator that wraps a function with TTL-based result caching.

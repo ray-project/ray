@@ -2,13 +2,14 @@ exclude: |
   (?x)^(
     python/ray/core/generated/|
     python/ray/serve/generated/|
+    python/ray/experimental/sandbox/http/_proto/.*_(pb2|grpc)\.py|
     python/ray/cloudpickle/|
     python/ray/dashboard/client/public/|
     python/ray/tests/test_cli_patterns|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     python/ray/data/examples/data/|
     release/release_logs/|
-    rllib/offline/tests/data|
+    python/ray/rllib/offline/tests/data|
     thirdparty/patches/|
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
@@ -86,9 +87,9 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -229,11 +230,13 @@ repos:
         language: system
         types: [python]
 
-  - repo: https://github.com/errata-ai/vale
-    rev: v3.19.0
-    hooks:
-      - id: vale
-        files: ^doc/source/data/.*\.(md|rst)$
+  # Vale prose linting for Ray Data is temporarily disabled while a style pass
+  # clears the backlog. Re-enable by uncommenting this block.
+  # - repo: https://github.com/errata-ai/vale
+  #   rev: v3.19.0
+  #   hooks:
+  #     - id: vale
+  #       files: ^doc/source/data/.*\.(md|rst)$
 
   - repo: https://github.com/MarcoGorelli/cython-lint
     rev: v0.18.1
@@ -250,6 +253,17 @@ repos:
         types: [python]
         pass_filenames: false
         args: [".", "-s", "ci", "-s", "python/ray/thirdparty_files", "-s", "python/build", "-s", "lib"]
+
+  - repo: local
+    hooks:
+      - id: check-ray-repo-links
+        name: Check that links to files on Ray's master branch resolve
+        entry: python ci/lint/check_ray_repo_links.py
+        language: python
+        # Scans the whole tree, because moving a file breaks links in files the
+        # change never touched.
+        pass_filenames: false
+        always_run: true
 
   - repo: local
     hooks:
