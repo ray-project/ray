@@ -102,6 +102,9 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
                      rpc::UnregisterNodeRequest,
                      rpc::UnregisterNodeReply)
   GCS_GATED_RPC(HandleDrainNode, rpc::DrainNodeRequest, rpc::DrainNodeReply)
+  GCS_GATED_RPC(HandleUpdateNodeLabels,
+                rpc::UpdateNodeLabelsRequest,
+                rpc::UpdateNodeLabelsReply)
 
   // Allowed on passive GCS (bootstrap).
 
