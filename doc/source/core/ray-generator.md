@@ -188,5 +188,5 @@ Ray generators don't support these features:
 ```{toctree}
 :maxdepth: 1
 
-tasks/dynamic_generators
+tasks/dynamic-generators
 ```
