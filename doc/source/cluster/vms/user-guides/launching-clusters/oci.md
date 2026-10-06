@@ -65,7 +65,7 @@ available_node_types:
             boot_volume_size_in_gbs: 100
 ```
 
-CPU and GPU resources are detected from the shape when `resources` is omitted. Ray's node tags are stored as free-form tags on the instances; OCI allows at most 10 free-form tags per instance, so keep user-defined `freeform_tags` to a minimum.
+CPU and GPU resources are detected from the shape when `resources` is omitted. Ray's node tags are stored as free-form tags on the instances; OCI allows at most 10 free-form tags per instance and Ray uses eight of them, so `node_config.freeform_tags` can hold at most two entries.
 
 Test that it works by running the following commands from your local machine:
 

@@ -22,10 +22,12 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
     TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_FILE_MOUNTS_CONTENTS,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
 
@@ -608,6 +610,66 @@ def test_validate_freeform_tags_limits():
         validate_freeform_tags({"k": "v" * 257})
     with pytest.raises(ValueError, match="exceeds 100"):
         validate_freeform_tags({"k" * 101: "v"})
+    # Reserved keys count towards the limit unless already present.
+    nine = {f"k{i}": "v" for i in range(9)}
+    assert validate_freeform_tags(nine, reserved_keys=["k0"]) == nine
+    with pytest.raises(ValueError, match="which Ray sets after launch"):
+        validate_freeform_tags(nine, reserved_keys=["r1", "r2"])
+
+
+def test_create_node_reserves_room_for_post_launch_tags(fake_oci):
+    """Launch already carries six Ray tags and the updater adds
+    ray-runtime-config and ray-file-mounts-contents later, so only two user
+    tags fit; a third must be rejected before the instance is launched."""
+    provider = _provider(fake_oci)
+    user_tags = {"a": "1", "b": "2"}
+    created = provider.create_node(
+        _node_config(freeform_tags=user_tags), _tags(), count=1
+    )
+    (node,) = created
+    provider.set_node_tags(
+        node,
+        {TAG_RAY_RUNTIME_CONFIG: "rc", TAG_RAY_FILE_MOUNTS_CONTENTS: "fm"},
+    )
+    assert len(fake_oci.instances[node].freeform_tags) == 10
+
+    with pytest.raises(ValueError, match="which Ray sets after launch"):
+        provider.create_node(
+            _node_config(freeform_tags={**user_tags, "c": "3"}), _tags(), count=1
+        )
+    assert list(fake_oci.instances) == [node]
+
+
+def test_set_node_tags_does_not_hold_provider_lock_during_retries(fake_oci):
+    """A tag update retrying 409 Conflict must not block listing."""
+    node = fake_oci.add_instance(_cluster_tags(), state="PROVISIONING")
+    provider = _provider(fake_oci)
+    entered, release = threading.Event(), threading.Event()
+    update_instance = provider.client.compute.update_instance
+
+    def slow_update_instance(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return update_instance(*args, **kwargs)
+
+    provider.client.compute.update_instance = slow_update_instance
+    tagger = threading.Thread(
+        target=provider.set_node_tags,
+        args=(node, {TAG_RAY_NODE_STATUS: "waiting-for-ssh"}),
+    )
+    tagger.start()
+    try:
+        assert entered.wait(5)
+        lister = threading.Thread(target=provider.non_terminated_nodes, args=({},))
+        lister.start()
+        lister.join(2)
+        assert not lister.is_alive(), "listing blocked behind set_node_tags"
+    finally:
+        release.set()
+        tagger.join(5)
+    assert (
+        fake_oci.instances[node].freeform_tags[TAG_RAY_NODE_STATUS] == "waiting-for-ssh"
+    )
 
 
 def test_non_terminated_nodes_filters_by_tags_and_state(fake_oci):

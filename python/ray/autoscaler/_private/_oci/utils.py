@@ -22,7 +22,7 @@ import logging
 import os
 import re
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -87,18 +87,33 @@ def is_out_of_capacity(exc: BaseException) -> bool:
     return is_service_error(exc, 500) and "capacity" in message.lower()
 
 
-def validate_freeform_tags(tags: Dict[str, str]) -> Dict[str, str]:
+def validate_freeform_tags(
+    tags: Dict[str, str], reserved_keys: Iterable[str] = ()
+) -> Dict[str, str]:
     """Validate and normalise a free-form tag dict against OCI limits.
 
     Values are stringified; oversized keys/values or too many tags raise a
     ``ValueError`` rather than failing later inside the Compute API with a
     less descriptive error.
+
+    Args:
+        tags: The free-form tags to validate.
+        reserved_keys: Tag keys that will be added later and must still fit
+            under the limit (keys already in ``tags`` are not counted twice).
+
+    Returns:
+        A copy of ``tags`` with every value converted to a string.
     """
-    if len(tags) > MAX_FREEFORM_TAGS:
+    reserved = sorted(set(reserved_keys) - set(tags))
+    if len(tags) + len(reserved) > MAX_FREEFORM_TAGS:
+        reserved_note = (
+            f" plus {reserved}, which Ray sets after launch," if reserved else ""
+        )
         raise ValueError(
             f"OCI instances support at most {MAX_FREEFORM_TAGS} free-form tags, "
-            f"but {len(tags)} were requested: {sorted(tags)}. Reduce the number "
-            "of user-specified `freeform_tags` in `node_config`."
+            f"but {len(tags) + len(reserved)} are needed: {sorted(tags)}"
+            f"{reserved_note}. Reduce the number of user-specified "
+            "`freeform_tags` in `node_config`."
         )
     normalised = {}
     for key, value in tags.items():

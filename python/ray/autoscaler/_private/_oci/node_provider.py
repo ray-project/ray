@@ -12,7 +12,7 @@ import logging
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from threading import RLock
+from threading import Lock, RLock
 from typing import Any, Dict, List, Optional, Set
 
 from ray.autoscaler._private._oci.config import bootstrap_oci, fillout_resources
@@ -35,9 +35,11 @@ from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_FILE_MOUNTS_CONTENTS,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
+    TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
 
@@ -57,6 +59,11 @@ _REUSE_TAGS = (
     TAG_RAY_USER_NODE_TYPE,
     TAG_RAY_LAUNCH_CONFIG,
 )
+
+# Tags the node updater adds after launch. Room for them is reserved when the
+# launch tags are validated, so that a node does not launch successfully and
+# then fail setup on OCI's free-form tag limit.
+_POST_LAUNCH_TAGS = (TAG_RAY_RUNTIME_CONFIG, TAG_RAY_FILE_MOUNTS_CONTENTS)
 
 # OCI answers 409 Conflict ("instance is currently being modified") while an
 # instance is provisioning or changing state; the SDK's default retry strategy
@@ -105,6 +112,9 @@ class OCINodeProvider(NodeProvider):
         # Stopped instances claimed by an in-flight create_node() so that
         # concurrent callers never restart the same instance.
         self._claimed_for_reuse: Set[str] = set()
+        # node id -> lock serialising set_node_tags() for that node, so the
+        # provider lock is not held across the (possibly long) update call.
+        self._tag_locks: Dict[str, Lock] = {}
 
     # ------------------------------------------------------------------
     # Helpers
@@ -251,26 +261,40 @@ class OCINodeProvider(NodeProvider):
     # ------------------------------------------------------------------
     # Tags
     # ------------------------------------------------------------------
-    @synchronized
+    def _node_tag_lock(self, node_id: str) -> Lock:
+        with self.lock:
+            return self._tag_locks.setdefault(node_id, Lock())
+
     def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:
-        instance = self._get_node(node_id)
-        if instance is None:
-            logger.warning(
-                "OCINodeProvider: cannot tag ...%s, instance not found",
-                short_id(node_id),
-            )
-            return
-        merged = validate_freeform_tags({**(instance.freeform_tags or {}), **tags})
-        if merged == (instance.freeform_tags or {}):
-            return
-        with LogTimer(
-            "OCINodeProvider: Set %d tag(s) on ...%s" % (len(tags), short_id(node_id))
-        ):
-            details = self.client.models().UpdateInstanceDetails(freeform_tags=merged)
-            updated = self._retry_on_conflict(
-                self.client.compute.update_instance, node_id, details
-            ).data
-        self.cached_nodes[node_id] = updated
+        # Not @synchronized: update_instance is retried for up to
+        # CONFLICT_RETRY_TIMEOUT_S while a new or restarted instance answers
+        # 409 Conflict, and holding the provider lock that long would stall
+        # non_terminated_nodes() and create_node(). The per-node lock keeps
+        # concurrent read-modify-write updates of one node from losing tags.
+        with self._node_tag_lock(node_id):
+            instance = self._get_node(node_id)
+            if instance is None:
+                logger.warning(
+                    "OCINodeProvider: cannot tag ...%s, instance not found",
+                    short_id(node_id),
+                )
+                return
+            current = instance.freeform_tags or {}
+            merged = validate_freeform_tags({**current, **tags})
+            if merged == current:
+                return
+            with LogTimer(
+                "OCINodeProvider: Set %d tag(s) on ...%s"
+                % (len(tags), short_id(node_id))
+            ):
+                details = self.client.models().UpdateInstanceDetails(
+                    freeform_tags=merged
+                )
+                updated = self._retry_on_conflict(
+                    self.client.compute.update_instance, node_id, details
+                ).data
+            with self.lock:
+                self.cached_nodes[node_id] = updated
 
     # ------------------------------------------------------------------
     # Creation
@@ -357,7 +381,8 @@ class OCINodeProvider(NodeProvider):
 
         # Tags: Ray's tags take precedence over user tags.
         conf["freeform_tags"] = validate_freeform_tags(
-            {**(conf.get("freeform_tags") or {}), **tags}
+            {**(conf.get("freeform_tags") or {}), **tags},
+            reserved_keys=_POST_LAUNCH_TAGS,
         )
         try:
             return models.LaunchInstanceDetails(**conf)
@@ -505,6 +530,7 @@ class OCINodeProvider(NodeProvider):
         with self.lock:
             self.cached_nodes.pop(node_id, None)
             self.ip_cache.pop(node_id, None)
+            self._tag_locks.pop(node_id, None)
 
     def terminate_nodes(self, node_ids: List[str]) -> None:
         if not node_ids:
