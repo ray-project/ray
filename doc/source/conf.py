@@ -128,10 +128,7 @@ llms_txt_exclude = [
     "_includes/*",
     "_templates/*",
     "templates/*",
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
     "core/api/doc/*",
-    "core/compiled-graph/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
@@ -191,7 +188,7 @@ llms_txt_exclude += [
     "core/api/runtime-env",
     "core/api/scheduling",
     "core/api/utility",
-    "core/compiled-graph/compiled-graph-api",
+    "core/api/compiled-graph",
     "serve/api/application",
     "serve/api/config",
     "serve/api/context",
@@ -261,8 +258,6 @@ docsearch_index_name = "docs-ray"
 # from the nav tree. These API-ref directories mirror the API-ref entries in
 # `llms_txt_exclude` above, which excludes the same pages from the agent corpus.
 remove_from_toctrees = [
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
     "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",

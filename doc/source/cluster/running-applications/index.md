@@ -12,5 +12,5 @@ This section introduces the main differences in running a Ray application on you
 :maxdepth: '2'
 
 job-submission/index
-autoscaling/reference
+../../core/api/autoscaler
 ```

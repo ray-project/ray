@@ -81,5 +81,5 @@ quickstart
 profiling
 overlap
 troubleshooting
-compiled-graph-api
+../api/compiled-graph
 ```
