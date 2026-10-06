@@ -146,12 +146,12 @@ There are two different ways one can pass an object to a Ray task or method. Dep
 
 **Passing an object as a top-level argument**: When an object is passed directly as a top-level argument to a task, Ray will de-reference the object. This means that Ray will fetch the underlying data for all top-level object reference arguments, not executing the task until the object data becomes fully available.
 
-```{literalinclude} doc_code/obj_val.py
+```{literalinclude} ../doc_code/obj_val.py
 ```
 
 **Passing an object as a nested argument**: When an object is passed within a nested object, for example, within a Python list, Ray will *not* de-reference it. This means that the task will need to call `ray.get()` on the reference to fetch the concrete value. However, if the task never calls `ray.get()`, then the object value never needs to be transferred to the machine the task is running on. We recommend passing objects as top-level arguments where possible, but nested arguments can be useful for passing objects on to other tasks without needing to see the data.
 
-```{literalinclude} doc_code/obj_ref.py
+```{literalinclude} ../doc_code/obj_ref.py
 ```
 
 The top-level vs not top-level passing convention also applies to actor constructors and actor method calls:
@@ -180,7 +180,7 @@ actor_handle.method.remote([obj])  # by-reference
 
 You can also pass objects to tasks via *closure-capture*. This can be convenient when you have a large object that you want to share verbatim between many tasks or actors, and don't want to pass it repeatedly as an argument. Be aware however that defining a task that closes over an object ref will pin the object via reference-counting, so the object will not be evicted until the job completes.
 
-```{literalinclude} doc_code/obj_capture.py
+```{literalinclude} ../doc_code/obj_capture.py
 ```
 
 ## Nested Objects
@@ -202,6 +202,6 @@ Ray can automatically recover from object data loss via {ref}`lineage reconstruc
 ```{toctree}
 :maxdepth: 1
 
-objects/serialization
-objects/object-spilling
+serialization
+object-spilling
 ```

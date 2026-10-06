@@ -139,7 +139,7 @@ TEAM_API_CONFIGS = {
     },
     "core": {
         "head_modules": {"ray"},
-        "head_doc_file": "doc/source/ray-core/api/index.md",
+        "head_doc_file": "doc/source/core/api/index.md",
         "white_list_apis": set(),
         "tracked_doc_debt": {
             # These APIs will be documented in near future
@@ -163,7 +163,7 @@ TEAM_API_CONFIGS = {
         # API and once in the Compiled Graph API; conf.py's DuplicateObjectFilter
         # mirrors this exemption for the Sphinx render. ray.remote (canonical
         # ray._private.worker.remote) is cross-listed under both Tasks and
-        # Actors in ray-core/api/core.rst, since @ray.remote defines both.
+        # Actors in core/api/core.rst, since @ray.remote defines both.
         # ray.get / ray.put / ray.method are additionally cross-listed in
         # direct-transport.rst (their Ray Direct Transport usage) beyond core.rst.
         "intentional_duplicate_apis": {

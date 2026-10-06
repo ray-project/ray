@@ -12,6 +12,14 @@ an image ref, ``st-`` a secret's env dict) and the sandbox id doubles as the
 client task id. The exec table is the one piece of in-process state, so run
 a single facade process per cluster.
 
+When the environment variable named by ``SandboxAPISettings.token_env_var``
+(default ``RAY_SANDBOX_API_TOKEN``) is set, every RPC must present that
+token, as the client's token secret or as ``authorization: Bearer <token>``,
+the same token the REST app checks. Without one, ``main`` serves only
+loopback addresses unless ``--allow-unauthenticated`` is passed: sandboxes
+with network access can reach any address their node can, so a tokenless
+facade on a network address would also serve the code running inside them.
+
 Requires ``grpclib`` and ``ray[default]``, not the Serve extra. Run with
 ``python -m ray.experimental.sandbox.http.grpc_facade``.
 """
@@ -19,7 +27,10 @@ Requires ``grpclib`` and ``ray[default]``, not the Serve extra. Run with
 import argparse
 import asyncio
 import base64
+import functools
 import hashlib
+import hmac
+import ipaddress
 import itertools
 import json
 import logging
@@ -94,6 +105,8 @@ _MAX_EXEC_RECORDS = 50_000
 # add_exec inspects at most this many of the oldest records, so eviction
 # costs O(1) per exec instead of a scan of the whole table.
 _EXEC_EVICTION_SCAN = 64
+# Command-router credential handed out when no token is configured.
+_ROUTER_JWT_WITHOUT_TOKEN = "ray-sandbox-facade"
 
 
 def _new_sandbox_id(key: Optional[str] = None) -> str:
@@ -240,11 +253,17 @@ class _FacadeState:
     """State shared between the control-plane and exec-plane servicers."""
 
     def __init__(
-        self, resolver: Any, settings: SandboxAPISettings, advertise_url: str
+        self,
+        resolver: Any,
+        settings: SandboxAPISettings,
+        advertise_url: str,
+        token: Optional[str] = None,
     ) -> None:
         self.resolver = resolver
         self.settings = settings
         self.advertise_url = advertise_url
+        # Required on every RPC when set; see _TokenGate.
+        self.token = token
         self.execs: Dict[str, _ExecRecord] = {}
 
     # Resolver calls can wait on a GCS round trip (an actor create, a cache
@@ -403,9 +422,69 @@ def _terminated() -> Any:
     return api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
 
 
+def _carries_token(metadata: Any, token: str) -> bool:
+    """True when a call's metadata presents ``token``.
+
+    The client SDK sends its token secret on control-plane calls and
+    ``authorization: Bearer <jwt>`` on command-router calls, where the jwt
+    is the one ``TaskGetCommandRouterAccess`` handed out: the token itself.
+    Either header may carry it, and the bearer form must match exactly, as
+    in the REST app. A header that is missing or not a string counts as
+    absent.
+    """
+
+    def presented(key: str) -> bytes:
+        value = metadata.get(key) if metadata is not None else None
+        return value.encode("utf-8") if isinstance(value, str) else b""
+
+    expected = token.encode("utf-8")
+    secret_ok = hmac.compare_digest(presented("x-modal-token-secret"), expected)
+    bearer_ok = hmac.compare_digest(presented("authorization"), b"Bearer " + expected)
+    return secret_ok or bearer_ok
+
+
+def _require_token(func: Any, path: str, token: str) -> Any:
+    """Wrap an RPC handler so that it rejects calls without ``token``."""
+
+    @functools.wraps(func)
+    async def checked(stream: Any) -> None:
+        # Before the handler reads the request, so a rejected call never
+        # reaches a sandbox or the cluster.
+        if not _carries_token(getattr(stream, "metadata", None), token):
+            # No header values in the log: a client set up for another
+            # server may present real credentials of its own.
+            logger.debug("Rejected an unauthenticated call to %s", path)
+            raise GRPCError(Status.UNAUTHENTICATED, "invalid or missing API token")
+        await func(stream)
+
+    return checked
+
+
+class _TokenGate:
+    """Requires the configured token on every RPC of a servicer.
+
+    The check wraps the handler table that ``grpclib.server.Server``
+    dispatches through rather than hooking one server, so every server
+    built from these servicers enforces it, including on RPCs added later.
+    Without a configured token the table is returned unchanged.
+    """
+
+    _state: _FacadeState
+
+    def __mapping__(self) -> Dict[str, Any]:
+        mapping = super().__mapping__()
+        token = self._state.token
+        if token is None:
+            return mapping
+        return {
+            path: handler._replace(func=_require_token(handler.func, path, token))
+            for path, handler in mapping.items()
+        }
+
+
 @_fill_unimplemented
 @DeveloperAPI
-class RaySandboxControlServicer(ModalClientBase):
+class RaySandboxControlServicer(_TokenGate, ModalClientBase):
     """Control-plane RPCs: apps, images, secrets, sandbox lifecycle."""
 
     def __init__(self, state: _FacadeState) -> None:
@@ -695,16 +774,21 @@ class RaySandboxControlServicer(ModalClientBase):
         await stream.send_message(
             api_pb2.TaskGetCommandRouterAccessResponse(
                 url=self._state.advertise_url,
-                # Not a parseable JWT on purpose: the SDK then applies no
-                # client-side expiry and only refreshes on UNAUTHENTICATED.
-                jwt="ray-sandbox-facade",
+                # The SDK presents this as "Bearer <jwt>" on every
+                # command-router call, so with a token configured it is the
+                # token itself, which this caller has just presented; that
+                # holds only while the facade has one shared credential.
+                # Not a parseable JWT (the docs ask for an opaque token), so
+                # the SDK applies no client-side expiry and only refreshes on
+                # UNAUTHENTICATED.
+                jwt=self._state.token or _ROUTER_JWT_WITHOUT_TOKEN,
             )
         )
 
 
 @_fill_unimplemented
 @DeveloperAPI
-class RaySandboxRouterServicer(TaskCommandRouterBase):
+class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
     """Exec-plane RPCs: start, stdio, stdin, poll, and wait.
 
     The client SDK reaches this service at the URL handed out by
@@ -1045,6 +1129,11 @@ def build_servicers(
 ) -> List[Any]:
     """Build the two grpclib servicers sharing one facade state.
 
+    When the environment variable named by ``settings.token_env_var`` is
+    set, every RPC dispatched through the servicers' handler tables (what
+    ``grpclib.server.Server`` uses) must present that token. Calling a
+    handler method directly bypasses the check.
+
     Args:
         settings: Server settings; defaults are production-safe.
         handle_resolver: Test seam, same surface as in ``create_app``.
@@ -1057,7 +1146,8 @@ def build_servicers(
     """
     settings = settings or SandboxAPISettings()
     resolver = handle_resolver or RayActorHandleResolver(settings)
-    state = _FacadeState(resolver, settings, advertise_url)
+    token = os.environ.get(settings.token_env_var) or None
+    state = _FacadeState(resolver, settings, advertise_url, token)
     return [RaySandboxControlServicer(state), RaySandboxRouterServicer(state)]
 
 
@@ -1066,6 +1156,17 @@ async def serve(host: str, port: int, servicers: List[Any]) -> None:
     await server.start(host, port)
     logger.info("Ray Sandbox gRPC facade listening on %s:%d", host, port)
     await server.wait_closed()
+
+
+def _is_loopback(host: str) -> bool:
+    """True for ``localhost`` or a literal loopback address."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        # A hostname, or "" (every interface): not provably loopback.
+        return False
 
 
 def main(argv: Optional[List[str]] = None) -> None:
@@ -1077,14 +1178,40 @@ def main(argv: Optional[List[str]] = None) -> None:
         default=None,
         help="Command-router URL handed to clients (default http://HOST:PORT)",
     )
+    parser.add_argument(
+        "--allow-unauthenticated",
+        action="store_true",
+        help=(
+            "Serve a non-loopback --host without a token. Only for a facade "
+            "that nothing but an authenticating proxy can reach."
+        ),
+    )
     args = parser.parse_args(argv)
     advertise = args.advertise_url or f"http://{args.host}:{args.port}"
 
+    settings = SandboxAPISettings()
+    authenticated = bool(os.environ.get(settings.token_env_var))
+    exposed = not authenticated and not _is_loopback(args.host)
+    if exposed and not args.allow_unauthenticated:
+        # Refused before connecting to the cluster.
+        parser.error(
+            f"refusing to serve {args.host!r} without authentication: set "
+            f"{settings.token_env_var}, bind a loopback address, or pass "
+            "--allow-unauthenticated if only an authenticating proxy can "
+            "reach the facade"
+        )
+
     logging.basicConfig(level=logging.INFO)
+    if authenticated:
+        logger.info("Requiring the API token from %s", settings.token_env_var)
+    elif exposed:
+        logger.warning(
+            "Serving %r without authentication (--allow-unauthenticated)", args.host
+        )
     import ray
 
     ray.init(address=os.environ.get("RAY_ADDRESS", "auto"), ignore_reinit_error=True)
-    servicers = build_servicers(advertise_url=advertise)
+    servicers = build_servicers(settings, advertise_url=advertise)
     asyncio.run(serve(args.host, args.port, servicers))
 
 
