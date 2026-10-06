@@ -12,8 +12,10 @@ from starlette.datastructures import Headers
 
 from ray.exceptions import RayActorError
 from ray.llm._internal.serve.constants import get_llm_serve_runtime_env
-from ray.llm._internal.serve.core.ingress import applications as applications_module
-from ray.llm._internal.serve.core.ingress.applications import RouterApplication
+from ray.llm._internal.serve.core.ingress import (
+    router_application as router_application_module,
+)
+from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.serve._private.constants import (
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_SESSION_ID,
@@ -84,7 +86,7 @@ class FakeHandle:
 @pytest.fixture(autouse=True)
 def _no_real_app_handles():
     """Background lookups may outlive a test's own patch; never reach Serve."""
-    with patch.object(applications_module.serve, "get_app_handle", FakeHandle):
+    with patch.object(router_application_module.serve, "get_app_handle", FakeHandle):
         yield
 
 
@@ -105,7 +107,9 @@ def _new_router(model_apps=MODEL_APPS, missing_apps=None):
         handles.setdefault(app_name, FakeHandle(app_name))
         return handles[app_name]
 
-    patcher = patch.object(applications_module.serve, "get_app_handle", get_app_handle)
+    patcher = patch.object(
+        router_application_module.serve, "get_app_handle", get_app_handle
+    )
     patcher.start()
     router = _new(RouterApplication, model_apps)
     return router, handles, patcher
@@ -236,8 +240,10 @@ class TestChatDecision:
             return func(*args)
 
         with patch.object(
-            applications_module.asyncio, "to_thread", to_thread
-        ), patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+            router_application_module.asyncio, "to_thread", to_thread
+        ), patch.object(
+            router_application_module.serve, "get_app_handle", get_app_handle
+        ):
             router = _new(RouterApplication, MODEL_APPS)
             decisions = await asyncio.gather(
                 _chat(router, {"model": "model-a"}),
@@ -257,7 +263,9 @@ class TestChatDecision:
             assert release_lookup.wait(timeout=5)
             return FakeHandle(app_name)
 
-        with patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+        with patch.object(
+            router_application_module.serve, "get_app_handle", get_app_handle
+        ):
             router = _new(RouterApplication, MODEL_APPS)
             chat_task = asyncio.create_task(_chat(router, {"model": "model-a"}))
             assert await asyncio.to_thread(lookup_started.wait, 1)
@@ -270,12 +278,14 @@ class TestChatDecision:
 
     @pytest.mark.asyncio
     async def test_handle_lookup_is_included_in_decision_timeout(self, monkeypatch):
-        monkeypatch.setattr(applications_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.05)
+        monkeypatch.setattr(router_application_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.05)
 
         async def blocked_to_thread(func, *args):
             await asyncio.sleep(10)
 
-        with patch.object(applications_module.asyncio, "to_thread", blocked_to_thread):
+        with patch.object(
+            router_application_module.asyncio, "to_thread", blocked_to_thread
+        ):
             router = _new(RouterApplication, MODEL_APPS)
             try:
                 response = await _chat(router, {"model": "model-a"})
@@ -349,8 +359,8 @@ class TestChatDecision:
 
     @pytest.mark.asyncio
     async def test_missing_application(self, monkeypatch):
-        monkeypatch.setattr(applications_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.1)
-        monkeypatch.setattr(applications_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        monkeypatch.setattr(router_application_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.1)
+        monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
         router, _, patcher = _new_router(missing_apps={"llm-model-a"})
         try:
             response = await _chat(router, {"model": "model-a"})
@@ -370,7 +380,7 @@ class TestChatDecision:
         [RayServeException("Application does not exist."), RayActorError()],
     )
     async def test_application_deployed_after_router(self, monkeypatch, error):
-        monkeypatch.setattr(applications_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
         deployed = False
 
         def get_app_handle(app_name):
@@ -378,7 +388,9 @@ class TestChatDecision:
                 raise error
             return FakeHandle(app_name)
 
-        with patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+        with patch.object(
+            router_application_module.serve, "get_app_handle", get_app_handle
+        ):
             router = _new(RouterApplication, MODEL_APPS)
             try:
                 await asyncio.sleep(0.05)
@@ -390,7 +402,7 @@ class TestChatDecision:
 
     @pytest.mark.asyncio
     async def test_unexpected_lookup_error_is_not_retried(self, monkeypatch):
-        monkeypatch.setattr(applications_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
         lookups = 0
 
         def get_app_handle(app_name):
@@ -398,7 +410,9 @@ class TestChatDecision:
             lookups += 1
             raise TypeError("bug")
 
-        with patch.object(applications_module.serve, "get_app_handle", get_app_handle):
+        with patch.object(
+            router_application_module.serve, "get_app_handle", get_app_handle
+        ):
             router = _new(RouterApplication, {"model-a": "llm-model-a"})
             with pytest.raises(TypeError, match="bug"):
                 await _chat(router, {"model": "model-a"})
@@ -424,7 +438,7 @@ class TestChatDecision:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_reserving_path(self, monkeypatch):
-        monkeypatch.setattr(applications_module, "PICK_ONLY_TIMEOUT_S", 0.05)
+        monkeypatch.setattr(router_application_module, "PICK_ONLY_TIMEOUT_S", 0.05)
         router, handles, patcher = _new_router()
         try:
             handle = FakeHandle("llm-model-a")
@@ -453,7 +467,7 @@ class TestChatDecision:
 
     @pytest.mark.asyncio
     async def test_no_ready_replica_times_out(self, monkeypatch):
-        monkeypatch.setattr(applications_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.1)
+        monkeypatch.setattr(router_application_module, "CHOOSE_REPLICA_TIMEOUT_S", 0.1)
         router, handles, patcher = _new_router()
         try:
             handle = FakeHandle("llm-model-a")
@@ -469,7 +483,7 @@ class TestChatDecision:
 def test_deployment_options_keep_router_available():
     options = RouterApplication.get_deployment_options()
     assert options == {
-        "max_ongoing_requests": applications_module.DEFAULT_MAX_ONGOING_REQUESTS,
+        "max_ongoing_requests": router_application_module.DEFAULT_MAX_ONGOING_REQUESTS,
         "ray_actor_options": {
             "num_cpus": 1,
             "runtime_env": get_llm_serve_runtime_env(),
