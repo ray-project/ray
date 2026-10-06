@@ -540,10 +540,9 @@ class TorchLearner(Learner):
         ):
             return plan
         # All three parts of the plan reduce with MAX: skip if ANY Learner wants to,
-        # abort if ANY Learner must, and step as many minibatches as the Learner with
-        # the most data needs. The latter is what keeps every Learner's data fully
-        # trained on -- a smaller count would leave the larger shards partly
-        # unvisited (see `test_minibatch_coverage_across_unequal_shards`).
+        # abort if ANY Learner must, and step through the largest proposed number of
+        # minibatches, which completes every Learner's `num_epochs` passes over its
+        # own batch (see `test_minibatch_coverage_across_unequal_shards`).
         plan_tensor = torch.tensor(
             [int(plan.skip), plan.num_minibatches, int(plan.abort)],
             dtype=torch.int64,

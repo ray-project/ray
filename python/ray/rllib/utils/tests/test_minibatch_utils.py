@@ -255,10 +255,7 @@ class TestMinibatchUtils(unittest.TestCase):
         to agree on one count. RLlib takes the largest of their proposals, which is
         what guarantees that every Learner completes its `num_epochs` passes over its
         own shard. The average of the proposals would not: a Learner holding much
-        more data than its peers then walks a prefix of its shard and never reaches
-        the end -- the same rows on every update, since the iterator starts over at
-        row 0 each time. The rows it never reaches are the tail of its shard, which is
-        where the ends of the longest trajectories sit.
+        more data than its peers then never reaches the end of its shard.
 
         This test assumes the `max` rule; `TestLearnerGroupUpdatePlan` is the half
         that pins a real group of Learners to it.
@@ -310,27 +307,14 @@ class TestMinibatchUtils(unittest.TestCase):
                 self.assertLessEqual(counts.max() - counts.min(), 1)
                 # ... so the visits per row follow from the shard's size alone, ...
                 self.assertEqual(agreed * minibatch_size // num_rows, counts.min())
-                # ... every row is trained on at least `num_epochs` times, ...
+                # ... and every row is trained on at least `num_epochs` times.
                 self.assertGreaterEqual(counts.min(), num_epochs)
-                # ... and in particular the shard's last timestep is trained on.
-                self.assertGreater(counts[-1], 0)
 
             # Averaging the proposals instead would leave the largest shard short of
             # the epochs it was configured for.
             averaged = sum(proposals) // len(proposals)
             counts = visits(max(shard_sizes), averaged, minibatch_size, num_epochs)
             self.assertLess(counts.min(), num_epochs)
-
-        # In the second scenario that shortfall is data never trained on at all. The
-        # Learner with the long trajectories proposed 32 minibatches; averaging the
-        # group's proposals (32, 2, 2) gives 12, so it draws 12 x 32 = 384 of its
-        # 1024 timesteps and the remaining 640 -- its tail, ending in the final
-        # timestep of its longest trajectory -- are never trained on. Being a prefix
-        # walk from row 0, it is the same 640 on every update.
-        counts = visits(1024, num_total_minibatches=12, minibatch_size=32, num_epochs=1)
-        self.assertEqual(640, (counts == 0).sum())
-        self.assertEqual(0, counts[-1])
-        self.assertTrue(np.all(counts[:384] == 1))
 
     def test_shard_episodes_iterator(self):
         class DummyEpisode:

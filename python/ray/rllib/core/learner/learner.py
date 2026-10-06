@@ -1479,11 +1479,13 @@ class Learner(Checkpointable):
         operation and must stay one.
 
         The plans are combined as follows: the group skips if ANY Learner wants to,
-        aborts if ANY Learner must, and steps through as many minibatches as the
-        Learner with the most data proposed. Taking the largest proposal means no
-        Learner's shard is left partly untrained; the price is that Learners with
-        less data cycle theirs more often, proportionally to how lopsided the shards
-        are.
+        aborts if ANY Learner must, and steps through the largest proposed number of
+        minibatches. Each Learner proposes what its own batch needs for `num_epochs`
+        passes, so the largest proposal leaves no Learner's batch partly untrained.
+        The price: every Learner takes that many optimizer steps, and a Learner that
+        needed fewer cycles its batch more often (up to largest/own times
+        `num_epochs`), so its rows also weigh more in each update, as DDP averages
+        the Learners' gradients with equal weight.
 
         Args:
             plan: This Learner's own proposal, derived from its own train batch.
