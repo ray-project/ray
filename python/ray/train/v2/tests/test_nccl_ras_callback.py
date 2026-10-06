@@ -393,9 +393,6 @@ def test_parse_healthy_ras_example():
 
 
 def test_parse_keeps_the_raw_output():
-    # The history written at hang time is the raw `ncclras` output, so a report
-    # has to carry what it was parsed from -- including the unrepaired JSON, so
-    # the file shows what NCCL actually emitted.
     assert parse_ras_schema(HEALTHY_RAS_JSON).raw_json == HEALTHY_RAS_JSON
     assert parse_ras_schema(DEAD_RANK_RAS_JSON).raw_json == DEAD_RANK_RAS_JSON
 
@@ -632,7 +629,7 @@ def create_two_op_report(allgather):
 _FROZEN = create_single_comm_report({1: 5, 2: 4})
 
 # Each case is a confirm count and the polls fed to the callback, each paired
-# with the expected ``comm_deadlock_count`` after it -- or, for the final poll
+# with the expected ``comm_deadlock_count`` after it or, for the final poll
 # of a hang, the text the NCCLHangError must contain. The first poll of every
 # case is a baseline: there is nothing to diff it against.
 _STREAK_CASES = [
@@ -1521,7 +1518,7 @@ _FAN_OUT_DIAGNOSTICS = [
         method="dump_workers_stack_traces",
         fn=nccl_ras.dump_stack_trace,
         # py-spy has to give up before the controller stops waiting.
-        fn_args=(nccl_ras._STACK_DUMP_TIMEOUT_S - 5,),
+        fn_args=(nccl_ras._STACK_DUMP_TIMEOUT_S - 1,),
         timeout_s=nccl_ras._STACK_DUMP_TIMEOUT_S,
         ok=lambda contents: contents,
         failed=None,  # dump_stack_trace always returns a (fallback) trace
@@ -1532,11 +1529,11 @@ _FAN_OUT_DIAGNOSTICS = [
         tool=nccl_ras._NVIDIA_SMI_TOOL,
         method="dump_nodes_nvidia_smi",
         fn=nccl_ras.run_nvidia_smi,
-        fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 5,),
+        fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 1,),
         timeout_s=nccl_ras._NVIDIA_SMI_TIMEOUT_S,
         ok=lambda contents: {"ok": True, "stdout": contents},
         failed=lambda reason: {"ok": False, "reason": reason},
-        filename=lambda rank: f"10.0.0.{rank}.log",
+        filename=lambda rank: f"node_10.0.0.{rank}.log",
         placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}\n",
     ),
     FanOutDiagnostic(
@@ -1565,7 +1562,7 @@ def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic
     workers = callback._worker_group.get_workers()
     calls = scripted_fan_out(
         monkeypatch,
-        [WorkerDump(rank, value=diagnostic.ok(f"dump {rank}")) for rank in (0, 1)],
+        [DiagnosticResult(rank, value=diagnostic.ok(f"dump {rank}")) for rank in (0, 1)],
     )
 
     fs_path = getattr(callback, diagnostic.method)()
@@ -1597,11 +1594,11 @@ def test_diagnostic_failed_target_gets_placeholder(
     callback = make_diagnostics_callback()
     reason = "it went wrong"
     if source == "fan_out_error":
-        bad_dump = WorkerDump(0, error=reason)
+        bad_dump = DiagnosticResult(0, error=reason)
     else:
-        bad_dump = WorkerDump(0, value=diagnostic.failed(reason))
+        bad_dump = DiagnosticResult(0, value=diagnostic.failed(reason))
     scripted_fan_out(
-        monkeypatch, [bad_dump, WorkerDump(1, value=diagnostic.ok("dump 1"))]
+        monkeypatch, [bad_dump, DiagnosticResult(1, value=diagnostic.ok("dump 1"))]
     )
 
     getattr(callback, diagnostic.method)()

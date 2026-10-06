@@ -689,7 +689,7 @@ def dump_flight_recorder() -> Dict[str, Any]:
         return {"ok": False, "reason": f"torch c10d is unavailable ({e})"}
 
     try:
-        # The default dumps every collective on this rank
+        # The default dumps every collective on this rank (no timeout available on torch side)
         trace_bytes = c10d._dump_fr_trace_json()
         trace_json = trace_bytes.decode("utf-8", errors="replace")
     except Exception as e:  # noqa: BLE001
