@@ -569,7 +569,11 @@ class NixlTensorTransport(TensorTransportManager):
                     # updating descriptor list in such a case (there is potential memory overlap).
                     if remote_agent_meta_version != self._remote_agents[remote_name]:
                         with self._agent_guard.write(remote_name, self._wait_done):
-                            nixl_agent.remove_remote_agent(remote_name)
+                            # A writer queued ahead of us may have refreshed it already.
+                            agents = self._remote_agents
+                            if agents.get(remote_name) != remote_agent_meta_version:
+                                nixl_agent.remove_remote_agent(remote_name)
+                                agents[remote_name] = remote_agent_meta_version
                     self._remote_agents.move_to_end(remote_name)
                 elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
                     evicted_agent_name, _ = self._remote_agents.popitem(last=False)
