@@ -555,20 +555,31 @@ docker run --privileged -p 8000:8000 \
 
 `ray.experimental.sandbox.http.grpc_facade` serves the same detached sandbox actors over gRPC. It implements the subset of a third-party sandbox SDK's control-plane and command-router services that the SDK's Sandbox API uses, so you can point an unmodified client at a Ray cluster to create sandboxes, run commands, and use the client's filesystem API.
 
-The facade requires `grpclib` and `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster and hand clients the URL it advertises:
+The facade requires `grpclib` and `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster, with a token that clients must present:
 
 ```bash
 pip install grpclib
+export RAY_SANDBOX_API_TOKEN=$(openssl rand -hex 32)
 python -m ray.experimental.sandbox.http.grpc_facade \
-  --host 0.0.0.0 --port 50051 --advertise-url http://<facade-host>:50051
+  --host 0.0.0.0 --port 50051 --advertise-url https://<facade-endpoint>
 ```
+
+Clients connect to the URL that the facade advertises. Current client SDKs accept a plaintext `http://` URL only when their server URL is on `localhost`, so either terminate TLS in front of the facade and advertise that `https://` endpoint, or forward a local port to the facade and advertise `http://127.0.0.1:<port>`.
+
+#### Authentication
+
+With `RAY_SANDBOX_API_TOKEN` set, every call must present the token, either as the client SDK's token secret, with any value as the token ID, or as an `authorization: Bearer <token>` header. Calls without it fail with `UNAUTHENTICATED`. The SDK's anonymous client sends no credentials, so give clients token credentials instead. Use an opaque random token like the one in the preceding example, and don't reuse the Ray cluster's own authentication token.
+
+Without a token, the facade serves only loopback addresses such as `127.0.0.1`. Sandboxes with network access can reach any address their node can, including the facade's, so an unauthenticated facade on a network address would also serve the code running inside them. Pass `--allow-unauthenticated` only when nothing but an authenticating proxy can reach the facade. A relay that exposes a loopback facade to other machines still needs a token.
+
+The token isn't scoped to a client. Anyone who has it controls every sandbox in the facade's Ray namespace, which the REST API shares by default: they can create sandboxes, run commands in them, read and write their files, and terminate them. The facade serves plaintext HTTP/2, so the token crosses the network unencrypted unless TLS terminates in front of the facade.
 
 Keep these limits in mind:
 
 * **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step.
 * **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
 * **State**: The facade keeps exec state in memory, so run one facade process per cluster.
-* **Network**: The facade doesn't enforce network allowlists. It grants open egress instead.
+* **Network**: The facade rejects network allowlists, which it can't enforce. Sandboxes get open egress unless the client blocks networking, and open egress reaches any address the node can, including other Ray nodes. See [Networking and DNS](#networking-and-dns).
 
 ## API reference
 

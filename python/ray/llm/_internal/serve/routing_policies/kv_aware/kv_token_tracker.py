@@ -95,6 +95,10 @@ class ReservationBroadcast(TypedDict):
     isl_tokens: int
     expected_output_tokens: Optional[int]
     effective_prefill_tokens: int
+    # Must match the name vLLM stamped on the request's KV-cache events, so a
+    # peer's selection service books this reservation in the same LoRA
+    # namespace the selecting ingress scored it in.
+    lora_name: Optional[str]
 
 
 class ReservationBroadcastForwarder:
@@ -411,6 +415,7 @@ class KVTokenTracker:
         token_ids: List[int],
         allowed_worker_ids: List[int],
         expected_output_tokens: Optional[int] = None,
+        lora_name: Optional[str] = None,
     ) -> WorkerSelection:
         """Score the allowed workers for a request based on KV-cache overlap and
         load and pick the best one.
@@ -422,6 +427,10 @@ class KVTokenTracker:
             expected_output_tokens: The request's output-token cap. With
                 select-time reservation this lets selection service decay decode
                 load without per-token progress events.
+            lora_name: The adapter name vLLM stamps on the request's KV-cache
+                events. The selection service salts its KV hashes with it, so
+                omitting it on a LoRA request scores against the wrong
+                namespace and never matches.
 
         Returns:
             The selected worker (see ``WorkerSelection``).
@@ -444,6 +453,7 @@ class KVTokenTracker:
             "token_ids": token_ids,
             "allowed_worker_ids": allowed_worker_ids,
             "expected_output_tokens": expected_output_tokens,
+            "lora_name": lora_name,
         }
         selection = await self._svc.select_and_reserve(request)
         self._track_request_state(
@@ -463,6 +473,7 @@ class KVTokenTracker:
                     "isl_tokens": selection["isl_tokens"],
                     "expected_output_tokens": expected_output_tokens,
                     "effective_prefill_tokens": selection["effective_prefill_tokens"],
+                    "lora_name": lora_name,
                 }
             )
         return {
@@ -559,6 +570,7 @@ class KVTokenTracker:
                     "isl_tokens": reservation["isl_tokens"],
                     "expected_output_tokens": reservation["expected_output_tokens"],
                     "effective_prefill_tokens": reservation["effective_prefill_tokens"],
+                    "lora_name": reservation["lora_name"],
                 }
             )
             self._track_request_state(

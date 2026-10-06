@@ -31,6 +31,30 @@ from ray.serve.llm.request_router import KVAwareRouter
 
 
 class TestBuildTokenizeRequest:
+    @pytest.mark.parametrize("stream", [True, False])
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"logprobs": True, "top_logprobs": -2},
+            {"logprobs": False, "top_logprobs": 5},
+        ],
+    )
+    def test_invalid_chat_sampling_params(self, stream, params):
+        # vLLM's validators raise VLLMValidationError, which is not a
+        # pydantic ValidationError. Let the engine report the bad request
+        # instead of failing the HAProxy router consultation with a 500.
+        assert (
+            build_tokenize_request(
+                {
+                    "model": "m",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": stream,
+                    **params,
+                }
+            )
+            is None
+        )
+
     @pytest.mark.parametrize(
         "payload",
         [
