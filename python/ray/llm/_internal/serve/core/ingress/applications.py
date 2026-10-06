@@ -95,6 +95,7 @@ def _model_card(model_id: str) -> Dict[str, Any]:
 router_app = FastAPI()
 
 
+@serve._router_application
 @serve.ingress(router_app)
 class RouterApplication:
     """Route OpenAI requests across independently deployed model applications.
