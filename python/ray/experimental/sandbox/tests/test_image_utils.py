@@ -702,25 +702,32 @@ def test_seeding_stays_inside_the_tree(tmp_path):
     host_tmp.mkdir()
     host_tmp_mode = host_tmp.stat().st_mode
     (root / "etc").symlink_to(host_etc)  # absolute host path
-    (root / "tmp").symlink_to(host_tmp)
     (root / "dev").symlink_to("../escape")  # climbs past the root
+    # tmp gets a tree of its own, linked relatively: tmp_path is often
+    # under /tmp, and in the image a /tmp naming a path under /tmp is a
+    # symlink loop, which seeding rightly gives up on.
+    tmp_root = tmp_path / "tmp-rootfs"
+    tmp_root.mkdir()
+    (tmp_root / "tmp").symlink_to("../host-tmp")
 
-    image_utils._seed_tmp(str(root))
-    image_utils._seed_mountpoints(str(root))
+    for tree in (root, tmp_root):
+        image_utils._seed_tmp(str(tree))
+        image_utils._seed_mountpoints(str(tree))
 
     assert os.listdir(host_etc) == []
     assert os.listdir(host_tmp) == []
     assert host_tmp.stat().st_mode == host_tmp_mode
     assert not (tmp_path / "escape").exists()
-    # In the image, /etc -> /<abs> makes /etc/hosts /<abs>/hosts; same for /tmp.
+    # In the image, /etc -> /<abs> makes /etc/hosts /<abs>/hosts.
     inside_etc = root / str(host_etc).lstrip("/")
-    inside_tmp = root / str(host_tmp).lstrip("/")
     for name in ("resolv.conf", "hosts", "hostname"):
         assert (inside_etc / name).is_file()
-    assert (inside_tmp / ".ray-sandbox-keep").is_file()
-    assert (inside_tmp.stat().st_mode & 0o7777) == 0o1777
     assert (root / "escape" / "pts").is_dir()
     assert (root / "escape" / "shm").is_dir()
+    # And /tmp -> ../host-tmp is /host-tmp: ".." stops at the root.
+    inside_tmp = tmp_root / "host-tmp"
+    assert (inside_tmp / ".ray-sandbox-keep").is_file()
+    assert (inside_tmp.stat().st_mode & 0o7777) == 0o1777
 
 
 def test_pull_requires_mkfs_erofs_with_tar_support(tmp_path, monkeypatch):
@@ -817,6 +824,19 @@ def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
     pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
+
+
+def test_dir_size_counts_hard_links_once(tmp_path):
+    """Hard links share one file, so it counts once, the way busybox's
+    hundreds of applet names share one binary."""
+    tree = tmp_path / "tree"
+    bin_dir = tree / "bin"
+    bin_dir.mkdir(parents=True)
+    (bin_dir / "busybox").write_bytes(b"x" * 1000)
+    for name in ("sh", "ls", "cat"):
+        os.link(bin_dir / "busybox", bin_dir / name)
+    (tree / "other").write_bytes(b"y" * 10)
+    assert image_utils._dir_size_bytes(str(tree)) == 1010
 
 
 if __name__ == "__main__":

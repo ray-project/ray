@@ -31,7 +31,7 @@ python/ray/experimental/rdt/rdt_manager.py: core_python cgraphs_direct_transport
 
 # === RLlib ===
 
-rllib/rllib.py: rllib rllib_gpu rllib_directly
+python/ray/rllib/rllib.py: rllib rllib_gpu rllib_directly
 
 # === Python Core ===
 
@@ -99,17 +99,17 @@ doc/source/ray-more-libs/example.py: data_doc
 doc/source/train/examples/example.py: ml_doc
 doc/source/tune/examples/example.py: ml_doc
 doc/source/rllib/doc_code/example.py: rllib_doc
-doc/source/ray-core/examples/example.ipynb: core_doc
+doc/source/core/examples/example.ipynb: core_doc
 doc/source/ray-observability/example.py: core_doc
-# The four ray-core notebooks whose targets are tagged team:ml route to ml_doc,
+# The four core/ notebooks whose targets are tagged team:ml route to ml_doc,
 # because the core step filters targets by team and would not execute them.
-doc/source/ray-core/examples/plot_hyperparameter.ipynb: ml_doc
-doc/source/ray-core/examples/batch_prediction.ipynb: ml_doc
-doc/source/ray-core/examples/plot_parameter_server.ipynb: ml_doc
-doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
+doc/source/core/examples/plot_hyperparameter.ipynb: ml_doc
+doc/source/core/examples/batch_prediction.ipynb: ml_doc
+doc/source/core/examples/plot_parameter_server.ipynb: ml_doc
+doc/source/core/examples/plot_pong_example.ipynb: ml_doc
 # highly_parallel.ipynb is the exception: the ml docs example step excludes its
 # tag, so no step runs it. It routes to the build instead.
-doc/source/ray-core/examples/highly_parallel.ipynb: doc
+doc/source/core/examples/highly_parallel.ipynb: doc
 # doc/external/ is the same team:ml case: the hash-guard test and the vendored
 # tutorial it covers both route to the step that owns the target.
 doc/external/test_hashes.py: ml_doc
@@ -171,11 +171,11 @@ doc/source/templates/05_dreambooth_finetuning/README.md:
 .readthedocs.yaml: doc
 doc/source/data/api/api.md: doc_api
 doc/source/serve/api/index.md: doc_api
-doc/source/ray-core/api/index.md: doc_api
+doc/source/core/api/index.md: doc_api
 doc/source/train/api/api.md: doc_api
 doc/source/tune/api/api.rst: doc_api
 doc/source/rllib/package_ref/index.rst: doc_api
-doc/source/ray-observability/reference/api.rst: doc_api
+doc/source/core/api/state.rst: doc_api
 # A nested leaf page under an API dir must also emit doc_api: directory rules
 # match recursively, so a change to any page below the dir triggers the checks,
 # not just the top-level index. Guards against a rule or matcher change that
@@ -254,12 +254,8 @@ doc/redirects/README.md:
 # pulled in the rllib component tests); release/*.md emitted `tools`. The global
 # rule also subsumes the standalone README.rst/SECURITY.md/CONTRIBUTING.rst skip
 # entries and the release/*.md route, which were removed as dead code.
-# TODO: RLlib currently lives at the repo-root rllib/ tree. When it migrates
-# under python/ray/rllib/, update the rllib/ paths in this section (the two
-# READMEs here and the rllib/algorithms/ppo/ppo.py guard below) along with the
-# rllib/ entry in test.rules.txt.
-rllib/README.rst:
-rllib/algorithms/ppo/README.md:
+python/ray/rllib/README.md:
+python/ray/rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
 python/ray/tune/README.rst:
 src/ray/design_docs/task_states.rst:
@@ -272,7 +268,7 @@ SECURITY.md:
 # owner. The skip is prose-only and must not swallow a real change in the same
 # directory. If any of these starts emitting nothing, the global prose pattern
 # has grown too broad.
-rllib/algorithms/ppo/ppo.py: rllib rllib_gpu rllib_directly
+python/ray/rllib/algorithms/ppo/ppo.py: rllib rllib_gpu rllib_directly
 python/ray/data/read_api.py: data
 release/benchmarks/config.yaml: tools
 

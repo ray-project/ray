@@ -812,8 +812,7 @@ py_test_module_list(
     ],
 )
 
-# Test currently off-by-default behavior to run replica sync methods in a threadpool.
-# TODO(edoakes): remove this once the FF is flipped on by default.
+# Test the default behavior that runs replica sync methods in a threadpool.
 py_test_module_list(
     size = "medium",
     env = {"RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1"},
@@ -929,6 +928,10 @@ py_test_module_list(
 # the ray-haproxy package in the serve test dependencies.
 py_test_module_list_with_env_variants(
     size = "large",
+    data = [
+        "test_config_files/ingress_router_fallback.py",
+        "test_config_files/ingress_router_fallback.yaml",
+    ],
     env_variants = {
         "system": {
             "env": {

@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference index for RLlib, covering AlgorithmConfig, Algorithm, callbacks, environments, RLModules, distributions, Learner, offline RL, ConnectorV2, replay buffers, and utilities.
+
 .. _rllib-reference-docs:
 
 Ray RLlib API
@@ -5,12 +8,7 @@ Ray RLlib API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. tip:: We'd love to hear your feedback on using RLlib - `sign up to our forum and start asking questions <https://discuss.ray.io>`_!
-
-This section contains an overview of RLlib's package- and API reference.
-If you think there is anything missing, please open an issue on `GitHub`_.
-
-.. _`GitHub`: https://github.com/ray-project/ray/issues
+The Ray RLlib API reference documents RLlib's public Python API. Each page below covers one group of APIs.
 
 .. toctree::
     :maxdepth: 2
