@@ -1225,6 +1225,37 @@ def test_bootstrap_aborts_when_no_image_matches(fake_oci):
         bootstrap_oci(_cluster_config(fake_oci))
 
 
+def test_bootstrap_resolved_image_reaches_source_details(fake_oci):
+    """With `source_details` but no image in it, bootstrap resolves the image
+    into the top-level `image_id`; the launch must use it rather than drop it.
+    An image set inside `source_details` still takes precedence."""
+    from ray.autoscaler._private._oci.config import bootstrap_oci
+    from ray.autoscaler._private._oci.node_provider import OCINodeProvider
+
+    _add_images(fake_oci)
+    config = _cluster_config(fake_oci, subnet_id="ocid1.subnet.oc1.phx.existing")
+    node_types = config["available_node_types"]
+    node_types["ray.head.default"]["node_config"]["source_details"] = {
+        "source_type": "image",
+        "boot_volume_size_in_gbs": 200,
+    }
+    node_types["gpu_worker"]["node_config"]["source_details"] = {
+        "image_id": "ocid1.image.oc1.phx.custom"
+    }
+    out = bootstrap_oci(config)
+    provider = OCINodeProvider(out["provider"], "test-cluster")
+
+    def launch(node_type):
+        node_config = out["available_node_types"][node_type]["node_config"]
+        (node,) = provider.create_node(node_config, _tags(), count=1).values()
+        return node.launch_details.source_details
+
+    head = launch("ray.head.default")
+    assert head.image_id == "ocid1.image.oc1.phx.new"
+    assert head.boot_volume_size_in_gbs == 200
+    assert launch("gpu_worker").image_id == "ocid1.image.oc1.phx.custom"
+
+
 def _add_shapes(state):
     state.shapes = [
         FakeModel(

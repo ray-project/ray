@@ -316,18 +316,25 @@ class OCINodeProvider(NodeProvider):
         )
 
         # Boot volume / image.
+        # The top-level shorthands fill in whatever `source_details` leaves
+        # unset (bootstrap resolves a missing image into `image_id`), the same
+        # way `subnet_id` feeds `create_vnic_details`.
         source = conf.pop("source_details", None)
-        image_id = conf.pop("image_id", None)
-        boot_size = conf.pop("boot_volume_size_in_gbs", None)
-        boot_vpus = conf.pop("boot_volume_vpus_per_gb", None)
+        shorthands = {
+            key: conf.pop(key, None)
+            for key in (
+                "image_id",
+                "boot_volume_size_in_gbs",
+                "boot_volume_vpus_per_gb",
+            )
+        }
         if source is None:
-            source = {"image_id": image_id}
-            if boot_size is not None:
-                source["boot_volume_size_in_gbs"] = boot_size
-            if boot_vpus is not None:
-                source["boot_volume_vpus_per_gb"] = boot_vpus
+            source = {}
         if isinstance(source, dict):
             source = dict(source)
+            for key, value in shorthands.items():
+                if value is not None and source.get(key) is None:
+                    source[key] = value
             source_type = source.pop("source_type", "image")
             if source_type != "image":
                 raise ValueError(
