@@ -1401,6 +1401,7 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
     router_api = FastAPI()
 
     @serve.deployment
+    @serve._router_application
     @serve.ingress(router_api)
     class Router:
         def __init__(self):
@@ -1430,9 +1431,7 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
     serve.run(make_backend_app(), name="model-a", route_prefix="/v1/model-a")
     serve.run(make_backend_app(), name="model-b", route_prefix="/v1/model-b")
     serve.run(make_backend_app(), name="control", route_prefix="/v1/control")
-    router_handle = serve.run(
-        Router.bind()._as_router_application(), name="router", route_prefix="/"
-    )
+    router_handle = serve.run(Router.bind(), name="router", route_prefix="/")
 
     def chat(model, request_id):
         return httpx.post(

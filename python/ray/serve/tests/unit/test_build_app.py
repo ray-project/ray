@@ -952,10 +952,11 @@ def test_build_app_router_application_marks_existing_ingress(monkeypatch):
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
 
     @serve.deployment
+    @serve._router_application
     class Router:
         pass
 
-    built_app = _build_router_app(Router.bind()._as_router_application())
+    built_app = _build_router_app(Router.bind())
 
     assert built_app.is_router_application is True
     assert built_app.ingress_deployment_name == "Router"
@@ -963,10 +964,37 @@ def test_build_app_router_application_marks_existing_ingress(monkeypatch):
     assert [d.name for d in built_app.deployments] == ["Router"]
 
 
+@pytest.mark.parametrize("router_application_outer", [True, False])
+def test_build_app_router_application_with_fastapi_ingress(
+    monkeypatch, router_application_outer
+):
+    """The marker survives `@serve.ingress` in either decorator order."""
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    class Router:
+        pass
+
+    if router_application_outer:
+        cls = serve._router_application(serve.ingress(FastAPI())(Router))
+    else:
+        cls = serve.ingress(FastAPI())(serve._router_application(Router))
+
+    assert _build_router_app(serve.deployment(cls).bind()).is_router_application
+
+
+def test_router_application_rejects_non_class():
+    def router():
+        pass
+
+    with pytest.raises(TypeError, match="can only decorate a class"):
+        serve._router_application(router)
+
+
 def test_build_app_router_application_requires_haproxy(monkeypatch):
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", False)
 
     @serve.deployment
+    @serve._router_application
     class Router:
         pass
 
@@ -974,16 +1002,14 @@ def test_build_app_router_application_requires_haproxy(monkeypatch):
         RayServeException,
         match=REQUIRES_HAPROXY_ERROR.format(feature="A router application"),
     ):
-        _build_router_app(Router.bind()._as_router_application())
+        _build_router_app(Router.bind())
 
 
-@pytest.mark.parametrize("router_first", [True, False])
-def test_build_app_router_application_rejects_ingress_request_router(
-    monkeypatch, router_first
-):
+def test_build_app_router_application_rejects_ingress_request_router(monkeypatch):
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
 
     @serve.deployment
+    @serve._router_application
     class Ingress:
         pass
 
@@ -991,15 +1017,7 @@ def test_build_app_router_application_rejects_ingress_request_router(
     class IngressRequestRouter:
         pass
 
-    app = Ingress.bind()
-    if router_first:
-        app = app._as_router_application()._with_ingress_request_router(
-            IngressRequestRouter.bind()
-        )
-    else:
-        app = app._with_ingress_request_router(
-            IngressRequestRouter.bind()
-        )._as_router_application()
+    app = Ingress.bind()._with_ingress_request_router(IngressRequestRouter.bind())
 
     with pytest.raises(
         RayServeException, match=ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR
@@ -1017,6 +1035,7 @@ def test_build_app_router_application_marker_only_on_ingress_deploy_args(
         pass
 
     @serve.deployment
+    @serve._router_application
     class Router:
         def __init__(self, helper):
             pass
@@ -1026,7 +1045,7 @@ def test_build_app_router_application_marker_only_on_ingress_deploy_args(
         pass
 
     router = build_app(
-        Router.bind(Helper.bind())._as_router_application(),
+        Router.bind(Helper.bind()),
         name="router",
         route_prefix="/",
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
@@ -1048,10 +1067,11 @@ def test_build_app_router_application_requires_route_prefix(monkeypatch):
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
 
     @serve.deployment
+    @serve._router_application
     class Router:
         pass
 
-    built_app = _build_router_app(Router.bind()._as_router_application(), None)
+    built_app = _build_router_app(Router.bind(), None)
 
     with pytest.raises(RayServeException, match="Application 'default'"):
         built_app.validate_router_application()
