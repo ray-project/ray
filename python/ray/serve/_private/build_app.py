@@ -10,6 +10,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve._private.utils import _is_router_application_class
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -163,7 +164,10 @@ def build_app(
         raise RayServeException(
             REQUIRES_HAPROXY_ERROR.format(feature="`ingress_request_router`")
         )
-    if app._is_router_application:
+    is_router_application = _is_router_application_class(
+        app._bound_deployment.func_or_class
+    )
+    if is_router_application:
         if not RAY_SERVE_ENABLE_HA_PROXY:
             raise RayServeException(
                 REQUIRES_HAPROXY_ERROR.format(feature="A router application")
@@ -239,7 +243,7 @@ def build_app(
         },
         external_scaler_enabled=external_scaler_enabled,
         ingress_request_router_deployment=ingress_request_router_deployment,
-        is_router_application=app._is_router_application,
+        is_router_application=is_router_application,
     )
 
 
