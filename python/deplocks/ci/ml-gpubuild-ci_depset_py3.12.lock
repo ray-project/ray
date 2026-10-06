@@ -178,7 +178,7 @@ aiosignal==1.4.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
-ale-py==0.10.1 \
+ale-py==0.10.1 ; python_full_version < '3.14' \
     --hash=sha256:076a44a61c2518b844f765692a91d0a6b383c6592b5fdabd94fd24d4c62a54ef \
     --hash=sha256:0835ee11004efeb5a9805a09c1525242f737257a8a4f5f4f0b9b3e047e6dca86 \
     --hash=sha256:12617edc9799c73570df67a731a4293bcfd500f413e0bfa867b53fc411fa7629 \
@@ -1024,7 +1024,7 @@ einops==0.8.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   deepspeed
-etils==1.13.0 \
+etils==1.13.0 ; python_full_version < '3.14' \
     --hash=sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607 \
     --hash=sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb
     # via mujoco
@@ -1389,7 +1389,7 @@ gast==0.7.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
     #   tensorflow-probability
-glfw==2.10.0 \
+glfw==2.10.0 ; python_full_version < '3.14' \
     --hash=sha256:23936202a107039b5372f0b88ae1d11080746aa1c78910a45d4a0c4cf408cfaa \
     --hash=sha256:27c9e9a2d5e1dc3c9e3996171d844d9df9a5a101e797cb94cce217b7afcf8fd9 \
     --hash=sha256:2aab89d2d9535635ba011fc7303390685169a1aa6731ad580d08d043524b8899 \
@@ -2438,7 +2438,7 @@ memray==1.19.3 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-minigrid==2.3.1 \
+minigrid==2.3.1 ; python_full_version < '3.14' \
     --hash=sha256:6e841a9f95378abe1fdb053d4dfaead1613ceb2fa1e9548a8525882fbdb4f6f3 \
     --hash=sha256:9b08ccd1a99754eb8d26a3bde59b35c016861da20aae7fff559769b329c26b67
     # via
@@ -2450,7 +2450,7 @@ mistune==3.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   nbconvert
-ml-collections==1.1.0 \
+ml-collections==1.1.0 ; python_full_version < '3.14' \
     --hash=sha256:0ac1ac6511b9f1566863e0bb0afad0c64e906ea278ad3f4d2144a55322671f6f \
     --hash=sha256:23b6fa4772aac1ae745a96044b925a5746145a70734f087eaca6626e92c05cbc
     # via
@@ -2716,7 +2716,7 @@ msgpack-numpy==0.4.8 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/rllib-requirements.txt
-mujoco==3.2.4 \
+mujoco==3.2.4 ; python_full_version < '3.14' \
     --hash=sha256:0b7b64dd1d43e380eeb0d47312ee81a1378f6bc6b93fa0c2f6ddf0bc888f8127 \
     --hash=sha256:0ee8f3f5b1379c00dcaedcafeeb15cc96ab5164e2de98cd232ab78e5361cfa8f \
     --hash=sha256:139729d803aca323b893a1dd85553eea262b8b44afabacf694300a9ee37ba822 \
@@ -3444,7 +3444,7 @@ onnxscript==0.7.1 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
-open-spiel==1.4 \
+open-spiel==1.4 ; python_full_version < '3.14' \
     --hash=sha256:044ee55b5bd4fdd6652616ed3c1d26146d89eb6a2a74391dd2e5788ea49e923c \
     --hash=sha256:102e7df7861b531d72ce024477f7b4e63adeed213100e2ff8e4d68626b5ef445 \
     --hash=sha256:1ffebcd4a3a96b372a252d4fe5e7549d2b1912cbab540f0f11e6f9c27a8a7a75 \
@@ -4423,7 +4423,7 @@ pydantic-core==2.41.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pydantic
-pygame==2.5.2 \
+pygame==2.5.2 ; python_full_version < '3.14' \
     --hash=sha256:03879ec299c9f4ba23901b2649a96b2143f0a5d787f0b6c39469989e2320caf1 \
     --hash=sha256:074aa6c6e110c925f7f27f00c7733c6303407edc61d738882985091d1eb2ef17 \
     --hash=sha256:0e24d05184e4195fe5ebcdce8b18ecb086f00182b9ae460a86682d312ce8d31f \
@@ -4542,7 +4542,7 @@ pymoo==0.6.1.6 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botorch
-pymunk==6.2.1 \
+pymunk==6.2.1 ; python_full_version < '3.14' \
     --hash=sha256:02adec146811918e6e2c69157d67a8e71a23d355f3448f2d585ee5198423ebbf \
     --hash=sha256:0303eae52578038e1692b746b4cfe625e284445340363645f1c04bd2b5e1b6fc \
     --hash=sha256:0c807fef9534865ea321c4f8fbb9d04e71dfa3e5b5f44a52c9c4fa4d4e9b49d3 \
@@ -4589,7 +4589,7 @@ pymunk==6.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
-pyopengl==3.1.10 \
+pyopengl==3.1.10 ; python_full_version < '3.14' \
     --hash=sha256:794a943daced39300879e4e47bd94525280685f42dbb5a998d336cfff151d74f \
     --hash=sha256:c4a02d6866b54eb119c8e9b3fb04fa835a95ab802dd96607ab4cdb0012df8335
     # via
@@ -5186,12 +5186,12 @@ rsa==4.7.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-auth
-s3torchconnector==1.4.3 \
+s3torchconnector==1.4.3 ; python_full_version < '3.14' \
     --hash=sha256:a7288d1446905663d15b3a0debb819a86ced3c3f4a0c29055e3d205741bff2a2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/train-test-requirements.txt
-s3torchconnectorclient==1.4.3 \
+s3torchconnectorclient==1.4.3 ; python_full_version < '3.14' \
     --hash=sha256:0c997613b3d424be40abd915dbcd498291150a9d08ec67d0fa4916f4d0ba6493 \
     --hash=sha256:11c085011f28a57f94bdccbdae4fcfd91a689a6ad72aa63c1f1661f63e0a2c99 \
     --hash=sha256:21bc530cd25acf7828e7d7d83b302afa598e186af692e20e8d71ab92cc5b2c20 \
@@ -5613,7 +5613,7 @@ statsmodels==0.14.6 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   statsforecast
-supersuit==3.9.3 \
+supersuit==3.9.3 ; python_full_version < '3.14' \
     --hash=sha256:10f5d0ed208ddb92fba767a7889ada9f46894519077527d6af799a7767a13159 \
     --hash=sha256:f30ab6fd9fe720ea7fa73d45a96935b6321c4ea1aa45d7997684c09f39aa10de
     # via
@@ -5749,7 +5749,7 @@ tinycss2==1.4.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   bleach
-tinyscaler==1.2.8 \
+tinyscaler==1.2.8 ; python_full_version < '3.14' \
     --hash=sha256:0ce3b77562f1db74b2035ccaf62807af043333ce655e71effd6ec85fbf8ded06 \
     --hash=sha256:17409e85ff23d5eb29da65d6cdfdeafeb7d94b7c8051b1ab8457886ceb61b234 \
     --hash=sha256:3143352056dc9ac2ab87795fa3f36498c52ae603b76b3b73189544c588f46d77 \

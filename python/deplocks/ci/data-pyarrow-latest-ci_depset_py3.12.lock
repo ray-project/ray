@@ -16,7 +16,7 @@ absl-py==2.4.0 \
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
-accelerate==1.14.0 \
+accelerate==1.14.0 ; python_full_version < '3.14' \
     --hash=sha256:41b9c4377a54e0b460a959b0defa1b736e4ca0a2373252d9a539964c2afe3c8d \
     --hash=sha256:e94390c2863b873be18f623f9df48a0d8fe5eff13ea7f1a00092b0a7904888c6
     # via
@@ -308,18 +308,18 @@ arro3-core==0.8.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   deltalake
-asciitree==0.3.3 \
+asciitree==0.3.3 ; python_full_version < '3.14' \
     --hash=sha256:4aa4b9b649f85e3fcb343363d97564aa1fb62e249677f2e18a96765145cc0f6e
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   zarr
-asn1crypto==1.5.1 \
+asn1crypto==1.5.1 ; python_full_version < '3.14' \
     --hash=sha256:13ae38502be632115abf8a24cbe5f4da52e3b5231990aff31123c805306ccb9c \
     --hash=sha256:db4e40728b728508912cbb3d44f19ce188f218e9eba635821bb4b68564f8fd67
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   snowflake-connector-python
-astunparse==1.6.3 \
+astunparse==1.6.3 ; python_full_version < '3.14' \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
     # via
@@ -764,7 +764,7 @@ cloudpickle==3.1.1 \
     #   distributed
     #   gymnasium
     #   tensorflow-probability
-cmake==4.1.3 \
+cmake==4.1.3 ; python_full_version < '3.14' \
     --hash=sha256:18e1e2b7b226763017521ba8721c74d1a2a3cd7d1ec8e889b0b869d4e939370b \
     --hash=sha256:1f29e924fd6d1a4f2f731eb743cc687b82063f73f15f0b4fb8e2b8a8211faba8 \
     --hash=sha256:3893eb9c20d8a8bac3d951bbef9a4ce9d5495cd35a08b4e08d76215f5ead5897 \
@@ -1042,7 +1042,7 @@ cramjam==2.11.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   python-snappy
-crc32c==2.3 \
+crc32c==2.3 ; python_full_version < '3.14' \
     --hash=sha256:0369e637d13db5c06e45a34b069ff2ba292ac881e8a44a8658ccf3edaa9c392f \
     --hash=sha256:0c1f3e28b8aec8a0f7727337fafa31f0ace38e59e054c51fecb923535c6dc6e6 \
     --hash=sha256:17ce6c596ad0d53df52dcd72defb66984aeabd98fbefea7ba848a6b6bdece36a \
@@ -1185,11 +1185,11 @@ dask==2026.3.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   distributed
-datasets==4.8.5 \
+datasets==4.8.5 ; python_full_version < '3.14' \
     --hash=sha256:0f0c1c3d56ffff2c93b2f4c63c95bac94f3d7e8621aea2a2a576275233bba772 \
     --hash=sha256:5079900781719c0e063a8efdd2cd95a31ad0c63209178669cd23cf1b926149ff
     # via lerobot
-datasketches==5.2.0 \
+datasketches==5.2.0 ; python_full_version < '3.14' \
     --hash=sha256:0208fb7bf40edca3f8cfcd9d1acdb95798abc10b685341b39557f59eb5bd862e \
     --hash=sha256:177e9545aafd7359c44e7935b995b0b0f9b08704a78f53e7840a7125d2d1fc9e \
     --hash=sha256:27538af95f5fd7dd58bea05bf9c2c2a6081954ee6c34657e868a6c209e79991a \
@@ -1240,7 +1240,7 @@ decord==0.6.0 \
     --hash=sha256:9c20674964fb1490c677bd911d2023d2a09fec7a58a4bb0b7ddf1ccc269f107a \
     --hash=sha256:a0eb1258beade34dceb29d97856a7764d179db1b5182899b61874f3418a1abc8
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-deepdiff==8.6.2 \
+deepdiff==8.6.2 ; python_full_version < '3.14' \
     --hash=sha256:186dcbd181e4d76cef11ab05f802d0056c5d6083c5a6748c1473e9d7481e183e \
     --hash=sha256:4d22034a866c3928303a9332c279362f714192d9305bac17c498720d095fd1b4
     # via
@@ -1276,13 +1276,13 @@ deprecated==1.3.1 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   deltalake
     #   numcodecs
-diffusers==0.35.2 \
+diffusers==0.35.2 ; python_full_version < '3.14' \
     --hash=sha256:30ecd552303edfcfe1724573c3918a8462ee3ab4d529bdbd4c0045f763affded \
     --hash=sha256:d50d5e74fdd6dcf55e5c1d304bc52cc7c2659abd1752740d736d7b54078b4db5
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   lerobot
-dill==0.4.1 \
+dill==0.4.1 ; python_full_version < '3.14' \
     --hash=sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d \
     --hash=sha256:423092df4182177d4d8ba8290c8a5b640c66ab35ec7da59ccfa00f6fa3eea5fa
     # via
@@ -1336,7 +1336,7 @@ docker==7.1.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   testcontainers
-draccus==0.10.0 \
+draccus==0.10.0 ; python_full_version < '3.14' \
     --hash=sha256:8dd08304219becdcd66cd16058ba98e9c3e6b7bfe48ccb9579dae39f8d37ae19 \
     --hash=sha256:90243418ae0e9271c390a59cafb6acfd37001193696ed36fcc8525f791a83282
     # via
@@ -1356,7 +1356,7 @@ etils==1.13.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   array-record
     #   tensorflow-datasets
-evdev==1.9.3 ; 'linux' in sys_platform \
+evdev==1.9.3 ; python_full_version < '3.14' and 'linux' in sys_platform \
     --hash=sha256:2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
@@ -1419,7 +1419,7 @@ fastavro==1.12.1 \
     --hash=sha256:eaa7ab3769beadcebb60f0539054c7755f63bd9cf7666e2c15e615ab605f89a8 \
     --hash=sha256:ed924233272719b5d5a6a0b4d80ef3345fc7e84fc7a382b6232192a9112d38a6
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-fasteners==0.20 ; sys_platform != 'emscripten' \
+fasteners==0.20 ; python_full_version < '3.14' and sys_platform != 'emscripten' \
     --hash=sha256:55dce8792a41b56f727ba6e123fcaee77fd87e638a6863cec00007bfea84c8d8 \
     --hash=sha256:9422c40d1e350e4259f509fb2e608d6bc43c0136f79a00db1b49046029d0b3b7
     # via
@@ -1521,7 +1521,7 @@ flask-cors==6.0.2 \
     --hash=sha256:6e118f3698249ae33e429760db98ce032a8bf9913638d085ca0f4c5534ad2423 \
     --hash=sha256:e57544d415dfd7da89a9564e1e3a9e515042df76e12130641ca6f3f2f03b699a
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-flatbuffers==25.12.19 \
+flatbuffers==25.12.19 ; python_full_version < '3.14' \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
@@ -1764,7 +1764,7 @@ google-crc32c==1.8.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   google-resumable-media
-google-pasta==0.2.0 \
+google-pasta==0.2.0 ; python_full_version < '3.14' \
     --hash=sha256:4612951da876b1a10fe3960d7226f0c7682cf901e16ac06e473b267a5afa8954 \
     --hash=sha256:b32482794a366b5366a32c92a9a9201b107821889935a02b3e51f6b432ea84ed \
     --hash=sha256:c9f2c8dfc8f96d0d5808299920721be30c9eec37f2389f28904f454565c8a16e
@@ -1785,7 +1785,7 @@ googleapis-common-protos==1.74.0 \
     #   google-api-core
     #   grpcio-status
     #   tensorflow-metadata
-greenlet==3.4.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64' \
+greenlet==3.4.0 ; (python_full_version < '3.14' and platform_machine == 'AMD64') or (python_full_version < '3.14' and platform_machine == 'WIN32') or (python_full_version < '3.14' and platform_machine == 'aarch64') or (python_full_version < '3.14' and platform_machine == 'amd64') or (python_full_version < '3.14' and platform_machine == 'ppc64le') or (python_full_version < '3.14' and platform_machine == 'win32') or (python_full_version < '3.14' and platform_machine == 'x86_64') \
     --hash=sha256:04403ac74fe295a361f650818de93be11b5038a78f49ccfb64d3b1be8fbf1267 \
     --hash=sha256:05fa0803561028f4b2e3b490ee41216a842eaee11aed004cc343a996d9523aa2 \
     --hash=sha256:06c2d3b89e0c62ba50bd7adf491b14f39da9e7e701647cb7b9ff4c99bee04b19 \
@@ -1931,7 +1931,7 @@ h11==0.16.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   httpcore
     #   uvicorn
-h5py==3.12.1 \
+h5py==3.12.1 ; python_full_version < '3.14' \
     --hash=sha256:018a4597f35092ae3fb28ee851fdc756d2b88c96336b8480e124ce1ac6fb9166 \
     --hash=sha256:050a4f2c9126054515169c49cb900949814987f0c7ae74c341b0c9f9b5056834 \
     --hash=sha256:06a903a4e4e9e3ebbc8b548959c3c2552ca2d70dac14fcfa650d9261c66939ed \
@@ -2083,13 +2083,13 @@ idna==3.18 \
     #   requests
     #   snowflake-connector-python
     #   yarl
-imageio==2.34.2 \
+imageio==2.34.2 ; python_full_version < '3.14' \
     --hash=sha256:5c0c0ee8faa018a1c42f649b90395dd4d3bb6187c09053a0cd6f1fdd51bbff5e \
     --hash=sha256:a0bb27ec9d5bab36a9f4835e51b21d2cb099e1f78451441f94687ff3404b79f8
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   lerobot
-imageio-ffmpeg==0.4.5 \
+imageio-ffmpeg==0.4.5 ; python_full_version < '3.14' \
     --hash=sha256:266601aab7619acf6ff78cd5ba78b5a593a1119a96d266d33b88bfcd01bbd3ca \
     --hash=sha256:39a9ab4326bdf5eae3457961dfdfb4317078659ebe4e6980914ac897a462aeb2 \
     --hash=sha256:d2ba8339eecc02fa73a6b85c34654c49a7c78d732a1ac76478d11224e6cfa902 \
@@ -2170,7 +2170,7 @@ joblib==1.2.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   scikit-learn
-jsonlines==4.0.0 \
+jsonlines==4.0.0 ; python_full_version < '3.14' \
     --hash=sha256:0c6d2c09117550c089995247f605ae4cf77dd1533041d366351f6f298822ea74 \
     --hash=sha256:185b334ff2ca5a91362993f42e83588a360cf95ce4b71a73548502bda52a7c55
     # via
@@ -2194,7 +2194,7 @@ jwcrypto==1.5.7 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   delta-sharing
-keras==3.14.0 \
+keras==3.14.0 ; python_full_version < '3.14' \
     --hash=sha256:19ce94b798caaba4d404ab6ef4753b44219170e5c2868156de8bb0494a260114 \
     --hash=sha256:86fcf8249a25264a566ac393c287c7ad657000e5e62615dcaad4b3472a17aeda
     # via
@@ -2218,11 +2218,11 @@ lance-namespace-urllib3-client==0.6.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   lance-namespace
-lerobot==0.5.1 \
+lerobot==0.5.1 ; python_full_version < '3.14' \
     --hash=sha256:4a05a9d10f013bf8fc408c7bd9c32a261209250cb66987b796416911c96a6fd3 \
     --hash=sha256:bbd11021023fde0947b6d1ff1c52fe91c86a28ab09a96359892f3ef7e8866862
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-libclang==18.1.1 \
+libclang==18.1.1 ; python_full_version < '3.14' \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
     --hash=sha256:4dd2d3b82fab35e2bf9ca717d7b63ac990a3519c7e312f19fa8e86dcc712f7fb \
@@ -2398,7 +2398,7 @@ memray==1.19.3 ; sys_platform != 'win32' \
     --hash=sha256:fbbe64058ea329e7ff4f2c8067e6400b7db7d44a3f897a36c21f1a54e9b0c1ee \
     --hash=sha256:fc9f873609cbbaef82a91f213a1877ab510e9a96d4e20516726a9d7a981c8117
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-mergedeep==1.3.4 \
+mergedeep==1.3.4 ; python_full_version < '3.14' \
     --hash=sha256:0096d52e9dad9939c3d975a774666af186eda617e6ca84df4c94dec30004f2a8 \
     --hash=sha256:70775750742b25c0d8f36c55aed03d24c3384d17c951b3175d898bd778ef0307
     # via
@@ -2789,7 +2789,7 @@ multidict==6.7.1 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aiohttp
     #   yarl
-multiprocess==0.70.19 \
+multiprocess==0.70.19 ; python_full_version < '3.14' \
     --hash=sha256:02e5c35d7d6cd2bdc89c1858867f7bde4012837411023a4696c148c1bdd7c80e \
     --hash=sha256:0d4b4397ed669d371c81dcd1ef33fd384a44d6c3de1bd0ca7ac06d837720d3c5 \
     --hash=sha256:1bbf1b69af1cf64cd05f65337d9215b88079ec819cd0ea7bac4dab84e162efe7 \
@@ -2807,18 +2807,18 @@ multiprocess==0.70.19 \
     --hash=sha256:e6c0674d34b8adac22533f6786576b3de4e396aaeda9e0c15378af9b8ada2702 \
     --hash=sha256:e8cc7fbdff15c0613f0a1f1f8744bef961b0a164c0ca29bdff53e9d2d93c5e5f
     # via datasets
-mypy-extensions==1.0.0 \
+mypy-extensions==1.0.0 ; python_full_version < '3.14' \
     --hash=sha256:4392f6c0eb8a5668a69e23d168ffa70f0be9ccfd32b5cc2d26a34ae5b844552d
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   typing-inspect
-namex==0.1.0 \
+namex==0.1.0 ; python_full_version < '3.14' \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   keras
-netifaces==0.11.0 \
+netifaces==0.11.0 ; python_full_version < '3.14' \
     --hash=sha256:043a79146eb2907edf439899f262b3dfe41717d34124298ed281139a8b93ca32 \
     --hash=sha256:08e3f102a59f9eaef70948340aeb6c89bd09734e0dca0f3b82720305729f63ea \
     --hash=sha256:0f6133ac02521270d9f7c490f0c8c60638ff4aec8338efeff10a1b51506abe85 \
@@ -2858,7 +2858,7 @@ networkx==3.6.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-numcodecs==0.15.1 \
+numcodecs==0.15.1 ; python_full_version < '3.14' \
     --hash=sha256:1d471a1829ce52d3f365053a2bd1379e32e369517557c4027ddf5ac0d99c591e \
     --hash=sha256:1dfdea4a67108205edfce99c1cb6cd621343bc7abb7e16a041c966776920e7de \
     --hash=sha256:698f1d59511488b8fe215fadc1e679a4c70d894de2cca6d8bf2ab770eed34dfd \
@@ -3051,7 +3051,7 @@ opencensus-context==0.1.3 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   opencensus
-opencv-python-headless==4.10.0.84 \
+opencv-python-headless==4.10.0.84 ; python_full_version < '3.14' \
     --hash=sha256:377d08a7e48a1405b5e84afcbe4798464ce7ee17081c1c23619c8b398ff18295 \
     --hash=sha256:46071015ff9ab40fccd8a163da0ee14ce9846349f06c6c8c0f2870856ffa45db \
     --hash=sha256:5ae454ebac0eb0a0b932e3406370aaf4212e6a3fdb5038cc86c7aea15a6851da \
@@ -3097,7 +3097,7 @@ opt-einsum==3.4.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   jax
     #   tensorflow
-optree==0.19.0 \
+optree==0.19.0 ; python_full_version < '3.14' \
     --hash=sha256:0230ed9ba60fbe97ee23c000850c54308009ba51a129a1060137f329f460e42e \
     --hash=sha256:045cf112adaebc76c9c7cabde857c01babfc9fae8aa0a28d48f7c565fadf0cb9 \
     --hash=sha256:0461f796b4ade3fab519d821b0fa521f07e2af70206b76aac75fcfdc2e051fca \
@@ -3199,7 +3199,7 @@ optree==0.19.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   keras
-orderly-set==5.5.0 \
+orderly-set==5.5.0 ; python_full_version < '3.14' \
     --hash=sha256:46f0b801948e98f427b412fcabb831677194c05c3b699b80de260374baa0b1e7 \
     --hash=sha256:e87185c8e4d8afa64e7f8160ee2c542a475b738bc891dc3f58102e654125e6ce
     # via
@@ -3699,7 +3699,7 @@ py-spy==0.4.1 \
     --hash=sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4 \
     --hash=sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-py4j==0.10.9.7 \
+py4j==0.10.9.7 ; python_full_version < '3.14' \
     --hash=sha256:0b6e5315bb3ada5cf62ac651d107bb2ebc02def3dee9d9548e3baac644ea8dbb \
     --hash=sha256:85defdfd2b2376eb3abf5ca6474b51ab7e0de341c75a02f46dc9b5976f5a5c1b
     # via
@@ -4150,7 +4150,7 @@ pygments==2.18.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   rich
-pyiceberg==0.11.0 \
+pyiceberg==0.11.0 ; python_full_version < '3.14' \
     --hash=sha256:095bbafc87d204cf8d3ffc1c434e07cf9a67a709192ac0b11dcb0f8251f7ad4e \
     --hash=sha256:0c50cedaf98f5e671e14f46e5904a3243003bb08980cd6207cc1f3d9e34bb854 \
     --hash=sha256:0c651bf7ab26b73f75b7cc63e387b416dee9822643b08ca9fcba4ae9547a577d \
@@ -4181,7 +4181,7 @@ pyiceberg==0.11.0 \
     --hash=sha256:f1c944969fda799a2d26dc6f57448ace44ee07e334306ba6f5110df1aadeeef1 \
     --hash=sha256:fe20129bfe408173c1a4483891bedcbf3378dcfac7d0dfe369e209fcb13674cd
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-pyjwt==2.12.1 \
+pyjwt==2.12.1 ; python_full_version < '3.14' \
     --hash=sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c \
     --hash=sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b
     # via
@@ -4195,7 +4195,7 @@ pylance==2.0.1 \
     --hash=sha256:bff6452cdb8c56e84102a52291b7a9b4c08c87248d620afef05793b97de32341 \
     --hash=sha256:d740d7a7ff9905e358a70d2adae2178ab9d6798cf3ef47729371223463c442e6
     # via -r python/requirements/data/pyarrow-latest.txt
-pynput==1.8.2 \
+pynput==1.8.2 ; python_full_version < '3.14' \
     --hash=sha256:8cc38cf13a6ab2749cb375678be8a0fd705d7ce49c8001ff5db4007a723bbef1 \
     --hash=sha256:f493c87157cd3861b4468f7f896857051762f44ed26f1b641e7cc5840a457087
     # via
@@ -4214,7 +4214,7 @@ pyparsing==3.3.2 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   pyiceberg
     #   torch-geometric
-pyroaring==1.0.4 \
+pyroaring==1.0.4 ; python_full_version < '3.14' \
     --hash=sha256:01f990499a4f34a666702da16080b6a94b990c5dc5cd7f2b1f6f92a7184b94ed \
     --hash=sha256:0333b18734475c531977e7a9027fc5753d7cac836f2475198f630ecefbbfd764 \
     --hash=sha256:048b915bacfc8e4d05de4fe6c2d7f7dd9d4c7a200b3b23dc1589226ca2526b41 \
@@ -4303,13 +4303,13 @@ pyroaring==1.0.4 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   pyiceberg
-pyserial==3.5 \
+pyserial==3.5 ; python_full_version < '3.14' \
     --hash=sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb \
     --hash=sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   lerobot
-pyspark==3.4.1 \
+pyspark==3.4.1 ; python_full_version < '3.14' \
     --hash=sha256:72cd66ab8cf61a75854e5a753f75bea35ee075c3a96f9de4e2a66d02ec7fc652
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
@@ -4356,7 +4356,7 @@ python-snappy==0.7.3 \
     --hash=sha256:074c0636cfcd97e7251330f428064050ac81a52c62ed884fc2ddebbb60ed7f50 \
     --hash=sha256:40216c1badfb2d38ac781ecb162a1d0ec40f8ee9747e610bcfefdfa79486cee3
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-python-xlib==0.33 ; 'linux' in sys_platform \
+python-xlib==0.33 ; python_full_version < '3.14' and 'linux' in sys_platform \
     --hash=sha256:55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32 \
     --hash=sha256:c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398
     # via
@@ -4458,7 +4458,7 @@ pyyaml==6.0.3 \
     #   responses
     #   wandb
     #   webdataset
-pyyaml-include==1.4.1 \
+pyyaml-include==1.4.1 ; python_full_version < '3.14' \
     --hash=sha256:1a96e33a99a3e56235f5221273832464025f02ff3d8539309a3bf00dec624471 \
     --hash=sha256:323c7f3a19c82fbc4d73abbaab7ef4f793e146a13383866831631b26ccc7fb00
     # via
@@ -4468,7 +4468,7 @@ ray-haproxy==2.8.25 ; sys_platform == 'linux' \
     --hash=sha256:51671f11afb571ed5b37042f9287daf48de235f2d32ad18b732ee9587e9ad076 \
     --hash=sha256:a63902c2fe7eb51fbcb502980228d743b79da6cecab230c4c24674517b1ac3ac
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-raydp==1.7.0b20250423.dev0 \
+raydp==1.7.0b20250423.dev0 ; python_full_version < '3.14' \
     --hash=sha256:97798d0447af470bb6d9338abf6356a14a030038908fca8da57d3753c4463586
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 referencing==0.36.2 \
@@ -4478,7 +4478,7 @@ referencing==0.36.2 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   jsonschema
     #   jsonschema-specifications
-regex==2026.5.9 \
+regex==2026.5.9 ; python_full_version < '3.14' \
     --hash=sha256:002205cafd2a9e78c6290c7d1df277bf3277b3b7a30e0b4bb0dac2e2e3f7cb2d \
     --hash=sha256:01f0f5f55f4b64dacec85dc116d3c05fd23ad3ff037bbc73a2085775953c2611 \
     --hash=sha256:01f28d868834624c934b8d2e0aa1c8341337e37831f4a012f18a5afcba4cbaf3 \
@@ -4617,7 +4617,7 @@ requests==2.33.1 \
     #   torch-geometric
     #   torchtext
     #   wandb
-rerun-sdk==0.26.2 \
+rerun-sdk==0.26.2 ; python_full_version < '3.14' \
     --hash=sha256:03977d2aba4966d9a70b682eca196123fda11408fecd733441ede9916c6341e2 \
     --hash=sha256:3d4151c9a3484e112b53d1df90c8fa07397dc7b8bfbb420f09e011eff20f1ef2 \
     --hash=sha256:a493ad6c8357022cba2ca6f8954a81d0faf984b0b22154eb1d976bfc7649df63 \
@@ -4772,7 +4772,7 @@ s3transfer==0.8.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   boto3
-safetensors==0.8.0 \
+safetensors==0.8.0 ; python_full_version < '3.14' \
     --hash=sha256:040070828e36dc8e122178bbbd5830ff9e97920affb84cbe0f46442497bed358 \
     --hash=sha256:096ec1a98435df7beb08853bb5aa9081a84f23d0adc67ed1a0a10550f608373f \
     --hash=sha256:2ddf52eac562eda224f99acfa7889d02968c1fd59a5b011ae7d8137c37e9c02d \
@@ -4934,7 +4934,7 @@ smmap==5.0.3 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   gitdb
-snowflake-connector-python==4.3.0 \
+snowflake-connector-python==4.3.0 ; python_full_version < '3.14' \
     --hash=sha256:08f5167a10d380fe66330d5b19d19bd8b4f4af27e9648e3b254e61da025646bf \
     --hash=sha256:120463ca391d9deda3bdb185104ba847e12f73c86ef411cfcf827ce49b64d1af \
     --hash=sha256:26a65c5c93d14c4d221b780fdb2f07b4dd83e848f39eabd4832778bf0e2694d4 \
@@ -4979,7 +4979,7 @@ soundfile==0.13.1 \
     --hash=sha256:b2c68dab1e30297317080a5b43df57e302584c49e2942defdde0acccc53f0e5b \
     --hash=sha256:c734564fab7c5ddf8e9be5bf70bab68042cd17e9c214c06e365e20d64f9a69d5
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-sqlalchemy==2.0.49 \
+sqlalchemy==2.0.49 ; python_full_version < '3.14' \
     --hash=sha256:01146546d84185f12721a1d2ce0c6673451a7894d1460b592d378ca4871a0c72 \
     --hash=sha256:059d7151fff513c53a4638da8778be7fce81a0c4854c7348ebd0c4078ddf28fe \
     --hash=sha256:0c98c59075b890df8abfcc6ad632879540f5791c68baebacb4f833713b510e75 \
@@ -5050,7 +5050,7 @@ starlette==1.0.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   fastapi
-strictyaml==1.7.3 \
+strictyaml==1.7.3 ; python_full_version < '3.14' \
     --hash=sha256:22f854a5fcab42b5ddba8030a0e4be51ca89af0267961c8d6cfa86395586c407 \
     --hash=sha256:fb5c8a4edb43bebb765959e420f9b3978d7f1af88c80606c03fb420888f5d1c7
     # via
@@ -5078,7 +5078,7 @@ tblib==3.2.2 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   distributed
-tenacity==9.1.4 \
+tenacity==9.1.4 ; python_full_version < '3.14' \
     --hash=sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55 \
     --hash=sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a
     # via
@@ -5100,7 +5100,7 @@ tensorboardx==2.6.5 \
     --hash=sha256:c10b891d00af306537cb8b58a039b2ba41571f0da06f433a41c4ca8d6abe1373 \
     --hash=sha256:ca176db3997ee8c07d2eb77381225956a3fd1c10c91beafab1f17069adc47017
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-tensorflow==2.20.0 \
+tensorflow==2.20.0 ; python_full_version < '3.14' \
     --hash=sha256:02a0293d94f5c8b7125b66abf622cc4854a33ae9d618a0d41309f95e091bbaea \
     --hash=sha256:0deb5c583dfc53b54fd158a194ce0087b406bb6518af400ca3809735e4548ec3 \
     --hash=sha256:1590cbf87b6bcbd34d8e9ad70d0c696135e0aa71be31803b27358cf7ed63f8fc \
@@ -5154,7 +5154,7 @@ textual==4.0.0 ; sys_platform != 'win32' \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   memray
-tf-keras==2.20.0 \
+tf-keras==2.20.0 ; python_full_version < '3.14' \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
@@ -5171,7 +5171,7 @@ toml==0.10.2 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   draccus
     #   tensorflow-datasets
-tomlkit==0.13.3 \
+tomlkit==0.13.3 ; python_full_version < '3.14' \
     --hash=sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1 \
     --hash=sha256:c89c649d79ee40629a9fda55f8ace8c6a1b42deb912b2a8fd8d942ddadb606b0
     # via
@@ -5274,7 +5274,7 @@ torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-torchtext==0.18.0+cpu \
+torchtext==0.18.0+cpu ; python_full_version < '3.14' \
     --hash=sha256:128b4356d96059e6550b58d18e6a1147c85e3e0a91780cd87bfec45a36a73863 \
     --hash=sha256:1b6a6c2cfcae95ef8cd41e28e7081749cde738c56bbbedf773e6d74ed3728538 \
     --hash=sha256:36cceed5c2aedb3d765341ed747fbf3e5693e4bc3ab82f43d40768b1770fdbe9 \
@@ -5379,7 +5379,7 @@ typing-extensions==4.15.0 \
     #   typing-inspect
     #   typing-inspection
     #   wandb
-typing-inspect==0.9.0 \
+typing-inspect==0.9.0 ; python_full_version < '3.14' \
     --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
@@ -5630,7 +5630,7 @@ werkzeug==2.3.8 \
     #   flask
     #   flask-cors
     #   tensorboard
-wheel==0.46.3 \
+wheel==0.46.3 ; python_full_version < '3.14' \
     --hash=sha256:4b399d56c9d9338230118d705d9737a2a468ccca63d5e813e2a4fc7815d8bc4d \
     --hash=sha256:e3e79874b07d776c40bd6033f8ddf76a7dad46a7b8aa1b2787a83083519a1803
     # via
@@ -6009,7 +6009,7 @@ yarl==1.23.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   aiohttp
     #   delta-sharing
-zarr==2.18.7 \
+zarr==2.18.7 ; python_full_version < '3.14' \
     --hash=sha256:ac3dc4033e9ae4e9d7b5e27c97ea3eaf1003cc0a07f010bd83d5134bf8c4b223 \
     --hash=sha256:b2b8f66f14dac4af66b180d2338819981b981f70e196c9a66e6bfaa9e59572f5
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock

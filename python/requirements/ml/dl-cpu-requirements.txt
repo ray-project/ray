@@ -3,7 +3,7 @@
 
 # TensorFlow 2.20 requires protobuf>=5.28; use 2.19 with protobuf 5.27.5.
 tensorflow==2.19.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
-tensorflow==2.20.0; python_version >= '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
+tensorflow==2.20.0; python_version >= '3.12' and python_version < '3.14' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow-macos==2.19.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.12'
 tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.12'
 tensorboard==2.19.0; python_version < '3.12'
@@ -15,7 +15,7 @@ tensorflow-datasets; python_version < '3.12' and platform_system != 'Windows'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
 etils==1.5.2; python_version < '3.12'
 tf-keras==2.19.0; python_version < '3.12'
-tf-keras==2.20.0; python_version >= '3.12'
+tf-keras==2.20.0; python_version >= '3.12' and python_version < '3.14'
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
 
@@ -25,7 +25,7 @@ tf-keras==2.20.0; python_version >= '3.12'
 
 torch==2.10.0
 torchmetrics==0.10.3
-torchtext==0.18.0
+torchtext==0.18.0; python_version < '3.14'
 torchvision==0.25.0
 # xgboost pulls nvidia-nccl-cu12 transitively even in CPU context. Align the
 # pin with what cu128 torch requires so the compiled lock doesn't clash with
@@ -48,8 +48,11 @@ torch-scatter==2.1.2+cpu.torch.2.10; sys_platform == 'linux'
 torch-sparse==0.6.18+pt210cpu; sys_platform == 'linux'
 torch-geometric==2.5.3
 
-cupy-cuda12x==13.6.0; sys_platform != 'darwin'
+cupy-cuda12x==13.6.0; sys_platform != 'darwin' and python_version < '3.14'
+cupy-cuda12x==14.0.1; sys_platform != 'darwin' and python_version >= '3.14'
 
 # Keep JAX version consistent with dl-gpu-requirements.txt
-jax==0.4.33; sys_platform != 'darwin'
-jaxlib==0.4.33; sys_platform != 'darwin'
+jax==0.4.33; sys_platform != 'darwin' and python_version < '3.14'
+jax==0.7.1; sys_platform != 'darwin' and python_version >= '3.14'
+jaxlib==0.4.33; sys_platform != 'darwin' and python_version < '3.14'
+jaxlib==0.7.1; sys_platform != 'darwin' and python_version >= '3.14'

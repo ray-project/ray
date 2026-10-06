@@ -147,8 +147,23 @@ So an Apple Silicon Mac or any ARM box can't produce a valid lockfile. The GPU a
 ```bash
 # x86_64 Linux, Python 3.11
 ci/ci.sh compile_pip_dependencies            # -> requirements_compiled.txt
+ci/ci.sh compile_pip_dependencies_py314      # -> requirements_compiled_py3.14.txt
 bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
 ```
+
+### Python 3.14
+
+`requirements_compiled_py3.14.txt` is compiled with uv from the same source files, wheels only, against `requirements_compiled.txt`. Every package therefore stays on the version 3.10–3.13 use, unless the source files say otherwise with a `python_version` marker:
+
+```text
+numba==0.61.2; python_version < '3.14'
+numba==0.63.0; python_version >= '3.14'   # first release with cp314 wheels
+pygame==2.5.2; python_version < '3.14'    # no cp314 release: not installed on 3.14
+```
+
+pip-compile carries the `< '3.14'` marker into `requirements_compiled.txt`, and `ci/py314_parity_constraints.py` drops those pins (and anything only they pull in) before the 3.14 compile.
+
+When a package appears on several source lines, pip-compile writes the marker of the **last line, in compile order, that has a marker** matching Python 3.11. Lines without a marker don't count. If you gate an unpinned line that comes after the pinned one, split it at the pinned line's boundary so the written marker doesn't change; `tf-keras` in `ml-requirements.txt` is an example.
 
 ## Diagnosing dependency conflicts
 
