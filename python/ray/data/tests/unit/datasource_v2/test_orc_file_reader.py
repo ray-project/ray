@@ -281,6 +281,199 @@ def test_orc_reader_uses_synthesized_type_when_replacing_file_column(tmp_path):
     assert result.column("value").to_pylist() == ["a", "b"]
 
 
+@pytest.mark.parametrize("field_names", [None, ["year"]])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("root_has_year", [False, True])
+@pytest.mark.parametrize("columns", [None, ["year", "id"], []])
+def test_orc_partition_projection_preserves_mixed_file_values(
+    tmp_path, field_names, reverse, root_has_year, columns
+):
+    root_path = tmp_path / "root.orc"
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    partition_path = partition_dir / "data.orc"
+    root = {"id": [1]}
+    if root_has_year:
+        root["year"] = ["from-file"]
+    _write_orc(root_path, pa.table(root))
+    _write_orc(partition_path, pa.table({"id": [3]}))
+    paths = [root_path, partition_path]
+    if reverse:
+        paths.reverse()
+    scanner = OrcScanner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.string())]),
+        partitioning=Partitioning(
+            "hive", base_dir=str(tmp_path), field_names=field_names
+        ),
+    )
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    batches = list(scanner.create_reader().read(_manifest(*paths)))
+    assert sum(batch.num_rows for batch in batches) == 2
+    result = pa.concat_tables(batches)
+    if columns == []:
+        assert result.column_names == [_BATCH_SIZE_PRESERVING_STUB_COL_NAME]
+    else:
+        assert result.column_names == scanner.read_schema().names
+        assert sorted(result.to_pylist(), key=lambda row: row["id"]) == [
+            {"id": 1, "year": "from-file" if root_has_year else None},
+            {"id": 3, "year": "2024"},
+        ]
+
+
+@pytest.mark.parametrize("field_names", [None, ["year"]])
+@pytest.mark.parametrize("columns", [None, ["id"], ["year", "id"]])
+@pytest.mark.parametrize("file_year", ["2024", "from-file", None])
+def test_orc_partition_file_columns_are_validated_before_projection(
+    tmp_path, field_names, columns, file_year
+):
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    path = partition_dir / "data.orc"
+    table = pa.table({"id": [1], "year": pa.array([file_year], type=pa.string())})
+    _write_orc(path, table)
+    scanner = OrcScanner(
+        schema=table.schema,
+        partitioning=Partitioning(
+            "hive", base_dir=str(tmp_path), field_names=field_names
+        ),
+    )
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    if file_year != "2024":
+        with pytest.raises(ValueError, match="Partition column year"):
+            list(scanner.create_reader().read(_manifest(path)))
+    else:
+        result = pa.concat_tables(list(scanner.create_reader().read(_manifest(path))))
+        assert result.column_names == scanner.read_schema().names
+        assert result.column("id").to_pylist() == [1]
+        if columns != ["id"]:
+            assert result.column("year").to_pylist() == ["2024"]
+
+
+def test_orc_partitioned_schema_keeps_null_values_and_typed_partition(tmp_path):
+    first_dir = tmp_path / "year=2023"
+    first_dir.mkdir()
+    root_path = first_dir / "data.orc"
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    path = partition_dir / "data.orc"
+    _write_orc(
+        root_path, pa.table({"id": [1], "value": pa.array([None], type=pa.string())})
+    )
+    _write_orc(path, pa.table({"id": [2], "value": ["two"]}))
+    scanner = OrcScanner(
+        schema=pa.schema(
+            [("id", pa.int64()), ("value", pa.string()), ("year", pa.int64())]
+        ),
+        partitioning=Partitioning(
+            "hive", base_dir=str(tmp_path), field_types={"year": int}
+        ),
+    ).prune_columns(["year", "value", "id"])
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest(root_path, path)))
+    )
+    assert result.schema == scanner.read_schema()
+    assert result.to_pylist() == [
+        {"year": 2023, "value": None, "id": 1},
+        {"year": 2024, "value": "two", "id": 2},
+    ]
+
+
+def test_orc_partition_filters_run_after_column_validation():
+    scanner = OrcScanner(
+        schema=pa.schema([("id", pa.int64()), ("year", pa.string())]),
+        partitioning=Partitioning("hive", field_names=["year"]),
+    )
+    predicate = (col("year") == "2024") & (col("id") > 1)
+    pushed, residual = scanner.push_filters(predicate)
+    assert pushed is scanner
+    assert residual is predicate
+    assert scanner.partition_columns == set()
+
+
+@pytest.mark.parametrize("batch_size", [1, 2])
+@pytest.mark.parametrize("values", [["2024", None], [None, "2024"]])
+@pytest.mark.parametrize("columns", [None, ["year", "id"], ["id"], []])
+def test_orc_nullable_partition_column_matches_v1_across_batches(
+    tmp_path, batch_size, values, columns
+):
+    from ray.data._internal.datasource.orc_datasource import ORCDatasource
+    from ray.data.datasource.file_based_datasource import _add_partitions_to_table
+
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    path = partition_dir / "data.orc"
+    table = pa.table({"id": [1, 2], "year": pa.array(values, type=pa.string())})
+    _write_orc(path, table)
+    assert orc.ORCFile(str(path)).nstripes == 1
+    legacy = ORCDatasource.__new__(ORCDatasource)
+    with pa.OSFile(str(path), "rb") as source:
+        expected = pa.concat_tables(
+            [
+                _add_partitions_to_table(stripe, {"year": "2024"})
+                for stripe in legacy._read_stream(source, str(path))
+            ]
+        )
+
+    scanner = OrcScanner(
+        schema=table.schema,
+        batch_size=batch_size,
+        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+    )
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    batches = list(scanner.create_reader().read(_manifest(path)))
+    assert all(batch.num_rows <= batch_size for batch in batches)
+    assert sum(batch.num_rows for batch in batches) == expected.num_rows
+    if columns == []:
+        assert all(
+            batch.column_names == [_BATCH_SIZE_PRESERVING_STUB_COL_NAME]
+            for batch in batches
+        )
+    else:
+        result = pa.concat_tables(batches)
+        assert result.equals(expected if columns is None else expected.select(columns))
+
+
+def test_orc_nullable_partition_column_aligns_missing_schema_fields(tmp_path):
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    path = partition_dir / "data.orc"
+    _write_orc(
+        path,
+        pa.table({"id": [1, 2], "year": pa.array(["2024", None], type=pa.string())}),
+    )
+    scanner = OrcScanner(
+        schema=pa.schema(
+            [("id", pa.int64()), ("year", pa.string()), ("extra", pa.string())]
+        ),
+        batch_size=1,
+        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+    )
+    result = pa.concat_tables(list(scanner.create_reader().read(_manifest(path))))
+    assert result.schema == scanner.read_schema()
+    assert result.to_pylist() == [
+        {"id": 1, "year": "2024", "extra": None},
+        {"id": 2, "year": "2024", "extra": None},
+    ]
+
+
+def test_orc_partitioned_empty_file_with_stored_partition_column(tmp_path):
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    path = partition_dir / "data.orc"
+    table = pa.table(
+        {"id": pa.array([], type=pa.int64()), "year": pa.array([], type=pa.string())}
+    )
+    _write_orc(path, table)
+    scanner = OrcScanner(
+        schema=table.schema,
+        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+    )
+    assert list(scanner.create_reader().read(_manifest(path))) == []
+
+
 if __name__ == "__main__":
     import sys
 

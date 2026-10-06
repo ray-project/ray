@@ -14,6 +14,16 @@ from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 
 
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def orc_reader_version(request, monkeypatch):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(
+        DataContext.get_current(), "use_orc_datasource_v2", request.param
+    )
+    return request.param
+
+
 def _write_orc(path, table):
     with pa.OSFile(path, "wb") as sink:
         orc.write_table(table, sink)
@@ -71,7 +81,7 @@ def test_read_orc_rejects_pickle_object_columns(monkeypatch):
         list(datasource._read_stream(None, "unused"))
 
 
-def test_read_orc_basic(ray_start_regular_shared, tmp_path):
+def test_read_orc_basic(ray_start_regular_shared, tmp_path, orc_reader_version):
     path = os.path.join(tmp_path, "data.orc")
     table = pa.table({"id": [0, 1, 2], "name": ["a", "b", "c"]})
     _write_orc(path, table)
@@ -83,7 +93,9 @@ def test_read_orc_basic(ray_start_regular_shared, tmp_path):
     assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2]
 
 
-def test_read_orc_multiple_files(ray_start_regular_shared, tmp_path):
+def test_read_orc_multiple_files(
+    ray_start_regular_shared, tmp_path, orc_reader_version
+):
     for i in range(3):
         _write_orc(os.path.join(tmp_path, f"part_{i}.orc"), pa.table({"id": [i]}))
 
@@ -93,7 +105,7 @@ def test_read_orc_multiple_files(ray_start_regular_shared, tmp_path):
     assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2]
 
 
-def test_read_orc_include_paths(ray_start_regular_shared, tmp_path):
+def test_read_orc_include_paths(ray_start_regular_shared, tmp_path, orc_reader_version):
     path = os.path.join(tmp_path, "data.orc")
     _write_orc(path, pa.table({"id": [0]}))
 
@@ -104,7 +116,9 @@ def test_read_orc_include_paths(ray_start_regular_shared, tmp_path):
     assert all(row["path"].endswith("data.orc") for row in rows)
 
 
-def test_read_orc_ignore_missing_paths(ray_start_regular_shared, tmp_path):
+def test_read_orc_ignore_missing_paths(
+    ray_start_regular_shared, tmp_path, orc_reader_version
+):
     existing = os.path.join(tmp_path, "data.orc")
     _write_orc(existing, pa.table({"id": [0, 1]}))
     missing = os.path.join(tmp_path, "does_not_exist.orc")
@@ -116,7 +130,9 @@ def test_read_orc_ignore_missing_paths(ray_start_regular_shared, tmp_path):
         ray.data.read_orc([existing, missing], ignore_missing_paths=False).materialize()
 
 
-def test_read_orc_file_extensions_filtering(ray_start_regular_shared, tmp_path):
+def test_read_orc_file_extensions_filtering(
+    ray_start_regular_shared, tmp_path, orc_reader_version
+):
     _write_orc(os.path.join(tmp_path, "data.orc"), pa.table({"id": [0, 1]}))
     # A non-ORC file in the same directory should be filtered out by default.
     with open(os.path.join(tmp_path, "_SUCCESS"), "w") as f:
@@ -134,7 +150,9 @@ def test_read_orc_file_extensions_filtering(ray_start_regular_shared, tmp_path):
         ray.data.read_orc(empty_dir)
 
 
-def test_read_orc_override_num_blocks(ray_start_regular_shared, tmp_path):
+def test_read_orc_override_num_blocks(
+    ray_start_regular_shared, tmp_path, orc_reader_version
+):
     path = os.path.join(tmp_path, "data.orc")
     _write_orc(path, pa.table({"id": list(range(100))}))
 
@@ -144,7 +162,7 @@ def test_read_orc_override_num_blocks(ray_start_regular_shared, tmp_path):
     assert ds.materialize().num_blocks() == 1
 
 
-def test_read_orc_partitioned(ray_start_regular_shared, tmp_path):
+def test_read_orc_partitioned(ray_start_regular_shared, tmp_path, orc_reader_version):
     from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
     os.makedirs(os.path.join(tmp_path, "year=2024"))
@@ -212,7 +230,9 @@ def test_read_orc_v1_fallback(ray_start_regular_shared, tmp_path, monkeypatch):
     assert sorted(row["id"] for row in ds.take_all()) == [1, 2]
 
 
-def test_read_orc_partitioned_with_partition_filter(ray_start_regular_shared, tmp_path):
+def test_read_orc_partitioned_with_partition_filter(
+    ray_start_regular_shared, tmp_path, orc_reader_version
+):
     from ray.data.datasource.partitioning import (
         Partitioning,
         PartitionStyle,
@@ -241,7 +261,9 @@ def test_read_orc_partitioned_with_partition_filter(ray_start_regular_shared, tm
     assert all(row["year"] == "2024" for row in rows)
 
 
-def test_read_orc_multiple_stripes(ray_start_regular_shared, tmp_path):
+def test_read_orc_multiple_stripes(
+    ray_start_regular_shared, tmp_path, orc_reader_version
+):
 
     path = os.path.join(tmp_path, "multi.orc")
     table = pa.table({"id": list(range(10000))})
@@ -254,7 +276,7 @@ def test_read_orc_multiple_stripes(ray_start_regular_shared, tmp_path):
     assert sorted(row["id"] for row in ds.take_all()) == list(range(10000))
 
 
-def test_read_orc_empty_file(ray_start_regular_shared, tmp_path):
+def test_read_orc_empty_file(ray_start_regular_shared, tmp_path, orc_reader_version):
     path = os.path.join(tmp_path, "empty.orc")
     table = pa.table(
         {
@@ -282,7 +304,9 @@ def test_orc_write(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 2])
-def test_orc_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks):
+def test_orc_roundtrip(
+    ray_start_regular_shared, tmp_path, override_num_blocks, orc_reader_version
+):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
     ds = ray.data.from_pandas([df], override_num_blocks=override_num_blocks)
@@ -404,6 +428,56 @@ def test_orc_write_rejects_non_positive_min_rows_per_file(
         ValueError, match="min_rows_per_file must be a positive integer"
     ):
         ray.data.range(1).write_orc(tmp_path, min_rows_per_file=min_rows_per_file)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("project", [False, True])
+def test_read_orc_mixed_partition_projection(
+    ray_start_regular_shared, tmp_path, orc_reader_version, reverse, project
+):
+    from ray.data.datasource.partitioning import Partitioning
+
+    root = tmp_path / "root.orc"
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    partition = partition_dir / "data.orc"
+    _write_orc(str(root), pa.table({"id": [1]}))
+    _write_orc(str(partition), pa.table({"id": [3]}))
+    paths = [str(partition), str(root)] if reverse else str(tmp_path)
+    ds = ray.data.read_orc(
+        paths, partitioning=Partitioning("hive"), override_num_blocks=1
+    )
+    if project:
+        ds = ds.select_columns(["year", "id"])
+    assert sorted(ds.take_all(), key=lambda row: row["id"]) == [
+        {"id": 1, "year": None},
+        {"id": 3, "year": "2024"},
+    ]
+
+
+@pytest.mark.parametrize("field_names", [None, ["year"]])
+def test_read_orc_rejects_partition_conflict_before_filter(
+    ray_start_regular_shared, tmp_path, orc_reader_version, field_names
+):
+    from ray.data.datasource.partitioning import Partitioning
+    from ray.data.expressions import col
+
+    root = tmp_path / "root.orc"
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    _write_orc(str(root), pa.table({"id": [1], "year": ["from-file"]}))
+    _write_orc(
+        str(partition_dir / "data.orc"), pa.table({"id": [2], "year": ["from-file"]})
+    )
+    ds = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning("hive", field_names=field_names),
+        override_num_blocks=1,
+    )
+    with pytest.raises(
+        (ValueError, ray.exceptions.RayTaskError), match="Partition column year"
+    ):
+        ds.filter(expr=col("year") == "from-file").select_columns(["id"]).take_all()
 
 
 def test_read_orc_default_preserves_columns_outside_v2_sample(

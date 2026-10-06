@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Set, Tuple
 
 import pyarrow as pa
+from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
     ArrowFileScanner,
@@ -14,6 +15,7 @@ from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFile
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
@@ -54,6 +56,22 @@ class OrcScanner(ArrowFileScanner):
             assert index >= 0, f"Column {name} not found in schema"
             fields.append(self.schema.field(index))
         return pa.schema(fields)
+
+    @property
+    @override
+    def partition_columns(self) -> Set[str]:
+        # Validate any same-named file columns before evaluating filters.
+        # Partition pruning would bypass validation for rejected files.
+        return set()
+
+    @override
+    def push_filters(
+        self, predicate: Expr
+    ) -> Tuple["ArrowFileScanner", Optional[Expr]]:
+        """Evaluate partitioned filters after validating stored partition columns."""
+        if self.partitioning is not None:
+            return self, predicate
+        return super().push_filters(predicate)
 
     def create_reader(self) -> OrcFileReader:
         """Create a reader with this scanner's projection and filters."""
