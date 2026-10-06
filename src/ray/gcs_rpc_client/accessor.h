@@ -247,6 +247,21 @@ class NodeInfoAccessor {
                             int64_t timeout_ms,
                             std::vector<std::string> &drained_node_ids);
 
+  /// Update a node's user-defined labels at runtime (replace semantics).
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.UpdateNodeLabels for the API spec.
+  /// Reserved "ray.io/" labels are preserved by the node. The update affects future
+  /// scheduling decisions only; already-scheduled tasks/actors are not moved.
+  ///
+  /// \param node_id The ID of the node whose labels are updated.
+  /// \param labels The full set of user-defined labels to apply.
+  /// \param timeout_ms The timeout for this request.
+  /// \return Status. NotFound if the node is not alive.
+  virtual Status UpdateNodeLabels(
+      const NodeID &node_id,
+      const std::unordered_map<std::string, std::string> &labels,
+      int64_t timeout_ms);
+
   /// Search the local cache to find out if the given node is dead.
   /// If the node is not confirmed to be dead (this returns false), it could be that:
   /// 1. We haven't even received a node alive publish for it yet.

@@ -187,6 +187,21 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// After that, no new tasks can be scheduled onto the local node.
   void SetLocalNodeDraining(const rpc::DrainRayletRequest &drain_request);
 
+  /// Replace the local node's user-defined labels at runtime.
+  ///
+  /// Labels with the reserved "ray.io/" prefix are preserved (they are managed by
+  /// Ray and cannot be set by users); all other existing labels are replaced by
+  /// \p labels. Applying the change bumps the resource-view version so the new
+  /// label set is broadcast to GCS and other raylets on the next sync, affecting
+  /// future scheduling decisions. Already-scheduled tasks/actors are not affected.
+  ///
+  /// \param labels The full set of user-defined labels to apply. Must not contain
+  /// reserved "ray.io/"-prefixed keys (callers validate this before the RPC).
+  /// \return The node's full resulting label set (preserved reserved labels plus
+  /// the applied user labels).
+  absl::flat_hash_map<std::string, std::string> SetLocalNodeLabels(
+      const absl::flat_hash_map<std::string, std::string> &labels);
+
   bool IsLocalNodeDraining() const { return drain_request_.has_value(); }
 
   /// Get the local drain request.

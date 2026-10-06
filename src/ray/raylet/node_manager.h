@@ -335,6 +335,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a runtime update of the local node's user-defined labels. Reserved
+  /// "ray.io/" labels are preserved; the reply carries the resulting label set.
+  void HandleUpdateRayletLabels(rpc::UpdateRayletLabelsRequest request,
+                                rpc::UpdateRayletLabelsReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleKillLocalActor(rpc::KillLocalActorRequest request,
                             rpc::KillLocalActorReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;

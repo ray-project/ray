@@ -152,6 +152,7 @@ ray_cc_library(
     srcs = ["local_resource_manager.cc"],
     hdrs = ["local_resource_manager.h"],
     deps = [
+        "//src/ray/common:constants",
         "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/common/scheduling:placement_group_util",
         "//src/ray/observability:metric_interface",
@@ -162,6 +163,7 @@ ray_cc_library(
         "//src/ray/util:clock",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
     ],
 )

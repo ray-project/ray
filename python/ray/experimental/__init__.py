@@ -1,5 +1,6 @@
 from ray.experimental.dynamic_resources import set_resource
 from ray.experimental.locations import get_local_object_locations, get_object_locations
+from ray.experimental.node_labels import update_node_labels
 from ray.experimental.rdt import (
     CommunicatorMetadata,
     RDTManager,
@@ -19,6 +20,7 @@ __all__ = [
     "get_object_locations",
     "get_local_object_locations",
     "set_resource",
+    "update_node_labels",
     "RDTManager",
     "wait_tensor_freed",
     "register_tensor_transport",
