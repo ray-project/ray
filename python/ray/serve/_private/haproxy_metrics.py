@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import socket
+import time
 from dataclasses import dataclass
 from typing import Optional, cast
 
@@ -69,6 +70,8 @@ class ParsedMetrics:
     ingress_request_body_truncated_full_length: Optional[int] = None
     ingress_request_via_router: bool = False
     ingress_request_failed: Optional[str] = None
+    ingress_request_fallback: bool = False
+    ingress_request_router_status: Optional[int] = None
     route: Optional[str] = None
     method: Optional[str] = None
     status_code: Optional[str] = None
@@ -112,6 +115,7 @@ class HAProxyMetricsCollector:
         500.0,
         1000.0,
     ]
+    _FALLBACK_WARNING_INTERVAL_S = 60.0
 
     def __init__(
         self,
@@ -126,6 +130,7 @@ class HAProxyMetricsCollector:
         self._haproxy_api = haproxy_api
         self._node_id = node_id
         self._node_metrics_task: Optional[asyncio.Task] = None
+        self._last_fallback_warning_at: dict[tuple[str, str], float] = {}
 
         # Per-request HTTP ingress metrics (serve_num_http_requests, latency,
         # errors). In HAProxy mode these are emitted here from HAProxy log
@@ -177,14 +182,19 @@ class HAProxyMetricsCollector:
                 "Count of ingress-request-router consultations that failed "
                 "to pin a replica, broken down by reason. Possible reasons: "
                 "'router_unreachable' (socket connect/send/recv failed), "
-                "'router_non_200' (router returned a non-200 status), "
+                "'router_non_200_<class>' (router returned a non-200 status), "
                 "'unparseable_replica_id' (router 200 but response body "
                 "did not contain a string replica_id), "
                 "'unknown_replica_id' (router returned a replica_id not "
-                "present in the current replica map). All reasons return 503 "
-                "to the client except 'unknown_replica_id', which routes to the "
-                "fallback proxy when one is available (otherwise 503)."
+                "present in the current replica map), or 'router_unavailable' "
+                "(no router replicas). Applications with an ingress router "
+                "can continue serving requests after these failures."
             ),
+            tag_keys=("application", "reason"),
+        )
+        self.fallback_counter = metrics.Counter(
+            "serve_haproxy_ingress_router_fallbacks",
+            description="Fallback attempts after an ingress router failure.",
             tag_keys=("application", "reason"),
         )
         self.requests_counter = metrics.Counter(
@@ -266,6 +276,8 @@ class HAProxyMetricsCollector:
             # HAProxy renders booleans as "1"/"0"; absence as "" -> False.
             ingress_request_via_router=kv.get("via_router") == "1",
             ingress_request_failed=kv.get("failed"),
+            ingress_request_fallback=kv.get("fallback") == "1",
+            ingress_request_router_status=as_int("router_status"),
             route=kv.get("route"),
             method=kv.get("method"),
             status_code=kv.get("status"),
@@ -334,6 +346,34 @@ class HAProxyMetricsCollector:
         # frontends still show up in the data.
         app_tag = parsed.app or "unknown"
         tags = {"application": app_tag}
+        reason = parsed.ingress_request_failed
+        if reason == "router_non_200":
+            status = parsed.ingress_request_router_status
+            status_class = (
+                f"{status // 100}xx" if status and 100 <= status < 600 else "unknown"
+            )
+            reason = f"router_non_200_{status_class}"
+
+        if parsed.ingress_request_fallback and reason:
+            status = parsed.ingress_request_router_status
+            self.fallback_counter.inc(tags={**tags, "reason": reason})
+            warning_key = (app_tag, reason)
+            now = time.monotonic()
+            last_warning = self._last_fallback_warning_at.get(warning_key)
+            if (
+                last_warning is None
+                or now - last_warning >= self._FALLBACK_WARNING_INTERVAL_S
+            ):
+                self._last_fallback_warning_at[warning_key] = now
+                logger.warning(
+                    "Routing fell back after ingress router failure: application=%s; reason=%s; "
+                    "router_status=%s. "
+                    "Check ingress router logs and whether its selected replica "
+                    "is still running and listed in HAProxy's server pool.",
+                    app_tag,
+                    reason,
+                    status,
+                )
 
         if parsed.ingress_request_via_router and not parsed.ingress_request_failed:
             self.requests_counter.inc(tags=tags)
@@ -354,11 +394,9 @@ class HAProxyMetricsCollector:
                 != parsed.ingress_request_actual_server
             ):
                 self.replica_mismatches_counter.inc(tags=tags)
-        elif parsed.ingress_request_failed:
+        elif reason:
             self.requests_counter.inc(tags=tags)
-            self.failures_counter.inc(
-                tags={**tags, "reason": parsed.ingress_request_failed}
-            )
+            self.failures_counter.inc(tags={**tags, "reason": reason})
         else:
             return
 

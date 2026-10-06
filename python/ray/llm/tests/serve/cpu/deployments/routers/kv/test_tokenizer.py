@@ -31,6 +31,30 @@ from ray.serve.llm.request_router import KVAwareRouter
 
 
 class TestBuildTokenizeRequest:
+    @pytest.mark.parametrize("stream", [True, False])
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"logprobs": True, "top_logprobs": -2},
+            {"logprobs": False, "top_logprobs": 5},
+        ],
+    )
+    def test_invalid_chat_sampling_params(self, stream, params):
+        # vLLM's validators raise VLLMValidationError, which is not a
+        # pydantic ValidationError. Let the engine report the bad request
+        # instead of failing the HAProxy router consultation with a 500.
+        assert (
+            build_tokenize_request(
+                {
+                    "model": "m",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": stream,
+                    **params,
+                }
+            )
+            is None
+        )
+
     @pytest.mark.parametrize(
         "payload",
         [
@@ -264,7 +288,12 @@ class TestPreRoutingTokenization:
         )
         runtime_env = _router_ray_actor_options(app)["runtime_env"]
         llm_config = _router_init_kwargs(app)["llm_config"]
-        assert runtime_env == {"env_vars": llm_config.runtime_env["env_vars"]}
+        for name, value in llm_config.runtime_env["env_vars"].items():
+            assert runtime_env["env_vars"][name] == value
+        assert (
+            runtime_env["env_vars"]["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        )
+        assert runtime_env["env_vars"]["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import os
 import re
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -13,6 +14,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
 )
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 
 
 @pytest.fixture(autouse=True)
@@ -286,6 +288,30 @@ class TestClickHouseDatasource:
         assert len(read_tasks) == 1
         for i, read_task in enumerate(read_tasks):
             assert read_task.metadata.num_rows == 16
+
+    def test_execute_block_query_rejects_pickle_object_columns(
+        self, datasource, tmp_path
+    ):
+        """An Arrow stream carrying a pickled-object column must be rejected
+        before anything is unpickled."""
+        marker = tmp_path / "exploit_marker"
+
+        class Exploit:
+            def __reduce__(self):
+                return (os.system, (f"touch {marker}",))
+
+        evil = ArrowPythonObjectArray.from_objects([Exploit()] * 2)
+        batch = pa.record_batch([pa.array([1, 2]), evil], names=["field1", "evil"])
+        mock_stream = MagicMock()
+        mock_client = mock.MagicMock()
+        mock_client.query_arrow_stream.return_value.__enter__.return_value = mock_stream
+        mock_stream.__iter__.return_value = [batch]
+        datasource._init_client = MagicMock(return_value=mock_client)
+
+        with pytest.raises(ValueError, match="arrow_pickled_object"):
+            datasource._execute_block_query("SELECT * FROM default.table_name")
+
+        assert not marker.exists(), "pickle.load executed attacker code"
 
     def test_get_read_tasks_no_batches(self, datasource, mock_clickhouse_client):
         mock_reader = mock.MagicMock()

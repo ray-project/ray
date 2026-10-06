@@ -92,6 +92,20 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_gcs_node_manager",
+    testonly = True,
+    hdrs = ["fake_gcs_node_manager.h"],
+    deps = [
+        ":gcs_node_manager",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/observability:fake_ray_event_recorder",
+        "//src/ray/pubsub:fake_publisher",
+        "//src/ray/pubsub:gcs_publisher",
+        "//src/ray/util:clock",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_resource_load_puller",
     srcs = ["gcs_resource_load_puller.cc"],
     hdrs = ["gcs_resource_load_puller.h"],
@@ -123,6 +137,21 @@ ray_cc_library(
         "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_gcs_resource_manager",
+    testonly = True,
+    hdrs = ["fake_gcs_resource_manager.h"],
+    deps = [
+        ":fake_gcs_node_manager",
+        ":gcs_node_manager",
+        ":gcs_resource_manager",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
+        "//src/ray/raylet/scheduling:cluster_resource_manager",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -325,6 +354,39 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "fake_gcs_placement_group_scheduler",
+    testonly = True,
+    hdrs = ["fake_gcs_placement_group_scheduler.h"],
+    deps = [
+        ":gcs_placement_group_scheduler",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_gcs_placement_group_manager",
+    testonly = True,
+    hdrs = ["fake_gcs_placement_group_manager.h"],
+    deps = [
+        ":gcs_placement_group_manager",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/util:clock",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_gcs_kv_manager",
+    testonly = True,
+    hdrs = ["fake_gcs_kv_manager.h"],
+    deps = [
+        ":gcs_kv_manager",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
     name = "gcs_placement_group_manager",
     srcs = ["gcs_placement_group_manager.cc"],
     hdrs = ["gcs_placement_group_manager.h"],
@@ -425,6 +487,7 @@ ray_cc_library(
         "gcs_server.cc",
     ],
     hdrs = [
+        "gcs_leader_gated_handlers.h",
         "gcs_server.h",
     ],
     features = select({
@@ -460,6 +523,7 @@ ray_cc_library(
         ":grpc_services",
         ":metrics",
         "//src/ray/asio:io_context_monitor",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/util:clock",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -472,6 +536,7 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/pubsub:publisher",
+        "//src/ray/ray_syncer",
         # TODO(irabbani): Refactor a subset of scheduling into a shared target
         # between the GCS and Raylet.
         "//src/ray/raylet/scheduling:scheduler",
