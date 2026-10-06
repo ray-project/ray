@@ -539,22 +539,28 @@ class TorchLearner(Learner):
             or not torch.distributed.is_initialized()
         ):
             return plan
+        num_modules = len(plan.modules_with_data)
         summed = torch.tensor(
-            [int(plan.skip), plan.num_minibatches, int(plan.abort)],
+            [int(plan.skip), plan.num_minibatches, int(plan.abort)]
+            + [int(flag) for flag in plan.modules_with_data]
+            + [int(flag) for flag in plan.modules_without_data],
             dtype=torch.int64,
             device=self._device,
         )
         torch.distributed.all_reduce(summed)
-        num_skipping, total_minibatches, num_aborting = summed.tolist()
+        num_skipping, total_minibatches, num_aborting, *module_counts = summed.tolist()
         # Skip if anyone wants to, abort if anyone must. Steps: the average proposal.
         # Every non-empty Learner proposes at least 1 when there is minibatching, so
         # the floor is >= 1 then; a single pass over the batch proposes 0 on every
         # Learner, and 0 ("uncapped") is the right answer -- there is only ever one
-        # step to take.
+        # step to take. Per module: whether anyone has data for it, and whether
+        # anyone doesn't.
         return UpdatePlan(
             skip=num_skipping > 0,
             num_minibatches=total_minibatches // torch.distributed.get_world_size(),
             abort=num_aborting > 0,
+            modules_with_data=tuple(n > 0 for n in module_counts[:num_modules]),
+            modules_without_data=tuple(n > 0 for n in module_counts[num_modules:]),
         )
 
     @OverrideToImplementCustomLogic

@@ -27,6 +27,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     LEARNER_CONNECTOR,
+    LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME,
     LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME,
     LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
     LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
@@ -146,6 +147,14 @@ def fake_batch(num_timesteps, *, env_steps=None, seq_lens=None):
     return MultiAgentBatch(
         {DEFAULT_MODULE_ID: SampleBatch(columns)},
         env_steps=num_timesteps if env_steps is None else env_steps,
+    )
+
+
+def fake_batch_with_p1(num_timesteps):
+    """A `fake_batch` that also holds `num_timesteps` rows for a module "p1"."""
+    rows = fake_batch(num_timesteps).policy_batches[DEFAULT_MODULE_ID]
+    return MultiAgentBatch(
+        {DEFAULT_MODULE_ID: rows, "p1": rows.copy()}, env_steps=num_timesteps
     )
 
 
@@ -407,6 +416,57 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
         finally:
             learner_group.shutdown()
 
+    def test_learners_drop_modules_only_some_of_them_have_data_for(self):
+        """A module that only some Learners have data for is dropped from the update.
+
+        Every module runs its own all-reduce, so a Learner training a module that its
+        peer has no data for would wait in that module's all-reduce forever -- as
+        this test then does, rather than fail. The group drops the module from every
+        Learner's batch instead and trains the rest.
+        """
+        env = gym.make("CartPole-v1")
+        config = BaseTestingAlgorithmConfig().update_from_dict(
+            REMOTE_CONFIGS["multi-cpu-ddp"]
+        )
+        learner_group = config.build_learner_group(env=env)
+        learner_group.add_module(
+            module_id="p1", module_spec=config.get_rl_module_spec(env=env)
+        )
+
+        def weights(module_id):
+            """The weights of a module on each Learner of the group."""
+            return [
+                result.get()
+                for result in learner_group.foreach_learner(
+                    lambda learner: convert_to_numpy(
+                        learner.module[module_id].get_state()
+                    )
+                )
+            ]
+
+        try:
+            p1_before = weights("p1")
+            with_p1, without_p1 = MetricsLogger.peek_results(
+                learner_group.update(batches=[fake_batch_with_p1(64), fake_batch(64)])
+            )
+            # Neither Learner trains p1, and the one that had data for it says so, ...
+            check(p1_before, weights("p1"))
+            self.assertEqual(
+                64, with_p1["p1"][LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME]
+            )
+            # ... while both train the default module, in sync.
+            self.assertEqual(
+                [64, 64],
+                [
+                    result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED]
+                    for result in (with_p1, without_p1)
+                ],
+            )
+            learner_0_weights, learner_1_weights = weights(DEFAULT_MODULE_ID)
+            check(learner_0_weights, learner_1_weights)
+        finally:
+            learner_group.shutdown()
+
     def test_never_skip_update_in_a_group(self):
         """`never_skip_update` turns a skip into an error, raised on every Learner.
 
@@ -455,6 +515,15 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 )
             ]
             check(learner_0_weights, learner_1_weights)
+
+            # A module that only one Learner has data for raises as well, instead of
+            # being dropped from the update.
+            learner_group.add_module(
+                module_id="p1",
+                module_spec=config.get_rl_module_spec(env=gym.make("CartPole-v1")),
+            )
+            with self.assertRaisesRegex(Exception, "never_skip_update"):
+                learner_group.update(batches=[fake_batch_with_p1(64), fake_batch(64)])
         finally:
             learner_group.shutdown()
 
