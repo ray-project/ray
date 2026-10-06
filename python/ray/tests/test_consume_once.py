@@ -1,3 +1,4 @@
+import dataclasses
 import pickle
 import sys
 import threading
@@ -25,8 +26,15 @@ class Producer:
 
 @ray.remote
 class Consumer:
+    def __init__(self):
+        self.num_calls = 0
+
     def consume(self, value):
+        self.num_calls += 1
         return value
+
+    def get_num_calls(self):
+        return self.num_calls
 
     def consume_all(self, *values, extra=None):
         return list(values) + [extra]
@@ -50,6 +58,12 @@ class Owner:
 
     def return_nested_ref(self):
         return [self.producer.produce.options(_consume_once=True).remote(1)]
+
+    def keep_ref(self):
+        self.kept_ref = self.producer.produce.options(_consume_once=True).remote(1)
+
+    def return_kept_ref(self):
+        return self.kept_ref
 
     def raise_with_ref(self):
         ref = self.producer.produce.options(_consume_once=True).remote(1)
@@ -343,12 +357,46 @@ def test_borrowing_rejected(ray_start_regular_shared, consumed):
     assert move_state(ref) == ("MOVED" if consumed else "MOVABLE")
 
 
-@pytest.mark.parametrize("method", ["return_ref", "return_nested_ref"])
+@pytest.mark.parametrize("method", ["return_ref", "return_nested_ref", "kept_ref"])
 def test_returning_consume_once_ref_rejected(ray_start_regular_shared, method):
     owner = Owner.remote()
+    if method == "kept_ref":
+        ray.get(owner.keep_ref.remote())
+        method = "return_kept_ref"
 
-    with pytest.raises(Exception, match="_consume_once=True"):
+    with pytest.raises(ray.exceptions.RayTaskError, match="_consume_once=True") as e:
         ray.get(getattr(owner, method).remote())
+    assert isinstance(e.value, pickle.PicklingError)
+    assert ray.get(owner.ping.remote()) == "alive"
+
+
+def test_rejected_nested_arg_submits_nothing_and_leaks_nothing(
+    ray_start_regular_shared,
+):
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+    ref = producer.produce.options(_consume_once=True).remote(1)
+    core_worker = ray._private.worker.global_worker.core_worker
+    refs_before = set(core_worker.get_all_reference_counts())
+
+    # The large by-value arg is put into plasma before the nested ref is reached.
+    with pytest.raises(pickle.PicklingError, match="_consume_once=True"):
+        consumer.consume_all.remote(b"x" * (1024 * 1024), [ref])
+    assert set(core_worker.get_all_reference_counts()) == refs_before
+    assert ray.get(consumer.get_num_calls.remote()) == 0
+
+
+def test_consume_once_ref_in_dataclass_arg_rejected(ray_start_regular_shared):
+    @dataclasses.dataclass
+    class Box:
+        ref: ray.ObjectRef
+
+    producer = Producer.remote()
+    consumer = Consumer.remote()
+    ref = producer.produce.options(_consume_once=True).remote(1)
+
+    with pytest.raises(pickle.PicklingError, match="_consume_once=True"):
+        consumer.consume.remote(Box(ref))
 
 
 def assert_unserializable_cause(error):
@@ -382,6 +430,44 @@ def test_exception_carrying_consume_once_ref_in_normal_task(
     with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
         ray.get(raise_with_ref_task.remote())
     assert_unserializable_cause(exc_info.value)
+    assert ray.get(normal_task.remote(1)) == 1
+
+
+def test_exception_carrying_consume_once_ref_in_actor_init(ray_start_regular_shared):
+    @ray.remote
+    class RaisesInInit:
+        def __init__(self):
+            ref = Producer.remote().produce.options(_consume_once=True).remote(1)
+            raise RuntimeError("boom", ref)
+
+        def ping(self):
+            return "alive"
+
+    # Same as for any exception in __init__: actor creation fails.
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(RaisesInInit.remote().ping.remote())
+
+
+def test_capturing_consume_once_ref_rejected(ray_start_regular_shared):
+    ref = Producer.remote().produce.options(_consume_once=True).remote(1)
+
+    @ray.remote
+    def captures_ref():
+        return ray.get(ref)
+
+    @ray.remote
+    class CapturesRef:
+        def get(self):
+            return ray.get(ref)
+
+    with pytest.raises(pickle.PicklingError, match="_consume_once=True"):
+        captures_ref.remote()
+    with pytest.raises(pickle.PicklingError, match="_consume_once=True"):
+        CapturesRef.remote()
+    with pytest.raises(pickle.PicklingError, match="_consume_once=True"):
+        ray.cloudpickle.dumps([ref])
+    assert move_state(ref) == "MOVABLE"
+    assert ray.get(normal_task.remote(1)) == 1
 
 
 def test_streaming_generator_yielding_consume_once_ref_rejected(
