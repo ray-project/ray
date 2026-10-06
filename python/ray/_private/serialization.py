@@ -212,11 +212,11 @@ class SerializationContext:
                 "MOVABLE",
                 "MOVED",
             ):
-                raise ValueError(
+                raise pickle.PicklingError(
                     f"Object {obj.hex()} was created with _consume_once=True. It can "
                     "only be passed directly as an argument to one actor task, not "
-                    "nested inside another object (including a ray.put value) or "
-                    "returned from a task."
+                    "nested inside another object (including a ray.put value or a "
+                    "raised exception) or returned from a task."
                 )
 
             self.add_contained_object_ref(
