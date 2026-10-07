@@ -2,7 +2,7 @@ import dataclasses
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-from ray.data._internal.block_batching.interfaces import Batch
+from ray.data._internal.block_batching.interfaces import Batch, FinalizedBatch
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.table_block import TableBlockAccessor
@@ -62,7 +62,7 @@ class CheckpointingBatchIterator(BatchIterator):
             self._checkpointer.end_epoch()
 
     @contextmanager
-    def yield_batch_context(self, batch: Batch):
+    def yield_batch_context(self, batch: FinalizedBatch):
         if self._checkpointer:
             self._checkpointer.record_yielded_batch(batch)
 

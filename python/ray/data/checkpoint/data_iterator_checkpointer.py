@@ -408,12 +408,16 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         flushing staged row IDs to a checkpoint file when reaching the target
         file-size or when the main thread requests a forced flush.
         """
+        queue = self._row_ids_staging_queue
+        flush_completed_event = self._flush_completed_event
+        assert queue is not None and flush_completed_event is not None
+
         staged_row_ids_size_bytes = 0
         staged_row_id_batches: List[pa.Array] = []
 
         try:
             while True:
-                row_ids = self._row_ids_staging_queue.get()
+                row_ids = queue.get()
                 if row_ids is None:
                     # Sentinel value `None` indicates that we should force flush any
                     # staged row IDs.
@@ -422,7 +426,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
                     staged_row_ids_size_bytes = 0
                     staged_row_id_batches = []
                     # Notify the main thread that the flush is complete.
-                    self._flush_completed_event.set()
+                    flush_completed_event.set()
                     continue
 
                 row_ids_accessor = BlockAccessor.for_block(row_ids)
@@ -445,7 +449,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         except Exception as e:
             logger.exception("Internal error in background flush thread:")
             self._flush_exception = e
-            self._flush_completed_event.set()
+            flush_completed_event.set()
             raise
 
     def _raise_if_flush_failed(self):
@@ -462,13 +466,16 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         Raises an exception if a previous flush operation failed.
         """
         assert self._threads_initialized, "Threads not initialized."
+        queue = self._row_ids_staging_queue
+        flush_completed_event = self._flush_completed_event
+        assert queue is not None and flush_completed_event is not None
 
         # The flush thread may have failed from a periodic flush.
         self._raise_if_flush_failed()
 
-        self._flush_completed_event.clear()
-        self._row_ids_staging_queue.put(None)
-        self._flush_completed_event.wait()
+        flush_completed_event.clear()
+        queue.put(None)
+        flush_completed_event.wait()
 
         # The flush thread may have failed from the latest forced flush.
         self._raise_if_flush_failed()
@@ -482,6 +489,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         self._raise_if_flush_failed()
 
         assert batch.metadata.row_ids is not None, batch.metadata
+        assert self._row_ids_staging_queue is not None
 
         self._should_update_state_dict = True
         self._row_ids_staging_queue.put(batch.metadata.row_ids)
@@ -590,11 +598,14 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
                 )
                 raise
 
+        delete_threadpool = self._delete_threadpool
+        assert delete_threadpool is not None, "Threads not initialized."
+
         # Wait for the previous delete task to complete.
         if self._delete_task:
             self._delete_task.result()
 
-        self._delete_task = self._delete_threadpool.submit(_delete_checkpoint_files)
+        self._delete_task = delete_threadpool.submit(_delete_checkpoint_files)
 
     def __del__(self):
         if self._delete_threadpool:
