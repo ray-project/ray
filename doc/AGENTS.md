@@ -31,10 +31,11 @@ Redirects don't go live at merge. CI applies them on a later scheduled postmerge
 `.buildkite/test.rules.txt` maps file-change patterns to tag sets, and tags drive which CI suites run. Documentation routing splits three ways:
 
 - **`doc`** is build and validation infrastructure, not content: `.readthedocs.yaml`, `doc/requirements-doc.txt`, `.buildkite/doc.rayci.yml`, `.vale.ini`/`.vale/`, and the build scripts under `doc/`. Docs-only deplock changes (`python/deplocks/docs/*.lock`, `ci/raydepsets/configs/docs.depsets.yaml`) tag `doc doc_api python_dependencies` to skip the full python-deps test set.
-- **`<lib>_doc`** (`core_doc`, `data_doc`, `ml_doc`, `rllib_doc`, `serve_doc`) routes executable doc assets to that library's `<library>: docs example tests` step, so a one-library doc change runs only that library's examples. Ray Core owns the fallback; `doc/source/llm/` routes to the general `llm` tag instead.
+- **`<lib>_doc`** (`core_doc`, `data_doc`, `ml_doc`, `rllib_doc`, `serve_doc`) selects that library's `<library>: docs example tests` step. Only `doc/BUILD.bazel` and the example `BUILD.bazel` files emit it, because they define test targets. Library code tags select the same steps.
+- **`doc_example`** is what doc assets emit: `.py`, `.ipynb`, `.yaml`, and Ray Data prose. Only the label-gated `doc: docs example tests (opt-in)` step listens for it, so a doc asset edit runs no tests by default. That step runs every library's selected tests once, in the single `doctestbuild` environment. `doc/source/llm/` emits nothing, because every LLM doc example test is a GPU test.
 - **`doc_api`** covers the API reference pages and autodoc machinery. It's the entire trigger for the two API-consistency checks, which carry no `if:` guard, so a surface that stops emitting `doc_api` stops being checked silently.
 
-Prose and images trigger nothing: a change to only `.md`, `.rst`, or image files under `doc/` runs no library test steps. Config assets examples consume (`.yaml`, `.sh`) still route to the owning library, because they can change what a test does. Contributor-facing detail: `doc/source/ray-contribute/ci.md`.
+Prose and images trigger nothing by default: a change to only `.md`, `.rst`, or image files under `doc/` runs no library test steps. Contributor-facing detail: `doc/source/ray-contribute/ci.md`.
 
 ## Scope discipline for PRs
 
@@ -42,7 +43,7 @@ For docs-only fixes, take the lightest path:
 
 - Touch only files under `doc/`. A prose-only change runs no library tests at all, the cheapest path there is.
 - Don't bundle in a non-doc change "while you're at it" — that change pulls its own (often expensive) test set into the PR.
-- The `docs-go` label skips the per-library docs example steps on a content-only PR. It's optional, and applying it takes write access, so suggest it to the reviewer rather than assuming the PR author can add it. A guard step, `lint: validate docs-go scope`, fails unless every changed file is documentation content (under `doc/`, the Vale configuration at `.vale.ini` and `.vale/`, or the API-consistency checker at `ci/ray_ci/doc/`, excluding `BUILD` files everywhere), so the label never skips tests on a library, build, or general CI change. If the guard fails, removing the label isn't enough: push a new commit, because a rebuild replays the old label set.
+- Doc asset edits run no docs example tests by default. The `docs-example-test` label runs only the tests that name a changed file directly, never a library's whole suite and never GPU tests. Applying it takes write access, so suggest it to the reviewer rather than assuming the PR author can add it. Labels take effect on the next pushed commit, not on a rebuild. To preview what it selects, run `bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- <changed files>`.
 - If a docs change requires a non-doc change to land cleanly (e.g., autodoc references a renamed symbol), land them in the larger non-doc PR, not a docs-led PR.
 
 For generated API docs that depend on Python source under `python/ray/...`, expect broader test runs. That's correct, not a misconfiguration.
@@ -53,7 +54,7 @@ Every commit on a `ray-project/ray` PR needs a `Signed-off-by:` trailer (Develop
 
 ## When to revise the test rules
 
-If a docs-only PR hits unnecessarily broad tests, file a `.buildkite/test.rules.txt` PR (precedent: #63132) instead of working around it. Quick check: can the file change any build artifact, runtime behavior, or API surface? If no, it belongs on the prose skip rule or the owning library's `<lib>_doc` tag, not on a library's full test set.
+If a docs-only PR hits unnecessarily broad tests, file a `.buildkite/test.rules.txt` PR (precedent: #63132) instead of working around it. Quick check: can the file change any build artifact, runtime behavior, or API surface? If no, it belongs on the prose skip rule or the `doc_example` tag, not on a library's full test set.
 
 ## Cross-references between .md and .rst sources
 
