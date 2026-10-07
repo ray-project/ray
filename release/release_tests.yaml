@@ -4662,7 +4662,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4688,7 +4688,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4716,7 +4716,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4739,7 +4739,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4765,7 +4765,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4884,7 +4884,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4907,7 +4907,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4929,7 +4929,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4952,7 +4952,7 @@
       type: llm-cu130
       post_build_script: byod_llm_runai_streamer.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -5107,7 +5107,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -5133,7 +5133,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -5155,7 +5155,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xh100.yaml
+    cluster_compute: llm_service_2x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -5181,7 +5181,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xh100.yaml
+    cluster_compute: llm_service_2x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -5204,7 +5204,7 @@
       type: llm-cu130
       post_build_script: byod_llm_lmcache_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xh100.yaml
+    cluster_compute: llm_service_2x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -5336,7 +5336,7 @@
         RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE: "2"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_service_1x_4xh100.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 

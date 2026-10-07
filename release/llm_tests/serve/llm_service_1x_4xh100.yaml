@@ -1,0 +1,17 @@
+# For tests driven by run_llm_serve_test_and_bms.py. The job only orchestrates
+# (it starts an Anyscale Service with this same compute config and probes it),
+# so GPU workers start at 0 and scale up only for the Service's replicas.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    metadata:
+        labels:
+            kueue.x-k8s.io/queue-name: llm-team-queue
+
+head_node:
+    instance_type: 8CPU-32GB
+
+worker_nodes:
+    - instance_type: 92CPU-960GB-4xH100
+      min_nodes: 0
+      max_nodes: 1
