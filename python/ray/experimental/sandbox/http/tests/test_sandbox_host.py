@@ -593,5 +593,185 @@ def test_work_is_refused_while_terminating() -> None:
     assert runtime.exec_calls == []
 
 
+# ----------------------------------------------------------------------
+# File writes through stdin (fs_write jobs)
+# ----------------------------------------------------------------------
+
+
+def _write_host(runtime: FakeSandboxRuntime, max_file_bytes: int = 1024):
+    return _make_host(runtime, settings_overrides={"max_file_bytes": max_file_bytes})
+
+
+def test_stdin_write_acknowledges_a_repeated_chunk() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime)
+
+    async def scenario():
+        await host.boot()
+        await host.fs_write_open("k", "/tmp/f")
+        first = await host.stdin_write("k", b"abc", 0)
+        # Its reply was lost and the caller sent it again.
+        again = await host.stdin_write("k", b"abc", 0)
+        # A different chunk at a stale offset is still a mismatch.
+        stale = await host.stdin_write("k", b"xyz", 0)
+        done = await host.stdin_write("k", b"de", 3, eof=True)
+        return first, again, stale, done, await host.get_exec_by_key("k", 5)
+
+    first, again, stale, done, job = asyncio.run(scenario())
+    assert first == again == {"num_bytes_written": 3, "closed": False}
+    assert stale["error_code"] == "offset_mismatch"
+    assert done == {"num_bytes_written": 5, "closed": True}
+    assert job["status"] == "completed"
+    assert runtime.written_files["/tmp/f"] == b"abcde"
+
+
+def test_stdin_write_after_too_large_stays_failed() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime, max_file_bytes=4)
+
+    async def scenario():
+        await host.boot()
+        await host.fs_write_open("k", "/tmp/f")
+        assert (await host.stdin_write("k", b"abc", 0))["num_bytes_written"] == 3
+        big = await host.stdin_write("k", b"defg", 3)
+        # A later chunk or EOF must neither revive the job nor write a file.
+        more = await host.stdin_write("k", b"d", 3)
+        eof = await host.stdin_write("k", b"", 3, eof=True)
+        return big, more, eof, await host.get_exec_by_key("k")
+
+    big, more, eof, job = asyncio.run(scenario())
+    assert big["error_code"] == more["error_code"] == eof["error_code"] == "too_large"
+    assert job["status"] == "error"
+    assert job["failure_code"] == "too_large"
+    assert "/tmp/f" not in runtime.written_files
+
+
+def test_file_jobs_fail_instead_of_hanging() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime)
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("disk on fire")
+
+    async def scenario():
+        await host.boot()
+        runtime.write_file = broken
+        runtime.read_file = broken
+        await host.fs_write_open("w", "/tmp/f")
+        closed = await host.stdin_write("w", b"abc", 0, eof=True)
+        written = await host.get_exec_by_key("w", 5)
+        first = await host.fs_read("r", "/tmp/f")
+        # A repeat returns the finished job instead of waiting forever.
+        again = await asyncio.wait_for(host.fs_read("r", "/tmp/f"), 5)
+        return closed, written, first, again
+
+    closed, written, first, again = asyncio.run(scenario())
+    assert closed["closed"] is True
+    assert (written["status"], written["failure_code"]) == ("error", "write_failed")
+    assert first["status"] == again["status"] == "error"
+
+
+def test_host_joins_starts_with_the_same_exec_key() -> None:
+    """The host keeps each exec under the client's exec id, so a start that
+    any facade replica retries joins the first one."""
+
+    async def scenario():
+        runtime = FakeSandboxRuntime()
+        host = SandboxHost(
+            "sb-keys", {"image": "img"}, {}, runtime_factory=lambda: runtime
+        )
+        await host.boot()
+        first = await host.start_exec(["true"], exec_key="client-1")
+        again = await host.start_exec(["true"], exec_key="client-1")
+        done = await host.get_exec_by_key("client-1", wait_seconds=5)
+        return (
+            first["exec_id"],
+            again["exec_id"],
+            len(runtime.exec_calls),
+            done["status"],
+        )
+
+    first, again, calls, status = asyncio.run(scenario())
+    assert first == again
+    assert calls == 1
+    assert status == "completed"
+
+
+def test_adopted_sandbox_runs_execs_with_the_creates_env() -> None:
+    """A pre-booted sandbox booted without the create's env, so a host that
+    adopts one passes that env with every exec (an exec's own env wins)."""
+
+    async def scenario():
+        runtime = FakeSandboxRuntime()
+        host = SandboxHost(
+            "warm-1", {"image": "img"}, {}, runtime_factory=lambda: runtime
+        )
+        await host.boot()
+        host.adopt(
+            "sb-adopted",
+            {"image": "img", "env": {"SECRET": "s", "MODE": "create"}},
+            {"max_exec_history": 8},
+        )
+        await host.start_exec(["env"], env={"MODE": "exec"}, exec_key="k")
+        await host.get_exec_by_key("k", wait_seconds=5)
+        return host._sandbox_id, runtime.exec_calls[-1]["env"]
+
+    sandbox_id, env = asyncio.run(scenario())
+    assert sandbox_id == "sb-adopted"
+    assert env == {"SECRET": "s", "MODE": "exec"}
+
+
+def test_host_forgets_keys_of_evicted_execs() -> None:
+    """Exec keys go with the finished execs the history cap evicts."""
+
+    async def scenario():
+        runtime = FakeSandboxRuntime()
+        host = SandboxHost(
+            "sb-evict",
+            {"image": "img"},
+            {"max_exec_history": 2},
+            runtime_factory=lambda: runtime,
+        )
+        await host.boot()
+        for i in range(4):
+            await host.start_exec(["true"], exec_key=f"k{i}")
+            await host.get_exec_by_key(f"k{i}", wait_seconds=5)
+        gone = await host.get_exec_by_key("k0")
+        return sorted(host._exec_keys), gone.get("error_code")
+
+    keys, gone = asyncio.run(scenario())
+    assert keys == ["k2", "k3"]
+    assert gone == "exec_not_found"
+
+
+def test_file_jobs_stay_failed_after_terminate() -> None:
+    """A read still running when the sandbox terminates must not report a
+    success once it returns."""
+    runtime = FakeSandboxRuntime()
+    runtime.readable_files["/tmp/f"] = b"abc"
+    gate = threading.Event()
+    read_file = runtime.read_file
+
+    def slow_read(*args):
+        gate.wait(5)
+        return read_file(*args)
+
+    runtime.read_file = slow_read
+    host = _make_host(runtime)
+
+    async def scenario():
+        await host.boot()
+        read = asyncio.ensure_future(host.fs_read("k", "/tmp/f"))
+        await asyncio.sleep(0.05)
+        await host._shutdown()
+        gate.set()
+        await read
+        return await host.get_exec_by_key("k")
+
+    job = asyncio.run(scenario())
+    assert job["status"] == "error"
+    assert job.get("content") is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

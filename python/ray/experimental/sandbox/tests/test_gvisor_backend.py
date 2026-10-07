@@ -1,4 +1,5 @@
 import os
+import re
 import socket
 import sys
 import threading
@@ -366,7 +367,14 @@ def test_build_run_command_has_no_overlay_flag():
     never from a runsc --overlay2 flag."""
     cmd = _run_argv("none")
     assert not any(a.startswith("--overlay2") for a in cmd)
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 def _owned_busybox_tar(tar_path: str) -> None:
@@ -529,7 +537,7 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert script.startswith(
         "unshare --user --map-root-user --net --fork --kill-child "
     )
-    assert script.endswith("run --bundle /tmp/rd sb-1")
+    assert script.endswith("run --pid-file /tmp/rd/sandbox.pid --bundle /tmp/rd sb-1")
     for fragment in (
         "/tmp/rd/netns.pid",
         # slirp4netns stays in the sandbox's process group and its ready
@@ -575,7 +583,14 @@ def test_build_run_command_other_modes_unwrapped(network, rootless):
     assert cmd[0] == "runsc"
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 def test_create_sandbox_requires_slirp4netns(monkeypatch):
@@ -642,11 +657,16 @@ def test_netns_egress_and_dns(ensure_slirp4netns):
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(_public_config())
     try:
+        # -S prints the response's status line. Any status shows the name
+        # resolved and the request went out: example.com's CDN answers some
+        # CI addresses with 403.
         res = backend.exec_command(
-            sb, "wget -q -T 15 -O - http://example.com", timeout=60
+            sb, "wget -q -S -T 15 -O - http://example.com", timeout=60
         )
-        assert res.exit_code == 0, res.stderr
-        assert "Example" in res.stdout
+        status = re.search(r"HTTP/1\.[01] (\d{3})", res.stderr)
+        assert status, res.stderr
+        if status.group(1) == "200":
+            assert "Example" in res.stdout
     finally:
         backend.delete_sandbox(sb)
 
@@ -838,6 +858,27 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+def test_runtime_warm_pool_serves_matching_creates():
+    """A create matching a warm-pool profile takes a booted sandbox, which
+    runs commands with the create's env."""
+    runtime = SandboxRuntime(
+        warm_pool=[{"image": "busybox:latest", "shell": "/bin/sh", "size": 2}]
+    )
+    try:
+        assert runtime.wait_for_warm_pool(timeout_seconds=120)
+        booted = {i for pool in runtime._warm._ready.values() for i in pool}
+        instance_id = runtime.create(
+            image="busybox:latest", shell="/bin/sh", env={"MODE": "warm"}
+        )
+        assert instance_id in booted
+        res = runtime.exec(instance_id, "echo $MODE")
+        assert (res.exit_code, res.stdout.strip()) == (0, "warm")
+        runtime.delete(instance_id)
+        assert runtime.wait_for_warm_pool(timeout_seconds=120)
+    finally:
+        runtime.close()
 
 
 if __name__ == "__main__":

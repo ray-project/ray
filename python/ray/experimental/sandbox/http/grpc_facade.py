@@ -9,8 +9,8 @@ cluster. The wire contract is vendored under ``_proto/``.
 
 The facade keeps no registry: object ids carry their payload (``im-`` wraps
 an image ref, ``st-`` a secret's env dict) and the sandbox id doubles as the
-client task id. The exec table is the one piece of in-process state, so run
-a single facade process per cluster.
+client task id. Each exec lives on its sandbox's host under the client's
+exec id, so the facade holds no state and can run as several processes.
 
 When the environment variable named by ``SandboxAPISettings.token_env_var``
 (default ``RAY_SANDBOX_API_TOKEN``) is set, every RPC must present that
@@ -34,16 +34,14 @@ import hashlib
 import hmac
 import inspect
 import ipaddress
-import itertools
 import json
 import logging
 import os
 import re
 import shlex
-import time
+import threading
 import uuid
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Callable, Dict, List, NoReturn, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, NoReturn, Optional, Set
 
 import grpc
 from grpc import StatusCode
@@ -63,6 +61,7 @@ from ray.experimental.sandbox.http._proto.sandbox_exec_pb2_grpc import (
 from ray.experimental.sandbox.http.host import HostSettings, SandboxSpec
 from ray.experimental.sandbox.http.resolver import (
     SANDBOX_ID_PREFIX,
+    HostedSandboxHandle,
     RayActorHandleResolver,
     _is_actor_gone,
     _is_actor_unavailable,
@@ -90,19 +89,10 @@ _SCHEDULING_GRACE_SECONDS = 10.0
 _PULL_TIMEOUT_SECONDS = 1800.0
 _START_TIMEOUT_SECONDS = 120.0
 _READ_BOUND_SECONDS = 600.0
-_WRITE_CHUNK_BYTES = 4 * 1024 * 1024
 _WRITE_BOUND_SECONDS = 120.0
 # How long SandboxTerminate waits for the host's terminate() to report back.
 _TERMINATE_WAIT_SECONDS = 30.0
 _STDIO_CHUNK_BYTES = 256 * 1024
-# A finished exec stays addressable this long: the client SDK reads a
-# command's stdout and stderr lazily, often after its wait() returned.
-_EXEC_RECORD_RETENTION_SECONDS = 120.0
-# Hard cap on the table; past it the oldest finished records go early.
-_MAX_EXEC_RECORDS = 50_000
-# add_exec inspects at most this many of the oldest records, so eviction
-# costs O(1) per exec instead of a scan of the whole table.
-_EXEC_EVICTION_SCAN = 64
 # Command-router credential handed out when no token is configured.
 _ROUTER_JWT_WITHOUT_TOKEN = "ray-sandbox-facade"
 # A host a client may name as the one it dialed: a DNS name or an IPv4
@@ -200,53 +190,6 @@ def _fs_error(error_kind: str, message: str) -> bytes:
     return json.dumps({"error_kind": error_kind, "message": message}).encode()
 
 
-@dataclass
-class _ExecRecord:
-    """One client exec id and how the facade services it.
-
-    A record enters the table the moment its TaskExecStart arrives, before
-    anything reaches the sandbox actor, and ``start_task`` carries that start
-    to completion however long the actor takes. A retried start (the SDK
-    retries UNAVAILABLE, which the facade answers when the actor has not
-    replied within its grace period) finds the record and joins the same
-    start, so one exec id never runs its command twice.
-    """
-
-    handle: Any
-    # "sandbox" (a command running in the sandbox, as a SandboxHost exec job)
-    # or "fs" (an emulated filesystem-tools op), once the start has run.
-    kind: str = "pending"
-    sandbox_exec_id: Optional[str] = None
-    fs_path: Optional[str] = None
-    fs_write: bool = False
-    stdin_chunks: List[bytes] = field(default_factory=list)
-    stdin_bytes: int = 0
-    stdin_closed: bool = False
-    finished: asyncio.Event = field(default_factory=asyncio.Event)
-    # time.monotonic() when the exec reached a terminal state.
-    finished_at: Optional[float] = None
-    exit_code: int = 0
-    stdout: bytes = b""
-    stderr: bytes = b""
-    start_task: Optional["asyncio.Task[None]"] = None
-
-    def finish(self, exit_code: int, stdout: bytes = b"", stderr: bytes = b"") -> None:
-        self.exit_code = exit_code
-        self.stdout = stdout
-        self.stderr = stderr
-        self.mark_finished()
-
-    def mark_finished(self) -> None:
-        if self.finished_at is None:
-            self.finished_at = time.monotonic()
-        self.finished.set()
-
-    async def wait_started(self) -> None:
-        """Block until the start reached the sandbox; re-raise its failure."""
-        if self.start_task is not None:
-            await asyncio.shield(self.start_task)
-
-
 class _FacadeState:
     """State shared between the control-plane and exec-plane servicers."""
 
@@ -263,12 +206,16 @@ class _FacadeState:
         self.advertise_url = advertise_url
         # Required on every RPC when set; see _rpc.
         self.token = token
-        self.execs: Dict[str, _ExecRecord] = {}
 
     # Resolver calls can wait on a GCS round trip (an actor create, a cache
     # miss), so they run in worker threads, never on the event loop that
     # serves every client.
     async def lookup(self, sandbox_id: str) -> Optional[Any]:
+        cached = getattr(self.resolver, "cached", None)
+        if cached is not None:
+            handle = cached(sandbox_id)
+            if handle is not None:
+                return handle
         return await asyncio.to_thread(self.resolver.get, sandbox_id)
 
     async def require_handle(self, sandbox_id: str) -> Any:
@@ -280,35 +227,6 @@ class _FacadeState:
     async def kill(self, sandbox_id: str, handle: Any) -> None:
         self.resolver.forget(sandbox_id)
         await asyncio.to_thread(self.resolver.kill, handle)
-
-    def require_exec(self, exec_id: str) -> _ExecRecord:
-        record = self.execs.get(exec_id)
-        if record is None:
-            raise _RpcError(StatusCode.NOT_FOUND, f"exec {exec_id!r} not found")
-        return record
-
-    def add_exec(self, exec_id: str, record: _ExecRecord) -> None:
-        """Register an exec and evict expired ones.
-
-        Records are kept in start order, so the oldest finished ones sit at
-        the front: a bounded scan there drops records that finished more
-        than the retention period ago, or any finished ones while the table
-        is over its cap. Running execs always stay addressable, so with a
-        pathological number in flight the table may exceed the cap.
-        """
-        self.execs[exec_id] = record
-        now = time.monotonic()
-        over_cap = len(self.execs) - _MAX_EXEC_RECORDS
-        for key in list(itertools.islice(self.execs, _EXEC_EVICTION_SCAN)):
-            existing = self.execs[key]
-            if existing.finished_at is None:
-                continue
-            if over_cap <= 0 and (
-                now - existing.finished_at <= _EXEC_RECORD_RETENTION_SECONDS
-            ):
-                break
-            del self.execs[key]
-            over_cap -= 1
 
 
 def _actor_error(exc: Exception) -> Optional[_RpcError]:
@@ -383,22 +301,6 @@ async def _is_alive(handle: Any) -> bool:
     return True
 
 
-async def _await_sandbox_exec(record: _ExecRecord) -> Dict[str, Any]:
-    """Long-poll a command running in the sandbox until it reaches a terminal state."""
-    while True:
-        info = await _bounded(
-            record.handle.get_exec.remote(
-                record.sandbox_exec_id, wait_seconds=_LONG_POLL_SECONDS
-            ),
-            extra_wait=_LONG_POLL_SECONDS,
-        )
-        if info.get("error_code"):
-            raise _RpcError(StatusCode.NOT_FOUND, info.get("message", "exec lost"))
-        if info["status"] != "running":
-            record.mark_finished()
-            return info
-
-
 def _exec_exit_code(info: Dict[str, Any]) -> int:
     if info["status"] == "completed":
         return info["exit_code"] if info["exit_code"] is not None else 0
@@ -417,6 +319,95 @@ def _exec_stream(info: Dict[str, Any], want_stdout: bool) -> bytes:
             "utf-8", errors="replace"
         )
     return stderr
+
+
+def _job_exit_code(info: Dict[str, Any]) -> int:
+    """A finished host exec's exit code, for a command or a file operation."""
+    if info.get("kind", "command") == "command":
+        return _exec_exit_code(info)
+    code = info.get("exit_code")
+    return code if code is not None else _EXIT_ERROR
+
+
+def _job_stream(info: Dict[str, Any], want_stdout: bool) -> bytes:
+    """A finished host exec's stdout or stderr as the client SDK reads it.
+
+    File operations report failures as the fs-tools JSON error on stderr.
+    """
+    if info.get("kind", "command") == "command":
+        return _exec_stream(info, want_stdout)
+    if want_stdout:
+        return info.get("content") or b""
+    if info["status"] == "completed":
+        return b""
+    if info.get("failure_code") == "file_not_found":
+        return _fs_error("NotFound", "path does not exist")
+    return _fs_error("Other", info.get("error") or "file operation failed")
+
+
+def _check_found(result: Dict[str, Any]) -> None:
+    """Raise NOT_FOUND for a sandbox its node host doesn't have.
+
+    A hosted sandbox's id resolves while its node's host lives, so an id
+    never created, or one already released, reaches the host; the status
+    matches a sandbox actor that no longer exists.
+    """
+    if result.get("error_code") == "sandbox_not_found":
+        raise _RpcError(StatusCode.NOT_FOUND, result["message"])
+
+
+def _check_stdin(
+    result: Dict[str, Any], settings: SandboxAPISettings
+) -> Dict[str, Any]:
+    """Map a host stdin call's error to its gRPC status; return the result."""
+    code = result.get("error_code")
+    if code is None:
+        return result
+    if code == "stdin_unsupported":
+        raise _RpcError(
+            StatusCode.UNIMPLEMENTED,
+            "exec stdin is not supported by the Ray Sandbox gRPC facade",
+        )
+    if code == "offset_mismatch":
+        raise _RpcError(StatusCode.FAILED_PRECONDITION, "stdin offset mismatch")
+    if code == "too_large":
+        raise _RpcError(
+            StatusCode.RESOURCE_EXHAUSTED,
+            f"file writes are capped at {settings.max_file_bytes} bytes "
+            "(max_file_bytes)",
+        )
+    raise _RpcError(StatusCode.NOT_FOUND, result.get("message", "exec not found"))
+
+
+def _sandbox_spec(
+    settings: SandboxAPISettings,
+    image: str,
+    network: str,
+    env: Optional[Dict[str, str]] = None,
+    workdir: Optional[str] = None,
+    ttl_seconds: Optional[int] = None,
+    cpu_limit: Optional[float] = None,
+    memory_limit_mb: Optional[int] = None,
+    labels: Optional[Dict[str, str]] = None,
+) -> SandboxSpec:
+    """The host spec for a facade create (and for the warm pool's templates)."""
+    return {
+        "image": image,
+        "env": dict(env or {}),
+        "workdir": workdir,
+        "ttl_seconds": ttl_seconds,
+        "network": network,
+        "dns": None,
+        "shell": "/bin/bash",
+        "rootless": True,
+        "readonly": False,
+        "capabilities": list(settings.default_capabilities),
+        "cpu_limit": cpu_limit,
+        "memory_limit_mb": memory_limit_mb,
+        "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
+        "start_timeout_seconds": _START_TIMEOUT_SECONDS,
+        "labels": dict(labels or {}),
+    }
 
 
 def _terminated() -> Any:
@@ -658,37 +649,55 @@ class _ControlServicer(ModalClientServicer):
             ttl = min(definition.timeout_secs, ttl)
 
         # entrypoint_args are ignored: SandboxHost keeps the sandbox alive.
-        spec: SandboxSpec = {
-            "image": _decode_id("im-", definition.image_id),
-            "env": _env_from_secret_ids(definition.secret_ids),
-            "workdir": definition.workdir or None,
-            "ttl_seconds": ttl,
-            "network": network,
-            "dns": None,
-            "shell": "/bin/bash",
-            "rootless": True,
-            "readonly": False,
-            "capabilities": list(settings.default_capabilities),
-            "cpu_limit": cpu_limit,
-            "memory_limit_mb": memory_limit_mb,
-            "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
-            "start_timeout_seconds": _START_TIMEOUT_SECONDS,
-            "labels": {tag.tag_name: tag.tag_value for tag in request.tags},
-        }
+        spec = _sandbox_spec(
+            settings,
+            image=_decode_id("im-", definition.image_id),
+            network=network,
+            env=_env_from_secret_ids(definition.secret_ids),
+            workdir=definition.workdir or None,
+            ttl_seconds=ttl,
+            cpu_limit=cpu_limit,
+            memory_limit_mb=memory_limit_mb,
+            labels={tag.tag_name: tag.tag_value for tag in request.tags},
+        )
         host_settings: HostSettings = {
             "max_output_bytes": settings.max_output_bytes,
             "max_exec_history": settings.max_exec_history,
+            "max_file_bytes": settings.max_file_bytes,
         }
-        handle = await asyncio.to_thread(
-            state.resolver.create,
-            sandbox_id,
-            actor_options,
-            {"sandbox_id": sandbox_id, "spec": spec, "settings": host_settings},
-            # Named sandboxes are get-or-create so retries converge; a fresh
-            # random id needs no lookup.
-            get_if_exists=bool(definition.name),
-        )
-        handle.boot.remote()
+        ctor_kwargs = {
+            "sandbox_id": sandbox_id,
+            "spec": spec,
+            "settings": host_settings,
+        }
+        # Named sandboxes are get-or-create so retries converge; a fresh
+        # random id needs no lookup.
+        get_if_exists = bool(definition.name)
+        acreate = getattr(state.resolver, "acreate", None)
+        if acreate is not None:
+            try:
+                handle = await acreate(
+                    sandbox_id, actor_options, ctor_kwargs, get_if_exists=get_if_exists
+                )
+            except asyncio.TimeoutError:
+                raise _RpcError(
+                    StatusCode.RESOURCE_EXHAUSTED,
+                    "no node has room for the sandbox's resources yet",
+                )
+            if isinstance(handle, HostedSandboxHandle):
+                # A hosted sandbox's id names its node, so the resolver picks it.
+                sandbox_id = handle.sandbox_id
+        else:
+            handle = await asyncio.to_thread(
+                state.resolver.create,
+                sandbox_id,
+                actor_options,
+                ctor_kwargs,
+                get_if_exists=get_if_exists,
+            )
+        if not isinstance(handle, HostedSandboxHandle):
+            # A node host starts the boot when it adds the sandbox.
+            handle.boot.remote()
         logger.info(
             "Created sandbox %s (image=%s, network=%s)",
             sandbox_id,
@@ -710,6 +719,7 @@ class _ControlServicer(ModalClientServicer):
             # An unscheduled actor looks like a booting one to the client:
             # an empty task id keeps the SDK polling.
             return api_pb2.SandboxGetTaskIdResponse(task_id="")
+        _check_found(info)
         status = info["status"]
         if status in ("error", "terminated"):
             raise _RpcError(
@@ -817,96 +827,80 @@ class _RouterServicer(TaskCommandRouterServicer):
     """Exec-plane RPCs: start, stdio, stdin, poll, and wait.
 
     The client SDK reaches this service at the URL handed out by
-    ``TaskGetCommandRouterAccess``, which here is the same server.
+    ``TaskGetCommandRouterAccess``, which here is the same server. Every
+    request names its sandbox (``task_id``), and the sandbox's host keeps
+    each exec under the client's exec id, so the facade holds no exec state
+    and any of its replicas can serve any call.
     """
 
     _state: _FacadeState
+    _starts: Set["asyncio.Task[Any]"]
+
+    async def _handle(self, task_id: str) -> Any:
+        if not task_id:
+            raise _RpcError(StatusCode.INVALID_ARGUMENT, "request names no task_id")
+        return await self._state.require_handle(task_id)
 
     @_rpc
     async def TaskExecStart(self, request: Any, grpc_context: Any) -> Any:
-        state = self._state
-        handle = await state.require_handle(request.task_id)
-        # No await between this check and add_exec: a concurrent retry of
-        # the same exec id always finds the reserved record.
-        record = state.execs.get(request.exec_id)
-        if record is None:
-            # Reserve the id before anything reaches the actor. A retry of a
-            # start whose reply was lost (the SDK retries UNAVAILABLE, which
-            # _await_start answers while the actor call is still queued)
-            # then finds this record and joins the same start; running the
-            # command again would orphan the first job.
-            record = _ExecRecord(handle=handle)
-            record.start_task = asyncio.ensure_future(self._start(record, request))
-            state.add_exec(request.exec_id, record)
-            logger.debug(
-                "exec %s on %s: %s",
-                request.exec_id,
-                request.task_id,
-                list(request.command_args)[:2],
-            )
-        else:
-            logger.debug(
-                "exec %s on %s already started; joining it",
-                request.exec_id,
-                request.task_id,
-            )
-        await self._await_start(request.exec_id, record)
-        return sr_pb2.TaskExecStartResponse()
-
-    async def _await_start(self, exec_id: str, record: _ExecRecord) -> None:
-        """Wait for a start to reach the sandbox, within the scheduling grace.
-
-        Past the grace the client gets UNAVAILABLE and retries, joining the
-        start that keeps running underneath. A start that failed for good
-        (the sandbox is not running, its actor is gone) did not run the
-        command, so its id is forgotten and a retry may start afresh.
-        """
+        handle = await self._handle(request.task_id)
+        logger.debug(
+            "exec %s on %s: %s",
+            request.exec_id,
+            request.task_id,
+            list(request.command_args)[:2],
+        )
+        # The start runs to completion as its own task even if the client
+        # stops waiting (UNAVAILABLE below, a dropped connection): the host
+        # joins a retried start with the same exec id to this one, so the
+        # command never runs twice.
+        start = asyncio.ensure_future(self._start(handle, request))
+        self._starts.add(start)
+        start.add_done_callback(self._start_done)
         try:
-            await asyncio.wait_for(
-                asyncio.shield(record.start_task), timeout=_SCHEDULING_GRACE_SECONDS
+            started = await asyncio.wait_for(
+                asyncio.shield(start), timeout=_SCHEDULING_GRACE_SECONDS
             )
         except asyncio.TimeoutError:
             raise _RpcError(
                 StatusCode.UNAVAILABLE,
                 "sandbox actor is not reachable; the cluster may still be scaling",
             )
-        except Exception:
-            if self._state.execs.get(exec_id) is record:
-                del self._state.execs[exec_id]
-            raise
-
-    async def _start(self, record: _ExecRecord, request: Any) -> None:
-        """Carry one TaskExecStart to the sandbox, filling in ``record``.
-
-        Runs as its own task, so a client that stops waiting (UNAVAILABLE, a
-        dropped connection) never cancels a start the actor may already be
-        executing, and the actor call is awaited to completion for the same
-        reason.
-        """
-        command = list(request.command_args)
-        if command and command[0] == _FS_TOOLS_PATH:
-            await self._start_fs_op(record, command)
-            return
-        env = dict(request.env)
-        env.update(_env_from_secret_ids(request.secret_ids))
-        started = await _unbounded(
-            record.handle.start_exec.remote(
-                command,
-                cwd=request.workdir or None,
-                env=env or None,
-                timeout_seconds=request.timeout_secs or None,
-            )
-        )
+        _check_found(started)
         if started.get("error_code"):
             raise _RpcError(
                 StatusCode.FAILED_PRECONDITION,
                 started.get("message", "sandbox is not running"),
             )
-        record.sandbox_exec_id = started["exec_id"]
-        record.kind = "sandbox"
+        return sr_pb2.TaskExecStartResponse()
 
-    async def _start_fs_op(self, record: _ExecRecord, command: List[str]) -> None:
-        """Emulate one filesystem-tools invocation on ``record``."""
+    def _start_done(self, start: "asyncio.Task") -> None:
+        self._starts.discard(start)
+        # Retrieved here, since a client that stopped waiting (UNAVAILABLE
+        # above) never awaits it; its retry starts afresh or joins the host's.
+        if not start.cancelled() and start.exception() is not None:
+            logger.debug("An exec start failed: %r", start.exception())
+
+    async def _start(self, handle: Any, request: Any) -> Dict[str, Any]:
+        command = list(request.command_args)
+        if command and command[0] == _FS_TOOLS_PATH:
+            return await self._start_fs_op(handle, request.exec_id, command)
+        env = dict(request.env)
+        env.update(_env_from_secret_ids(request.secret_ids))
+        return await _unbounded(
+            handle.start_exec.remote(
+                command,
+                cwd=request.workdir or None,
+                env=env or None,
+                timeout_seconds=request.timeout_secs or None,
+                exec_key=request.exec_id,
+            )
+        )
+
+    async def _start_fs_op(
+        self, handle: Any, exec_key: str, command: List[str]
+    ) -> Dict[str, Any]:
+        """Start one emulated filesystem-tools invocation as a host exec."""
         try:
             op = json.loads(command[1]) if len(command) > 1 else {}
         except ValueError:
@@ -923,25 +917,14 @@ class _RouterServicer(TaskCommandRouterServicer):
                 f"unrecognized fs-tools payload for {name}: {payload!r}",
             )
         path = payload.get("path", "")
-        record.fs_path = path
-        record.kind = "fs"
-
         if name == "WriteFile":
-            # Content arrives over stdin; the write happens at stdin EOF.
-            record.fs_write = True
-        elif name == "ReadFile":
-            result = await _bounded(
-                record.handle.read_file.remote(path), extra_wait=_READ_BOUND_SECONDS
+            # Content arrives over stdin; the host writes it at stdin EOF.
+            return await _unbounded(handle.fs_write_open.remote(exec_key, path))
+        if name == "ReadFile":
+            return await _bounded(
+                handle.fs_read.remote(exec_key, path), extra_wait=_READ_BOUND_SECONDS
             )
-            if result.get("error_code") == "file_not_found":
-                record.finish(1, stderr=_fs_error("NotFound", "path does not exist"))
-            elif result.get("error_code"):
-                record.finish(
-                    1, stderr=_fs_error("Other", result.get("message", "read failed"))
-                )
-            else:
-                record.finish(0, stdout=result["content"])
-        elif name == "ListFiles":
+        if name == "ListFiles":
             # A shell probe that reports only the typed errors (NotFound,
             # NotDirectory) the SDK's existence and directory checks need;
             # the entry list itself is empty.
@@ -957,72 +940,42 @@ class _RouterServicer(TaskCommandRouterServicer):
                 f"elif [ ! -d {quoted} ]; then printf %s {not_dir} >&2; exit 1; "
                 f"else printf '[]'; fi"
             )
-            started = await _unbounded(
-                record.handle.start_exec.remote(["/bin/sh", "-c", probe])
+            return await _unbounded(
+                handle.start_exec.remote(["/bin/sh", "-c", probe], exec_key=exec_key)
             )
-            if started.get("error_code"):
-                raise _RpcError(
-                    StatusCode.FAILED_PRECONDITION,
-                    started.get("message", "sandbox is not running"),
-                )
-            record.sandbox_exec_id = started["exec_id"]
-            record.kind = "sandbox"
-        else:
-            raise _RpcError(
-                StatusCode.UNIMPLEMENTED,
-                f"fs-tools operation {name!r} is not supported by the "
-                "Ray Sandbox gRPC facade",
-            )
+        raise _RpcError(
+            StatusCode.UNIMPLEMENTED,
+            f"fs-tools operation {name!r} is not supported by the "
+            "Ray Sandbox gRPC facade",
+        )
 
-    async def _finish_write(self, record: _ExecRecord) -> None:
-        """Flush buffered stdin to the sandbox file in bounded slices.
+    async def _job(
+        self, task_id: str, exec_id: str, wait_seconds: float = 0.0
+    ) -> Dict[str, Any]:
+        handle = await self._handle(task_id)
+        info = await _bounded(
+            handle.get_exec_by_key.remote(exec_id, wait_seconds=wait_seconds),
+            extra_wait=wait_seconds,
+        )
+        if info.get("error_code"):
+            raise _RpcError(StatusCode.NOT_FOUND, info.get("message", "exec not found"))
+        return info
 
-        The record always finishes, even on failure: the client waits on the
-        exec's exit code concurrently with stdin and would retry forever on a
-        record left pending.
-        """
-        content = b"".join(record.stdin_chunks)
-        record.stdin_chunks.clear()
-        try:
-            for offset in range(0, max(len(content), 1), _WRITE_CHUNK_BYTES):
-                result = await _bounded(
-                    record.handle.write_file.remote(
-                        record.fs_path,
-                        content[offset : offset + _WRITE_CHUNK_BYTES],
-                        append=offset > 0,
-                    ),
-                    extra_wait=_WRITE_BOUND_SECONDS,
-                )
-                if result.get("error_code"):
-                    record.finish(
-                        1,
-                        stderr=_fs_error(
-                            "Other", result.get("message", "write failed")
-                        ),
-                    )
-                    return
-            record.finish(0)
-        except _RpcError as exc:
-            record.finish(1, stderr=_fs_error("Other", f"write failed: {exc.message}"))
-        except Exception as exc:
-            record.finish(1, stderr=_fs_error("Other", f"write failed: {exc}"))
+    async def _finished_job(self, task_id: str, exec_id: str) -> Dict[str, Any]:
+        while True:
+            info = await self._job(task_id, exec_id, _LONG_POLL_SECONDS)
+            if info["status"] != "running":
+                return info
 
     @_rpc
     async def TaskExecStdioRead(
         self, request: Any, grpc_context: Any
     ) -> AsyncIterator[Any]:
-        record = self._state.require_exec(request.exec_id)
-        await record.wait_started()
+        info = await self._finished_job(request.task_id, request.exec_id)
         want_stdout = (
             request.file_descriptor == sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT
         )
-        if record.kind == "sandbox":
-            info = await _await_sandbox_exec(record)
-            data = _exec_stream(info, want_stdout)
-        else:
-            await record.finished.wait()
-            data = record.stdout if want_stdout else record.stderr
-        data = data[request.offset :]
+        data = _job_stream(info, want_stdout)[request.offset :]
         for start in range(0, len(data), _STDIO_CHUNK_BYTES):
             yield sr_pb2.TaskExecStdioReadResponse(
                 data=data[start : start + _STDIO_CHUNK_BYTES]
@@ -1030,13 +983,16 @@ class _RouterServicer(TaskCommandRouterServicer):
 
     @_rpc
     async def TaskExecStdinWrite(self, request: Any, grpc_context: Any) -> Any:
-        record = self._state.require_exec(request.exec_id)
-        await record.wait_started()
-        self._buffer_stdin(record, request.data, request.offset)
-        if request.eof and not record.stdin_closed:
-            record.stdin_closed = True
-            if record.fs_write:
-                await self._finish_write(record)
+        handle = await self._handle(request.task_id)
+        _check_stdin(
+            await _bounded(
+                handle.stdin_write.remote(
+                    request.exec_id, request.data, request.offset, request.eof
+                ),
+                extra_wait=_WRITE_BOUND_SECONDS,
+            ),
+            self._state.settings,
+        )
         return sr_pb2.TaskExecStdinWriteResponse()
 
     @_rpc
@@ -1048,92 +1004,60 @@ class _RouterServicer(TaskCommandRouterServicer):
             raise _RpcError(
                 StatusCode.INVALID_ARGUMENT, "first stdin stream message must be start"
             )
-        record = self._state.require_exec(request.start.exec_id)
-        await record.wait_started()
-        if request.start.offset != record.stdin_bytes:
+        start = request.start
+        handle = await self._handle(start.task_id)
+        status = _check_stdin(
+            await _bounded(handle.stdin_status.remote(start.exec_id)),
+            self._state.settings,
+        )
+        if start.offset != status["num_bytes_written"]:
             raise _RpcError(StatusCode.FAILED_PRECONDITION, "stdin offset mismatch")
+        offset = start.offset
         async for request in requests:
             which = request.WhichOneof("payload")
-            if which == "end":
-                if not record.stdin_closed:
-                    record.stdin_closed = True
-                    if record.fs_write:
-                        await self._finish_write(record)
-                break
-            if which != "data":
+            if which not in ("data", "end"):
                 raise _RpcError(
                     StatusCode.INVALID_ARGUMENT,
                     "stdin stream message must contain data",
                 )
-            self._buffer_stdin(record, request.data, record.stdin_bytes)
-        return sr_pb2.TaskExecStdinWriteStreamResponse()
-
-    def _buffer_stdin(self, record: _ExecRecord, data: bytes, offset: int) -> None:
-        if record.kind == "sandbox":
-            # Commands run in the sandbox through SandboxHost have no stdin.
-            raise _RpcError(
-                StatusCode.UNIMPLEMENTED,
-                "exec stdin is not supported by the Ray Sandbox gRPC facade",
-            )
-        if data:
-            if offset != record.stdin_bytes:
-                raise _RpcError(StatusCode.FAILED_PRECONDITION, "stdin offset mismatch")
-            # WriteFile content is buffered until EOF, so cap it like a REST
-            # upload rather than let one exec grow the facade without bound.
-            limit = self._state.settings.max_file_bytes
-            if record.stdin_bytes + len(data) > limit:
-                record.stdin_chunks.clear()
-                record.finish(
-                    1,
-                    stderr=_fs_error(
-                        "Other", f"file exceeds the {limit}-byte max_file_bytes"
+            data = request.data if which == "data" else b""
+            status = _check_stdin(
+                await _bounded(
+                    handle.stdin_write.remote(
+                        start.exec_id, data, offset, which == "end"
                     ),
-                )
-                raise _RpcError(
-                    StatusCode.RESOURCE_EXHAUSTED,
-                    f"file writes are capped at {limit} bytes (max_file_bytes)",
-                )
-            record.stdin_chunks.append(data)
-            record.stdin_bytes += len(data)
+                    extra_wait=_WRITE_BOUND_SECONDS,
+                ),
+                self._state.settings,
+            )
+            offset = status["num_bytes_written"]
+            if which == "end":
+                break
+        return sr_pb2.TaskExecStdinWriteStreamResponse()
 
     @_rpc
     async def TaskExecStdinStatus(self, request: Any, grpc_context: Any) -> Any:
-        record = self._state.require_exec(request.exec_id)
-        await record.wait_started()
+        handle = await self._handle(request.task_id)
+        status = _check_stdin(
+            await _bounded(handle.stdin_status.remote(request.exec_id)),
+            self._state.settings,
+        )
         return sr_pb2.TaskExecStdinStatusResponse(
-            num_bytes_written=record.stdin_bytes, closed=record.stdin_closed
+            num_bytes_written=status["num_bytes_written"], closed=status["closed"]
         )
 
     @_rpc
     async def TaskExecPoll(self, request: Any, grpc_context: Any) -> Any:
-        record = self._state.require_exec(request.exec_id)
+        info = await self._job(request.task_id, request.exec_id)
         response = sr_pb2.TaskExecPollResponse()
-        if record.start_task is not None and not record.start_task.done():
-            # Still on its way to the sandbox: running, no exit code yet.
-            return response
-        await record.wait_started()
-        if record.kind == "sandbox":
-            info = await _bounded(record.handle.get_exec.remote(record.sandbox_exec_id))
-            if info.get("error_code"):
-                raise _RpcError(StatusCode.NOT_FOUND, info.get("message", "exec lost"))
-            if info["status"] != "running":
-                record.mark_finished()
-                response.code = _exec_exit_code(info)
-        elif record.finished.is_set():
-            response.code = record.exit_code
+        if info["status"] != "running":
+            response.code = _job_exit_code(info)
         return response
 
     @_rpc
     async def TaskExecWait(self, request: Any, grpc_context: Any) -> Any:
-        record = self._state.require_exec(request.exec_id)
-        await record.wait_started()
-        if record.kind == "sandbox":
-            info = await _await_sandbox_exec(record)
-            code = _exec_exit_code(info)
-        else:
-            await record.finished.wait()
-            code = record.exit_code
-        return sr_pb2.TaskExecWaitResponse(code=code)
+        info = await self._finished_job(request.task_id, request.exec_id)
+        return sr_pb2.TaskExecWaitResponse(code=_job_exit_code(info))
 
     @_rpc
     async def TaskSetNetworkAccess(self, request: Any, grpc_context: Any) -> Any:
@@ -1144,6 +1068,13 @@ class _RouterServicer(TaskCommandRouterServicer):
             "TaskSetNetworkAccess is not supported by the Ray Sandbox gRPC "
             "facade: network policy is fixed when the sandbox is created",
         )
+
+
+def _prestart(resolver: Any) -> None:
+    try:
+        logger.info("Started %d sandbox node hosts", resolver.prestart())
+    except Exception as exc:
+        logger.warning("Failed to prestart sandbox node hosts: %s", exc)
 
 
 @DeveloperAPI
@@ -1173,8 +1104,35 @@ class RaySandboxFacade(_ControlServicer, _RouterServicer):
     ) -> None:
         settings = settings or SandboxAPISettings()
         resolver = handle_resolver or RayActorHandleResolver(settings)
+        if settings.warm_pool and hasattr(resolver, "warm_templates"):
+            # Booted from the same spec a matching create would get.
+            resolver.warm_templates = [
+                {
+                    "spec": _sandbox_spec(
+                        settings,
+                        image=profile["image"],
+                        network=profile.get("network", "none"),
+                    ),
+                    "size": int(profile.get("size", 0)),
+                    # Optional: reserve each pool's CPU (size x cpu) while it
+                    # fills.
+                    "reserve": (
+                        {"CPU": float(profile["cpu"]) * int(profile.get("size", 0))}
+                        if profile.get("cpu")
+                        else None
+                    ),
+                }
+                for profile in settings.warm_pool
+            ]
+        if settings.host_mode == "node" and hasattr(resolver, "prestart"):
+            # Node hosts start in the background, so the first sandbox on
+            # each node doesn't wait for one.
+            threading.Thread(target=_prestart, args=(resolver,), daemon=True).start()
         token = os.environ.get(settings.token_env_var) or None
         self._state = _FacadeState(resolver, settings, advertise_url, token)
+        # Exec starts that outlive their call (see TaskExecStart); the loop
+        # keeps only weak references to tasks.
+        self._starts = set()
 
 
 @PublicAPI(stability="alpha")
