@@ -46,6 +46,13 @@ py_library(
     srcs = ["check_docstring_only.py"],
 )
 
+# Runs the >>> docstring examples in changed modules for the `docstring-only`
+# label. Standard library only; the CI step runs it in the library's image.
+py_library(
+    name = "run_docstring_examples",
+    srcs = ["run_docstring_examples.py"],
+)
+
 py_library(
     name = "doc",
     srcs = glob(
@@ -54,6 +61,7 @@ py_library(
             "test_*.py",
             "cmd_*.py",
             "check_docstring_only.py",
+            "run_docstring_examples.py",
             "doc_example_targets.py",
         ],
     ),
@@ -208,6 +216,21 @@ py_test(
     ],
     deps = [
         ":check_docstring_only",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_run_docstring_examples",
+    size = "small",
+    srcs = ["test_run_docstring_examples.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":run_docstring_examples",
         ci_require("pytest"),
     ],
 )

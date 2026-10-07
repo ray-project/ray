@@ -259,21 +259,19 @@ steps:
     depends_on: datalbuild-multipy(python=3.10)
 
   # Runs instead of the steps above when the "docstring-only" label is
-  # present: the same doctest pass the docs example step runs, over the library
-  # source only. The label's scope guard (lint: validate docstring-only scope)
-  # fails the build unless the PR changes nothing but docstrings and comments.
-  - label: ":database: data: docstring doctests"
+  # present: the >>> examples in the docstrings of only the modules the PR
+  # changed, run as plain Python in this library's image with the PR's Ray
+  # (ci/ray_ci/doc/run_docstring_examples.sh). The label's scope guard
+  # (lint: validate docstring-only scope) fails the build unless the PR changes
+  # nothing but docstrings and comments.
+  - label: ":database: data: docstring examples"
     if: build.pull_request.labels includes "docstring-only"
     tags:
       - data
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- python/ray/... data
-        --build-name datalbuild-py3.10
-        --python-version 3.10
-        --except-tags gpu
-        --only-tags doctest
-        --parallelism-per-worker 2
+      - ./ci/ray_ci/doc/run_docstring_examples.sh python/ray/data data
+        datalbuild-py3.10 3.10
     depends_on: datalbuild-multipy(python=3.10)
 
   - label: ":database: data: dask docs example tests"
