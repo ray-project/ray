@@ -57,9 +57,9 @@ doc/load_doc_cache.py: always lint
 python/ray/data/README.md: always lint
 
 # The two inputs to `lint: doc_readme` add pypi_readme, which is the step's
-# only trigger. README.rst also shows that prose outside doc/ is not exempt
+# only trigger. README.md also shows that prose outside doc/ is not exempt
 # from the code-oriented lint matrix.
-README.rst: always lint pypi_readme
+README.md: always lint pypi_readme
 python/setup.py: always lint pypi_readme
 
 # No other path emits pypi_readme, including neighbors of the two inputs.
