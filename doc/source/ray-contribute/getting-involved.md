@@ -4,9 +4,12 @@ myst:
     description: "The main guide to contributing to Ray, covering the pull request and code review workflow, coding style, the contributor license agreement, and how to find good first issues. Start here to learn how to submit and land a contribution to the Ray project."
 ---
 
-```{include} /_includes/_latest_contribution_doc.rst
-:parser: rst
-```
+:::{admonition} Check your version!
+Things can change quickly, and so does this contributor guide.
+To make sure you've got the most cutting edge version of this guide,
+go check out the
+[latest version](https://docs.ray.io/en/master/ray-contribute/getting-involved.html).
+:::
 
 (getting-involved)=
 
