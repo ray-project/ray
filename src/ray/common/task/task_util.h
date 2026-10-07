@@ -251,6 +251,12 @@ class TaskSpecBuilder {
     return *this;
   }
 
+  /// Mark the argument at the given index as consumed by this task.
+  TaskSpecBuilder &SetArgIsMove(size_t arg_index) {
+    message_->mutable_args(arg_index)->set_is_move(true);
+    return *this;
+  }
+
   /// Set the `ActorCreationTaskSpec` of the task spec.
   /// See `common.proto` for meaning of the arguments.
   ///

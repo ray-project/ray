@@ -328,6 +328,10 @@ std::optional<std::string> TaskSpecification::ArgTensorTransport(size_t arg_inde
   return std::nullopt;
 }
 
+bool TaskSpecification::ArgIsMove(size_t arg_index) const {
+  return message_->args(arg_index).is_move();
+}
+
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }

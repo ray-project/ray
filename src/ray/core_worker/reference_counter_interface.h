@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
@@ -777,10 +778,13 @@ class ReferenceCounterInterface {
    * repeated in the list is moved once.
    *
    * @param object_ids The by-reference argument IDs of the consuming task.
-   * @return InvalidArgument naming the first object that is already MOVED, OK
-   * otherwise.
+   * @return InvalidArgument naming the first object that is already MOVED.
+   * Otherwise, one entry per ID in object_ids: true if this call moved the object.
+   * Both entries of a repeated ID (for eg: f.remote(ref, ref), if ref is
+   * _consume_once) are true.
    */
-  virtual Status TryCommitMoves(const std::vector<ObjectID> &object_ids) = 0;
+  virtual StatusOr<std::vector<bool>> TryCommitMoves(
+      const std::vector<ObjectID> &object_ids) = 0;
 
   /**
    * @brief Set whether lineage pinning is enabled, i.e. whether objects owned by
