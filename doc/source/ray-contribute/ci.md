@@ -108,18 +108,19 @@ The label works on both microcheck and premerge builds. Adding or removing it ta
 
 ### Docstring-only changes
 
-A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. For Ray Data, the `docstring-only` label skips those suites on a PR that changes nothing but docstrings and comments, and runs the library's docstring doctests instead. Like the `go` label, it requires write access.
+A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. For Ray Data, the `docstring-only` label skips those suites on a PR that changes nothing but docstrings and comments. Instead, it runs the `>>>` examples in the docstrings of only the modules the PR changed. Like the `go` label, it requires write access.
 
 With the label, a Data PR runs the following:
 
-* `data: docstring doctests`, the same doctest pass over `python/ray/` that the Data docs example step runs.
+* `data: docstring examples`, which runs each changed module's `>>>` examples as plain Python in the Data CI image, with this PR's Ray installed. It checks that the example code runs without raising, not what it prints. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
 * The two API surface checks and lint.
 * `lint: validate docstring-only scope`, the guard the label can't turn off.
 
-The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard locally:
+The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
 ```bash
 python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
+python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
 
 The label covers Ray Data only. Other libraries' test steps still run in full, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
