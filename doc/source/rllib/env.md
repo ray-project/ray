@@ -79,7 +79,7 @@ See {ref}`Multi-Agent Environments <rllib-multi-agent-environments-doc>` for how
 
 ## Farama Gymnasium
 
-RLlib relies on [Farama's Gymnasium API](https://gymnasium.farama.org/) as its main RL environment interface for single-agent training. For multi-agent training, see {ref}`Multi-Agent Environments <rllib-multi-agent-environments-doc>`. To implement custom logic with `gymnasium` and integrate it into an RLlib config, see this [SimpleCorridor example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py).
+RLlib relies on [Farama's Gymnasium API](https://gymnasium.farama.org/) as its main RL environment interface for single-agent training. For multi-agent training, see {ref}`Multi-Agent Environments <rllib-multi-agent-environments-doc>`. To implement custom logic with `gymnasium` and integrate it into an RLlib config, see this [SimpleCorridor example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/custom_gym_env.py).
 
 :::{tip}
 Not all action spaces are compatible with all RLlib algorithms. See the {doc}`algorithm overview </rllib/algorithms>` for details. In particular, check which algorithms support discrete action spaces, continuous action spaces, or both.
@@ -202,7 +202,7 @@ print(algo.train())
 algo.stop()
 ```
 
-For a complete example using a custom environment, see the [custom_gym_env.py example script](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py).
+For a complete example using a custom environment, see the [custom_gym_env.py example script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/custom_gym_env.py).
 
 :::{warning}
 Because Ray is distributed, gymnasium's own registry is incompatible with Ray. Always use the registration method documented here so that remote Ray actors can access your custom environments.

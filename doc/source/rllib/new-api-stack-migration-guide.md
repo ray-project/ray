@@ -96,7 +96,7 @@ config.learners(
 The `num_learners` setting determines how many remote {py:class}`~ray.rllib.core.learner.learner.Learner` workers there are in your Algorithm's {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup`. If you set this parameter to `0`, your LearnerGroup only contains a local Learner that runs on the main process and shares its compute resources, typically 1 CPU. For asynchronous algorithms such as IMPALA or APPO, always set this parameter greater than 0.
 :::
 
-For an example of training with fractional GPUs, see the [fractional GPUs example script](https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py). For fractional GPUs, always set `num_learners` to `0` or `1`.
+For an example of training with fractional GPUs, see the [fractional GPUs example script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/gpus/fractional_gpus_per_learner.py). For fractional GPUs, always set `num_learners` to `0` or `1`.
 
 If GPUs aren't available, but you want to learn with more than one {py:class}`~ray.rllib.core.learner.learner.Learner` in a multi-CPU fashion, do the following:
 
@@ -176,7 +176,7 @@ config.training(
 )
 ```
 
-If you need to configure more complex learning rate scheduling behavior or chain different schedulers into a pipeline, use the experimental `_torch_lr_schedule_classes` config property. See [this example script](https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_torch_lr_schedulers.py). This example covers learning rate schedules only, not other coefficients.
+If you need to configure more complex learning rate scheduling behavior or chain different schedulers into a pipeline, use the experimental `_torch_lr_schedule_classes` config property. See [this example script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_torch_lr_schedulers.py). This example covers learning rate schedules only, not other coefficients.
 
 
 ### AlgorithmConfig.learners()
@@ -187,7 +187,7 @@ Use this method to specify the following:
 
 1. the number of `Learner` workers through `.learners(num_learners=...)`.
 1. the resources per learner. Use `.learners(num_gpus_per_learner=1)` for GPU training and `.learners(num_gpus_per_learner=0)` for CPU training.
-1. the custom Learner class you want to use. See this [custom loss function example script](https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py).
+1. the custom Learner class you want to use. See this [custom loss function example script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_custom_loss_fn.py).
 1. a config dict to set for your custom learner: `.learners(learner_config_dict={...})`. Every `Learner` can access the entire `AlgorithmConfig` object through `self.config`, but setting `learner_config_dict` is a convenient way to avoid creating an entirely new `AlgorithmConfig` subclass to support a few extra settings for your custom `Learner` class.
 
 
@@ -215,7 +215,7 @@ config.env_runners(
 ```
 
 :::{hint}
-If you want to IDE-debug what's happening inside your `EnvRunners`, set `num_env_runners=0` and run your experiment locally instead of through Ray Tune. To do this with any of RLlib's [example](https://github.com/ray-project/ray/tree/master/rllib/examples) or [tuned_example](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms) scripts, set the command-line arguments `--no-tune --num-env-runners=0`.
+If you want to IDE-debug what's happening inside your `EnvRunners`, set `num_env_runners=0` and run your experiment locally instead of through Ray Tune. To do this with any of RLlib's [example](https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples) or [tuned_example](https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/algorithms) scripts, set the command-line arguments `--no-tune --num-env-runners=0`.
 :::
 
 If you use the `observation_filter` setting, perform the following translations:
@@ -330,13 +330,13 @@ The following callback methods are no longer available on the new API stack:
 
 If you're using a custom `ModelV2` class and want to translate the entire NN architecture and possibly action distribution logic to the new API stack, see {ref}`RL Modules <rlmodule-guide>` in addition to this section.
 
-Also, see these example scripts on [how to write a custom CNN-containing RLModule](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py) and [how to write a custom LSTM-containing RLModule](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py).
+Also, see these example scripts on [how to write a custom CNN-containing RLModule](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/custom_cnn_rl_module.py) and [how to write a custom LSTM-containing RLModule](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/custom_lstm_rl_module.py).
 
 There are various options for translating an existing, custom `ModelV2` from the old API stack, to the new API stack's {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
 1. Move your ModelV2 code to a new, custom `RLModule` class. See {ref}`RL Modules <rlmodule-guide>` for details.
-1. Use an Algorithm checkpoint or a Policy checkpoint from an old API stack training run with the [new stack RLModule convenience wrapper](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py).
-1. Use an existing {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run with the [new stack RLModule convenience wrapper](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py).
+1. Use an Algorithm checkpoint or a Policy checkpoint from an old API stack training run with the [new stack RLModule convenience wrapper](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py).
+1. Use an existing {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run with the [new stack RLModule convenience wrapper](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py).
 
 In more complex scenarios, you might have implemented custom policies to modify how models and distributions are constructed.
 
@@ -434,8 +434,8 @@ See {ref}`Learner <learner-guide>` for details on how to write a custom Learner.
 
 The following example scripts show how to write:
 
-- [a custom loss function](https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py)
-- [a custom Learner with two optimizers, each with a different learning rate](https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py)
+- [a custom loss function](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_custom_loss_fn.py)
+- [a custom Learner with two optimizers, each with a different learning rate](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/separate_vf_lr_and_optimizer.py)
 
 The new API stack doesn't support the Policy class. On the old stack, this class holds a neural network, a connector, and one or more optimizers and losses. On the new stack, the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` replaces the neural network, the {py:class}`~ray.rllib.connector.connector_v2.ConnectorV2` replaces the connector, and the {py:class}`~ray.rllib.core.learner.learner.Learner` class replaces the optimizers and losses.
 
@@ -450,7 +450,7 @@ The {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is 
 
 The following examples show how to write ConnectorV2 pieces for the different pipelines:
 
-1. [Observation frame-stacking](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py).
-1. [Add the most recent action and reward to the RLModule's input](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py).
-1. [Mean-std filtering on all observations](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py).
-1. [Flatten any complex observation space to a 1D space](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py).
+1. [Observation frame-stacking](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/frame_stacking.py).
+1. [Add the most recent action and reward to the RLModule's input](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/prev_actions_prev_rewards.py).
+1. [Mean-std filtering on all observations](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/mean_std_filtering.py).
+1. [Flatten any complex observation space to a 1D space](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/flatten_observations_dict_space.py).

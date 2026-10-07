@@ -7,7 +7,7 @@
 - file: ray-overview/installation
   title: "Library"
   sections:
-    - file: ray-core/walkthrough
+    - file: core/index
       title: Ray Core
       caption: Scale general Python applications
     - file: data/data

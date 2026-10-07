@@ -59,6 +59,9 @@ extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
     "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
+    # Stops MyST {eval-rst} blocks from pickling the build environment into
+    # doctrees (see _ext/myst_eval_rst_doctree.py).
+    "myst_eval_rst_doctree",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -125,10 +128,7 @@ llms_txt_exclude = [
     "_includes/*",
     "_templates/*",
     "templates/*",
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
-    "ray-core/api/doc/*",
-    "ray-core/compiled-graph/doc/*",
+    "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
@@ -181,14 +181,37 @@ llms_txt_exclude += [
     "data/api/loading_data",
     "data/api/preprocessor",
     "data/api/saving_data",
-    "ray-core/api/cli",
-    "ray-core/api/core",
-    "ray-core/api/exceptions",
-    "ray-core/api/index",
-    "ray-core/api/runtime-env",
-    "ray-core/api/scheduling",
-    "ray-core/api/utility",
-    "ray-core/compiled-graph/compiled-graph-api",
+    "core/api/cli",
+    "core/api/core",
+    "core/api/exceptions",
+    "core/api/index",
+    "core/api/runtime-env",
+    "core/api/scheduling",
+    "core/api/utility",
+    "core/api/compiled-graph",
+    "serve/api/application",
+    "serve/api/config",
+    "serve/api/context",
+    "serve/api/exceptions",
+    "serve/api/handle",
+    "serve/api/llm",
+    "serve/api/observability",
+    "serve/api/request-router",
+    "serve/api/running",
+    "serve/api/schema",
+    "train/api/config",
+    "train/api/developer-api",
+    "train/api/exceptions",
+    "train/api/jax",
+    "train/api/lightgbm",
+    "train/api/lightning",
+    "train/api/result",
+    "train/api/tensorflow",
+    "train/api/torch",
+    "train/api/train-loop",
+    "train/api/transformers",
+    "train/api/tune-integration",
+    "train/api/xgboost",
     "train/examples/pytorch/torch_regression_example",
     "train/examples/tf/tensorflow_regression_example",
     "tune/api/api",
@@ -235,9 +258,7 @@ docsearch_index_name = "docs-ray"
 # from the nav tree. These API-ref directories mirror the API-ref entries in
 # `llms_txt_exclude` above, which excludes the same pages from the agent corpus.
 remove_from_toctrees = [
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
-    "ray-core/api/doc/*",
+    "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
@@ -405,7 +426,7 @@ exclude_patterns = [
     "serve/tutorials/**/content/**README.md",
     "data/examples/**/content/**README.md",
     "ray-overview/examples/**/content/**README.md",
-    "ray-core/examples/**/content/**README.md",
+    "core/examples/**/content/**README.md",
     "train/examples/**/content/**README.md",
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
@@ -423,6 +444,7 @@ all_toc_libs = [
 ]
 all_toc_libs += [
     "cluster",
+    "kuberay",
     "tune",
     "data",
     "train",
@@ -868,7 +890,6 @@ _intersphinx_targets = {
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
-    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": (
         "https://pandas.pydata.org/pandas-docs/stable/",
@@ -884,11 +905,15 @@ _intersphinx_targets = {
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
     ),
     "torch": (
-        "https://docs.pytorch.org/docs/stable/",
-        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt
-        # so cross-references only resolve to symbols that version ships. Bump this
-        # with that pin, then re-run _intersphinx/refresh.py torch.
-        "https://docs.pytorch.org/docs/2.9/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt.
+        # The inventory is derived from this base, so cross-references resolve only
+        # to symbols that version ships and link to that version's pages. Don't
+        # pair a pinned inventory with docs/stable/: stable serves the newest
+        # release, and PyTorch renames pages between releases, so the emitted links
+        # would 404. Bump this with the requirements pin, then re-run
+        # _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.10/",
+        None,
     ),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }

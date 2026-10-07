@@ -57,13 +57,7 @@ Ray's unified compute framework consists of three layers:
 
 **Scale machine learning workloads**
 ^^^
-Build ML applications with a toolkit of libraries for distributed
-{doc}`data processing <../data/index>`,
-{doc}`model training <../train/train>`,
-{doc}`tuning <../tune/index>`,
-{doc}`reinforcement learning <../rllib/index>`,
-{doc}`model serving <../serve/index>`,
-and {doc}`more <../ray-more-libs/index>`.
+Build ML applications with a toolkit of libraries for distributed {doc}`data processing <../data/index>`, {doc}`model training <../train/train>`, {doc}`tuning <../tune/index>`, {doc}`reinforcement learning <../rllib/index>`, {doc}`model serving <../serve/index>`, and {doc}`more <../ray-more-libs/index>`.
 +++
 ```{button-ref} libraries-quickstart
 :color: primary
@@ -78,13 +72,10 @@ Ray AI Libraries
 
 **Build distributed applications**
 ^^^
-Build and run distributed applications with a
-{doc}`simple and flexible API <../ray-core/walkthrough>`.
-{doc}`Parallelize <../ray-core/walkthrough>` single machine code with
-little to zero code changes.
+Build and run distributed applications with a {doc}`simple and flexible API <../core/index>`. {doc}`Parallelize <../core/index>` single machine code with little to zero code changes.
 
 +++
-```{button-ref} ../ray-core/walkthrough
+```{button-ref} ../core/index
 :color: primary
 :outline:
 :expand:
@@ -97,12 +88,7 @@ Ray Core
 
 **Deploy large-scale workloads**
 ^^^
-Deploy workloads on {doc}`AWS, GCP, Azure <../cluster/getting-started>` or
-{doc}`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
-Use Ray cluster managers to run Ray on existing
-{doc}`Kubernetes <../cluster/kubernetes/index>`,
-{doc}`YARN <../cluster/vms/user-guides/community/yarn>`,
-or {doc}`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
+Deploy workloads on {doc}`AWS, GCP, Azure <../cluster/getting-started>` or {doc}`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`. Use Ray cluster managers to run Ray on existing {doc}`Kubernetes <../kuberay/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, or {doc}`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
 +++
 ```{button-ref} ../cluster/getting-started
 :color: primary
@@ -123,6 +109,6 @@ Each of [Ray's](../ray-air/getting-started) five native libraries distributes a 
 
 Ray's libraries are for both data scientists and ML engineers. For data scientists, these libraries can be used to scale individual workloads and end-to-end ML applications. For ML engineers, these libraries provide scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
 
-For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
+For custom applications, the [Ray Core](../core/index) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing [ecosystem of community integrations](ray-libraries).
