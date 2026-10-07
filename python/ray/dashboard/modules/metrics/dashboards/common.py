@@ -508,13 +508,12 @@ STATE_TIMELINE_PANEL_TEMPLATE = {
     "description": "<Description>",
     "fieldConfig": {
         "defaults": {
-            "color": {"mode": "thresholds"},
+            # Not "thresholds": with mergeValues, Grafana buckets numeric values by
+            # threshold step before applying value mappings, so every value would
+            # render as the single base step ("-∞+").
+            "color": {"mode": "fixed", "fixedColor": "text"},
             "custom": {"fillOpacity": 80, "lineWidth": 0, "spanNulls": False},
             "mappings": [],
-            "thresholds": {
-                "mode": "absolute",
-                "steps": [{"color": "text", "value": None}],
-            },
         },
         "overrides": [],
     },
