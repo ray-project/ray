@@ -1,5 +1,4 @@
-Task State: Definitions & Transition Diagram
-============================================
+# Task State: Definitions & Transition Diagram
 
 A task can be in one of the following states:
 
@@ -30,24 +29,24 @@ A task can be in one of the following states:
 - **Infeasible:** the task has resource requirements that are not satisfied by
   any machine.
 
-::
-
-                                    ---------------------------------
-                                   |                                 |
-                                   |     forward                     | forward
-                                   |----------------                 |
-  node with                  ------|                |   arguments    |
-  resources          forward|      |   resource     |     local      |   actor/worker
-  joins                     |      v  available     |    -------->   |    available
-    ---------------------- Placeable ----------> Waiting           Ready ---------> Running
-  |                       | |  ^                    ^    <--------   ^               |   ^
-  |             |---------  |  |                    |    local arg   |               |   |
-  |             |           |  |                    |     evicted    |        worker |   | worker
-  |             |     actor |  |                    |                |       blocked |   | unblocked
-  |   resources |   created |  | actor              | ---------------                |   |
-  |  infeasible |           |  | created            | actor                          |   |
-  |             |           |  | (remote)           | created                        v   |
-  |             |           v  |                    | (local)                              Blocked
-  |             |     WaitForActorCreation----------
-  |             v
-   ----Infeasible
+```
+                                  ---------------------------------
+                                 |                                 |
+                                 |     forward                     | forward
+                                 |----------------                 |
+node with                  ------|                |   arguments    |
+resources          forward|      |   resource     |     local      |   actor/worker
+joins                     |      v  available     |    -------->   |    available
+  ---------------------- Placeable ----------> Waiting           Ready ---------> Running
+|                       | |  ^                    ^    <--------   ^               |   ^
+|             |---------  |  |                    |    local arg   |               |   |
+|             |           |  |                    |     evicted    |        worker |   | worker
+|             |     actor |  |                    |                |       blocked |   | unblocked
+|   resources |   created |  | actor              | ---------------                |   |
+|  infeasible |           |  | created            | actor                          |   |
+|             |           |  | (remote)           | created                        v   |
+|             |           v  |                    | (local)                              Blocked
+|             |     WaitForActorCreation----------
+|             v
+ ----Infeasible
+```
