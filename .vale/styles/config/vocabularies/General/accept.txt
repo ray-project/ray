@@ -189,3 +189,5 @@ Typesafe
 aioredis
 autograd
 [Bb]ackport(s|ed)?
+[Ii]nlining
+[Mm]ultithreading
