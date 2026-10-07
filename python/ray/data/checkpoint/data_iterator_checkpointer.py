@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import deepcopy_array
 from ray.data._internal.block_batching.interfaces import Batch
-from ray.data._internal.util import call_with_retry
+from ray.data._internal.util import MiB, call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.interfaces import DatasetCheckpointConfig
 from ray.data.context import DataContext
@@ -250,7 +250,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
         state_dict: The state dict to initialize the checkpointer from.
     """
 
-    TARGET_CHECKPOINT_SIZE_BYTES = 128 * 1024 * 1024  # 128 MB
+    TARGET_CHECKPOINT_SIZE_BYTES = 128 * MiB
 
     def __init__(
         self,
