@@ -93,7 +93,8 @@ With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel 
 
 The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
-* **The file feeds only a library-wide doctest target.** Prose pages outside Ray Data share one doctest target per library, so the label doesn't run them.
+* **The file feeds only a library-wide doctest target.** Prose pages outside Ray Data share one doctest target per library, so the label doesn't run them. These pages also don't start the opt-in step, so on a PR that changes only prose outside Ray Data, the label has no effect and there's no step log. This line appears only when another changed file starts the step.
+* **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
 * **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The post-merge build runs the GPU examples.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
 

@@ -4,6 +4,7 @@ import pytest
 
 from ci.ray_ci.doc.doc_example_targets import (
     format_report,
+    is_doc_example_input,
     label_to_path,
     parse_query_xml,
     select,
@@ -48,6 +49,14 @@ _QUERY_XML = """<?xml version="1.1" encoding="UTF-8" standalone="no"?>
     <list name="data">
       <label value="//doc:source/serve/a.md"/>
       <label value="//doc:source/serve/b.md"/>
+    </list>
+  </rule>
+  <rule class="py_test" name="//doc:doc_code_runtime_env_example">
+    <list name="tags">
+      <string value="post_wheel_build"/><string value="team:core"/>
+    </list>
+    <list name="srcs">
+      <label value="//doc:source/core/doc_code/runtime_env_example.py"/>
     </list>
   </rule>
   <rule class="py_test" name="//doc/source/llm/examples/batch:vllm">
@@ -117,6 +126,28 @@ def test_harness_and_build_files_are_ignored(targets):
     selection = select(["doc/test_myst_doc.py", "doc/source/BUILD.bazel"], targets)
     assert selection.runnable == {}
     assert selection.unmatched == []
+
+
+def test_except_tags_are_reported_not_run(targets):
+    path = "doc/source/core/doc_code/runtime_env_example.py"
+    selection = select([path], targets, except_tags=["gpu", "post_wheel_build"])
+    assert selection.runnable == {}
+    assert selection.excluded == {
+        path: ["//doc:doc_code_runtime_env_example (post_wheel_build)"]
+    }
+    assert "Not run, excluded by tag" in format_report(selection)
+
+
+def test_without_except_tags_the_target_runs(targets):
+    path = "doc/source/core/doc_code/runtime_env_example.py"
+    selection = select([path], targets)
+    assert selection.runnable == {"core": ["//doc:doc_code_runtime_env_example"]}
+
+
+def test_build_files_match_by_basename():
+    assert not is_doc_example_input("doc/source/data/BUILD")
+    assert not is_doc_example_input("doc/source/data/BUILD.bazel")
+    assert is_doc_example_input("doc/source/data/doc_code/my_BUILD")
 
 
 def test_report_groups_by_team(targets):
