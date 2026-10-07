@@ -212,7 +212,7 @@ class AsyncPartitionActor:
                 "This indicates a dispatch bug: use PartitionActor for such "
                 "filesystems so the user's credentials are not silently dropped."
             )
-        self._registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
+        self._registry = StoreRegistry(**fs_kwargs)
         pyarrow_provider = _PyArrowFileSizeProvider(data_context, filesystem)
         self._size_provider = _ObstoreFileSizeProvider(self._registry, pyarrow_provider)
         self._partitioner = _ExactDownloadPartitioner(

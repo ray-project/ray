@@ -13,13 +13,17 @@ from freezegun.api import FrozenDateTimeFactory
 from ray.data._internal.planner._obstore_download import (
     _BUCKET_REGION_CACHE,
     _FILE_SIZE_COLUMN_PREFIX,
+    DownloadError,
     StoreRegistry,
     _discover_aws_bucket_region,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _is_permanent_download_error,
     _native_s3_obstore_kwargs,
+    _obstore_client_options_from_env,
     _obstore_filesystem_requires_threaded_download,
+    _obstore_retry_config_from_env,
     _plan_obstore_routing,
     _S3FSSessionCredentialProvider,
     _split_obstore_uri,
@@ -1665,6 +1669,405 @@ class TestObstoreRangeSplitDownload:
             "socket exhaustion. Disabling range splitting.",
             0,
         )
+
+
+def _start_status_sequence_server(statuses, content=b"ok"):
+    """Serve ``content`` over loopback HTTP, answering one status per request.
+
+    Statuses are consumed in order; once the sequence is exhausted the last
+    one repeats. Returns ``(server, port, served)`` where ``served`` records
+    every status actually sent. Call ``server.shutdown()`` when done.
+    """
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from threading import Thread
+
+    served = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def _respond(self, with_body: bool):
+            status = statuses[min(len(served), len(statuses) - 1)]
+            served.append(status)
+            body = content if status == 200 else b""
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if with_body:
+                self.wfile.write(body)
+
+        def do_GET(self):
+            self._respond(with_body=True)
+
+        def do_HEAD(self):
+            # Size probes always succeed; only GET follows the status sequence.
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1], served
+
+
+_RETRY_ENV_VARS = (
+    "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES",
+    "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+    "RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S",
+)
+
+
+class TestObstoreRetryConfig:
+    """DATA-3604: obstore download clients get a real, env-tunable retry budget.
+
+    obstore's own defaults let 10 retries finish in ~2 s, so a transient S3
+    503 burst exhausted them and the object silently became ``None``.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_retry_env(self, monkeypatch):
+        for var in _RETRY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+    def test_defaults(self):
+        assert _obstore_retry_config_from_env() == {
+            "max_retries": 10,
+            "retry_timeout": timedelta(seconds=120),
+            "backoff": {
+                "init_backoff": timedelta(milliseconds=1000),
+                "max_backoff": timedelta(milliseconds=20_000),
+                "base": 2,
+            },
+        }
+
+    @pytest.mark.parametrize(
+        "var, value, path, expected",
+        [
+            ("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "3", ("max_retries",), 3),
+            (
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+                "7",
+                ("retry_timeout",),
+                timedelta(seconds=7),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                "5",
+                ("backoff", "init_backoff"),
+                timedelta(milliseconds=5),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                "50",
+                ("backoff", "max_backoff"),
+                timedelta(milliseconds=50),
+            ),
+        ],
+    )
+    def test_env_overrides(self, monkeypatch, var, value, path, expected):
+        monkeypatch.setenv(var, value)
+        config = _obstore_retry_config_from_env()
+        for key in path:
+            config = config[key]
+        assert config == expected
+
+    def test_invalid_env_falls_back(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "fast")
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            config = _obstore_retry_config_from_env()
+        assert config["backoff"]["init_backoff"] == timedelta(milliseconds=1000)
+        mock_logger.warning.assert_called_once()
+
+    def test_request_timeout_env(self, monkeypatch):
+        assert _obstore_client_options_from_env() == {}
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        assert _obstore_client_options_from_env() == {"timeout": timedelta(seconds=90)}
+
+    def test_store_registry_defaults_to_env_config(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "250")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(client_options={"user_agent": "ray-test"})
+        reg._from_url = fake_from_url
+        reg.get("file://")
+
+        retry_config = captured["kwargs"]["retry_config"]
+        assert retry_config["max_retries"] == 10
+        assert retry_config["backoff"]["init_backoff"] == timedelta(milliseconds=250)
+        # The env request timeout is merged beneath the caller's own options.
+        assert captured["kwargs"]["client_options"] == {
+            "timeout": timedelta(seconds=90),
+            "user_agent": "ray-test",
+        }
+
+    def test_explicit_retry_config_wins(self):
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(retry_config={"max_retries": 1})
+        reg._from_url = fake_from_url
+        reg.get("file://")
+        assert captured["kwargs"]["retry_config"] == {"max_retries": 1}
+        assert "client_options" not in captured["kwargs"]
+
+    def test_download_path_passes_retry_config(self, tmp_path, monkeypatch):
+        pytest.importorskip("obstore")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "4")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        uri = f"file://{tmp_path}/f.bin"
+
+        with patch(
+            "obstore.store.from_url",
+            wraps=__import__("obstore.store", fromlist=["from_url"]).from_url,
+        ) as spy:
+            results = asyncio.run(_download_uris_with_obstore([uri], "uri"))
+
+        assert results == [b"data"]
+        retry_config = spy.call_args.kwargs["retry_config"]
+        assert retry_config["max_retries"] == 4
+        assert retry_config["backoff"]["init_backoff"] == timedelta(milliseconds=1000)
+
+    def test_partition_actor_passes_retry_config(self, tmp_path, monkeypatch):
+        pytest.importorskip("obstore")
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+        )
+
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", "9")
+        (tmp_path / "f.bin").write_bytes(b"data")
+
+        with patch(
+            "obstore.store.from_url",
+            wraps=__import__("obstore.store", fromlist=["from_url"]).from_url,
+        ) as spy:
+            actor = AsyncPartitionActor(["uri"], DataContext.get_current())
+            sizes = actor._size_provider.get_file_sizes([f"file://{tmp_path}/f.bin"])
+
+        assert sizes == [4]
+        retry_config = spy.call_args.kwargs["retry_config"]
+        assert retry_config["retry_timeout"] == timedelta(seconds=9)
+
+    def test_503_then_200_is_retried(self, monkeypatch):
+        pytest.importorskip("obstore")
+        # Tiny budget so the test stays fast; obstore sleeps in Rust, so the
+        # unit-test ban on ``time.sleep`` is not involved.
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "3")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "1")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS", "5")
+        content = b"eventually available"
+        server, port, served = _start_status_sequence_server([503, 503, 200], content)
+        try:
+            with patch("ray.data._internal.planner._obstore_download.logger"):
+                results = asyncio.run(
+                    _download_uris_with_obstore(
+                        [f"http://127.0.0.1:{port}/f.bin"], "uri"
+                    )
+                )
+        finally:
+            server.shutdown()
+
+        assert results == [content]
+        assert served == [503, 503, 200]
+
+
+class TestDownloadErrorClassification:
+    """DATA-3604: transient download failures raise instead of yielding None.
+
+    Only URIs that can never be downloaded (missing object, permission denied,
+    invalid URI) yield ``None``. Anything obstore gives up on after its retries
+    raises ``DownloadError`` so task-level retry and ``max_errored_blocks``
+    apply instead of the row silently going missing.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _tiny_retry_budget(self, monkeypatch):
+        for var in _RETRY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "1")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "1")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS", "2")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", "5")
+
+    @staticmethod
+    def _download(uris, **kwargs):
+        with patch("ray.data._internal.planner._obstore_download.logger"):
+            return asyncio.run(_download_uris_with_obstore(uris, "uri", **kwargs))
+
+    @pytest.mark.parametrize(
+        "exc, permanent",
+        [
+            (FileNotFoundError("missing"), True),
+            (PermissionError("denied"), True),
+            (ValueError("bad uri"), True),
+            (pa.ArrowInvalid("bad uri"), True),
+            (OSError("connection reset by peer"), False),
+            (TimeoutError("timed out"), False),
+            (RuntimeError("boom"), False),
+        ],
+    )
+    def test_builtin_classification(self, exc, permanent):
+        assert _is_permanent_download_error(exc) is permanent
+
+    @pytest.mark.parametrize(
+        "name, permanent",
+        [
+            ("NotFoundError", True),
+            ("PermissionDeniedError", True),
+            ("InvalidPathError", True),
+            ("NotSupportedError", True),
+            ("GenericError", False),
+            ("UnauthenticatedError", False),
+            ("JoinError", False),
+        ],
+    )
+    def test_obstore_classification(self, name, permanent):
+        exceptions = pytest.importorskip("obstore.exceptions")
+        assert _is_permanent_download_error(getattr(exceptions, name)("x")) is (
+            permanent
+        )
+
+    def test_503_forever_raises_download_error(self):
+        pytest.importorskip("obstore")
+        from obstore.exceptions import GenericError
+
+        server, port, served = _start_status_sequence_server([503])
+        try:
+            with pytest.raises(
+                DownloadError,
+                match=(
+                    rf"Failed to download 'http://127\.0\.0\.1:{port}/f\.bin' "
+                    r"\(column 'uri'\): GenericError:"
+                ),
+            ) as exc_info:
+                self._download([f"http://127.0.0.1:{port}/f.bin"])
+        finally:
+            server.shutdown()
+
+        assert isinstance(exc_info.value.__cause__, GenericError)
+        # One attempt plus the single retry allowed by the budget.
+        assert served == [503, 503]
+
+    @pytest.mark.parametrize("status", [404, 403])
+    def test_http_missing_or_forbidden_returns_none(self, status):
+        pytest.importorskip("obstore")
+        server, port, _ = _start_status_sequence_server([status])
+        try:
+            results = self._download([f"http://127.0.0.1:{port}/f.bin"])
+        finally:
+            server.shutdown()
+        assert results == [None]
+
+    def test_unauthenticated_raises(self, tmp_path):
+        obs = pytest.importorskip("obstore")
+        from obstore.exceptions import UnauthenticatedError
+
+        (tmp_path / "f.bin").write_bytes(b"data")
+        with patch.object(
+            obs, "get_async", side_effect=UnauthenticatedError("bad creds")
+        ):
+            with pytest.raises(
+                DownloadError, match="UnauthenticatedError: bad creds"
+            ) as exc_info:
+                self._download([f"file://{tmp_path}/f.bin"])
+        assert isinstance(exc_info.value.__cause__, UnauthenticatedError)
+
+    def test_one_failure_fails_block(self, tmp_path):
+        pytest.importorskip("obstore")
+        (tmp_path / "ok.bin").write_bytes(b"ok")
+        server, port, _ = _start_status_sequence_server([503])
+        try:
+            with pytest.raises(DownloadError, match="f.bin"):
+                self._download(
+                    [f"file://{tmp_path}/ok.bin", f"http://127.0.0.1:{port}/f.bin"]
+                )
+        finally:
+            server.shutdown()
+
+    def test_ranged_fallback_then_transient_raises(self):
+        pytest.importorskip("obstore")
+        chunk_size = 16
+        server, port, served = _start_status_sequence_server([503])
+        try:
+            with (
+                patch(
+                    "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                    chunk_size,
+                ),
+                patch(
+                    "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+                    chunk_size,
+                ),
+                pytest.raises(DownloadError, match="f.bin"),
+            ):
+                self._download(
+                    [f"http://127.0.0.1:{port}/f.bin"], file_sizes=[chunk_size * 4]
+                )
+        finally:
+            server.shutdown()
+        # The ranged GETs failed, the whole-file fallback failed too, and only
+        # then did the download raise.
+        assert len(served) >= 2 and set(served) == {503}
+
+    def test_threaded_missing_file_returns_none(self, tmp_path):
+        table = pa.table({"uri": [f"file://{tmp_path}/missing.bin"]})
+        with patch("ray.data._internal.planner.plan_download_op.logger"):
+            results = list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+        assert results[0].column("bytes").to_pylist() == [None]
+
+    @pytest.mark.parametrize(
+        "error, expect_none",
+        [
+            pytest.param(pa.ArrowInvalid("bad uri"), True, id="invalid-uri"),
+            pytest.param(
+                OSError("connection reset by peer"), False, id="transient-oserror"
+            ),
+        ],
+    )
+    def test_threaded_normalize_errors(self, tmp_path, error, expect_none):
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        (tmp_path / "f.bin").write_bytes(b"data")
+        table = pa.table({"uri": [f"file://{tmp_path}/f.bin"]})
+        original = pdo._resolve_paths_and_filesystem
+
+        def fake(uri, filesystem=None, **kw):
+            if filesystem is None:
+                # The one-time probe succeeds; the per-URI normalize fails.
+                return original(uri, filesystem=None, **kw)
+            raise error
+
+        spy, _, _ = _spy_resolve(fake)
+
+        def run():
+            return list(
+                download_bytes_threaded(
+                    table, ["uri"], ["bytes"], DataContext.get_current()
+                )
+            )
+
+        with spy, patch("ray.data._internal.planner.plan_download_op.logger"):
+            if expect_none:
+                assert run()[0].column("bytes").to_pylist() == [None]
+            else:
+                with pytest.raises(DownloadError, match="connection reset by peer"):
+                    run()
 
 
 if __name__ == "__main__":
