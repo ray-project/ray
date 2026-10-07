@@ -36,7 +36,7 @@ EvaluatorCreator = Callable[[], List[Evaluator]]
 @PublicAPI(stability="alpha")
 @dataclass
 class HealthCheck:
-    """Probes, and the evaluators that decide on their readings.
+    """A set of probes that collect data, and the evaluators that decide on it.
 
     Attributes:
         probe_creator: Returns the check's probes.
@@ -62,9 +62,9 @@ class HealthConfig:
     """Health monitoring configuration for a run.
 
     Attributes:
-        checks: Checks that run periodically while training runs.
+        checks: Checks that run periodically during training.
         preflight_checks: Checks that run once on each node before training
-            starts there.
+            starts.
     """
 
     checks: List[HealthCheck] = field(default_factory=list)
