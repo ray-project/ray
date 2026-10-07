@@ -4091,6 +4091,7 @@ def read_hive(
         runtime_env=runtime_env,
         ray_remote_args={"max_retries": 0},
     )
+    # Fail the read instead of silently dropping an errored block.
     dataset.context.max_errored_blocks = 0
     if override_num_blocks is not None:
         dataset = dataset.repartition(override_num_blocks)
