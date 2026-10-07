@@ -75,6 +75,42 @@ def wrong_output():
         >>> print("actual")
         expected
     """
+
+
+def output_variants():
+    """Output that should match.
+
+    Examples:
+        >>> [1, 2, 3]
+        [1, 2, 3]
+        >>> print("a long line with an id 12345")
+        a long line ... 12345
+        >>> print("a   b")  # doctest: +NORMALIZE_WHITESPACE
+        a b
+        >>> _ = print("unshown output only has to run")
+    """
+
+
+def expected_exception():
+    """Shows a traceback.
+
+    Examples:
+        >>> int("x")
+        Traceback (most recent call last):
+            ...
+        ValueError: invalid literal for int() with base 10: 'x'
+    """
+
+
+def wrong_exception():
+    """Shows a different exception than it raises.
+
+    Examples:
+        >>> int("x")
+        Traceback (most recent call last):
+            ...
+        TypeError: nope
+    """
 '''
 
 
@@ -96,8 +132,11 @@ def test_extract_finds_only_docstrings_with_examples(docstrings):
         "Widget",
         "Widget.broken",
         "Widget.size",
+        "expected_exception",
+        "output_variants",
         "render_only",
         "skipped_statement",
+        "wrong_exception",
         "wrong_output",
     ]
     assert len(docstrings["Widget"].examples) == 2
@@ -126,9 +165,28 @@ def test_skip_example_skips_the_docstring(docstrings):
     assert not is_skipped(docstrings["Widget"])
 
 
-def test_expected_output_is_not_checked(docstrings, module_globals, capsys):
-    # The runner checks that example code runs, not what it prints.
-    assert run_docstring(docstrings["wrong_output"], module_globals, "m.py") is None
+def test_wrong_output_fails_with_a_diff(docstrings, module_globals):
+    failure = run_docstring(docstrings["wrong_output"], module_globals, "m.py")
+    assert "(wrong_output)" in failure
+    assert "Expected:" in failure and "expected" in failure
+    assert "Got:" in failure and "actual" in failure
+
+
+def test_matching_output_passes(docstrings, module_globals):
+    # Covers a repr echo, an ELLIPSIS match (the default flag), a per-example
+    # directive, and printed output where none is shown.
+    assert run_docstring(docstrings["output_variants"], module_globals, "m.py") is None
+
+
+def test_expected_exception_passes(docstrings, module_globals):
+    assert (
+        run_docstring(docstrings["expected_exception"], module_globals, "m.py") is None
+    )
+
+
+def test_wrong_exception_fails(docstrings, module_globals):
+    failure = run_docstring(docstrings["wrong_exception"], module_globals, "m.py")
+    assert "Expected exception" in failure and "ValueError" in failure
 
 
 def test_runs_do_not_leak_names_between_docstrings(docstrings, module_globals):

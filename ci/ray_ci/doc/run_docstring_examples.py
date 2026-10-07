@@ -6,16 +6,21 @@ examples in the changed files, not a library's whole doctest target.
 
 For each changed module, it imports the module, extracts the `>>>` examples
 from every docstring in the file (module, classes, functions, and methods), and
-runs each docstring's examples in order as plain Python, in a copy of the
-module's globals. A docstring fails if any of its examples raises. Expected
-output lines are ignored: this checks that the example code runs, not what it
-prints.
+runs each docstring's examples in order, in a copy of the module's globals,
+the way an interactive session would. A docstring fails if an example raises,
+or if an example that shows output prints something else. An example that shows
+no output only has to run.
+
+Output matching follows Ray's doctest targets: `...` matches any text, the
+pytest default of ELLIPSIS, and per-example directives such as
+`# doctest: +NORMALIZE_WHITESPACE` apply. An example that shows a traceback
+passes when it raises an exception whose type and message match.
 
 Examples marked `# doctest: +SKIP` are skipped, and a docstring with
 `# doctest: +SKIP_EXAMPLE` on any example is skipped whole, matching the
 render-only convention in bazel/default_doctest_pytest_plugin.py. The standard
-library's doctest parser is used only to read the `>>>` and `...` prompts and
-those directives; no doctest runner or output checker is involved.
+library's doctest module supplies the `>>>` parser and the output comparison;
+there's no doctest runner, pytest collection, or Bazel doctest target.
 
 Usage:
   python ci/ray_ci/doc/run_docstring_examples.py --source-dir python/ray/data
@@ -32,9 +37,11 @@ the library's image.
 
 import argparse
 import ast
+import contextlib
 import dataclasses
 import doctest
 import importlib
+import io
 import os
 import re
 import subprocess
@@ -45,6 +52,10 @@ from typing import Dict, List, Optional
 SKIP_EXAMPLE = doctest.register_optionflag("SKIP_EXAMPLE")
 
 _EXCLUDED_DIRS = re.compile(r"(^|/)(tests|examples)/")
+
+# Ray's doctest targets run pytest without a config file, so pytest's default
+# doctest_optionflags of ELLIPSIS applies. Match it.
+DEFAULT_OPTIONFLAGS = doctest.ELLIPSIS
 
 
 @dataclasses.dataclass
@@ -86,10 +97,18 @@ def is_skipped(docstring: DocstringExamples) -> bool:
     return any(example.options.get(SKIP_EXAMPLE) for example in docstring.examples)
 
 
+def _optionflags(example: doctest.Example) -> int:
+    flags = DEFAULT_OPTIONFLAGS
+    for flag, enabled in example.options.items():
+        flags = flags | flag if enabled else flags & ~flag
+    return flags
+
+
 def run_docstring(
     docstring: DocstringExamples, module_globals: Dict, filename: str
 ) -> Optional[str]:
-    """Run one docstring's examples in order. Return a traceback on failure."""
+    """Run one docstring's examples in order. Return a report on failure."""
+    checker = doctest.OutputChecker()
     namespace = dict(module_globals)
     for example in docstring.examples:
         if example.options.get(doctest.SKIP):
@@ -97,11 +116,34 @@ def run_docstring(
         # example.lineno counts from the docstring's first line.
         line = docstring.lineno + example.lineno
         location = f"{filename}:{line} ({docstring.qualname})"
+        flags = _optionflags(example)
+        stdout = io.StringIO()
         try:
-            code = compile(example.source, location, "exec")
-            exec(code, namespace)
-        except BaseException:  # noqa: BLE001 - report any failure, including SystemExit.
+            # "single" mode echoes an expression's value, as the interactive
+            # prompt the example imitates does.
+            code = compile(example.source, location, "single")
+            with contextlib.redirect_stdout(stdout):
+                exec(code, namespace)
+        except BaseException as e:  # noqa: BLE001 - report any failure.
+            if example.exc_msg is not None:
+                got = traceback.format_exception_only(type(e), e)[-1]
+                if checker.check_output(example.exc_msg, got, flags):
+                    continue
+                return (
+                    f"{location}\n{example.source}Expected exception:\n"
+                    f"    {example.exc_msg}Got:\n    {got}"
+                )
             return f"{location}\n{example.source}{traceback.format_exc()}"
+        if example.exc_msg is not None:
+            return (
+                f"{location}\n{example.source}Expected exception:\n"
+                f"    {example.exc_msg}Got: no exception"
+            )
+        if example.want and not checker.check_output(
+            example.want, stdout.getvalue(), flags
+        ):
+            diff = checker.output_difference(example, stdout.getvalue(), flags)
+            return f"{location}\n{example.source}{diff}"
     return None
 
 

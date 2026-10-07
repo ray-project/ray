@@ -112,7 +112,7 @@ A change to a docstring in `python/ray/` routes like a code change, so it runs e
 
 With the label, a Data PR runs the following:
 
-* `data: docstring examples`, which runs each changed module's `>>>` examples as plain Python in the Data CI image, with this PR's Ray installed. It checks that the example code runs without raising, not what it prints. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
+* `data: docstring examples`, which runs each changed module's `>>>` examples in the Data CI image, with this PR's Ray installed. An example that shows output must print it, with `...` matching any text. An example that shows no output only has to run without raising. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
 * The two API surface checks and lint.
 * `lint: validate docstring-only scope`, the guard the label can't turn off.
 
