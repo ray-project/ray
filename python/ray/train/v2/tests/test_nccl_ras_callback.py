@@ -1388,8 +1388,11 @@ def test_fan_out_collects_every_worker(fan_out):
     dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
 
     # A dump is keyed by the worker's world rank, not its position in the list.
-    assert {dump.rank: dump.value for dump in dumps} == {7: "stack-7", 4: "stack-4"}
-    assert all(dump.error is None for dump in dumps)
+    assert {rank: dump.value for rank, dump in dumps.items()} == {
+        7: "stack-7",
+        4: "stack-4",
+    }
+    assert all(dump.error is None for dump in dumps.values())
     workers[0].execute_async.assert_called_once_with(dump_stack_trace, 25.0)
     # One wait for the whole fan-out, sharing the budget between the workers.
     assert fan_out.wait.call_args.kwargs["timeout"] == 30.0
@@ -1425,12 +1428,9 @@ def test_fan_out_records_per_rank_failures(
     workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
 
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
-        dumps = {
-            dump.rank: dump
-            for dump in fan_out_to_workers(
+        dumps =  fan_out_to_workers(
                 workers, dump_stack_trace, 25.0, timeout_s=30.0
             )
-        }
 
     assert dumps[0].value is None and dumps[0].error == expected_error
     assert dumps[1].value == "stack-1" and dumps[1].error is None
@@ -1624,10 +1624,10 @@ def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
     callback = make_diagnostics_callback(workers)
     calls = scripted_fan_out(
         monkeypatch,
-        [
-            DiagnosticResult(0, value={"ok": True, "stdout": "node 1 GPUs"}),
-            DiagnosticResult(2, value={"ok": True, "stdout": "node 2 GPUs"}),
-        ],
+        {
+            0: DiagnosticResult(value={"ok": True, "stdout": "node 1 GPUs"}),
+            2: DiagnosticResult(value={"ok": True, "stdout": "node 2 GPUs"}),
+        },
     )
 
     callback.dump_nodes_nvidia_smi()
