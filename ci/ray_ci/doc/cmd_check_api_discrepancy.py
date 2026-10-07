@@ -214,7 +214,7 @@ TEAM_API_CONFIGS = {
     },
     "rllib": {
         "head_modules": {"ray.rllib"},
-        "head_doc_file": "doc/source/rllib/package_ref/index.rst",
+        "head_doc_file": "doc/source/rllib/api/index.rst",
         # Private-by-name methods RLlib intentionally documents as a public
         # override / customization contract. The RLModule._forward* hooks that
         # were whitelisted here are now exempted generically by their

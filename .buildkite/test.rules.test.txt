@@ -174,14 +174,14 @@ doc/source/serve/api/index.md: doc_api
 doc/source/core/api/index.md: doc_api
 doc/source/train/api/api.md: doc_api
 doc/source/tune/api/api.rst: doc_api
-doc/source/rllib/package_ref/index.rst: doc_api
+doc/source/rllib/api/index.rst: doc_api
 doc/source/core/api/state.rst: doc_api
 doc/source/ray-more-libs/api/index.md: doc_api
 # A nested leaf page under an API dir must also emit doc_api: directory rules
 # match recursively, so a change to any page below the dir triggers the checks,
 # not just the top-level index. Guards against a rule or matcher change that
 # would only catch top-level pages.
-doc/source/rllib/package_ref/env/single_agent_episode.rst: doc_api
+doc/source/rllib/api/env/single_agent_episode.rst: doc_api
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
 doc/requirements-doc.txt: doc doc_api
