@@ -69,7 +69,7 @@ here:
   [`doc/source/ray-contribute/getting-involved.md`](doc/source/ray-contribute/getting-involved.md)
 - Building Ray:
   [`doc/source/ray-contribute/development.md`](doc/source/ray-contribute/development.md)
-- General contribution process: [`CONTRIBUTING.rst`](CONTRIBUTING.rst)
+- General contribution process: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ### Required for every commit
 
