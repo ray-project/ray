@@ -15,15 +15,11 @@ To learn about GPU usage on different clouds, see instructions for [GKE](https:/
 
 ## Quickstart: Serve a GPU-based StableDiffusion model
 
-You can find several GPU workload examples in the {ref}`examples <kuberay-examples>` section of the docs.
-The {ref}`StableDiffusion example <kuberay-stable-diffusion-rayservice-example>` is a good place to start.
+You can find several GPU workload examples in the {ref}`examples <kuberay-examples>` section of the docs. The {ref}`StableDiffusion example <kuberay-stable-diffusion-rayservice-example>` is a good place to start.
 
 ## Dependencies for GPU-based machine learning
 
-The [Ray Docker Hub](https://hub.docker.com/r/rayproject/) hosts CUDA-based container images packaged
-with Ray. For example, the image `rayproject/ray:2.57.0-gpu` runs GPU-based workloads with Ray 2.57.0.
-These images don't include machine learning libraries such as TensorFlow and PyTorch, so add the ones
-your workload needs with one, or both, of the following methods:
+The [Ray Docker Hub](https://hub.docker.com/r/rayproject/) hosts CUDA-based container images packaged with Ray. For example, the image `rayproject/ray:2.57.0-gpu` runs GPU-based workloads with Ray 2.57.0. These images don't include machine learning libraries such as TensorFlow and PyTorch, so add the ones your workload needs with one, or both, of the following methods:
 
 * Building a docker image using one of the official {ref}`Ray docker images <docker-images>` as base.
 * Using {ref}`Ray Runtime environments <runtime-environments>`.
@@ -31,11 +27,9 @@ your workload needs with one, or both, of the following methods:
 
 ## Configuring Pods for GPU usage
 
-Using NVIDIA GPUs requires specifying `nvidia.com/gpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s
-`headGroupSpec` and/or `workerGroupSpecs`.
+Using NVIDIA GPUs requires specifying `nvidia.com/gpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s `headGroupSpec` and/or `workerGroupSpecs`.
 
-Here is a config snippet for a RayCluster workerGroup of up
-to 5 GPU workers.
+Here is a config snippet for a RayCluster workerGroup of up to 5 GPU workers.
 
 ```yaml
 groupName: gpu-group
@@ -64,19 +58,12 @@ template:
 Each of the Pods in the group can be scheduled on an AWS `p2.xlarge` instance (1 GPU, 4vCPU, 61Gi RAM).
 
 :::{tip}
-GPU instances are expensive -- consider setting up autoscaling for your GPU Ray workers,
-as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above.
-To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec`
-Finally, make sure you configured the group or pool of GPU Kubernetes nodes, to autoscale.
-Refer to your {ref}`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
+GPU instances are expensive -- consider setting up autoscaling for your GPU Ray workers, as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above. To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec` Finally, make sure you configured the group or pool of GPU Kubernetes nodes, to autoscale. Refer to your {ref}`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
 :::
 
 ## GPU multi-tenancy
 
-If a Pod doesn't include `nvidia.com/gpu` in its resource configurations, users typically expect the Pod to be unaware of any GPU devices, even if it's scheduled on a GPU node.
-However, when `nvidia.com/gpu` isn't specified, the default value for `NVIDIA_VISIBLE_DEVICES` becomes `all`, giving the Pod awareness of all GPU devices on the node.
-This behavior isn't unique to KubeRay, but is a known issue for NVIDIA.
-A workaround is to set the `NVIDIA_VISIBLE_DEVICES` environment variable to `void` in the Pods which don't require GPU devices.
+If a Pod doesn't include `nvidia.com/gpu` in its resource configurations, users typically expect the Pod to be unaware of any GPU devices, even if it's scheduled on a GPU node. However, when `nvidia.com/gpu` isn't specified, the default value for `NVIDIA_VISIBLE_DEVICES` becomes `all`, giving the Pod awareness of all GPU devices on the node. This behavior isn't unique to KubeRay, but is a known issue for NVIDIA. A workaround is to set the `NVIDIA_VISIBLE_DEVICES` environment variable to `void` in the Pods which don't require GPU devices.
 
 Some useful links:
 
@@ -87,23 +74,16 @@ Some useful links:
 
 ## GPUs and Ray
 
-This section discuss GPU usage for Ray applications running on Kubernetes.
-For general guidance on GPU usage with Ray, see also {ref}`gpu-support`.
+This section discuss GPU usage for Ray applications running on Kubernetes. For general guidance on GPU usage with Ray, see also {ref}`gpu-support`.
 
-The KubeRay operator advertises container GPU resource limits to
-the Ray scheduler and the Ray autoscaler. In particular, the Ray container's
-`ray start` entrypoint will be automatically configured with the appropriate `--num-gpus` option.
+The KubeRay operator advertises container GPU resource limits to the Ray scheduler and the Ray autoscaler. In particular, the Ray container's `ray start` entrypoint will be automatically configured with the appropriate `--num-gpus` option.
 
 ### GPU workload scheduling
-After a Pod with access to GPU is deployed, it will
-be able to execute tasks and actors annotated with gpu requests.
-For example, the decorator `@ray.remote(num_gpus=1)` annotates a task or actor
-requiring 1 GPU.
+After a Pod with access to GPU is deployed, it will be able to execute tasks and actors annotated with gpu requests. For example, the decorator `@ray.remote(num_gpus=1)` annotates a task or actor requiring 1 GPU.
 
 
 ### GPU autoscaling
-The Ray autoscaler is aware of each Ray worker group's GPU capacity.
-Say we have a RayCluster configured as in the config snippet above:
+The Ray autoscaler is aware of each Ray worker group's GPU capacity. Say we have a RayCluster configured as in the config snippet above:
 
 - There is a worker group of Pods with 1 unit of GPU capacity each.
 - The Ray cluster does not currently have any workers from that group.
@@ -128,10 +108,7 @@ gpu_actors = [GPUActor.remote() for _ in range(2)]
 ray.get([actor.say_hello.remote() for actor in gpu_actors])
 ```
 
-After the program exits, the actors will be garbage collected.
-The GPU worker pods will be scaled down after the idle timeout (60 seconds by default).
-If the GPU worker pods were running on an autoscaling pool of Kubernetes nodes, the Kubernetes
-nodes will be scaled down as well.
+After the program exits, the actors will be garbage collected. The GPU worker pods will be scaled down after the idle timeout (60 seconds by default). If the GPU worker pods were running on an autoscaling pool of Kubernetes nodes, the Kubernetes nodes will be scaled down as well.
 
 ### Requesting GPUs
 You can also make a {ref}`direct request to the autoscaler <ref-autoscaler-sdk-request-resources>` to scale up GPU resources.
@@ -143,8 +120,7 @@ ray.init()
 ray.autoscaler.sdk.request_resources(bundles=[{"GPU": 1}] * 2)
 ```
 
-After the nodes are scaled up, they will persist until the request is explicitly overridden.
-The following program will remove the resource request.
+After the nodes are scaled up, they will persist until the request is explicitly overridden. The following program will remove the resource request.
 
 ```python
 import ray
@@ -158,9 +134,7 @@ The GPU workers can then scale down.
 (kuberay-gpu-override)=
 
 ### Overriding Ray GPU capacity (advanced)
-For specialized use-cases, it is possible to override the Pod GPU capacities advertised to Ray.
-To do so, set a value for the `num-gpus` key of the head or worker group's `rayStartParams`.
-For example,
+For specialized use-cases, it is possible to override the Pod GPU capacities advertised to Ray. To do so, set a value for the `num-gpus` key of the head or worker group's `rayStartParams`. For example,
 
 ```yaml
 rayStartParams:
@@ -168,22 +142,16 @@ rayStartParams:
     num-gpus: "2"
 ```
 
-The Ray scheduler and autoscaler will then account 2 units of GPU capacity for each
-Pod in the group, even if the container limits do not indicate the presence of GPU.
+The Ray scheduler and autoscaler will then account 2 units of GPU capacity for each Pod in the group, even if the container limits do not indicate the presence of GPU.
 
 ## GPU pod scheduling (advanced)
 
 ### GPU taints and tolerations
 :::{note}
-Managed Kubernetes services typically take care of GPU-related taints and tolerations
-for you. If you are using a managed Kubernetes service, you might not need to worry
-about this section.
+Managed Kubernetes services typically take care of GPU-related taints and tolerations for you. If you are using a managed Kubernetes service, you might not need to worry about this section.
 :::
 
-The [NVIDIA gpu plugin](https://github.com/NVIDIA/k8s-device-plugin) for Kubernetes applies [taints](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/) to GPU nodes; these taints prevent non-GPU pods from being scheduled on GPU nodes.
-Managed Kubernetes services like GKE, EKS, and AKS automatically apply matching [tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
-to pods requesting GPU resources. Tolerations are applied by means of Kubernetes's [ExtendedResourceToleration](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#extendedresourcetoleration) [admission controller](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/).
-If this admission controller is not enabled for your Kubernetes cluster, you may need to manually add a GPU toleration to each of your GPU pod configurations. For example,
+The [NVIDIA gpu plugin](https://github.com/NVIDIA/k8s-device-plugin) for Kubernetes applies [taints](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/) to GPU nodes; these taints prevent non-GPU pods from being scheduled on GPU nodes. Managed Kubernetes services like GKE, EKS, and AKS automatically apply matching [tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/) to pods requesting GPU resources. Tolerations are applied by means of Kubernetes's [ExtendedResourceToleration](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#extendedresourcetoleration) [admission controller](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/). If this admission controller is not enabled for your Kubernetes cluster, you may need to manually add a GPU toleration to each of your GPU pod configurations. For example,
 
 ```yaml
 apiVersion: v1
@@ -204,13 +172,8 @@ metadata:
 ```
 
 ### Node selectors and node labels
-To ensure Pods are bound to Kubernetes nodes satisfying specific
-conditions (such as the presence of GPU hardware), you may wish to use
-the `nodeSelector` field of your `workerGroup`'s pod template `spec`.
-See the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/) for more about Pod-to-Node assignment.
+To ensure Pods are bound to Kubernetes nodes satisfying specific conditions (such as the presence of GPU hardware), you may wish to use the `nodeSelector` field of your `workerGroup`'s pod template `spec`. See the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/) for more about Pod-to-Node assignment.
 
 
 #### Further reference and discussion
-Read about Kubernetes device plugins [here](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/),
-about Kubernetes GPU plugins [here](https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus),
-and about NVIDIA's GPU plugin for Kubernetes [here](https://github.com/NVIDIA/k8s-device-plugin).
+Read about Kubernetes device plugins [here](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/), about Kubernetes GPU plugins [here](https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus), and about NVIDIA's GPU plugin for Kubernetes [here](https://github.com/NVIDIA/k8s-device-plugin).
