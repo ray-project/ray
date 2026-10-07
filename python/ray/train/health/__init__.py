@@ -7,6 +7,7 @@ from ray.train.health.decision import (
     Reattempt,
 )
 from ray.train.health.probe import (
+    ControllerProbe,
     NodeProbe,
     Probe,
     ProbeResult,
@@ -15,6 +16,7 @@ from ray.train.health.probe import (
 from ray.train.health.state import HealthState
 
 __all__ = [
+    "ControllerProbe",
     "Diagnose",
     "Evaluator",
     "Evict",
