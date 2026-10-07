@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from typing import List, Optional, Type
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +11,7 @@ from ray.data._internal.cluster_autoscaler import (
     RateBasedClusterAutoscaler,
     ResourceDict,
     create_cluster_autoscaler,
+    resource_utilization_gauge,
 )
 from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
     FakeAutoscalingCoordinator,
@@ -21,6 +22,7 @@ from ray.data._internal.cluster_autoscaler.rate_based_cluster_autoscaler import 
 from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
     ClusterUtil,
     ResourceUtilizationGauge,
+    RollingLogicalUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -807,6 +809,28 @@ def test_high_utilization_after_release_rearms_grace_window():
     current_time["t"] = 315.0
     assert autoscaler.try_trigger_scaling() == []
     assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
+
+@pytest.mark.parametrize("exclude, expected_cpu_util", [(True, 0.25), (False, 1.0)])
+def test_gauge_excludes_consumer_blocked_usage(exclude, expected_cpu_util):
+    resource_manager = MagicMock()
+    resource_manager.get_global_limits.return_value = ExecutionResources(cpu=8)
+    resource_manager.get_global_usage.return_value = ExecutionResources(cpu=8)
+    resource_manager.get_global_usage_excluding_consumer_blocked_ops.return_value = (
+        ExecutionResources(cpu=2)
+    )
+
+    with patch.object(resource_utilization_gauge, "Gauge") as mock_gauge_cls:
+        gauge = RollingLogicalUtilizationGauge(
+            resource_manager,
+            execution_id="ds",
+            exclude_consumer_blocked_usage=exclude,
+        )
+        gauge.observe()
+
+    assert gauge.get().cpu == pytest.approx(expected_cpu_util)
+    # Exported metrics always report raw utilization.
+    mock_gauge_cls.return_value.set.assert_any_call(100, tags={"dataset": "ds"})
 
 
 if __name__ == "__main__":

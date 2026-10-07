@@ -299,9 +299,20 @@ class ResourceManager:
 
     def _is_blocked_on_downstream(self, op: PhysicalOperator) -> bool:
         """Whether the op is waiting for its outputs to be read downstream."""
+        # Don't exclude an op after it that's still running tasks, e.g., sort sampling.
+        if any(
+            downstream_op.num_active_tasks() > 0
+            for downstream_op in self._get_downstream_ineligible_ops(op)
+        ):
+            return False
         if op.in_task_output_backpressure:
             return True
-        if op.num_active_tasks() > 0 or not op.in_task_submission_backpressure:
+        if op.num_active_tasks() > 0:
+            return False
+        # A finished op only waits for its outputs to be read.
+        if op.has_execution_finished():
+            return True
+        if not op.in_task_submission_backpressure:
             return False
         # More nodes help if the budget can't fit another task's CPU, GPU, or memory.
         budget = (
