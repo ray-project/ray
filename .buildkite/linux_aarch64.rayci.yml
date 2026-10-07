@@ -615,7 +615,6 @@ steps:
     job_env: forge-aarch64
 
   - label: ":llm: llm: wheel-aarch64 tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - llm
       - linux_wheels

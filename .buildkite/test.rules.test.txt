@@ -89,58 +89,71 @@ docker/Dockerfile.ray: docker linux_wheels
 
 # === Documentation ===
 
-# Executable doc assets route to the owning library's docs example step via a
-# dedicated <lib>_doc tag, instead of the blanket `doc` tag, so a one-library
-# doc change no longer fans out to every team.
-doc/source/serve/doc_code/example.py: serve_doc
-doc/source/serve/examples/example.ipynb: serve_doc
-doc/source/data/doc_code/example.py: data_doc
-doc/source/ray-more-libs/example.py: data_doc
-doc/source/train/examples/example.py: ml_doc
-doc/source/tune/examples/example.py: ml_doc
-doc/source/rllib/doc_code/example.py: rllib_doc
-doc/source/core/examples/example.ipynb: core_doc
-doc/source/ray-observability/example.py: core_doc
-# The four core/ notebooks whose targets are tagged team:ml route to ml_doc,
-# because the core step filters targets by team and would not execute them.
-doc/source/core/examples/plot_hyperparameter.ipynb: ml_doc
-doc/source/core/examples/batch_prediction.ipynb: ml_doc
-doc/source/core/examples/plot_parameter_server.ipynb: ml_doc
-doc/source/core/examples/plot_pong_example.ipynb: ml_doc
+# Doc example assets run nothing by default. They emit doc_example, which only
+# the label-gated "docs-example-test" opt-in step listens for.
+doc/source/serve/doc_code/example.py: doc_example
+doc/source/serve/examples/example.ipynb: doc_example
+doc/source/data/doc_code/example.py: doc_example
+doc/source/ray-more-libs/example.py: doc_example
+doc/source/train/examples/example.py: doc_example
+doc/source/tune/examples/example.py: doc_example
+doc/source/rllib/doc_code/example.py: doc_example
+doc/source/core/examples/example.ipynb: doc_example
+doc/source/ray-observability/example.py: doc_example
+# The four core/ notebooks whose targets are tagged team:ml need no special
+# case: the one opt-in step runs every team's targets.
+doc/source/core/examples/plot_hyperparameter.ipynb: doc_example
+doc/source/core/examples/batch_prediction.ipynb: doc_example
+doc/source/core/examples/plot_parameter_server.ipynb: doc_example
+doc/source/core/examples/plot_pong_example.ipynb: doc_example
 # highly_parallel.ipynb is the exception: the ml docs example step excludes its
 # tag, so no step runs it. It routes to the build instead.
 doc/source/core/examples/highly_parallel.ipynb: doc
-# doc/external/ is the same team:ml case: the hash-guard test and the vendored
-# tutorial it covers both route to the step that owns the target.
-doc/external/test_hashes.py: ml_doc
-doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py: ml_doc
+# doc/external/ holds the hash-guard test and the vendored tutorial it covers.
+doc/external/test_hashes.py: doc_example
+doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py: doc_example
 # Claude Code skills and agent files trigger nothing, matching the RtD guard.
 # This holds for both the doc subtree and the repo-root .claude/.
 doc/.claude/skills/sphinx-fix/sphinx_fix.py:
 doc/.claude/agents/reviewer.md:
 .claude/skills/backport-docs/SKILL.md:
-.claude/settings.json:
-doc/source/llm/doc_code/example.py: llm
-# Unowned doc dirs and doc-root executables fall to the core docs example step.
-doc/source/cluster/example.py: core_doc
-doc/code.py: core_doc
-doc/example.ipynb: core_doc
-# A library's example BUILD.bazel routes to that library; the root doc
-# BUILD.bazel defines every library's targets, so it routes to all of them.
+# Every llm doc example test is a GPU test, and docs examples never run GPU
+# tests in premerge or microcheck, so llm doc assets emit nothing. Neither
+# reaches the raw `llm` tag, which would start the llm library suites.
+doc/source/llm/doc_code/example.py:
+doc/source/llm/examples/batch/vllm-with-lora.ipynb:
+doc/source/data/doc_code/working-with-llms/example.py:
+# Unowned doc dirs and doc-root executables go to the opt-in step too.
+doc/source/cluster/example.py: doc_example
+doc/code.py: doc_example
+doc/example.ipynb: doc_example
+# Example BUILD.bazel files define test targets, so they still run the owning
+# library's default docs example step. The root doc BUILD.bazel defines every
+# library's targets, so it routes to all of them.
 doc/source/serve/examples/BUILD.bazel: serve_doc
+doc/source/data/examples/BUILD.bazel: data_doc
+doc/source/train/examples/pytorch/BUILD.bazel: ml_doc
+doc/source/tune/tutorials/BUILD.bazel: ml_doc
+doc/source/core/examples/BUILD.bazel: core_doc
+doc/source/llm/examples/batch/BUILD.bazel: llm
 doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
-# Prose and static images under a library doc dir are skipped, not routed to
-# that library's docs example step. The per-library rules match whole
-# directories, so these cases lock in that the leading skip rule wins first.
-doc/source/data/key-concepts.rst:
+# Data prose has per-file doctest targets (`doctest_each`), so it routes to
+# the opt-in step. Its API pages still hit the doc_api rule first.
+doc/source/data/key-concepts.rst: doc_example
+doc/source/data/working-with-tensors.md: doc_example
+# Other libraries' prose has only library-wide doctest targets, which the
+# opt-in never runs, so it stays skipped. Static images under a library doc dir
+# are skipped too. The per-library rules match whole directories, so these
+# cases lock in that the leading skip rule wins first.
 doc/source/serve/index.md:
+doc/source/core/tasks.md:
 doc/source/rllib/images/rllib-stack.svg:
 doc/source/data/images/dataset-arch.png:
 doc/source/train/images/overview.jpg:
 doc/source/tune/images/tune-flow.gif:
 # Config and script assets a doc example consumes can change what the test
-# does, so under a library doc dir they keep routing to that library.
-doc/source/serve/doc_code/config.yaml: serve_doc
+# does, so under a library doc dir they route to the opt-in step.
+doc/source/serve/doc_code/config.yaml: doc_example
 # Under an unowned dir the asset is not a test input at all -- no bazel target
 # covers doc/source/cluster/doc_code/ -- but a rendered page literalincludes it,
 # so it routes to the build. This asserts the whole directory lands on `doc`
@@ -212,7 +225,7 @@ doc/source/serve/examples.yml: doc
 doc/source/train/examples.yml: doc
 # A sibling .yml under the same dir still routes to the library, so the gallery
 # rule is a targeted exception rather than a blanket .yml skip.
-doc/source/data/doc_code/some_config.yml: data_doc
+doc/source/data/doc_code/some_config.yml: doc_example
 doc/load_doc_cache.py: doc
 doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
