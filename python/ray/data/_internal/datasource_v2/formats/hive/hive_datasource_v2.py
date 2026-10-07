@@ -69,6 +69,18 @@ class _HiveReader(Reader[FileManifest]):
 
 
 class _HiveScanner(Scanner[FileManifest]):
+    """Read HiveServer2 results without generic DataSourceV2 pushdown hooks.
+
+    TBD (follow-up): implement table-read pushdown through these mixins:
+        - ``SupportsFilterPushdown``: ``push_filters``, ``pushed_predicate``.
+        - ``SupportsColumnPruning``: ``prune_columns``, ``pruned_column_names``.
+        - ``SupportsLimitPushdown``: ``push_limit``, ``pushed_limit``.
+
+    Filter pushdown must preserve Hive SQL type/null semantics and retain
+    unsupported predicates as residuals. Future direct-read pushdown should
+    use the selected reader's supported capabilities.
+    """
+
     def __init__(self, spec: HiveReadSpec, schema: pa.Schema):
         self._spec = spec
         self._schema = schema

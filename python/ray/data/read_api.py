@@ -3987,9 +3987,12 @@ def read_hive(
     .. note::
 
         Each Dataset execution runs one HiveServer2 data query in one Ray task.
-        Failed reads aren't retried. ``override_num_blocks`` repartitions the
-        result after the HiveServer2 query. This blocks downstream streaming
-        until the read completes; it doesn't parallelize the HiveServer2 query.
+        Failed reads aren't retried. This scanner doesn't push Dataset filters,
+        projections, or ``Dataset.limit()`` into HiveServer2. The ``limit``
+        argument adds a SQL ``LIMIT`` for table reads. ``override_num_blocks``
+        repartitions the result after the HiveServer2 query. This blocks
+        downstream streaming until the read completes; it doesn't parallelize
+        the HiveServer2 query.
 
     Examples:
 
@@ -4037,7 +4040,8 @@ def read_hive(
         timeout: The HiveServer2 transport I/O timeout in seconds. It is not a
             query deadline.
         limit: The maximum number of rows to read from a table. ``0`` skips
-            the data query. This argument isn't supported for query reads.
+            the data query. The limit is sent to HiveServer2 as SQL. This
+            argument isn't supported for query reads.
         num_cpus: The number of CPUs to reserve for the read task.
         memory: The heap memory in bytes to reserve for the read task.
         resources: Custom resources to reserve for the read task, expressed as

@@ -914,6 +914,9 @@ match the schema in count and order; names match case-insensitively, and types
 must use a supported Arrow mapping. Non-nullable fields reject null rows. Table
 reads support scalar boolean values, numbers, strings, binary values, dates, and
 decimals; timestamp and complex types are unsupported.
+
+The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` into HiveServer2. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause.
+
 Choose `auth_mechanism` explicitly. Use `NOSASL` only with a HiveServer2
 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple
 Authentication and Security Layer (SASL) mechanism; use a non-sensitive
