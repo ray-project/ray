@@ -943,11 +943,11 @@ query_dataset = ray.data.read_hive(
 ```
 
 Reads use the binary HiveServer2 protocol. Each read runs one data query in one
-Ray task. `override_num_blocks` sets the number of Ray output blocks after that
-query; it doesn't parallelize the HiveServer2 query. Failed reads aren't
-retried, and each Dataset execution starts a new query. Pass only trusted,
-row-producing SQL. The `ca_cert` path
-must be accessible on the driver and read worker.
+Ray task. If you set `override_num_blocks`, Ray repartitions the result after
+the query. This blocks downstream streaming until the read completes. It
+doesn't parallelize the HiveServer2 query. Failed reads aren't retried, and
+each Dataset execution starts a new query. Pass only trusted, row-producing
+SQL. The `ca_cert` path must be accessible on the driver and read worker.
 
 (reading_sql)=
 (reading-sql-databases)=

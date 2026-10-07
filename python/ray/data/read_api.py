@@ -3988,7 +3988,8 @@ def read_hive(
 
         Each Dataset execution runs one HiveServer2 data query in one Ray task.
         Failed reads aren't retried. ``override_num_blocks`` repartitions the
-        result in Ray and doesn't parallelize the HiveServer2 query.
+        result after the HiveServer2 query. This blocks downstream streaming
+        until the read completes; it doesn't parallelize the HiveServer2 query.
 
     Examples:
 
@@ -4045,9 +4046,10 @@ def read_hive(
         fallback_strategy: Alternative label requirements that Ray tries in
             order if ``label_selector`` can't be satisfied.
         runtime_env: The runtime environment to use for the read task.
-        override_num_blocks: Override the number of output blocks. The single
-            HiveServer2 query runs in one Ray task; Ray repartitions its result
-            into the requested number of blocks.
+        override_num_blocks: Override the number of Ray output blocks. Ray
+            repartitions the result after the single HiveServer2 query. This
+            blocks downstream streaming until the read completes; it doesn't
+            add HiveServer2 query parallelism.
 
     Returns:
         A :class:`Dataset` containing the HiveServer2 read result.
