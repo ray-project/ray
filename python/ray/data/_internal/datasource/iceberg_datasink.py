@@ -1002,7 +1002,37 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             for task in file_scan_tasks
         ]
         logger.info("[overwrite] dispatched %d rewrite task(s)", len(refs))
-        results = ray.get(refs)
+
+        # Collect results with periodic progress logs, and fail instead of blocking
+        # forever if no rewrite task finishes within the stall timeout.
+        results = []
+        pending = list(refs)
+        _LOG_INTERVAL = max(1, len(refs) // 10)  # log ~10 times total
+        try:
+            while pending:
+                done, pending = ray.wait(
+                    pending,
+                    num_returns=min(_LOG_INTERVAL, len(pending)),
+                    timeout=_REWRITE_STALL_TIMEOUT_S,
+                    fetch_local=True,
+                )
+                if not done:
+                    raise TimeoutError(
+                        f"No Iceberg overwrite rewrite task finished in "
+                        f"{_REWRITE_STALL_TIMEOUT_S}s; {len(pending)}/{len(refs)} "
+                        "still pending."
+                    )
+                results.extend(ray.get(done))
+                logger.debug(
+                    "[overwrite] rewrite progress: %d/%d file(s) done (%.1fs elapsed)",
+                    len(results),
+                    len(refs),
+                    time.perf_counter() - t0,
+                )
+        except BaseException:
+            for ref in pending:
+                ray.cancel(ref)
+            raise
 
         n_whole_delete = n_partial = n_untouched = 0
         for old_file, preserved_files in results:
@@ -1021,6 +1051,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             n_partial,
             n_untouched,
         )
+        # File metrics can say a file might match when no row does. If every task
+        # came back untouched, there is nothing to delete or append, so skip the
+        # snapshot rather than commit an empty OVERWRITE.
+        if n_whole_delete == 0 and n_partial == 0:
+            return
 
         with txn.update_snapshot(
             snapshot_properties=self._snapshot_properties, branch=branch

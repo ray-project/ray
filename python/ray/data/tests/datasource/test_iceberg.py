@@ -1649,6 +1649,37 @@ class TestSchemaEvolution:
         assert rows_same(result_df, expected)
 
 
+def _count_driver_file_reads(monkeypatch) -> Dict[str, int]:
+    """Count data files read by ``ArrowScan`` in this process.
+
+    Ray write tasks run in separate worker processes and never see this patch,
+    so anything counted here was read by the driver itself.
+    """
+    from pyiceberg.io import pyarrow as pyi_pa
+
+    counter = {"files": 0}
+    original_to_table = pyi_pa.ArrowScan.to_table
+
+    def _counting_to_table(self, tasks):
+        tasks = list(tasks)
+        counter["files"] += len(tasks)
+        return original_to_table(self, tasks)
+
+    monkeypatch.setattr(pyi_pa.ArrowScan, "to_table", _counting_to_table)
+    return counter
+
+
+def _append_files(table: Table, rows: List[Dict[str, Any]]) -> None:
+    """Append rows straight through PyIceberg, one call per data file.
+
+    The test table is partitioned by ``col_c``, so each distinct ``col_c`` in a
+    call produces its own data file. Building the files here instead of through
+    ``write_iceberg`` keeps the file layout independent of how Ray splits blocks.
+    """
+    arrow_schema = table.schema().as_arrow()
+    table.append(pa.Table.from_pylist([dict(row) for row in rows], schema=arrow_schema))
+
+
 @pytest.mark.skipif(
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
@@ -1784,39 +1815,6 @@ class TestOverwriteMode:
         )
         assert rows_same(result, expected)
 
-    @staticmethod
-    def _count_driver_file_reads(monkeypatch) -> Dict[str, int]:
-        """Count data files read by ``ArrowScan`` in this process.
-
-        Ray write tasks run in separate worker processes and never see this patch,
-        so anything counted here was read by the driver itself.
-        """
-        from pyiceberg.io import pyarrow as pyi_pa
-
-        counter = {"files": 0}
-        original_to_table = pyi_pa.ArrowScan.to_table
-
-        def _counting_to_table(self, tasks):
-            tasks = list(tasks)
-            counter["files"] += len(tasks)
-            return original_to_table(self, tasks)
-
-        monkeypatch.setattr(pyi_pa.ArrowScan, "to_table", _counting_to_table)
-        return counter
-
-    @staticmethod
-    def _append_files(table: Table, rows: List[Dict[str, Any]]) -> None:
-        """Append rows straight through PyIceberg, one call per data file.
-
-        The test table is partitioned by ``col_c``, so each distinct ``col_c`` in a
-        call produces its own data file. Building the files here instead of through
-        ``write_iceberg`` keeps the file layout independent of how Ray splits blocks.
-        """
-        arrow_schema = table.schema().as_arrow()
-        table.append(
-            pa.Table.from_pylist([dict(row) for row in rows], schema=arrow_schema)
-        )
-
     def test_write_overwrite_with_filter_rewrites_off_the_driver(
         self, clean_table, monkeypatch
     ):
@@ -1827,7 +1825,7 @@ class TestOverwriteMode:
         # Three data files (one per ``col_c`` partition), each holding one row that
         # matches ``col_a == 2`` and one that does not, so every candidate file needs a
         # row-level rewrite rather than a whole-file delete.
-        self._append_files(
+        _append_files(
             table,
             [
                 {"col_a": 1, "col_b": "keep_5", "col_c": 5},
@@ -1839,7 +1837,7 @@ class TestOverwriteMode:
             ],
         )
 
-        driver_reads = self._count_driver_file_reads(monkeypatch)
+        driver_reads = _count_driver_file_reads(monkeypatch)
         new_data = _create_typed_dataframe(
             {"col_a": [30], "col_b": ["new"], "col_c": [5]}
         )
@@ -1871,7 +1869,7 @@ class TestOverwriteMode:
         _, table = clean_table
         # The table is partitioned by ``col_c``, so a filter on ``col_c`` covers whole
         # files and PyIceberg can drop them without opening any of them.
-        self._append_files(
+        _append_files(
             table,
             [
                 {"col_a": 1, "col_b": "a", "col_c": 1},
@@ -1880,7 +1878,7 @@ class TestOverwriteMode:
             ],
         )
 
-        driver_reads = self._count_driver_file_reads(monkeypatch)
+        driver_reads = _count_driver_file_reads(monkeypatch)
         new_data = _create_typed_dataframe(
             {"col_a": [30], "col_b": ["new"], "col_c": [2]}
         )
@@ -1917,7 +1915,7 @@ class TestOverwriteMode:
         _, table = clean_table
         # ``col_c == 2`` covers the whole col_c=2 partition file, while ``col_a == 5``
         # matches only one of the two rows in the col_c=3 partition file.
-        self._append_files(
+        _append_files(
             table,
             [
                 {"col_a": 1, "col_b": "p2_a", "col_c": 2},
@@ -1940,7 +1938,7 @@ class TestOverwriteMode:
             "_rewrite_iceberg_file_by_filter",
             _CountingRemoteFunction(),
         )
-        driver_reads = self._count_driver_file_reads(monkeypatch)
+        driver_reads = _count_driver_file_reads(monkeypatch)
 
         new_data = _create_typed_dataframe(
             {"col_a": [30], "col_b": ["new"], "col_c": [2]}
@@ -1970,7 +1968,7 @@ class TestOverwriteMode:
 
         _, table = clean_table
         # One data file holding a matching row, a non-matching row and two NULLs.
-        self._append_files(
+        _append_files(
             table,
             [
                 {"col_a": 1, "col_b": "a", "col_c": 5},
@@ -1995,6 +1993,92 @@ class TestOverwriteMode:
                 "col_b": ["a", "c", "d", "new"],
                 "col_c": [5, 5, 5, 5],
             }
+        )
+        assert rows_same(result, expected)
+
+    def test_write_overwrite_with_filter_skips_empty_snapshot_on_metrics_miss(
+        self, clean_table
+    ):
+        """A file the metrics flag but no row matches adds no OVERWRITE snapshot.
+
+        The file holds ``col_a`` 1 and 3, so its min/max bounds admit ``col_a == 2``
+        and the file is planned for a rewrite, yet no row matches. Nothing is deleted
+        or appended, so only the append of the new rows should be committed.
+        """
+        from ray.data import SaveMode
+
+        catalog, table = clean_table
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 5},
+                {"col_a": 3, "col_b": "c", "col_c": 5},
+            ],
+        )
+        table_name = f"{_DB_NAME}.{_TABLE_NAME}"
+        snapshots_before = len(catalog.load_table(table_name).snapshots())
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [1, 3, 30], "col_b": ["a", "c", "new"], "col_c": [5, 5, 5]}
+        )
+        assert rows_same(result, expected)
+        new_snapshots = catalog.load_table(table_name).snapshots()[snapshots_before:]
+        operations = [snapshot.summary.operation.value for snapshot in new_snapshots]
+        assert operations == ["append"], (
+            f"the overwrite committed {operations}; with no row to delete, only the "
+            "append of the new rows should be committed"
+        )
+
+    def test_write_overwrite_with_filter_fails_on_stalled_rewrite(
+        self, clean_table, monkeypatch
+    ):
+        """A rewrite task that never finishes fails the write instead of hanging."""
+        import time
+
+        from ray.data import SaveMode
+        from ray.data._internal.datasource import iceberg_datasink as datasink_module
+
+        _, table = clean_table
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 5},
+                {"col_a": 2, "col_b": "b", "col_c": 5},
+            ],
+        )
+
+        @ray.remote
+        def _stalled_rewrite(*args):
+            time.sleep(60)
+            return None, []
+
+        monkeypatch.setattr(
+            datasink_module, "_rewrite_iceberg_file_by_filter", _stalled_rewrite
+        )
+        monkeypatch.setattr(datasink_module, "_REWRITE_STALL_TIMEOUT_S", 1)
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        t0 = time.perf_counter()
+        with pytest.raises(Exception, match="No Iceberg overwrite rewrite task"):
+            _write_to_iceberg(
+                new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+            )
+        assert time.perf_counter() - t0 < 30
+
+        # The failed write commits nothing, so the original rows are untouched.
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["a", "b"], "col_c": [5, 5]}
         )
         assert rows_same(result, expected)
 
