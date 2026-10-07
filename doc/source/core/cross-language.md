@@ -35,7 +35,7 @@ java -classpath <classpath> \
 :::
 ::::
 
-If you place your Python and Java code in different directories, include multiple directories so that workers can load both.
+If you place your Python and Java code in different directories, include all directories containing code.
 
 ::::{tab-set}
 :::{tab-item} Python
