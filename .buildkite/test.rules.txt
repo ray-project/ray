@@ -82,7 +82,8 @@ doc/source/rllib/package_ref/
 # nothing. Data's prose is matched by directory. Other libraries list only the
 # pages with a per-file target, because until rayci drops label-gated steps
 # before dependency marking, every match also builds the opt-in step's images.
-# Keep this list in sync with the `doctest_each` file lists.
+# Keep this list in sync with the `doctest_each` file lists;
+# doc/test_prose_doctest_targets.py checks it.
 doc/source/data/*.md
 doc/source/data/*.rst
 doc/source/core/actors/async-api.md
@@ -457,6 +458,7 @@ doc/load_doc_cache.py
 doc/update_cache_env.py
 doc/rtd_doctor.py
 doc/test_no_new_rst.py
+doc/test_prose_doctest_targets.py
 doc/test_llms_txt.py
 .vale.ini
 .vale/

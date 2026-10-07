@@ -31,6 +31,10 @@ steps:
       # its lint.sh entry are left in place, so re-enabling is a one-line revert
       # that restores this matrix value.
       - doc_no_new_rst
+      # Every library prose page with a runnable example has a per-file doctest
+      # target, and the doc_example rule routes it. A prose change can fail it
+      # by adding a runnable block to an unlisted page.
+      - doc_prose_doctest_targets
       # Links to files on Ray's master branch. A prose change can fail it,
       # because renaming or deleting a doc file breaks links to it elsewhere.
       - ray_repo_links

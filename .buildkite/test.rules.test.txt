@@ -239,6 +239,7 @@ doc/load_doc_cache.py: doc
 doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
+doc/test_prose_doctest_targets.py: doc
 # Pre-routed ahead of the files landing with ray-project/ray#64458. The
 # llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step.
