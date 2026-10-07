@@ -22,7 +22,7 @@ import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
 from ray.data.aggregate import TopKUnique, Unique
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockColumnAccessor
 from ray.data.datatype import DataType
 from ray.data.preprocessor import (
     Preprocessor,
@@ -44,6 +44,52 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _to_hashable(value: Any) -> Any:
+    """Make a list-like value usable as a category: lists and arrays become tuples."""
+    return tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else value
+
+
+class _EncoderUnique(Unique):
+    """``Unique`` that falls back to Python for column types Arrow can't handle.
+
+    Arrow has no ``unique`` kernel for extension types (e.g. tensors), and the
+    uniqueness of a list-typed column needs the optional ``polars`` package. The
+    encoders accepted such columns before they fit through aggregations, so they
+    keep accepting them: the vectorized path is tried first, and only when it
+    isn't available for the column's type are the values collected in Python.
+    """
+
+    # NOTE: ImportError covers `polars` not being installed.
+    _FALLBACK_ERRORS = (pa.ArrowNotImplementedError, ImportError)
+
+    def aggregate_block(self, block):
+        try:
+            return super().aggregate_block(block)
+        except self._FALLBACK_ERRORS:
+            values = set()
+            column = BlockColumnAccessor.for_column(block[self._target_col_name])
+            for value in column.to_pylist():
+                if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN and (
+                    isinstance(value, (list, np.ndarray))
+                ):
+                    values.update(_to_hashable(element) for element in value)
+                else:
+                    values.add(_to_hashable(value))
+            if self._ignore_nulls:
+                values = {value for value in values if not is_null(value)}
+            return list(self._normalize_nans(values))
+
+    def _combine_column(self, accumulator_col):
+        try:
+            return super()._combine_column(accumulator_col)
+        except self._FALLBACK_ERRORS:
+            merged = set()
+            for partial in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+                if partial is not None:
+                    merged.update(_to_hashable(value) for value in partial)
+            return list(self._normalize_nans(merged))
 
 
 def _get_unique_value_arrow_arrays(
@@ -187,7 +233,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_aggregator(
-            aggregator_fn=lambda col: Unique(
+            aggregator_fn=lambda col: _EncoderUnique(
                 on=col,
                 ignore_nulls=False,
                 encode_lists=(
@@ -471,7 +517,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
                     alias_name=f"unique_values({col})",
                 )
                 if col in self._max_categories
-                else Unique(
+                else _EncoderUnique(
                     on=col,
                     ignore_nulls=False,
                     encode_lists=None,
@@ -756,7 +802,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
                     alias_name=f"unique_values({col})",
                 )
                 if col in self._max_categories
-                else Unique(
+                else _EncoderUnique(
                     on=col,
                     ignore_nulls=False,
                     encode_lists=Unique.ListEncodingMode.FLATTEN,
@@ -908,7 +954,7 @@ class LabelEncoder(SerializablePreprocessorBase):
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_aggregator(
-            aggregator_fn=lambda col: Unique(
+            aggregator_fn=lambda col: _EncoderUnique(
                 on=col,
                 ignore_nulls=False,
                 encode_lists=Unique.ListEncodingMode.FLATTEN,
@@ -1111,7 +1157,7 @@ class Categorizer(SerializablePreprocessorBase):
             return pd.CategoricalDtype(unique_indices.keys())
 
         self._stat_computation_plan.add_aggregator(
-            aggregator_fn=lambda col: Unique(
+            aggregator_fn=lambda col: _EncoderUnique(
                 on=col,
                 ignore_nulls=False,
                 encode_lists=Unique.ListEncodingMode.FLATTEN,

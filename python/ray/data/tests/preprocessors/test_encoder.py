@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict
 
 import numpy as np
@@ -7,6 +8,7 @@ import pytest
 
 import ray
 from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data.aggregate import Unique
 from ray.data.exceptions import UserCodeException
 from ray.data.preprocessor import (
     PreprocessorNotFittedException,
@@ -1725,6 +1727,63 @@ def test_whole_list_categories_across_multiple_partial_aggregates(make_encoder):
     stats = encoder.stats_["unique_values(t)"]
     categories = {tuple(cat): idx for cat, idx in stats.items()}
     assert categories == {("a", "b"): 0, ("c",): 1, ("d", "e"): 2}
+
+
+@pytest.mark.parametrize(
+    "make_encoder, expected",
+    [
+        pytest.param(
+            lambda: OneHotEncoder(["t"]), {(1, 2): 0, (3, 4): 1}, id="OneHotEncoder"
+        ),
+        pytest.param(
+            lambda: OrdinalEncoder(["t"], encode_lists=False),
+            {(1, 2): 0, (3, 4): 1},
+            id="OrdinalEncoder_whole_arrays",
+        ),
+        pytest.param(
+            lambda: OneHotEncoder(["t"], max_categories={"t": 1}),
+            {(1, 2): 0},
+            id="OneHotEncoder_max_categories",
+        ),
+    ],
+)
+def test_encoders_fit_tensor_columns(make_encoder, expected):
+    """Arrow has no `unique`/`value_counts` kernel for extension types such as
+    tensors, but the encoders have always accepted a column of arrays, treating
+    each array as one category."""
+    ctx = ray.data.DataContext.get_current()
+    original = ctx.shuffle_input_batch_bytes
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    ctx.shuffle_input_batch_bytes = 1
+    try:
+        arrays = [np.array([1, 2]), np.array([3, 4]), np.array([1, 2])]
+        ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
+
+        encoder = make_encoder().fit(ds)
+    finally:
+        ctx.shuffle_input_batch_bytes = original
+
+    stats = encoder.stats_["unique_values(t)"]
+    assert {tuple(int(x) for x in cat): idx for cat, idx in stats.items()} == expected
+
+
+def test_whole_list_encoders_fit_without_polars(monkeypatch):
+    """Arrow's uniqueness of a list-typed column needs the optional `polars`
+    package; the encoders must not."""
+    monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
+    table = pa.table({"t": [["a", "b"], ["c"], ["a", "b"]]})
+    with pytest.raises(ImportError):
+        Unique(on="t").aggregate_block(table)
+
+    encoder = OneHotEncoder(["t"])
+    encoder._fit(None)
+    (spec,) = list(encoder._stat_computation_plan)
+    aggregator = spec.stat_fn
+
+    partials = [aggregator.aggregate_block(table), aggregator.aggregate_block(table)]
+    merged = aggregator._combine_column(pa.chunked_array([pa.array(partials)]))
+
+    assert {tuple(category) for category in merged} == {("a", "b"), ("c",)}
 
 
 if __name__ == "__main__":
