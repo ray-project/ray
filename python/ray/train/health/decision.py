@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, ClassVar, List
 
 from ray.util.annotations import PublicAPI
 
@@ -34,11 +34,15 @@ class HealthDecision:
 class Noop(HealthDecision):
     """Take no action."""
 
+    _severity: ClassVar[int] = 0
+
 
 @PublicAPI(stability="alpha")
 @dataclass
 class Reattempt(HealthDecision):
     """End the current attempt of the training run and start a new one."""
+
+    _severity: ClassVar[int] = 2
 
 
 @PublicAPI(stability="alpha")
@@ -50,6 +54,7 @@ class Evict(HealthDecision):
         target_nodes: IDs of the nodes to evict.
     """
 
+    _severity: ClassVar[int] = 3
     target_nodes: List["NodeIdStr"]
 
 
@@ -63,4 +68,5 @@ class Diagnose(HealthDecision):
         checks: The checks to run.
     """
 
+    _severity: ClassVar[int] = 1
     checks: List["HealthCheck"]
