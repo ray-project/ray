@@ -85,7 +85,7 @@ clean:
 	rm -rf ./source/ray-references/api/*/doc/*
 	rm -rf ./source/cluster/running-applications/doc/*
 	rm -rf ./source/ray-observability/api/state/doc*
-	rm -rf ./source/rllib/package_ref/doc*
+	rm -rf ./source/rllib/api/doc* ./source/rllib/api/env/doc*
 	rm -f ./source/data/examples.rst
 	rm -f ./source/serve/examples.rst
 	rm -f ./source/train/examples.rst

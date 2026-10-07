@@ -819,6 +819,9 @@ redirects:
   to: /rllib/package_ref/env/doc/:splat
   type: page
 - from: /rllib/package_ref/*
+  to: /rllib/api/:splat
+  type: page
+- from: /rllib/api/*
   to: /rllib/package_ref/index.html
   type: page
 - from: /serve/api/*
