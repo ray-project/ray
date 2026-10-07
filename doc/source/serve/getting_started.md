@@ -244,3 +244,5 @@ Composed Ray Serve applications let you deploy each part of your machine learnin
 ```
 
 [^f1]: [Starlette](https://starlette.dev/) is a web server framework used by Ray Serve.
+
+<!-- Smoke test for the docs-example-test opt-in; do not merge. -->

@@ -160,3 +160,4 @@ df_results = results.get_dataframe()
 # Get a dataframe of results for a specific score or mode
 df = results.get_dataframe(filter_metric="score", filter_mode="max")
 # __results_end__
+# Smoke test for the docs-example-test opt-in; do not merge.

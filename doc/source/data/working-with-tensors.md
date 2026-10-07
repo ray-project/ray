@@ -160,3 +160,5 @@ ds.write_json("/tmp/simple")
 ::::
 
 For more information on saving data, see {ref}`Saving data <saving-data>`.
+
+<!-- Smoke test for the docs-example-test opt-in; do not merge. -->

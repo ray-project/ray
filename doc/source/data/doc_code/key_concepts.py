@@ -25,3 +25,4 @@ tuner = tune.Tuner(
 tuner.fit()
 # __resource_allocation_1_end__
 # fmt: on
+# Smoke test for the docs-example-test opt-in; do not merge.
