@@ -71,15 +71,22 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       return false;
     }
 
+    const int message_type = static_cast<int>(message->message_type());
+    if (!IsValidMessageType(message_type)) {
+      RAY_LOG_EVERY_MS(WARNING, 1000)
+          << "Dropping sync message with invalid message type " << message_type;
+      return false;
+    }
+
     auto &node_versions = GetNodeComponentVersions(message->node_id());
-    if (node_versions[message->message_type()] >= message->version()) {
+    if (node_versions[message_type] >= message->version()) {
       RAY_LOG(DEBUG) << "Dropping sync message with stale version. latest version: "
-                     << node_versions[message->message_type()]
+                     << node_versions[message_type]
                      << ", dropped message version: " << message->version();
       return false;
     }
 
-    node_versions[message->message_type()] = message->version();
+    node_versions[message_type] = message->version();
     sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
         std::move(message);
     // sending_buffer_ size can be greater than max_batch_size_ as previous message batch
@@ -144,22 +151,37 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
                    << message_batch->messages_size();
 
     for (const auto &message : message_batch->messages()) {
+      // Skip unknown types instead of disconnecting; a newer peer may send them.
+      const int message_type = static_cast<int>(message.message_type());
+      if (!IsValidMessageType(message_type)) {
+        RAY_LOG_EVERY_MS(WARNING, 1000)
+            << "Dropping sync message with invalid message type " << message_type
+            << " from node " << NodeID::FromBinary(GetRemoteNodeID());
+        continue;
+      }
+      // NodeID::FromBinary, used by receivers and below, aborts on a bad length.
+      if (message.node_id().size() != NodeID::Size()) {
+        RAY_LOG_EVERY_MS(WARNING, 1000)
+            << "Dropping sync message with invalid node_id size "
+            << message.node_id().size() << " from node "
+            << NodeID::FromBinary(GetRemoteNodeID());
+        continue;
+      }
+
       auto &node_versions = GetNodeComponentVersions(message.node_id());
       RAY_LOG(DEBUG) << "Receive update: "
-                     << " message_type=" << message.message_type()
+                     << " message_type=" << message_type
                      << ", message_version=" << message.version()
-                     << ", local_message_version="
-                     << node_versions[message.message_type()];
-      if (node_versions[message.message_type()] < message.version()) {
-        node_versions[message.message_type()] = message.version();
+                     << ", local_message_version=" << node_versions[message_type];
+      if (node_versions[message_type] < message.version()) {
+        node_versions[message_type] = message.version();
         message_processor_(std::make_shared<RaySyncMessage>(message));
       } else {
         RAY_LOG_EVERY_MS(WARNING, 1000)
             << "Drop message received from " << NodeID::FromBinary(message.node_id())
             << " because the message version " << message.version()
-            << " is older than the local version "
-            << node_versions[message.message_type()]
-            << ". Message type: " << message.message_type();
+            << " is older than the local version " << node_versions[message_type]
+            << ". Message type: " << message_type;
       }
     }
   }
@@ -265,6 +287,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseDropsMalformedMessages);
 
   friend struct SyncerServerTest;
 
