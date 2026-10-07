@@ -10,16 +10,14 @@ NodeIdStr = str
 @PublicAPI(stability="alpha")
 @dataclass
 class ProbeResult:
-    """The result of polling a probe once.
+    """One reading returned by a probe's ``poll()``.
 
     Attributes:
         metrics: Readings by metric name, for example ``{"gpu0_temp_c": 71.0}``.
-            The probe chooses the names, and Ray Train does not interpret them.
-            Names only need to be unique within one probe, because each probe's
-            results are stored separately. Each value is the reading at the
-            time of the poll.
-        timestamp_s: When Ray Train collected the result, in seconds since the
-            epoch. Set by Ray Train.
+            The probe chooses the names; they only need to be unique within
+            the probe. Each value is the reading at the time of the poll.
+        timestamp_s: When the reading was taken, in seconds since the epoch.
+            Leave it unset to use the time ``poll()`` returned.
     """
 
     metrics: Dict[str, float] = field(default_factory=dict)
@@ -28,15 +26,14 @@ class ProbeResult:
 
 @PublicAPI(stability="alpha")
 class Probe(abc.ABC):
-    """Base class for probes. Subclass ``WorkerProbe`` or ``NodeProbe``.
-
-    Ray Train keeps the latest result of each probe from each worker and node,
-    in memory. Results are dropped when a new set of workers starts.
+    """Takes a health reading. Subclass ``WorkerProbe`` or ``NodeProbe`` to
+    choose where it runs.
 
     Attributes:
-        name: The name results are stored under. Defaults to the class name.
-            Set on the class.
-        poll_interval_s: Seconds between periodic polls.
+        name: The probe's name, which identifies its readings. Defaults to the
+            class name. Set on the class.
+        poll_interval_s: Seconds between polls when the probe is polled
+            periodically. Not used when it is polled once.
     """
 
     name: Optional[str] = None
@@ -49,31 +46,27 @@ class Probe(abc.ABC):
 
 @PublicAPI(stability="alpha")
 class WorkerProbe(Probe):
-    """A probe that runs in each training worker process.
-
-    It is polled when Ray Train polls the workers, so it is not polled more
-    often than that, even with a shorter ``poll_interval_s``.
-    """
+    """A probe that runs in each training worker process."""
 
     @abc.abstractmethod
     def poll(self) -> ProbeResult:
-        """Poll this worker once.
+        """Take one reading of this worker.
 
         Returns:
-            The result.
+            The reading.
         """
         raise NotImplementedError
 
 
 @PublicAPI(stability="alpha")
 class NodeProbe(Probe):
-    """A probe that runs on each node, outside the training worker processes."""
+    """A probe that runs once per node, outside the training worker processes."""
 
     @abc.abstractmethod
     def poll(self) -> ProbeResult:
-        """Poll this node once.
+        """Take one reading of this node.
 
         Returns:
-            The result.
+            The reading.
         """
         raise NotImplementedError

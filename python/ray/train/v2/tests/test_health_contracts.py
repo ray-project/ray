@@ -6,9 +6,9 @@ from ray.train.health import (
     Diagnose,
     Evaluator,
     Evict,
+    HealthCheck,
     HealthConfig,
     HealthDecision,
-    HealthPolicy,
     HealthState,
     NodeProbe,
     Noop,
@@ -60,27 +60,30 @@ def test_decisions_are_constructed_as_subclasses():
     assert Noop().reason == ""
     assert Reattempt(reason="hang").reason == "hang"
     assert Evict(target_nodes=["n1"]).target_nodes == ["n1"]
-    assert Diagnose(probe_creator=lambda: [Loss()]).target_ranks == []
+    check = HealthCheck(probe_creator=lambda: [Loss()])
+    assert Diagnose(checks=[check]).target_ranks == []
 
 
-def test_results_are_read_by_probe_class():
-    state = HealthState(
-        probe_results={
-            "Loss": {0: ProbeResult(metrics={"loss": 2.0}), 1: ProbeResult()},
-            "HostTemp": {"nB": ProbeResult(metrics={"gpu0_temp_c": 71.0})},
-        }
-    )
-    assert state.results(Loss)[0].metrics == {"loss": 2.0}
-    assert sorted(state.results(Loss)) == [0, 1]
-    assert state.results(HostTemp) == {"nB": ProbeResult(metrics={"gpu0_temp_c": 71.0})}
-    assert state.results(Named) == {}
+def test_a_probe_must_implement_poll():
+    class NoPoll(WorkerProbe):
+        pass
+
+    with pytest.raises(TypeError):
+        NoPoll()
+
+
+def test_evict_takes_its_nodes_by_keyword():
+    with pytest.raises(TypeError):
+        Evict(["n1"])
+    with pytest.raises(TypeError):
+        Evict(reason="hot")
 
 
 def test_an_evaluator_returns_one_decision():
     assert Healthy().evaluate(HealthState()) == Noop()
 
 
-def test_diagnose_needs_probes():
+def test_diagnose_needs_checks():
     with pytest.raises(TypeError):
         Diagnose(target_ranks=[0])
 
@@ -90,22 +93,21 @@ def test_diagnose_needs_probes():
     [
         {"probe_creator": lambda: [HostTemp()]},
         {"evaluator_creator": lambda: [Healthy()]},
-        {"probe_creator": lambda: [HostTemp()], "preflight": True},
     ],
 )
-def test_valid_policies(fields):
-    policy = HealthPolicy(**fields)
-    assert HealthConfig(policies=[policy]).policies == [policy]
+def test_valid_checks(fields):
+    check = HealthCheck(**fields)
+    assert HealthConfig(checks=[check]).checks == [check]
 
 
-@pytest.mark.parametrize("preflight", [False, True])
-def test_a_policy_with_neither_probes_nor_evaluators_is_rejected(preflight):
+def test_a_check_with_neither_probes_nor_evaluators_is_rejected():
     with pytest.raises(ValueError):
-        HealthPolicy(preflight=preflight)
+        HealthCheck()
 
 
-def test_health_config_defaults_to_no_policies():
-    assert HealthConfig().policies == []
+def test_health_config_defaults_to_no_checks():
+    assert HealthConfig().checks == []
+    assert HealthConfig().preflight_checks == []
 
 
 if __name__ == "__main__":

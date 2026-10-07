@@ -1,3 +1,4 @@
+from ray.train.health.check import Evaluator, HealthCheck, HealthConfig
 from ray.train.health.decision import (
     Diagnose,
     Evict,
@@ -5,17 +6,21 @@ from ray.train.health.decision import (
     Noop,
     Reattempt,
 )
-from ray.train.health.policy import Evaluator, HealthConfig, HealthPolicy
-from ray.train.health.probe import NodeProbe, Probe, ProbeResult, WorkerProbe
+from ray.train.health.probe import (
+    NodeProbe,
+    Probe,
+    ProbeResult,
+    WorkerProbe,
+)
 from ray.train.health.state import HealthState
 
 __all__ = [
     "Diagnose",
     "Evaluator",
     "Evict",
+    "HealthCheck",
     "HealthConfig",
     "HealthDecision",
-    "HealthPolicy",
     "HealthState",
     "NodeProbe",
     "Noop",

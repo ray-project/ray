@@ -10,18 +10,15 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class Evaluator(abc.ABC):
-    """Decides what the run should do, based on the latest probe results.
-
-    One instance is used for the whole run. If ``evaluate()`` raises, Ray Train
-    logs the exception and does not call this evaluator again during the run.
-    """
+    """Decides what the run should do from probe readings. Implement
+    ``evaluate()``. An instance can keep state between calls."""
 
     @abc.abstractmethod
     def evaluate(self, state: HealthState) -> HealthDecision:
         """Decide what the run should do.
 
         Args:
-            state: The latest probe results.
+            state: The latest probe readings.
 
         Returns:
             A ``HealthDecision``. ``Noop()`` if no action is needed.
@@ -38,31 +35,24 @@ EvaluatorCreator = Callable[[], List[Evaluator]]
 
 @PublicAPI(stability="alpha")
 @dataclass
-class HealthPolicy:
-    """A set of probes and the evaluators that decide on their results.
-
-    The policy's probes are polled periodically. The creators are called once
-    per run.
+class HealthCheck:
+    """Probes, and the evaluators that decide on their readings.
 
     Attributes:
-        probe_creator: Creates the policy's probes.
-        evaluator_creator: Creates the policy's evaluators.
-        preflight: Whether the policy runs before training starts, instead of
-            while training runs.
+        probe_creator: Returns the check's probes.
+        evaluator_creator: Returns the check's evaluators.
 
     Raises:
-        ValueError: If the policy has neither probes nor evaluators.
+        ValueError: If the check has neither probes nor evaluators.
     """
 
     probe_creator: Optional[ProbeCreator] = None
     evaluator_creator: Optional[EvaluatorCreator] = None
-    preflight: bool = False
 
     def __post_init__(self):
         if self.probe_creator is None and self.evaluator_creator is None:
             raise ValueError(
-                "A HealthPolicy needs a probe_creator, an evaluator_creator, "
-                "or both."
+                "A HealthCheck needs a probe_creator, an evaluator_creator, or both."
             )
 
 
@@ -72,7 +62,10 @@ class HealthConfig:
     """Health monitoring configuration for a run.
 
     Attributes:
-        policies: The health policies. Empty means no health monitoring.
+        checks: Checks that run periodically while training runs.
+        preflight_checks: Checks that run once on each node before training
+            starts there.
     """
 
-    policies: List[HealthPolicy] = field(default_factory=list)
+    checks: List[HealthCheck] = field(default_factory=list)
+    preflight_checks: List[HealthCheck] = field(default_factory=list)

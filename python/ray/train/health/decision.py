@@ -1,10 +1,11 @@
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, List
+from typing import TYPE_CHECKING, List
 
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train.health.probe import NodeIdStr, Probe
+    from ray.train.health.check import HealthCheck
+    from ray.train.health.probe import NodeIdStr
 
 
 @PublicAPI(stability="alpha")
@@ -41,7 +42,7 @@ class Reattempt(HealthDecision):
 
 
 @PublicAPI(stability="alpha")
-@dataclass
+@dataclass(kw_only=True)
 class Evict(HealthDecision):
     """Stop using some nodes for the rest of the run.
 
@@ -49,22 +50,23 @@ class Evict(HealthDecision):
         target_nodes: IDs of the nodes to evict.
     """
 
-    target_nodes: List["NodeIdStr"] = field(default_factory=list)
+    target_nodes: List["NodeIdStr"]
 
 
 @PublicAPI(stability="alpha")
 @dataclass(kw_only=True)
 class Diagnose(HealthDecision):
-    """Poll some probes once.
+    """Run some health checks once: poll their probes once, and have their
+    evaluators decide on the readings.
 
     Attributes:
-        probe_creator: Creates the probes to poll.
+        checks: The checks to run.
         target_ranks: World ranks to poll ``WorkerProbe``\\ s on. Empty means
             all ranks.
         target_nodes: IDs of the nodes to poll ``NodeProbe``\\ s on. Empty means
             all nodes with workers.
     """
 
-    probe_creator: Callable[[], List["Probe"]]
+    checks: List["HealthCheck"]
     target_ranks: List[int] = field(default_factory=list)
     target_nodes: List["NodeIdStr"] = field(default_factory=list)
