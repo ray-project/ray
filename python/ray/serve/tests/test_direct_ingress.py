@@ -3,6 +3,7 @@ import json
 import os
 import socket
 import sys
+import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Iterable, Optional, Tuple
@@ -2220,6 +2221,114 @@ def test_backpressure_retry_after_and_drain_counter(
         assert not_done.pop().result().status_code == 200
 
     wait_for_condition(lambda: drain_counter() == initial_drain_counter + 2)
+
+
+def test_backpressure_retry_after_warms_up_to_computed_value(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """Direct-ingress `queue_drain_rate` moves from the static fallback to a
+    computed `Retry-After` once the replica has observed real completions."""
+    name = "retry-after-warm-up"
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        name=name,
+        max_ongoing_requests=1,
+        max_queued_requests=1,
+        backpressure_config={
+            "status_code": 429,
+            "retry_after_policy": "queue_drain_rate",
+            "retry_after_s": 30,
+        },
+    )
+    class SlowEcho:
+        async def __call__(self) -> str:
+            await signal.wait.remote()
+            await asyncio.sleep(0.01)
+            return "ok"
+
+    serve.run(SlowEcho.bind(), name=name)
+    http_url = get_application_url("HTTP", app_name=name)
+    replica = _get_replica_actor_handle(name, name)
+
+    def drain_counter() -> int:
+        return ray.get(replica._get_backpressure_drain_counter_for_testing.remote())
+
+    # 30s jittered by +/-20%, rounded up.
+    fallback_values = {str(v) for v in range(24, 37)}
+    # These requests drain in ~10ms, so the estimate is clamped to 1s and
+    # jittered to at most 2s.
+    computed_values = {"1", "2"}
+
+    # Cold: nothing has completed yet, so there is no drain rate to compute
+    # from and the rejection must use the static fallback.
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        running = executor.submit(httpx.get, http_url, timeout=30)
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+        # One of these is queued and the other is rejected.
+        pending = [executor.submit(httpx.get, http_url, timeout=30) for _ in range(2)]
+        done, not_done = wait(pending, timeout=30, return_when=FIRST_COMPLETED)
+        assert len(done) == 1 and len(not_done) == 1
+        cold_rejection = done.pop().result()
+        assert cold_rejection.status_code == 429
+        assert cold_rejection.headers["retry-after"] in fallback_values
+        assert drain_counter() == 0
+
+        # Unblock all requests from now on.
+        ray.get(signal.send.remote())
+        assert running.result().status_code == 200
+        assert not_done.pop().result().status_code == 200
+
+    # Warm: keep the replica saturated with real requests until a rejection
+    # carries the computed value.
+    responses = []
+    stop = threading.Event()
+
+    def send_load():
+        while not stop.is_set():
+            r = httpx.get(http_url, timeout=30)
+            responses.append((r.status_code, r.headers.get("retry-after")))
+
+    load_threads = [threading.Thread(target=send_load) for _ in range(8)]
+    for t in load_threads:
+        t.start()
+    try:
+        wait_for_condition(
+            lambda: any(
+                retry_after in computed_values for _, retry_after in list(responses)
+            ),
+            timeout=60,
+        )
+    finally:
+        stop.set()
+        for t in load_threads:
+            t.join()
+
+    assert {status for status, _ in responses} <= {200, 429}
+    rejections = {retry_after for status, retry_after in responses if status == 429}
+    assert rejections <= fallback_values | computed_values
+
+    # The estimator was warmed by the same completions the drain counter counts.
+    num_completed = 2 + sum(1 for status, _ in responses if status == 200)
+    wait_for_condition(lambda: drain_counter() >= num_completed)
+
+    # Once warm, it stays warm: block the replica again and every rejection
+    # carries the computed value, not the fallback.
+    ray.get(signal.send.remote(clear=True))
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        running = executor.submit(httpx.get, http_url, timeout=30)
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+        # One of these is queued and the other four are rejected.
+        pending = [executor.submit(httpx.get, http_url, timeout=30) for _ in range(5)]
+        wait_for_condition(lambda: sum(f.done() for f in pending) == 4)
+        [queued] = [f for f in pending if not f.done()]
+        rejected = [f.result() for f in pending if f is not queued]
+        assert all(r.status_code == 429 for r in rejected)
+        assert {r.headers["retry-after"] for r in rejected} <= computed_values
+
+        ray.get(signal.send.remote())
+        assert running.result().status_code == 200
+        assert queued.result().status_code == 200
 
 
 def test_tasks_cancelled_on_timeout(_skip_if_ff_not_enabled, serve_instance):

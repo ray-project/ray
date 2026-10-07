@@ -13,7 +13,7 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve.exceptions import BackPressureError
 
 # Every value `retry_after_s=7` can produce: jittered by +/-20%, rounded up.
@@ -233,6 +233,46 @@ def test_http_backpressure(
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
+
+
+@skip_if_haproxy("reads the native Serve ProxyActor's router state")
+def test_proxy_drain_counter_accessor(serve_instance):
+    """The proxy exposes its router's drain counter for a route over the actor
+    API, so tooling outside the proxy process can read it directly."""
+
+    @serve.deployment
+    class Echo:
+        def __call__(self) -> str:
+            return "ok"
+
+    serve.run(Echo.bind())
+    url = get_application_url()
+
+    # `serve_instance` runs a single HeadOnly proxy, so every request below
+    # goes through the proxy whose counter is read.
+    proxies = ray.get(serve_instance._controller.get_proxies.remote())
+    assert len(proxies) == 1
+    [proxy] = proxies.values()
+
+    def drain_counter() -> int:
+        return ray.get(proxy._get_backpressure_drain_counter_for_testing.remote("/"))
+
+    # Wait until the proxy routes requests for the app.
+    wait_for_condition(lambda: httpx.get(url).status_code == 200)
+
+    initial = drain_counter()
+    # Reading doesn't reset or advance the counter.
+    assert drain_counter() == initial
+
+    num_requests = 5
+    for _ in range(num_requests):
+        assert httpx.get(url).status_code == 200
+
+    # Each request was assigned to a replica by this proxy's router before its
+    # response was sent, so the counter has already advanced.
+    after = drain_counter()
+    assert after >= initial + num_requests
+    assert drain_counter() == after
 
 
 @pytest.mark.parametrize(
