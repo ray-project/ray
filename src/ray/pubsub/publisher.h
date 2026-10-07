@@ -504,7 +504,6 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
-  friend class MockPublisher;
   friend class FakePublisher;
 
   /// Testing only. Binds clock_ to a process-wide real clock; subclasses that use
