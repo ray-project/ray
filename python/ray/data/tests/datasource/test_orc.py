@@ -18,9 +18,7 @@ from ray.data.block import BlockAccessor
 def orc_reader_version(request, monkeypatch):
     from ray.data.context import DataContext
 
-    monkeypatch.setattr(
-        DataContext.get_current(), "use_orc_datasource_v2", request.param
-    )
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", request.param)
     return request.param
 
 
@@ -186,7 +184,7 @@ def test_read_orc_v2_unifies_schema_and_hive_partitions(
     from ray.data.context import DataContext
     from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
-    monkeypatch.setattr(DataContext.get_current(), "use_orc_datasource_v2", True)
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
 
     for year in ("2023", "2024"):
         partition_dir = tmp_path / f"year={year}"
@@ -221,7 +219,7 @@ def test_read_orc_v2_unifies_schema_and_hive_partitions(
 def test_read_orc_v1_fallback(ray_start_regular_shared, tmp_path, monkeypatch):
     from ray.data.context import DataContext
 
-    monkeypatch.setattr(DataContext.get_current(), "use_orc_datasource_v2", False)
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", False)
     path = os.path.join(tmp_path, "data.orc")
     _write_orc(path, pa.table({"id": [1, 2]}))
 
@@ -483,14 +481,13 @@ def test_read_orc_rejects_partition_conflict_before_filter(
         ds.filter(expr=col("year") == "from-file").select_columns(["id"]).take_all()
 
 
-def test_read_orc_default_preserves_columns_outside_v2_sample(
+def test_read_orc_v1_fallback_preserves_columns_outside_v2_sample(
     ray_start_regular_shared, tmp_path, monkeypatch
 ):
     from ray.data.context import DataContext
 
-    # Enabling Parquet V2 must not migrate existing ORC reads implicitly.
-    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
-    assert DataContext.get_current().use_orc_datasource_v2 is False
+    # V1 preserves columns that are absent from the V2 schema sample.
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", False)
     for index in range(20):
         table: dict[str, list[int] | list[str]] = {"id": [index]}
         if index == 19:
