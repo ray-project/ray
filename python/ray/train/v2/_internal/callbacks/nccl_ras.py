@@ -533,19 +533,17 @@ class DiagnosticResult:
     """The results from a diagnostic (nvidia-smi, py-spy, etc) from a node or worker.
 
     Attributes:
-        rank: The worker's world rank.
         value: What the diagnostic function returned, or ``None`` if it didn't.
         error: Why this diagnostic has no value, or ``None`` when it does.
     """
 
-    rank: int
     value: Optional[Any] = None
     error: Optional[str] = None
 
 
 def fan_out_to_workers(
     workers: List[Worker], fn: Callable[..., Any], *fn_args, timeout_s: float
-) -> List[DiagnosticResult]:
+) -> Dict[int, DiagnosticResult]:
     """Run ``fn`` on every worker in parallel and collect what each returned.
 
     Args:
@@ -555,7 +553,7 @@ def fan_out_to_workers(
         timeout_s: Budget for the whole fan-out, shared by every worker.
 
     Returns:
-        The worker dumps collected, not necessarily in order.
+        Dictionary of the diagnostic result with its world rank of the worker.
     """
     dumps: Dict[int, DiagnosticResult] = {}
     refs: Dict[ray.ObjectRef, int] = {}
@@ -566,7 +564,7 @@ def fan_out_to_workers(
             refs[worker.execute_async(fn, *fn_args)] = rank
         except Exception as e:  # noqa: BLE001
             logger.info("Failed to launch %s on rank %d: %s", fn.__name__, rank, e)
-            dumps[rank] = DiagnosticResult(rank, error=f"failed to launch: {e}")
+            dumps[rank] = DiagnosticResult(error=f"failed to launch: {e}")
 
     if refs:
         _, not_ready = ray.wait(list(refs), num_returns=len(refs), timeout=timeout_s)
@@ -580,17 +578,17 @@ def fan_out_to_workers(
                     timeout_s,
                 )
                 dumps[rank] = DiagnosticResult(
-                    rank, error=f"timed out after {timeout_s:.0f}s"
+                    error=f"timed out after {timeout_s:.0f}s"
                 )
                 continue
 
             try:
-                dumps[rank] = DiagnosticResult(rank, value=ray.get(ref))
+                dumps[rank] = DiagnosticResult(value=ray.get(ref))
             except Exception as e:  # noqa: BLE001
                 logger.info("Failed to collect %s on rank %d: %s", fn.__name__, rank, e)
-                dumps[rank] = DiagnosticResult(rank, error=f"failed to collect: {e}")
+                dumps[rank] = DiagnosticResult(error=f"failed to collect: {e}")
 
-    return list(dumps.values())
+    return dumps
 
 
 def dump_stack_trace(pyspy_timeout_s: float) -> str:
@@ -1075,8 +1073,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             timeout_s=_STACK_DUMP_TIMEOUT_S,
         )
         files = {
-            f"rank_{dump.rank}.log": dump.value if dump.error is None else dump.error
-            for dump in dumps
+            f"rank_{rank}.log": dump.value if dump.error is None else dump.error
+            for rank, dump in dumps.items()
         }
         return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
 
@@ -1103,8 +1101,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         )
 
         files: Dict[str, str] = {}
-        for dump in dumps:
-            node_ip = node_ips[dump.rank]
+        for rank, dump in dumps.items():
+            node_ip = node_ips[rank]
             if dump.error is None and dump.value["ok"]:
                 files[f"node_{node_ip}.log"] = dump.value["stdout"]
             else:

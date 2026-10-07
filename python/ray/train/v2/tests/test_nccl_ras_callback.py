@@ -1549,8 +1549,11 @@ def test_fan_out_collects_every_worker(fan_out):
     dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
 
     # A dump is keyed by the worker's world rank, not its position in the list.
-    assert {dump.rank: dump.value for dump in dumps} == {7: "stack-7", 4: "stack-4"}
-    assert all(dump.error is None for dump in dumps)
+    assert {rank: dump.value for rank, dump in dumps.items()} == {
+        7: "stack-7",
+        4: "stack-4",
+    }
+    assert all(dump.error is None for dump in dumps.values())
     workers[0].execute_async.assert_called_once_with(dump_stack_trace, 25.0)
     # One wait for the whole fan-out, sharing the budget between the workers.
     assert fan_out.wait.call_args.kwargs["timeout"] == 30.0
@@ -1570,10 +1573,7 @@ def test_fan_out_records_per_rank_failures(fan_out, broken, expected_error):
     # error saying why, which is what ends up in that rank's file.
     workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
 
-    dumps = {
-        dump.rank: dump
-        for dump in fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
-    }
+    dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
 
     assert dumps[0].value is None
     assert expected_error in dumps[0].error
@@ -1653,10 +1653,10 @@ def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
     callback = make_diagnostics_callback(workers)
     calls = scripted_fan_out(
         monkeypatch,
-        [
-            DiagnosticResult(0, value={"ok": True, "stdout": "node 1 GPUs"}),
-            DiagnosticResult(2, value={"ok": True, "stdout": "node 2 GPUs"}),
-        ],
+        {
+            0: DiagnosticResult(value={"ok": True, "stdout": "node 1 GPUs"}),
+            2: DiagnosticResult(value={"ok": True, "stdout": "node 2 GPUs"}),
+        },
     )
 
     fs_path = callback.dump_nodes_nvidia_smi()
@@ -1680,11 +1680,9 @@ def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
 @pytest.mark.parametrize(
     "bad_dump,expected_reason",
     [
-        (DiagnosticResult(0, error="timed out after 30s"), "timed out after 30s"),
+        (DiagnosticResult(error="timed out after 30s"), "timed out after 30s"),
         (
-            DiagnosticResult(
-                0, value={"ok": False, "reason": "`nvidia-smi -q` exited 9"}
-            ),
+            DiagnosticResult(value={"ok": False, "reason": "`nvidia-smi -q` exited 9"}),
             "exited 9",
         ),
     ],
@@ -1699,7 +1697,7 @@ def test_nvidia_smi_failed_node_gets_placeholder(
     callback = make_diagnostics_callback(workers)
     scripted_fan_out(
         monkeypatch,
-        [bad_dump, DiagnosticResult(1, value={"ok": True, "stdout": "GPUs"})],
+        {0: bad_dump, 1: DiagnosticResult(value={"ok": True, "stdout": "GPUs"})},
     )
 
     callback.dump_nodes_nvidia_smi()
@@ -1716,10 +1714,10 @@ def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
     callback = make_diagnostics_callback([make_worker(0, node_ip="10.0.0.1")])
 
     def local_fan_out(workers, fn, *fn_args, timeout_s):
-        return [
-            DiagnosticResult(worker.distributed_context.world_rank, value=fn(*fn_args))
+        return {
+            worker.distributed_context.world_rank: DiagnosticResult(value=fn(*fn_args))
             for worker in workers
-        ]
+        }
 
     monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
 
@@ -1733,10 +1731,10 @@ def test_stack_traces_upload_per_rank(monkeypatch, uploads):
     callback = make_diagnostics_callback()
     calls = scripted_fan_out(
         monkeypatch,
-        [
-            DiagnosticResult(0, value="stack 0"),
-            DiagnosticResult(1, error="timed out after 30s"),
-        ],
+        {
+            0: DiagnosticResult(value="stack 0"),
+            1: DiagnosticResult(error="timed out after 30s"),
+        },
     )
 
     fs_path = callback.dump_workers_stack_traces()
