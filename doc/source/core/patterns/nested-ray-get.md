@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Anti-pattern: calling ray.get on task arguments serializes execution; pass object refs and let Ray resolve them."
+    description: "Anti-pattern: calling ray.get on task arguments inside a task blocks it while it holds a process and memory; pass object refs directly and let Ray resolve them."
 ---
 
 (nested-ray-get)=

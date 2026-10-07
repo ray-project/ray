@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Anti-pattern: serializing an ObjectRef out of band escapes reference counting and can let its value be reclaimed early."
+    description: "Anti-pattern: serializing an ObjectRef out of band escapes reference counting, so Ray pins its value and can leak it."
 ---
 
 (ray-out-of-band-object-ref-serialization)=

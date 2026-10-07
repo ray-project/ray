@@ -69,7 +69,7 @@ assert not psutil.pid_exists(pid)
 
 ## Enable the subreaper feature
 
-The subreaper feature is deprecated. Enable `process_group_cleanup_enabled` instead. To enable the subreaper feature anyway, set it when you start the cluster, through `_system_config` or the equivalent cluster configuration. You must restart the cluster to apply the change. For example, set the environment variable when you start the head node:
+The subreaper feature is deprecated. Use `process_group_cleanup_enabled` instead, which is on by default. To enable the subreaper feature anyway, set it when you start the cluster, through `_system_config` or the equivalent cluster configuration. You must restart the cluster to apply the change. For example, set the environment variable when you start the head node:
 
 ```bash
 RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper=true ray start --head

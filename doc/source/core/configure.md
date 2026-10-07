@@ -146,7 +146,7 @@ Worker processes across machines use a range of ports, and all ports in the rang
 - `--min-worker-port`: Minimum port number for the worker to bind to. Default: 10002.
 - `--max-worker-port`: Maximum port number for the worker to bind to. Default: 19999.
 
-Ray uses port numbers to tell apart the input and output of multiple workers on a single node. Each worker takes input and gives output on a single port number. Therefore, by default, each node has a maximum of 10,000 workers, regardless of the number of CPUs.
+Ray uses port numbers to tell apart the input and output of multiple workers on a single node. Each worker takes input and gives output on a single port number. Therefore, by default, each node has a maximum of 9,998 workers, regardless of the number of CPUs.
 
 In general, give Ray a wide range of possible worker ports, in case another program on your machine is using some of those ports. When debugging, though, it's useful to specify a short list of worker ports, such as `--worker-port-list=10000,10001,10002,10003,10004`. A short list limits the number of workers, the same as a narrow range does.
 

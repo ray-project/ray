@@ -22,7 +22,7 @@ ray.init(object_spilling_directory="/path/to/spill/dir")
 :::
 
 :::{tab-item} CLI
-```{doctest}
+```bash
 ray start --object-spilling-directory=/path/to/spill/dir
 ```
 :::

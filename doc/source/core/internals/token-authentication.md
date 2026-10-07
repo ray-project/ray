@@ -91,10 +91,6 @@ You must add the middleware explicitly to each server's middleware list, as in t
 
 On the client side, HTTP callers can attach headers with the `get_auth_headers_if_auth_enabled()` helper. If token authentication is enabled, this helper computes `Authorization: Bearer <token>` and merges it with any headers the caller supplies.
 
-:::{note}
-For HTTP, Ray doesn't wire up middleware and header injection automatically for new services. Add them manually.
-:::
-
 ## Ray dashboard flow
 
 When you start a Ray cluster with `RAY_AUTH_MODE=token`, opening the dashboard triggers the following authentication flow in the UI:

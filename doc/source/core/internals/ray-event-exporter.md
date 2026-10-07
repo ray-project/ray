@@ -303,8 +303,8 @@ To expose your event to external HTTP services, add it to [DEFAULT_EXPOSABLE_EVE
 
 ### Step 5: Update RayEventRecorder to publish your new event type
 
-Use [RayEventRecorder::AddEvent()](https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/ray_event_recorder.cc#L92) to add your new event type to the buffer.
+Use [RayEventRecorder::AddEvents()](https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/ray_event_recorder.cc#L92) to add your new event type to the buffer.
 
 ### Step 6: Update AggregatorAgent to publish your new event type
 
-Update [AggregatorAgent](https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/dashboard/modules/aggregator/aggregator_agent.py#L56) to publish your new event type.
+Update [AggregatorAgent](https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/dashboard/modules/aggregator/aggregator_agent.py#L77) to publish your new event type.

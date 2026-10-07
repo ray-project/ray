@@ -46,7 +46,7 @@ Next, define a Ray actor that sampling tasks can call to update progress. A Ray 
 To define a Ray actor, decorate a normal Python class with {func}`ray.remote <ray.remote>`. The progress actor has a `report_progress()` method, which each sampling task calls to update its own progress, and a `get_progress()` method, which gets the overall progress.
 
 ## Defining the sampling task
-After you define the actor, define a Ray task that takes up to `num_samples` samples and returns the number of samples inside the circle. Ray tasks are stateless functions. They execute asynchronously and run in parallel.
+After you define the actor, define a Ray task that takes `num_samples` samples and returns the number of samples inside the circle. Ray tasks are stateless functions. They execute asynchronously and run in parallel.
 
 ```{literalinclude} ../doc_code/monte_carlo_pi.py
 :language: python
