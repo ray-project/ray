@@ -24,3 +24,5 @@ runsc
 netstack
 [Ss]ubreaper
 PPID
+[Ee]victable
+[Ee]xposable
