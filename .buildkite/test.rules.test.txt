@@ -257,8 +257,8 @@ doc/redirects/README.md:
 python/ray/rllib/README.md:
 python/ray/rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
-python/ray/tune/README.rst:
-src/ray/design_docs/task_states.rst:
+python/ray/tune/README.md:
+src/ray/design_docs/task_states.md:
 release/benchmarks/README.md:
 AGENTS.md:
 README.rst:
