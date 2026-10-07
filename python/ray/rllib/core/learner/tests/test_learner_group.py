@@ -421,13 +421,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             learner_group.shutdown()
 
     def test_learners_drop_modules_only_some_of_them_have_data_for(self):
-        """A module that only some Learners have data for is dropped from the update.
-
-        Every module runs its own all-reduce, so a Learner training a module that its
-        peer has no data for would wait in that module's all-reduce forever -- as
-        this test then does, rather than fail. The group drops the module from every
-        Learner's batch instead and trains the rest.
-        """
+        """A module only some Learners have data for is dropped (hangs if not)."""
         env = gym.make("CartPole-v1")
         config = BaseTestingAlgorithmConfig().update_from_dict(
             REMOTE_CONFIGS["multi-cpu-ddp"]
@@ -438,7 +432,6 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
         )
 
         def weights(module_id):
-            """The weights of a module on each Learner of the group."""
             return [
                 result.get()
                 for result in learner_group.foreach_learner(
@@ -453,12 +446,11 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             with_p1, without_p1 = MetricsLogger.peek_results(
                 learner_group.update(batches=[fake_batch_with_p1(64), fake_batch(64)])
             )
-            # Neither Learner trains p1, and the one that had data for it says so, ...
+            # p1 isn't trained, its dropped rows are logged, and p0 trains in sync.
             check(p1_before, weights("p1"))
             self.assertEqual(
                 64, with_p1["p1"][LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME]
             )
-            # ... while both train the default module, in sync.
             self.assertEqual(
                 [64, 64],
                 [
@@ -472,15 +464,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             learner_group.shutdown()
 
     def test_learners_update_on_a_multi_agent_episode_cut_between_them(self):
-        """A multi-agent episode cut between two Learners updates both of them.
-
-        Cut right where one agent's episode ended, the second piece keeps that agent
-        without timesteps. The Learner connector pipeline raised on it, on the
-        Learner that got that piece, while its peer waited in the group agreement --
-        as this test then does, rather than fail. Now that Learner treats the agent
-        as no data, and with only one Learner holding data for its module, the
-        Learners drop the module from the update and train the rest.
-        """
+        """A cut that leaves an agent without timesteps still updates (hangs if not)."""
         space = gym.spaces.Box(-1.0, 1.0, (4,), np.float32)
         obs = np.zeros(4, np.float32)
         episode = MultiAgentEpisode(
@@ -489,7 +473,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             agent_module_ids={0: "p0", 1: "p1"},
         )
         episode.add_env_reset(observations={0: obs, 1: obs})
-        # Agent 1's episode ends after 3 of the 6 env steps, where an even cut falls.
+        # Agent 1 ends at env step 3, where the episode gets cut.
         for t in range(6):
             agents = [0, 1] if t < 3 else [0]
             episode.add_env_step(
@@ -527,12 +511,11 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 learner_group.update(episodes=[episode])
             )
             with_p1 = results[0]
-            # Both Learners train p0, ...
+            # p0 trains on both Learners, p1 (data on one only) on neither.
             self.assertEqual(
                 [True, True],
                 [result["p0"][NUM_MODULE_STEPS_TRAINED] > 0 for result in results],
             )
-            # ... and neither trains p1, which only the first one had data for.
             for result in results:
                 self.assertNotIn(NUM_MODULE_STEPS_TRAINED, result["p1"])
             self.assertGreater(
@@ -591,8 +574,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             ]
             check(learner_0_weights, learner_1_weights)
 
-            # A module that only one Learner has data for raises as well, instead of
-            # being dropped from the update.
+            # A module only one Learner has data for raises, too.
             learner_group.add_module(
                 module_id="p1",
                 module_spec=config.get_rl_module_spec(env=gym.make("CartPole-v1")),

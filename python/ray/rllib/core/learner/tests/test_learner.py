@@ -416,9 +416,7 @@ class TestLearner(unittest.TestCase):
             },
             env_steps=64,
         )
-        # A module without rows next to one with them is no reason to skip: such a
-        # module is dropped before the hook runs, and a group drops a module that
-        # only some of its Learners have rows for from all of them.
+        # An empty module next to a non-empty one is no reason to skip.
         self.assertFalse(learner._should_skip_update(partly_empty_batch))
         reader = get_cartpole_dataset_reader(batch_size=64)
         self.assertFalse(learner._should_skip_update(reader.next().as_multi_agent()))

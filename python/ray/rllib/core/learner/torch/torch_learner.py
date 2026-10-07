@@ -539,11 +539,9 @@ class TorchLearner(Learner):
             or not torch.distributed.is_initialized()
         ):
             return plan
-        # Every part of the plan reduces with MAX: skip if ANY Learner wants to, abort
-        # if ANY Learner must, step through the largest proposed number of
-        # minibatches, which completes every Learner's `num_epochs` passes over its
-        # own batch (see `test_minibatch_coverage_across_unequal_shards`), and per
-        # module, learn whether ANY Learner has data for it and whether ANY doesn't.
+        # MAX: skip or abort if ANY Learner says so, the largest minibatch count (see
+        # `test_minibatch_coverage_across_unequal_shards`), and per module whether ANY
+        # Learner has or lacks data for it.
         num_modules = len(plan.modules_with_data)
         plan_tensor = torch.tensor(
             [int(plan.skip), plan.num_minibatches, int(plan.abort)]
