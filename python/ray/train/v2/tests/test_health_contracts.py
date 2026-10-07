@@ -97,7 +97,7 @@ def test_diagnose_needs_checks():
 )
 def test_valid_checks(fields):
     check = HealthCheck(**fields)
-    assert HealthConfig(checks=[check]).checks == [check]
+    assert HealthConfig(mid_training_checks=[check]).mid_training_checks == [check]
 
 
 def test_a_check_with_neither_probes_nor_evaluators_is_rejected():
@@ -106,7 +106,7 @@ def test_a_check_with_neither_probes_nor_evaluators_is_rejected():
 
 
 def test_health_config_defaults_to_no_checks():
-    assert HealthConfig().checks == []
+    assert HealthConfig().mid_training_checks == []
     assert HealthConfig().preflight_checks == []
 
 

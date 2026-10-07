@@ -38,7 +38,7 @@ class Noop(HealthDecision):
 @PublicAPI(stability="alpha")
 @dataclass
 class Reattempt(HealthDecision):
-    """Restart the workers."""
+    """End the current attempt of the training run and start a new one."""
 
 
 @PublicAPI(stability="alpha")

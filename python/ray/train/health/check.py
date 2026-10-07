@@ -62,10 +62,10 @@ class HealthConfig:
     """Health monitoring configuration for a run.
 
     Attributes:
-        checks: Checks that run periodically during training.
+        mid_training_checks: Checks that run periodically during training.
         preflight_checks: Checks that run once on each node before training
             starts.
     """
 
-    checks: List[HealthCheck] = field(default_factory=list)
+    mid_training_checks: List[HealthCheck] = field(default_factory=list)
     preflight_checks: List[HealthCheck] = field(default_factory=list)
