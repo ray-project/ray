@@ -1756,6 +1756,19 @@ def test_config_models_backfill_fields_missing_from_legacy_checkpoint(model_cls)
     assert getattr(restored, field_name) == expected
 
 
+def test_request_router_config_backfills_private_attr_missing_from_legacy_checkpoint():
+    """Private attributes are backfilled too: a RequestRouterConfig pickled by
+    an older version may lack `_serialized_request_router_cls`, which
+    `to_proto()` reads when a recovered replica is started."""
+    state = RequestRouterConfig().__getstate__()
+    state["__pydantic_private__"].pop("_serialized_request_router_cls")
+
+    restored = RequestRouterConfig.__new__(RequestRouterConfig)
+    restored.__setstate__(state)
+
+    assert restored._serialized_request_router_cls == b""
+
+
 if __name__ == "__main__":
     import sys
 

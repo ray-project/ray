@@ -191,7 +191,8 @@ class _ForwardCompatModel(BaseModel):
     ``__init__`` on the first read of that field, and keeps failing on every
     restart.
 
-    ``__setstate__`` sets each missing field to its default.
+    ``__setstate__`` sets each missing field and private attribute to its
+    default.
     """
 
     def __setstate__(self, state):
@@ -201,6 +202,13 @@ class _ForwardCompatModel(BaseModel):
                 object.__setattr__(
                     self, name, field.get_default(call_default_factory=True)
                 )
+        private_attributes = type(self).__private_attributes__
+        if private_attributes:
+            if self.__pydantic_private__ is None:
+                object.__setattr__(self, "__pydantic_private__", {})
+            for name, attr in private_attributes.items():
+                if name not in self.__pydantic_private__:
+                    self.__pydantic_private__[name] = attr.get_default()
 
 
 @PublicAPI(stability="alpha")
