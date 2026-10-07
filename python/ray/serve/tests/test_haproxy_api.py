@@ -2989,7 +2989,7 @@ async def test_serving_waits_for_expected_routing_config_version(monkeypatch):
     )
     manager._applied_target_groups = [target_group]
     manager._applied_target_groups_version = RoutingConfigVersion(
-        epoch="epoch", sequence=1
+        generation=1, sequence=1
     )
 
     backend_name = manager._generate_backend_name(target_group)
@@ -3005,13 +3005,13 @@ async def test_serving_waits_for_expected_routing_config_version(monkeypatch):
         nonlocal sleep_calls
         sleep_calls += 1
         manager._applied_target_groups_version = RoutingConfigVersion(
-            epoch="epoch", sequence=2
+            generation=1, sequence=2
         )
 
     monkeypatch.setattr(asyncio, "sleep", apply_expected_version_after_sleep)
 
     await manager.serving(
-        expected_routing_config_version=RoutingConfigVersion(epoch="epoch", sequence=2)
+        expected_routing_config_version=RoutingConfigVersion(generation=1, sequence=2)
     )
     assert sleep_calls == 1
 
@@ -3027,7 +3027,7 @@ async def test_applied_target_groups_advance_only_after_reload():
             app_name="app",
         )
     ]
-    version = RoutingConfigVersion(epoch="epoch", sequence=1)
+    version = RoutingConfigVersion(generation=1, sequence=1)
     manager._target_groups = target_groups
     manager._target_groups_version = version
     manager._applied_target_groups = []
@@ -3044,7 +3044,7 @@ async def test_applied_target_groups_advance_only_after_reload():
     assert manager._applied_target_groups_version == version
 
     manager._target_groups = []
-    manager._target_groups_version = RoutingConfigVersion(epoch="epoch", sequence=2)
+    manager._target_groups_version = RoutingConfigVersion(generation=1, sequence=2)
     manager._reload_haproxy = mock.AsyncMock(side_effect=RuntimeError("reload failed"))
 
     with pytest.raises(RuntimeError, match="reload failed"):
@@ -3065,7 +3065,7 @@ def test_update_target_groups_preserves_routing_config_version():
             app_name="app",
         )
     ]
-    version = RoutingConfigVersion(epoch="epoch", sequence=3)
+    version = RoutingConfigVersion(generation=1, sequence=3)
 
     manager.update_target_groups(
         RoutingConfigSnapshot(target_groups=target_groups, version=version)
@@ -3077,12 +3077,13 @@ def test_update_target_groups_preserves_routing_config_version():
     manager._schedule_haproxy_update.assert_called_once_with()
 
 
-def test_routing_config_version_ordering_is_scoped_to_epoch():
-    current = RoutingConfigVersion(epoch="current", sequence=2)
+def test_routing_config_version_ordering():
+    current = RoutingConfigVersion(generation=2, sequence=2)
 
-    assert current.is_at_least(RoutingConfigVersion(epoch="current", sequence=1))
-    assert current.is_at_least(RoutingConfigVersion(epoch="current", sequence=2))
-    assert not current.is_at_least(RoutingConfigVersion(epoch="previous", sequence=100))
+    assert current.is_at_least(RoutingConfigVersion(generation=2, sequence=1))
+    assert current.is_at_least(RoutingConfigVersion(generation=2, sequence=2))
+    assert current.is_at_least(RoutingConfigVersion(generation=1, sequence=100))
+    assert not current.is_at_least(RoutingConfigVersion(generation=3, sequence=0))
 
 
 @pytest.mark.asyncio

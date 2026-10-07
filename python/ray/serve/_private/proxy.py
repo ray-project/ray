@@ -90,10 +90,10 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
     gRPCStreamingType,
 )
-from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
+from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,

@@ -3,7 +3,6 @@ import logging
 import os
 import pickle
 import time
-import uuid
 from typing import (
     Any,
     Callable,
@@ -135,6 +134,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
+# Retained across Serve shutdowns so generations are not reused within a cluster.
+ROUTING_CONFIG_GENERATION_KEY = "serve-routing-config-generation"
 
 
 class ServeController:
@@ -185,6 +186,12 @@ class ServeController:
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self._routing_config_generation = self._get_next_routing_config_generation()
+        self._routing_config_sequence = 0
+        self._routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
@@ -332,12 +339,6 @@ class ServeController:
         # Initialize to None (not []) to ensure the first broadcast always happens,
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
-        self._routing_config_epoch = uuid.uuid4().hex
-        self._routing_config_sequence = 0
-        self._routing_config_version = RoutingConfigVersion(
-            epoch=self._routing_config_epoch,
-            sequence=self._routing_config_sequence,
-        )
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
 
@@ -811,6 +812,16 @@ class ServeController:
             # control loop retries the reconcile next tick instead of skipping it.
             self._last_ingress_membership_version = version
 
+    def _get_next_routing_config_generation(self) -> int:
+        """Persist and return the generation for this controller process."""
+        checkpoint = self.kv_store.get(ROUTING_CONFIG_GENERATION_KEY)
+        generation = int(checkpoint) + 1 if checkpoint is not None else 1
+        self.kv_store.put(
+            ROUTING_CONFIG_GENERATION_KEY,
+            str(generation).encode(),
+        )
+        return generation
+
     def broadcast_target_groups_if_changed(self) -> RoutingConfigVersion:
         """Broadcast target groups over long poll if they have changed.
 
@@ -827,7 +838,7 @@ class ServeController:
 
         self._routing_config_sequence += 1
         routing_config_version = RoutingConfigVersion(
-            epoch=self._routing_config_epoch,
+            generation=self._routing_config_generation,
             sequence=self._routing_config_sequence,
         )
 

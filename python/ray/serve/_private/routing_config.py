@@ -6,14 +6,17 @@ from ray.serve.schema import TargetGroup
 
 @dataclass(frozen=True)
 class RoutingConfigVersion:
-    """Identifies an ordered routing configuration within a controller epoch."""
+    """Identifies an ordered routing configuration."""
 
-    epoch: str
+    generation: int
     sequence: int
 
     def is_at_least(self, other: "RoutingConfigVersion") -> bool:
         """Return whether this version supersedes ``other``."""
-        return self.epoch == other.epoch and self.sequence >= other.sequence
+        return (self.generation, self.sequence) >= (
+            other.generation,
+            other.sequence,
+        )
 
 
 @dataclass(frozen=True)
