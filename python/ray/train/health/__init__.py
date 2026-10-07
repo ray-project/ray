@@ -8,6 +8,7 @@ from ray.train.health.decision import (
 )
 from ray.train.health.evaluator import Evaluator
 from ray.train.health.probe import (
+    ControllerProbe,
     NodeProbe,
     OnDemandProbe,
     PeriodicProbe,
@@ -18,6 +19,7 @@ from ray.train.health.probe import (
 from ray.train.health.state import HealthState
 
 __all__ = [
+    "ControllerProbe",
     "Diagnose",
     "Evaluator",
     "Evict",
