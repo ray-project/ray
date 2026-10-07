@@ -172,4 +172,4 @@ The following highlights feature projects leveraging Ray Core's distributed APIs
 - [[Blog] Highly Available and Scalable Online Applications on Ray at Ant Group](https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant)
 - [[Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases](https://www.anyscale.com/blog/ray-forward-2022)
 - [[Blog] A new world record on the CloudSort benchmark using Ray](https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting)
-- {doc}`[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web_crawler>`
+- {doc}`[Example] Speed up your web crawler by parallelizing it with Ray </core/examples/web_crawler>`

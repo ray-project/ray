@@ -84,6 +84,7 @@ cc_library(
         "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/gcs_rpc_client:global_state_accessor_lib",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:process",
@@ -436,7 +437,9 @@ cc_test(
         "metric_example.so",
         ":auth_token_file",
     ],
-    env = RAY_TOKEN_AUTH_TEST_ENV,
+    # RAY_AUTH_MODE is left unset: the driver must enable token auth on its own
+    # because the `ray start --head` it spawns does when a token exists.
+    env = {"RAY_AUTH_TOKEN_PATH": "$(location :auth_token_file)"},
     linkstatic = True,
     tags = ["team:core"],
     deps = [

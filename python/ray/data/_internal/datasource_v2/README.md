@@ -15,62 +15,140 @@ formats/<name>/   one folder per format. May import both.
 ```
 
 A new format adds one folder under `formats/` and changes nothing in
-`interfaces/`. If you find yourself editing `interfaces/`, stop and ask
-whether the hook is really missing or the format is doing the framework's job.
+`interfaces/`.
 
 ## How a read works
 
-1. `read_api._read_datasource_v2` asks the datasource for a `FileIndexer`
-   (`_get_file_indexer()`) and a `FilePartitioner`
-   (`get_file_partitioner(hints=...)`).
-2. `ListFiles` tasks run the indexer; it yields `FileManifest` blocks (paths,
-   sizes, optional per-chunk metadata). Pruners drop files by extension or
-   partition value before any file is opened.
-3. The partitioner groups manifest rows into read units sized for one task.
-4. The datasource's `Scanner` receives pushdowns (columns, filters, limit,
-   partitions) from the optimizer and hands back a configured `Reader`.
-5. `ReadFiles` tasks call `Reader.read(manifest)`, which yields
-   `pyarrow.Table`s. `SynthesizedColumn`s (`path`, `row_hash`, ...) are
-   appended here from a `ReadUnitPosition`.
+The unit of work is a `FileManifest`: an Arrow block with one row per piece
+of data a reader can open, in columns `__path`, `__file_size` and
+`__file_chunk_metadata` (`None` for the whole file, or a `FileChunk` naming
+a run of read units inside it). `__path` is any string the reader can act
+on, not necessarily a filesystem path.
+
+A call to `read_*` runs these steps. The datasource supplies the object in
+each; the framework calls it.
+
+| Step | Object | Runs where | Does |
+| --- | --- | --- | --- |
+| 1. Plan | `DataSourceV2` | driver, in `_read_datasource_v2` | infers the schema (a `FileDataSourceV2` lists a sample of files for it; a `DataSourceWithMetadata` answers from its metadata), builds a `Scanner`, picks the `FileIndexer` and `FilePartitioner`, and emits two logical operators: `ListFiles(paths, indexer, partitioner)` feeding `ReadFiles(scanner)`. |
+| 2. Optimize | `Scanner` | driver, optimizer rules | each rule calls a `push_*` method on the scanner and gets a new scanner back; the pushdowns it accepted are copied onto `ListFiles` as a `ListFilesPushdown`. |
+| 3. Index | `FileIndexer` | `ListFiles` tasks | turns the datasource's `paths` into `FileManifest` rows, skipping pieces the pushdowns rule out by metadata. |
+| 4. Partition | `FilePartitioner` | same tasks | regroups manifest rows into one manifest per read task. |
+| 5. Read | `Reader` | `ReadFiles` tasks, one per manifest | `scanner.create_reader().read(manifest)` yields `pyarrow.Table`s, honouring every pushdown. |
+
+Indexing skips whole pieces; the reader filters rows and is what makes the
+result correct, so a scanner must never report a pushdown its reader does not
+enforce. Manifests travel through the object store; the `Scanner`,
+`FileIndexer` and `FilePartitioner` are pickled into the task functions, so
+open connections belong inside `list_files` and `read`.
+
+## Class hierarchy
+
+Arrows: solid with a hollow head is inheritance, dotted is "creates or
+returns", solid with a plain head is "holds a reference to".
+
+```mermaid
+classDiagram
+    class DataSourceV2 {
+        paths
+        infer_schema()
+        create_scanner()
+        _get_file_indexer()
+        get_file_partitioner(hints)
+    }
+    class FileDataSourceV2 {
+        filesystem
+        file_extensions
+        shuffle
+    }
+    class DataSourceWithMetadata {
+        schema_needs_file_sample() is False
+    }
+    class Scanner {
+        read_schema()
+        create_reader()
+    }
+    class FileScanner {
+        partition pruning from paths
+    }
+    class ArrowFileScanner {
+        + filter, column, limit pushdown
+    }
+    class Reader {
+        read(manifest)
+    }
+    class FileReader {
+        pyarrow.dataset decode
+    }
+    DataSourceV2 <|-- FileDataSourceV2
+    DataSourceV2 <|-- DataSourceWithMetadata
+    Scanner <|-- FileScanner
+    FileScanner <|-- ArrowFileScanner
+    Reader <|-- FileReader
+    DataSourceV2 ..> Scanner : create_scanner() returns
+    Scanner ..> Reader : create_reader() returns
+```
+
+A pushdown mixin on a scanner is a promise the optimizer believes.
+`ArrowFileScanner` carries the three data pushdowns only because it knows
+`FileReader` enforces them through `pyarrow.dataset`.
+
+```mermaid
+classDiagram
+    class FileIndexer {
+        list_files()
+    }
+    class NonSamplingFileIndexer {
+        walks a PyArrow filesystem, one row per file
+    }
+    class FilePartitioner {
+        add_input()
+        next_partition()
+        finalize()
+    }
+    class RoundRobinPartitioner {
+        deals whole files into buckets
+    }
+    class OnlineBinPacker {
+        pool of open bins, splits at read units
+    }
+    class InMemorySizeEstimator {
+        estimate_in_memory_sizes(manifest)
+    }
+    class SamplingInMemorySizeEstimator {
+        reads one file per listing task
+    }
+    FileIndexer <|-- NonSamplingFileIndexer
+    FilePartitioner <|-- RoundRobinPartitioner
+    FilePartitioner <|-- OnlineBinPacker
+    InMemorySizeEstimator <|-- SamplingInMemorySizeEstimator
+    RoundRobinPartitioner --> InMemorySizeEstimator : sizes rows with
+    DataSourceV2 ..> FileIndexer : _get_file_indexer() returns
+    DataSourceV2 ..> FilePartitioner : get_file_partitioner(hints) returns
+```
+
+Parquet sits at the bottom of every ladder: `ParquetDatasourceV2`,
+`FooterFileIndexer(NonSamplingFileIndexer)`, `OnlineBinPacker`,
+`ParquetScanner(ArrowFileScanner)`, `ParquetFileReader(FileReader)`.
 
 ## Adding a format
 
-Pick a base class: `FileDataSourceV2` when the framework finds the files by
-walking a filesystem, `DataSourceWithMetadata` when a catalog or table
-metadata knows them. Then implement, in `formats/<name>/`:
+Extend `FileDataSourceV2` when the framework finds the files by walking a
+filesystem, `DataSourceWithMetadata` when a catalog or database knows them.
+Never extend `DataSourceV2` directly.
 
-| Piece | Extend | Must provide |
+| Piece | File format | Catalog or engine source |
 | --- | --- | --- |
-| `<Name>DatasourceV2` | `FileDataSourceV2` | `paths`, `filesystem`, `_get_file_indexer`, `get_file_partitioner`, `schema_needs_file_sample`, `infer_schema`, `create_scanner` |
-| `<Name>Scanner` | `common.ArrowFileScanner` | `read_schema`, `create_reader` (column/filter/limit pushdown come free; override `push_filters` to reject what the decoder cannot evaluate) |
-| `<Name>FileReader` | `common.FileReader` | the per-file decode; partition columns and synthesized columns are appended for you |
-
-Reuse before writing. `common.NonSamplingFileIndexer` lists any filesystem.
-For a format without per-chunk metadata, the partitioner is two lines:
-
-```python
-def get_file_partitioner(self, *, hints=None):
-    return RoundRobinPartitioner(
-        SamplingInMemorySizeEstimator(self._make_reader()), hints=hints
-    )
-```
-
-`SamplingInMemorySizeEstimator` reads one file per listing task to learn the
-on-disk to in-memory ratio. Write a footer-style indexer or partitioner only
-when the format has per-chunk metadata worth planning on (see
-`formats/parquet/footer_file_indexer.py` and `common/online_bin_packer.py`).
-An indexer that lists a file's read units as `FileChunk` rows
-(`interfaces/file_manifest.py`) can hand them to `OnlineBinPacker` as they
-are: it budgets on `size_bytes` and never asks what the number measures.
+| `<Name>DatasourceV2` | `paths`, `filesystem`, `_get_file_indexer`, `get_file_partitioner`, `infer_schema`, `create_scanner` | `paths` (one label the indexer interprets), `_get_file_indexer`, `get_file_partitioner`, `infer_schema(None)`, `create_scanner` |
+| Indexer | `NonSamplingFileIndexer` as is | implement `FileIndexer.list_files`: ask the catalog, emit manifest rows |
+| Partitioner | `RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)` | `None` (one task per listing block) or `OnlineBinPacker` |
+| `<Name>Scanner` | `ArrowFileScanner` when `FileReader` decodes the format; otherwise `FileScanner` plus the `Supports*` mixins your reader honours | `Scanner` plus the `Supports*` mixins your reader honours |
+| Reader | `FileReader(format=...)` when it decodes the format; otherwise implement `Reader.read` | implement `Reader.read` |
 
 Wire it up in `read_api.py` under the `use_datasource_v2` branch of the
-matching `read_*` function.
+matching `read_*` function, which calls `_read_datasource_v2(datasource, ...)`.
+A file format then gets parallel listing, extension filtering,
+`ignore_missing_paths`, `skip_paths`, schema sampling, task sizing from
+`DataContext`, file shuffle and checkpoint resume for free.
 
-## Tests and checks
-
-Unit tests that need no Ray cluster go in `tests/unit/datasource_v2/`;
-anything that calls `ray.data.read_*` goes in `tests/datasource/`. Every test
-file ends with the `if __name__ == "__main__": sys.exit(pytest.main(...))`
-block or the `pytest_format` lint fails. Before pushing, run `ruff`, `black`
-and `pydoclint` at the versions pinned in `.pre-commit-config.yaml`, and
-`pyrefly` via `ci/lint/pyrefly-check.sh`.
+Every hook's docstring says when to override it and what you gain.
