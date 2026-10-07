@@ -68,7 +68,7 @@ An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/so
 
 ### What a prose-only change runs
 
-Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for Ray Data pages, which have one test target per page.
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for pages that have their own test target: every Ray Data page, and the Core, RLlib, Serve, and Train pages with a runnable example.
 
 A prose-only change also skips most of the lint group. Three lint steps run: a README check, a ban on newly added `.rst` files, since new pages must be MyST Markdown, and a documentation style linter.
 
@@ -88,12 +88,12 @@ With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel 
 | --- | --- |
 | `doc_code/*.py` | The `py_test` built from that file |
 | `.ipynb` | The notebook test whose `--path` argument names it |
-| Ray Data `.md` or `.rst` page | That page's doctest target |
+| Ray Data page, or a Core, RLlib, Serve, or Train page with a runnable example | That page's doctest target |
 | `.yaml` or another data file | Any test that lists the file in its `data` |
 
 The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
-* **The file feeds only a library-wide doctest target.** Prose pages outside Ray Data share one doctest target per library, so the label doesn't run them.
+* **The file feeds only a shared doctest target.** Prose pages outside the library directories share one doctest target, `//doc:doctest`, so the label doesn't run them.
 * **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The post-merge build runs the GPU examples.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
 
