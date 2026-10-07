@@ -539,22 +539,19 @@ class TorchLearner(Learner):
             or not torch.distributed.is_initialized()
         ):
             return plan
-        summed = torch.tensor(
+        # All three parts of the plan reduce with MAX: skip if ANY Learner wants to,
+        # abort if ANY Learner must, and step through the largest proposed number of
+        # minibatches, which completes every Learner's `num_epochs` passes over its
+        # own batch (see `test_minibatch_coverage_across_unequal_shards`).
+        plan_tensor = torch.tensor(
             [int(plan.skip), plan.num_minibatches, int(plan.abort)],
             dtype=torch.int64,
             device=self._device,
         )
-        torch.distributed.all_reduce(summed)
-        num_skipping, total_minibatches, num_aborting = summed.tolist()
-        # Skip if anyone wants to, abort if anyone must. Steps: the average proposal.
-        # Every non-empty Learner proposes at least 1 when there is minibatching, so
-        # the floor is >= 1 then; a single pass over the batch proposes 0 on every
-        # Learner, and 0 ("uncapped") is the right answer -- there is only ever one
-        # step to take.
+        torch.distributed.all_reduce(plan_tensor, op=torch.distributed.ReduceOp.MAX)
+        skip, num_minibatches, abort = plan_tensor.tolist()
         return UpdatePlan(
-            skip=num_skipping > 0,
-            num_minibatches=total_minibatches // torch.distributed.get_world_size(),
-            abort=num_aborting > 0,
+            skip=bool(skip), num_minibatches=num_minibatches, abort=bool(abort)
         )
 
     @OverrideToImplementCustomLogic
