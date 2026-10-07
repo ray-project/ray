@@ -119,16 +119,31 @@ class IcebergCheckpointState:
     ) -> IcebergCheckpointNamespace:
         """Create the namespace identity or validate the existing identity."""
         expected = self._expected_namespace(table_identifier, table_uuid, mode)
-        self._reject_legacy_layout()
-        self._filesystem.create_dir(self._metadata_path, recursive=True)
+        self._retry_io(
+            self._reject_legacy_layout,
+            "inspect the Iceberg checkpoint metadata layout",
+        )
+        self._retry_io(
+            lambda: self._filesystem.create_dir(self._metadata_path, recursive=True),
+            "create the Iceberg checkpoint metadata directory",
+        )
 
-        namespace_info = self._filesystem.get_file_info(self._namespace_path)
+        namespace_info = self._retry_io(
+            lambda: self._filesystem.get_file_info(self._namespace_path),
+            "inspect the Iceberg checkpoint namespace",
+        )
         if namespace_info.type != FileType.NotFound:
-            actual = self._read_namespace(namespace_info)
+            actual = self._retry_io(
+                lambda: self._read_namespace(namespace_info),
+                "read the Iceberg checkpoint namespace",
+            )
             self._validate_namespace(actual, expected)
             return actual
 
-        self._reject_unowned_committed_checkpoints()
+        self._retry_io(
+            self._reject_unowned_committed_checkpoints,
+            "inspect committed Iceberg row checkpoints",
+        )
         payload = self._encode_namespace(expected)
         temporary_path = f"{self._namespace_path}.tmp-{uuid.uuid4().hex}"
 
@@ -165,8 +180,15 @@ class IcebergCheckpointState:
 
     def list_pending_operations(self) -> Dict[str, List[PendingOperationCheckpoint]]:
         """Return valid pending row checkpoints grouped by operation ID."""
-        entries = self._filesystem.get_file_info(
-            FileSelector(self.checkpoint_path, recursive=False, allow_not_found=True)
+        entries = self._retry_io(
+            lambda: self._filesystem.get_file_info(
+                FileSelector(
+                    self.checkpoint_path,
+                    recursive=False,
+                    allow_not_found=True,
+                )
+            ),
+            "list pending Iceberg row checkpoints",
         )
         grouped: Dict[str, List[PendingOperationCheckpoint]] = {}
         for entry in entries:
@@ -305,7 +327,7 @@ class IcebergCheckpointState:
         try:
             with self._filesystem.open_input_file(self._namespace_path) as stream:
                 data = json.loads(stream.read().decode("utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError(
                 f"Invalid Iceberg checkpoint namespace {self._namespace_path!r}."
             ) from exc

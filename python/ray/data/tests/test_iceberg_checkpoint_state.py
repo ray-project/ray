@@ -145,6 +145,98 @@ def test_namespace_publish_retries_transient_io_error(tmp_path):
     assert filesystem.output_attempts == 2
 
 
+@pytest.mark.parametrize("namespace_exists", [False, True])
+def test_namespace_read_retries_transient_io_error(tmp_path, namespace_exists):
+    class FlakyFilesystem:
+        def __init__(self, delegate):
+            self.delegate = delegate
+            self.input_attempts = 0
+
+        def __getattr__(self, name):
+            return getattr(self.delegate, name)
+
+        def open_input_file(self, path):
+            self.input_attempts += 1
+            if self.input_attempts == 1:
+                raise OSError("AWS Error NETWORK_CONNECTION")
+            return self.delegate.open_input_file(path)
+
+    checkpoint_path = str(tmp_path / "checkpoints")
+    delegate = LocalFileSystem()
+    if namespace_exists:
+        IcebergCheckpointState(checkpoint_path, delegate).ensure_namespace(
+            _TABLE_IDENTIFIER, _TABLE_UUID
+        )
+    filesystem = FlakyFilesystem(delegate)
+    state = IcebergCheckpointState(checkpoint_path, filesystem)
+
+    state.ensure_namespace(_TABLE_IDENTIFIER, _TABLE_UUID)
+    assert filesystem.input_attempts == 2
+
+
+@pytest.mark.parametrize("failure_point", ["create_dir", "namespace_info"])
+def test_namespace_setup_retries_transient_io_error(tmp_path, failure_point):
+    class FlakyFilesystem:
+        def __init__(self, delegate, namespace_path):
+            self.delegate = delegate
+            self.namespace_path = namespace_path
+            self.attempts = 0
+
+        def __getattr__(self, name):
+            return getattr(self.delegate, name)
+
+        def create_dir(self, path, recursive):
+            if failure_point == "create_dir":
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise OSError("AWS Error NETWORK_CONNECTION")
+            return self.delegate.create_dir(path, recursive=recursive)
+
+        def get_file_info(self, target):
+            if failure_point == "namespace_info" and target == self.namespace_path:
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise OSError("AWS Error NETWORK_CONNECTION")
+            return self.delegate.get_file_info(target)
+
+    checkpoint_path = str(tmp_path / "checkpoints")
+    namespace_path = posixpath.join(checkpoint_path, "_iceberg", "namespace.json")
+    filesystem = FlakyFilesystem(LocalFileSystem(), namespace_path)
+    state = IcebergCheckpointState(checkpoint_path, filesystem)
+
+    state.ensure_namespace(_TABLE_IDENTIFIER, _TABLE_UUID)
+    assert filesystem.attempts >= 2
+
+
+def test_list_pending_operations_retries_transient_io_error(tmp_path):
+    class FlakyFilesystem:
+        def __init__(self, delegate):
+            self.delegate = delegate
+            self.list_attempts = 0
+
+        def __getattr__(self, name):
+            return getattr(self.delegate, name)
+
+        def get_file_info(self, target):
+            self.list_attempts += 1
+            if self.list_attempts == 1:
+                raise OSError("AWS Error NETWORK_CONNECTION")
+            return self.delegate.get_file_info(target)
+
+    checkpoint_path = str(tmp_path / "checkpoints")
+    delegate = LocalFileSystem()
+    pending_path = _pending_path(checkpoint_path, _OPERATION_1, 0)
+    _write_file(delegate, pending_path)
+    filesystem = FlakyFilesystem(delegate)
+    state = IcebergCheckpointState(checkpoint_path, filesystem)
+
+    grouped = state.list_pending_operations()
+    assert filesystem.list_attempts == 2
+    assert [checkpoint.pending_path for checkpoint in grouped[_OPERATION_1]] == [
+        pending_path
+    ]
+
+
 def test_task_checkpoint_id_and_pending_name_validation(tmp_path):
     checkpoint_path = str(tmp_path / "checkpoints")
     checkpoint_id = build_task_checkpoint_id(_OPERATION_1, _WRITE_ID, 7)
