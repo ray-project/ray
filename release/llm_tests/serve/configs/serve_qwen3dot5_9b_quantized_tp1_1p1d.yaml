@@ -3,7 +3,7 @@ applications:
       prefill_config: &config
         model_loading_config:
           model_id: RedHatAI/Qwen3.5-9B-quantized.w4a16
-        accelerator_type: A10G
+        accelerator_type: B200
         engine_kwargs:
           max_model_len: 8192
           language_model_only: true

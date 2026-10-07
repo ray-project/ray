@@ -4655,17 +4655,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4678,7 +4677,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -4689,10 +4688,9 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4707,7 +4705,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -4718,10 +4716,9 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4735,17 +4732,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4758,7 +4754,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -4769,10 +4765,9 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4785,7 +4780,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -4795,7 +4790,7 @@
         # For test_llm_serve_prefill_decode_with_data_parallelism
         RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY: "1"
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
+    cluster_compute: llm_2x_2xb200.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4810,7 +4805,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -4823,7 +4818,7 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
+    cluster_compute: llm_2x_2xb200.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4838,14 +4833,14 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
+    cluster_compute: llm_2x_2xb200.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4860,14 +4855,14 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_1x_4xh100.yaml
+    cluster_compute: llm_1x_4xb200.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -4882,17 +4877,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_g5-4xlarge.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4906,17 +4900,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4929,17 +4922,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4952,7 +4944,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -4960,10 +4952,9 @@
       type: llm-cu130
       post_build_script: byod_llm_runai_streamer.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4976,17 +4967,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
   run:
     timeout: 3600
     long_running: false
@@ -4998,17 +4988,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
   run:
     timeout: 3600
     long_running: false
@@ -5020,7 +5009,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -5031,10 +5020,9 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
   run:
     timeout: 3600
     long_running: false
@@ -5046,17 +5034,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5069,17 +5056,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5092,17 +5078,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5115,17 +5100,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5138,7 +5122,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -5149,10 +5133,9 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5165,17 +5148,16 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_8xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5188,7 +5170,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -5199,10 +5181,9 @@
         RAY_SERVE_ENABLE_HA_PROXY: "1"
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_8xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5215,7 +5196,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -5223,10 +5204,9 @@
       type: llm-cu130
       post_build_script: byod_llm_lmcache_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_8xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5239,7 +5219,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -5249,7 +5229,9 @@
         RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES: "1"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5263,7 +5245,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -5276,7 +5258,9 @@
         RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    cluster_compute: llm_four_B200_gpu_head_node.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5301,7 +5285,9 @@
     anyscale_sdk_2026: true
     # Kept in this working_dir rather than referenced across dirs
     # so it ships in the test's runfiles.
-    cluster_compute: llm_4xl4.yaml
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5323,7 +5309,9 @@
         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_1xl4.yaml
+    cluster_compute: llm_2x_1xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5335,7 +5323,7 @@
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
-  concurrency_group: llm-serve-h100
+  concurrency_group: llm-serve-b200
   concurrency: 4
 
   cluster:
@@ -5348,10 +5336,9 @@
         RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE: "2"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_auto_select_worker.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5373,10 +5360,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_4xl4.yaml
-    # NOTE: Important for getting the correct secrets
-    cloud: serve_release_tests_cloud
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5395,7 +5381,9 @@
       type: llm-cu130
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
-    cluster_compute: llm_4xl4.yaml
+    cluster_compute: llm_1x_4xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -5413,7 +5401,7 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_2xh100.yaml
+    cluster_compute: llm_2x_2xb200.yaml
     cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
     project_id: prj_69fd51u496ygpnaza62xsmis64
 
@@ -5437,7 +5425,9 @@
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu130.lock
     anyscale_sdk_2026: true
-    cluster_compute: llm_single_node_benchmark_l4.yaml
+    cluster_compute: llm_1x_1xb200.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600

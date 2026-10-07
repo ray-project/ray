@@ -1,0 +1,16 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+cloud_resource: nscale-osl1-v2
+
+advanced_instance_config:
+    metadata:
+        labels:
+            kueue.x-k8s.io/queue-name: default-queue
+
+head_node:
+    instance_type: 92CPU-960GB-4xB200
+
+enable_cross_zone_scaling: false
+
+flags:
+    workload_starting_timeout: 20m
+    workload_recovering_timeout: 10m

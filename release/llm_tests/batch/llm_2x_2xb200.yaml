@@ -1,0 +1,23 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+cloud_resource: nscale-osl1-v2
+
+advanced_instance_config:
+    metadata:
+        labels:
+            node-spread: "true"
+            kueue.x-k8s.io/queue-name: default-queue
+
+head_node:
+    instance_type: 8CPU-28GB
+
+worker_nodes:
+    - instance_type: 46CPU-480GB-2xB200
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+
+enable_cross_zone_scaling: false
+
+flags:
+    workload_starting_timeout: 20m
+    workload_recovering_timeout: 10m

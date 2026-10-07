@@ -4,7 +4,7 @@ applications:
       prefill_config:
         model_loading_config:
           model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
-        accelerator_type: A10G
+        accelerator_type: B200
         engine_kwargs:
           max_model_len: 8192
           tensor_parallel_size: 1
@@ -27,7 +27,7 @@ applications:
       decode_config:
         model_loading_config:
           model_id: neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
-        accelerator_type: A10G
+        accelerator_type: B200
         engine_kwargs:
           max_model_len: 8192
           tensor_parallel_size: 1
