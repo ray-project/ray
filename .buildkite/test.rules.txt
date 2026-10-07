@@ -439,11 +439,10 @@ doc/source/core/examples/highly_parallel.ipynb
 # other doc image, even though a rename would break the build the same way.
 # Widening the image policy is a separate decision and belongs in that rule.
 #
-# These are directory rules, matching how doc/external/ is handled below, so a
-# few non-included assets under 05 (its Dockerfile, compute configs, and
-# requirements.txt) start the build too. That is a deliberate trade: the build
-# is the cheap step, and enumerating individual include targets would rot the
-# moment someone adds a literalinclude.
+# These are directory rules, so a few non-included assets under 05 (its
+# Dockerfile, compute configs, and requirements.txt) start the build too. That
+# is a deliberate trade: the build is the cheap step, and enumerating individual
+# include targets would rot the moment someone adds a literalinclude.
 doc/source/templates/05_dreambooth_finetuning/
 doc/source/cluster/doc_code/
 doc/source/ray-contribute/doc_code/
@@ -494,10 +493,6 @@ doc/source/ray-observability/*BUILD.bazel
 # example suite, in the one doctestbuild environment. Library code changes still
 # run the default docs example steps through the library tags. The postmerge
 # build runs every docs example suite.
-#
-# doc/external/ holds a vendored PyTorch tutorial and the test that guards it
-# against upstream drift. Route the whole directory, because the tutorial script
-# is the test's `data` and editing it is what the hash check exists to catch.
 doc/source/data/
 doc/source/ray-more-libs/
 doc/source/serve/
@@ -507,7 +502,6 @@ doc/source/tune/
 doc/source/ray-air/
 doc/source/core/
 doc/source/ray-observability/
-doc/external/
 @ doc_example
 ;
 
