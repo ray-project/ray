@@ -178,14 +178,20 @@ class AutoscalingContext:
 
 
 class _ForwardCompatModel(BaseModel):
-    """Base for config models that are cloudpickled into Serve checkpoints.
+    """Fills in fields that are missing when an older pickle is loaded.
 
-    pydantic v2 restores ``__dict__`` exactly as pickled and does not re-apply
-    field defaults on unpickle, so a field added to a model after a checkpoint
-    was written is absent from the restored object and raises ``AttributeError``
-    on first access (e.g. during ``ServeController`` recovery). Backfilling
-    missing fields with their defaults keeps recovery from older checkpoints
-    forward-compatible as new fields are added.
+    The Serve controller checkpoint in the GCS stores these models pickled.
+    With GCS fault tolerance, the checkpoint outlives a Ray upgrade, and the
+    new controller unpickles objects written by the old version. pydantic
+    restores the pickled ``__dict__`` as is, so a field added in between is
+    not set on the restored object, and reading it raises ``AttributeError``.
+
+    Example: ``DeploymentConfig.deployment_actors`` was added in Ray 2.55.
+    A controller on 2.55 that recovers a checkpoint written by 2.54 fails in
+    ``__init__`` on the first read of that field, and keeps failing on every
+    restart.
+
+    ``__setstate__`` sets each missing field to its default.
     """
 
     def __setstate__(self, state):
