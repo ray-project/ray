@@ -12,7 +12,6 @@ Configuring a LearnerGroup and Learner actors
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     AlgorithmConfig.learners
 
@@ -22,7 +21,6 @@ Constructing a LearnerGroup
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     AlgorithmConfig.build_learner_group
 
@@ -48,7 +46,6 @@ Constructing a Learner
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     AlgorithmConfig.build_learner
 
@@ -60,7 +57,16 @@ Constructing a Learner
     :toctree: doc/
 
     Learner
+
+.. autosummary::
+    :nosignatures:
+
     Learner.build
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     Learner._make_module
 
 
@@ -69,7 +75,6 @@ Implementing a custom RLModule to fit a Learner
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Learner.rl_module_required_apis
     Learner.rl_module_is_compatible
@@ -80,7 +85,6 @@ Performing updates
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Learner.update
     Learner.before_gradient_based_update
@@ -92,7 +96,6 @@ Computing losses
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Learner.compute_losses
     Learner.compute_loss_for_module
@@ -103,7 +106,6 @@ Configuring optimizers
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Learner.configure_optimizers_for_module
     Learner.configure_optimizers
@@ -120,7 +122,6 @@ Gradient computation
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Learner.compute_gradients
     Learner.postprocess_gradients
@@ -132,11 +133,15 @@ Saving and restoring
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Learner.save_to_path
     Learner.restore_from_path
     Learner.from_checkpoint
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     Learner.get_state
     Learner.set_state
 
@@ -145,7 +150,6 @@ Adding and removing modules
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Learner.add_module
     Learner.remove_module

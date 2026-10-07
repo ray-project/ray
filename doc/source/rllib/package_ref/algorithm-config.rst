@@ -21,7 +21,6 @@ Builder methods
 ---------------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.build_algo
     ~AlgorithmConfig.build_learner_group
@@ -32,7 +31,6 @@ Properties
 ----------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.is_multi_agent
     ~AlgorithmConfig.is_offline
@@ -45,7 +43,6 @@ Getter methods
 --------------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.get_default_learner_class
     ~AlgorithmConfig.get_default_rl_module_spec
@@ -59,7 +56,6 @@ Public methods
 --------------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.copy
     ~AlgorithmConfig.validate

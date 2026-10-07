@@ -49,12 +49,16 @@ UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
 echo "--- Generate custom build steps"
 
 if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
+  # The test state machine these feed only tracks master.
   export REPORT_TO_RAY_TEST_DB=1
+  export OBS_AGENT_COMMENT_ON_GITHUB_ISSUE=1
+fi
 
-  # Every automatic master run, at whatever release frequency: a nightly, a
-  # nightly-3x and a weekly failure all get triaged, and all of them are tracked
-  # by the state machine that owns the github issue. A release branch or a
-  # manually kicked-off build is left alone, as it is for the db reporter above.
+# Safe on release branches because it moves no test state: it creates a debug
+# session and posts to slack, but writes nothing this repo records. Automatic
+# builds only: release branch tests are always triggered through automation.
+if [[ "${AUTOMATIC:-0}" == "1" ]] &&
+   [[ "${BUILDKITE_BRANCH:-}" == "master" || "${BUILDKITE_BRANCH:-}" == "releases/"* ]]; then
   export TRIGGER_OBSERVABILITY_AGENT=1
 fi
 

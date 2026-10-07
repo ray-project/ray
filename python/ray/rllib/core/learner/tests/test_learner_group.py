@@ -385,8 +385,11 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             )
 
             # Both Learners have data, but unequal amounts of it. On their own they
-            # would step through ceil(256/32) = 8 and ceil(64/32) = 2 minibatches;
-            # the group settles on the average, 5, and stays in sync.
+            # would step through ceil(256/32) = 8 and ceil(64/32) = 2 minibatches.
+            # The group settles on the LARGER of the two, 8, not on their average, 5:
+            # 5 would leave the bigger shard short of the epochs it was configured
+            # for (see `test_minibatch_coverage_across_unequal_shards`). Both
+            # Learners step 8 times and stay in sync.
             results = MetricsLogger.peek_results(
                 learner_group.update(
                     batches=[fake_batch(256), fake_batch(64)],
@@ -395,7 +398,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 )
             )
             self.assertEqual(
-                [5 * 32, 5 * 32],
+                [8 * 32, 8 * 32],
                 [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
             )
             learner_0_weights, learner_1_weights = weights()
@@ -542,7 +545,8 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
         """`never_skip_update` turns a skip into an error, raised on every Learner.
 
         The Learners must still settle on one number of minibatches: on their own,
-        shards of 256 and 64 rows would step 8 and 2 times over 32-row minibatches.
+        shards of 256 and 64 rows would step 8 and 2 times over 32-row minibatches,
+        and the group takes the larger, 8.
         And a Learner handed no data must not raise before the group agreement, or
         its peer waits in that collective forever. Either way the group would hang
         -- as this test then does, rather than fail.
@@ -562,7 +566,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 )
             )
             self.assertEqual(
-                [5 * 32, 5 * 32],
+                [8 * 32, 8 * 32],
                 [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
             )
 

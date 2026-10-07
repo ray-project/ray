@@ -10,7 +10,7 @@ Out-of-memory errors (OOMs) are one of the most common issues you encounter with
 
 This guide describes what OOMs look like and how to mitigate them.
 
-For a lower-level explanation of how Ray Data treats memory, see {ref}`Ray Data memory model <data_memory_management>` and {doc}`Resource isolation with cgroup v2 </ray-core/resource-isolation-with-cgroupv2>`.
+For a lower-level explanation of how Ray Data treats memory, see {ref}`Ray Data memory model <data_memory_management>` and {doc}`Resource isolation with cgroup v2 </core/resource-isolation-with-cgroupv2>`.
 
 (what-ooms-look-like)=
 ## What do OOMs look like?
@@ -165,7 +165,7 @@ To avoid oversubscription, set ``DataContext.get_current().default_map_logical_m
 
 If you see kernel OOM kills or node deaths from memory pressure, enable *resource isolation*. Resource isolation protects critical system components from memory pressure. With enough system memory reserved, as the next section describes, you shouldn't see kernel OOMs or node deaths.
 
-To enable resource isolation, see {doc}`Resource isolation with cgroup v2 </ray-core/resource-isolation-with-cgroupv2>`.
+To enable resource isolation, see {doc}`Resource isolation with cgroup v2 </core/resource-isolation-with-cgroupv2>`.
 
 :::{versionadded} 2.56
 The full implementation of resource isolation.
@@ -222,6 +222,6 @@ To experiment with oversubscription at the risk of OOMs, decrease `memory`.
 To learn more about how Ray handles memory, see the following guides:
 
 - {ref}`Ray Data memory model <data_memory_management>`
-- {doc}`Resource isolation with cgroup v2 </ray-core/resource-isolation-with-cgroupv2>`
+- {doc}`Resource isolation with cgroup v2 </core/resource-isolation-with-cgroupv2>`
 - {ref}`Out-of-memory prevention <ray-oom-prevention>`
 - {doc}`Debugging memory issues </ray-observability/user-guides/debug-apps/debug-memory>`

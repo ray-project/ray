@@ -30,10 +30,14 @@ Public Methods
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~ReplayBuffer.sample
     ~ReplayBuffer.add
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~ReplayBuffer.get_state
     ~ReplayBuffer.set_state
 
