@@ -63,6 +63,8 @@ void InlineDependencies(
           }
 
           mutable_arg->set_is_inlined(true);
+          // The value is now in the task spec (inlined), so there is nothing to move.
+          mutable_arg->clear_is_move();
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
             mutable_arg->set_data(data->Data(), data->Size());
