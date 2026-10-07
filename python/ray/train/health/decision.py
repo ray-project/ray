@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class HealthDecision:
     """Base class for the decisions an ``Evaluator`` returns.
 
-    Abstract: return a ``Noop``, ``Reattempt``, ``Evict`` or ``Diagnose``.
+    Abstract: use ``Noop``, ``Reattempt``, ``Evict`` or ``Diagnose``.
 
     Attributes:
         reason: A human-readable explanation of why the decision was made.

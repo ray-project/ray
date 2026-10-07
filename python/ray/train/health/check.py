@@ -26,7 +26,7 @@ class Evaluator(abc.ABC):
         raise NotImplementedError
 
     def on_worker_group_start(self) -> None:
-        """Called when a new set of workers starts, including after a restart."""
+        """Called at the start of each attempt of the training run."""
 
 
 ProbeCreator = Callable[[], List[Probe]]
@@ -62,7 +62,7 @@ class HealthConfig:
     """Health monitoring configuration for a run.
 
     Attributes:
-        mid_training_checks: Checks that run periodically during training.
+        mid_training_checks: Checks that run during training.
         preflight_checks: Checks that run once on each node before training
             starts.
     """
