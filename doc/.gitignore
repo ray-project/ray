@@ -25,7 +25,8 @@ source/serve/examples.rst
 source/_static/versions.json
 
 # Ignore rllib generated files
-source/rllib/api/
+source/rllib/api/doc/
+source/rllib/api/env/doc/
 
 # Ignore generated collections
 source/_collections/
