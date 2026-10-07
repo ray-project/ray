@@ -41,6 +41,15 @@
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 ! doc_example
 
+# RLlib's package_ref/ pages are API reference pages that also carry doctests
+# with per-file targets in doc/BUILD.bazel. Emit doc_api for the API checks and
+# doc_example for the "docs-example-test" opt-in. Files, not a directory, so the
+# doc_api directory sync check is unaffected.
+doc/source/rllib/package_ref/callback.rst
+doc/source/rllib/package_ref/utils.rst
+@ doc_api doc_example
+;
+
 # Per-team API reference pages. Editing these can change the documented public
 # API surface, so they must be able to trigger the API-consistency checks
 # ("doc: check API annotations" and "doc: check API doc consistency" in
@@ -66,14 +75,57 @@ doc/source/rllib/package_ref/
 @ doc_api
 ;
 
-# Data's prose pages are the only ones with a per-file doctest target
-# (`doctest_each` in doc/BUILD.bazel), so they're the only prose that the
-# "docs-example-test" opt-in can test file by file. Emit doc_example for
-# them, ahead of the prose skip rule below. Only the label-gated opt-in step
-# listens for that tag, so without the label this runs nothing. Add a library's
-# prose here when its doctest target moves to `doctest_each`.
+# Prose pages with per-file doctest targets (`doctest_each` in doc/BUILD.bazel)
+# are the only prose that the "docs-example-test" opt-in can test file by
+# file. Emit doc_example for them, ahead of the prose skip rule below. Only the
+# label-gated opt-in step listens for that tag, so without the label this runs
+# nothing. Data's prose is matched by directory. Other libraries list only the
+# pages with a per-file target, because until rayci drops label-gated steps
+# before dependency marking, every match also builds the opt-in step's images.
+# Keep this list in sync with the `doctest_each` file lists.
 doc/source/data/*.md
 doc/source/data/*.rst
+doc/source/core/actors/async-api.md
+doc/source/core/actors/concurrency-group-api.md
+doc/source/core/actors/index.md
+doc/source/core/actors/named-actors.md
+doc/source/core/actors/task-orders.md
+doc/source/core/actors/terminating-actors.md
+doc/source/core/configure.md
+doc/source/core/internals/task-lifecycle.md
+doc/source/core/miscellaneous.md
+doc/source/core/objects/index.md
+doc/source/core/objects/serialization.md
+doc/source/core/scheduling/accelerators.md
+doc/source/core/scheduling/memory-management.md
+doc/source/core/starting-ray.md
+doc/source/core/tips-for-first-time.md
+doc/source/core/user-spawn-processes.md
+doc/source/rllib/algorithm-config.md
+doc/source/rllib/callback.md
+doc/source/rllib/checkpoints.md
+doc/source/rllib/env-to-module-connector.md
+doc/source/rllib/env.md
+doc/source/rllib/hierarchical-envs.md
+doc/source/rllib/index.md
+doc/source/rllib/key-concepts.md
+doc/source/rllib/learner-connector.md
+doc/source/rllib/learner.md
+doc/source/rllib/metrics-logger.md
+doc/source/rllib/multi-agent-envs.md
+doc/source/rllib/new-api-stack-migration-guide.md
+doc/source/rllib/offline.md
+doc/source/rllib/rl-modules.md
+doc/source/rllib/scaling-guide.md
+doc/source/rllib/single-agent-episode.md
+doc/source/serve/advanced-guides/multi-app-container.md
+doc/source/train/common/torch-configure-run.md
+doc/source/train/distributed-tensorflow-keras.md
+doc/source/train/getting-started-jax.md
+doc/source/train/getting-started-lightgbm.md
+doc/source/train/getting-started-xgboost.md
+doc/source/train/overview.md
+doc/source/train/user-guides/persistent-storage.md
 @ doc_example
 ;
 

@@ -643,20 +643,33 @@ doctest(
     tags = ["team:none"],
 )
 
-doctest(
-    name = "doctest[core]",
+# Per-file targets list only the pages that collect a doctest, so each target
+# tests something. A page whose blocks are all `:skipif: True`, or that has no
+# `>>>` or `testcode` block, collects nothing and would pass vacuously. When you
+# add a runnable block to a page, add the page here and to the matching
+# doc_example rule in .buildkite/test.rules.txt.
+doctest_each(
     size = "large",
-    files = glob(
-        include = [
-            "source/core/**/*.md",
-            "source/core/**/*.rst",
-        ],
-        exclude = [
-            "source/core/handling-dependencies.md",
-            # The `doc_code/` snippet for `nested-tasks.md` is tested.
-            "source/core/tasks/nested-tasks.md",
-        ],
-    ),
+    # Not listed: handling-dependencies.md, and tasks/nested-tasks.md, whose
+    # `doc_code/` snippet is tested instead.
+    files = [
+        "source/core/actors/async-api.md",
+        "source/core/actors/concurrency-group-api.md",
+        "source/core/actors/index.md",
+        "source/core/actors/named-actors.md",
+        "source/core/actors/task-orders.md",
+        "source/core/actors/terminating-actors.md",
+        "source/core/configure.md",
+        "source/core/internals/task-lifecycle.md",
+        "source/core/miscellaneous.md",
+        "source/core/objects/index.md",
+        "source/core/objects/serialization.md",
+        "source/core/scheduling/accelerators.md",
+        "source/core/scheduling/memory-management.md",
+        "source/core/starting-ray.md",
+        "source/core/tips-for-first-time.md",
+        "source/core/user-spawn-processes.md",
+    ],
     tags = ["team:core"],
 )
 
@@ -691,57 +704,59 @@ doctest(
     tags = ["team:data"],
 )
 
-doctest(
-    name = "doctest[rllib]",
+doctest_each(
     size = "large",
     data = ["//python/ray/rllib:cartpole-v1_large"],
-    files = glob(
-        include = [
-            "source/rllib/**/*.md",
-            "source/rllib/**/*.rst",
-        ],
-        exclude = [
-            "source/rllib/getting-started.md",
-        ],
-    ),
+    files = [
+        "source/rllib/algorithm-config.md",
+        "source/rllib/callback.md",
+        "source/rllib/checkpoints.md",
+        "source/rllib/env.md",
+        "source/rllib/env-to-module-connector.md",
+        "source/rllib/hierarchical-envs.md",
+        "source/rllib/index.md",
+        "source/rllib/key-concepts.md",
+        "source/rllib/learner.md",
+        "source/rllib/learner-connector.md",
+        "source/rllib/metrics-logger.md",
+        "source/rllib/multi-agent-envs.md",
+        "source/rllib/new-api-stack-migration-guide.md",
+        "source/rllib/offline.md",
+        "source/rllib/package_ref/callback.rst",
+        "source/rllib/package_ref/utils.rst",
+        "source/rllib/rl-modules.md",
+        "source/rllib/scaling-guide.md",
+        "source/rllib/single-agent-episode.md",
+    ],
     tags = ["team:rllib"],
 )
 
-doctest(
-    name = "doctest[serve]",
-    files = glob(
-        include = [
-            "source/serve/**/*.md",
-            "source/serve/**/*.rst",
-        ],
-        exclude = [
-            "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/production-guide/fault-tolerance.md",
-        ],
-    ),
+doctest_each(
+    # Not listed: advanced-guides/inplace-updates.md and
+    # production-guide/fault-tolerance.md.
+    files = [
+        "source/serve/advanced-guides/multi-app-container.md",
+    ],
     tags = ["team:serve"],
 )
 
-doctest(
-    name = "doctest[train]",
+doctest_each(
     # TODO: [V2] Migrate
     env = {
         "RAY_TRAIN_V2_ENABLED": "0",
         "TF_USE_LEGACY_KERAS": "1",
     },
-    files = glob(
-        include = [
-            "source/train/**/*.md",
-            "source/train/**/*.rst",
-        ],
-        exclude = [
-            # CI does not have Horovod installed.
-            "source/train/horovod.md",
-            # These tests run on GPU (see below).
-            "source/train/user-guides/data-loading-preprocessing.md",
-            "source/train/user-guides/using-accelerators.md",
-        ],
-    ),
+    # Not listed: horovod.md, because CI does not have Horovod installed, and the
+    # GPU pages in doctest[train-gpu] below.
+    files = [
+        "source/train/common/torch-configure-run.md",
+        "source/train/distributed-tensorflow-keras.md",
+        "source/train/getting-started-jax.md",
+        "source/train/getting-started-lightgbm.md",
+        "source/train/getting-started-xgboost.md",
+        "source/train/overview.md",
+        "source/train/user-guides/persistent-storage.md",
+    ],
     tags = ["team:ml"],
 )
 
@@ -753,16 +768,6 @@ doctest(
         "source/train/user-guides/using-accelerators.md",
     ],
     gpu = True,
-    tags = ["team:ml"],
-)
-
-doctest(
-    name = "doctest[tune]",
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-    files = [
-        "source/tune/**/*.md",
-        "source/tune/**/*.rst",
-    ],
     tags = ["team:ml"],
 )
 
