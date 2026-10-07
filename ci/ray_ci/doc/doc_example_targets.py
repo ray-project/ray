@@ -13,16 +13,20 @@ A changed file maps to a target only through a direct reference:
   - The `--path` argument of a notebook test, which is how notebook targets
     select their one notebook out of a shared filegroup.
 
-Two kinds of match are reported instead of run:
+Three kinds of match are reported instead of run:
 
   - Library-wide doctest targets, which take every prose file of a library in
     one `doctest()` target. Running one means running the whole library's prose
     doctests. Only per-file `doctest_each()` targets are run.
   - GPU targets. Docs examples never need GPU tests in premerge or microcheck.
     GPU coverage for docs examples is the postmerge build.
+  - Targets carrying a tag the opt-in step passes to test_in_docker as
+    --except-tags. test_in_docker would drop them after selection, so they're
+    reported here instead of logged as running.
 """
 
 import dataclasses
+import os
 import xml.etree.ElementTree as ET
 from typing import Dict, FrozenSet, Iterable, List, Optional, Set
 
@@ -69,6 +73,8 @@ class Selection:
     gpu: Dict[str, List[str]]
     # Changed file -> library-wide doctest labels that take it.
     library_wide: Dict[str, List[str]]
+    # Changed file -> "label (tags)" entries skipped by --except-tags.
+    excluded: Dict[str, List[str]]
     # Changed doc example inputs that no test names directly.
     unmatched: List[str]
 
@@ -131,17 +137,28 @@ def parse_query_xml(xml_text: str) -> List[DocTestTarget]:
 
 
 def is_doc_example_input(path: str) -> bool:
-    return path.startswith(DOC_EXAMPLE_PREFIXES) and not path.endswith(
-        ("BUILD", "BUILD.bazel")
+    return path.startswith(DOC_EXAMPLE_PREFIXES) and os.path.basename(path) not in (
+        "BUILD",
+        "BUILD.bazel",
     )
 
 
-def select(changed_files: Iterable[str], targets: Iterable[DocTestTarget]) -> Selection:
-    """Pick the targets that name each changed doc example input directly."""
+def select(
+    changed_files: Iterable[str],
+    targets: Iterable[DocTestTarget],
+    except_tags: Iterable[str] = (),
+) -> Selection:
+    """Pick the targets that name each changed doc example input directly.
+
+    `except_tags` is the --except-tags list the opt-in step passes to
+    test_in_docker. A target carrying one of them is reported, not run.
+    """
     targets = list(targets)
+    except_tags = frozenset(except_tags)
     runnable: Dict[str, Set[str]] = {}
     gpu: Dict[str, List[str]] = {}
     library_wide: Dict[str, List[str]] = {}
+    excluded: Dict[str, List[str]] = {}
     unmatched: List[str] = []
 
     for path in sorted(set(changed_files)):
@@ -156,6 +173,9 @@ def select(changed_files: Iterable[str], targets: Iterable[DocTestTarget]) -> Se
                 gpu.setdefault(path, []).append(target.label)
             elif target.is_library_wide_doctest:
                 library_wide.setdefault(path, []).append(target.label)
+            elif target.tags & except_tags:
+                tags = ", ".join(sorted(target.tags & except_tags))
+                excluded.setdefault(path, []).append(f"{target.label} ({tags})")
             else:
                 team = target.team or "none"
                 runnable.setdefault(team, set()).add(target.label)
@@ -164,6 +184,7 @@ def select(changed_files: Iterable[str], targets: Iterable[DocTestTarget]) -> Se
         runnable={team: sorted(labels) for team, labels in runnable.items()},
         gpu=gpu,
         library_wide=library_wide,
+        excluded=excluded,
         unmatched=unmatched,
     )
 
@@ -182,6 +203,11 @@ def format_report(selection: Selection) -> str:
         lines.append(
             f"Not run, no per-file test: {path} is tested only by the "
             f"library-wide target {', '.join(labels)}."
+        )
+    for path, labels in sorted(selection.excluded.items()):
+        lines.append(
+            f"Not run, excluded by tag: {path} -> {', '.join(labels)}. The "
+            "opt-in step passes these tags to test_in_docker as --except-tags."
         )
     for path in selection.unmatched:
         lines.append(f"No test names this file: {path}")
