@@ -137,14 +137,23 @@ doc/source/tune/tutorials/BUILD.bazel: ml_doc
 doc/source/core/examples/BUILD.bazel: core_doc
 doc/source/llm/examples/batch/BUILD.bazel: llm
 doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
-# Data prose has per-file doctest targets (`doctest_each`), so it routes to
-# the opt-in step. Its API pages still hit the doc_api rule first.
+# Prose with per-file doctest targets (`doctest_each`) routes to the opt-in
+# step: Data's by directory, other libraries' page by page. API pages still hit
+# the doc_api rule first.
 doc/source/data/key-concepts.rst: doc_example
 doc/source/data/working-with-tensors.md: doc_example
-# Other libraries' prose has only library-wide doctest targets, which the
-# opt-in never runs, so it stays skipped. Static images under a library doc dir
-# are skipped too. The per-library rules match whole directories, so these
-# cases lock in that the leading skip rule wins first.
+doc/source/core/actors/named-actors.md: doc_example
+doc/source/rllib/package_ref/utils.rst: doc_api doc_example
+doc/source/serve/advanced-guides/multi-app-container.md: doc_example
+doc/source/train/getting-started-xgboost.md: doc_example
+# Prose with no per-file target stays skipped, including pages that a library's
+# doctest list leaves out, such as GPU pages and pages that collect no test.
+# Static images under a library doc dir are skipped too. The per-library rules
+# match whole directories, so these cases lock in that the leading skip rule
+# wins first.
+doc/source/core/tasks/nested-tasks.md:
+doc/source/train/user-guides/using-accelerators.md:
+doc/source/tune/index.md:
 doc/source/serve/index.md:
 doc/source/core/tasks.md:
 doc/source/rllib/images/rllib-stack.svg:
@@ -230,6 +239,7 @@ doc/load_doc_cache.py: doc
 doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
+doc/test_prose_doctest_targets.py: doc
 # Pre-routed ahead of the files landing with ray-project/ray#64458. The
 # llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step.
