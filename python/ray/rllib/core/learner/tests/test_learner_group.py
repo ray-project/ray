@@ -468,13 +468,15 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
         finally:
             learner_group.shutdown()
 
-    def test_learners_train_on_a_multi_agent_episode_cut_between_them(self):
-        """A multi-agent episode cut between two Learners trains on both of them.
+    def test_learners_update_on_a_multi_agent_episode_cut_between_them(self):
+        """A multi-agent episode cut between two Learners updates both of them.
 
-        Cut right where one agent's episode ended, a piece keeps that agent without
-        timesteps. The Learner connector pipeline then raised on the Learner that got
-        it, while its peer waited in the group agreement -- as this test then does,
-        rather than fail.
+        Cut right where one agent's episode ended, the second piece keeps that agent
+        without timesteps. The Learner connector pipeline raised on it, on the
+        Learner that got that piece, while its peer waited in the group agreement --
+        as this test then does, rather than fail. Now that Learner treats the agent
+        as no data, and with only one Learner holding data for its module, the
+        Learners drop the module from the update and train the rest.
         """
         space = gym.spaces.Box(-1.0, 1.0, (4,), np.float32)
         obs = np.zeros(4, np.float32)
@@ -521,10 +523,17 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             results = MetricsLogger.peek_results(
                 learner_group.update(episodes=[episode])
             )
-            # Both Learners train both modules.
+            with_p1 = results[0]
+            # Both Learners train p0, ...
             self.assertEqual(
                 [True, True],
-                [result["p1"][NUM_MODULE_STEPS_TRAINED] > 0 for result in results],
+                [result["p0"][NUM_MODULE_STEPS_TRAINED] > 0 for result in results],
+            )
+            # ... and neither trains p1, which only the first one had data for.
+            for result in results:
+                self.assertNotIn(NUM_MODULE_STEPS_TRAINED, result["p1"])
+            self.assertGreater(
+                with_p1["p1"][LEARNER_MODULE_STEPS_DROPPED_FOR_PEER_LIFETIME], 0
             )
         finally:
             learner_group.shutdown()

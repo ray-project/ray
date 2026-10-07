@@ -1699,6 +1699,15 @@ class Learner(Checkpointable):
                     "LearnerConnector pipeline (but pipeline is None)!"
                 )
 
+            # An agent without timesteps in an episode -- e.g. one whose episode ended
+            # right where the episode was cut to shard it across Learners -- has no
+            # data to train on, and the connector pipeline cannot build a batch from
+            # it, so leave it out.
+            for episode in training_data.episodes:
+                agent_episodes = getattr(episode, "agent_episodes", {})
+                for agent_id, agent_episode in list(agent_episodes.items()):
+                    if len(agent_episode) == 0:
+                        episode._del_agent(agent_id)
             # Call the learner connector pipeline.
             shared_data = {}
             batch = self._learner_connector(
