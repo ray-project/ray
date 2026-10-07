@@ -28,7 +28,7 @@ class ReplayBufferInterface(metaclass=ABCMeta):
 
         Args:
             batch: Batch or data to add.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
 
     @abstractmethod
@@ -40,7 +40,7 @@ class ReplayBufferInterface(metaclass=ABCMeta):
 
         Args:
             num_items: Number of items to sample from this buffer.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             A batch of items.

@@ -819,6 +819,11 @@ class Learner(Checkpointable):
 
         Args:
             batch: The MultiAgentBatch object to convert.
+            to_device: Whether to move the resulting tensors to the Learner's device.
+            pin_memory: Whether to pin the converted tensors in (page-locked) host
+                memory, which speeds up asynchronous host-to-device copies.
+            use_stream: Whether to perform the host-to-device copy on a separate
+                (non-default) compute stream.
 
         Returns:
             The resulting MultiAgentBatch with framework-specific tensor values placed
@@ -945,7 +950,11 @@ class Learner(Checkpointable):
         return self.config.rl_module_spec
 
     @OverrideToImplementCustomLogic
-    def should_module_be_updated(self, module_id, multi_agent_batch=None):
+    def should_module_be_updated(
+        self,
+        module_id: ModuleID,
+        multi_agent_batch: Optional[MultiAgentBatch] = None,
+    ) -> bool:
         """Returns whether a module should be updated or not based on `self.config`.
 
         Args:
@@ -954,6 +963,10 @@ class Learner(Checkpointable):
             multi_agent_batch: An optional MultiAgentBatch to possibly provide further
                 information on the decision on whether the RLModule should be updated
                 or not.
+
+        Returns:
+            True if the RLModule under `module_id` should be updated (trained), False
+            otherwise.
         """
         should_module_be_updated_fn = self.config.policies_to_train
         # If None, return True (by default, all modules should be updated).
@@ -1078,9 +1091,23 @@ class Learner(Checkpointable):
 
         Args:
             batch: A batch of training data to update from.
+            batches: A list of batches of training data to update from.
+            batch_refs: A list of Ray ObjectRefs pointing to batches of training data
+                to update from. These are resolved (`ray.get`) before the update.
+            episodes: A list of episodes to convert into a train batch and update from.
+            episodes_refs: A list of Ray ObjectRefs pointing to lists of episodes.
+                These are resolved (`ray.get`) before the update.
+            data_iterators: A list of Ray Data `DataIterator` instances to stream the
+                training data from. Requires a `num_iters` kwarg.
+            training_data: A ready-made `TrainingData` object to update from. If None,
+                one is constructed from `batch`, `batches`, `batch_refs`, `episodes`,
+                `episodes_refs`, and `data_iterators`.
             timesteps: Timesteps dict, which must have the key
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
+            num_total_minibatches: The total number of minibatches to loop through
+                (across all epochs). Use 0 (default) to let `num_epochs` and
+                `minibatch_size` determine this number.
             num_epochs: The number of complete passes over the entire train batch. Each
                 pass might be further split into n minibatches (if `minibatch_size`
                 provided).
@@ -1093,6 +1120,11 @@ class Learner(Checkpointable):
                 trajectories. Also, shuffling is always skipped if `minibatch_size` is
                 None, meaning the entire train batch is processed each epoch, making it
                 unnecessary to shuffle.
+            _no_metrics_reduce: If True, skips the final `self.metrics.reduce()` call
+                and returns None instead (used by asynchronous algorithms that reduce
+                the metrics themselves).
+            **kwargs: Additional keyword arguments passed on to the batch iterator
+                creation (for example `num_iters` when using `data_iterators`).
 
         Returns:
             A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
@@ -1513,7 +1545,7 @@ class Learner(Checkpointable):
         Args:
             batch: The train batch already converted to a Dict mapping str to (possibly
                 nested) tensors.
-            kwargs: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
             A tuple consisting of:
@@ -1837,9 +1869,6 @@ class Learner(Checkpointable):
         The returned values may or may not be used inside the `rl_module_is_compatible`
         method.
 
-        Args:
-            module: The RLModule to check.
-
         Returns:
             A list of RLModule API classes that an RLModule must implement in order
             to be compatible with this Learner.
@@ -1911,6 +1940,10 @@ class Learner(Checkpointable):
 
         Args:
             value: The initial value for the tensor variable variable.
+            dtype: The framework-specific dtype of the tensor variable. If None, the
+                dtype is inferred from `value`.
+            trainable: Whether the returned tensor variable should be trainable
+                (require gradients).
 
         Returns:
             The framework specific tensor variable of the given initial value,

@@ -84,6 +84,7 @@ class MeanStdFilter(ConnectorV2):
                 incoming sample (with each `__call__()`) or not. You should set this to
                 False if you would like to perform inference in a production
                 environment, without continuing to "learn" stats from new data.
+            **kwargs: Forward API-compatibility kwargs.
         """
         super().__init__(**kwargs)
 

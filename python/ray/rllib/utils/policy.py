@@ -63,6 +63,10 @@ def create_policy_for_framework(
         worker_index: Index of worker holding this policy. Default is 0.
         session_creator: An optional tf1.Session creation callable.
         seed: Optional random seed.
+
+    Returns:
+        The newly created Policy instance of the given `policy_class`, built within
+        the framework-specific context (for example, a tf1 graph and session).
     """
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
@@ -252,6 +256,7 @@ def compute_log_likelihoods_from_input_dict(
     policy's `compute_log_likelihoods()` method
 
     Args:
+        policy: The Policy to compute the action log likelihoods for.
         batch: The SampleBatch or MultiAgentBatch to calculate action
             log likelihoods from. This batch/batches must contain OBS
             and ACTIONS keys.

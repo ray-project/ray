@@ -13,7 +13,7 @@ algorithms_and_configs = {
 
 
 @ray.remote
-def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
+def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir: str):
     """Create an algo, checkpoint it, then train for 2 iterations.
 
     Note: This function uses a seeded algorithm that can modify the global random state.
@@ -51,7 +51,7 @@ def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
 
 
 @ray.remote
-def load_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
+def load_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir: str):
     """Loads the checkpoint saved by save_and_train and trains for 2 iterations.
 
     Note: This function uses a seeded algorithm that can modify the global random state.
