@@ -169,12 +169,14 @@ class Trainable:
         This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        .. testcode::
-
-            @classmethod
-            def default_resource_request(cls, config):
-                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}])
-
+        Examples:
+            >>> from ray.tune import PlacementGroupFactory, Trainable
+            >>> class MyTrainable(Trainable):
+            ...     @classmethod
+            ...     def default_resource_request(cls, config):
+            ...         return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}])
+            >>> MyTrainable.default_resource_request({}).required_resources
+            {'CPU': 2.0}
 
         Args:
             config: The Trainable's config dict.
@@ -745,11 +747,10 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. testcode::
-
-            from ray.tune import Trainable
-
-            name = Trainable().trial_name
+        Examples:
+            >>> from ray.tune import Trainable
+            >>> Trainable().trial_name
+            'default'
         """
         if self._trial_info:
             return self._trial_info.trial_name
@@ -762,11 +763,10 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. testcode::
-
-            from ray.tune import Trainable
-
-            trial_id = Trainable().trial_id
+        Examples:
+            >>> from ray.tune import Trainable
+            >>> Trainable().trial_id
+            'default'
         """
         if self._trial_info:
             return self._trial_info.trial_id
@@ -779,11 +779,10 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. testcode::
-
-            from ray.tune import Trainable
-
-            trial_resources = Trainable().trial_resources
+        Examples:
+            >>> from ray.tune import Trainable
+            >>> print(Trainable().trial_resources)
+            None
         """
         if self._trial_info:
             return self._trial_info.trial_resources

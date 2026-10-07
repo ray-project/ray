@@ -397,8 +397,6 @@ class RunnerGroup(metaclass=abc.ABCMeta):
                 sync from this `Runner`Group's local worker.
             to_worker_indices: Optional list of worker indices to sync the
                 weights to. If None (default), sync to all remote workers.
-            global_vars: An optional global vars dict to set this
-                worker to. If None, do not update the global_vars.
             timeout_seconds: Timeout in seconds to wait for the sync weights
                 calls to complete. Default is 0.0 (fire-and-forget, do not wait
                 for any sync calls to finish). Setting this to 0.0 might significantly
@@ -408,6 +406,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
                 modules. This is needed for algorithms in the new stack that
                 use inference-only modules. In this case only a part of the
                 parameters are synced to the workers. Default is False.
+            **kwargs: Forward compatibility kwargs.
         """
         if self.local_runner is None and from_worker_or_learner_group is None:
             raise TypeError(
@@ -495,7 +494,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         """Hard overrides the remote `Runner`s in this set with the provided ones.
 
         Args:
-            new_remote_workers: A list of new `Runner`s (as `ActorHandles`) to use as
+            new_remote_runners: A list of new `Runner`s (as `ActorHandles`) to use as
                 new remote workers.
         """
         self._worker_manager.clear()
@@ -519,7 +518,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         self,
         func: Union[Callable[[Runner], T], List[Callable[[Runner], T]], str, List[str]],
         *,
-        kwargs=None,
+        kwargs: Optional[Dict[str, Any]] = None,
         local_runner: bool = True,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
@@ -532,7 +531,9 @@ class RunnerGroup(metaclass=abc.ABCMeta):
         Args:
             func: The function to call for each `Runner`s. The only call argument is
                 the respective `Runner` instance.
-            local_env_runner: Whether to apply `func` to local `Runner`, too.
+            kwargs: Optional keyword arguments to pass to `func` (or, if `func` is a
+                (list of) method name(s), to the remote method call(s)).
+            local_runner: Whether to apply `func` to local `Runner`, too.
                 Default is True.
             healthy_only: Apply `func` on known-to-be healthy `Runner`s only.
             remote_worker_ids: Apply `func` on a selected set of remote `Runner`s.

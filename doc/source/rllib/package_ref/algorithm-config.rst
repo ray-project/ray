@@ -21,7 +21,6 @@ Builder methods
 ---------------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.build_algo
     ~AlgorithmConfig.build_learner_group
@@ -32,7 +31,6 @@ Properties
 ----------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.is_multi_agent
     ~AlgorithmConfig.is_offline
@@ -45,7 +43,6 @@ Getter methods
 --------------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.get_default_learner_class
     ~AlgorithmConfig.get_default_rl_module_spec
@@ -59,7 +56,6 @@ Public methods
 --------------
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~AlgorithmConfig.copy
     ~AlgorithmConfig.validate
@@ -176,3 +172,28 @@ Configuring experimental settings
 
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.experimental
     :noindex:
+
+
+.. _rllib-algorithm-specific-configs:
+
+Algorithm-specific configuration classes
+----------------------------------------
+
+Each algorithm's configuration class adds its algorithm-specific settings to its ``training()`` method.
+
+.. currentmodule:: ray.rllib.algorithms
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
+
+    ~ppo.ppo.PPOConfig
+    ~dqn.dqn.DQNConfig
+    ~sac.sac.SACConfig
+    ~appo.appo.APPOConfig
+    ~impala.impala.IMPALAConfig
+    ~bc.bc.BCConfig
+    ~cql.cql.CQLConfig
+    ~iql.iql.IQLConfig
+    ~marwil.marwil.MARWILConfig
