@@ -30,7 +30,7 @@ from typing import Dict, FrozenSet, Iterable, List, Optional, Set
 # under doc/, such as the shared notebook runner doc/test_myst_doc.py, are test
 # harness rather than examples, and BUILD files define targets rather than feed
 # them. Both keep their default test routing in .buildkite/test.rules.txt.
-DOC_EXAMPLE_PREFIXES = ("doc/source/", "doc/external/")
+DOC_EXAMPLE_PREFIXES = ("doc/source/",)
 
 GPU_TAGS = frozenset({"gpu", "multi_gpu", "multi_gpu_4", "custom_vllm_plugin"})
 
