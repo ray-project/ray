@@ -59,7 +59,7 @@ Disabling the dashboard prevents KubeRay's `RayJob` and `RayService` features fr
 When you deploy on Kubernetes, configure memory requests and limits for the head pod.
 
 :::{important}
-Set memory and GPU resource requests equal to their limits. KubeRay uses the container's resource limits to configure Ray's logical resource capacities and ignores memory and GPU requests.
+Set resource requests equal to their limits. KubeRay uses the container's resource limits to configure Ray's logical resource capacities.
 :::
 
 The following example sets the head pod's requests equal to its limits:

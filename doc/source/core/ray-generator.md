@@ -67,7 +67,7 @@ A Ray generator task returns an `ObjectRefGenerator` object, which is compatible
 
 Each time a task invokes `yield`, the corresponding output becomes available from the generator as a Ray object reference. Call `next(gen)` to get an object reference. If `next` has no more items to generate, it raises `StopIteration`. If `__anext__` has no more items to generate, it raises `StopAsyncIteration`.
 
-The `next` API blocks the thread until the task generates the next object reference with `yield`. Because `ObjectRefGenerator` implements the Python generator interface, you can also iterate over object references with a `for` loop.
+The `next` API blocks the thread until the task generates the next object reference with `yield`. You can also iterate over object references with a `for` loop.
 
 To avoid blocking a thread, use `asyncio` or the {ref}`ray.wait API <generators-wait>`.
 
