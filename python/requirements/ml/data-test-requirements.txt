@@ -18,10 +18,9 @@ delta-sharing
 deltalake==1.5.0
 pytest-mock
 decord
-snowflake-connector-python>=3.15.0; python_version < '3.14'
-snowflake-connector-python>=4.4.0; python_version >= '3.14'
+snowflake-connector-python>=3.15.0
 pyiceberg[sql-sqlite]==0.11.0; python_version < '3.14'
-pyiceberg[sql-sqlite]==0.12.0; python_version >= '3.14'
+pyiceberg[sql-sqlite]; python_version >= '3.14'
 clickhouse-connect
 confluent-kafka
 pybase64

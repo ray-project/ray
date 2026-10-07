@@ -99,12 +99,10 @@ compile_pip_dependencies() {
 }
 
 # Compiles python/requirements_compiled_py3.14.txt from the same sources as
-# compile_pip_dependencies. Where 3.14 has to differ (no cp314 wheel), the source
-# files say so with `python_version` markers; everything else is held to the
-# requirements_compiled.txt pins. Run compile_pip_dependencies first.
+# compile_pip_dependencies. Where a shared pin has no cp314 wheel, the source
+# files gate it with a `python_version` marker.
 compile_pip_dependencies_py314() {
   local target="python/requirements_compiled_py3.14.txt"
-  local parity="/tmp/ray-deps/py314-parity-constraints.txt"
 
   # These ship only an sdist, for every Python version, so building them is not
   # a 3.14 regression. Everything else must install from a wheel.
@@ -119,10 +117,7 @@ compile_pip_dependencies_py314() {
 
   (
     cd "${WORKSPACE_DIR}"
-    pip install "uv==0.9.26" packaging
-
-    mkdir -p "$(dirname "${parity}")"
-    python ci/py314_parity_constraints.py python/requirements_compiled.txt "${parity}"
+    pip install "uv==0.9.26"
 
     # Ray images are glibc 2.35 (Ubuntu 22.04), hence manylinux_2_35.
     env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
@@ -134,11 +129,10 @@ compile_pip_dependencies_py314() {
       --unsafe-package ray \
       --unsafe-package pip \
       --unsafe-package setuptools \
-      --constraint "${parity}" \
       -o "${target}" \
       "${COMPILE_PIP_SOURCES[@]}"
 
-    sed -i -e "/^--index-url /d" -e "\#-c ${parity}#d" "${target}"
+    sed -i -e "/^--index-url /d" "${target}"
     # Same local-version strip as compile_pip_dependencies.
     sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "${target}"
   )

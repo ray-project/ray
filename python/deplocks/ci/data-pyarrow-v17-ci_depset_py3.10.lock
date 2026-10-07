@@ -311,7 +311,7 @@ asciitree==0.3.3 ; python_full_version < '3.11' \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   zarr
-asn1crypto==1.5.1 ; python_full_version < '3.14' \
+asn1crypto==1.5.1 \
     --hash=sha256:13ae38502be632115abf8a24cbe5f4da52e3b5231990aff31123c805306ccb9c \
     --hash=sha256:db4e40728b728508912cbb3d44f19ce188f218e9eba635821bb4b68564f8fd67
     # via
@@ -4024,7 +4024,7 @@ pyiceberg==0.11.0 ; python_full_version < '3.14' \
     --hash=sha256:f1c944969fda799a2d26dc6f57448ace44ee07e334306ba6f5110df1aadeeef1 \
     --hash=sha256:fe20129bfe408173c1a4483891bedcbf3378dcfac7d0dfe369e209fcb13674cd
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
-pyjwt==2.12.1 ; python_full_version < '3.14' \
+pyjwt==2.12.1 \
     --hash=sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c \
     --hash=sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b
     # via
@@ -4585,7 +4585,7 @@ smart-open==6.2.0 \
     --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
     --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
-snowflake-connector-python==4.3.0 ; python_full_version < '3.14' \
+snowflake-connector-python==4.3.0 \
     --hash=sha256:08f5167a10d380fe66330d5b19d19bd8b4f4af27e9648e3b254e61da025646bf \
     --hash=sha256:120463ca391d9deda3bdb185104ba847e12f73c86ef411cfcf827ce49b64d1af \
     --hash=sha256:26a65c5c93d14c4d221b780fdb2f07b4dd83e848f39eabd4832778bf0e2694d4 \
@@ -4847,7 +4847,7 @@ tomli==2.0.2 ; python_full_version < '3.11' \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   pytest
-tomlkit==0.13.3 ; python_full_version < '3.14' \
+tomlkit==0.13.3 \
     --hash=sha256:430cf247ee57df2b94ee3fbe588e71d362a941ebb545dec29b53961d61add2a1 \
     --hash=sha256:c89c649d79ee40629a9fda55f8ace8c6a1b42deb912b2a8fd8d942ddadb606b0
     # via

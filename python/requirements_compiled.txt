@@ -397,7 +397,7 @@ crc32c==2.3 ; python_version < "3.14"
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==44.0.3 ; python_version < "3.14"
+cryptography==44.0.3
     # via
     #   -r python/requirements/test-requirements.txt
     #   adal
@@ -1787,7 +1787,7 @@ pyopengl==3.1.10
     # via
     #   dm-control
     #   mujoco
-pyopenssl==25.1.0 ; python_version < "3.14"
+pyopenssl==25.1.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2209,7 +2209,7 @@ smart-open==6.2.0
     #   -r python/requirements/test-requirements.txt
 smmap==5.0.3
     # via gitdb
-snowflake-connector-python==4.3.0 ; python_version < "3.14"
+snowflake-connector-python==4.3.0
     # via -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
     # via
