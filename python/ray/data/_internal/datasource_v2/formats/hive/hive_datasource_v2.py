@@ -25,7 +25,12 @@ _READ_UNIT = "hive://read"
 
 
 class _HiveIndexer(FileIndexer):
-    """Produce one opaque manifest entry; no database query runs while listing."""
+    """Emit one manifest entry for the complete table or query read.
+
+    Listing doesn't connect to HiveServer2. This entry represents the whole
+    query, not a split. Future parallel table reads must describe each disjoint
+    split in its manifest unit so the reader can issue the corresponding query.
+    """
 
     def list_files(
         self,
