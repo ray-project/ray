@@ -3,11 +3,12 @@
 Prints one `<team> <label>` pair per line to stdout, and a report of what
 runs and what doesn't to stderr. See doc_example_targets.py for the matching rules.
 
-In CI, the changed files are the pull request's diff against its base branch.
-Locally, pass files explicitly, or pass --base to diff against a ref:
+Pass files explicitly, or pass --base to diff HEAD against a ref. In CI,
+run_doc_example_tests.sh fetches the pull request's base branch and passes
+--base FETCH_HEAD:
 
   bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- \\
-      doc/source/data/doc_code/loading_data.py
+      doc/source/data/doc_code/key_concepts.py
   bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- --base upstream/master
 """
 
@@ -39,26 +40,28 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("files", nargs="*", help="Changed files, repo-relative.")
     parser.add_argument(
-        "--base",
-        help="Diff HEAD against this ref instead of taking files. Defaults to "
-        "origin/$BUILDKITE_PULL_REQUEST_BASE_BRANCH in CI.",
+        "--base", help="Diff HEAD against this ref instead of taking files."
+    )
+    parser.add_argument(
+        "--except-tags",
+        default="",
+        help="Comma-separated tags the opt-in step passes to test_in_docker. "
+        "Targets with these tags are reported instead of selected.",
     )
     args = parser.parse_args()
 
     workspace = os.environ.get("BUILD_WORKSPACE_DIRECTORY", os.getcwd())
     files = args.files
     if not files:
-        base = args.base
-        if not base and os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH"):
-            base = "origin/" + os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"]
-        if not base:
+        if not args.base:
             print(
                 "No changed files and no base ref; nothing to select.", file=sys.stderr
             )
             return 0
-        files = _changed_files(base, workspace)
+        files = _changed_files(args.base, workspace)
 
-    selection = select(files, parse_query_xml(_query_doc_tests(workspace)))
+    except_tags = [tag for tag in args.except_tags.split(",") if tag]
+    selection = select(files, parse_query_xml(_query_doc_tests(workspace)), except_tags)
     report = format_report(selection)
     if report:
         print(report, file=sys.stderr)
