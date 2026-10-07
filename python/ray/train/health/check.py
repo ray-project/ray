@@ -11,7 +11,7 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="alpha")
 class Evaluator(abc.ABC):
     """Decides what the run should do from probe readings. Implement
-    ``evaluate()``. An instance can keep state between calls."""
+    ``evaluate()``."""
 
     @abc.abstractmethod
     def evaluate(self, state: HealthState) -> HealthDecision:

@@ -46,7 +46,7 @@ class Probe(abc.ABC):
 
 @PublicAPI(stability="alpha")
 class WorkerProbe(Probe):
-    """A probe that runs in each training worker process."""
+    """A probe that runs in each worker process."""
 
     @abc.abstractmethod
     def poll(self) -> ProbeResult:
@@ -60,7 +60,7 @@ class WorkerProbe(Probe):
 
 @PublicAPI(stability="alpha")
 class NodeProbe(Probe):
-    """A probe that runs once per node, outside the training worker processes."""
+    """A probe that runs on the node."""
 
     @abc.abstractmethod
     def poll(self) -> ProbeResult:
