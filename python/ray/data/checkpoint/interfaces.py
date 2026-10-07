@@ -243,7 +243,8 @@ class CheckpointConfig:
 # The checkpoint "restore" logic is common to both batch inference
 # and training ingest, but the checkpoint "write" configuration differs.
 # NOTE: This is exposed publicly as `ray.train.DatasetCheckpointConfig`,
-# where it's annotated with `PublicAPI`.
+# and documented in the Ray Train API reference.
+@PublicAPI(stability="alpha")
 @dataclass
 class DatasetCheckpointConfig:
     """Configuration for training ingest checkpointing.
