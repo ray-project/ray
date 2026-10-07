@@ -647,7 +647,9 @@ doctest(
 # tests something. A page whose blocks are all `:skipif: True`, or that has no
 # `>>>` or `testcode` block, collects nothing and would pass vacuously. When you
 # add a runnable block to a page, add the page here and to the matching
-# doc_example rule in .buildkite/test.rules.txt.
+# doc_example rule in .buildkite/test.rules.txt. The
+# doc_prose_doctest_targets lint (doc/test_prose_doctest_targets.py) enforces
+# both.
 doctest_each(
     size = "large",
     # Not listed: handling-dependencies.md, and tasks/nested-tasks.md, whose
