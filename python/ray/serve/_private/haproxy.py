@@ -95,6 +95,10 @@ from ray.serve._private.proxy import (
     ProxyActorInterface,
     apply_per_node_port_overrides,
 )
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve._private.utils import get_head_node_id, is_grpc_enabled
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
@@ -1740,9 +1744,11 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop = get_or_create_event_loop()
 
         self._target_groups: List[TargetGroup] = []
+        self._target_groups_version: Optional[RoutingConfigVersion] = None
         self._received_target_groups_broadcast = False
         # Last target groups installed by a successful HAProxy reload.
         self._applied_target_groups: Optional[List[TargetGroup]] = None
+        self._applied_target_groups_version: Optional[RoutingConfigVersion] = None
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1908,7 +1914,7 @@ class HAProxyManager(ProxyActorInterface):
     async def serving(
         self,
         wait_for_applications_running: bool = True,
-        expected_applications: Optional[Dict[str, bool]] = None,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
     ) -> None:
         """Wait for the HAProxy process to be ready to serve requests."""
         if not wait_for_applications_running:
@@ -1932,20 +1938,12 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
                 continue
 
-            if expected_applications:
-                applied_apps = {tg.app_name for tg in target_groups}
-                if not set(expected_applications) <= applied_apps:
-                    await asyncio.sleep(0.2)
-                    continue
-
-                ingress_router_apps = {
-                    tg.app_name
-                    for tg in target_groups
-                    if tg.ingress_request_router_targets
-                }
-                if any(
-                    requires_router and app_name not in ingress_router_apps
-                    for app_name, requires_router in expected_applications.items()
+            if expected_routing_config_version is not None:
+                if (
+                    self._applied_target_groups_version is None
+                    or not self._applied_target_groups_version.is_at_least(
+                        expected_routing_config_version
+                    )
                 ):
                     await asyncio.sleep(0.2)
                     continue
@@ -2148,6 +2146,7 @@ class HAProxyManager(ProxyActorInterface):
     async def _update_haproxy_backends(self) -> None:
         # Preserve the exact target groups installed by this reload.
         target_groups = self._target_groups
+        target_groups_version = self._target_groups_version
         backend_configs = []
         for target_group in target_groups:
             fallback_target = None
@@ -2179,9 +2178,11 @@ class HAProxyManager(ProxyActorInterface):
 
         await self._reload_haproxy()
         self._applied_target_groups = target_groups
+        self._applied_target_groups_version = target_groups_version
 
-    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
-        self._target_groups = target_groups
+    def update_target_groups(self, routing_config: RoutingConfigSnapshot) -> None:
+        self._target_groups = routing_config.target_groups
+        self._target_groups_version = routing_config.version
         self._received_target_groups_broadcast = True
         self._schedule_haproxy_update()
 

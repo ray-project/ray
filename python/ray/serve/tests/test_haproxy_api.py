@@ -50,6 +50,10 @@ from ray.serve._private.haproxy import (
     _routers_and_targets_by_backend,
 )
 from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve.config import HTTPOptions
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema, Target, TargetGroup
@@ -2966,7 +2970,7 @@ def _bare_haproxy_manager():
 
 
 @pytest.mark.asyncio
-async def test_serving_waits_for_expected_ingress_request_router(monkeypatch):
+async def test_serving_waits_for_expected_routing_config_version(monkeypatch):
     manager = _bare_haproxy_manager()
     manager._received_target_groups_broadcast = True
     manager._draining_start_time = None
@@ -2977,24 +2981,18 @@ async def test_serving_waits_for_expected_ingress_request_router(monkeypatch):
     app_target = Target(
         ip="127.0.0.1", port=8001, instance_id="node", name="app-replica"
     )
-    router_target = Target(
-        ip="127.0.0.1", port=8002, instance_id="node", name="router-replica"
+    target_group = TargetGroup(
+        targets=[app_target],
+        route_prefix="/",
+        protocol=RequestProtocol.HTTP,
+        app_name="app",
+    )
+    manager._applied_target_groups = [target_group]
+    manager._applied_target_groups_version = RoutingConfigVersion(
+        epoch="epoch", sequence=1
     )
 
-    def target_group(router_targets):
-        return TargetGroup(
-            targets=[app_target],
-            route_prefix="/",
-            protocol=RequestProtocol.HTTP,
-            app_name="app",
-            ingress_request_router_targets=router_targets,
-        )
-
-    without_router = target_group([])
-    with_router = target_group([router_target])
-    manager._applied_target_groups = [without_router]
-
-    backend_name = manager._generate_backend_name(with_router)
+    backend_name = manager._generate_backend_name(target_group)
     server_name = manager._generate_server_name(app_target)
     manager._haproxy = mock.Mock()
     manager._haproxy.get_all_stats = mock.AsyncMock(
@@ -3003,14 +3001,18 @@ async def test_serving_waits_for_expected_ingress_request_router(monkeypatch):
 
     sleep_calls = 0
 
-    async def apply_router_after_sleep(_):
+    async def apply_expected_version_after_sleep(_):
         nonlocal sleep_calls
         sleep_calls += 1
-        manager._applied_target_groups = [with_router]
+        manager._applied_target_groups_version = RoutingConfigVersion(
+            epoch="epoch", sequence=2
+        )
 
-    monkeypatch.setattr(asyncio, "sleep", apply_router_after_sleep)
+    monkeypatch.setattr(asyncio, "sleep", apply_expected_version_after_sleep)
 
-    await manager.serving(expected_applications={"app": True})
+    await manager.serving(
+        expected_routing_config_version=RoutingConfigVersion(epoch="epoch", sequence=2)
+    )
     assert sleep_calls == 1
 
 
@@ -3025,8 +3027,11 @@ async def test_applied_target_groups_advance_only_after_reload():
             app_name="app",
         )
     ]
+    version = RoutingConfigVersion(epoch="epoch", sequence=1)
     manager._target_groups = target_groups
+    manager._target_groups_version = version
     manager._applied_target_groups = []
+    manager._applied_target_groups_version = None
     manager._http_fallback_target = None
     manager._grpc_fallback_target = None
     manager._haproxy = mock.Mock()
@@ -3036,14 +3041,48 @@ async def test_applied_target_groups_advance_only_after_reload():
 
     manager._reload_haproxy.assert_awaited_once()
     assert manager._applied_target_groups is target_groups
+    assert manager._applied_target_groups_version == version
 
     manager._target_groups = []
+    manager._target_groups_version = RoutingConfigVersion(epoch="epoch", sequence=2)
     manager._reload_haproxy = mock.AsyncMock(side_effect=RuntimeError("reload failed"))
 
     with pytest.raises(RuntimeError, match="reload failed"):
         await manager._update_haproxy_backends()
 
     assert manager._applied_target_groups is target_groups
+    assert manager._applied_target_groups_version == version
+
+
+def test_update_target_groups_preserves_routing_config_version():
+    manager = _bare_haproxy_manager()
+    manager._schedule_haproxy_update = mock.Mock()
+    target_groups = [
+        TargetGroup(
+            targets=[],
+            route_prefix="/",
+            protocol=RequestProtocol.HTTP,
+            app_name="app",
+        )
+    ]
+    version = RoutingConfigVersion(epoch="epoch", sequence=3)
+
+    manager.update_target_groups(
+        RoutingConfigSnapshot(target_groups=target_groups, version=version)
+    )
+
+    assert manager._target_groups is target_groups
+    assert manager._target_groups_version == version
+    assert manager._received_target_groups_broadcast
+    manager._schedule_haproxy_update.assert_called_once_with()
+
+
+def test_routing_config_version_ordering_is_scoped_to_epoch():
+    current = RoutingConfigVersion(epoch="current", sequence=2)
+
+    assert current.is_at_least(RoutingConfigVersion(epoch="current", sequence=1))
+    assert current.is_at_least(RoutingConfigVersion(epoch="current", sequence=2))
+    assert not current.is_at_least(RoutingConfigVersion(epoch="previous", sequence=100))
 
 
 @pytest.mark.asyncio

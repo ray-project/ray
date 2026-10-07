@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 import time
+import uuid
 from typing import (
     Any,
     Callable,
@@ -82,6 +83,10 @@ from ray.serve._private.long_poll import KeyType, LongPollHost, LongPollNamespac
 from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -327,6 +332,12 @@ class ServeController:
         # Initialize to None (not []) to ensure the first broadcast always happens,
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
+        self._routing_config_epoch = uuid.uuid4().hex
+        self._routing_config_sequence = 0
+        self._routing_config_version = RoutingConfigVersion(
+            epoch=self._routing_config_epoch,
+            sequence=self._routing_config_sequence,
+        )
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
 
@@ -800,7 +811,7 @@ class ServeController:
             # control loop retries the reconcile next tick instead of skipping it.
             self._last_ingress_membership_version = version
 
-    def broadcast_target_groups_if_changed(self) -> None:
+    def broadcast_target_groups_if_changed(self) -> RoutingConfigVersion:
         """Broadcast target groups over long poll if they have changed.
 
         Keeps an in-memory record of the last target groups that were broadcast
@@ -812,12 +823,34 @@ class ServeController:
 
         # Check if target groups have changed by comparing the objects directly
         if self._last_broadcasted_target_groups == target_groups:
-            return
+            return self._routing_config_version
+
+        self._routing_config_sequence += 1
+        routing_config_version = RoutingConfigVersion(
+            epoch=self._routing_config_epoch,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host.notify_changed(
-            {LongPollNamespace.TARGET_GROUPS: target_groups}
+            {
+                LongPollNamespace.TARGET_GROUPS: RoutingConfigSnapshot(
+                    target_groups=target_groups,
+                    version=routing_config_version,
+                )
+            }
         )
         self._last_broadcasted_target_groups = target_groups
+        self._routing_config_version = routing_config_version
+        return routing_config_version
+
+    async def get_routing_config_version(self) -> RoutingConfigVersion:
+        """Return the version containing the controller's current routing state.
+
+        Broadcast before returning so the version is guaranteed to cover target
+        groups generated from the latest reconciled application state.
+        """
+        await self.done_recovering_event.wait()
+        return self.broadcast_target_groups_if_changed()
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""

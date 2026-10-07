@@ -90,6 +90,7 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
     gRPCStreamingType,
 )
+from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
@@ -1503,14 +1504,14 @@ class ProxyActorInterface(ABC):
     async def serving(
         self,
         wait_for_applications_running: bool = True,
-        expected_applications: Optional[Dict[str, bool]] = None,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
     ) -> None:
         """Wait for the proxy to be ready to serve requests.
 
         Args:
             wait_for_applications_running: Whether to wait for the applications to be running
-            expected_applications: Applications that must be routable, mapped to whether
-                they require an ingress request router.
+            expected_routing_config_version: Routing configuration that must have
+                been applied before the proxy is considered ready.
 
         Returns:
             None
@@ -1835,7 +1836,7 @@ class ProxyActor(ProxyActorInterface):
     async def serving(
         self,
         wait_for_applications_running: bool = True,
-        expected_applications: Optional[Dict[str, bool]] = None,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
     ) -> None:
         """Wait for the proxy to be ready to serve requests."""
         return

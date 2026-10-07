@@ -1,23 +1,86 @@
+import asyncio
 import json
 import time
+from unittest import mock
 
 import pytest
 
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.controller import ServeController
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.long_poll import LongPollNamespace
+from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.schema import ApplicationStatus, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    ServeDeploySchema,
+    TargetGroup,
+)
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
+
+
+def test_routing_config_version_advances_only_when_target_groups_change():
+    controller = ServeController.__new__(ServeController)
+    controller._last_broadcasted_target_groups = None
+    controller._routing_config_epoch = "epoch"
+    controller._routing_config_sequence = 0
+    controller._routing_config_version = RoutingConfigVersion(epoch="epoch", sequence=0)
+    controller.long_poll_host = mock.Mock()
+
+    target_groups = [
+        TargetGroup(
+            targets=[],
+            route_prefix="/",
+            protocol=RequestProtocol.HTTP,
+            app_name="app",
+        )
+    ]
+    controller.get_target_groups = mock.Mock(
+        side_effect=[target_groups, list(target_groups), []]
+    )
+
+    first_version = controller.broadcast_target_groups_if_changed()
+    same_version = controller.broadcast_target_groups_if_changed()
+    next_version = controller.broadcast_target_groups_if_changed()
+
+    assert first_version == RoutingConfigVersion(epoch="epoch", sequence=1)
+    assert same_version == first_version
+    assert next_version == RoutingConfigVersion(epoch="epoch", sequence=2)
+    assert controller.long_poll_host.notify_changed.call_count == 2
+
+    first_update = controller.long_poll_host.notify_changed.call_args_list[0].args[0][
+        LongPollNamespace.TARGET_GROUPS
+    ]
+    assert first_update.target_groups is target_groups
+    assert first_update.version == first_version
+
+
+@pytest.mark.asyncio
+async def test_get_routing_config_version_waits_for_controller_recovery():
+    controller = ServeController.__new__(ServeController)
+    controller.done_recovering_event = asyncio.Event()
+    version = RoutingConfigVersion(epoch="epoch", sequence=1)
+    controller.broadcast_target_groups_if_changed = mock.Mock(return_value=version)
+
+    get_version_task = asyncio.create_task(controller.get_routing_config_version())
+    await asyncio.sleep(0)
+
+    assert not get_version_task.done()
+    controller.broadcast_target_groups_if_changed.assert_not_called()
+
+    controller.done_recovering_event.set()
+    assert await get_version_task == version
+    controller.broadcast_target_groups_if_changed.assert_called_once_with()
 
 
 def test_redeploy_start_time(serve_instance):
