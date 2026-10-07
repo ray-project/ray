@@ -62,6 +62,7 @@ doc/source/core/api/
 doc/source/train/api/
 doc/source/tune/api/
 doc/source/rllib/package_ref/
+doc/source/ray-more-libs/api/
 @ doc_api
 ;
 

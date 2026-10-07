@@ -150,6 +150,18 @@ Numpy utilities
    ~softmax
 
 
+API stability annotations
+-------------------------
+
+.. currentmodule:: ray.rllib.utils.annotations
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   OldAPIStack
+
+
 Checkpoint utilities
 --------------------
 
