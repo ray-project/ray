@@ -169,7 +169,7 @@ def test_handle_backpressure_computed_retry_after(serve_instance):
     BACKPRESSURE_RESPONSE_CASES,
 )
 def test_http_backpressure(
-    serve_instance, backpressure_options, expected_status, expected_retry_after
+    serve_instance, request, backpressure_options, expected_status, expected_retry_after
 ):
     """Requests should be rejected with the configured response once the limit
     is reached (503 with no Retry-After header by default)."""
@@ -183,7 +183,14 @@ def test_http_backpressure(
             await signal_actor.wait.remote()
             return msg
 
-    serve.run(Deployment.options(**backpressure_options).bind())
+    # The proxy keeps one router per deployment ID across tests, and its drain
+    # rate estimate along with it. A distinct name per case gives each case a
+    # fresh router, so the `queue_drain_rate` cases start with a cold estimator.
+    serve.run(
+        Deployment.options(
+            name=f"Deployment_{request.node.callspec.id}", **backpressure_options
+        ).bind()
+    )
 
     def send_request(msg: str = "hi"):
         application_url = get_application_url()
