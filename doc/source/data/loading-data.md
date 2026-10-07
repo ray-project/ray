@@ -908,12 +908,9 @@ Ray Data reads from databases such as MySQL, PostgreSQL, MongoDB, and BigQuery.
 
 Install `impyla` on the driver and Ray workers, then call {func}`~ray.data.read_hive`
 with a table name. Table reads infer their Arrow schema from HiveServer2 metadata.
-For a trusted, row-producing SQL query, pass `query` and an explicit
-`pyarrow.Schema`; the query is sent to HiveServer2 as given. Result columns must
-match the schema in count and order; names match case-insensitively, and types
-must use a supported Arrow mapping. Non-nullable fields reject null rows. Table
-reads support scalar boolean values, numbers, strings, binary values, dates, and
-decimals; timestamp and complex types are unsupported.
+For a trusted, row-producing SQL query, pass `query` and an explicit `pyarrow.Schema`; the query is sent to HiveServer2 as given. Result columns must match the schema in count and order; names match case-insensitively, and types must use a supported Arrow mapping. Hive may prefix `SELECT *` result labels with the table name or alias. Use those labels in the schema or alias columns in your query.
+
+Non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, and decimals; timestamp and complex types are unsupported.
 
 The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` into HiveServer2. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause.
 

@@ -4020,9 +4020,12 @@ def read_hive(
             ``table`` and ``query``. The query is sent to HiveServer2 as given
             and must return a result set.
         schema: The Arrow schema for a query read. Column names must match the
-            result case-insensitively and in order. Table reads infer their
-            schema from HiveServer2 metadata; ``schema`` is only supported for
-            query reads. Field types must use a supported Arrow mapping.
+            HiveServer2 result labels, case-insensitively and in order. Hive may
+            prefix ``SELECT *`` result labels with the table name or alias. Use
+            those labels in the schema or alias the columns in your query. Table
+            reads infer their schema from HiveServer2 metadata; ``schema`` is
+            only supported for query reads. Field types must use a supported
+            Arrow mapping.
         port: The HiveServer2 binary protocol port.
         auth_mechanism: The HiveServer2 authentication profile: ``NOSASL``,
             ``PLAIN``, or ``GSSAPI``. Choose the profile configured on the

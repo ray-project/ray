@@ -387,6 +387,43 @@ def test_table_result_accepts_only_its_qualified_column_names(monkeypatch):
         hive_hs2._check_result_schema(cursor.description, schema, "other")
 
 
+@pytest.mark.parametrize(
+    ("schema_names", "matches_result_labels"),
+    [
+        (("events.id", "events.name"), True),
+        (("id", "name"), False),
+    ],
+)
+def test_query_read_uses_hs2_result_labels_verbatim(
+    monkeypatch, schema_names, matches_result_labels
+):
+    cursor = _Cursor([[(1, "a")]])
+    cursor.description = [
+        ("events.id", "BIGINT", None, None, None, None, None),
+        ("events.name", "STRING", None, None, None, None, None),
+    ]
+    connection = _Connection(cursor)
+    monkeypatch.setattr(hive_hs2, "_connect", lambda _: connection)
+    schema = pa.schema([(schema_names[0], pa.int64()), (schema_names[1], pa.string())])
+    spec = HiveReadSpec(
+        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        query="SELECT * FROM analytics.events",
+        schema=schema,
+    )
+
+    if matches_result_labels:
+        tables = list(hive_hs2.read_hs2_batches(spec, schema))
+        assert tables[0].schema == schema
+        assert tables[0].to_pylist() == [{"events.id": 1, "events.name": "a"}]
+    else:
+        with pytest.raises(ValueError, match="result columns do not match"):
+            list(hive_hs2.read_hs2_batches(spec, schema))
+        assert cursor.batches == [[(1, "a")]]
+
+    assert cursor.statements == [spec.query]
+    assert cursor.closed and connection.closed
+
+
 def test_result_type_mismatch_fails_before_fetch(monkeypatch):
     cursor = _Cursor([[(1, "a")]])
     cursor.description = [
