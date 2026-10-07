@@ -39,7 +39,12 @@ TEAM_API_CONFIGS = {
         # (reachable from api.rst's toctree).
         "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
         "head_doc_file": "doc/source/data/api/api.md",
-        "white_list_apis": set(),
+        "white_list_apis": {
+            # Documented in the Ray Train API reference as
+            # `ray.train.DatasetCheckpointConfig`, since it's only used through
+            # `ray.train.DataConfig(dataset_checkpoint_configs=...)`.
+            "ray.data.checkpoint.interfaces.DatasetCheckpointConfig",
+        },
         "tracked_doc_debt": {
             # not sure what to do
             "ray.data.dataset.MaterializedDataset",
