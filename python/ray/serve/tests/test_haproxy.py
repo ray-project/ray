@@ -1246,12 +1246,10 @@ def test_multiplexed_routing_retry(shutdown_ray):
 
     server = ModelServer.bind()
     serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
-    # Wait for HAProxy to install the ingress router before exercising model
-    # selection. Readiness requests do not touch multiplexed routing state.
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
-        timeout=30,
-    )
+    # Blocking serve.run() guarantees that the ingress request router is installed.
+    response = httpx.post("http://localhost:8000/ready")
+    assert response.status_code == 200, response.text
+    assert response.text == "ready"
     serve.get_deployment_handle(
         "IngressRouter", app_name="default"
     ).enable_multiplexing.remote().result()

@@ -1500,11 +1500,17 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_applications: Optional[Dict[str, bool]] = None,
+    ) -> None:
         """Wait for the proxy to be ready to serve requests.
 
         Args:
             wait_for_applications_running: Whether to wait for the applications to be running
+            expected_applications: Applications that must be routable, mapped to whether
+                they require an ingress request router.
 
         Returns:
             None
@@ -1826,7 +1832,11 @@ class ProxyActor(ProxyActorInterface):
             ]
         )
 
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_applications: Optional[Dict[str, bool]] = None,
+    ) -> None:
         """Wait for the proxy to be ready to serve requests."""
         return
 

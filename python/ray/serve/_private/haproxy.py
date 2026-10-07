@@ -1741,6 +1741,8 @@ class HAProxyManager(ProxyActorInterface):
 
         self._target_groups: List[TargetGroup] = []
         self._received_target_groups_broadcast = False
+        # Last target groups installed by a successful HAProxy reload.
+        self._applied_target_groups: Optional[List[TargetGroup]] = None
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1903,7 +1905,11 @@ class HAProxyManager(ProxyActorInterface):
             ]
         )
 
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_applications: Optional[Dict[str, bool]] = None,
+    ) -> None:
         """Wait for the HAProxy process to be ready to serve requests."""
         if not wait_for_applications_running:
             return
@@ -1920,6 +1926,30 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
                 continue
 
+            # Desired target groups may have a pending HAProxy reload.
+            target_groups = self._applied_target_groups
+            if target_groups is None:
+                await asyncio.sleep(0.2)
+                continue
+
+            if expected_applications:
+                applied_apps = {tg.app_name for tg in target_groups}
+                if not set(expected_applications) <= applied_apps:
+                    await asyncio.sleep(0.2)
+                    continue
+
+                ingress_router_apps = {
+                    tg.app_name
+                    for tg in target_groups
+                    if tg.ingress_request_router_targets
+                }
+                if any(
+                    requires_router and app_name not in ingress_router_apps
+                    for app_name, requires_router in expected_applications.items()
+                ):
+                    await asyncio.sleep(0.2)
+                    continue
+
             # When gRPC is used, haproxy relies on the fallback serve proxy to
             # handle ListApplications requests, so we block until HAProxy reprots
             # an UP server in grpc_fallback_backend.
@@ -1934,7 +1964,7 @@ class HAProxyManager(ProxyActorInterface):
                 self._generate_backend_name(tg): {
                     self._generate_server_name(target) for target in tg.targets
                 }
-                for tg in self._target_groups
+                for tg in target_groups
             }
             fallback_servers = {
                 self._generate_server_name(target)
@@ -2116,8 +2146,10 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy.reload()
 
     async def _update_haproxy_backends(self) -> None:
+        # Preserve the exact target groups installed by this reload.
+        target_groups = self._target_groups
         backend_configs = []
-        for target_group in self._target_groups:
+        for target_group in target_groups:
             fallback_target = None
             if target_group.protocol == RequestProtocol.HTTP:
                 fallback_target = self._http_fallback_target
@@ -2146,6 +2178,7 @@ class HAProxyManager(ProxyActorInterface):
         self._haproxy.set_grpc_fallback_server(grpc_fallback_server)
 
         await self._reload_haproxy()
+        self._applied_target_groups = target_groups
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
         self._target_groups = target_groups

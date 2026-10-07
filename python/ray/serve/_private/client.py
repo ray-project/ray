@@ -296,7 +296,9 @@ class ServeControllerClient:
 
     @_ensure_connected
     def wait_for_proxies_serving(
-        self, wait_for_applications_running: bool = True
+        self,
+        wait_for_applications_running: bool = True,
+        expected_applications: Optional[Dict[str, bool]] = None,
     ) -> None:
         """Wait for the proxies to be ready to serve requests."""
         proxy_handles = cast(
@@ -308,7 +310,8 @@ class ServeControllerClient:
 
         serving_refs = [
             handle.serving.remote(
-                wait_for_applications_running=wait_for_applications_running
+                wait_for_applications_running=wait_for_applications_running,
+                expected_applications=expected_applications,
             )
             for handle in proxy_handles.values()
         ]
@@ -436,7 +439,12 @@ class ServeControllerClient:
         # ready, so the "is ready" log line only prints once requests can
         # actually be routed to the applications.
         self.wait_for_proxies_serving(
-            wait_for_applications_running=wait_for_applications_running
+            wait_for_applications_running=wait_for_applications_running,
+            expected_applications={
+                app.name: app.ingress_request_router_deployment is not None
+                for app in ready_apps
+                if app.route_prefix is not None
+            },
         )
 
         for app in ready_apps:
@@ -473,8 +481,16 @@ class ServeControllerClient:
 
             if isinstance(config, ServeDeploySchema):
                 app_names = {app.name for app in config.applications}
+                routable_app_names = {
+                    app.name
+                    for app in config.applications
+                    if app.route_prefix is not None
+                }
             else:
                 app_names = {config.name}
+                routable_app_names = (
+                    {config.name} if config.route_prefix is not None else set()
+                )
 
             start = time.time()
             while time.time() - start < timeout_s:
@@ -495,7 +511,21 @@ class ServeControllerClient:
                     f"Serve application isn't running after {timeout_s}s."
                 )
 
-            self.wait_for_proxies_serving(wait_for_applications_running=True)
+            expected_applications = {app_name: False for app_name in routable_app_names}
+            target_groups = ray.get(
+                self._controller.get_target_groups.remote(from_proxy_manager=True)
+            )
+            for target_group in target_groups:
+                if (
+                    target_group.app_name in expected_applications
+                    and target_group.ingress_request_router_targets
+                ):
+                    expected_applications[target_group.app_name] = True
+
+            self.wait_for_proxies_serving(
+                wait_for_applications_running=True,
+                expected_applications=expected_applications,
+            )
 
     def _check_ingress_deployments(
         self, built_apps: Sequence[BuiltApplication]
