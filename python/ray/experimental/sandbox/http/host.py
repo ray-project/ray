@@ -48,6 +48,7 @@ from typing import (
     Union,
 )
 
+from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.exceptions import SandboxError, SandboxTimeoutError
 from ray.experimental.sandbox.http.schemas import DOCKER_DEFAULT_CAPABILITIES
 from ray.util.annotations import DeveloperAPI
@@ -96,6 +97,7 @@ class HostSettings(TypedDict, total=False):
 
     max_output_bytes: int
     max_exec_history: int
+    max_file_bytes: int
 
 
 def _truncate_output(text: str, max_bytes: int) -> Tuple[str, bool]:
@@ -115,11 +117,21 @@ def _truncate_output(text: str, max_bytes: int) -> Tuple[str, bool]:
 _TERMINATE_EXIT_DELAY_SECONDS = 5.0
 
 
-class _ExecJob:
-    """One submitted command and its (eventual) result."""
+# File writes buffered from a client's stdin go to the sandbox in slices.
+_WRITE_SLICE_BYTES = 4 * 1024 * 1024
 
-    def __init__(self, exec_id: str) -> None:
+
+class _ExecJob:
+    """One submitted command, or one file operation, and its (eventual) result.
+
+    ``kind`` is "command" (a process in the sandbox), "fs_read" (stdout holds
+    the file's bytes), or "fs_write" (stdin is buffered here, then written to
+    ``fs_path`` when it closes).
+    """
+
+    def __init__(self, exec_id: str, kind: str = "command") -> None:
         self.exec_id = exec_id
+        self.kind = kind
         self.status = "running"
         self.exit_code: Optional[int] = None
         self.stdout: Optional[str] = None
@@ -128,11 +140,48 @@ class _ExecJob:
         self.stderr_truncated = False
         self.duration_seconds: Optional[float] = None
         self.error: Optional[str] = None
+        self.error_code: Optional[str] = None
         self.done = asyncio.Event()
+        # fs_read: the file's content.
+        self.content: Optional[bytes] = None
+        # fs_write: the target and the stdin buffered so far.
+        self.fs_path: Optional[str] = None
+        self.stdin_chunks: List[bytes] = []
+        self.stdin_bytes = 0
+        self.stdin_closed = False
+
+    def finish(
+        self,
+        status: str,
+        exit_code: Optional[int] = None,
+        error: Optional[str] = None,
+        error_code: Optional[str] = None,
+    ) -> None:
+        if self.done.is_set():
+            # Already settled, say by a terminate while a file op ran: a
+            # late result must not turn that into a success.
+            return
+        self.status = status
+        self.exit_code = exit_code
+        self.error = error
+        self.error_code = error_code
+        self.done.set()
 
     def to_dict(self) -> Dict[str, Any]:
+        if self.kind != "command":
+            return {
+                "exec_id": self.exec_id,
+                "kind": self.kind,
+                "status": self.status,
+                "exit_code": self.exit_code,
+                "content": self.content,
+                "error": self.error,
+                # Not "error_code", which marks a failed call, not a failed job.
+                "failure_code": self.error_code,
+            }
         return {
             "exec_id": self.exec_id,
+            "kind": self.kind,
             "status": self.status,
             "exit_code": self.exit_code,
             "stdout": self.stdout,
@@ -158,6 +207,9 @@ class SandboxHost:
         spec: Sandbox creation spec (validated request data).
         settings: Server limits (``max_output_bytes``, ``max_exec_history``).
         runtime_factory: Test seam; defaults to ``SandboxRuntime``.
+        on_exit: Called instead of killing this actor once the sandbox is
+            gone (terminate or TTL), for a host that shares its actor with
+            other sandboxes (``SandboxNodeHost``).
     """
 
     def __init__(
@@ -166,11 +218,17 @@ class SandboxHost:
         spec: SandboxSpec,
         settings: HostSettings,
         runtime_factory: Optional[Callable[[], "SandboxRuntime"]] = None,
+        on_exit: Optional[Callable[[], None]] = None,
     ) -> None:
         self._sandbox_id = sandbox_id
+        self._on_exit = on_exit
         self._spec = spec
+        # Set when a pre-booted sandbox is adopted (see adopt): the create's
+        # env, which the container booted without, goes on every exec.
+        self._exec_env: Dict[str, str] = {}
         self._max_output_bytes = int(settings.get("max_output_bytes", 10 * 1024**2))
         self._max_exec_history = int(settings.get("max_exec_history", 256))
+        self._max_file_bytes = int(settings.get("max_file_bytes", 256 * 1024**2))
         self._runtime_factory = runtime_factory
         self._runtime: Optional["SandboxRuntime"] = None
         self._instance_id: Optional[str] = None
@@ -179,6 +237,9 @@ class SandboxHost:
         self._created_at = datetime.now(timezone.utc)
         self._status_changed = asyncio.Event()
         self._execs: "OrderedDict[str, _ExecJob]" = OrderedDict()
+        # A client's own exec id -> the exec id here: a start retried with the
+        # same key (by any API replica) joins the first one.
+        self._exec_keys: Dict[str, str] = {}
         self._exec_tasks: Dict[str, asyncio.Task] = {}
         self._ttl_task: Optional[asyncio.Task] = None
         self._boot_started = False
@@ -312,6 +373,35 @@ class SandboxHost:
             self._set_status("error")
             await self._delete_sandbox_instance()
 
+    def adopt(
+        self,
+        sandbox_id: str,
+        spec: SandboxSpec,
+        settings: HostSettings,
+        on_exit: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """Take over this running, pre-booted sandbox for a new create.
+
+        The container booted from a template spec (same image and isolation
+        settings, see ``SandboxNodeHost``); the create's id, TTL, labels,
+        and limits apply from now on, and its env goes on every exec.
+        """
+        self._sandbox_id = sandbox_id
+        self._spec = spec
+        self._exec_env = dict(spec.get("env") or {})
+        self._max_output_bytes = int(
+            settings.get("max_output_bytes", self._max_output_bytes)
+        )
+        self._max_exec_history = int(
+            settings.get("max_exec_history", self._max_exec_history)
+        )
+        self._max_file_bytes = int(settings.get("max_file_bytes", self._max_file_bytes))
+        self._on_exit = on_exit
+        self._created_at = datetime.now(timezone.utc)
+        ttl_seconds = spec.get("ttl_seconds")
+        if ttl_seconds is not None and self._ttl_task is None:
+            self._ttl_task = asyncio.create_task(self._ttl_watchdog(ttl_seconds))
+
     async def _ttl_watchdog(self, ttl_seconds: float) -> None:
         await asyncio.sleep(ttl_seconds)
         logger.info(
@@ -325,11 +415,16 @@ class SandboxHost:
     def _self_destruct(self) -> None:
         """Kill this actor so the TTL reclaims its name and reservation.
 
+        A hosted sandbox (``on_exit`` set) leaves its shared host instead.
+
         ``ray.kill`` on the self-handle (rather than ``exit_actor``) because
         the watchdog runs as a self-spawned asyncio task, outside any Ray
         method invocation, where ``exit_actor``'s control-flow exception has
         nothing to catch it. No-op outside an actor (unit tests).
         """
+        if self._on_exit is not None:
+            self._on_exit()
+            return
         try:
             import ray
 
@@ -395,6 +490,12 @@ class SandboxHost:
     # Introspection
     # ------------------------------------------------------------------
 
+    def container_running(self) -> bool:
+        """Whether the runtime still has this sandbox's container running."""
+        if self._runtime is None or self._instance_id is None:
+            return False
+        return self._runtime.get_status(self._instance_id) == SandboxStatus.RUNNING
+
     def _not_running_error(self) -> Optional[Dict[str, Any]]:
         """The conflict error for work on a sandbox that isn't running, or None.
 
@@ -456,6 +557,21 @@ class SandboxHost:
     # Exec jobs
     # ------------------------------------------------------------------
 
+    def _keyed_job(self, exec_key: Optional[str]) -> Optional[_ExecJob]:
+        if exec_key is None:
+            return None
+        exec_id = self._exec_keys.get(exec_key)
+        return self._execs.get(exec_id) if exec_id is not None else None
+
+    def _new_job(self, exec_key: Optional[str], kind: str = "command") -> _ExecJob:
+        exec_id = f"ex-{uuid.uuid4().hex[:12]}"
+        job = _ExecJob(exec_id, kind)
+        self._execs[exec_id] = job
+        if exec_key is not None:
+            self._exec_keys[exec_key] = exec_id
+        self._prune_exec_history()
+        return job
+
     async def start_exec(
         self,
         command: Union[str, List[str]],
@@ -464,14 +580,17 @@ class SandboxHost:
         timeout_seconds: Optional[float] = None,
         shell: Optional[str] = None,
         user: Optional[str] = None,
+        exec_key: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Start a command; ``exec_key`` makes a retried start join the first."""
+        existing = self._keyed_job(exec_key)
+        if existing is not None:
+            return {"exec_id": existing.exec_id, "status": existing.status}
         error = self._not_running_error()
         if error is not None:
             return error
-        exec_id = f"ex-{uuid.uuid4().hex[:12]}"
-        job = _ExecJob(exec_id)
-        self._execs[exec_id] = job
-        self._prune_exec_history()
+        job = self._new_job(exec_key)
+        exec_id = job.exec_id
         task = asyncio.create_task(
             self._run_exec(job, command, cwd, env, timeout_seconds, shell, user)
         )
@@ -489,8 +608,15 @@ class SandboxHost:
             if job.status in _TERMINAL_EXEC_STATUSES
         ]
         excess = len(self._execs) - self._max_exec_history
-        for exec_id in finished[: max(0, excess)]:
+        evicted = set(finished[: max(0, excess)])
+        for exec_id in evicted:
             del self._execs[exec_id]
+        if evicted and self._exec_keys:
+            self._exec_keys = {
+                key: exec_id
+                for key, exec_id in self._exec_keys.items()
+                if exec_id not in evicted
+            }
 
     async def _run_exec(
         self,
@@ -502,6 +628,8 @@ class SandboxHost:
         shell: Optional[str],
         user: Optional[str],
     ) -> None:
+        if self._exec_env:
+            env = {**self._exec_env, **(env or {})}
         try:
             result = await self._runtime.exec_async(
                 self._instance_id,
@@ -544,6 +672,18 @@ class SandboxHost:
             if not job.done.is_set():
                 job.done.set()
 
+    async def get_exec_by_key(
+        self, exec_key: str, wait_seconds: float = 0.0
+    ) -> Dict[str, Any]:
+        """``get_exec`` for a job started with ``exec_key``."""
+        job = self._keyed_job(exec_key)
+        if job is None:
+            return {
+                "error_code": "exec_not_found",
+                "message": f"unknown exec {exec_key!r}",
+            }
+        return await self.get_exec(job.exec_id, wait_seconds)
+
     async def get_exec(self, exec_id: str, wait_seconds: float = 0.0) -> Dict[str, Any]:
         job = self._execs.get(exec_id)
         if job is None:
@@ -557,6 +697,142 @@ class SandboxHost:
             except asyncio.TimeoutError:
                 pass
         return job.to_dict()
+
+    # ------------------------------------------------------------------
+    # File operations as exec jobs (for clients that run file operations
+    # as commands, such as the gRPC facade's): their results and buffered
+    # stdin live here, so any API replica can serve any of the calls.
+    # ------------------------------------------------------------------
+
+    async def fs_read(self, exec_key: str, path: str) -> Dict[str, Any]:
+        """Read ``path`` into a finished fs_read job. Idempotent per key."""
+        job = self._keyed_job(exec_key)
+        if job is not None:
+            await job.done.wait()
+            return {"exec_id": job.exec_id, "status": job.status}
+        error = self._not_running_error()
+        if error is not None:
+            return error
+        job = self._new_job(exec_key, "fs_read")
+        try:
+            result = await self.read_file(path)
+        except Exception as exc:  # the job must finish, or its readers wait forever
+            logger.warning(
+                "Reading %s in sandbox %s failed: %s", path, self._sandbox_id, exc
+            )
+            result = {"error_code": "read_failed", "message": f"read failed: {exc}"}
+        if result.get("error_code"):
+            job.finish("error", 1, result.get("message"), result["error_code"])
+        elif not job.done.is_set():
+            job.content = result["content"]
+            job.finish("completed", 0)
+        return {"exec_id": job.exec_id, "status": job.status}
+
+    async def fs_write_open(self, exec_key: str, path: str) -> Dict[str, Any]:
+        """Start an fs_write job: stdin goes to ``path`` when it closes."""
+        job = self._keyed_job(exec_key)
+        if job is not None:
+            return {"exec_id": job.exec_id, "status": job.status}
+        error = self._not_running_error()
+        if error is not None:
+            return error
+        job = self._new_job(exec_key, "fs_write")
+        job.fs_path = path
+        return {"exec_id": job.exec_id, "status": job.status}
+
+    async def stdin_write(
+        self, exec_key: str, data: bytes, offset: int, eof: bool = False
+    ) -> Dict[str, Any]:
+        """Buffer stdin for an fs_write job; at ``eof``, write the file.
+
+        Returns the job's stdin state, or an ``error_code``: exec_not_found,
+        stdin_unsupported (commands get no stdin), offset_mismatch, or
+        too_large (over ``max_file_bytes``; the job fails and takes no more
+        input). A repeat of the last accepted chunk, as when its reply was
+        lost, is acknowledged without appending it again.
+        """
+        job = self._keyed_job(exec_key)
+        if job is None:
+            return {
+                "error_code": "exec_not_found",
+                "message": f"unknown exec {exec_key!r}",
+            }
+        if job.kind != "fs_write":
+            return {
+                "error_code": "stdin_unsupported",
+                "message": "commands take no stdin",
+            }
+        if job.error_code == "too_large":
+            return {"error_code": "too_large", "message": job.error}
+        if data and not job.stdin_closed:
+            if offset != job.stdin_bytes:
+                if (
+                    job.stdin_chunks
+                    and offset + len(data) == job.stdin_bytes
+                    and job.stdin_chunks[-1] == data
+                ):
+                    return {
+                        "num_bytes_written": job.stdin_bytes,
+                        "closed": job.stdin_closed,
+                    }
+                return {
+                    "error_code": "offset_mismatch",
+                    "message": f"stdin offset {offset} != {job.stdin_bytes}",
+                }
+            if job.stdin_bytes + len(data) > self._max_file_bytes:
+                job.stdin_chunks.clear()
+                job.stdin_closed = True
+                job.finish(
+                    "error",
+                    1,
+                    f"file exceeds the {self._max_file_bytes}-byte max_file_bytes",
+                    "too_large",
+                )
+                return {"error_code": "too_large", "message": job.error}
+            job.stdin_chunks.append(data)
+            job.stdin_bytes += len(data)
+        if eof and not job.stdin_closed:
+            job.stdin_closed = True
+            await self._finish_write(job)
+        return {"num_bytes_written": job.stdin_bytes, "closed": job.stdin_closed}
+
+    async def _finish_write(self, job: _ExecJob) -> None:
+        content = b"".join(job.stdin_chunks)
+        job.stdin_chunks.clear()
+        try:
+            for start in range(0, max(len(content), 1), _WRITE_SLICE_BYTES):
+                result = await self.write_file(
+                    job.fs_path,
+                    content[start : start + _WRITE_SLICE_BYTES],
+                    append=start > 0,
+                )
+                if result.get("error_code"):
+                    job.finish(
+                        "error",
+                        1,
+                        result.get("message", "write failed"),
+                        "write_failed",
+                    )
+                    return
+        except Exception as exc:  # stdin is closed: only finishing ends the job
+            logger.warning(
+                "Writing %s in sandbox %s failed: %s",
+                job.fs_path,
+                self._sandbox_id,
+                exc,
+            )
+            job.finish("error", 1, f"write failed: {exc}", "write_failed")
+            return
+        job.finish("completed", 0)
+
+    async def stdin_status(self, exec_key: str) -> Dict[str, Any]:
+        job = self._keyed_job(exec_key)
+        if job is None:
+            return {
+                "error_code": "exec_not_found",
+                "message": f"unknown exec {exec_key!r}",
+            }
+        return {"num_bytes_written": job.stdin_bytes, "closed": job.stdin_closed}
 
     # ------------------------------------------------------------------
     # Files

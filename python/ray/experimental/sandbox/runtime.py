@@ -1,26 +1,188 @@
 import asyncio
+import collections
+import logging
 import os
 import threading
-from typing import Callable, Dict, List, Optional, Union
+import time
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
+
+# Warm-pool boots run a few at a time, so filling a pool leaves CPU for the
+# creates that boot cold meanwhile.
+_WARM_BOOT_CONCURRENCY = 4
+# After a warm-pool boot fails (say, its image can't be pulled), its profile
+# boots no replacements for this long, rather than on every create.
+_WARM_RETRY_SECONDS = 30.0
+
+
+def _boot_key(cfg: SandboxConfig) -> Optional[tuple]:
+    """What a booted sandbox must share with a create to stand in for it.
+
+    Everything that is fixed when the sandbox boots; ``env``, ``ttl_seconds``
+    and ``timeout_seconds`` are not. None for a create no booted sandbox can
+    serve (a custom OCI spec transform).
+    """
+    if cfg._oci_spec_transform_fn is not None:
+        return None
+    return (
+        cfg.image,
+        float(cfg.cpu or 0.0),
+        parse_memory_bytes(cfg.memory) or 0,
+        cfg.workdir,
+        bool(cfg.rootless),
+        cfg.network,
+        tuple(cfg.dns) if cfg.dns is not None else None,
+        tuple(cfg.capabilities) if cfg.capabilities is not None else None,
+        cfg.shell,
+        bool(cfg.readonly),
+        bool(cfg._ignore_cgroups),
+    )
+
+
+class _WarmPool:
+    """Booted sandboxes per profile, handed out by ``SandboxRuntime.create``."""
+
+    def __init__(self, runtime: "SandboxRuntime", profiles: List[Dict[str, Any]]):
+        self._runtime = runtime
+        self._lock = threading.Lock()
+        self._slots = threading.Semaphore(_WARM_BOOT_CONCURRENCY)
+        # Boot key -> (SandboxConfig to boot with, pool size).
+        self._profiles: Dict[tuple, Any] = {}
+        self._ready: Dict[tuple, collections.deque] = {}
+        self._booting: Dict[tuple, int] = {}
+        self._failed_at: Dict[tuple, float] = {}
+        self._closed = False
+        for profile in profiles:
+            kwargs = dict(profile)
+            size = int(kwargs.pop("size", 0))
+            kwargs.pop("ttl_seconds", None)
+            cfg = SandboxConfig(**kwargs)
+            key = _boot_key(cfg)
+            if key is None or size <= 0:
+                raise ValueError(
+                    f"Invalid warm_pool profile {profile!r}: it needs a positive "
+                    "'size' and no _oci_spec_transform_fn."
+                )
+            self._profiles[key] = (cfg, size)
+            self._ready[key] = collections.deque()
+            self._booting[key] = 0
+        for key in self._profiles:
+            self.refill(key)
+
+    def take(self, cfg: SandboxConfig) -> Optional[str]:
+        """A booted sandbox for ``cfg`` (and a replacement booting), or None."""
+        key = _boot_key(cfg)
+        if key not in self._profiles:
+            return None
+        instance_id = None
+        dead = []
+        with self._lock:
+            pool = self._ready[key]
+            while pool and instance_id is None:
+                candidate = pool.popleft()
+                if self._runtime.get_status(candidate) == SandboxStatus.RUNNING:
+                    instance_id = candidate
+                else:
+                    dead.append(candidate)
+        for candidate in dead:  # died while pooled: free what it holds
+            threading.Thread(
+                target=self._discard, args=(candidate,), daemon=True
+            ).start()
+        self.refill(key)
+        return instance_id
+
+    def _discard(self, instance_id: str) -> None:
+        try:
+            self._runtime._backend.delete_sandbox(instance_id)
+        except Exception as exc:
+            logger.warning(
+                "Failed to delete dead warm-pool sandbox %s: %s", instance_id, exc
+            )
+
+    def refill(self, key: tuple) -> None:
+        with self._lock:
+            failed_at = self._failed_at.get(key)
+            if self._closed or (
+                failed_at is not None
+                and time.monotonic() - failed_at < _WARM_RETRY_SECONDS
+            ):
+                return
+            size = self._profiles[key][1]
+            missing = max(0, size - len(self._ready[key]) - self._booting[key])
+            self._booting[key] += missing
+        for _ in range(missing):
+            threading.Thread(target=self._boot, args=(key,), daemon=True).start()
+
+    def _boot(self, key: tuple) -> None:
+        instance_id = None
+        try:
+            with self._slots:
+                if not self._closed:
+                    instance_id = self._runtime._backend.create_sandbox(
+                        self._profiles[key][0]
+                    )
+        except Exception as exc:  # a create after _WARM_RETRY_SECONDS retries
+            logger.warning("A warm-pool sandbox failed to boot: %s", exc)
+            with self._lock:
+                self._failed_at[key] = time.monotonic()
+        with self._lock:
+            self._booting[key] -= 1
+            if instance_id is not None and not self._closed:
+                self._ready[key].append(instance_id)
+                instance_id = None
+        if instance_id is not None:  # closed while it booted
+            self._runtime._backend.delete_sandbox(instance_id)
+
+    def full(self) -> bool:
+        with self._lock:
+            return all(
+                len(self._ready[key]) >= size
+                for key, (_, size) in self._profiles.items()
+            )
+
+    def close(self) -> List[str]:
+        """Stop refilling; the booted sandboxes, for the caller to delete."""
+        with self._lock:
+            self._closed = True
+            ready = [i for pool in self._ready.values() for i in pool]
+            for pool in self._ready.values():
+                pool.clear()
+        return ready
 
 
 @PublicAPI(stability="alpha")
 class SandboxRuntime:
-    """Low-level interface for managing local sandbox runtime environments."""
+    """Low-level interface for managing local sandbox runtime environments.
 
-    def __init__(self):
+    Args:
+        warm_pool: Sandboxes to keep booted ahead of creates: a list of
+            profiles, each the ``create()`` keyword arguments of one boot
+            configuration plus its pool ``"size"``. A create whose arguments
+            match a profile's (``env``, ``ttl_seconds`` and
+            ``timeout_seconds`` aside) takes a booted sandbox at once, and
+            the runtime boots a replacement in the background. Such a
+            sandbox runs every command with the create's ``env`` (on top of
+            the profile's). None or empty keeps no pool.
+    """
+
+    def __init__(self, warm_pool: Optional[List[Dict[str, Any]]] = None):
         self._image_manager = ImageManager()
         self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
         self._ttl_timers: Dict[str, threading.Timer] = {}
+        # Instance id -> the env its create asked for, for sandboxes taken
+        # from the warm pool (booted before the create, with the profile's).
+        self._exec_env: Dict[str, Dict[str, str]] = {}
+        self._warm = _WarmPool(self, warm_pool) if warm_pool else None
 
     @property
     def image_manager(self) -> ImageManager:
@@ -117,8 +279,12 @@ class SandboxRuntime:
             _ignore_cgroups=_ignore_cgroups,
             **kwargs,
         )
-        self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
-        instance_id = self._backend.create_sandbox(cfg)
+        instance_id = self._warm.take(cfg) if self._warm is not None else None
+        if instance_id is not None:
+            if cfg.env:
+                self._exec_env[instance_id] = dict(cfg.env)
+        else:
+            instance_id = self._backend.create_sandbox(cfg)
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
             timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))
             timer.daemon = True
@@ -161,6 +327,9 @@ class SandboxRuntime:
         Returns:
             ExecResult containing exit code, stdout, and stderr.
         """
+        create_env = self._exec_env.get(instance_id)
+        if create_env:
+            env = {**create_env, **(env or {})}
         return self._backend.exec_command(
             instance_id,
             command,
@@ -288,7 +457,40 @@ class SandboxRuntime:
         timer = self._ttl_timers.pop(instance_id, None)
         if timer is not None:
             timer.cancel()
+        self._exec_env.pop(instance_id, None)
         self._backend.delete_sandbox(instance_id)
+
+    def wait_for_warm_pool(self, timeout_seconds: float = 300.0) -> bool:
+        """Wait until every warm-pool profile has its full pool booted.
+
+        Args:
+            timeout_seconds: How long to wait.
+
+        Returns:
+            True once the pools are full; False on timeout, or with no pool.
+        """
+        if self._warm is None:
+            return False
+        deadline = time.monotonic() + timeout_seconds
+        while not self._warm.full():
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+        return True
+
+    def close(self) -> None:
+        """Delete the sandboxes the warm pool keeps booted, and stop refilling it.
+
+        Sandboxes that ``create`` returned stay; delete them with ``delete``.
+        """
+        if self._warm is not None:
+            for instance_id in self._warm.close():
+                try:
+                    self._backend.delete_sandbox(instance_id)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to delete warm-pool sandbox %s: %s", instance_id, exc
+                    )
 
     def terminate(self, instance_id: str) -> None:
         """Clean up and terminate the sandbox instance.
