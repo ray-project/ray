@@ -3,7 +3,7 @@ cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 advanced_instance_config:
     metadata:
         labels:
-            kueue.x-k8s.io/queue-name: default-queue
+            kueue.x-k8s.io/queue-name: llm-team-queue
 
 head_node:
     instance_type: 8CPU-32GB

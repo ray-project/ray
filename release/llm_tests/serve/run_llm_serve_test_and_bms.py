@@ -230,7 +230,7 @@ def submit_benchmark_vllm_job(image_uri: str, serve_config_file: str, hf_token: 
             ),
             worker_nodes=[],  # To force running on head node only.
             advanced_instance_config={
-                "metadata": {"labels": {"kueue.x-k8s.io/queue-name": "default-queue"}}
+                "metadata": {"labels": {"kueue.x-k8s.io/queue-name": "llm-team-queue"}}
             },
         ),
         image_uri=image_uri,
