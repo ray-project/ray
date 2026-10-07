@@ -58,11 +58,6 @@ def _read_checkpoint_files(root_path: Path) -> List[int]:
     return sorted(row_ids)
 
 
-def test_generate_id_column_not_implemented():
-    with pytest.raises(NotImplementedError, match="generate_id_column"):
-        DatasetCheckpointConfig(id_column="id", generate_id_column=True)
-
-
 @pytest.mark.parametrize("checkpoint_path", [None, ""])
 def test_checkpoint_path_not_set(checkpoint_path):
     with pytest.raises(ValueError, match="`checkpoint_path` must be set"):
@@ -510,6 +505,36 @@ def test_flush_exception(mock_write_table, tmp_path, when_to_raise):
 
     with pytest.raises(RuntimeError, match="Failed to flush"):
         checkpointer.record_yielded_batch(_create_batch([4, 5, 6]))
+
+
+@pytest.mark.parametrize("generate_id_column", [True, False])
+def test_generated_id_column_removed_from_batches(
+    ray_start_10_cpus, tmp_path, generate_id_column
+):
+    """Test that a generated ID column is checkpointed but removed from the
+    yielded batches, while a user-provided ID column is kept."""
+    checkpointer = RowIDBasedDataIteratorCheckpointer(
+        checkpoint_config=DatasetCheckpointConfig(
+            checkpoint_path=str(tmp_path),
+            id_column="id",
+            generate_id_column=generate_id_column,
+            # Keep the files after the epoch ends, so they can be checked below.
+            delete_checkpoints_after_epoch=False,
+        )
+    )
+    ds_iter = ray.data.range(100).map(lambda row: {**row, "x": row["id"]}).iterator()
+    ds_iter._enable_checkpointing(checkpointer)
+
+    seen_x = []
+    for batch in ds_iter.iter_batches(batch_size=10):
+        assert ("id" in batch) != generate_id_column
+        seen_x.extend(batch["x"].tolist())
+        state_dict = ds_iter.state_dict()
+
+    # The row IDs are still checkpointed, even if they're not yielded.
+    assert sorted(read_checkpoint_files_for_state_dict(state_dict, tmp_path)) == sorted(
+        seen_x
+    )
 
 
 @pytest.mark.parametrize("reinit_iter", [True, False])

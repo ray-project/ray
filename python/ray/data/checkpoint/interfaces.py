@@ -255,7 +255,8 @@ class DatasetCheckpointConfig:
             during all operators.
         generate_id_column: Whether to generate the `id_column` for each row.
             Use this when you don't have a pre-existing `id_column` in the input
-            dataset. Not supported yet.
+            dataset. The generated column is removed from the yielded batches.
+            Only Parquet reads on the V2 datasource path are supported.
         checkpoint_path: Path to store the checkpoint data. It can be a path to a cloud
             object storage (e.g. `s3://bucket/path`) or a file system path.
             If the latter, the path must be a network-mounted file system (e.g.
@@ -286,14 +287,6 @@ class DatasetCheckpointConfig:
             raise InvalidCheckpointingConfig(
                 "Checkpoint ID column must be a non-empty string, "
                 f"but got {self.id_column}"
-            )
-
-        # TODO: Support auto-generated row IDs once `CheckpointConfig`
-        # supports `generated_id_column`.
-        if self.generate_id_column:
-            raise NotImplementedError(
-                "`generate_id_column=True` is not supported yet. "
-                "Use a pre-existing `id_column` with unique values per row instead."
             )
 
 

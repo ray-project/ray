@@ -30,7 +30,8 @@ class CheckpointingBatchIterator(BatchIterator):
             batch: The batch to update with checkpoint metadata.
 
         Returns:
-            An updated batch with the row IDs as metadata.
+            An updated batch with the row IDs as metadata and a filtered view of the data
+            without the id column if it was auto-generated.
         """
         assert self._checkpointer
 
@@ -38,8 +39,21 @@ class CheckpointingBatchIterator(BatchIterator):
         assert isinstance(block_accessor, TableBlockAccessor)
         row_ids = block_accessor.select(columns=[self._checkpointer._id_column])
 
+        # Only filter out the id column if it was auto-generated.
+        block_data = batch.data
+        if self._checkpointer._checkpoint_config.generate_id_column:
+            block_data = block_accessor.select(
+                columns=[
+                    col
+                    for col in block_accessor.column_names()
+                    if col != self._checkpointer._id_column
+                ]
+            )
+
         return dataclasses.replace(
-            batch, metadata=dataclasses.replace(batch.metadata, row_ids=row_ids)
+            batch,
+            data=block_data,
+            metadata=dataclasses.replace(batch.metadata, row_ids=row_ids),
         )
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
