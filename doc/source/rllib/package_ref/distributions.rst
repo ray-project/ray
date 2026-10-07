@@ -15,6 +15,10 @@ Base Distribution class
    :toctree: doc/
 
     ~Distribution
+
+.. autosummary::
+   :nosignatures:
+
     ~Distribution.from_logits
     ~Distribution.sample
     ~Distribution.rsample
