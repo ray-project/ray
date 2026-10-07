@@ -104,7 +104,7 @@ To see what the label would run before you push, run the selector locally:
 bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- doc/source/data/doc_code/key_concepts.py
 ```
 
-The label works on both microcheck and premerge builds. Adding or removing it takes effect only on the next commit you push. A Buildkite rebuild replays the label set from the build it was rebuilt from, and the pipeline skips label-change builds for a commit that already has a build.
+The opt-in step runs only on premerge builds, which the `go` label starts. Microcheck doesn't run it, so apply both `docs-example-test` and `go` to run the tests for your changes. Adding or removing either label takes effect only on the next commit you push. A Buildkite rebuild replays the label set from the build it was rebuilt from, and the pipeline skips label-change builds for a commit that already has a build.
 
 ### What doesn't run on your PR
 

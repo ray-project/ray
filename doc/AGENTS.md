@@ -43,7 +43,7 @@ For docs-only fixes, take the lightest path:
 
 - Touch only files under `doc/`. A prose-only change runs no library tests at all, the cheapest path there is.
 - Don't bundle in a non-doc change "while you're at it" — that change pulls its own (often expensive) test set into the PR.
-- Doc asset edits run no docs example tests by default. The `docs-example-test` label runs only the tests that name a changed file directly, never a library's whole suite and never GPU tests. Applying it takes write access, so suggest it to the reviewer rather than assuming the PR author can add it. Labels take effect on the next pushed commit, not on a rebuild. To preview what it selects, run `bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- <changed files>`.
+- Doc asset edits run no docs example tests by default. The `docs-example-test` label runs only the tests that name a changed file directly, never a library's whole suite and never GPU tests. Applying it takes write access, so suggest it to the reviewer rather than assuming the PR author can add it. The step runs only on premerge builds, so it needs the `go` label too. Labels take effect on the next pushed commit, not on a rebuild. To preview what it selects, run `bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- <changed files>`.
 - If a docs change requires a non-doc change to land cleanly (e.g., autodoc references a renamed symbol), land them in the larger non-doc PR, not a docs-led PR.
 
 For generated API docs that depend on Python source under `python/ray/...`, expect broader test runs. That's correct, not a misconfiguration.
