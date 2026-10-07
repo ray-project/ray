@@ -163,6 +163,35 @@ def get_devices() -> List[torch.device]:
             return [torch.device("cpu")]
 
 
+def _get_simple_fsdp_wrapper_and_kwargs(
+    device: torch.device,
+    world_size: int,
+    parallel_strategy_kwargs: Dict[str, Any],
+) -> tuple[Callable[..., torch.nn.Module], Dict[str, Any]]:
+    """Returns the SimpleFSDP wrapper function and resolved keyword arguments."""
+    from torch.distributed.device_mesh import init_device_mesh
+
+    try:
+        from torchtitan.experiments.graph_trainer import simple_fsdp
+    except ImportError as exc:
+        raise ImportError(
+            "`torchtitan` is required to use "
+            "`parallel_strategy='simple_fsdp'`. "
+            "Please install `torchtitan` to use SimpleFSDP."
+        ) from exc
+
+    device_mesh = parallel_strategy_kwargs.get("device_mesh")
+    if device_mesh is None:
+        device_mesh = init_device_mesh(device.type, (world_size,))
+
+    resolved_kwargs = {
+        "device_mesh": device_mesh,
+        "mode": "fully_shard",
+        **parallel_strategy_kwargs,
+    }
+    return simple_fsdp.data_parallel, resolved_kwargs
+
+
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: Union[bool, torch.device] = True,
@@ -182,11 +211,12 @@ def prepare_model(
             to manually be moved to the correct device.
         parallel_strategy: Whether to wrap models in
             ``DistributedDataParallel``, ``FullyShardedDataParallel``,
-            or neither. Must be one of ``"ddp"``, ``"fsdp"``, or ``None``.
+            ``simple_fsdp.data_parallel``, or neither. Must be one of ``"ddp"``,
+            ``"fsdp"``, ``"simple_fsdp"``, or ``None``.
         parallel_strategy_kwargs: Args to pass into
-            ``DistributedDataParallel`` or ``FullyShardedDataParallel``
-            initialization if ``parallel_strategy`` is set to "ddp"
-            or "fsdp", respectively.
+            ``DistributedDataParallel``, ``FullyShardedDataParallel``, or
+            ``simple_fsdp.data_parallel`` initialization if ``parallel_strategy``
+            is set to ``"ddp"``, ``"fsdp"``, or ``"simple_fsdp"``, respectively.
 
     Returns:
         The prepared model, wrapped according to ``parallel_strategy``.
@@ -231,7 +261,16 @@ def prepare_model(
                     "output_device": device,
                     **parallel_strategy_kwargs,
                 }
-        else:
+        elif parallel_strategy == "simple_fsdp":
+            (
+                DataParallel,
+                parallel_strategy_kwargs,
+            ) = _get_simple_fsdp_wrapper_and_kwargs(
+                device=device,
+                world_size=world_size,
+                parallel_strategy_kwargs=parallel_strategy_kwargs,
+            )
+        elif parallel_strategy == "fsdp":
             if not torch.cuda.is_available():
                 raise RuntimeError(
                     "FSDP is only available with GPU-enabled "
@@ -242,6 +281,12 @@ def prepare_model(
             from torch.distributed.fsdp import FullyShardedDataParallel
 
             DataParallel = FullyShardedDataParallel
+        else:
+            raise ValueError(
+                "`parallel_strategy` must be one of "
+                "('ddp', 'fsdp', 'simple_fsdp', None), "
+                f"got {parallel_strategy!r}."
+            )
         if rank == 0:
             logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
         else:
