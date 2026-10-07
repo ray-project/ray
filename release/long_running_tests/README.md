@@ -8,7 +8,7 @@ $ pip install anyscale
 $ anyscale init
 ```
 
-Note that all the long running test is running inside virtual environment, tensorflow_p36
+Note that all long-running tests run inside the `tensorflow_p36` virtual environment.
 
 ## Running the Workloads
 The easiest approach to running these workloads is to use the

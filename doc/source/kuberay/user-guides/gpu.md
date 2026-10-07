@@ -58,7 +58,7 @@ template:
 Each of the Pods in the group can be scheduled on an AWS `p2.xlarge` instance (1 GPU, 4vCPU, 61Gi RAM).
 
 :::{tip}
-GPU instances are expensive -- consider setting up autoscaling for your GPU Ray workers, as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above. To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec` Finally, make sure you configured the group or pool of GPU Kubernetes nodes, to autoscale. Refer to your {ref}`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
+GPU instances are expensive -- consider setting up autoscaling for your GPU Ray workers, as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above. To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec`. Finally, make sure you configured the group or pool of GPU Kubernetes nodes, to autoscale. Refer to your {ref}`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
 :::
 
 ## GPU multi-tenancy
@@ -74,7 +74,7 @@ Some useful links:
 
 ## GPUs and Ray
 
-This section discuss GPU usage for Ray applications running on Kubernetes. For general guidance on GPU usage with Ray, see also {ref}`gpu-support`.
+This section discusses GPU usage for Ray applications running on Kubernetes. For general guidance on GPU usage with Ray, see also {ref}`gpu-support`.
 
 The KubeRay operator advertises container GPU resource limits to the Ray scheduler and the Ray autoscaler. In particular, the Ray container's `ray start` entrypoint will be automatically configured with the appropriate `--num-gpus` option.
 

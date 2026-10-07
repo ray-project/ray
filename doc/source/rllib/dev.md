@@ -16,7 +16,7 @@ When you use the [setup-dev.py script](https://github.com/ray-project/ray/blob/m
 # Clone your fork onto your local machine, e.g.:
 git clone https://github.com/[your username]/ray.git
 cd ray
-# Link only RLlib. This leads to the most stable behavior and you won't have to re-install ray as often.
+# Link only RLlib. This leads to the most stable behavior and you won't have to re-install Ray as often.
 python python/ray/setup-dev.py --allow rllib
 # If you anticipate making changes to Tune or Train often, link them too:
 # python python/ray/setup-dev.py --allow rllib tune train
