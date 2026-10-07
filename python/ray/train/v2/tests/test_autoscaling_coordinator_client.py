@@ -46,7 +46,6 @@ def test_reserved_resources_become_one_node_pin_per_worker():
     [
         pytest.param({}, {"CPU": 1}, id="nothing_reserved"),
         pytest.param({"node-a": {"CPU": 1}}, {"CPU": 1}, id="covers_one_of_two"),
-        pytest.param({"node-a": {"CPU": 5}}, {"CPU": 1}, id="covers_more_than_asked"),
         # Nothing to reserve for a zero-resource worker, so there is nothing to
         # pin to either -- and nothing to wait for.
         pytest.param({}, {"CPU": 0}, id="zero_resource_workers"),

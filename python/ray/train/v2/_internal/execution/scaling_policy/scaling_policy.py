@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     LabelSelector,
+    ReservedResources,
 )
 from ray.train._internal.autoscaling_coordinator_client import (
     RequesterId,
@@ -45,6 +46,12 @@ class NoopDecision(ScalingDecision):
 class ResizeDecision(ScalingDecision):
     num_workers: int
     resources_per_worker: Dict[str, float]
+    # One node-pinning label selector per worker, built from the same
+    # reservation snapshot that chose `num_workers`. `None` means the policy
+    # didn't compute pins: either pinning doesn't apply (see
+    # `ScalingPolicy._should_pin_to_reservation`) or the controller polls for
+    # them (`FixedScalingPolicy`, for now).
+    label_selectors: Optional[List[LabelSelector]] = None
 
 
 class ScalingPolicy(abc.ABC, ControllerCallback):
@@ -134,64 +141,51 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
             return
         self._coordinator_client.cancel_resource_request()
 
-    def get_reserved_bundle_label_selectors(
-        self, num_workers: int
-    ) -> Optional[List[LabelSelector]]:
-        """Convert coordinator reservations into per-worker node-id label selectors.
+    def _get_reserved_resources(self, recompute: bool = False) -> ReservedResources:
+        """Get reserved resources from the AutoscalingCoordinator.
 
-        Polls the coordinator until the reservation covers every worker or
-        the worker-group start timeout elapses, analogous to
-        ``placement_group.wait()``. The timeout is
-        ``RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S`` (default 60s).
-
-        Args:
-            num_workers: The number of workers the worker group will start.
-
-        Returns:
-            One node-pinning label selector per worker, or ``None`` if the
-            coordinator has not reserved enough capacity to place every worker
-            within the start timeout. ``None`` means "not ready", not "no
-            constraint": the caller must not start a partially pinned worker
-            group.
+        Returns a cached value unless ``recompute`` is True.
         """
-        if self._coordinator_client is None:
-            return None
+        assert self._coordinator_client is not None
+        return self._coordinator_client.get_reserved_resources(recompute=recompute)
 
-        resources_per_worker = self.scaling_config._resources_per_worker_not_none
-        if sum(resources_per_worker.values()) <= 0:
-            # Nothing to reserve, so there is nothing to pin to. Let the worker
-            # group schedule normally.
-            return None
+    def _should_pin_to_reservation(self) -> bool:
+        """Whether workers should be pinned to the coordinator's reservation.
 
-        timeout_s = float(
-            os.environ.get(
-                WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
-                DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
-            )
+        Skipped when:
+        - Workers request no resources: nothing to reserve, and they fit
+          anywhere, so there is nothing to wait for.
+        - TPU: `SlicePlacementGroup` does its own reservation and ignores
+          `label_selector`, so pins would only add latency.
+        - A `label_selector` is set: the coordinator picks nodes by resource
+          fit and never matches `label_selectors` against node labels, so its
+          pins can name a node that violates the selector.
+
+        Selectors returned by controller callbacks are only known at worker
+        group start, so the controller drops these pins in that case.
+        """
+        return (
+            not self.scaling_config.use_tpu
+            and sum(self.scaling_config._resources_per_worker_not_none.values()) > 0
+            and not self.scaling_config.label_selector
         )
-        deadline = time.monotonic() + timeout_s
-        while True:
-            selectors = self._try_get_selectors(num_workers)
-            if selectors is not None:
-                return selectors
-            if time.monotonic() >= deadline:
-                return None
-            time.sleep(1)
 
-    def _try_get_selectors(self, num_workers: int) -> Optional[List[LabelSelector]]:
-        """One-shot lookup of per-worker reservation pins, or ``None`` if not ready."""
-        reserved_resources = self._coordinator_client.get_reserved_resources(
-            recompute=True
-        )
+    def _get_reserved_label_selectors(
+        self, reserved_resources: ReservedResources, num_workers: int
+    ) -> Optional[List[LabelSelector]]:
+        """Convert a reservation snapshot into one node pin per worker.
+
+        Returns ``None`` if the snapshot cannot place ``num_workers`` workers
+        in a layout that satisfies the requested placement strategy.
+        """
         if not reserved_resources:
             return None
-
         label_selectors = _reserved_resources_to_bundle_label_selectors(
             reserved_resources=reserved_resources,
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
             trainer_resources=self.scaling_config._trainer_resources_not_none,
         )
-        if len(label_selectors) != num_workers:
+        if len(label_selectors) < num_workers:
             logger.debug(
                 "Reserved capacity covers %s workers but %s are required; "
                 "not ready to pin the worker group yet.",
@@ -199,6 +193,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
                 num_workers,
             )
             return None
+        label_selectors = label_selectors[:num_workers]
 
         # The reservation has to actually satisfy the requested placement, or
         # pinning to it would quietly violate the strategy the user asked for
@@ -228,6 +223,46 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
             return None
 
         return label_selectors
+
+    def get_reserved_bundle_label_selectors(
+        self, num_workers: int
+    ) -> Optional[List[LabelSelector]]:
+        """Poll the coordinator for per-worker node pins.
+
+        Used for decisions that don't carry pins (``FixedScalingPolicy``).
+        Polls until the reservation covers every worker or the worker-group
+        start timeout elapses, analogous to ``placement_group.wait()``. The
+        timeout is ``RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S`` (default 60s).
+
+        Args:
+            num_workers: The number of workers the worker group will start.
+
+        Returns:
+            One node-pinning label selector per worker, or ``None`` if the
+            coordinator has not reserved enough capacity to place every worker
+            within the start timeout. ``None`` means "not ready", not "no
+            constraint": the caller must not start a partially pinned worker
+            group.
+        """
+        if self._coordinator_client is None:
+            return None
+
+        timeout_s = float(
+            os.environ.get(
+                WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
+                DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
+            )
+        )
+        deadline = time.monotonic() + timeout_s
+        while True:
+            selectors = self._get_reserved_label_selectors(
+                self._get_reserved_resources(recompute=True), num_workers
+            )
+            if selectors is not None:
+                return selectors
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(1)
 
     @property
     def _autoscaling_coordinator(self):
