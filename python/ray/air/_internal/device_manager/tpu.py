@@ -38,12 +38,27 @@ class TPUTorchDeviceManager(TorchDeviceManager):
         pass
 
     def supports_stream(self) -> bool:
-        """Validate if the device type support create a stream"""
+        """Validate if the device type supports creating a stream."""
+        if hasattr(torch, "tpu"):
+            return True
+        if self.is_available():
+            self.register_custom_torch_dist_backend()
+            return True
         return False
 
+    def create_stream(self, device: torch.device):
+        """Create a stream on TPU device."""
+        return torch.tpu.Stream(device=device)
+
     def get_stream_context(self, stream):
-        """Return empty context manager for TPU."""
-        return nullcontext()
+        """Get a stream context for TPU device."""
+        if stream is None:
+            return nullcontext()
+        return torch.tpu.stream(stream)
+
+    def get_current_stream(self):
+        """Get current stream for TPU device."""
+        return torch.accelerator.current_stream()
 
     @classmethod
     def register_custom_torch_dist_backend(cls) -> None:

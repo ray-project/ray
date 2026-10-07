@@ -671,6 +671,7 @@ class _WrappedDataLoader(DataLoader):
             else None
         )
         self.next_batch = None
+        self._supports_record_stream = True
 
     def _move_to_device(self, item):
         if item is None:
@@ -720,6 +721,8 @@ class _WrappedDataLoader(DataLoader):
         # the memory copy stream finishes.
         curr_stream = self.device_manager.get_current_stream()
         curr_stream.wait_stream(self._memcpy_stream)
+        if not self._supports_record_stream:
+            return
         # When a tensor is used by CUDA streams different from
         # its original allocator, we need to call ``record_stream``
         # to inform the allocator of all these streams. Otherwise,
@@ -730,7 +733,20 @@ class _WrappedDataLoader(DataLoader):
         for i in self._iter_tensors(item):
             # ``record_stream`` is only implemented for accelerator tensors
             if i.device.type == self.device.type:
-                i.record_stream(curr_stream)
+                try:
+                    i.record_stream(curr_stream)
+                except (NotImplementedError, RuntimeError) as e:
+                    if self.device.type != "tpu":
+                        raise
+                    # ``torch_tpu`` leaves ``recordDataPtrOnStream`` unimplemented
+                    # because PJRT reference-counts device buffers across in-flight ops.
+                    logger.debug(
+                        "record_stream is unsupported on TPU; skipping for subsequent "
+                        "tensors/batches: %s",
+                        e,
+                    )
+                    self._supports_record_stream = False
+                    break
 
     def __len__(self):
         return len(self._dataloader)
