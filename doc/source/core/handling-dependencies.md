@@ -601,7 +601,7 @@ The `runtime_env` is a Python dictionary or a {class}`ray.runtime_env.RuntimeEnv
 
   - Example: `{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}`
 
-- `image_uri` (dict): Requires a given Docker image. The worker process runs in a container with this image.
+- `image_uri` (str): Requires a given Docker image. The worker process runs in a container with this image.
 
   - Example: `{"image_uri": "anyscale/ray:2.53.0-py310-cpu"}`
 
@@ -792,7 +792,7 @@ Keep three more things in mind when you use a `local://` URI:
 
 The `working_dir` and `py_modules` arguments in the `runtime_env` dictionary can specify either local paths or remote URIs.
 
-A local path must be a directory path. Ray accesses the directory's contents directly as the `working_dir` or a `py_module`. A remote URI must link directly to a zip file or, for `py_module` only, a wheel file. The zip file must contain only a single top-level directory. Ray accesses the contents of this directory directly as the `working_dir` or a `py_module`.
+A local path can be a directory, or a file where the API reference allows one, such as a local archive for `working_dir` or a `.whl` file for `py_modules`. Ray accesses a directory's contents directly as the `working_dir` or a `py_module`. A remote URI must link directly to a `.zip`, `.tar.gz`, `.tgz`, or `.tar.xz` archive or, for `py_module` only, a wheel file. The archive must contain only a single top-level directory. Ray accesses the contents of this directory directly as the `working_dir` or a `py_module`.
 
 For example, suppose you want to use the contents of your local `/some_path/example_dir` directory as your `working_dir`. To specify this directory as a local path, include the following in your `runtime_env` dictionary:
 

@@ -56,7 +56,7 @@ After binding, agents write their ports to `{session_dir}/{port_name}_{node_id_h
 
 ### IPC-based: Raylet ↔ core workers
 
-The raylet, written in C++, spawns core workers, which are also written in C++. Because they share a language, they communicate over socket-based IPC with the FlatBuffers protocol. On Linux and macOS, the socket is a Unix domain socket. On Windows, it's a TCP socket on localhost.
+The raylet spawns worker processes. The core worker inside each worker process is a C++ library, the same language as the raylet. Because they share a language, they communicate over socket-based IPC with the FlatBuffers protocol. On Linux and macOS, the socket is a Unix domain socket. On Windows, it's a TCP socket on localhost.
 
 Without a port range, which is the default, the worker binds to port 0 so that the OS picks a random port. The worker then tells the raylet the actual port.
 

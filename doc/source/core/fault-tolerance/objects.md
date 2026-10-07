@@ -35,7 +35,7 @@ Lineage reconstruction currently has the following limitations:
 
 Lineage reconstruction can cause higher-than-usual driver memory usage because the driver keeps the descriptions of any tasks that might be re-executed in case of failure. To limit the memory that lineage uses, set the `RAY_max_lineage_bytes` environment variable, which defaults to 1 GiB. Ray evicts lineage when it exceeds this threshold.
 
-To disable lineage reconstruction entirely, set the environment variable `RAY_TASK_MAX_RETRIES=0` when you run `ray start` or call `ray.init`. With this setting, Ray raises an `ObjectLostError` if no copies of an object remain.
+To disable lineage reconstruction for tasks that don't set `max_retries`, set the environment variable `RAY_TASK_MAX_RETRIES=0` when you run `ray start` or call `ray.init`. With this setting, Ray raises an `ObjectLostError` if no copies of an object remain. The variable changes only the default `max_retries` for remote functions. It doesn't affect tasks that set `max_retries` or actor tasks that set `max_task_retries`.
 
 (fault-tolerance-ownership)=
 
