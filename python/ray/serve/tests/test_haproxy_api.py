@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import json
 import logging
 import os
 import signal
@@ -22,8 +23,11 @@ from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
+    RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -1051,12 +1055,25 @@ def test_ingress_request_router_forward_body_gate_renders(
 
         if forward_body:
             assert "wait-for-body" in cfg, cfg
+            assert (
+                f"tune.bufsize {RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE}"
+                in cfg
+            ), cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
+        assert f"maxconn {RAY_SERVE_HAPROXY_MAXCONN}" in cfg, cfg
         assert (
             "http-request del-header x-serve-router- -m beg "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert (
+            "http-request del-header serve_multiplexed_model_id "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert (
+            "http-request del-header serve-multiplexed-model-id "
             "if has_ingress_request_router_app"
         ) in cfg
         assert "extract_json_string" not in lua
@@ -1076,9 +1093,11 @@ def _create_replica_server(port: int, replica_id_header: str):
         for name, value in req.headers.items():
             if name.startswith(SERVE_INGRESS_ROUTER_HEADER_PREFIX):
                 res.headers[f"echo-{name}"] = value
+            if name.replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID.replace("-", "_"):
+                res.headers[f"echo-{name}"] = value
         res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
-        return {"replica": replica_id_header, "echo": body.decode("utf-8")}
+        return {"replica": replica_id_header, "body_length": len(body)}
 
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
@@ -1263,6 +1282,23 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert len(router_captured["request_ids"]) == 4
             assert all(router_captured["request_ids"])
 
+            # A leading-space word is typically one token with common BPE
+            # tokenizers. Verify that a request approximating a million-token
+            # prompt reaches both the  router and selected replica intact.
+            large_body = json.dumps({"prompt": " token" * 1_000_000})
+            large_body_size = len(large_body.encode())
+            assert 262144 < large_body_size < 8 * 1024 * 1024
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                data=large_body,
+                headers={"content-type": "application/json"},
+                timeout=30,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert resp.json()["body_length"] == large_body_size
+            assert router_captured["bodies"][-1] == large_body
+
             # GET is not POST, so Lua routing never runs; the router should
             # have seen exactly the four POSTs above and nothing more.
             n_router_calls_before_get = len(router_captured["bodies"])
@@ -1300,6 +1336,8 @@ async def test_ingress_request_router_forwards_trusted_headers(
         token_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
         metadata_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "metadata"
         spoofed_only_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "spoofed-only"
+        multiplexed_model_header = SERVE_MULTIPLEXED_MODEL_ID
+        hyphenated_multiplexed_model_header = multiplexed_model_header.replace("_", "-")
 
         replica, replica_thread = _create_replica_server(
             replica_port, replica_id_header="A"
@@ -1311,6 +1349,7 @@ async def test_ingress_request_router_forwards_trusted_headers(
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
                     token_header: "trusted-key",
                     metadata_header: "trusted-metadata",
+                    multiplexed_model_header: "base:adapter",
                 }
             },
         )
@@ -1349,12 +1388,18 @@ async def test_ingress_request_router_forwards_trusted_headers(
                     token_header: "spoofed-key",
                     metadata_header: "spoofed-metadata",
                     spoofed_only_header: "must-be-removed",
+                    multiplexed_model_header: "spoofed:adapter",
+                    hyphenated_multiplexed_model_header: "spoofed-hyphen:adapter",
                 },
                 timeout=5,
             )
             assert resp.status_code == 200, resp.text
             assert resp.headers.get(f"echo-{token_header}") == "trusted-key"
             assert resp.headers.get(f"echo-{metadata_header}") == "trusted-metadata"
+            assert (
+                resp.headers.get(f"echo-{multiplexed_model_header}") == "base:adapter"
+            )
+            assert f"echo-{hyphenated_multiplexed_model_header}" not in resp.headers
             assert f"echo-{spoofed_only_header}" not in resp.headers
 
         finally:

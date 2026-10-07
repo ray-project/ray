@@ -619,6 +619,10 @@ class ProxyState:
                             self._last_drain_check_time = self._timer.time()
 
     def shutdown(self):
+        # Called on every control-loop tick while the controller shuts down, so the
+        # start time is armed once: re-arming it measures a tick, not the shutdown.
+        if self._shutting_down:
+            return
         self._shutting_down = True
         self._shutdown_start_time = self._timer.time()
         self._actor_proxy_wrapper.kill()
@@ -667,6 +671,9 @@ class ProxyStateManager:
         self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_location = proxy_location
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
+        # Proxies already removed from _proxy_states but whose actor may still be
+        # going away. Polled each update so the shutdown duration is recorded.
+        self._stopping_proxy_states: List[ProxyState] = []
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
         self._proxy_actor_class = proxy_actor_class
@@ -709,7 +716,8 @@ class ProxyStateManager:
 
         return all(
             proxy_state.is_ready_for_shutdown()
-            for proxy_state in self._proxy_states.values()
+            for proxy_state in list(self._proxy_states.values())
+            + self._stopping_proxy_states
         )
 
     def get_config(self) -> HTTPOptions:
@@ -839,6 +847,12 @@ class ProxyStateManager:
         """
         if proxy_nodes is None:
             proxy_nodes = set()
+
+        self._stopping_proxy_states = [
+            state
+            for state in self._stopping_proxy_states
+            if not state.is_ready_for_shutdown()
+        ]
 
         target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _, _ in target_nodes}
@@ -1002,6 +1016,7 @@ class ProxyStateManager:
 
         if stop_proxy:
             self._fallback_proxy_state.shutdown()
+            self._stopping_proxy_states.append(self._fallback_proxy_state)
             self._fallback_proxy_state = None
             self._fallback_proxy_restart_count += 1
 
@@ -1030,6 +1045,7 @@ class ProxyStateManager:
             proxy_state = self._proxy_states.pop(node_id)
             self._proxy_restart_counts[node_id] = proxy_state.proxy_restart_count + 1
             proxy_state.shutdown()
+            self._stopping_proxy_states.append(proxy_state)
 
         self._stop_fallback_proxy_if_needed(alive_node_ids)
 

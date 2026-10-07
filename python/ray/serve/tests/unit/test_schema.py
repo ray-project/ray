@@ -19,6 +19,7 @@ from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
+    gRPCOptions,
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
@@ -66,6 +67,11 @@ def get_valid_runtime_envs() -> List[Dict]:
             "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
             "excludes": "imaginary_file.txt",
         },
+        # Runtime_env pointing at directories already present on every node.
+        {
+            "working_dir": "local:///app",
+            "py_modules": ["local:///app/lib"],
+        },
     ]
 
 
@@ -80,7 +86,9 @@ def get_invalid_runtime_envs() -> List[Dict]:
                 "/Desktop/my_project",
                 TEST_DEPLOY_GROUP_PINNED_URI,
             ],
-        }
+        },
+        # A "local://" URI must carry an absolute path
+        {"working_dir": "local://relative/path"},
     ]
 
 
@@ -1023,16 +1031,22 @@ class TestServeDeploySchema:
             ServeDeploySchema.model_validate(deploy_config_dict)
 
     def test_deploy_with_grpc_options(self):
-        """gRPC options can be specified."""
+        """gRPC options can be specified and round-trip to `gRPCOptions`."""
 
         deploy_config_dict = {
             "grpc_options": {
                 "port": 9000,
                 "grpc_servicer_functions": ["foo.bar"],
+                "enable_reflection": False,
             },
             "applications": [],
         }
-        ServeDeploySchema.model_validate(deploy_config_dict)
+        deploy_schema = ServeDeploySchema.model_validate(deploy_config_dict)
+        grpc_options = gRPCOptions(**deploy_schema.grpc_options.model_dump())
+        assert grpc_options.port == 9000
+        assert grpc_options.grpc_servicer_functions == ["foo.bar"]
+        assert grpc_options.enable_reflection is False
+        assert gRPCOptions().enable_reflection is True
 
     @pytest.mark.parametrize(
         "input_val,error,output_val",
@@ -1501,6 +1515,30 @@ def test_serve_instance_details_default_controller_health_metrics():
     assert details.controller_health_metrics.timestamp == 0.0
     assert details.controller_health_metrics.num_control_loops == 0
     assert details.controller_health_metrics.last_control_loop_time == 0.0
+
+
+def test_serve_instance_details_restores_unset_config_options_is_opt_in():
+    """An omitted capability field means restoring removed overrides is unsupported."""
+    defaulted = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+    assert defaulted.restores_unset_config_options is False
+    assert (
+        "restores_unset_config_options"
+        not in defaulted._get_user_facing_json_serializable_dict(exclude_unset=True)
+    )
+
+    reported = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        restores_unset_config_options=True,
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+    assert reported["restores_unset_config_options"] is True
 
 
 def test_serve_instance_details_includes_controller_health_metrics():
