@@ -3986,13 +3986,14 @@ def read_hive(
 
     .. note::
 
-        Each Dataset execution runs one HiveServer2 data query in one Ray task.
-        Failed reads aren't retried. This scanner doesn't push Dataset filters,
-        projections, or ``Dataset.limit()`` into HiveServer2. The ``limit``
-        argument adds a SQL ``LIMIT`` for table reads. ``override_num_blocks``
-        repartitions the result after the HiveServer2 query. This blocks
-        downstream streaming until the read completes; it doesn't parallelize
-        the HiveServer2 query.
+        Each Dataset execution runs at most one HiveServer2 data query in one
+        Ray task. Failed reads aren't retried. If Ray loses the worker running
+        the query, that Dataset execution fails. This scanner doesn't push
+        Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
+        The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
+        ``override_num_blocks`` repartitions the result after the HiveServer2
+        query. This blocks downstream streaming until the read completes; it
+        doesn't parallelize the HiveServer2 query.
 
     Examples:
 

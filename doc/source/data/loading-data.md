@@ -942,12 +942,9 @@ query_dataset = ray.data.read_hive(
 )
 ```
 
-Reads use the binary HiveServer2 protocol. Each read runs one data query in one
-Ray task. If you set `override_num_blocks`, Ray repartitions the result after
-the query. This blocks downstream streaming until the read completes. It
-doesn't parallelize the HiveServer2 query. Failed reads aren't retried, and
-each Dataset execution starts a new query. Pass only trusted, row-producing
-SQL. The `ca_cert` path must be accessible on the driver and read worker.
+Reads use the binary HiveServer2 protocol. Each read runs at most one data query in one Ray task. If Ray loses the worker running the query, that Dataset execution fails. If you set `override_num_blocks`, Ray calls `repartition()` on the result after the query. This blocks downstream streaming until the read completes. It doesn't parallelize the HiveServer2 query. Failed reads aren't retried. Each Dataset execution starts a new query, except for a table read with `limit=0`, which skips the data query. Pass only trusted, row-producing SQL. The `ca_cert` path must be accessible on the driver and read worker.
+
+Compared with {func}`~ray.data.read_sql`, `read_hive` fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
 
 (reading_sql)=
 (reading-sql-databases)=
