@@ -75,6 +75,7 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
 
     resolved = datasource.resolve_partitioning(sample)
 
+    assert resolved is not None
     assert resolved.field_names == ["year"]
     assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)
     partitioner = datasource.get_file_partitioner(

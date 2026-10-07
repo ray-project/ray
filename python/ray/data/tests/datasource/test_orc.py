@@ -435,7 +435,7 @@ def test_orc_write_rejects_non_positive_min_rows_per_file(
 def test_read_orc_mixed_partition_projection(
     ray_start_regular_shared, tmp_path, orc_reader_version, reverse, project
 ):
-    from ray.data.datasource.partitioning import Partitioning
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
     root = tmp_path / "root.orc"
     partition_dir = tmp_path / "year=2024"
@@ -445,7 +445,7 @@ def test_read_orc_mixed_partition_projection(
     _write_orc(str(partition), pa.table({"id": [3]}))
     paths = [str(partition), str(root)] if reverse else str(tmp_path)
     ds = ray.data.read_orc(
-        paths, partitioning=Partitioning("hive"), override_num_blocks=1
+        paths, partitioning=Partitioning(PartitionStyle.HIVE), override_num_blocks=1
     )
     if project:
         ds = ds.select_columns(["year", "id"])
@@ -459,8 +459,9 @@ def test_read_orc_mixed_partition_projection(
 def test_read_orc_rejects_partition_conflict_before_filter(
     ray_start_regular_shared, tmp_path, orc_reader_version, field_names
 ):
-    from ray.data.datasource.partitioning import Partitioning
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
     from ray.data.expressions import col
+    from ray.exceptions import RayTaskError
 
     root = tmp_path / "root.orc"
     partition_dir = tmp_path / "year=2024"
@@ -471,12 +472,14 @@ def test_read_orc_rejects_partition_conflict_before_filter(
     )
     ds = ray.data.read_orc(
         str(tmp_path),
-        partitioning=Partitioning("hive", field_names=field_names),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=field_names),
         override_num_blocks=1,
     )
-    with pytest.raises(
-        (ValueError, ray.exceptions.RayTaskError), match="Partition column year"
-    ):
+    expected_exceptions: tuple[type[Exception], ...] = (
+        ValueError,
+        RayTaskError,
+    )
+    with pytest.raises(expected_exceptions, match="Partition column year"):
         ds.filter(expr=col("year") == "from-file").select_columns(["id"]).take_all()
 
 
@@ -489,7 +492,7 @@ def test_read_orc_default_preserves_columns_outside_v2_sample(
     monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
     assert DataContext.get_current().use_orc_datasource_v2 is False
     for index in range(20):
-        table = {"id": [index]}
+        table: dict[str, list[int] | list[str]] = {"id": [index]}
         if index == 19:
             table["extra"] = ["late"]
         _write_orc(str(tmp_path / f"part-{index:02d}.orc"), pa.table(table))

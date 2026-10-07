@@ -129,6 +129,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
             schemas = list(executor.map(_read_schema, sample_paths))
         schema = unify_schemas_with_validation(schemas) or schemas[0]
+        assert isinstance(schema, pa.Schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:

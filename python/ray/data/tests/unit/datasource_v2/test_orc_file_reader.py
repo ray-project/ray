@@ -292,7 +292,7 @@ def test_orc_partition_projection_preserves_mixed_file_values(
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     partition_path = partition_dir / "data.orc"
-    root = {"id": [1]}
+    root: dict[str, list[int] | list[str]] = {"id": [1]}
     if root_has_year:
         root["year"] = ["from-file"]
     _write_orc(root_path, pa.table(root))
@@ -303,7 +303,7 @@ def test_orc_partition_projection_preserves_mixed_file_values(
     scanner = OrcScanner(
         schema=pa.schema([("id", pa.int64()), ("year", pa.string())]),
         partitioning=Partitioning(
-            "hive", base_dir=str(tmp_path), field_names=field_names
+            PartitionStyle.HIVE, base_dir=str(tmp_path), field_names=field_names
         ),
     )
     if columns is not None:
@@ -335,7 +335,7 @@ def test_orc_partition_file_columns_are_validated_before_projection(
     scanner = OrcScanner(
         schema=table.schema,
         partitioning=Partitioning(
-            "hive", base_dir=str(tmp_path), field_names=field_names
+            PartitionStyle.HIVE, base_dir=str(tmp_path), field_names=field_names
         ),
     )
     if columns is not None:
@@ -367,7 +367,7 @@ def test_orc_partitioned_schema_keeps_null_values_and_typed_partition(tmp_path):
             [("id", pa.int64()), ("value", pa.string()), ("year", pa.int64())]
         ),
         partitioning=Partitioning(
-            "hive", base_dir=str(tmp_path), field_types={"year": int}
+            PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
         ),
     ).prune_columns(["year", "value", "id"])
     result = pa.concat_tables(
@@ -383,7 +383,7 @@ def test_orc_partitioned_schema_keeps_null_values_and_typed_partition(tmp_path):
 def test_orc_partition_filters_run_after_column_validation():
     scanner = OrcScanner(
         schema=pa.schema([("id", pa.int64()), ("year", pa.string())]),
-        partitioning=Partitioning("hive", field_names=["year"]),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
     )
     predicate = (col("year") == "2024") & (col("id") > 1)
     pushed, residual = scanner.push_filters(predicate)
@@ -419,7 +419,7 @@ def test_orc_nullable_partition_column_matches_v1_across_batches(
     scanner = OrcScanner(
         schema=table.schema,
         batch_size=batch_size,
-        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
     )
     if columns is not None:
         scanner = scanner.prune_columns(columns)
@@ -449,7 +449,7 @@ def test_orc_nullable_partition_column_aligns_missing_schema_fields(tmp_path):
             [("id", pa.int64()), ("year", pa.string()), ("extra", pa.string())]
         ),
         batch_size=1,
-        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
     )
     result = pa.concat_tables(list(scanner.create_reader().read(_manifest(path))))
     assert result.schema == scanner.read_schema()
@@ -469,7 +469,7 @@ def test_orc_partitioned_empty_file_with_stored_partition_column(tmp_path):
     _write_orc(path, table)
     scanner = OrcScanner(
         schema=table.schema,
-        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
     )
     assert list(scanner.create_reader().read(_manifest(path))) == []
 
