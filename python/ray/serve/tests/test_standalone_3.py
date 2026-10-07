@@ -34,6 +34,11 @@ WAIT_TIMEOUT_S = 60
 HTTP_TIMEOUT_S = 2 * WAIT_TIMEOUT_S
 
 
+def num_alive_nodes() -> int:
+    # A node the autoscaler replaced stays in ray.nodes() as a dead entry.
+    return len([n for n in ray.nodes() if n["Alive"]])
+
+
 @pytest.fixture
 def shutdown_ray():
     if ray.is_initialized():
@@ -281,10 +286,11 @@ def test_autoscaler_shutdown_node_http_everynode(
     autoscaler_v2, monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
-    # Faster health check interval to speed up the test.
-    monkeypatch.setenv("RAY_health_check_failure_threshold", "1")
+    # Detect the autoscaler-removed node within a few seconds, but never on a single
+    # missed check: one 2s stall of a raylet on a loaded CI runner is not a dead node.
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "3")
     monkeypatch.setenv("RAY_health_check_timeout_ms", "2000")
-    monkeypatch.setenv("RAY_health_check_period_ms", "3000")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
 
     cluster = AutoscalingCluster(
         head_resources={"CPU": 4},
@@ -326,7 +332,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     wait_for_condition(
         lambda: alive_actor_counts() == expected_actors, timeout=WAIT_TIMEOUT_S
     )
-    assert len(ray.nodes()) == 2
+    assert num_alive_nodes() == 2
 
     # Stop all deployment replicas.
     serve.delete("app_f")
@@ -353,10 +359,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     assert serve_details.proxies[get_head_node_id()].status == ProxyStatus.HEALTHY
 
     # Only head node should exist now.
-    wait_for_condition(
-        lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1,
-        timeout=WAIT_TIMEOUT_S,
-    )
+    wait_for_condition(lambda: num_alive_nodes() == 1, timeout=WAIT_TIMEOUT_S)
 
     # Clean up serve.
     serve.shutdown()

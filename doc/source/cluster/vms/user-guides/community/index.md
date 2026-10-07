@@ -1,0 +1,46 @@
+---
+myst:
+  html_meta:
+    description: "Index of community-supported cluster managers for Ray, including Slurm, LSF, YARN, and Spark."
+---
+
+(ref-cluster-setup)=
+
+# Community Supported Cluster Managers
+
+```{toctree}
+:hidden:
+
+yarn
+slurm
+lsf
+```
+
+:::{note}
+If you're using AWS, Azure, GCP or vSphere you can use the {ref}`Ray cluster launcher <cluster-index>` to simplify the cluster setup process.
+:::
+
+The following is a list of community supported cluster managers.
+
+```{toctree}
+:maxdepth: 2
+
+yarn
+slurm
+lsf
+spark
+```
+
+(ref-additional-cloud-providers)=
+
+# Using a custom cloud or cluster manager
+
+The Ray cluster launcher currently supports AWS, Azure, GCP, Aliyun, vSphere and KubeRay out of the box. To use the Ray cluster launcher and Autoscaler on other cloud providers or cluster managers, you can implement the [node_provider.py](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/node_provider.py) interface (100 LOC). Once the node provider is implemented, you can register it in the [provider section](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/local/example-full.yaml#L18) of the cluster launcher config.
+
+```yaml
+provider:
+  type: "external"
+  module: "my.module.MyCustomNodeProvider"
+```
+
+You can refer to [AWSNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/aws/node_provider.py#L95), [KubeRayNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/kuberay/node_provider.py#L148) and [LocalNodeProvider](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/local/node_provider.py#L166) for more examples.

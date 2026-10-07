@@ -1542,6 +1542,35 @@ def test_chained_join_with_empty_partitions(ray_start_regular_shared_2_cpus):
     assert len(result.take_all()) == 0
 
 
+def test_streaming_join(ray_start_regular_shared_2_cpus):
+    """Join results are streamed out as many blocks for joins whose
+    per-partition output does not fit into memory.
+
+    ``target_max_block_size=None`` disables output reshaping, so the output
+    block count directly exposes the join kernel's streamed batches.
+    """
+    import pyarrow as pa
+
+    DataContext.get_current().target_max_block_size = None
+
+    N = 10000
+    dupes = pa.table({"id": np.ones(N)})
+
+    ds = ray.data.from_arrow(dupes)
+
+    joined_ds = ds.join(ds, join_type="full_outer", num_partitions=1)
+
+    num_blocks = 0
+    total_rows = 0
+
+    for rb in joined_ds.iter_internal_ref_bundles():
+        num_blocks += 1
+        total_rows += rb.num_rows()
+
+    assert total_rows == N**2
+    assert num_blocks >= 1000
+
+
 if __name__ == "__main__":
     import sys
 
