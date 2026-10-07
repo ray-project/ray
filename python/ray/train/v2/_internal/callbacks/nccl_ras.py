@@ -1113,8 +1113,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             timeout_s=_STACK_DUMP_TIMEOUT_S,
         )
         files = {
-            f"rank_{rank}.log": dump.value if dump.error is None else dump.error
-            for rank, dump in dumps.items()
+            f"rank_{rank}.log": diagnostic_reuslt.value
+            if diagnostic_reuslt.error is None
+            else diagnostic_reuslt.error
+            for rank, diagnostic_reuslt in dumps.items()
         }
         return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
 
@@ -1145,12 +1147,16 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         )
 
         files: Dict[str, str] = {}
-        for rank, dump in dumps.items():
+        for rank, diagnostic_result in dumps.items():
             node_ip = node_ips[rank]
-            if dump.error is None and dump.value["ok"]:
-                files[f"node_{node_ip}.log"] = dump.value["stdout"]
+            if diagnostic_result.error is None and diagnostic_result.value["ok"]:
+                files[f"node_{node_ip}.log"] = diagnostic_result.value["stdout"]
             else:
-                reason = dump.error if dump.error is not None else dump.value["reason"]
+                reason = (
+                    diagnostic_result.error
+                    if diagnostic_result.error is not None
+                    else diagnostic_result.value["reason"]
+                )
                 files[f"node_{node_ip}.log"] = f"no `nvidia-smi` snapshot: {reason}\n"
 
         return self.upload_diagnostics(_NVIDIA_SMI_TOOL, files)
@@ -1177,21 +1183,17 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         )
 
         files: Dict[str, str] = {}
-        for dump in dumps:
-            error = dump.error
-            if error is None and not dump.value["ok"]:
-                error = dump.value["reason"]
+        for rank, diagnostic_result in dumps.items():
+            error = diagnostic_result.error
+            if error is None and not diagnostic_result.value["ok"]:
+                error = diagnostic_result.value["reason"]
 
             if error is not None:
-                logger.info(
-                    "No Flight Recorder dump from rank %d: %s", dump.rank, error
-                )
-                files[f"rank_{dump.rank}.json"] = json.dumps(
-                    {"ray_train_dump_error": error}
-                )
+                logger.info("No Flight Recorder dump from rank %d: %s", rank, error)
+                files[f"rank_{rank}.json"] = json.dumps({"ray_train_dump_error": error})
                 continue
 
-            files[f"rank_{dump.rank}.json"] = dump.value["trace_json"]
+            files[f"rank_{rank}.json"] = diagnostic_result.value["trace_json"]
 
         return self.upload_diagnostics(_FLIGHT_RECORDER_TOOL, files)
 

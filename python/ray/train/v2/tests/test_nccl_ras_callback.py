@@ -1428,9 +1428,7 @@ def test_fan_out_records_per_rank_failures(
     workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
 
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
-        dumps =  fan_out_to_workers(
-                workers, dump_stack_trace, 25.0, timeout_s=30.0
-            )
+        dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
 
     assert dumps[0].value is None and dumps[0].error == expected_error
     assert dumps[1].value == "stack-1" and dumps[1].error is None
@@ -1562,10 +1560,10 @@ def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic
     workers = callback._worker_group.get_workers()
     calls = scripted_fan_out(
         monkeypatch,
-        [
-            DiagnosticResult(rank, value=diagnostic.ok(f"dump {rank}"))
+        {
+            rank: DiagnosticResult(value=diagnostic.ok(f"dump {rank}"))
             for rank in (0, 1)
-        ],
+        },
     )
 
     fs_path = getattr(callback, diagnostic.method)()
@@ -1597,13 +1595,13 @@ def test_diagnostic_failed_target_gets_placeholder(
     callback = make_diagnostics_callback()
     reason = "it went wrong"
     if source == "fan_out_error":
-        bad_dump = DiagnosticResult(0, error=reason)
+        bad_dump = DiagnosticResult(error=reason)
     else:
-        bad_dump = DiagnosticResult(0, value=diagnostic.failed(reason))
-    scripted_fan_out(
-        monkeypatch, [bad_dump, DiagnosticResult(1, value=diagnostic.ok("dump 1"))]
-    )
+        bad_dump = DiagnosticResult(value=diagnostic.failed(reason))
 
+    scripted_fan_out(
+        monkeypatch, {0: bad_dump, 1: DiagnosticResult(value=diagnostic.ok("dump 1"))}
+    )
     getattr(callback, diagnostic.method)()
 
     ((_, files),) = uploads
