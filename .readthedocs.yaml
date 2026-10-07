@@ -23,6 +23,10 @@ build:
     # merge gate, and the post-merge master build and the Buildkite doc_build
     # still render docstring-driven API-reference changes. This trades a
     # non-gating premerge preview for less pressure on the shared RTD slots.
+    # A PR that needs the preview anyway, such as one that edits docstrings,
+    # opts in with a line that starts with @rtd-build in any commit message on
+    # the PR. Ray squash-merges with the PR title and body, so the line never
+    # reaches master.
     # See https://docs.readthedocs.com/platform/stable/guides/build/skip-build.html
     #
     # Some constructs are avoided deliberately because RTD's job runner
@@ -42,6 +46,10 @@ build:
         git fetch --depth=500 origin master 2>/dev/null || true
         if ! git merge-base origin/master HEAD >/dev/null 2>&1; then
           echo "Could not determine merge-base with origin/master; building docs to be safe."
+          exit 0
+        fi
+        if git log --format=%B origin/master..HEAD | grep -q '^@rtd-build'; then
+          echo "A commit message in this PR requests a build with @rtd-build; building docs."
           exit 0
         fi
         if git diff --quiet origin/master...HEAD -- doc/ ':!doc/.claude/' .readthedocs.yaml; then
