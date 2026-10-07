@@ -106,6 +106,24 @@ bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- doc/source/data/doc_code/ke
 
 The label works on both microcheck and premerge builds. Adding or removing it takes effect only on the next commit you push. A Buildkite rebuild replays the label set from the build it was rebuilt from, and the pipeline skips label-change builds for a commit that already has a build.
 
+### Docstring-only changes
+
+A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. For Ray Data, the `docstring-only` label skips those suites on a PR that changes nothing but docstrings and comments, and runs the library's docstring doctests instead. Like the `go` label, it requires write access.
+
+With the label, a Data PR runs the following:
+
+* `data: docstring doctests`, the same doctest pass over `python/ray/` that the Data docs example step runs.
+* The two API surface checks and lint.
+* `lint: validate docstring-only scope`, the guard the label can't turn off.
+
+The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard locally:
+
+```bash
+python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
+```
+
+The label covers Ray Data only. Other libraries' test steps still run in full, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+
 ### What doesn't run on your PR
 
 Two heavier steps are post-merge only, and both carry `skip-on-premerge`:
