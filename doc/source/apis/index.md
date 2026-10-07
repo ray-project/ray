@@ -17,5 +17,5 @@ Ray Train </train/api/api>
 Ray Tune </tune/api/api>
 Ray Serve </serve/api/index>
 Ray RLlib </rllib/package_ref/index>
-Ray Core </ray-core/api/index>
+Ray Core </core/api/index>
 ```

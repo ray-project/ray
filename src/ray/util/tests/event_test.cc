@@ -14,7 +14,6 @@
 
 #include "ray/util/event.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <boost/range.hpp>
@@ -594,14 +593,14 @@ TEST_F(EventTest, TestRayCheckAbort) {
                    "FATAL",
                    "RAY_FATAL_CHECK_FAILED",
                    "NULL");
-  EXPECT_THAT(
-      ele_1.message(),
-      testing::HasSubstr(
+  EXPECT_NE(
+      ele_1.message().find(
           "An unexpected system state has occurred. You have likely discovered a bug in "
           "Ray. Please report this issue at https://github.com/ray-project/ray/issues "
-          "and we'll work with you to fix it. Check failed: 1 < 0 incorrect test case"));
-  EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
-  EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
+          "and we'll work with you to fix it. Check failed: 1 < 0 incorrect test case"),
+      std::string::npos);
+  EXPECT_NE(ele_1.message().find("*** StackTrace Information ***"), std::string::npos);
+  EXPECT_NE(ele_1.message().find("ray::RayLog::~RayLog()"), std::string::npos);
 }
 
 TEST_F(EventTest, TestRayEventInit) {
@@ -707,13 +706,13 @@ TEST_F(EventTest, TestLogEvent) {
       vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 2);
   // Check ERROR event
-  EXPECT_THAT(vc[0], testing::HasSubstr(" E "));
-  EXPECT_THAT(vc[0], testing::HasSubstr("Event"));
-  EXPECT_THAT(vc[0], testing::HasSubstr("test error"));
+  EXPECT_NE(vc[0].find(" E "), std::string::npos);
+  EXPECT_NE(vc[0].find("Event"), std::string::npos);
+  EXPECT_NE(vc[0].find("test error"), std::string::npos);
   // Check FATAL event. We convert fatal events to error logs.
-  EXPECT_THAT(vc[1], testing::HasSubstr(" E "));
-  EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
-  EXPECT_THAT(vc[1], testing::HasSubstr("test fatal"));
+  EXPECT_NE(vc[1].find(" E "), std::string::npos);
+  EXPECT_NE(vc[1].find("Event"), std::string::npos);
+  EXPECT_NE(vc[1].find("test fatal"), std::string::npos);
 
   std::filesystem::remove_all(log_dir.c_str());
 
@@ -732,21 +731,21 @@ TEST_F(EventTest, TestLogEvent) {
       vc, log_dir + "/event_test_" + std::to_string(getpid()) + ".log", "[ Event ");
   EXPECT_EQ((int)vc.size(), 4);
   // Check INFO event
-  EXPECT_THAT(vc[0], testing::HasSubstr(" I "));
-  EXPECT_THAT(vc[0], testing::HasSubstr("Event"));
-  EXPECT_THAT(vc[0], testing::HasSubstr("test info 2"));
+  EXPECT_NE(vc[0].find(" I "), std::string::npos);
+  EXPECT_NE(vc[0].find("Event"), std::string::npos);
+  EXPECT_NE(vc[0].find("test info 2"), std::string::npos);
   // Check WARNING event
-  EXPECT_THAT(vc[1], testing::HasSubstr(" W "));
-  EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
-  EXPECT_THAT(vc[1], testing::HasSubstr("test warning 2"));
+  EXPECT_NE(vc[1].find(" W "), std::string::npos);
+  EXPECT_NE(vc[1].find("Event"), std::string::npos);
+  EXPECT_NE(vc[1].find("test warning 2"), std::string::npos);
   // Check ERROR event
-  EXPECT_THAT(vc[2], testing::HasSubstr(" E "));
-  EXPECT_THAT(vc[2], testing::HasSubstr("Event"));
-  EXPECT_THAT(vc[2], testing::HasSubstr("test error 2"));
+  EXPECT_NE(vc[2].find(" E "), std::string::npos);
+  EXPECT_NE(vc[2].find("Event"), std::string::npos);
+  EXPECT_NE(vc[2].find("test error 2"), std::string::npos);
   // Check FATAL event. We convert fatal events to error logs.
-  EXPECT_THAT(vc[3], testing::HasSubstr(" E "));
-  EXPECT_THAT(vc[3], testing::HasSubstr("Event"));
-  EXPECT_THAT(vc[3], testing::HasSubstr("test fatal 2"));
+  EXPECT_NE(vc[3].find(" E "), std::string::npos);
+  EXPECT_NE(vc[3].find("Event"), std::string::npos);
+  EXPECT_NE(vc[3].find("test fatal 2"), std::string::npos);
   // Can't add this to teardown because they are friend  class.
   ray::RayEvent::SetEmitToLogFile(false);
   ray::RayEvent::SetLevel("info");
