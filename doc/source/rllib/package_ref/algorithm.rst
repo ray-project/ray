@@ -64,6 +64,10 @@ Construction and setup
     ~Algorithm
     ~Algorithm.setup
     ~Algorithm.get_default_config
+
+.. autosummary::
+    :nosignatures:
+
     ~Algorithm.env_runner
     ~Algorithm.eval_env_runner
 
@@ -72,7 +76,6 @@ Training
 ~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~Algorithm.train
     ~Algorithm.training_step
@@ -81,11 +84,24 @@ Saving and restoring
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~Algorithm.save_to_path
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~Algorithm.restore_from_path
+
+.. autosummary::
+    :nosignatures:
+
     ~Algorithm.from_checkpoint
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~Algorithm.get_state
     ~Algorithm.set_state
 
@@ -94,7 +110,6 @@ Evaluation
 ~~~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~Algorithm.evaluate
 
@@ -102,7 +117,6 @@ Multi Agent
 ~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~Algorithm.get_module
     ~Algorithm.add_policy

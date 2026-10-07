@@ -36,6 +36,10 @@ For example:
     :toctree: doc/
 
     MetricsLogger
+
+.. autosummary::
+    :nosignatures:
+
     MetricsLogger.peek
     MetricsLogger.log_value
     MetricsLogger.log_dict
@@ -77,6 +81,10 @@ For example:
     :toctree: doc/
 
     Scheduler
+
+.. autosummary::
+    :nosignatures:
+
     Scheduler.validate
     Scheduler.get_current_value
     Scheduler.update
