@@ -1,6 +1,7 @@
 import json
 import posixpath
 import sys
+from unittest.mock import patch
 
 import pytest
 from pyarrow.fs import FileType, LocalFileSystem
@@ -221,7 +222,13 @@ def test_promote_operation_is_idempotent_and_operation_scoped(tmp_path):
     _write_file(filesystem, duplicate_committed, b"committed")
     _write_file(filesystem, other_pending, b"other")
 
-    state.promote_operation(_OPERATION_1)
+    checkpoints = state.list_pending_operations()[_OPERATION_1]
+    with patch.object(
+        state,
+        "list_pending_operations",
+        side_effect=AssertionError("unexpected checkpoint directory listing"),
+    ):
+        state.promote_operation(_OPERATION_1, checkpoints)
     state.promote_operation(_OPERATION_1)
 
     assert filesystem.get_file_info(first_pending).type == FileType.NotFound
@@ -241,12 +248,29 @@ def test_discard_operation_removes_only_its_pending_files(tmp_path):
     for path in [discarded_pending, retained_pending, retained_committed]:
         _write_file(filesystem, path)
 
-    state.discard_operation(_OPERATION_1)
+    checkpoints = state.list_pending_operations()[_OPERATION_1]
+    with patch.object(
+        state,
+        "list_pending_operations",
+        side_effect=AssertionError("unexpected checkpoint directory listing"),
+    ):
+        state.discard_operation(_OPERATION_1, checkpoints)
     state.discard_operation(_OPERATION_1)
 
     assert filesystem.get_file_info(discarded_pending).type == FileType.NotFound
     assert filesystem.get_file_info(retained_pending).type == FileType.File
     assert filesystem.get_file_info(retained_committed).type == FileType.File
+
+
+def test_operation_rejects_prelisted_checkpoints_from_another_operation(tmp_path):
+    filesystem = LocalFileSystem()
+    checkpoint_path = str(tmp_path / "checkpoints")
+    state = IcebergCheckpointState(checkpoint_path, filesystem)
+    _write_file(filesystem, _pending_path(checkpoint_path, _OPERATION_2, 0))
+    checkpoints = state.list_pending_operations()[_OPERATION_2]
+
+    with pytest.raises(ValueError, match="must belong to operation"):
+        state.promote_operation(_OPERATION_1, checkpoints)
 
 
 def test_empty_namespace_and_complete_deletion(tmp_path):

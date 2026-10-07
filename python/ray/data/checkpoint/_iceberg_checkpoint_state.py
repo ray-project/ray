@@ -3,7 +3,7 @@ import posixpath
 import re
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from pyarrow.fs import FileInfo, FileSelector, FileType
 
@@ -102,6 +102,10 @@ class IcebergCheckpointState:
     Pending row checkpoints are grouped by the operation ID encoded in their
     filenames. Catalog recovery decides whether a complete operation should be
     promoted or discarded; this class only applies that decision idempotently.
+
+    Each checkpoint directory must have only one logical writer at a time.
+    Existence checks and filesystem moves make recovery idempotent, but they
+    don't provide mutual exclusion between concurrent writers.
     """
 
     def __init__(self, checkpoint_path: str, filesystem) -> None:
@@ -179,20 +183,26 @@ class IcebergCheckpointState:
             checkpoints.sort(key=lambda checkpoint: checkpoint.checkpoint_id)
         return dict(sorted(grouped.items()))
 
-    def promote_operation(self, operation_id: str) -> None:
+    def promote_operation(
+        self,
+        operation_id: str,
+        checkpoints: Optional[Sequence[PendingOperationCheckpoint]] = None,
+    ) -> None:
         """Idempotently promote every pending checkpoint for an operation."""
-        validate_operation_id(operation_id)
-        checkpoints = self.list_pending_operations().get(operation_id, [])
+        checkpoints = self._checkpoints_for_operation(operation_id, checkpoints)
         for checkpoint in checkpoints:
             self._retry_io(
                 lambda checkpoint=checkpoint: self._promote_checkpoint(checkpoint),
                 f"promote Iceberg row checkpoint {checkpoint.checkpoint_id}",
             )
 
-    def discard_operation(self, operation_id: str) -> None:
+    def discard_operation(
+        self,
+        operation_id: str,
+        checkpoints: Optional[Sequence[PendingOperationCheckpoint]] = None,
+    ) -> None:
         """Delete only pending row checkpoints for an uncommitted operation."""
-        validate_operation_id(operation_id)
-        checkpoints = self.list_pending_operations().get(operation_id, [])
+        checkpoints = self._checkpoints_for_operation(operation_id, checkpoints)
         for checkpoint in checkpoints:
             self._retry_io(
                 lambda checkpoint=checkpoint: self._delete_file_if_present(
@@ -200,6 +210,21 @@ class IcebergCheckpointState:
                 ),
                 f"discard Iceberg row checkpoint {checkpoint.checkpoint_id}",
             )
+
+    def _checkpoints_for_operation(
+        self,
+        operation_id: str,
+        checkpoints: Optional[Sequence[PendingOperationCheckpoint]],
+    ) -> Sequence[PendingOperationCheckpoint]:
+        validate_operation_id(operation_id)
+        if checkpoints is None:
+            return self.list_pending_operations().get(operation_id, [])
+        if any(checkpoint.operation_id != operation_id for checkpoint in checkpoints):
+            raise ValueError(
+                "Pending Iceberg row checkpoints must belong to operation "
+                f"{operation_id!r}."
+            )
+        return checkpoints
 
     def delete(self) -> None:
         """Delete the complete checkpoint namespace if it exists."""
