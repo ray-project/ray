@@ -32,8 +32,13 @@ CONTROLLER_STATE_PANEL = Panel(
     unit="",
     targets=[
         Target(
+            # `last_over_time(...[$__interval])` ends a run's row about one scrape
+            # interval after its samples stop ($__interval is the query step, which
+            # Grafana never sets below the data source's scrape interval). A plain
+            # instant selector would carry the last state forward for Prometheus' 5m
+            # lookback when the backend doesn't record staleness.
             # `> 0` drops samples recorded after the controller resets its metrics.
-            expr='label_replace(max(ray_train_controller_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name, ray_train_run_id) > 0, "short_run_id", "$1", "ray_train_run_id", "(.{{8}}).*")',
+            expr='label_replace(max(last_over_time(ray_train_controller_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}[$__interval])) by (ray_train_run_name, ray_train_run_id) > 0, "short_run_id", "$1", "ray_train_run_id", "(.{{8}}).*")',
             legend="{{ray_train_run_name}} ({{short_run_id}})",
         ),
     ],
