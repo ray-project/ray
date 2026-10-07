@@ -512,6 +512,17 @@ In each bundle dictionary, an omitted `CPU` or `GPU` key counts as `0`. Specify 
 :end-before: __custom_placement_group_strategy_config_example_end__
 ```
 
+`SGLangEngineProcessorConfig` also accepts `placement_group_config`. The SGLang engine runs in a single actor, so Ray sums the bundles, with `bundle_per_worker` replicated `tp_size * dp_size` times, into that actor's resource request, and `strategy` has no effect. A fractional GPU lets several single-rank engines share one device. Lower `mem_fraction_static` to match:
+
+```python
+config = SGLangEngineProcessorConfig(
+    model_source="Qwen/Qwen3-0.6B",
+    engine_kwargs={"mem_fraction_static": 0.4},
+    placement_group_config={"bundle_per_worker": {"GPU": 0.5}},
+    concurrency=4,  # Four engines on two GPUs.
+)
+```
+
 (per-stage-configuration)=
 
 ### Configure individual stages

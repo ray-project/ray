@@ -234,6 +234,13 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
             :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,
             will use the default value from the SGLang engine.
+        placement_group_config: Resources each engine replica reserves, as
+            ``bundle_per_worker`` (replicated by ``tp_size * dp_size``) or
+            ``bundles``. They are summed into the engine actor's resource request;
+            ``strategy`` has no effect because SGLang runs in a single actor. A
+            fractional GPU lets several single-rank engines share a device, e.g.
+            ``{"bundle_per_worker": {"GPU": 0.5}}`` with ``mem_fraction_static``
+            lowered to match. Defaults to ``tp_size * dp_size`` whole GPUs.
         max_concurrent_batches: The maximum number of concurrent batches in the engine.
             This is to overlap the batch processing to avoid the tail latency of
             each batch. The default value may not be optimal when the batch size
