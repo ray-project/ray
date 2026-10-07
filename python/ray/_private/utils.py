@@ -232,29 +232,21 @@ def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
     }
 
 
-# Env vars that size a library's CPU thread pool. Ray sets each one to the number
-# of CPUs assigned to the task or actor, unless the user already set it.
-# - OMP_NUM_THREADS: OpenMP, used by numpy, PyTorch, TensorFlow and others.
-# - RAYON_NUM_THREADS: Rayon, used by Rust libraries such as Hugging Face
-#   `tokenizers`. Rayon reads it once per process, when its global thread pool
-#   is first used. So it applies to actors (it's set before `__init__` runs),
-#   and, as with OpenMP in many libraries, a reused task worker keeps the pool
-#   size from the first task that used it.
-NUM_THREADS_ENV_VARS = ("OMP_NUM_THREADS", "RAYON_NUM_THREADS")
-
-
 def set_num_threads_env_vars_if_unset() -> List[str]:
-    """Default the NUM_THREADS_ENV_VARS to the num cpus assigned to the worker.
+    """Default the num threads env vars to the num cpus assigned to the worker.
 
-    This function only sets the env vars that aren't already set, and only when
-    it's running in a worker (WORKER_MODE).
+    The env vars come from `ray_constants.get_num_threads_env_vars()`, which
+    defaults to OMP_NUM_THREADS. This function only sets the ones that aren't
+    already set, and only when it's running in a worker (WORKER_MODE).
 
     Returns:
         The names of the env vars set by this function, so the caller can unset
         them after a normal task, since task workers may be reused.
     """
     unset_env_vars = [
-        name for name in NUM_THREADS_ENV_VARS if os.environ.get(name) is None
+        name
+        for name in ray_constants.get_num_threads_env_vars()
+        if os.environ.get(name) is None
     ]
     if not unset_env_vars:
         # No ops if they're all set

@@ -296,9 +296,21 @@ def test_worker_thread_count(
 
 
 # https://github.com/ray-project/ray/issues/7287
-@pytest.mark.parametrize("env_var", ["OMP_NUM_THREADS", "RAYON_NUM_THREADS"])
-def test_num_threads_env_var_set(ray_start_cluster, monkeypatch, env_var):
+@pytest.mark.parametrize(
+    "env_var,num_threads_env_vars",
+    [
+        ("OMP_NUM_THREADS", None),
+        ("RAYON_NUM_THREADS", "OMP_NUM_THREADS,RAYON_NUM_THREADS"),
+    ],
+)
+def test_num_threads_env_var_set(
+    ray_start_cluster, monkeypatch, env_var, num_threads_env_vars
+):
     monkeypatch.delenv(env_var, raising=False)
+    if num_threads_env_vars is None:
+        monkeypatch.delenv("RAY_NUM_THREADS_ENV_VARS", raising=False)
+    else:
+        monkeypatch.setenv("RAY_NUM_THREADS_ENV_VARS", num_threads_env_vars)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
@@ -372,6 +384,35 @@ def test_num_threads_env_var_set(ray_start_cluster, monkeypatch, env_var):
         m.setenv(env_var, "1")
         cluster.add_node(num_cpus=4)
     assert ray.get(f.options(num_cpus=4).remote()) == "1"
+
+
+@pytest.mark.parametrize(
+    "num_threads_env_vars,expected",
+    [
+        (None, {"OMP_NUM_THREADS": "2", "RAYON_NUM_THREADS": None}),
+        (
+            "OMP_NUM_THREADS,RAYON_NUM_THREADS",
+            {"OMP_NUM_THREADS": "2", "RAYON_NUM_THREADS": "2"},
+        ),
+        ("", {"OMP_NUM_THREADS": None, "RAYON_NUM_THREADS": None}),
+    ],
+)
+def test_num_threads_env_vars_config(
+    shutdown_only, monkeypatch, num_threads_env_vars, expected
+):
+    for name in ["RAY_NUM_THREADS_ENV_VARS", *expected]:
+        monkeypatch.delenv(name, raising=False)
+    # Set per job, through the job's runtime_env.
+    env_vars = {}
+    if num_threads_env_vars is not None:
+        env_vars["RAY_NUM_THREADS_ENV_VARS"] = num_threads_env_vars
+    ray.init(num_cpus=2, runtime_env={"env_vars": env_vars})
+
+    @ray.remote(num_cpus=2)
+    def f():
+        return {name: os.environ.get(name) for name in expected}
+
+    assert ray.get(f.remote()) == expected
 
 
 def test_submit_api(shutdown_only):

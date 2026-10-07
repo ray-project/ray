@@ -2472,8 +2472,8 @@ cdef execute_task_with_cancellation_handler(
     title = f"ray::{task_name}"
 
     # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
-    # runtime_ids, OMP_NUM_THREADS and RAYON_NUM_THREADS to restrict availability
-    # to this task.
+    # runtime_ids, and the num threads env vars such as OMP_NUM_THREADS, to restrict
+    # availability to this task.
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
@@ -2588,7 +2588,7 @@ cdef execute_task_with_cancellation_handler(
             if original_visible_accelerator_env_vars:
                 # Reset the visible accelerator env vars for normal tasks, since they may be reused.
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
-            # Reset the OMP_NUM_THREADS / RAYON_NUM_THREADS environ if they were set.
+            # Reset the num threads env vars if they were set.
             for env_var in num_threads_env_vars_set:
                 os.environ.pop(env_var, None)
 
