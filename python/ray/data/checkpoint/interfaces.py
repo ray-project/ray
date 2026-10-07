@@ -1,6 +1,7 @@
 import inspect
 import os
 import warnings
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Tuple, Type
 
@@ -184,6 +185,14 @@ class CheckpointConfig:
         self.checkpoint_actor_pool_max_size = self.CHECKPOINT_ACTOR_POOL_MAX_SIZE
         self.checkpoint_actor_memory_bytes = self.CHECKPOINT_ACTOR_MEMORY_BYTES
 
+        # Internal flags used by training ingest mid-epoch resumption.
+        # If False, skip loading checkpoint data and filtering rows during
+        # planning, but still plan the checkpoint writer.
+        # This is set to False after the first successful execution, so that
+        # subsequent executions of the same dataset (e.g., later epochs)
+        # read all rows.
+        self._should_restore: bool = True
+
     def _get_default_checkpoint_path(self) -> str:
         artifact_storage = os.environ.get(self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR)
         if artifact_storage is None:
@@ -226,6 +235,59 @@ class CheckpointConfig:
             raise InvalidCheckpointingConfig(
                 f"Invalid checkpoint path: {checkpoint_path}. "
             ) from e
+
+
+# TODO: We can pull out a common CheckpointConfig base class.
+# Then, the batch inference specific logic from above can be moved
+# to a BatchInferenceCheckpointConfig subclass.
+# The checkpoint "restore" logic is common to both batch inference
+# and training ingest, but the checkpoint "write" configuration differs.
+# NOTE: This is exposed publicly as `ray.train.DatasetCheckpointConfig`,
+# and documented in the Ray Train API reference.
+@PublicAPI(stability="alpha")
+@dataclass
+class DatasetCheckpointConfig:
+    """Configuration for training ingest checkpointing.
+
+    Args:
+        id_column: Name of the ID column in the input dataset.
+            ID values must be unique across all rows in the dataset and must persist
+            during all operators.
+        generate_id_column: Whether to generate the `id_column` for each row.
+            Use this when you don't have a pre-existing `id_column` in the input
+            dataset. The generated column is removed from the yielded batches.
+            Only Parquet reads on the V2 datasource path are supported.
+        checkpoint_path: Path to store the checkpoint data. It can be a path to a cloud
+            object storage (e.g. `s3://bucket/path`) or a file system path.
+            If the latter, the path must be a network-mounted file system (e.g.
+            `/mnt/cluster_storage/`) that is accessible to the entire cluster.
+            If not set, defaults to
+            `{RunConfig.storage_path}/{RunConfig.name}/ray_data_checkpoints/{dataset_name}`
+            configured on the `ray.train` trainer. Each dataset must use a
+            different `checkpoint_path`.
+        override_filesystem: Override the :class:`pyarrow.fs.FileSystem` object used to
+            read/write checkpoint data. Use this when you want to use custom credentials.
+            If unset, this defaults to the filesystem configured in the `ray.train.RunConfig`
+            when `checkpoint_path` is also unset. Otherwise, the filesystem is
+            inferred from `checkpoint_path`.
+        delete_checkpoints_after_epoch: If True, automatically delete checkpoint
+            data after each epoch completion. This allows for fault tolerance from
+            the latest checkpoint. If you intend to resume from a checkpoint prior
+            to the latest epoch, set this to False. Defaults to True.
+    """
+
+    id_column: str
+    generate_id_column: bool = False
+    checkpoint_path: Optional[str] = None
+    override_filesystem: Optional["pyarrow.fs.FileSystem"] = None
+    delete_checkpoints_after_epoch: bool = True
+
+    def __post_init__(self):
+        if not isinstance(self.id_column, str) or len(self.id_column) == 0:
+            raise InvalidCheckpointingConfig(
+                "Checkpoint ID column must be a non-empty string, "
+                f"but got {self.id_column}"
+            )
 
 
 @DeveloperAPI
