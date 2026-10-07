@@ -90,13 +90,13 @@ def library_pages(doc_dir: Path) -> Iterable[Path]:
 
 
 def listed_pages(doc_dir: Path) -> Set[str]:
-    build = (doc_dir / "BUILD.bazel").read_text()
+    build = (doc_dir / "BUILD.bazel").read_text(encoding="utf-8")
     return {"doc/" + page for page in _BUILD_PAGE_RE.findall(build)}
 
 
 def gpu_pages(doc_dir: Path) -> Set[str]:
     """Pages named by a `gpu = True` doctest call in doc/BUILD.bazel."""
-    build = (doc_dir / "BUILD.bazel").read_text()
+    build = (doc_dir / "BUILD.bazel").read_text(encoding="utf-8")
     pages = set()
     for call in _BUILD_CALL_RE.findall(build):
         if _GPU_RE.search(call):
@@ -106,7 +106,7 @@ def gpu_pages(doc_dir: Path) -> Set[str]:
 
 def routed_pages(repo_root: Path) -> Set[str]:
     """Library prose pages listed by name in .buildkite/test.rules.txt."""
-    rules = (repo_root / ".buildkite" / "test.rules.txt").read_text()
+    rules = (repo_root / ".buildkite" / "test.rules.txt").read_text(encoding="utf-8")
     return set(_RULES_PAGE_RE.findall(rules))
 
 
@@ -118,14 +118,16 @@ def main() -> int:
         help="Path to the doc/ directory (default: this file's directory).",
     )
     args = parser.parse_args()
-    doc_dir = Path(args.doc_dir)
+    doc_dir = Path(args.doc_dir).resolve()
     repo_root = doc_dir.parent
 
     listed = listed_pages(doc_dir)
     runnable = {
         str(page.relative_to(repo_root))
         for page in library_pages(doc_dir)
-        if has_runnable_example(page.read_text(errors="replace"), page.suffix)
+        if has_runnable_example(
+            page.read_text(encoding="utf-8", errors="replace"), page.suffix
+        )
     }
 
     missing = sorted(runnable - listed - UNTESTED)
