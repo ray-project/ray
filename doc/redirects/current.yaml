@@ -964,13 +964,10 @@ redirects:
   to: /core/compiled-graph/ray-dag.html
   type: page
 - from: /ray-core/configure.html
-  to: /core/operations/configure.html
+  to: /cluster/configure.html
   type: page
 - from: /ray-core/head-node-memory-management.html
-  to: /core/operations/head-node-memory-management.html
-  type: page
-- from: /ray-core/user-spawn-processes.html
-  to: /core/operations/user-spawn-processes.html
+  to: /cluster/head-node-memory-management.html
   type: page
 - from: /core/ray-generator.html
   to: /core/tasks/ray-generator.html
@@ -982,13 +979,10 @@ redirects:
   to: /core/compiled-graph/ray-dag.html
   type: page
 - from: /core/configure.html
-  to: /core/operations/configure.html
+  to: /cluster/configure.html
   type: page
 - from: /core/head-node-memory-management.html
-  to: /core/operations/head-node-memory-management.html
-  type: page
-- from: /core/user-spawn-processes.html
-  to: /core/operations/user-spawn-processes.html
+  to: /cluster/head-node-memory-management.html
   type: page
 - from: /ray-observability/reference/api.html
   to: /core/api/state.html

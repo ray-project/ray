@@ -13,5 +13,6 @@ This section covers advanced Ray topics that go beyond the basic task, actor, an
 
 type-hint
 cross-language
+user-spawn-processes
 miscellaneous
 ```
