@@ -12,7 +12,7 @@ myst:
 To run Java applications, see [Java applications](#java-applications).
 :::
 
-This page describes how to configure Ray from the Python API and from the command line. For a complete overview of the configuration options, see the `ray.init` {doc}`documentation <api/index>`.
+This page describes how to configure Ray from the Python API and from the command line. For a complete overview of the configuration options, see the `ray.init` {doc}`documentation <../api/index>`.
 
 :::{important}
 In a multi-node setting, you must first run `ray start` on the command line to start the Ray cluster services on the machine, and then call `ray.init` in Python to connect to those services. On a single machine, you can run `ray.init()` without `ray start`, because `ray.init()` both starts the Ray cluster services and connects to them.

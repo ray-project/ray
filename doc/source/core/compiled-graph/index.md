@@ -80,6 +80,7 @@ Learn more about Ray Compiled Graph from the following pages.
 ```{toctree}
 :maxdepth: 1
 
+ray-dag
 quickstart
 profiling
 overlap
