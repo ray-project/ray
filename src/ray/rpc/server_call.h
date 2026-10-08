@@ -114,13 +114,13 @@ class ServerCall {
 
   /// Handle the requst. This is the callback function to be called by
   /// `GrpcServer` when the request is received.
-  virtual void HandleRequest(boost::asio::io_context &metric_context) = 0;
+  virtual void HandleRequest() = 0;
 
   /// Invoked when sending reply successes.
-  virtual void OnReplySent(boost::asio::io_context &metric_context) = 0;
+  virtual void OnReplySent() = 0;
 
   // Invoked when sending reply fails.
-  virtual void OnReplyFailed(boost::asio::io_context &metric_context) = 0;
+  virtual void OnReplyFailed() = 0;
 
   virtual const ServerCallFactory &GetServerCallFactory() = 0;
 
@@ -228,7 +228,7 @@ class ServerCallImpl : public ServerCall {
 
   ServerCallState GetState() const override { return state_; }
 
-  void HandleRequest(boost::asio::io_context &metric_context) override {
+  void HandleRequest() override {
     stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
     bool token_auth_failed = false;
@@ -345,7 +345,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  void OnReplySent(boost::asio::io_context &metric_context) override {
+  void OnReplySent() override {
     if (record_metrics_) {
       auto &metrics = server_metrics_;
       boost::asio::post(metric_context_, [&metrics, call_name = call_name_]() {
@@ -358,10 +358,10 @@ class ServerCallImpl : public ServerCall {
           [callback = std::move(send_reply_success_callback_)]() { callback(); },
           call_name_ + ".success_callback");
     }
-    LogProcessTime(metric_context);
+    LogProcessTime();
   }
 
-  void OnReplyFailed(boost::asio::io_context &metric_context) override {
+  void OnReplyFailed() override {
     if (record_metrics_) {
       auto &metrics = server_metrics_;
       boost::asio::post(metric_context_, [&metrics, call_name = call_name_]() {
@@ -374,7 +374,7 @@ class ServerCallImpl : public ServerCall {
           [callback = std::move(send_reply_failure_callback_)]() { callback(); },
           call_name_ + ".failure_callback");
     }
-    LogProcessTime(metric_context);
+    LogProcessTime();
   }
 
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
@@ -405,7 +405,7 @@ class ServerCallImpl : public ServerCall {
   }
 
   /// Log the duration this query used
-  void LogProcessTime(boost::asio::io_context &metric_context) {
+  void LogProcessTime() {
     io_service_.stats()->RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {

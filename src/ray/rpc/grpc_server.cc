@@ -221,11 +221,11 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
         // track this request.
-        server_call->HandleRequest(metric_context_);
+        server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:
         // GRPC has sent reply successfully, invoking the callback.
-        server_call->OnReplySent(metric_context_);
+        server_call->OnReplySent();
         // The rpc call has finished and can be deleted now.
         delete_call = true;
         // A new call should be suplied.
@@ -242,7 +242,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       // SENDING_REPLY. This can happen, for example, when the client deadline has
       // exceeded or the client side is dead.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
-        server_call->OnReplyFailed(metric_context_);
+        server_call->OnReplyFailed();
         // A new call should be suplied.
         need_new_call = true;
       }
