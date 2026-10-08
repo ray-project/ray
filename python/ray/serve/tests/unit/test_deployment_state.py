@@ -12560,12 +12560,19 @@ class TestPushedHealthTracker:
 
     # -- probe against push ---------------------------------------------------
 
-    def test_a_probe_that_resolves_wins_its_own_tick(self):
+    def test_a_resolved_probe_supersedes_a_push_stashed_before_it(self):
+        """Arrival order is not check order: a check that failed before the probe
+        started can land after it. The probe is the observation just made, so the
+        stale push is not applied on the next tick either."""
         t, timer = self._tracker()
         t.record(timer.time(), False, 1)
         r = self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
         assert r.source is HealthSource.PROBE
-        # ...and the push it beat is still in hand for the next tick.
+        assert self._resolve(t).source is HealthSource.NOTHING
+
+        # A push recorded after the probe resolved is newer, and still applies.
+        timer.advance(1)
+        t.record(timer.time(), False, 1)
         assert self._resolve(t).source is HealthSource.PUSH
 
     def test_a_probe_started_before_an_applied_push_is_superseded(self):
@@ -12716,9 +12723,7 @@ class TestIngestLagGate:
     publishing, and stops scoring probe timeouts against replicas while behind."""
 
     def _dsm(self, create_dsm, monkeypatch, clock):
-        dsm: DeploymentStateManager = create_dsm()
-        monkeypatch.setattr(time, "time", lambda: clock[0])
-        return dsm
+        return create_dsm()
 
     def _publish(self, dsm, clock, count):
         for i in range(int(count)):
@@ -12738,12 +12743,14 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(10.0)  # opens the window
+        dsm.refresh_ingest_lag(10.0, clock[0])  # opens the window
         self._publish(dsm, clock, 10.0 * dsm.PUSH_RATE_WINDOW_S)  # its due
         clock[0] += dsm.PUSH_RATE_WINDOW_S * 0.9
-        dsm.refresh_ingest_lag(100.0)  # scales out, a tenth of the window left
+        dsm.refresh_ingest_lag(
+            100.0, clock[0]
+        )  # scales out, a tenth of the window left
         clock[0] += dsm.PUSH_RATE_WINDOW_S * 0.1
-        assert not dsm.refresh_ingest_lag(100.0)
+        assert not dsm.refresh_ingest_lag(100.0, clock[0])
 
     def test_a_scale_up_does_not_read_as_lag(
         self, mock_deployment_state_manager, monkeypatch
@@ -12754,12 +12761,12 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(10.0)  # opens the window
+        dsm.refresh_ingest_lag(10.0, clock[0])  # opens the window
         self._publish(dsm, clock, 10.0 * dsm.PUSH_RATE_WINDOW_S)  # exactly its due
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert not dsm.refresh_ingest_lag(10.0)
+        assert not dsm.refresh_ingest_lag(10.0, clock[0])
         # The autoscaler scales out 10x; the window just measured the smaller fleet.
-        assert not dsm.refresh_ingest_lag(100.0)
+        assert not dsm.refresh_ingest_lag(100.0, clock[0])
 
     def test_a_shortfall_still_reads_as_lag_after_a_scale_up(
         self, mock_deployment_state_manager, monkeypatch
@@ -12767,10 +12774,10 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(10.0)
+        dsm.refresh_ingest_lag(10.0, clock[0])
         self._publish(dsm, clock, 2.0 * dsm.PUSH_RATE_WINDOW_S)  # a fifth of its due
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert dsm.refresh_ingest_lag(10.0)
+        assert dsm.refresh_ingest_lag(10.0, clock[0])
 
     def test_no_verdict_before_a_window_closes(
         self, mock_deployment_state_manager, monkeypatch
@@ -12778,9 +12785,11 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        assert not dsm.refresh_ingest_lag(10.0)  # warm-up, nothing observed yet
+        assert not dsm.refresh_ingest_lag(
+            10.0, clock[0]
+        )  # warm-up, nothing observed yet
         clock[0] += dsm.PUSH_RATE_WINDOW_S / 2
-        assert not dsm.refresh_ingest_lag(10.0)
+        assert not dsm.refresh_ingest_lag(10.0, clock[0])
 
     def test_shortfall_reads_as_lagging(
         self, mock_deployment_state_manager, monkeypatch
@@ -12788,10 +12797,10 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(10.0)  # 300 reports due over the window
+        dsm.refresh_ingest_lag(10.0, clock[0])  # 300 reports due over the window
         self._publish(dsm, clock, 30)  # a tenth of that arrives
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert dsm.refresh_ingest_lag(10.0)
+        assert dsm.refresh_ingest_lag(10.0, clock[0])
 
     def test_keeping_up_is_not_lagging(
         self, mock_deployment_state_manager, monkeypatch
@@ -12799,10 +12808,10 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(1.0)  # 30 reports due over the window
+        dsm.refresh_ingest_lag(1.0, clock[0])  # 30 reports due over the window
         self._publish(dsm, clock, 30)
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert not dsm.refresh_ingest_lag(1.0)
+        assert not dsm.refresh_ingest_lag(1.0, clock[0])
 
     def test_without_an_expectation_it_never_lags(
         self, mock_deployment_state_manager, monkeypatch
@@ -12810,9 +12819,9 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(0.0)
+        dsm.refresh_ingest_lag(0.0, clock[0])
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert not dsm.refresh_ingest_lag(0.0)
+        assert not dsm.refresh_ingest_lag(0.0, clock[0])
 
     def _ds_for_rate(self, period_s, metrics_interval_s, running=100):
         ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
@@ -12837,7 +12846,7 @@ class TestIngestLagGate:
         """Not the two the self-check attempts: the pusher sleeps its interval after
         the eval, so a slow user check halves the real cadence legitimately."""
         ds = self._ds_for_rate(period_s=20.0, metrics_interval_s=None)
-        assert ds.expected_push_rate() == 5.0  # 100 replicas / 20s
+        assert ds.expected_push_rate_per_s() == 5.0  # 100 replicas / 20s
 
     def test_expected_rate_ignores_the_metric_cadence(self):
         """Only the heartbeat feeds the window here; metric reports do not carry health
@@ -12845,7 +12854,9 @@ class TestIngestLagGate:
         latch ingest_lagging() on forever."""
         for interval in (2.0, 10.0, 60.0):
             ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=interval)
-            assert ds.expected_push_rate() == 10.0  # 100 / 10s, whatever the interval
+            assert (
+                ds.expected_push_rate_per_s() == 10.0
+            )  # 100 / 10s, whatever the interval
 
     def test_a_slow_user_check_is_not_judged_lagging(self):
         """Regression: expecting two heartbeats per period made any user check slower
@@ -12853,7 +12864,7 @@ class TestIngestLagGate:
         wide for a fleet that was merely slow."""
         ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=None)
         # A 4s eval leaves a 9s cycle (eval + period/2), so 100 replicas deliver ~11/s.
-        assert 100 / 9.0 > ds.expected_push_rate() * 0.5
+        assert 100 / 9.0 > ds.expected_push_rate_per_s() * 0.5
 
     def test_a_healthy_fleet_is_never_judged_lagging(
         self, mock_deployment_state_manager, monkeypatch
@@ -12865,11 +12876,13 @@ class TestIngestLagGate:
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
         ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=2.0)
-        dsm.refresh_ingest_lag(ds.expected_push_rate())  # opens the window
+        dsm.refresh_ingest_lag(
+            ds.expected_push_rate_per_s(), clock[0]
+        )  # opens the window
         # 100 replicas heartbeating twice per 10s period over the window.
         self._publish(dsm, clock, 100 * 2 / 10.0 * dsm.PUSH_RATE_WINDOW_S)
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert not dsm.refresh_ingest_lag(ds.expected_push_rate())
+        assert not dsm.refresh_ingest_lag(ds.expected_push_rate_per_s(), clock[0])
 
     def test_the_expectation_floor_recovers_after_a_scale_down(
         self, mock_deployment_state_manager, monkeypatch
@@ -12880,13 +12893,13 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(100.0)  # opens the window
-        dsm.refresh_ingest_lag(1.0)  # scales right down inside it
+        dsm.refresh_ingest_lag(100.0, clock[0])  # opens the window
+        dsm.refresh_ingest_lag(1.0, clock[0])  # scales right down inside it
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        dsm.refresh_ingest_lag(100.0)  # closes, and the fleet is back up
+        dsm.refresh_ingest_lag(100.0, clock[0])  # closes, and the fleet is back up
         self._publish(dsm, clock, 20)  # far short of the 3000 now due
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert dsm.refresh_ingest_lag(100.0)
+        assert dsm.refresh_ingest_lag(100.0, clock[0])
 
     def test_a_shortfall_short_of_the_ratio_is_not_lagging(
         self, mock_deployment_state_manager, monkeypatch
@@ -12896,26 +12909,26 @@ class TestIngestLagGate:
         create_dsm, _, _, _ = mock_deployment_state_manager
         clock = [1000.0]
         dsm = self._dsm(create_dsm, monkeypatch, clock)
-        dsm.refresh_ingest_lag(1.0)  # 30 reports due over the window
+        dsm.refresh_ingest_lag(1.0, clock[0])  # 30 reports due over the window
         self._publish(dsm, clock, 20)  # two thirds of them arrive
         clock[0] += dsm.PUSH_RATE_WINDOW_S
-        assert not dsm.refresh_ingest_lag(1.0)
+        assert not dsm.refresh_ingest_lag(1.0, clock[0])
 
     def test_a_java_deployment_owes_nothing(self):
         """Its replicas are Java actors with no Python pusher, so counting them as
         owing would read as controller lag and suppress their probe timeouts."""
         ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=None)
-        assert ds.expected_push_rate() == 10.0  # Python: 100 replicas / 10s
+        assert ds.expected_push_rate_per_s() == 10.0  # Python: 100 replicas / 10s
         ds._target_state.info.deployment_config.deployment_language = (
             DeploymentLanguage.JAVA
         )
-        assert ds.expected_push_rate() == 0.0
+        assert ds.expected_push_rate_per_s() == 0.0
 
     def test_expected_rate_is_zero_without_a_target_or_replicas(self):
         ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=5.0, running=0)
-        assert ds.expected_push_rate() == 0.0
+        assert ds.expected_push_rate_per_s() == 0.0
         ds._target_state = SimpleNamespace(info=None)
-        assert ds.expected_push_rate() == 0.0
+        assert ds.expected_push_rate_per_s() == 0.0
 
     def _timed_out_probe(self, monkeypatch):
         w, _ = _push_health_wrapper()
@@ -12969,7 +12982,7 @@ class TestIngestLagGate:
             ] = lambda *args, **kwargs: Mock()
             info_kwargs["gang_scheduling_config"] = GangSchedulingConfig(gang_size=2)
         dsm: DeploymentStateManager = create_dsm(**dsm_kwargs)
-        monkeypatch.setattr(dsm, "refresh_ingest_lag", lambda rate: True)
+        monkeypatch.setattr(dsm, "refresh_ingest_lag", lambda rate, now: True)
         dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(**info_kwargs)[0])
         ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
         # Without this the gang parametrization could silently run the other branch.
@@ -12996,7 +13009,7 @@ class TestIngestLagGate:
         dsm: DeploymentStateManager = create_dsm()
         seen = []
         monkeypatch.setattr(
-            dsm, "refresh_ingest_lag", lambda rate: seen.append(rate) or False
+            dsm, "refresh_ingest_lag", lambda rate, now: seen.append(rate) or False
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
         ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
@@ -13004,8 +13017,8 @@ class TestIngestLagGate:
         ds._replicas.get()[0]._actor.set_ready()
         dsm.update()
         dsm.update()
-        assert seen[-1] == (ds.expected_push_rate() if enabled else 0.0)
-        assert ds.expected_push_rate() > 0  # the enabled case is not vacuous
+        assert seen[-1] == (ds.expected_push_rate_per_s() if enabled else 0.0)
+        assert ds.expected_push_rate_per_s() > 0  # the enabled case is not vacuous
 
     def test_suppression_is_bounded_so_a_quiet_fleet_still_resolves(self, monkeypatch):
         """A fleet that has itself gone quiet produces the same shortfall reading as a
@@ -13021,6 +13034,24 @@ class TestIngestLagGate:
         w._probe_started_at = time.time() - 60.0
         w.check_health(ingest_lagging=True)
         assert w._consecutive_health_check_failures == 1
+
+    def test_a_hung_replica_under_sustained_lag_is_marked_after_budget_plus_threshold(
+        self, monkeypatch
+    ):
+        """The bound is that many suppressions in a row, then every timeout counts. A
+        counted timeout refilling the budget would let three of every four drop and
+        double the time to mark a replica that has genuinely hung."""
+        budget = ds_mod.RAY_SERVE_MAX_SUPPRESSED_PROBE_TIMEOUTS
+        threshold = REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        w = self._timed_out_probe(monkeypatch)
+        for i in range(budget + threshold):
+            w._probe_ref = "probe_ref"
+            w._probe_started_at = time.time() - 60.0
+            healthy = w.check_health(ingest_lagging=True)
+            if i < budget + threshold - 1:
+                assert healthy is True, f"marked early, after {i + 1} timeouts"
+        assert healthy is False
+        assert w._consecutive_health_check_failures == threshold
 
     def test_a_real_verdict_refills_the_suppression_budget(self, monkeypatch):
         w = self._timed_out_probe(monkeypatch)

@@ -797,10 +797,9 @@ class PushedHealthTracker:
         self._pushed: Optional[PushedHealth] = None
         # The newest push already consumed, so a repeat is not applied twice.
         self._consumed_push_checked_at: float = 0.0
-        # When the newest applied push arrived, and when the probe it may have
-        # superseded started. The two settle which observation is newer.
+        # When the newest applied push arrived, so a probe started before it is known
+        # to carry the older observation.
         self._applied_push_received_at: float = 0.0
-        self._applied_probe_started_at: float = 0.0
 
     def record(
         self,
@@ -841,8 +840,6 @@ class PushedHealthTracker:
         window_s = _push_freshness_window_s(health_check_period_s)
         if self._timer.time() - pushed.received_at > window_s:
             return None  # stale; the pull path stays the fallback
-        if pushed.received_at < self._applied_probe_started_at:
-            return None  # a probe already reported something newer
         self._applied_push_received_at = pushed.received_at
         return pushed
 
@@ -881,9 +878,13 @@ class PushedHealthTracker:
             )
 
         if probe_response is not ReplicaHealthCheckResponse.NONE:
-            # Watermark by when this probe started: a push that arrived before that
-            # is strictly older information and must not overwrite the result.
-            self._applied_probe_started_at = probe_started_at
+            # A push stashed before this probe resolved cannot be shown to be newer:
+            # it is ordered by arrival, and a check that failed before the probe
+            # started can land after it. Drop it rather than let a stale failure
+            # override this success; a newer state arrives with the next self-check.
+            if self._pushed is not None:
+                self._consumed_push_checked_at = self._pushed.checked_at
+                self._pushed = None
             return ResolvedHealth(HealthSource.PROBE, probe_response, None)
 
         # No probe resolved this tick, so a fresh push is never discarded in favour
@@ -2020,8 +2021,10 @@ class ActorReplicaWrapper:
             response = ReplicaHealthCheckResponse.NONE
             self._last_health_check_failed = None
             self._last_health_check_latency_ms = None
-        elif response is not ReplicaHealthCheckResponse.NONE:
-            # Any real verdict, pushed or probed, refills the budget.
+        elif response is not ReplicaHealthCheckResponse.NONE and not probe.timed_out:
+            # A real verdict, pushed or probed, refills the budget. A timeout counted
+            # past the bound does not, or under sustained lag three of every four
+            # timeouts would drop and a hung replica take twice as long to mark.
             self._suppressed_probe_timeouts = 0
         if response is ReplicaHealthCheckResponse.NONE:
             # No info; don't update replica health.
@@ -5527,7 +5530,7 @@ class DeploymentState:
                 DEFAULT_HEALTH_CHECK_PERIOD_S, DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
             )
 
-    def expected_push_rate(self) -> float:
+    def expected_push_rate_per_s(self) -> float:
         """Heartbeats per second this deployment's replicas should send.
 
         One per period, not the two the self-check attempts: the pusher sleeps its
@@ -6547,7 +6550,7 @@ class DeploymentStateManager:
         # Arrivals measured against what the fleet owes, to tell a controller that
         # is behind from replicas that have gone quiet.
         self._push_arrivals: int = 0
-        self._rate_window_started_at: float = 0.0
+        self._rate_window_started_at: Optional[float] = None
         # No expectation has been published yet, so the first one sets the floor.
         self._window_min_expected_rate_per_s: float = float("inf")
         self._ingest_lagging: bool = False
@@ -6641,7 +6644,7 @@ class DeploymentStateManager:
             replica_id, checked_at, healthy, consecutive_failures
         )
 
-    def refresh_ingest_lag(self, expected_rate_per_s: float) -> bool:
+    def refresh_ingest_lag(self, expected_rate_per_s: float, now: float) -> bool:
         """Close the measurement window if it is due, and report the latest verdict.
 
         Advances the window, so call it once per tick. The verdict stays False until a
@@ -6651,12 +6654,12 @@ class DeploymentStateManager:
 
         Args:
             expected_rate_per_s: heartbeats per second the running replicas owe.
+            now: this tick's time on a monotonic clock.
 
         Returns:
             Whether arrivals fell short of that over the window just measured.
         """
-        now = time.time()
-        if not self._rate_window_started_at:
+        if self._rate_window_started_at is None:
             self._rate_window_started_at = now
         # The verdict covers the window just measured, so hold it against the least the
         # fleet owed during that window: a scale-up raises the expectation at once while
@@ -7212,13 +7215,15 @@ class DeploymentStateManager:
         # With the feature off nothing is owed, so the gate stays inert.
         expected_push_rate_per_s = (
             sum(
-                deployment_state.expected_push_rate()
+                deployment_state.expected_push_rate_per_s()
                 for deployment_state in self._deployment_states.values()
             )
             if RAY_SERVE_ENABLE_PUSH_HEALTH
             else 0.0
         )
-        ingest_lagging = self.refresh_ingest_lag(expected_push_rate_per_s)
+        ingest_lagging = self.refresh_ingest_lag(
+            expected_push_rate_per_s, time.monotonic()
+        )
         for deployment_state in self._deployment_states.values():
             deployment_state.check_and_update_replicas(ingest_lagging)
             deployment_state.check_and_update_deployment_actors()
