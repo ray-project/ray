@@ -58,7 +58,8 @@ LocalLeaseManager::LocalLeaseManager(
     size_t max_pinned_lease_arguments_bytes,
     SchedulerMetrics &scheduler_metrics,
     ClockInterface &clock,
-    int64_t sched_cls_cap_interval_ms)
+    int64_t sched_cls_cap_interval_ms,
+    GrantedLeaseHook granted_lease_hook)
     : self_node_id_(self_node_id),
       self_scheduling_node_id_(self_node_id.Binary()),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -74,7 +75,8 @@ LocalLeaseManager::LocalLeaseManager(
       clock_(clock),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
-      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
+      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()),
+      granted_lease_hook_(std::move(granted_lease_hook)) {}
 
 void LocalLeaseManager::QueueAndScheduleLease(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster lease manager will
@@ -1048,9 +1050,21 @@ void LocalLeaseManager::Grant(
     }
   }
 
-  // Send the result back to the clients.
-  for (const auto &reply_callback : reply_callbacks) {
-    reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
+  auto send_replies = [reply_callbacks](const Status &status) {
+    for (const auto &reply_callback : reply_callbacks) {
+      if (!status.ok()) {
+        reply_callback.reply_->set_canceled(true);
+        reply_callback.reply_->set_failure_type(
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+        reply_callback.reply_->set_scheduling_failure_message(status.message());
+      }
+      reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
+    }
+  };
+  if (granted_lease_hook_) {
+    granted_lease_hook_(worker, lease, *allocated_resources, std::move(send_replies));
+  } else {
+    send_replies(Status::OK());
   }
 }
 

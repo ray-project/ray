@@ -17,7 +17,9 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/cgroup2/fake_cgroup_driver.h"
@@ -526,5 +528,129 @@ TEST(CgroupManagerTest, GetConstraintValueReturnsValue) {
       cgroup_manager->GetUserCgroupConstraintValue("memory.max");
   ASSERT_TRUE(max_value.ok()) << max_value.ToString();
   ASSERT_EQ(max_value.value(), std::to_string(user_memory_max_bytes));
+}
+
+class GpuWorkerCgroupTest : public ::testing::Test {
+ protected:
+  void CreateManager(std::unordered_set<std::string> base_controllers,
+                     std::unordered_set<std::string> base_enabled = {}) {
+    cgroups_->emplace(kBase, FakeCgroup{kBase, {}, {}, base_controllers, base_enabled});
+    std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(
+        cgroups_, deleted_cgroups_, nullptr, controllers_disabled_, processes_moved_);
+    driver_ = driver.get();
+    auto manager = CgroupManager::Create(
+        kBase, "id_123", 100, 1024, 1024, 1024 * 1024, 1024 * 1024, std::move(driver));
+    ASSERT_TRUE(manager.ok()) << manager.ToString();
+    manager_ = std::move(manager.value());
+  }
+
+  bool DmemEnabled(const std::string &cgroup) const {
+    return cgroups_->at(cgroup).enabled_controllers_.count("dmem") > 0;
+  }
+
+  const std::string kBase = "/sys/fs/cgroup";
+  const std::string kNode = "/sys/fs/cgroup/ray-node_id_123";
+  const std::string kUser = "/sys/fs/cgroup/ray-node_id_123/user";
+  const std::string kWorkers = "/sys/fs/cgroup/ray-node_id_123/user/workers";
+  const std::string kGpuWorkers = "/sys/fs/cgroup/ray-node_id_123/user/gpu-workers";
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups_ =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  std::shared_ptr<std::vector<std::pair<int, std::string>>> deleted_cgroups_ =
+      std::make_shared<std::vector<std::pair<int, std::string>>>();
+  std::shared_ptr<std::vector<std::pair<int, FakeController>>> controllers_disabled_ =
+      std::make_shared<std::vector<std::pair<int, FakeController>>>();
+  std::shared_ptr<std::vector<std::pair<int, FakeMoveProcesses>>> processes_moved_ =
+      std::make_shared<std::vector<std::pair<int, FakeMoveProcesses>>>();
+  FakeCgroupDriver *driver_ = nullptr;
+  std::unique_ptr<CgroupManager> manager_;
+};
+
+TEST_F(GpuWorkerCgroupTest, AddProcessCreatesTheCgroupAndEnablesDmemWhenAvailable) {
+  CreateManager({"cpu", "memory", "dmem"});
+
+  StatusOr<std::string> cgroup = manager_->AddProcessToGpuWorkerCgroup("lease_1", "42");
+
+  ASSERT_TRUE(cgroup.ok()) << cgroup.ToString();
+  ASSERT_EQ(*cgroup, kGpuWorkers + "/lease_1");
+  ASSERT_NE(cgroups_->find(*cgroup), cgroups_->end());
+  for (const std::string &enabled : {kBase, kNode, kUser, kGpuWorkers}) {
+    ASSERT_TRUE(DmemEnabled(enabled)) << enabled;
+  }
+}
+
+TEST_F(GpuWorkerCgroupTest, AddProcessSkipsDmemWhenTheBaseCgroupDoesNotOfferIt) {
+  CreateManager({"cpu", "memory"});
+
+  StatusOr<std::string> cgroup = manager_->AddProcessToGpuWorkerCgroup("lease_1", "42");
+
+  ASSERT_TRUE(cgroup.ok()) << cgroup.ToString();
+  for (const std::string &enabled : {kBase, kNode, kUser, kGpuWorkers}) {
+    ASSERT_FALSE(DmemEnabled(enabled)) << enabled;
+  }
+}
+
+TEST_F(GpuWorkerCgroupTest, AddProcessReturnsTheErrorWhenTheProcessCannotMove) {
+  CreateManager({"cpu", "memory"});
+  driver_->add_process_to_cgroup_s_ = Status::PermissionDenied("");
+
+  StatusOr<std::string> cgroup = manager_->AddProcessToGpuWorkerCgroup("lease_1", "42");
+
+  ASSERT_TRUE(cgroup.IsPermissionDenied()) << cgroup.ToString();
+  ASSERT_TRUE(manager_->DeleteGpuWorkerCgroup("lease_1").ok());
+}
+
+TEST_F(GpuWorkerCgroupTest, DeleteMovesLeftoverProcessesToWorkers) {
+  CreateManager({"cpu", "memory"});
+  ASSERT_TRUE(manager_->AddProcessToGpuWorkerCgroup("lease_1", "42").ok());
+  cgroups_->at(kGpuWorkers + "/lease_1").processes_ = {42};
+
+  ASSERT_TRUE(manager_->DeleteGpuWorkerCgroup("lease_1").ok());
+
+  ASSERT_EQ(cgroups_->find(kGpuWorkers + "/lease_1"), cgroups_->end());
+  ASSERT_EQ(cgroups_->at(kWorkers).processes_, std::vector<int>{42});
+  ASSERT_TRUE(manager_->DeleteGpuWorkerCgroup("lease_1").IsNotFound());
+}
+
+TEST_F(GpuWorkerCgroupTest, CleanupRemovesLeavesBeforeDisablingDmem) {
+  CreateManager({"cpu", "memory", "dmem"});
+  ASSERT_TRUE(manager_->AddProcessToGpuWorkerCgroup("lease_1", "42").ok());
+
+  driver_->cleanup_mode_ = true;
+  manager_.reset();
+
+  auto deleted_at = [this](const std::string &cgroup) {
+    for (const auto &[order, deleted] : *deleted_cgroups_) {
+      if (deleted == cgroup) {
+        return order;
+      }
+    }
+    return -1;
+  };
+  std::vector<std::pair<int, std::string>> dmem_disabled;
+  for (const auto &[order, controller] : *controllers_disabled_) {
+    if (controller.name_ == "dmem") {
+      dmem_disabled.emplace_back(order, controller.cgroup_);
+    }
+  }
+  ASSERT_EQ(dmem_disabled.size(), 4);
+  ASSERT_EQ(dmem_disabled[0].second, kGpuWorkers);
+  ASSERT_EQ(dmem_disabled[1].second, kUser);
+  ASSERT_EQ(dmem_disabled[2].second, kNode);
+  ASSERT_EQ(dmem_disabled[3].second, kBase);
+  ASSERT_LT(deleted_at(kGpuWorkers + "/lease_1"), dmem_disabled[0].first);
+  ASSERT_GT(deleted_at(kGpuWorkers), dmem_disabled[3].first);
+  ASSERT_LT(deleted_at(kGpuWorkers), deleted_at(kUser));
+}
+
+TEST_F(GpuWorkerCgroupTest, CleanupLeavesDmemAloneWhereItWasAlreadyEnabled) {
+  CreateManager({"cpu", "memory", "dmem"}, {"dmem"});
+  ASSERT_TRUE(manager_->AddProcessToGpuWorkerCgroup("lease_1", "42").ok());
+
+  driver_->cleanup_mode_ = true;
+  manager_.reset();
+
+  for (const auto &[order, controller] : *controllers_disabled_) {
+    ASSERT_FALSE(controller.name_ == "dmem" && controller.cgroup_ == kBase);
+  }
 }
 }  // namespace ray

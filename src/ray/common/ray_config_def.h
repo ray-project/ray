@@ -141,6 +141,14 @@ RAY_CONFIG(float, user_memory_proportion_high, 1.0)
 /// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 
+/// Whether to cap each gpu_memory lease at its requested GPU memory with NVIDIA MPS
+/// memory partitioning. Requires resource isolation, CUDA 13.4, and cgroup v2.
+RAY_CONFIG(bool, enable_gpu_memory_isolation, false)
+
+/// The command, split on whitespace, that sets a cgroup's GPU memory limit when called
+/// with `memory-limits --set` arguments. Setting limits needs root.
+RAY_CONFIG(std::string, gpu_memory_limit_command, "nvidia-smi")
+
 /// The TTL for when the task failure entry is considered
 /// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)

@@ -1016,7 +1016,15 @@ int main(int argc, char *argv[]) {
         },
         max_task_args_memory,
         scheduler_metrics,
-        clock);
+        clock,
+        RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
+        [&](const std::shared_ptr<ray::raylet::WorkerInterface> &worker,
+            const ray::RayLease &lease,
+            const ray::TaskResourceInstances &allocated_instances,
+            std::function<void(ray::Status)> done) {
+          node_manager->PrepareGrantedLease(
+              worker, lease, allocated_instances, std::move(done));
+        });
 
     cluster_lease_manager =
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
