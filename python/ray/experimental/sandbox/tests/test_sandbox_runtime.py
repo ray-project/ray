@@ -44,6 +44,35 @@ class _FakeBackend:
     def get_status(self, sandbox_id):
         return SandboxStatus.RUNNING
 
+    def checkpoint_sandbox(
+        self,
+        sandbox_id: str,
+        checkpoint_path=None,
+        leave_running: bool = True,
+        **kwargs,
+    ):
+        path = checkpoint_path or f"/tmp/checkpoints/{sandbox_id}"
+        self.checkpoints.append(
+            {
+                "sandbox_id": sandbox_id,
+                "checkpoint_path": path,
+                "leave_running": leave_running,
+                "kwargs": kwargs,
+            }
+        )
+        return {
+            "checkpoint_path": path,
+            "sandbox_id": sandbox_id,
+            "leave_running": leave_running,
+        }
+
+    def restore_sandbox(self, checkpoint_path: str, **kwargs):
+        new_id = f"ray-sandbox-restored-{len(self.restores) + 1}"
+        self.restores.append(
+            {"checkpoint_path": checkpoint_path, "new_id": new_id, "kwargs": kwargs}
+        )
+        return new_id
+
     def pause_sandbox(self, sandbox_id: str, timeout_seconds=None):
         self.paused.append(sandbox_id)
 
@@ -55,6 +84,8 @@ def _fake_runtime():
     runtime = SandboxRuntime()
     runtime._image_manager = _FakeImageManager()
     backend = _FakeBackend()
+    backend.checkpoints = []
+    backend.restores = []
     backend.paused = []
     backend.resumed = []
     runtime._backend = backend
@@ -122,15 +153,33 @@ def test_no_ttl_by_default():
     assert config.shell == "/bin/bash"
 
 
-def test_pause_and_resume_forward_to_backend():
+def test_checkpoint_and_restore_forward_to_backend():
     runtime = _fake_runtime()
     instance_id = runtime.create(image="fake:latest")
 
-    runtime.pause(instance_id, timeout_seconds=5.0)
-    assert runtime._backend.paused == [instance_id]
+    # Checkpoint with leave_running=True
+    ckpt_path = runtime.checkpoint(
+        instance_id,
+        checkpoint_path="/tmp/test_checkpoint",
+        leave_running=True,
+    )
+    assert ckpt_path == "/tmp/test_checkpoint"
+    assert len(runtime._backend.checkpoints) == 1
+    assert runtime._backend.checkpoints[0]["sandbox_id"] == instance_id
+    assert runtime._backend.checkpoints[0]["checkpoint_path"] == "/tmp/test_checkpoint"
+    assert runtime._backend.checkpoints[0]["leave_running"] is True
 
-    runtime.resume(instance_id, timeout_seconds=5.0)
-    assert runtime._backend.resumed == [instance_id]
+    # Restore from checkpoint
+    restored_id = runtime.restore(
+        checkpoint_path=ckpt_path,
+        cpu=4.0,
+        memory="2Gi",
+    )
+    assert restored_id.startswith("ray-sandbox-restored-")
+    assert len(runtime._backend.restores) == 1
+    assert runtime._backend.restores[0]["checkpoint_path"] == ckpt_path
+    assert runtime._backend.restores[0]["kwargs"]["cpu"] == 4.0
+    assert runtime._backend.restores[0]["kwargs"]["memory"] == "2Gi"
 
 
 def test_gvisor_backend_pause_resume_lifecycle(tmp_path, monkeypatch):
