@@ -240,6 +240,7 @@ def test_token_store_skips_chat_tokenization():
     request.build_chat_params = lambda *args: ChatParams()
     renderer = online_renderer.OnlineRenderer.__new__(online_renderer.OnlineRenderer)
     renderer.renderer = Renderer()
+    renderer.trust_request_mm_kwargs = False
     renderer.model_config = SimpleNamespace(
         multimodal_config=None, enable_prompt_embeds=False
     )
