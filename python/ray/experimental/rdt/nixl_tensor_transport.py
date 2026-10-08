@@ -403,6 +403,14 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_meta = tensor_transport_metadata.tensor_meta
         device = tensor_transport_metadata.tensor_device
 
+        if target_buffers:
+            target_device_types = {t.device.type for t in target_buffers}
+            if len(target_device_types) > 1:
+                raise ValueError(
+                    "All target buffers for an RDT object must have the same "
+                    f"device type, but got {sorted(target_device_types)}."
+                )
+
         with self._aborted_transfer_obj_ids_lock:
             if obj_id in self._aborted_transfer_obj_ids:
                 self._aborted_transfer_obj_ids.remove(obj_id)
