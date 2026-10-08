@@ -603,12 +603,12 @@ def test_fail_mode_raises_after_confirm(monkeypatch):
         callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2 -> raise
     # The error reports how many communicators were confirmed stalled.
     message = str(exc_info.value)
-    assert "1 of 1 communicators" in message
+    assert "1 communicator(s)" in message
     assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
     # ...and points the user at every diagnostic that was captured.
-    assert "per-rank stack traces" in message
+    assert "Compare the stack traces" in message
     assert "/exp/hang_detector/stack_traces" in message
-    assert "query history" in message
+    assert "ncclras_report.txt" in message
     assert "/exp/hang_detector/nccl_ras" in message
 
 
@@ -648,7 +648,7 @@ def test_deadlock_requires_whole_comm_frozen(
         assert callback.comm_deadlock_count == {_COMM_A: 1}
         with pytest.raises(NCCLHangError) as exc_info:
             callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> raise
-        assert "1 of 1 communicators" in str(exc_info.value)
+        assert "1 communicator(s)" in str(exc_info.value)
         assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
     else:
         for _ in reports[1:]:
@@ -732,7 +732,7 @@ def test_per_communicator_streak_is_independent(monkeypatch):
     with pytest.raises(NCCLHangError) as exc_info:
         callback.after_worker_group_poll_status(MagicMock())  # A frozen -> 2/2
     # Only A is confirmed (1 of the 2 communicators), not B.
-    assert "1 of 2 communicators" in str(exc_info.value)
+    assert "1 communicator(s)" in str(exc_info.value)
 
 
 def test_communicator_added_after_two_polls(monkeypatch):
@@ -761,7 +761,7 @@ def test_communicator_added_after_two_polls(monkeypatch):
     with pytest.raises(NCCLHangError) as exc_info:
         callback.after_worker_group_poll_status(MagicMock())  # B frozen -> 2/2
     # Only B is confirmed (1 of the 2 communicators present this poll).
-    assert "1 of 2 communicators" in str(exc_info.value)
+    assert "1 communicator(s)" in str(exc_info.value)
     assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
 
 
@@ -882,6 +882,42 @@ def test_ras_poller_survives_unexpected_query_error():
     assert _drain(poller, 1) == [report]
     poller.stop()
     assert _join(poller)
+
+
+def test_ras_poller_quiet_before_first_report_and_after_stop(caplog, propagate_logs):
+    # Before NCCL starts there is no RAS service, so those failures are DEBUG;
+    # once reports flow, a failure is INFO; after stop() nothing is logged.
+    script = [
+        RASQueryError("exit_1", stderr="before nccl"),
+        create_single_comm_report({0: 1, 1: 1}),
+        RASQueryError("exit_1", stderr="transient"),
+    ]
+    poller = make_poller(None)
+
+    def query(fmt):
+        if not script:
+            poller.stop()
+            raise RASQueryError("exit_1", stderr="after stop")
+        item = script.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    poller.query = query
+    with caplog.at_level(logging.DEBUG, logger=nccl_ras.logger.name):
+        poller._run()
+
+    logged = [
+        (record.levelno, record.getMessage())
+        for record in caplog.records
+        if "poll produced no report" in record.getMessage()
+    ]
+    assert [(level, "before nccl" in msg) for level, msg in logged[:1]] == [
+        (logging.DEBUG, True)
+    ]
+    assert [(level, "transient" in msg) for level, msg in logged[1:]] == [
+        (logging.INFO, True)
+    ]
 
 
 def test_ras_poller_query_falls_back_to_next_worker():
@@ -1041,8 +1077,8 @@ def test_hang_error_propagates_when_diagnostics_fail(
         callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> still raises
 
     message = str(exc_info.value)
-    assert ("per-rank stack traces" in message) is not fail_stack_traces
-    assert ("query history" in message) is not fail_ras_history
+    assert ("Compare the stack traces" in message) is not fail_stack_traces
+    assert ("drifted over the polls" in message) is not fail_ras_history
     assert callback._is_ras_degraded is False
 
 
@@ -1107,16 +1143,68 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
             callback.after_worker_group_poll_status(MagicMock())
 
     text = caplog.text
-    # New-suspicion announcement names the stalled communicator in a parenthetical.
+    # New-suspicion announcement describes the stalled communicator.
     assert "Possible NCCL hang detected!" in text
-    assert f"({_COMM_A}" in text
+    assert f"Communicator {_COMM_A} over" in text
     # Periodic reminder uses the "still suspected" wording.
     assert "NCCL hang still suspected!" in text
     # Fail mode threatens to raise a NCCLHangError.
     assert "A NCCLHangError will be raised" in text
-    # The RAS report is logged verbatim, without a "NCCL RAS report" label.
-    assert FakePoller.TEXT_REPORT in text
+    # The RAS report is logged verbatim, without a "NCCL RAS report" label,
+    # and only once for the whole suspected hang.
+    assert text.count(FakePoller.TEXT_REPORT) == 1
     assert "NCCL RAS report:" not in text
+
+
+def test_periodic_warning_never_precedes_the_first_suspicion(
+    monkeypatch, caplog, propagate_logs
+):
+    # A periodic interval shorter than the first-suspicion threshold must not
+    # say "still suspected" before anything was suspected, nor both at once.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 8
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        confirm_count=100,
+        reports=reports,
+        first_suspicion_polls=4,
+        periodic_warn_every_polls=2,
+    )
+
+    warnings = []
+    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+        for _ in reports:
+            caplog.clear()
+            callback.after_worker_group_poll_status(MagicMock())
+            warnings.append([r.getMessage().split("!")[0] for r in caplog.records])
+
+    # Frozen streaks 1..7 follow the baseline poll.
+    assert warnings == [
+        [],
+        [],
+        [],
+        [],
+        ["Possible NCCL hang detected"],
+        [],
+        ["NCCL hang still suspected"],
+        [],
+    ]
+
+
+def test_ras_text_report_is_logged_again_for_a_new_hang(
+    monkeypatch, caplog, propagate_logs
+):
+    stalled = create_single_comm_report({1: 5, 2: 4})
+    reports = [stalled, stalled, create_healthy_report(), stalled, stalled]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=100, reports=reports
+    )
+
+    with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
+        for _ in reports:
+            callback.after_worker_group_poll_status(MagicMock())
+
+    assert caplog.text.count(FakePoller.TEXT_REPORT) == 2
 
 
 def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
@@ -1445,28 +1533,23 @@ def make_train_worker(world_rank: int, node_ip: str, pid: int) -> MagicMock:
 
 
 @pytest.mark.parametrize(
-    "counts,expected",
+    "train_ranks,unmatched,expected",
     [
-        # One rank behind on the only op.
-        ({0: 5, 1: 4, 2: 5}, ("AllReduce", [1], [0, 2])),
-        # A minority ahead: the ranks behind are still the ones at the lowest count.
-        ({0: 5, 1: 4, 2: 4}, ("AllReduce", [1, 2], [0])),
-        # Ranks spread over several counts: everything above the lowest is ahead.
-        ({0: 6, 1: 4, 2: 5}, ("AllReduce", [1], [0, 2])),
-        # The split is on the op with the widest skew, not the first.
+        ([2], [], "train rank 2"),
+        ([3, 0, 1], [], "train ranks 0-1, 3"),
+        (list(range(1000)), [], "train ranks 0-999"),
+        ([], [0, 1], "comm ranks 0-1 (no matching train worker)"),
+        ([1], [4], "train rank 1, comm rank 4 (no matching train worker)"),
+        # Past _MAX_RANKS_LOGGED runs the rest are counted, not named.
         (
-            {
-                0: {"AllGather": 3, "AllReduce": 9},
-                1: {"AllGather": 2, "AllReduce": 9},
-                2: {"AllGather": 3, "AllReduce": 7},
-            },
-            ("AllReduce", [2], [0, 1]),
+            list(range(0, 40, 2)),
+            [],
+            "train ranks 0, 2, 4, 6, 8, 10, 12, 14, and 12 more",
         ),
     ],
 )
-def test_widest_skew_splits_ranks_behind_and_ahead(counts, expected):
-    report = create_single_comm_report(counts)
-    assert report.widest_skew(_COMM_A) == expected
+def test_format_ranks(train_ranks, unmatched, expected):
+    assert nccl_ras.format_ranks(train_ranks, unmatched) == expected
 
 
 def test_find_train_worker_matches_node_and_pid():
@@ -1486,7 +1569,7 @@ def test_find_train_worker_matches_node_and_pid():
     assert find(workers, "10.0.0.3", 300) is None
 
 
-def make_culprit_callback(monkeypatch, action, reports, workers):
+def make_translating_callback(monkeypatch, action, reports, workers):
     callback, _ = make_nccl_ras_callback(
         monkeypatch, action, confirm_count=2, reports=reports
     )
@@ -1494,18 +1577,18 @@ def make_culprit_callback(monkeypatch, action, reports, workers):
     return callback
 
 
-# Comm ranks 0 and 1 are Ray Train ranks 2 and 3 on two nodes; comm rank 1 is behind.
-_CULPRIT_PROCESSES = {_COMM_A: {0: ("10.0.0.1", 100), 1: ("10.0.0.2", 200)}}
-_CULPRIT_WORKERS = [
+# Comm ranks 0 and 1 are Ray Train ranks 2 and 3 on two nodes.
+_PAIR_PROCESSES = {_COMM_A: {0: ("10.0.0.1", 100), 1: ("10.0.0.2", 200)}}
+_PAIR_WORKERS = [
     make_train_worker(2, "10.0.0.1", 100),
     make_train_worker(3, "10.0.0.2", 200),
 ]
 
 
 def test_confirmed_hang_names_the_train_ranks(monkeypatch):
-    reports = [create_report({_COMM_A: {0: 5, 1: 4}}, processes=_CULPRIT_PROCESSES)] * 3
-    callback = make_culprit_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, reports, _CULPRIT_WORKERS
+    reports = [create_report({_COMM_A: {0: 5, 1: 4}}, processes=_PAIR_PROCESSES)] * 3
+    callback = make_translating_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, reports, _PAIR_WORKERS
     )
 
     callback.after_worker_group_poll_status(MagicMock())
@@ -1513,49 +1596,61 @@ def test_confirmed_hang_names_the_train_ranks(monkeypatch):
     with pytest.raises(NCCLHangError) as exc_info:
         callback.after_worker_group_poll_status(MagicMock())
 
-    message = str(exc_info.value)
-    # Both sides of the skew are named, with communicator rank, train rank and node.
+    # Comm ranks are translated to train ranks, without blaming either side.
     assert (
-        f"Communicator {_COMM_A} on AllReduce: 1 rank(s) behind at 4 launches: "
-        "comm rank 1 (train rank 3, node 10.0.0.2); 1 rank(s) ahead at up to 5 "
-        "launches: comm rank 0 (train rank 2, node 10.0.0.1)"
-    ) in message
-    # Only the ranks behind are reported as failed workers, keyed by world rank.
-    assert list(exc_info.value.worker_failures) == [3]
-    assert "10.0.0.2" in str(exc_info.value.worker_failures[3])
+        f"Communicator {_COMM_A} over train ranks 2-3, no progress for 2s. "
+        "AllReduce launches: 5 by train rank 2; 4 by train rank 3"
+    ) in str(exc_info.value)
+    assert exc_info.value.worker_failures == {}
+
+
+def test_only_mismatched_ops_are_described(monkeypatch):
+    report = create_single_comm_report(
+        {
+            0: {"AllGather": 3, "AllReduce": 9, "Broadcast": 1},
+            1: {"AllGather": 2, "AllReduce": 9, "Broadcast": 1},
+            2: {"AllGather": 3, "AllReduce": 7, "Broadcast": 1},
+        }
+    )
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=2, reports=[]
+    )
+    callback._worker_group.get_workers.return_value = []
+
+    line = callback.describe_stalled_comms(report, [_COMM_A])
+    assert "AllGather launches: 3 by comm ranks 0, 2" in line
+    assert "AllReduce launches: 9 by comm ranks 0-1" in line
+    assert "Broadcast" not in line
 
 
 def test_suspicion_warnings_name_the_train_ranks(monkeypatch, caplog, propagate_logs):
-    reports = [create_report({_COMM_A: {0: 5, 1: 4}}, processes=_CULPRIT_PROCESSES)] * 4
+    reports = [create_report({_COMM_A: {0: 5, 1: 4}}, processes=_PAIR_PROCESSES)] * 4
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=100, reports=reports
     )
-    callback._worker_group.get_workers.return_value = _CULPRIT_WORKERS
+    callback._worker_group.get_workers.return_value = _PAIR_WORKERS
 
     with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
         for _ in reports:
             callback.after_worker_group_poll_status(MagicMock())
 
-    for record in caplog.records:
-        if "Possible NCCL hang" in record.getMessage() or (
-            "still suspected" in record.getMessage()
-        ):
-            assert "comm rank 1 (train rank 3, node 10.0.0.2)" in record.getMessage()
-    assert "Possible NCCL hang" in caplog.text
-    assert "still suspected" in caplog.text
+    warnings = [record.getMessage() for record in caplog.records]
+    assert len(warnings) == 2
+    for message in warnings:
+        assert "5 by train rank 2; 4 by train rank 3" in message
 
 
 def test_unmatched_rank_falls_back_to_the_ras_process(monkeypatch):
     # A rank RAS knows but Ray Train doesn't (e.g. a user-spawned subprocess)
-    # is still named by where RAS says it runs, and isn't a worker failure.
+    # is still named by where RAS says it runs.
     reports = [
         create_report(
             {_COMM_A: {0: 5, 1: 4}},
             processes={_COMM_A: {0: ("10.0.0.1", 100), 1: ("10.0.0.9", 999)}},
         )
     ] * 3
-    callback = make_culprit_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, reports, _CULPRIT_WORKERS
+    callback = make_translating_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, reports, _PAIR_WORKERS
     )
 
     callback.after_worker_group_poll_status(MagicMock())
@@ -1563,23 +1658,7 @@ def test_unmatched_rank_falls_back_to_the_ras_process(monkeypatch):
     with pytest.raises(NCCLHangError) as exc_info:
         callback.after_worker_group_poll_status(MagicMock())
 
-    assert "comm rank 1 (train rank unknown, node 10.0.0.9, pid 999)" in str(
-        exc_info.value
-    )
-    assert exc_info.value.worker_failures == {}
-
-
-def test_large_skews_are_truncated(monkeypatch):
-    ranks = nccl_ras._MAX_RANKS_LOGGED + 3
-    report = create_single_comm_report({0: 4, **{r: 5 for r in range(1, ranks + 1)}})
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=2, reports=[]
-    )
-
-    line = callback.describe_stalled_comms(report, [_COMM_A])
-    assert f"{ranks} rank(s) ahead" in line
-    assert "and 3 more" in line
-    assert f"comm rank {nccl_ras._MAX_RANKS_LOGGED + 1} " not in line
+    assert "4 by comm rank 1 (no matching train worker)" in str(exc_info.value)
 
 
 def test_describing_ranks_never_raises(monkeypatch):
@@ -1591,7 +1670,6 @@ def test_describing_ranks_never_raises(monkeypatch):
     report = create_single_comm_report({0: 5, 1: 4})
 
     assert callback.describe_stalled_comms(report, [_COMM_A]) == ""
-    assert callback.stalled_worker_failures(report, [_COMM_A]) == {}
 
 
 if __name__ == "__main__":
