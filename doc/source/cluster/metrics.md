@@ -19,6 +19,46 @@ Ray exports metrics if you use `ray[default]` or {ref}`other installation comman
 
 **Application metrics**: Application-specific metrics are useful for monitoring your application states. View {ref}`adding application metrics <application-level-metrics>` for how to record metrics.
 
+### Filtering metric families
+
+You can prevent selected metric families from being exported by setting these
+environment variables on every Ray node:
+
+- `RAY_METRICS_EXCLUDE_NAMES`: Comma-separated exact metric names.
+- `RAY_METRICS_EXCLUDE_PATTERNS`: Comma-separated regular expressions. Ray uses
+  full-match semantics, so use `grpc_.*` instead of `grpc_` to match a prefix.
+
+Names and patterns apply to Ray's internal metric names, before Ray adds the
+`ray_` Prometheus namespace or type suffixes such as `_total`. For example, use
+the internal name `grpc_server_req_new` to exclude the exported counter
+`ray_grpc_server_req_new_total`. This command excludes `ray_data_output_rows`,
+`ray_data_output_bytes`, and all metric families whose internal names start with
+`grpc_`:
+
+```bash
+RAY_METRICS_EXCLUDE_NAMES=data_output_rows,data_output_bytes \
+RAY_METRICS_EXCLUDE_PATTERNS='grpc_.*' \
+ray start ...
+```
+
+The filter applies to system and application metrics exported through each node's
+Dashboard Agent, including metrics created with `ray.util.metrics` and metrics
+produced by the agent itself. It supports both the OpenTelemetry and legacy
+OpenCensus metrics backends. The separate Prometheus endpoints for the head
+Dashboard and Autoscaler aren't covered by these rules.
+
+Unset variables preserve the default behavior. Invalid regular expressions are
+logged and ignored without affecting other rules. Excluding metrics used by Ray's
+built-in Grafana dashboards causes the corresponding panels to show no data.
+
+Filtering reduces the node metrics endpoint's scrape payload and avoids agent-side
+metric registration, observation storage, and export work for excluded families.
+It doesn't stop the originating Ray processes from collecting metrics or sending
+them to the agent. Prometheus
+[`metric_relabel_configs`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs)
+remains useful when you only need to prevent scraped samples from entering Prometheus
+storage.
+
 (prometheus-setup)=
 ## Setting up Prometheus
 
