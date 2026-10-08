@@ -479,8 +479,59 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Get operational status of the gVisor sandbox."""
         meta = self._sandbox_metadata.get(sandbox_id)
         if meta and os.path.exists(meta["root_dir"]):
-            return SandboxStatus.RUNNING
+            return meta.get("status", SandboxStatus.RUNNING)
         return SandboxStatus.TERMINATED
+
+    def _run_runsc_command(
+        self,
+        config: SandboxConfig,
+        subcommand: str,
+        sandbox_id: str,
+        *extra_args: str,
+        timeout_seconds: Optional[float] = None,
+    ) -> subprocess.CompletedProcess:
+        """Execute a runsc lifecycle control command (e.g. pause, resume, state)."""
+        args = self._runsc_base_args(config) + [subcommand, *extra_args, sandbox_id]
+        res = subprocess.run(
+            args, capture_output=True, text=True, timeout=timeout_seconds
+        )
+        if res.returncode != 0:
+            raise SandboxError(
+                f"Failed to {subcommand} sandbox '{sandbox_id}': {res.stderr.strip()}"
+            )
+        return res
+
+    def pause_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Pause all processes inside the sandbox without disk serialization."""
+        meta = self._get_metadata_or_raise(sandbox_id)
+        if meta.get("status") == SandboxStatus.PAUSED:
+            return
+        if meta.get("status") == SandboxStatus.TERMINATED:
+            raise SandboxError(f"Cannot pause terminated sandbox '{sandbox_id}'.")
+
+        config: SandboxConfig = meta["config"]
+        self._run_runsc_command(
+            config, "pause", sandbox_id, timeout_seconds=timeout_seconds
+        )
+        meta["status"] = SandboxStatus.PAUSED
+
+    def resume_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Resume execution of a paused sandbox."""
+        meta = self._get_metadata_or_raise(sandbox_id)
+        if meta.get("status") == SandboxStatus.RUNNING:
+            return
+        if meta.get("status") == SandboxStatus.TERMINATED:
+            raise SandboxError(f"Cannot resume terminated sandbox '{sandbox_id}'.")
+
+        config: SandboxConfig = meta["config"]
+        self._run_runsc_command(
+            config, "resume", sandbox_id, timeout_seconds=timeout_seconds
+        )
+        meta["status"] = SandboxStatus.RUNNING
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""

@@ -279,6 +279,24 @@ class SandboxRuntime:
         """
         return self._backend.get_status(instance_id)
 
+    def pause(self, instance_id: str, timeout_seconds: float = 10.0) -> None:
+        """Pause a running sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            timeout_seconds: Timeout for pause operation.
+        """
+        self._backend.pause_sandbox(instance_id, timeout_seconds=timeout_seconds)
+
+    def resume(self, instance_id: str, timeout_seconds: float = 10.0) -> None:
+        """Resume a paused sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            timeout_seconds: Timeout for resume operation.
+        """
+        self._backend.resume_sandbox(instance_id, timeout_seconds=timeout_seconds)
+
     def delete(self, instance_id: str) -> None:
         """Clean up and terminate the sandbox instance.
 
