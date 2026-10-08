@@ -9,6 +9,8 @@ myst:
 
 Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray spills objects to the temporary directory, such as `/tmp/ray/session_2025-03-28_00-05-20_204810_2814690`.
 
+For how spilling works internally, see {ref}`object-spilling-internals`.
+
 (spilling-to-a-custom-directory)=
 ## Spill to a custom directory
 

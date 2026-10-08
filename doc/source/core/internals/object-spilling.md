@@ -10,6 +10,8 @@ myst:
 
 This page explains how Ray's object spilling mechanism works and outlines its high-level architecture, components, and end-to-end data flow.
 
+To configure spilling, see {ref}`Object spilling <object-spilling>`.
+
 
 ## Overview
 

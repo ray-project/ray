@@ -296,4 +296,5 @@ To disable task events, set the `enable_task_events` option in {func}`ray.remote
 
 nested-tasks
 ray-generator
+dynamic-options
 ```
