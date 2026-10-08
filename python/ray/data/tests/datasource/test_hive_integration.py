@@ -109,7 +109,7 @@ def _temporary_table(options, columns, insert_clause, storage_clause=""):
                 connection.close()
 
 
-def test_hive_table_query_limit_and_repartition():
+def test_hive_table_query_limit_and_ignored_block_hint():
     options = _connection_options()
     connection_factory = _make_connection_factory(options)
     with _temporary_table(

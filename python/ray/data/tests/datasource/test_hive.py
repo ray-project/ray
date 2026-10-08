@@ -11,21 +11,19 @@ from ray.data.read_api import read_hive
 
 
 @pytest.mark.parametrize("max_errored_blocks", [0, 3, -1])
-def test_public_api_passes_task_options_and_repartitions(
-    monkeypatch, max_errored_blocks
+@pytest.mark.parametrize("block_count", [None, 1, 4])
+def test_public_api_passes_task_options_without_repartition(
+    monkeypatch, max_errored_blocks, block_count
 ):
     from ray.data import read_api
 
     class FakeDataset:
         context = SimpleNamespace(max_errored_blocks=max_errored_blocks)
-        repartition_count = None
-
-        def repartition(self, count):
-            self.repartition_count = count
-            return self
 
     dataset = FakeDataset()
     calls = []
+    warnings = []
+    monkeypatch.setattr(read_api.logger, "warning", warnings.append)
     monkeypatch.setattr(
         read_api,
         "_read_datasource_v2",
@@ -41,7 +39,7 @@ def test_public_api_passes_task_options_and_repartitions(
         schema=schema,
         num_cpus=2,
         resources={"custom": 1},
-        override_num_blocks=4,
+        override_num_blocks=block_count,
     )
     assert result is dataset
     assert calls[0][0].infer_schema(None) == schema
@@ -51,18 +49,29 @@ def test_public_api_passes_task_options_and_repartitions(
     assert calls[0][1]["num_cpus"] == 2
     assert calls[0][1]["resources"] == {"custom": 1}
     assert dataset.context.max_errored_blocks == max_errored_blocks
-    assert dataset.repartition_count == 4
+    if block_count is None:
+        assert warnings == []
+    else:
+        assert len(warnings) == 1
+        assert "override_num_blocks" in warnings[0]
+        assert "ignored" in warnings[0]
+        assert "preserve streaming" in warnings[0]
 
 
 @pytest.mark.parametrize("block_count", [0, -1, True, 1.5])
-def test_public_api_rejects_invalid_block_counts(block_count):
+def test_public_api_rejects_invalid_block_counts(monkeypatch, block_count):
+    from ray.data import read_api
+
+    warnings = []
+    monkeypatch.setattr(read_api.logger, "warning", warnings.append)
     with pytest.raises(ValueError, match="override_num_blocks"):
         read_hive(
-            connection_factory=lambda: object(),
+            connection_factory=lambda: pytest.fail("Invalid hints must not connect"),
             query="SELECT id FROM events",
             schema=pa.schema([("id", pa.int64())]),
             override_num_blocks=block_count,
         )
+    assert warnings == []
 
 
 def test_public_api_requires_connection_factory():

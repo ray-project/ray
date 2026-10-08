@@ -3991,9 +3991,9 @@ def read_hive(
         incomplete result. This scanner doesn't push
         Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
         The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
-        ``override_num_blocks`` repartitions the result after the HiveServer2
-        query. This blocks downstream streaming until the read completes; it
-        doesn't parallelize the HiveServer2 query.
+        The HiveServer2 reader ignores ``override_num_blocks`` with a warning
+        to preserve streaming. Output blocks follow Ray's normal block-sizing
+        policy. This parameter doesn't parallelize the HiveServer2 query.
 
         The reader attempts to cancel the HiveServer2 operation and close its
         cursor and connection when reading ends. Closing a Dataset iterator
@@ -4086,10 +4086,10 @@ def read_hive(
         fallback_strategy: Alternative label requirements that Ray tries in
             order if ``label_selector`` can't be satisfied.
         runtime_env: The runtime environment to use for the read task.
-        override_num_blocks: Override the number of Ray output blocks. Ray
-            repartitions the result after the single HiveServer2 query. This
-            blocks downstream streaming until the read completes; it doesn't
-            add HiveServer2 query parallelism.
+        override_num_blocks: An output block-count hint. The HiveServer2
+            reader ignores this hint and logs a warning when you supply a
+            value. Output blocks follow Ray's normal block-sizing policy.
+            This parameter doesn't add HiveServer2 query parallelism.
 
     Returns:
         A :class:`Dataset` containing the HiveServer2 read result.
@@ -4113,6 +4113,12 @@ def read_hive(
         schema=schema,
         limit=limit,
     )
+    if override_num_blocks is not None:
+        logger.warning(
+            "The `override_num_blocks` argument is ignored by read_hive to "
+            "preserve streaming. Output blocks follow Ray's normal "
+            "block-sizing policy."
+        )
     dataset = _read_datasource_v2(
         HiveDatasourceV2(spec),
         parallelism=1,
@@ -4124,8 +4130,6 @@ def read_hive(
         runtime_env=runtime_env,
         ray_remote_args={"max_retries": 0},
     )
-    if override_num_blocks is not None:
-        dataset = dataset.repartition(override_num_blocks)
     return dataset
 
 

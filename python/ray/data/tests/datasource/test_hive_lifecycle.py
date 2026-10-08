@@ -95,7 +95,10 @@ def _worker_stopped(pid: int) -> bool:
 
 
 @pytest.mark.parametrize("termination", ["complete", "dataset_limit", "iterator_close"])
-def test_hive_dataset_cleanup(tmp_path: Path, termination: str, restore_data_context):
+@pytest.mark.parametrize("block_count", [None, 4])
+def test_hive_dataset_cleanup(
+    tmp_path: Path, termination: str, block_count: int | None, restore_data_context
+):
     def connection_factory():
         from impala.dbapi import connect
 
@@ -131,6 +134,7 @@ def test_hive_dataset_cleanup(tmp_path: Path, termination: str, restore_data_con
             query="SELECT id",
             schema=pa.schema([("id", pa.int64())]),
             connection_factory=connection_factory,
+            override_num_blocks=block_count,
         )
         consumed_dataset = dataset
         if termination == "dataset_limit":
