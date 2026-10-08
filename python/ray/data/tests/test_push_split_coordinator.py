@@ -50,6 +50,11 @@ def test_flow_finish_clears_contribution():
     assert flow.in_flight_bytes() == 0
     assert flow.rows_to_send() == 0
 
+    # A late report (sent before the consumer finished) doesn't reopen it.
+    flow.report(target_rows=100, consumed_rows=10, consumed_bytes=100)
+    assert flow.rows_to_send() == 0
+    assert flow.in_flight_bytes() == 0
+
 
 def test_flow_wait_for_room_wakes_on_report():
     flow = _SplitFlow()
@@ -192,7 +197,19 @@ def test_dataset_metadata(ray_start_regular_shared):
     coordinator = _make_coordinator()
 
     assert _get(coordinator.get_dataset_schema.remote()).names == ["id"]
-    assert _get(coordinator.get_dataset_tag.remote(1))["split_index"] == "1"
+    tag = _get(coordinator.get_dataset_tag.remote(1))
+    assert tag["split_index"] == "1"
+    # Fetched before the first epoch, the tag names that epoch's run (0).
+    assert tag["dataset"].endswith("_0")
+
+
+def test_stats_include_coordinator_overhead(ray_start_regular_shared):
+    coordinator = _make_coordinator()
+    ray.get([coordinator.start_epoch.remote(i) for i in range(2)])
+    _get(coordinator.request_rows.remote(0, 0, 400, 0, 0))
+
+    stats = _get(coordinator.stats.remote())
+    assert stats.streaming_split_coordinator_s.get() > 0
 
 
 if __name__ == "__main__":

@@ -256,6 +256,15 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
     "AWS Error SERVICE_UNAVAILABLE",
+    # PyArrow's S3FileSystem surfaces a transient credential-lookup failure
+    # (e.g. an empty IMDS response under load) as ACCESS_DENIED on the
+    # bucket-existence check that `create_dir` runs before a write, e.g.
+    # "AWS Error ACCESS_DENIED during HeadBucket operation" (DATA-3602).
+    # Deliberately not the bare "AWS Error ACCESS_DENIED": a genuine per-object
+    # denial (HeadObject) on a read must still fail fast so the credentials hint
+    # in `_handle_read_os_error` is shown promptly instead of after ~3 minutes
+    # of retries.
+    "AWS Error ACCESS_DENIED during HeadBucket operation",
 )
 
 DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
@@ -429,6 +438,14 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
 # Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
     "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
+)
+
+
+# Charge lineage reconstruction tasks to the operator that owns them when
+# reporting resource usage. Enabled by default; set to 0 to fall back to
+# counting only the tasks Ray Data itself submitted.
+DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING: bool = env_bool(
+    "RAY_DATA_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING", True
 )
 
 
@@ -932,6 +949,10 @@ class DataContext:
             later. If `None`, this backpressure policy is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
             of an operator based on its and downstream operators' queue size.
+        enable_lineage_reconstruction_resource_accounting: Whether to count the
+            tasks Ray Core runs to reconstruct lost objects toward an operator's
+            reported resource usage. When disabled, those tasks occupy resources
+            that backpressure doesn't know about.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -1016,7 +1037,7 @@ class DataContext:
     # to perform aggregations on partitions produced during hash-shuffling
     #
     # When unset defaults to the smaller of
-    #   - Total # of CPUs available in the cluster * 2
+    #   - Total # of CPUs available in the cluster (at least 1)
     #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
     max_hash_shuffle_aggregators: Optional[int] = None
 
@@ -1157,6 +1178,10 @@ class DataContext:
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
+
+    enable_lineage_reconstruction_resource_accounting: bool = (
+        DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING
     )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS

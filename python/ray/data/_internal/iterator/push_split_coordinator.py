@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
+from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -95,6 +96,7 @@ class _SplitFlow:
         self.rows_consumed = 0
         self.bytes_pushed = 0
         self.bytes_consumed = 0
+        self.finished = False
         # Observability (written by the split's pusher): time idle because
         # the window was full (consumer-bound) vs. blocked on the executor's
         # output (producer-bound).
@@ -104,6 +106,11 @@ class _SplitFlow:
 
     def report(self, target_rows: int, consumed_rows: int, consumed_bytes: int):
         with self.cond:
+            # Reports are fire-and-forget, so one sent before the consumer
+            # finished can arrive after finish(); it must not reopen the
+            # window.
+            if self.finished:
+                return
             self.target_rows = target_rows
             self.rows_consumed += consumed_rows
             self.bytes_consumed += consumed_bytes
@@ -128,8 +135,9 @@ class _SplitFlow:
             self.blocks_pushed += 1
 
     def finish(self) -> None:
-        """Drop this split's contribution to flow and pacing state."""
+        """Close the window and drop this split's contribution to pacing."""
         with self.cond:
+            self.finished = True
             self.rows_consumed = self.rows_pushed
             self.bytes_consumed = self.bytes_pushed
             self.target_rows = 0
@@ -186,6 +194,9 @@ class PushSplitCoordinator:
         # stale total can't overwrite a newer one.
         self._pacing_lock = threading.Lock()
 
+        # Time spent handling consumer calls, reported in stats().
+        self._coordinator_overhead_s = 0.0
+
         logger.debug(f"PushSplitCoordinator created: {n=}")
 
     # ------------------------------------------------------------------
@@ -231,15 +242,21 @@ class PushSplitCoordinator:
 
         Sent once at iteration start and once per consumed block. Reports
         for any epoch other than the current one are ignored.
+
+        The external-consumer-bytes feed isn't refreshed here: sends refresh
+        it, and between sends the reported total can only be higher than the
+        real one (consumption lowers it), which the executor treats as more
+        downstream capacity, never less.
         """
+        start_time = time.perf_counter()
         flow = self._flows[split_idx]
         with flow.cond:
             # Checked under the cond: the epoch bump precedes replacing the
             # flows, so a report either sees the new epoch and is dropped, or
             # lands on the old epoch's discarded state.
-            if epoch_id != self._cur_epoch:
-                return
-            flow.report(target_rows, consumed_rows, consumed_bytes)
+            if epoch_id == self._cur_epoch:
+                flow.report(target_rows, consumed_rows, consumed_bytes)
+        self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def notify_split_finished(self, epoch_id: int, split_idx: int) -> None:
         """Consumer stopped iterating ``epoch_id``; stale epochs are ignored."""
@@ -271,22 +288,29 @@ class PushSplitCoordinator:
                 return self._schema
             if self._current_executor is not None and self._current_executor.is_alive():
                 raise RuntimeError(
-                    "Cannot call schema() during active dataset execution."
+                    "Cannot call schema() during active dataset execution. "
+                    "Call schema() before or after iterating over the dataset, "
+                    "or call schema() directly on the source Dataset object."
                 )
             self._schema = self._base_dataset.schema()
             return self._schema
 
-    def stats(self):
+    def stats(self) -> DatasetStats:
         if self._current_executor:
-            return self._current_executor.get_stats()
-        return self._base_dataset._raw_stats()
+            stats = self._current_executor.get_stats()
+        else:
+            stats = self._base_dataset._raw_stats()
+        stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
+        return stats
 
     def get_dataset_context(self) -> "DataContext":
         return self._data_context
 
     def get_dataset_tag(self, output_split_idx: int) -> Dict[str, str]:
+        # Fetched before the epoch starts; its executor is created lazily, so
+        # the run index hasn't been incremented yet.
         return {
-            "dataset": self._base_dataset.get_dataset_id(),
+            "dataset": self._base_dataset._get_dataset_id_for_next_run(),
             "split_index": str(output_split_idx),
         }
 
@@ -539,7 +563,12 @@ class PushSplitCoordinator:
             if epoch_id != self._cur_epoch:
                 return
             self._finished_splits.add(split_idx)
-            self._flows[split_idx].finish()
+            flow = self._flows[split_idx]
+            logger.debug(
+                f"Split {split_idx} epoch {epoch_id} finished; sent "
+                f"{flow.rows_pushed} rows, {flow.rows_consumed} consumed."
+            )
+            flow.finish()
             if (
                 len(self._finished_splits) == self._n
                 and self._current_executor is not None

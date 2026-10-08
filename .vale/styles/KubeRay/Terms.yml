@@ -8,6 +8,12 @@ ignorecase: false
 # `autoscaler` in config/vocabularies/Data/accept.txt is the one that bites: without
 # this, the "Ray Autoscaler" swap never fires and nothing warns you.
 vocab: false
+# `action: replace` makes Vale's JSON output carry the replacement text, so a tool
+# can apply these swaps from Vale's own alerts. Every swap here must be safe to
+# apply without judgment. A term that needs a human decision belongs in an
+# existence rule instead.
+action:
+  name: replace
 swap:
   # Project and product names. `Kuberay` and `Yunikorn` aren't here, and neither are
   # the flat-camel custom resources such as `Raycluster`: the accept list already
