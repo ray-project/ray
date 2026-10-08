@@ -775,6 +775,7 @@ def _reconstruct_lost_object(
         )
         source_op = seed_op.input_dependencies[0]
         topology[source_op].add_output(seed_input)
+        seed_op._num_reconstruction_inputs_queued += 1
         logger.info(
             "[lineage-reconstruction] Re-injected seed task %s on operator %r "
             "(~%s bytes) for plan %s.",
@@ -1362,5 +1363,10 @@ def format_op_state_summary(
     suffix = op_state.op.progress_str()
     if suffix:
         desc += f"; {suffix}"
+
+    # Lineage reconstruction status; empty unless reconstruction is enabled.
+    recovery = op_state.op.lineage_recovery_progress_str()
+    if recovery:
+        desc += f"; {recovery}"
 
     return desc

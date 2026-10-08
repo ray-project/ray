@@ -43,6 +43,10 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         self._reconstruction_outputs: Dict[
             ReconstructionPlanId, Dict[ParentBlockOutput, RefBundle]
         ] = {}
+        # Seed inputs re-injected for reconstruction that haven't been submitted yet.
+        self._num_reconstruction_inputs_queued = 0
+        # Reconstruction tasks that finished successfully.
+        self._num_reconstruction_tasks_finished = 0
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod

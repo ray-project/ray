@@ -293,6 +293,53 @@ def test_lost_child_reconstructs_across_graph_shapes(
     assert len(_nodes(tracker)) == num_blocks + num_children
 
 
+def test_recovery_status_counts_queued_running_and_finished():
+    """``lineage_recovery_progress_str`` counts only tasks serving a plan as running."""
+    from types import SimpleNamespace
+
+    op = SimpleNamespace(
+        _lineage_tracker=LineageTracker(),
+        _num_reconstruction_inputs_queued=2,
+        _data_tasks={
+            0: SimpleNamespace(reconstruction_plan_id=None),
+            1: SimpleNamespace(reconstruction_plan_id="seed:0"),
+            2: SimpleNamespace(reconstruction_plan_id="seed:1"),
+        },
+        _num_reconstruction_tasks_finished=3,
+    )
+    assert MapOperator.lineage_recovery_progress_str(op) == (
+        "Recovery: 2 queued, 2 running, 3 finished"
+    )
+
+    op._lineage_tracker = None
+    assert MapOperator.lineage_recovery_progress_str(op) == ""
+
+
+@reconstruction_enabled
+def test_recovery_status_records_the_re_run_task(
+    ray_start_regular_shared, lose_output, monkeypatch  # noqa: F405
+):
+    """After a real reconstruction, the seed operator reports the re-run task as
+    finished, with nothing left queued or running."""
+    started_ops = []
+    original_start = MapOperator.start
+
+    def recording_start(self, *args, **kwargs):
+        started_ops.append(self)
+        return original_start(self, *args, **kwargs)
+
+    monkeypatch.setattr(MapOperator, "start", recording_start)
+    fired = lose_output("ReadRange")
+
+    ray.data.range(100, override_num_blocks=4).map(
+        lambda row: {"id": row["id"] * 2}
+    ).take_all()
+
+    assert fired == [0]
+    statuses = [op.lineage_recovery_progress_str() for op in started_ops]
+    assert statuses == ["Recovery: 0 queued, 0 running, 1 finished"]
+
+
 def test_reconstruction_stamp_survives_schema_divergence():
     """``OpState.add_output`` rebuilds a bundle whose schema diverges from the
     operator's, field by field. The stamp must survive the rebuild, or the

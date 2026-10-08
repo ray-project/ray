@@ -651,8 +651,11 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 lineage_task_id, dependencies, reconstruction_plan_id
             )
             # If the task is a seed task (and this is not a reconstruction attempt), register the inputs of the task as seed inputs
-            if self._is_seed_operator() and reconstruction_plan_id is None:
-                lineage_tracker.register_seed_input(lineage_task_id, inputs)
+            if self._is_seed_operator():
+                if reconstruction_plan_id is None:
+                    lineage_tracker.register_seed_input(lineage_task_id, inputs)
+                else:
+                    self._num_reconstruction_inputs_queued -= 1
 
         # This task's next output_index. A per-task closure local, so it is scoped
         # exactly right and resets naturally on a re-execution.
@@ -745,6 +748,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     self._release_reconstruction_blocks_to_child(
                         lineage_task_id, reconstruction_plan_id, task_index
                     )
+                    self._num_reconstruction_tasks_finished += 1
                 lineage_tracker.register_task_complete(
                     lineage_task_id, reconstruction_plan_id
                 )
@@ -820,6 +824,23 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     def has_next(self) -> bool:
         assert self._started
         return self._output_queue.has_next()
+
+    def lineage_recovery_progress_str(self) -> str:
+        if self._lineage_tracker is None:
+            return ""
+        num_queued = self._num_reconstruction_inputs_queued
+        num_running = sum(
+            1
+            for task in self._data_tasks.values()
+            if task.reconstruction_plan_id is not None
+        )
+        num_finished = self._num_reconstruction_tasks_finished
+        if not (num_queued or num_running or num_finished):
+            return ""
+        return (
+            f"Recovery: {num_queued} queued, {num_running} running, "
+            f"{num_finished} finished"
+        )
 
     def _get_next_inner(self) -> RefBundle:
         assert self._started
