@@ -4338,7 +4338,7 @@ class Dataset:
         descending: Union[bool, List[bool]] = False,
         boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
-        """Sort the dataset by the specified key column or key function.
+        """Sort the dataset by the specified key column or columns.
         The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
