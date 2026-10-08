@@ -884,14 +884,14 @@ class PushedHealthTracker:
 
     def resolve(
         self,
-        probe_response: ReplicaHealthCheckResponse,
+        probe: ProbeOutcome,
         probe_started_at: float,
         probed_failures: int,
         health_check_period_s: float,
     ) -> ResolvedHealth:
         """Decide what this tick acts on: the probe, the push, or nothing."""
         if (
-            probe_response
+            probe.response
             in (
                 ReplicaHealthCheckResponse.SUCCEEDED,
                 ReplicaHealthCheckResponse.APP_FAILURE,
@@ -906,7 +906,17 @@ class PushedHealthTracker:
                 HealthSource.SUPERSEDED_PROBE, ReplicaHealthCheckResponse.NONE, None
             )
 
-        if probe_response is not ReplicaHealthCheckResponse.NONE:
+        if probe.timed_out:
+            if self._pushed is not None and self._pushed.received_at > probe_started_at:
+                # The probe heard nothing, but the replica pushed while it waited, so
+                # that push is the newer word: keep it for the next tick rather than
+                # charge the silence as a failure.
+                return ResolvedHealth(
+                    HealthSource.SUPERSEDED_PROBE, ReplicaHealthCheckResponse.NONE, None
+                )
+            return ResolvedHealth(HealthSource.PROBE, probe.response, None)
+
+        if probe.response is not ReplicaHealthCheckResponse.NONE:
             # A push stashed before this probe resolved cannot be shown to be newer:
             # it is ordered by arrival, and a check that failed before the probe
             # started can land after it. Drop it rather than let a stale failure
@@ -914,7 +924,7 @@ class PushedHealthTracker:
             if self._pushed is not None:
                 self._consumed_push_checked_at = self._pushed.checked_at
                 self._pushed = None
-            return ResolvedHealth(HealthSource.PROBE, probe_response, None)
+            return ResolvedHealth(HealthSource.PROBE, probe.response, None)
 
         # No probe resolved this tick, so a fresh push is never discarded in favour
         # of an older in-flight probe result.
@@ -2074,7 +2084,7 @@ class ActorReplicaWrapper:
         """
         probe = self._resolve_active_probe()
         resolved = self._pushed_health_tracker.resolve(
-            probe.response,
+            probe,
             self._probe_started_at,
             self._consecutive_health_check_failures,
             self.health_check_period_s,
