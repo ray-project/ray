@@ -47,6 +47,7 @@ class GcsSubscriberClient final : public pubsub::SubscriberClientInterface {
     req.set_subscriber_id(std::move(*request.mutable_subscriber_id()));
     req.set_max_processed_sequence_id(request.max_processed_sequence_id());
     req.set_publisher_id(std::move(*request.mutable_publisher_id()));
+    req.set_require_subscriber(request.require_subscriber());
     rpc_client_->GcsSubscriberPoll(
         std::move(req),
         [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
