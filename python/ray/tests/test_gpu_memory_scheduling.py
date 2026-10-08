@@ -77,6 +77,25 @@ def test_gpu_memory_task(small_and_big_gpu_cluster):
     assert ray.get(f.remote()) == big
 
 
+def test_gpu_memory_isolation_without_resource_isolation(
+    monkeypatch, ray_start_cluster
+):
+    monkeypatch.setenv("RAY_enable_gpu_memory_isolation", "1")
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2, num_gpus=1, labels={VRAM_LABEL: str(80 * GB)})
+    ray.init(address=cluster.address)
+
+    capped = Replica.options(gpu_memory=40 * GB).remote()
+    with pytest.raises(
+        ray.exceptions.ActorUnschedulableError,
+        match="Resource isolation is not enabled",
+    ):
+        ray.get(capped.info.remote())
+
+    uncapped = Replica.options(num_gpus=0.25).remote()
+    assert ray.get(uncapped.info.remote())[1] == 0.25
+
+
 def test_gpu_memory_rejected_in_placement_group(small_and_big_gpu_cluster):
     with pytest.raises(ValueError, match="gpu_memory"):
         placement_group([{"CPU": 1, "gpu_memory": GB}])
