@@ -40,6 +40,15 @@ class instrumented_io_context : public boost::asio::io_context {
       bool running_on_single_thread = false,
       std::optional<std::string> context_name = std::nullopt);
 
+  /// Initializes the global stats struct after calling the base contructor.
+  ///
+  /// \param emit_metrics enables or disables metric emission on this io_context
+  /// \param running_on_single_thread hints to the underlying io_context if locking should
+  /// be enabled or not (that is, if running on multiple threads is true, then concurrency
+  /// controls will engage)
+  /// \param context_name optional name assigned to this io_context used for metric
+  /// emission
+  /// \param metric_context a reference to an asio::io_context used for recording metrics
   instrumented_io_context(bool emit_metrics,
                           bool running_on_single_thread,
                           std::optional<std::string> context_name,
