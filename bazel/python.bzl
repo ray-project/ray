@@ -1,4 +1,5 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_python//python:defs.bzl", "py_test")
 
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
@@ -46,7 +47,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
         tags = tags + ["cpu"]
 
 
-    native.py_test(
+    py_test(
         name = name,
         srcs = ["//bazel:pytest_wrapper.py"] + srcs,
         main = "//bazel:pytest_wrapper.py",
@@ -76,7 +77,7 @@ def py_test_module_list(files, size, deps, extra_srcs=[], name_suffix="", **kwar
         name = paths.split_extension(file)[0] + name_suffix
         if name == file:
             basename = basename + "_test"
-        native.py_test(
+        py_test(
             name = name,
             size = size,
             main = file,
@@ -90,7 +91,7 @@ def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
         basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"
-        native.py_test(
+        py_test(
             name = basename,
             srcs = extra_srcs + [file],
             **kwargs
@@ -102,7 +103,7 @@ def py_test_run_all_notebooks(include, exclude, allow_empty=False, **kwargs):
         basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"
-        native.py_test(
+        py_test(
             name = basename,
             main = "test_myst_doc.py",
             srcs = ["//doc:test_myst_doc.py"],
