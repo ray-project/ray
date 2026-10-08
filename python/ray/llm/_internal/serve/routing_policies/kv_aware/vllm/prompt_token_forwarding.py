@@ -60,7 +60,10 @@ def is_text_only_chat(messages: Any) -> bool:
     )
 
 
-# TODO (jeffreywang): Forward multimodal inputs alongside prompt token IDs.
+# TODO (jeffreywang): Support multimodal chat. Since vllm-project/vllm#48145 the
+# renderer builds the engine input from the forwarded ids alone, skipping the
+# chat rendering that turns images/audio into ``multi_modal_data``. The engine
+# then gets placeholder tokens with no ``multi_modal_data`` to resolve them.
 def inject_prompt_token_ids(
     request: Any,
     raw_request: Optional[Request],
