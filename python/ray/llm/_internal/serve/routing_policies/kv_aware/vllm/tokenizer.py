@@ -1,8 +1,11 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, get_args
 
 import jinja2
 from pydantic import ValidationError
-from vllm.entrypoints.anthropic.protocol import AnthropicMessagesRequest
+from vllm.entrypoints.anthropic.protocol import (
+    AnthropicEffort,
+    AnthropicMessagesRequest,
+)
 from vllm.entrypoints.anthropic.serving import AnthropicServingMessages
 from vllm.entrypoints.chat_utils import load_chat_template
 from vllm.entrypoints.launchers.cli_args import FrontendArgs
@@ -81,8 +84,8 @@ def build_tokenize_request(
 class Tokenizer:
     """Tokenizes requests with vLLM's ``OnlineRenderer``.
 
-    Configured from the deployment's frontend args so the tokenizer, chat
-    template, and trust policy match the engine's.
+    Uses the deployment's frontend args for tokenizer, chat template, and
+    trust settings.
 
     Args:
         llm_config: The deployment's LLM config.
@@ -95,10 +98,6 @@ class Tokenizer:
 
         frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
         chat_template = load_chat_template(frontend_args.chat_template)
-        # The engine's /v1/messages handler derives this from the same template.
-        self._merge_inline_system = (
-            AnthropicServingMessages._detect_merge_inline_system(chat_template)
-        )
         self._renderer = OnlineRenderer(
             self._model_config,
             renderer_from_config(vllm_config),
@@ -107,8 +106,7 @@ class Tokenizer:
             chat_template_content_format=frontend_args.chat_template_content_format,
             trust_request_chat_template=frontend_args.trust_request_chat_template,
             trust_request_mm_kwargs=frontend_args.trust_request_mm_kwargs,
-            # Match the engine's tool config so render_chat handles tool requests
-            # the same way (a no-op unless the deployment enables tool calling).
+            # Tool handling is a no-op unless the deployment enables tool calling.
             enable_auto_tools=frontend_args.enable_auto_tool_choice,
             exclude_tools_when_tool_choice_none=(
                 frontend_args.exclude_tools_when_tool_choice_none
@@ -116,6 +114,14 @@ class Tokenizer:
             tool_parser=frontend_args.tool_call_parser,
             tool_strict_level=frontend_args.tool_strict_level,
             default_chat_template_kwargs=frontend_args.default_chat_template_kwargs,
+        )
+        # Check the templates the renderer actually uses, including the model's
+        # default when no chat-template override is configured.
+        self._merge_inline_system = (
+            AnthropicServingMessages._should_merge_inline_system(self._renderer)
+        )
+        self._disabled_thinking_effort = (
+            frontend_args.anthropic_disabled_thinking_effort
         )
         logger.info(
             "In-process pre-routing tokenizer ready for %s",
@@ -147,6 +153,15 @@ class Tokenizer:
 
         try:
             if isinstance(request, ChatCompletionRequest):
+                # Conversion defaults disabled thinking to "none". Resolve the
+                # configured effort before rendering, since it can change tokens.
+                if (
+                    request_path.endswith("/v1/messages")
+                    and request.reasoning_effort == "none"
+                ):
+                    request.reasoning_effort = (
+                        await self._get_disabled_thinking_effort()
+                    )
                 rendered_inputs = await self._render_chat(request)
             else:
                 rendered_inputs = await self._render_completion(request)
@@ -163,6 +178,40 @@ class Tokenizer:
             if components.token_ids is not None:
                 input_ids.extend(components.token_ids)
         return input_ids
+
+    async def _get_disabled_thinking_effort(self):
+        """Resolve disabled thinking by rendering local prompts."""
+        if self._disabled_thinking_effort != "auto":
+            return self._disabled_thinking_effort
+
+        async def probe(effort):
+            try:
+                (prompt,) = await self._render_chat(
+                    ChatCompletionRequest(
+                        messages=[{"role": "user", "content": "Hi"}],
+                        reasoning_effort=effort,
+                    )
+                )
+                components = extract_prompt_components(self._model_config, prompt)
+                return components.token_ids, components.text
+            except Exception:
+                # Templates may reject an unsupported reasoning effort.
+                return None
+
+        # If "none" produces the same prompt as a thinking effort, the template
+        # ignores it. Fall back to "low" for ignored or rejected "none".
+        none_prompt = await probe("none")
+        effort = "none"
+        if none_prompt is None:
+            effort = "low"
+        else:
+            for thinking_effort in get_args(AnthropicEffort):
+                if await probe(thinking_effort) == none_prompt:
+                    effort = "low"
+                    break
+        # Later requests use this result without rendering probe prompts again.
+        self._disabled_thinking_effort = effort
+        return effort
 
     async def _render_chat(self, request: ChatCompletionRequest):
         """Render a chat request to prompt inputs via the engine's own render_chat

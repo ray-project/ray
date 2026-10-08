@@ -629,8 +629,10 @@ async def test_anthropic_messages_tokenized_once():
         {"role": "user", "content": "Say hello again."},
     ]
     expected_messages = [
-        messages[1],
+        # Qwen3's default template accepts system messages between turns,
+        # so conversion preserves the original message order.
         messages[0],
+        messages[1],
         {"role": "assistant", "content": "Hello.", "reasoning": "Greet back."},
         messages[-1],
     ]

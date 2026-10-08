@@ -98,6 +98,27 @@ def hf_tokenizer():
     return AutoTokenizer.from_pretrained(MODEL)
 
 
+@pytest.fixture(
+    scope="module", params=[False, True], ids=["model_default", "system_first"]
+)
+def anthropic_tokenizer(request, hf_tokenizer, tool_tokenizer):
+    if not request.param:
+        return tool_tokenizer
+    # Add a system-first restriction to Qwen's template to exercise the merge
+    # policy without replacing its conversation formatting or tokenization.
+    guard = (
+        "{% for message in messages %}"
+        "{% if message['role'] == 'system' and not loop.first %}"
+        "{{ raise_exception('System messages must be first') }}"
+        "{% endif %}{% endfor %}"
+    )
+    return _build_tokenizer(
+        chat_template=guard + hf_tokenizer.chat_template,
+        enable_auto_tool_choice=True,
+        tool_call_parser="hermes",
+    )
+
+
 def _hf_chat_ids(hf_tokenizer, messages, add_generation_prompt=True, **kwargs):
     """Independent ground truth: raw transformers chat-template render +
     encode with add_special_tokens=False (the template adds special tokens),
@@ -235,15 +256,16 @@ def _claude_code_body() -> dict:
     }
 
 
-# Handwritten expected conversion, with the inline system message merged.
+# Handwritten expected conversion for Qwen3, which accepts inline system messages.
 _EQUIVALENT_CHAT_BODY = {
     "model": "test-model",
     "messages": [
         {
             "role": "system",
-            "content": "You are Claude Code. Plan mode is off.",
+            "content": "You are Claude Code.",
         },
         {"role": "user", "content": "List the files."},
+        {"role": "system", "content": " Plan mode is off."},
         {
             "role": "assistant",
             "content": "Listing them.",
@@ -275,9 +297,102 @@ _EQUIVALENT_CHAT_BODY = {
 
 
 class TestAnthropicMessagesExactness:
+    @pytest.mark.parametrize(
+        "effort, template_prefix, expected_effort",
+        [
+            ("auto", "{{ reasoning_effort }}", "none"),
+            (
+                "auto",
+                "{% if reasoning_effort == 'none' %}"
+                "{{ raise_exception('none unsupported') }}{% endif %}"
+                "{{ reasoning_effort }}",
+                "low",
+            ),
+            (
+                "auto",
+                "{{ 'high' if reasoning_effort == 'none' else reasoning_effort }}",
+                "low",
+            ),
+            ("none", "{{ reasoning_effort }}", "none"),
+            ("low", "{{ reasoning_effort }}", "low"),
+        ],
+        ids=["auto_none", "auto_rejects_none", "auto_ignores_none", "none", "low"],
+    )
+    async def test_disabled_thinking_matches_engine(
+        self, hf_tokenizer, monkeypatch, effort, template_prefix, expected_effort
+    ):
+        tokenizer = _build_tokenizer(
+            # Keep Qwen's enable_thinking branch fixed so the prefix alone
+            # determines whether "none" renders like another effort.
+            chat_template=template_prefix
+            + "{% set enable_thinking = false %}"
+            + hf_tokenizer.chat_template,
+            anthropic_disabled_thinking_effort=effort,
+        )
+        # Compute the expected effort with the native serving helper rather
+        # than copying the router's result.
+        serving = AnthropicServingMessages.__new__(AnthropicServingMessages)
+        serving.model_config = tokenizer._model_config
+        serving.online_renderer = tokenizer._renderer
+        serving._disabled_thinking_effort = None if effort == "auto" else effort
+        engine_effort = await serving._get_disabled_thinking_effort()
+        assert engine_effort == expected_effort
+        body = {
+            "model": "test-model",
+            "max_tokens": 16,
+            "messages": [{"role": "user", "content": "Hi."}],
+            "thinking": {"type": "disabled"},
+        }
+        chat_request = serving.to_chat_completion_request(
+            AnthropicMessagesRequest.model_validate(body),
+            disabled_thinking_effort=engine_effort,
+        )
+        _, (prompt,) = await serving.online_renderer.render_chat(chat_request)
+        expected_ids = serving._extract_prompt_components(prompt).token_ids
+        render = AsyncMock(wraps=tokenizer._renderer.render_chat)
+        monkeypatch.setattr(tokenizer._renderer, "render_chat", render)
+
+        assert (
+            await tokenizer.tokenize(body, request_path="/v1/messages") == expected_ids
+        )
+        first_render_count = render.await_count
+        if effort != "auto":
+            assert first_render_count == 1
+        # The next request renders its prompt once, without repeating probes.
+        assert (
+            await tokenizer.tokenize(body, request_path="/v1/messages") == expected_ids
+        )
+        assert render.await_count == first_render_count + 1
+
+    async def test_resolved_template_matches_engine_conversion(
+        self, anthropic_tokenizer
+    ):
+        # Derive the engine's merge policy from the renderer. Copying the
+        # router's setting would hide a template-resolution bug in the router.
+        engine_merge = AnthropicServingMessages._should_merge_inline_system(
+            anthropic_tokenizer._renderer
+        )
+        body = _claude_code_body()
+        chat_request = AnthropicServingMessages.to_chat_completion_request(
+            AnthropicMessagesRequest.model_validate(body),
+            merge_inline_system=engine_merge,
+        )
+        _, inputs = await anthropic_tokenizer._renderer.render_chat(chat_request)
+        expected_ids = [
+            token
+            for inp in inputs
+            for token in extract_prompt_components(
+                anthropic_tokenizer._model_config, inp
+            ).token_ids
+        ]
+        assert (
+            await anthropic_tokenizer.tokenize(body, request_path="/v1/messages")
+            == expected_ids
+        )
+
     async def test_api_path_disambiguates_body(self, tokenizer, hf_tokenizer):
-        # Both APIs accept this body, but Anthropic conversion moves the inline
-        # system message and converts thinking to a reasoning field.
+        # Both APIs accept this body, but Anthropic conversion turns thinking
+        # into a reasoning field and preserves Qwen3's inline system messages.
         messages = [
             {"role": "user", "content": "Hi."},
             {"role": "system", "content": "Be terse."},
@@ -291,8 +406,8 @@ class TestAnthropicMessagesExactness:
             {"role": "user", "content": "Again."},
         ]
         expected_messages = [
-            {"role": "system", "content": "Be terse."},
             messages[0],
+            messages[1],
             {"role": "assistant", "content": "Hello.", "reasoning": "Greet back."},
             messages[-1],
         ]
@@ -314,37 +429,53 @@ class TestAnthropicMessagesExactness:
         )
 
     @pytest.mark.parametrize("staged", [True, False])
+    @pytest.mark.parametrize("disabled_thinking", [False, True])
     async def test_anthropic_engine_reuses_tokens_or_falls_back(
-        self, tool_tokenizer, monkeypatch, staged
+        self, anthropic_tokenizer, monkeypatch, staged, disabled_thinking
     ):
         # Use real conversion and rendering; stub generation. Staged IDs skip
         # tokenization, while a staging miss must render the same IDs.
         body = _claude_code_body()
-        ids = await tool_tokenizer.tokenize(body, request_path="/v1/messages")
+        if disabled_thinking:
+            body["thinking"] = {"type": "disabled"}
+        ids = await anthropic_tokenizer.tokenize(body, request_path="/v1/messages")
         assert ids
         store = TokenStore()
         if staged:
             store.put("key", payload=encode_prompt_token_ids(ids))
         raw_request = SimpleNamespace(headers=Headers({KV_TOKEN_KEY_HEADER: "key"}))
         serving = AnthropicServingMessages.__new__(AnthropicServingMessages)
-        serving._merge_inline_system = tool_tokenizer._merge_inline_system
+        serving._merge_inline_system = (
+            AnthropicServingMessages._should_merge_inline_system(
+                anthropic_tokenizer._renderer
+            )
+        )
+        if disabled_thinking:
+            serving.model_config = anthropic_tokenizer._model_config
+            serving.online_renderer = anthropic_tokenizer._renderer
+            serving._disabled_thinking_effort = None
+            # Exclude effort-probe renders from the count below, which checks
+            # whether staged token IDs avoid rendering the actual request.
+            await serving._get_disabled_thinking_effort()
 
-        render = AsyncMock(wraps=tool_tokenizer._renderer.renderer.render_chat_async)
+        render = AsyncMock(
+            wraps=anthropic_tokenizer._renderer.renderer.render_chat_async
+        )
         monkeypatch.setattr(
-            tool_tokenizer._renderer.renderer, "render_chat_async", render
+            anthropic_tokenizer._renderer.renderer, "render_chat_async", render
         )
 
-        generation_stub = tool_tokenizer._renderer.create_error_response(
+        generation_stub = anthropic_tokenizer._renderer.create_error_response(
             "generation stub"
         )
 
         async def generate(chat_request, raw_request=None):
-            _, inputs = await tool_tokenizer._renderer.render_chat(chat_request)
+            _, inputs = await anthropic_tokenizer._renderer.render_chat(chat_request)
             actual = [
                 token
                 for inp in inputs
                 for token in extract_prompt_components(
-                    tool_tokenizer._model_config, inp
+                    anthropic_tokenizer._model_config, inp
                 ).token_ids
             ]
             assert actual == ids
