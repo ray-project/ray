@@ -29,6 +29,5 @@ direct-transport/index
 compiled-graph/index
 resource-isolation-with-cgroupv2
 sandboxes
-operations/index
 advanced-topics
 ```
