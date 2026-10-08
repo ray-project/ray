@@ -32,9 +32,9 @@ def same_padding(
 
     Args:
         in_size: Rows (Height), Column (Width) for input
-        stride_size (Union[int,Tuple[int, int]]): Rows (Height), column (Width)
-            for stride. If int, height == width.
         filter_size: Rows (Height), column (Width) for filter
+        stride_size: Rows (Height), column (Width) for stride.
+            If int, height == width.
 
     Returns:
         padding: For input into torch.nn.ZeroPad2d.
@@ -170,9 +170,9 @@ def valid_padding(
 
     Args:
         in_size: Rows (Height), Column (Width) for input
-        stride_size (Union[int,Tuple[int, int]]): Rows (Height), column (Width)
-            for stride. If int, height == width.
         filter_size: Rows (Height), column (Width) for filter
+        stride_size: Rows (Height), column (Width) for stride.
+            If int, height == width.
 
     Returns:
         The output shape after padding and convolution.

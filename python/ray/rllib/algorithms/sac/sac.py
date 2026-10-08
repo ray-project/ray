@@ -312,17 +312,19 @@ class SACConfig(AlgorithmConfig):
                 The default value is 3e-4, identical to the critic learning rate (`lr`).
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` steps.
-            num_steps_sampled_before_learning_starts: Number of timesteps (int)
-                that we collect from the runners before we start sampling the
-                replay buffers for learning. Whether we count this in agent steps
-                or environment steps depends on the value of
-                `config.multi_agent(count_steps_by=...)`.
             _deterministic_loss: Whether the loss should be calculated deterministically
                 (w/o the stochastic action sampling step). True only useful for
                 continuous actions and for debugging.
             _use_beta_distribution: Use a Beta-distribution instead of a
                 `SquashedGaussian` for bounded, continuous action spaces (not
                 recommended; for debugging only).
+            num_steps_sampled_before_learning_starts: Number of timesteps (int)
+                that we collect from the runners before we start sampling the
+                replay buffers for learning. Whether we count this in agent steps
+                or environment steps depends on the value of
+                `config.multi_agent(count_steps_by=...)`.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

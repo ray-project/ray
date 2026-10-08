@@ -2627,6 +2627,20 @@ py_test(
 )
 
 py_test(
+    name = "test_data_iterator_checkpointer",
+    size = "medium",
+    srcs = ["tests/test_data_iterator_checkpointer.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_read_datasource",
     size = "small",
     srcs = ["tests/test_read_datasource.py"],

@@ -68,7 +68,7 @@ class ConvTransposeAtari(nn.Module):
 
         self._transpose_2d_head = config.build(framework="torch")
 
-    def forward(self, h, z):
+    def forward(self, h: "torch.Tensor", z: "torch.Tensor") -> "torch.Tensor":
         """Performs a forward pass through the Conv2D transpose decoder.
 
         Args:
@@ -76,6 +76,11 @@ class ConvTransposeAtari(nn.Module):
             z: The sequence of stochastic discrete representations of the original
                 observation input. Note: `z` is not used for the dynamics predictor
                 model (which predicts z from h).
+
+        Returns:
+            The flattened means (B, 64*64*C) of the diagonal Gaussian (with unit
+            variance) over the reconstructed image, where C is 1 if `gray_scaled`
+            else 3.
         """
         z_shape = z.size()
         z = z.view(z_shape[0], -1)

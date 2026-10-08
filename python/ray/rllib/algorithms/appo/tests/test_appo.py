@@ -110,8 +110,12 @@ class TestAPPO(unittest.TestCase):
             )
         )
 
-        def _step_n_times(algo, n: int):
+        def _step_n_times(algo: appo.APPO, n: int):
             """Step Algorithm n times.
+
+            Args:
+                algo: The APPO Algorithm instance to train.
+                n: The number of `train()` calls to perform.
 
             Returns:
                 learning rate at the end of the execution.
@@ -166,8 +170,12 @@ class TestAPPO(unittest.TestCase):
             )
         )
 
-        def _step_n_times(algo, n: int):
+        def _step_n_times(algo: appo.APPO, n: int):
             """Step Algorithm n times.
+
+            Args:
+                algo: The APPO Algorithm instance to train.
+                n: The number of `train()` calls to perform.
 
             Returns:
                 learning rate at the end of the execution.

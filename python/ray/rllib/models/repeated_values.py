@@ -43,6 +43,14 @@ class RepeatedValues:
     """
 
     def __init__(self, values: TensorType, lengths: List[int], max_len: int):
+        """Initializes a RepeatedValues instance.
+
+        Args:
+            values: The padded data tensor of shape [B, max_len, ..., sz].
+            lengths: Tensor of shape [B, ...] that represents the number of
+                valid items in each list.
+            max_len: The max number of items allowed in each list.
+        """
         self.values = values
         self.lengths = lengths
         self.max_len = max_len

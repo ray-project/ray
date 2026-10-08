@@ -19,10 +19,11 @@ class SkipConnection(tf.keras.layers.Layer if tf else object):
         """Initializes a SkipConnection keras layer object.
 
         Args:
-            layer (tf.keras.layers.Layer): Any layer processing inputs.
-            fan_in_layer (Optional[tf.keras.layers.Layer]): An optional
-                layer taking two inputs: The original input and the output
-                of `layer`.
+            layer: Any layer processing inputs.
+            fan_in_layer: An optional layer taking two inputs: The original
+                input and the output of `layer`.
+            **kwargs: Additional keyword arguments, forwarded to the parent
+                `tf.keras.layers.Layer` constructor.
         """
         if log_once("skip_connection"):
             deprecation_warning(

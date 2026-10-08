@@ -31,6 +31,7 @@ def get_cliff_walking_wall_policy_and_data(
         num_episodes: Minimum number of episodes to collect
         gamma: discount factor
         epsilon: epsilon-greedy exploration value
+        seed: The random seed to use for the env and the policy
 
     Returns:
         A Tuple consisting of:
@@ -105,11 +106,13 @@ def check_estimate(
         batch: The behavior data we use for off-policy estimation
         mean_ret: The mean discounted episode return over the batch
         std_ret: The standard deviation corresponding to mean_ret
+        seed: The random seed used to make the estimation deterministic
 
     Raises:
-        AssertionError if the estimated mean episode return computed by
-        the off-policy estimator does not fall within one standard deviation of
-        the values specified above i.e. [mean_ret - std_ret, mean_ret + std_ret]
+        AssertionError: If the estimated mean episode return computed by
+            the off-policy estimator does not fall within one standard deviation
+            of the values specified above i.e.
+            [mean_ret - std_ret, mean_ret + std_ret]
     """
     # only torch is supported for now
     update_global_seed_if_necessary(framework="torch", seed=seed)
