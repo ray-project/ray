@@ -4478,7 +4478,9 @@
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xl4.yaml
+    cluster_compute: llm_2x_2xh100.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4501,7 +4503,9 @@
         - RAY_SERVE_ENABLE_HA_PROXY=1
         - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xl4.yaml
+    cluster_compute: llm_2x_2xh100.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
@@ -4519,12 +4523,34 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xl4.yaml
+    cluster_compute: llm_2x_2xh100.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
     script: >
       pytest -sv test_llm_serve_dp_engine_fault.py
+
+- name: llm_serve_dp_multi_group_single_node
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_1x_4xh100.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
+
+  run:
+    timeout: 3600
+    script: >
+      pytest -sv test_llm_serve_dp_single_node.py
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
@@ -5004,7 +5030,9 @@
     byod:
       type: llm-cu130
     anyscale_sdk_2026: true
-    cluster_compute: llm_2x_4xl4.yaml
+    cluster_compute: llm_2x_2xh100.yaml
+    cloud_id: cld_82np1njz31y9lwk56mc2xcc23x
+    project_id: prj_69fd51u496ygpnaza62xsmis64
 
   run:
     timeout: 3600
