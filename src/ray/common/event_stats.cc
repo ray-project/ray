@@ -65,7 +65,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   }
 
   if (emit_metrics) {
-    boost::asio::post(metric_context_, [this, curr_count, name, &event_context_name]() {
+    boost::asio::post(metric_context_, [this, curr_count, name, event_context_name]() {
       operation_count_metric_.Record(1, {{"Name", event_context_name.value_or(name)}});
       operation_active_gauge_metric_.Record(
           curr_count, {{"Name", event_context_name.value_or(name)}});
