@@ -87,6 +87,12 @@ class CheckpointConfig:
             If the latter, the path must be a network-mounted file system (e.g.
             `/mnt/cluster_storage/`) that is accessible to the entire cluster.
             If not set, defaults to `RAY_DATA_CHECKPOINT_PATH_BUCKET/ray_data_checkpoint`.
+        generated_id_column: Name of a row ID column that Ray Data generates for
+            each row from where the row lives in its Parquet file (file, row
+            group, position). Use it instead of ``id_column`` when the input
+            has no unique ID column. Only Parquet reads on the V2 datasource
+            path are supported. Exactly one of ``id_column`` and
+            ``generated_id_column`` must be set.
         delete_checkpoint_on_success: If true, automatically delete checkpoint
             data when the dataset execution succeeds. Only supported for
             batch-based backend currently.
@@ -129,6 +135,7 @@ class CheckpointConfig:
         id_column: Optional[str] = None,
         checkpoint_path: Optional[str] = None,
         *,
+        generated_id_column: Optional[str] = None,
         delete_checkpoint_on_success: bool = True,
         override_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         override_backend: Optional[CheckpointBackend] = None,
@@ -137,7 +144,24 @@ class CheckpointConfig:
         checkpoint_filter_cls: Optional[Type["CheckpointFilter"]] = None,
         checkpoint_manager_cls: Optional[Type["CheckpointManager"]] = None,
     ):
-        self.id_column: Optional[str] = id_column
+        if id_column is not None and generated_id_column is not None:
+            raise InvalidCheckpointingConfig(
+                "Cannot specify both `id_column` and `generated_id_column`. Use "
+                "`id_column` when the dataset has a unique ID column, or "
+                "`generated_id_column` to have Ray Data generate row IDs."
+            )
+        if id_column is None and generated_id_column is None:
+            raise InvalidCheckpointingConfig(
+                "Either `id_column` or `generated_id_column` must be provided. Use "
+                "`id_column` when the dataset has a unique ID column, or "
+                "`generated_id_column` to have Ray Data generate row IDs."
+            )
+        self.generated_id_column: Optional[str] = generated_id_column
+        # Checkpoint writing and loading key off ``id_column``, so a generated
+        # ID column is checkpointed under its own name.
+        self.id_column: Optional[str] = (
+            id_column if id_column is not None else generated_id_column
+        )
 
         if not isinstance(self.id_column, str) or len(self.id_column) == 0:
             raise InvalidCheckpointingConfig(
@@ -192,6 +216,11 @@ class CheckpointConfig:
         # subsequent executions of the same dataset (e.g., later epochs)
         # read all rows.
         self._should_restore: bool = True
+
+    @property
+    def has_generated_id_column(self) -> bool:
+        """Whether Ray Data generates the row ID column for this config."""
+        return self.generated_id_column is not None
 
     def _get_default_checkpoint_path(self) -> str:
         artifact_storage = os.environ.get(self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR)
