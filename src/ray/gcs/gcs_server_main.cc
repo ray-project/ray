@@ -33,6 +33,7 @@
 #include "ray/raylet/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/joinable_thread.h"
 #include "ray/util/port_persistence.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
@@ -124,12 +125,12 @@ int main(int argc, char *argv[]) {
   // IO Service for main loop.
   SetThreadName("gcs_server");
   boost::asio::io_context metric_context;
-  auto metric_thread = std::thread([&metric_context] {
+  auto metric_thread = ray::JoinableThread(std::thread([&metric_context] {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
         metric_context.get_executor());
     SetThreadName("metric_recorder");
     metric_context.run();
-  });
+  }));
 
   instrumented_io_context main_service(
       /*enable_metrics=*/RayConfig::instance().emit_main_service_metrics(),
@@ -271,17 +272,14 @@ int main(int argc, char *argv[]) {
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
-  auto handler = [&main_service, &gcs_server, &metric_thread, &metric_context](
+  auto handler = [&main_service, &gcs_server, &metric_context](
                      const boost::system::error_code &error, int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     main_service.stop();
     ray::rpc::DrainServerCallExecutor();
+    metric_context.stop();
     gcs_server.Stop();
     ray::stats::Shutdown();
-    metric_context.stop();
-    if (metric_thread.joinable()) {
-      metric_thread.join();
-    }
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

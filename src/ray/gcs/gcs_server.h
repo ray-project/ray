@@ -424,7 +424,6 @@ class GcsServer {
   std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
 
   boost::asio::io_context &metric_context_;
-  std::thread metric_thread_;
 };
 
 }  // namespace gcs
