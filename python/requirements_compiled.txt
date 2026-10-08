@@ -1396,7 +1396,7 @@ openlineage-python==1.46.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.39.0
+opentelemetry-api==1.40.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1409,23 +1409,23 @@ opentelemetry-api==1.39.0
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.39.0
+opentelemetry-exporter-otlp-proto-common==1.40.0
     # via opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.39.0
+opentelemetry-exporter-otlp-proto-grpc==1.40.0
     # via -r python/requirements/test-requirements.txt
-opentelemetry-exporter-prometheus==0.60b0
+opentelemetry-exporter-prometheus==0.61b0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
-opentelemetry-instrumentation==0.60b0
+opentelemetry-instrumentation==0.61b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.60b0
+opentelemetry-instrumentation-asgi==0.61b0
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.60b0
+opentelemetry-instrumentation-fastapi==0.61b0
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.39.0
+opentelemetry-proto==1.40.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1433,7 +1433,7 @@ opentelemetry-proto==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.39.0
+opentelemetry-sdk==1.40.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1441,14 +1441,14 @@ opentelemetry-sdk==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.60b0
+opentelemetry-semantic-conventions==0.61b0
     # via
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.60b0
+opentelemetry-util-http==0.61b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
