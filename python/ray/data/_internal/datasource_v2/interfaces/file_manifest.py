@@ -1,5 +1,6 @@
+from dataclasses import asdict, dataclass
 from functools import cached_property
-from typing import List, Optional, Type, TypedDict, TypeVar, cast, get_type_hints
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -8,35 +9,60 @@ import pyarrow.compute as pc
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
 
+# The per-row chunk metadata a ``FileManifest`` carries: ``None`` for a whole
+# file, else the dict form of a ``FileChunk`` (see ``FileChunk.to_metadata``).
+ChunkMetadata = Dict[str, Any]
 
-class ChunkMetadata(TypedDict):
-    """Base type for the per-row chunk metadata a ``FileManifest`` carries.
 
-    A manifest row is a whole file (``chunk_metadata`` is ``None``) or a part of
-    one that an indexer chose to read separately, such as a run of Parquet row
-    groups emitted by ``FooterFileIndexer``. The metadata names that part so the
-    partitioner and reader never re-derive it.
+@dataclass(frozen=True)
+class FileChunk:
+    """A run of one file's read units: what an indexer lists, a partitioner
+    packs and a reader scans.
+
+    A read unit is the piece of a file a reader can scan on its own (see
+    ``ReadUnit``); for Parquet it is a row group, and ``unit_ids`` are the
+    ``ReadUnit.index`` values. The Parquet footer reader builds one run per
+    row group, coalescing merges neighbours, the manifest stores
+    :meth:`to_metadata` in its chunk column, and ``OnlineBinPacker`` reads it
+    back, splits it at unit boundaries and emits one merged run per file. The
+    packer only sums ``size_bytes`` against its budget; the indexer decides
+    what the number measures (Parquet records the projection-scoped
+    uncompressed size from the footer).
     """
 
-    pass
+    unit_ids: Tuple[int, ...]
+    num_rows: int  # summed over the run
+    size_bytes: int  # summed over the run; what a partitioner budgets on
+    # Whether every row in the run survives the pushed predicate, so
+    # ``num_rows`` is an exact survivor count that limit push-down may use.
+    fully_matched: bool = True
+    # Per-unit breakdown in ``unit_ids`` order, only for runs of more than
+    # one unit, so a partitioner can split the run at exact boundaries.
+    unit_sizes: Tuple[int, ...] = ()
+    unit_rows: Tuple[int, ...] = ()
 
+    def __post_init__(self):
+        for name in ("unit_sizes", "unit_rows"):
+            breakdown = getattr(self, name)
+            assert not breakdown or len(breakdown) == len(self.unit_ids), (
+                f"{name} has {len(breakdown)} entries for {len(self.unit_ids)} "
+                "unit_ids; a breakdown is empty or has one entry per unit"
+            )
 
-_ChunkMetadataT = TypeVar("_ChunkMetadataT", bound=ChunkMetadata)
+    def to_metadata(self) -> ChunkMetadata:
+        return asdict(self)
 
-
-def create_chunk_metadata(cls: Type[_ChunkMetadataT], **kwargs) -> _ChunkMetadataT:
-    """Create a metadata instance with validation, ensure the keys are correct."""
-    required_keys = list(get_type_hints(cls).keys())
-
-    missing_keys = [key for key in required_keys if key not in kwargs]
-    if missing_keys:
-        raise ValueError(f"Missing required keys: {missing_keys}")
-
-    extra_keys = [key for key in kwargs if key not in required_keys]
-    if extra_keys:
-        raise ValueError(f"Unexpected keys: {extra_keys}")
-
-    return cast(_ChunkMetadataT, kwargs)
+    @classmethod
+    def from_metadata(cls, metadata: Mapping[str, Any]) -> "FileChunk":
+        # Values come back from the manifest block as lists and numpy scalars.
+        return cls(
+            unit_ids=tuple(metadata["unit_ids"]),
+            num_rows=int(metadata["num_rows"]),
+            size_bytes=int(metadata["size_bytes"]),
+            fully_matched=bool(metadata["fully_matched"]),
+            unit_sizes=tuple(metadata["unit_sizes"]),
+            unit_rows=tuple(metadata["unit_rows"]),
+        )
 
 
 # File manifest column names
@@ -55,10 +81,12 @@ class FileManifest:
     All extracted views (i.e., `paths`, `file_sizes`, `file_chunk_metadatas`) share
     the same row order as the underlying block. Any transformation must preserve this.
 
-    Each row represents a single chunk of a file. For unchunked files (whole-file
-    reads), the chunk-metadata entry is ``None`` and ``file_sizes`` equals the
-    on-disk file size. For chunked files, multiple rows can share the same path
-    but carry different chunk metadata.
+    Read it as a manifest of chunks, not of files: each row is one chunk of
+    work for a reader, which is a whole file unless its chunk-metadata entry
+    narrows it to a run of read units. For unchunked files (whole-file reads),
+    the chunk-metadata entry is ``None`` and ``file_sizes`` equals the on-disk
+    file size. For chunked files, multiple rows can share the same path but
+    carry different chunk metadata.
     """
 
     def __init__(self, block: Block):

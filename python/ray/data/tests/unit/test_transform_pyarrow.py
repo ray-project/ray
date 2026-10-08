@@ -1712,6 +1712,61 @@ def test_align_struct_fields_simple(simple_struct_blocks, simple_struct_schema):
     ]
 
 
+@pytest.mark.parametrize("chunked", [False, True])
+@pytest.mark.parametrize("promote_field", [False, True])
+def test_arrow_concat_preserves_struct_nulls(chunked, promote_field):
+    struct_type = pa.struct([("a", pa.int64())])
+    # A null parent may have non-null child values in Arrow. They must stay hidden.
+    column = pa.StructArray.from_arrays(
+        [pa.array([99, 42, None, 1])],
+        fields=struct_type,
+        mask=pa.array([False, True, False, False]),
+    ).slice(1)
+    if chunked:
+        column = pa.chunked_array([column.slice(0, 1), column.slice(1)])
+    wider_type = pa.struct(
+        [("a", pa.float64() if promote_field else pa.int64()), ("b", pa.string())]
+    )
+    blocks = [
+        pa.table({"s": column}),
+        pa.table({"s": pa.array([{"a": 2, "b": "x"}], type=wider_type)}),
+    ]
+
+    result = concat(blocks, promote_types=True)
+
+    assert result["s"].type == wider_type
+    assert result["s"].to_pylist() == [
+        None,
+        {"a": None, "b": None},
+        {"a": 1, "b": None},
+        {"a": 2, "b": "x"},
+    ]
+    assert result["s"].is_null().to_pylist() == [True, False, False, False]
+
+
+def test_arrow_concat_preserves_nested_struct_nulls():
+    inner_type = pa.struct([("a", pa.int64())])
+    outer_type = pa.struct([("inner", inner_type)])
+    column = pa.array(
+        [None, {"inner": None}, {"inner": {"a": None}}, {"inner": {"a": 1}}],
+        type=outer_type,
+    )
+    blocks = [
+        pa.table({"s": column}),
+        pa.table({"s": [{"inner": {"a": 2, "b": "x"}}]}),
+    ]
+
+    result = concat(blocks, promote_types=True)
+
+    assert result["s"].to_pylist() == [
+        None,
+        {"inner": None},
+        {"inner": {"a": None, "b": None}},
+        {"inner": {"a": 1, "b": None}},
+        {"inner": {"a": 2, "b": "x"}},
+    ]
+
+
 def test_align_struct_fields_nested(nested_struct_blocks, nested_struct_schema):
     """Test nested struct field alignment."""
     t1, t2 = nested_struct_blocks
@@ -1882,6 +1937,186 @@ def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_sche
         {"level2": {"level3": {"a": 3, "b": None, "c": True}}},
         {"level2": {"level3": {"a": 4, "b": None, "c": False}}},
     ]
+
+
+def test_unify_schemas_rejects_struct_primitive_mix():
+    """A struct arm mixed with a primitive arm is not a reconcilable field.
+
+    ``_reconcile_field`` used to keep only the struct arms, so the unified type
+    claimed ``inner`` was a struct while ``t2`` physically held an int64 there.
+    """
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    with pytest.raises(pa.lib.ArrowTypeError, match="incompatible types"):
+        unify_schemas([t1.schema, t2.schema])
+
+
+@pytest.mark.parametrize(
+    "field_types",
+    [
+        [pa.struct([("a", pa.int64())]), pa.null(), pa.int64()],
+        [pa.null(), pa.struct([("a", pa.int64())]), pa.int64()],
+    ],
+)
+def test_unify_schemas_rejects_late_struct_primitive_mix(field_types):
+    """A later incompatible type must not be hidden by an earlier null arm."""
+    schemas = [pa.schema([("field", field_type)]) for field_type in field_types]
+
+    with pytest.raises(pa.lib.ArrowTypeError, match="incompatible types"):
+        unify_schemas(schemas)
+
+
+def test_unify_schemas_reconciles_struct_arms_despite_null_arm():
+    """A ``null`` arm must not stop the remaining struct arms from reconciling.
+
+    ``_reconcile_field`` receives ``null`` arms too, despite the
+    ``non_null_types`` parameter name. Counting them sent a field that is null in
+    one block and a divergent struct in two others through to PyArrow, which
+    cannot merge those arms itself.
+    """
+    var_shaped = pa.struct(
+        [("t", ArrowVariableShapedTensorType(ndim=1, dtype=pa.int64()))]
+    )
+    fixed_shaped = pa.struct(
+        [("t", create_arrow_fixed_shape_tensor_type(shape=(3,), dtype=pa.int64()))]
+    )
+
+    # PyArrow cannot merge these two arms; reconciliation is what makes the
+    # three-schema call below succeed.
+    with pytest.raises(pa.lib.ArrowTypeError):
+        pa.unify_schemas(
+            [pa.schema([("outer", var_shaped)]), pa.schema([("outer", fixed_shaped)])]
+        )
+
+    unified = unify_schemas(
+        [
+            pa.schema([("outer", var_shaped)]),
+            pa.schema([("outer", fixed_shaped)]),
+            pa.schema([("outer", pa.null())]),
+        ]
+    )
+
+    assert pa.types.is_struct(unified.field("outer").type)
+    # Variable-shaped wins over fixed-shaped, so this also pins that the arms
+    # were actually reconciled rather than the call merely not raising.
+    assert isinstance(
+        unified.field("outer").type.field("t").type, ArrowVariableShapedTensorType
+    )
+
+
+def test_align_struct_fields_nested_non_struct_field():
+    """A nested field that is a struct in one block and a primitive in another."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    # ``unify_schemas`` now refuses this mix, so build the unsatisfiable schema by
+    # hand to exercise ``_align_struct_fields`` directly. That shape is still
+    # reachable with an externally supplied schema, e.g. the Parquet reader
+    # aligning a physical table to the dataset schema.
+    schema = pa.schema(
+        [("outer", pa.struct([("inner", pa.struct([("y", pa.int64())]))]))]
+    )
+
+    with pytest.raises(ValueError, match="cannot be aligned with struct type"):
+        _align_struct_fields([t1, t2], schema)
+
+
+def test_align_struct_fields_top_level_non_struct_field():
+    """A top-level primitive cannot be aligned to a struct schema."""
+    block = pa.table({"outer": pa.array([5])})
+    schema = pa.schema([("outer", pa.struct([("inner", pa.int64())]))])
+
+    with pytest.raises(ValueError, match="cannot be aligned with struct type"):
+        _align_struct_fields([block], schema)
+
+
+def test_concat_nested_non_struct_field():
+    """The mismatch is reported by schema unification, not by alignment."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    with pytest.raises(ArrowConversionError, match="Failed to unify schemas"):
+        concat([t1, t2])
+
+
+def test_concat_nested_all_null_field():
+    """An all-null nested field is filled, not treated as a conflict."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": None}, {"inner": None}])})
+
+    # ``inner`` infers as null in ``t2`` and is promoted to the struct type.
+    assert pa.types.is_null(t2.schema.field("outer").type.field("inner").type)
+
+    result = concat([t1, t2])
+
+    assert result["outer"].to_pylist() == [
+        {"inner": {"y": 1}},
+        {"inner": None},
+        {"inner": None},
+    ]
+
+
+def test_concat_top_level_all_null_struct():
+    """A top-level all-null column is promoted to the struct type from other blocks."""
+    t1 = pa.table({"s": pa.array([{"x": 1}, {"x": 2}])})
+    t2 = pa.table({"s": pa.nulls(2)})
+
+    assert pa.types.is_null(t2.schema.field("s").type)
+
+    result = concat([t1, t2])
+
+    assert result["s"].to_pylist() == [{"x": 1}, {"x": 2}, None, None]
+
+
+def test_unify_schemas_null_with_list_null_and_list_int():
+    """A null arm must not shadow the concrete list type in null-list reconciliation.
+
+    Note: on pyarrow >= 17 PyArrow unifies these three arms by itself, so this
+    single-field case never reaches ``_reconcile_field``. See
+    ``test_unify_schemas_null_list_reconciled_when_pyarrow_cannot_unify`` for
+    the case that actually exercises the reconciliation path.
+    """
+    s1 = pa.schema([("col", pa.null())])
+    s2 = pa.schema([("col", pa.list_(pa.null()))])
+    s3 = pa.schema([("col", pa.list_(pa.int64()))])
+
+    unified = unify_schemas([s1, s2, s3])
+
+    assert unified.field("col").type == pa.list_(pa.int64())
+
+
+def test_unify_schemas_null_list_reconciled_when_pyarrow_cannot_unify():
+    """Null-list reconciliation must also run when another field forces it.
+
+    ``unify_schemas`` tries PyArrow first and only reconciles when that fails.
+    On pyarrow >= 17 PyArrow happily unifies ``null`` + ``list<null>`` +
+    ``list<int64>`` on its own, so a single-field case never reaches
+    ``_reconcile_field``. Adding a field whose arms PyArrow cannot merge
+    (here, fixed-shaped vs variable-shaped tensor structs) forces the
+    reconciliation path, where a ``null`` arm used to shadow the concrete
+    list type and reconcile the column down to ``null``.
+    """
+    var_shaped = pa.struct(
+        [("t", ArrowVariableShapedTensorType(ndim=1, dtype=pa.int64()))]
+    )
+    fixed_shaped = pa.struct(
+        [("t", create_arrow_fixed_shape_tensor_type(shape=(3,), dtype=pa.int64()))]
+    )
+
+    schemas = [
+        pa.schema([("tensors", var_shaped), ("lists", pa.null())]),
+        pa.schema([("tensors", fixed_shaped), ("lists", pa.list_(pa.null()))]),
+        pa.schema([("tensors", var_shaped), ("lists", pa.list_(pa.int64()))]),
+    ]
+
+    # PyArrow cannot merge the tensor arms on its own, so reconciliation runs.
+    with pytest.raises(pa.lib.ArrowTypeError):
+        pa.unify_schemas(schemas)
+
+    unified = unify_schemas(schemas)
+
+    assert unified.field("lists").type == pa.list_(pa.int64())
 
 
 # Test fixtures for tensor-related tests

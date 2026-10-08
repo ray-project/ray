@@ -1,6 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://wheels.astral.sh/simple/cpu/
---find-links https://data.pyg.org/whl/torch-2.9.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.10.0+cpu.html
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
     --hash=sha256:8c6af82722b35cf71e0f4d1d47dcaebfff286e27110a99fc359349b247dfb5d4
@@ -1841,9 +1841,9 @@ joserfc==1.5.0 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   moto
-jsonpatch==1.32 \
-    --hash=sha256:26ac385719ac9f54df8a2f0827bb8253aa3ea8ab7b3368457bcdb8c14595a397 \
-    --hash=sha256:b6ddfe6c3db30d81a96aaeceb6baf916094ffa23d7dd5fa2c13e13f8b6e600c2
+jsonpatch==1.33 \
+    --hash=sha256:0ae28c0cd062bbd8b8ecc26d7d164fbbea9652a1a3693f3b956c1eae5145dade \
+    --hash=sha256:9fcd4009c41e6d12348b4a0ff2563ba56a2923a7dfee731d004e212e1ee5030c
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/test-requirements.txt
