@@ -28,12 +28,12 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.iterator.push_split_coordinator import (
     PushSplitCoordinator,
     _BlockPush,
-    _create_split_dataset,
     _EndOfEpoch,
     _ExecutorError,
     _SequencedItem,
 )
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import create_streaming_split_dataset
 from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
@@ -70,7 +70,7 @@ def streaming_split_push_based(
     iterated from inside an actor whose class mixes in
     ``PushSplitReceiverMixin``.
     """
-    split_dataset = _create_split_dataset(
+    split_dataset = create_streaming_split_dataset(
         dataset, n, equal=equal, locality_hints=locality_hints
     )
     return PushBasedDataIterator.create(split_dataset, n)
@@ -219,7 +219,7 @@ class PushBasedDataIterator(DataIterator):
         """Create the coordinator and one iterator per split.
 
         ``split_dataset`` must already be wrapped in a ``StreamingSplit``
-        logical op (see ``_create_split_dataset``).
+        logical op (see ``create_streaming_split_dataset``).
         """
         # pyrefly: ignore[missing-attribute]  # @ray.remote hides ActorClass.options
         coord_actor = PushSplitCoordinator.options(
