@@ -52,7 +52,7 @@ consumer replacement.
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, Optional, Set
 
 import ray
 from ray.data._internal.stats import DatasetStats
@@ -60,36 +60,11 @@ from ray.data.context import DataContext
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces import NodeIdStr
     from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
-
-
-def _create_split_dataset(
-    dataset: "Dataset",
-    n: int,
-    *,
-    equal: bool = False,
-    locality_hints: Optional[List["NodeIdStr"]] = None,
-) -> "Dataset":
-    """Wrap ``dataset`` in a ``StreamingSplit`` logical op, as
-    :meth:`Dataset.streaming_split` does."""
-    from ray.data._internal.logical.interfaces import LogicalPlan
-    from ray.data._internal.logical.operators import StreamingSplit
-    from ray.data.dataset import Dataset
-
-    op = StreamingSplit(
-        num_splits=n,
-        equal=equal,
-        input_dependencies=[dataset._logical_plan.dag],
-        locality_hints=locality_hints,
-    )
-    split_dataset = Dataset._from_parent(dataset, LogicalPlan(op, dataset.context))
-    split_dataset._set_uuid(dataset._uuid)
-    return split_dataset
 
 
 class _SplitFlow:

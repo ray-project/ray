@@ -10,9 +10,9 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data._internal.iterator.push_split_coordinator import (
     PushSplitCoordinator,
-    _create_split_dataset,
     _SplitFlow,
 )
+from ray.data._internal.util import create_streaming_split_dataset
 
 # ---------------------------------------------------------------------------
 # _SplitFlow unit tests (no Ray involved).
@@ -82,7 +82,9 @@ def _get(ref: Any) -> Any:
 
 
 def _make_coordinator(num_rows: int = 100, n: int = 2):
-    split_dataset = _create_split_dataset(ray.data.range(num_rows), n, equal=True)
+    split_dataset = create_streaming_split_dataset(
+        ray.data.range(num_rows), n, equal=True
+    )
     # pyrefly: ignore[missing-attribute]  # @ray.remote hides ActorClass.options
     return PushSplitCoordinator.options(max_concurrency=n + 2).remote(split_dataset, n)
 
