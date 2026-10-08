@@ -294,7 +294,7 @@ def _build_engine_metrics(
     after_snapshot: dict[str, list[tuple[dict[str, str], float]]],
     elapsed_s: float,
     model_id: str,
-) -> dict[str, float | None]:
+) -> dict[str, float | int | None]:
     prompt_tokens_metric = "ray_vllm_request_prompt_tokens_sum"
     generation_tokens_metric = "ray_vllm_generation_tokens_total"
     tpot_sum_metric = "ray_vllm_request_time_per_output_token_seconds_sum"
@@ -304,16 +304,25 @@ def _build_engine_metrics(
     e2e_count_metric = "ray_vllm_e2e_request_latency_seconds_count"
     e2e_bucket_metric = "ray_vllm_e2e_request_latency_seconds_bucket"
 
-    def metric_delta(metric_name: str) -> float:
-        return max(
-            0.0,
-            _sum_metric(after_snapshot, metric_name, model_id)
-            - _sum_metric(before_snapshot, metric_name, model_id),
-        )
+    def metric_delta(metric_name: str) -> float | None:
+        after_series = _matching_series(after_snapshot, metric_name, model_id)
+        if not after_series:
+            return None
+        after_total = sum(value for _, value in after_series)
+        before_total = _sum_metric(before_snapshot, metric_name, model_id)
+        return max(0.0, after_total - before_total)
+
+    def throughput_tok_per_s(token_delta: float | None) -> float | None:
+        if not token_delta or elapsed_s <= 0:
+            return None
+        return token_delta / elapsed_s
 
     prompt_tokens_delta = metric_delta(prompt_tokens_metric)
     generation_tokens_delta = metric_delta(generation_tokens_metric)
-    total_tokens_delta = prompt_tokens_delta + generation_tokens_delta
+    if prompt_tokens_delta is not None and generation_tokens_delta is not None:
+        total_tokens_delta = prompt_tokens_delta + generation_tokens_delta
+    else:
+        total_tokens_delta = None
     tpot_sum_delta = metric_delta(tpot_sum_metric)
     tpot_count_delta = metric_delta(tpot_count_metric)
     e2e_sum_delta = metric_delta(e2e_sum_metric)
@@ -323,14 +332,16 @@ def _build_engine_metrics(
         "prompt_tokens_total": prompt_tokens_delta,
         "generation_tokens_total": generation_tokens_delta,
         "total_tokens_total": total_tokens_delta,
-        "generation_token_throughput_tok_per_s": (
-            generation_tokens_delta / elapsed_s if elapsed_s > 0 else None
+        "generation_token_throughput_tok_per_s": throughput_tok_per_s(
+            generation_tokens_delta
         ),
-        "total_token_throughput_tok_per_s": (
-            total_tokens_delta / elapsed_s if elapsed_s > 0 else None
-        ),
+        "total_token_throughput_tok_per_s": throughput_tok_per_s(total_tokens_delta),
         "mean_tpot_s": (
-            tpot_sum_delta / tpot_count_delta if tpot_count_delta > 0 else None
+            tpot_sum_delta / tpot_count_delta
+            if tpot_sum_delta is not None
+            and tpot_count_delta is not None
+            and tpot_count_delta > 0
+            else None
         ),
         "p50_tpot_s": _histogram_quantile(
             _histogram_bucket_delta(
@@ -339,7 +350,11 @@ def _build_engine_metrics(
             0.5,
         ),
         "mean_e2e_latency_s": (
-            e2e_sum_delta / e2e_count_delta if e2e_count_delta > 0 else None
+            e2e_sum_delta / e2e_count_delta
+            if e2e_sum_delta is not None
+            and e2e_count_delta is not None
+            and e2e_count_delta > 0
+            else None
         ),
         "p50_e2e_latency_s": _histogram_quantile(
             _histogram_bucket_delta(
@@ -347,7 +362,9 @@ def _build_engine_metrics(
             ),
             0.5,
         ),
-        "request_count": int(round(e2e_count_delta)),
+        "request_count": (
+            int(round(e2e_count_delta)) if e2e_count_delta is not None else None
+        ),
     }
 
 
