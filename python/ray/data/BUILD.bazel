@@ -947,6 +947,20 @@ py_test(
 )
 
 py_test(
+    name = "test_lineage_reconstruction_accounting",
+    size = "medium",
+    srcs = ["tests/test_lineage_reconstruction_accounting.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_lineage_tracker_fan_out",
     size = "small",
     srcs = ["tests/unit/test_lineage_tracker_fan_out.py"],
@@ -1840,6 +1854,20 @@ py_test(
 )
 
 py_test(
+    name = "test_sort_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_sort_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_push_based_shuffle",
     size = "enormous",
     srcs = ["tests/test_push_based_shuffle.py"],
@@ -2542,6 +2570,23 @@ py_test(
     ],
 )
 
+# The Azure tests start Azurite as a container via `testcontainers`, the same
+# way `test_kafka` starts its broker, and skip if no usable Docker and no local
+# `azurite` binary is found.
+py_test(
+    name = "test_catalog_azure",
+    size = "medium",
+    srcs = ["tests/datasource/test_catalog_azure.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test(
     name = "test_aggregations",
     size = "medium",
@@ -2588,6 +2633,20 @@ py_test(
     name = "test_checkpoint",
     size = "medium",
     srcs = ["tests/test_checkpoint.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_data_iterator_checkpointer",
+    size = "medium",
+    srcs = ["tests/test_data_iterator_checkpointer.py"],
     tags = [
         "exclusive",
         "team:data",

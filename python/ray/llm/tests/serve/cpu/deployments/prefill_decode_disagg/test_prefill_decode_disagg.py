@@ -5,8 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
+    LoraConfig,
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -35,24 +37,31 @@ async def _aiter(items):
 
 
 class _FakePrefillHandle:
-    """Fake prefill DeploymentHandle. Records each .chat/.completions remote
-    call with the session_id from any preceding ``.options(session_id=...)``,
-    and yields one chunk with kv_transfer_params back to the orchestrator."""
+    """Fake prefill DeploymentHandle that records request-routing options."""
 
-    def __init__(self, calls=None, session_id=None):
+    def __init__(self, calls=None, session_id=None, multiplexed_model_id=None):
         self.calls = calls if calls is not None else []
         self.session_id = session_id
+        self.multiplexed_model_id = multiplexed_model_id
 
     def options(self, **kwargs):
         return _FakePrefillHandle(
             calls=self.calls,
             session_id=kwargs.get("session_id", self.session_id),
+            multiplexed_model_id=kwargs.get(
+                "multiplexed_model_id", self.multiplexed_model_id
+            ),
         )
 
     def _method(self, name):
         def remote(request, raw_request_info):
             self.calls.append(
-                {"method": name, "request": request, "session_id": self.session_id}
+                {
+                    "method": name,
+                    "request": request,
+                    "session_id": self.session_id,
+                    "multiplexed_model_id": self.multiplexed_model_id,
+                }
             )
             return _aiter(
                 [SimpleNamespace(kv_transfer_params={"remote_engine_id": "prefill-1"})]
@@ -67,6 +76,46 @@ class _FakePrefillHandle:
     @property
     def completions(self):
         return self._method("completions")
+
+
+@pytest.mark.asyncio
+async def test_forwards_lora_id():
+    """Both P/D engines must resolve the adapter selected for the request."""
+    from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
+        DefaultConnectorBackend,
+    )
+
+    server = PDDecodeServer.__new__(PDDecodeServer)
+    server._llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="test-model")
+    )
+    server._llm_config._kv_connector_backend = DefaultConnectorBackend(
+        server._llm_config
+    )
+    server._prefill_handle = _FakePrefillHandle()
+
+    async def _fake_super_completions(self, req, raw_info):
+        return _aiter(["decode-chunk"])
+
+    multiplexed_model_id = "test-model:adapter"
+    context_token = serve.context._serve_request_context.set(
+        serve.context._RequestContext(multiplexed_model_id=multiplexed_model_id)
+    )
+    try:
+        with patch.object(LLMServer, "completions", _fake_super_completions):
+            chunks = [
+                chunk
+                async for chunk in server._pd_handle_request(
+                    CompletionRequest(model=multiplexed_model_id, prompt="hi"), None
+                )
+            ]
+    finally:
+        serve.context._serve_request_context.reset(context_token)
+
+    assert chunks == ["decode-chunk"]
+    assert (
+        server._prefill_handle.calls[0]["multiplexed_model_id"] == multiplexed_model_id
+    )
 
 
 class TestPDServingArgs:
@@ -103,6 +152,17 @@ class TestPDServingArgs:
         assert isinstance(args.ingress_cls_config, IngressClsConfig)
         assert args.ingress_cls_config.ingress_cls == OpenAiIngress
         assert args.ingress_deployment_config == {}
+
+    def test_lora_configs_match(self, pd_configs):
+        prefill, decode = pd_configs
+        decode.lora_config = LoraConfig(dynamic_lora_loading_path="s3://adapters")
+
+        with pytest.raises(ValueError, match="both prefill and decode"):
+            PDServingArgs(prefill_config=prefill, decode_config=decode)
+
+        prefill.lora_config = LoraConfig(dynamic_lora_loading_path="s3://other")
+        with pytest.raises(ValueError, match="loading paths must be the same"):
+            PDServingArgs(prefill_config=prefill, decode_config=decode)
 
     def test_flexible_input_types(self):
         """Test accepts dicts for prefill and decode configs."""
@@ -243,6 +303,173 @@ class TestServingArgsParsing:
 
 
 class TestPDOrchestratorMixin:
+    def test_pd_skips_chat_tokenization(self):
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[{"role": "user", "content": "not rendered"}],
+        )
+        request.kv_transfer_params = {"remote_engine_id": "prefill-1"}
+        server._forward_prefill_token_ids(
+            request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+        )
+        decode_request = SimpleNamespace(
+            kv_transfer_params=request.kv_transfer_params,
+        )
+
+        online_renderer = pytest.importorskip("vllm.renderers.online_renderer")
+
+        class Renderer:
+            tokenizer = object()
+
+            async def render_chat_async(self, *args, **kwargs):
+                raise AssertionError("vLLM should skip chat rendering and tokenization")
+
+        class ChatParams:
+            def with_defaults(self, *args, **kwargs):
+                return self
+
+        decode_request.cache_salt = None
+        decode_request.tool_choice = "none"
+        decode_request.build_tok_params = lambda model_config: object()
+        decode_request.build_chat_params = lambda *args: ChatParams()
+        renderer = online_renderer.OnlineRenderer.__new__(
+            online_renderer.OnlineRenderer
+        )
+        renderer.renderer = Renderer()
+        renderer.trust_request_mm_kwargs = False
+        renderer.model_config = SimpleNamespace(
+            multimodal_config=None, enable_prompt_embeds=False
+        )
+        renderer.parser = None
+
+        conversation, engine_inputs = asyncio.run(
+            renderer.preprocess_chat(
+                decode_request,
+                messages=request.messages,
+                default_template=None,
+                default_template_content_format="auto",
+                default_template_kwargs=None,
+            )
+        )
+
+        assert conversation == []
+        assert engine_inputs[0]["prompt_token_ids"] == [1, 2, 3]
+
+    @pytest.mark.parametrize(
+        "content, request_options, reuse_ids",
+        [
+            ([{"type": "text", "text": "hello", "metadata": {}}], {}, True),
+            (
+                [
+                    {
+                        "type": "text",
+                        "text": "hello",
+                        "uuid": "cached-image",
+                        "image_url": None,
+                    }
+                ],
+                {},
+                False,
+            ),
+            ([{"type": "future_modality"}], {}, False),
+            ("hello", {"echo": True}, False),
+            ("hello", {"return_prompt_text": True}, False),
+        ],
+    )
+    def test_chat_token_reuse(self, content, request_options, reuse_ids):
+        """Cover reuse guards not exercised by the image/audio release tests."""
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        request = ChatCompletionRequest(
+            model="test-model",
+            messages=[
+                {"role": "user", "content": "Previous question"},
+                {"role": "assistant", "content": "Previous reply"},
+                {"role": "user", "content": "Follow-up question"},
+            ],
+            **request_options,
+        )
+        # Use the ingress-normalized shape, including future content types.
+        request.messages[0]["content"] = content
+        request.return_token_ids = False
+        server._request_prefill_token_ids(request)
+        assert request.return_token_ids is reuse_ids
+
+        request.kv_transfer_params = {"remote_engine_id": "prefill-1"}
+        server._forward_prefill_token_ids(
+            request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+        )
+        assert request.kv_transfer_params == {
+            "remote_engine_id": "prefill-1",
+            **({"prompt_token_ids": [1, 2, 3]} if reuse_ids else {}),
+        }
+
+    def test_pd_skips_completion_tokenization(self):
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        decode_request = CompletionRequest(model="test-model", prompt="not-tokenized")
+
+        server._forward_prefill_token_ids(
+            decode_request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+        )
+
+        assert decode_request.prompt == [1, 2, 3]
+
+        online_renderer = pytest.importorskip("vllm.renderers.online_renderer")
+
+        class Renderer:
+            async def render_cmpl_async(self, prompts, params, **kwargs):
+                return prompts
+
+        decode_request.build_tok_params = lambda model_config: object()
+        renderer = online_renderer.OnlineRenderer.__new__(
+            online_renderer.OnlineRenderer
+        )
+        renderer.renderer = Renderer()
+        renderer.trust_request_mm_kwargs = False
+        renderer.model_config = SimpleNamespace(is_encoder_decoder=False)
+
+        engine_inputs = asyncio.run(
+            renderer.preprocess_completion(
+                decode_request,
+                prompt_input=decode_request.prompt,
+                prompt_embeds=None,
+            )
+        )
+
+        assert engine_inputs == [{"prompt_token_ids": [1, 2, 3]}]
+
+    @pytest.mark.parametrize(
+        "prompt, request_options, reuse_ids",
+        [
+            ("hello", {}, True),
+            (["hello"], {}, True),
+            ([4, 5], {}, True),
+            ([[4, 5]], {}, True),
+            (["hello", "world"], {}, False),
+            ([[4, 5], [6, 7]], {}, False),
+            ("hello", {"echo": True}, False),
+        ],
+    )
+    def test_completion_token_reuse(self, prompt, request_options, reuse_ids):
+        """Batched and echo completions must keep their original prompt."""
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        request = CompletionRequest(
+            model="test-model", prompt=prompt, **request_options
+        )
+        request.return_token_ids = False
+        server._request_prefill_token_ids(request)
+        assert request.return_token_ids is reuse_ids
+
+        server._forward_prefill_token_ids(
+            request,
+            SimpleNamespace(choices=[SimpleNamespace(prompt_token_ids=[1, 2, 3])]),
+        )
+        assert request.prompt == ([1, 2, 3] if reuse_ids else prompt)
+
     def test_prepare_prefill_request_limits_chat_to_one_token(self):
         from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
             DefaultConnectorBackend,

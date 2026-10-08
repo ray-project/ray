@@ -138,7 +138,7 @@ def native_java_library(module_name, name, native_library_name):
         visibility = ["//visibility:public"],
     )
 
-def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility = ["//visibility:public"], **kwargs):
+def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility = None, **kwargs):
     cc_library(
         name = name,
         strip_include_prefix = strip_include_prefix,
@@ -151,7 +151,7 @@ def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main =
     # By default, all `ray_cc_test` targets use `ray_gtest_main`.
     # Some tests might need bespoke setup logic, so let them skip this dependency.
     if use_ray_gtest_main:
-      deps = deps + ["//src/ray/common:ray_gtest_main"]
+        deps = deps + ["//src/ray/common:ray_gtest_main"]
 
     cc_test(
         name = name,

@@ -12,6 +12,10 @@ ray_cc_library(
     # This must match the define used when building io_opentelemetry_cpp.
     # See https://github.com/ray-project/ray/issues/59968
     copts = ["-DENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/stats:__pkg__",
+    ],
     deps = [
         "//src/ray/common:constants",
         "//src/ray/common:ray_config",
@@ -29,6 +33,7 @@ ray_cc_library(
 ray_cc_library(
     name = "metric_interface",
     hdrs = ["metric_interface.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "@io_opencensus_cpp//opencensus/stats",
     ],
@@ -38,7 +43,10 @@ ray_cc_library(
     name = "windowed_max",
     srcs = ["windowed_max.cc"],
     hdrs = ["windowed_max.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/asio:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/time",
     ],
@@ -49,6 +57,7 @@ ray_cc_library(
     hdrs = [
         "fake_metric.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":metric_interface",
     ],
@@ -59,6 +68,7 @@ ray_cc_library(
     hdrs = [
         "ray_event_interface.h",
     ],
+    visibility = ["//src/ray/core_worker:__pkg__"],
     deps = [
         "//src/ray/common:status",
         "//src/ray/protobuf/public:events_base_event_cc_proto",
@@ -87,6 +97,10 @@ ray_cc_library(
     hdrs = [
         "ray_driver_job_definition_event.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":ray_event",
         "//src/ray/protobuf/public:events_driver_job_definition_event_cc_proto",
@@ -101,6 +115,10 @@ ray_cc_library(
     hdrs = [
         "ray_driver_job_lifecycle_event.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":ray_event",
         "//src/ray/protobuf/public:events_driver_job_lifecycle_event_cc_proto",
@@ -114,6 +132,10 @@ ray_cc_library(
     ],
     hdrs = [
         "ray_actor_definition_event.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor:__pkg__",
     ],
     deps = [
         ":ray_event",
@@ -130,6 +152,10 @@ ray_cc_library(
     hdrs = [
         "ray_actor_lifecycle_event.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor:__pkg__",
+    ],
     deps = [
         ":ray_event",
         "//src/ray/protobuf/public:events_actor_lifecycle_event_cc_proto",
@@ -143,6 +169,10 @@ ray_cc_library(
     ],
     hdrs = [
         "ray_node_definition_event.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
     ],
     deps = [
         ":ray_event",
@@ -158,6 +188,7 @@ ray_cc_library(
     hdrs = [
         "ray_node_lifecycle_event.h",
     ],
+    visibility = ["//src/ray/gcs:__pkg__"],
     deps = [
         ":ray_event",
         "//src/ray/protobuf/public:events_node_lifecycle_event_cc_proto",
@@ -172,6 +203,10 @@ ray_cc_library(
     hdrs = [
         "ray_worker_definition_event.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":ray_event",
         "//src/ray/protobuf/public:events_worker_definition_event_cc_proto",
@@ -182,6 +217,10 @@ ray_cc_library(
     name = "task_state_update",
     hdrs = [
         "task_state_update.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
     ],
     deps = [
         "//src/ray/common:id",
@@ -198,6 +237,7 @@ ray_cc_library(
     hdrs = [
         "task_event_populators.h",
     ],
+    visibility = ["//src/ray/core_worker:__pkg__"],
     deps = [
         ":task_state_update",
         "//src/ray/common:grpc_util",
@@ -218,6 +258,10 @@ ray_cc_library(
     ],
     hdrs = [
         "ray_task_definition_event.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
     ],
     deps = [
         ":ray_event",
@@ -240,6 +284,10 @@ ray_cc_library(
     hdrs = [
         "ray_worker_lifecycle_event.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":ray_event",
         "//src/ray/protobuf/public:events_worker_lifecycle_event_cc_proto",
@@ -253,6 +301,10 @@ ray_cc_library(
     ],
     hdrs = [
         "ray_actor_task_definition_event.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
     ],
     deps = [
         ":ray_event",
@@ -275,6 +327,10 @@ ray_cc_library(
     hdrs = [
         "ray_task_lifecycle_event.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
         ":ray_event",
         ":task_event_populators",
@@ -294,6 +350,7 @@ ray_cc_library(
     hdrs = [
         "ray_task_profile_event.h",
     ],
+    visibility = ["//src/ray/core_worker:__pkg__"],
     deps = [
         ":ray_event",
         ":task_ray_event_interface",
@@ -305,6 +362,12 @@ ray_cc_library(
     name = "ray_event_recorder_interface",
     hdrs = [
         "ray_event_recorder_interface.h",
+    ],
+    visibility = [
+        "//:__pkg__",
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/actor:__pkg__",
     ],
     deps = [
         ":ray_event",
@@ -318,6 +381,10 @@ ray_cc_library(
     ],
     hdrs = [
         "python_event_interface.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//:__pkg__",
     ],
     deps = [
         ":metric_constants",
@@ -367,6 +434,10 @@ ray_cc_library(
     hdrs = [
         "ray_event_recorder.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":metric_interface",
         ":ray_event",
@@ -384,6 +455,7 @@ ray_cc_library(
     hdrs = [
         "task_ray_event_interface.h",
     ],
+    visibility = [":__subpackages__"],
 )
 
 ray_cc_library(
@@ -393,6 +465,10 @@ ray_cc_library(
     ],
     hdrs = [
         "ray_task_event_recorder.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
     ],
     deps = [
         ":metric_interface",
@@ -413,6 +489,7 @@ ray_cc_library(
 ray_cc_library(
     name = "fake_ray_event_recorder",
     hdrs = ["fake_ray_event_recorder.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":ray_event_interface",
         ":ray_event_recorder_interface",
@@ -422,6 +499,11 @@ ray_cc_library(
 ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         "//src/ray/stats:stats_lib",
     ],
@@ -430,4 +512,8 @@ ray_cc_library(
 ray_cc_library(
     name = "metric_constants",
     hdrs = ["metric_constants.h"],
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/gcs:__pkg__",
+    ],
 )
