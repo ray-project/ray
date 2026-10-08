@@ -156,9 +156,8 @@ class HuggingFaceDatasource(Datasource):
                     f"pyarrow.Table, np.array, pd.DataFrame."
                 )
             if isinstance(batch, pyarrow.Table):
-                # HF deserialized this Arrow data from its cache files. Unpickling
-                # untrusted data can execute arbitrary code. Reject object columns
-                # unless the user has explicitly opted in.
+                # The HF dataset was loaded (and its Arrow types rebuilt) before
+                # the read, outside the guard, so check the schema here.
                 raise_on_pickle_object_columns(batch)
             # Ensure np.arrays are wrapped in a dict
             # (subsequently converted to a pyarrow.Table).

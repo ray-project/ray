@@ -12,6 +12,7 @@ from ray.data._internal.datasource.huggingface_datasource import (
     HuggingFaceDatasource,
 )
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.tests.conftest import *  # noqa
 
@@ -480,12 +481,16 @@ def test_huggingface_datasource_rejects_pickle_object_columns(tmp_path):
     )
     # ``datasets`` refuses to build Features for unknown extension types, so drive
     # the datasource with a stand-in that yields the Arrow batch HF would produce.
+    # The table is built here, outside the guard, the way a user-loaded HF
+    # dataset reaches the read task: its extension type is never rebuilt during
+    # the read, so the datasource must check the schema itself.
     hf_dataset = MagicMock()
     hf_dataset.with_format.return_value.iter.return_value = iter([poisoned])
 
     read_task = HuggingFaceDatasource(hf_dataset).get_read_tasks(1)[0]
+    # Run the read function the way the read operator does: under the guard.
     with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(read_task())
+        list(guard_iterator(read_task))
 
     assert not marker.exists(), "pickle.load executed attacker code"
 

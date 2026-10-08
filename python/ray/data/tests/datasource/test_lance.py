@@ -569,9 +569,10 @@ def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_sh
     path = os.path.join(str(tmp_path), "exploit.lance")
     lance.write_dataset(table, path)
 
-    ds = ray.data.read_lance(path)
+    # Lance resolves the dataset schema when the datasource is constructed, so
+    # the column is refused at ``read_lance()`` time.
     with pytest.raises(Exception, match="arrow_pickled_object"):
-        ds.take_all()
+        ray.data.read_lance(path).take_all()
 
     assert not marker.exists(), "pickle.load executed attacker code"
 

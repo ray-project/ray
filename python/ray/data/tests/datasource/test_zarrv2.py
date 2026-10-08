@@ -935,3 +935,86 @@ def test_custom_codec_succeeds_with_worker_setup_hook(fresh_ray, tmp_path):
     rows = sorted(ds.take_all(), key=lambda r: tuple(r["chunk_index"]))
     recon = np.concatenate([r["chunk"] for r in rows])
     np.testing.assert_array_equal(recon, np.arange(8, dtype="u1"))
+
+
+# ---------------------------------------------------------------------------
+# numcodecs ``pickle`` codec (SEC-32754 / GHSA-vf29-5955-5qcx)
+# ---------------------------------------------------------------------------
+
+
+def _write_pickle_codec_store(store_path: Path, payload) -> Path:
+    """An object-dtype array whose ``.zarray`` declares the numcodecs ``pickle``
+    codec, holding ``payload`` as its single element."""
+    import numcodecs
+
+    root = zarr.open_group(str(store_path), mode="w")
+    arr = root.create_dataset(
+        "payload",
+        shape=(1,),
+        chunks=(1,),
+        dtype=object,
+        object_codec=numcodecs.Pickle(),
+    )
+    arr[0] = payload
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
+    return store_path
+
+
+def _exploit(marker: Path):
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    return Exploit()
+
+
+def test_read_zarr_refuses_pickle_codec(ray_start_regular_shared, tmp_path):
+    """The store's metadata declares the pickle codec, so decoding a chunk would
+    unpickle attacker bytes. The read-time guard refuses it in the read task."""
+    marker = tmp_path / "exploit_marker"
+    store = _write_pickle_codec_store(tmp_path / "evil.zarr", _exploit(marker))
+
+    with pytest.raises(Exception, match="Refusing to unpickle"):
+        ray.data.read_zarr(str(store)).take_all()
+
+    assert not marker.exists(), "pickle.loads executed attacker code"
+
+
+def test_read_zarr_autoload_env_var_reads_pickle_codec(
+    ray_start_regular_shared, monkeypatch, tmp_path
+):
+    # The job-wide switch, set on the driver and handed to the read tasks.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    store = _write_pickle_codec_store(tmp_path / "trusted.zarr", "hello")
+
+    rows = ray.data.read_zarr(
+        str(store),
+        runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}},
+    ).take_all()
+
+    assert len(rows) == 1
+    assert list(rows[0]["chunk"]) == ["hello"]
+
+
+@pytest.mark.parametrize("codec_id", ["vlen-utf8", "json2"])
+def test_read_zarr_reads_other_object_codecs(
+    ray_start_regular_shared, tmp_path, codec_id
+):
+    import numcodecs
+
+    store_path = tmp_path / "strings.zarr"
+    root = zarr.open_group(str(store_path), mode="w")
+    arr = root.create_dataset(
+        "s",
+        shape=(2,),
+        chunks=(2,),
+        dtype=object,
+        object_codec=numcodecs.get_codec({"id": codec_id}),
+    )
+    arr[:] = np.array(["a", "b"], dtype=object)
+    zarr.consolidate_metadata(zarr.DirectoryStore(str(store_path)))
+
+    rows = ray.data.read_zarr(str(store_path)).take_all()
+
+    assert len(rows) == 1
+    assert list(rows[0]["chunk"]) == ["a", "b"]
