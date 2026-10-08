@@ -112,7 +112,13 @@ CpuCountOr GetCgroupV1CpuCount(const std::string &cfs_quota_path,
 
 }  // namespace
 
+std::atomic<int64_t> CpuMonitorUtils::mock_cpu_limit_{-1};
+
 int64_t CpuMonitorUtils::GetCpuLimit(const std::string &root_cgroup_path) {
+  const int64_t mock_limit = mock_cpu_limit_.load(std::memory_order_relaxed);
+  if (mock_limit > 0) {
+    return mock_limit;
+  }
   std::string cgroupv2_cpu_max_path =
       absl::StrCat(root_cgroup_path, "/", kCgroupsV2CpuMaxPath);
   std::string cgroupv1_cpu_quota_path =
