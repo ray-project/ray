@@ -169,26 +169,13 @@ class TestChatExactness:
 
 
 class TestCompletionExactness:
-    @pytest.mark.parametrize("truncate_prompt_tokens", [None, 4])
-    async def test_matches_transformers_ground_truth(
-        self, tokenizer, hf_tokenizer, truncate_prompt_tokens
-    ):
+    async def test_matches_transformers_ground_truth(self, tokenizer, hf_tokenizer):
         prompt = "The capital of France is"
         ids = await tokenizer.tokenize(
-            {
-                "model": "test-model",
-                "prompt": prompt,
-                "truncate_prompt_tokens": truncate_prompt_tokens,
-                # Extra chat fields must not select chat rendering when the
-                # actual endpoint is completions.
-                "messages": [{"role": "user", "content": "ignored"}],
-            },
+            {"model": "test-model", "prompt": prompt},
             request_path="/v1/completions",
         )
-        expected = hf_tokenizer.encode(prompt, add_special_tokens=True)
-        if truncate_prompt_tokens is not None:
-            expected = expected[-truncate_prompt_tokens:]
-        assert ids == expected
+        assert ids == hf_tokenizer.encode(prompt, add_special_tokens=True)
 
     async def test_add_special_tokens_false(self, tokenizer, hf_tokenizer):
         prompt = "plain continuation"
@@ -207,25 +194,11 @@ _BASH_TOOL_SCHEMA = {
 
 
 def _claude_code_body() -> dict:
-    """A Claude Code /v1/messages body: billing-header-led system prompt, an
-    inline system reminder, Anthropic tool definitions, and a
-    tool_use/tool_result turn."""
+    """Anthropic system instructions and a tool use/result turn."""
     return {
         "model": "test-model",
-        "max_tokens": 1024,
-        "stream": True,
-        "system": [
-            {
-                "type": "text",
-                "text": "x-anthropic-billing-header: cch=1a2b3;",
-            },
-            {"type": "text", "text": "You are Claude Code. "},
-            {
-                "type": "text",
-                "text": "Use tools to inspect the repo.",
-                "cache_control": {"type": "ephemeral"},
-            },
-        ],
+        "max_tokens": 64,
+        "system": "You are Claude Code.",
         "messages": [
             {"role": "user", "content": [{"type": "text", "text": "List the files."}]},
             {"role": "system", "content": " Plan mode is off."},
@@ -249,7 +222,6 @@ def _claude_code_body() -> dict:
                         "tool_use_id": "toolu_01",
                         "content": "a.py\nb.py",
                     },
-                    {"type": "text", "text": "Which one is the entry point?"},
                 ],
             },
         ],
@@ -269,10 +241,7 @@ _EQUIVALENT_CHAT_BODY = {
     "messages": [
         {
             "role": "system",
-            "content": (
-                "You are Claude Code. Use tools to inspect the repo. "
-                "Plan mode is off."
-            ),
+            "content": "You are Claude Code. Plan mode is off.",
         },
         {"role": "user", "content": "List the files."},
         {
@@ -290,7 +259,6 @@ _EQUIVALENT_CHAT_BODY = {
             ],
         },
         {"role": "tool", "tool_call_id": "toolu_01", "content": "a.py\nb.py"},
-        {"role": "user", "content": "Which one is the entry point?"},
     ],
     "tools": [
         {

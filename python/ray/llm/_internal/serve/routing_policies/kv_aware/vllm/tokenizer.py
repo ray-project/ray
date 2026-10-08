@@ -42,20 +42,14 @@ def build_tokenize_request(
     merge_inline_system: bool = True,
     request_path: Optional[str] = None,
 ) -> Optional[Union[ChatCompletionRequest, CompletionRequest]]:
-    """Build the request the engine renders the prompt from, so routing ids
-    match the prefill tokens. Chat bodies build the full ``ChatCompletionRequest``
-    so ``render_chat`` can drive the engine's own path across model families (HF
-    chat template, Harmony for gpt_oss, Mistral).
+    """Validate the body using the API path and return a vLLM rendering request.
 
-    Convert Anthropic bodies with vLLM's ``/v1/messages`` converter.
-    ``merge_inline_system`` must match the engine's template-derived setting.
+    Convert Anthropic messages to chat with the engine's ``merge_inline_system``
+    setting. The path may include a Serve application prefix.
 
-    Select the schema by API path: the same body can produce different prompts
-    under different APIs. Paths may include the Serve application's route prefix.
-
-    Returns ``None`` for missing or unsupported paths, invalid bodies, or
-    completions without a single string prompt. The caller falls back to
-    token-less routing.
+    Return ``None`` for missing or unsupported paths, invalid bodies, and
+    completions without a single string prompt, so routing falls back without
+    prompt tokens.
 
     TODO (jeffreywang): Support multi-prompt tokenization.
     """
@@ -74,7 +68,7 @@ def build_tokenize_request(
             if not isinstance(request.prompt, str) or request.prompt_embeds is not None:
                 return None
             return request
-        # Token counting and other endpoints don't run a generation prefill.
+        # Only the generation endpoints above support prompt-token routing here.
         return None
     except (ValidationError, VLLMValidationError) as e:
         # vLLM's request validators can reject sampling params before prompt
@@ -150,18 +144,10 @@ class Tokenizer:
             return None
 
         try:
-            if isinstance(request, CompletionRequest):
-                result = await self._renderer.render_completion(
-                    request, skip_mm_cache=True
-                )
+            if isinstance(request, ChatCompletionRequest):
+                rendered_inputs = await self._render_chat(request)
             else:
-                result = await self._renderer.render_chat(request, skip_mm_cache=True)
-            if isinstance(result, ErrorResponse):
-                raise TokenizeError(
-                    result.error.message,
-                    status_code=result.error.code,
-                    type=result.error.type,
-                )
+                rendered_inputs = await self._render_completion(request)
         except TokenizeError:
             raise
         except (ValueError, VLLMClientError, jinja2.TemplateError) as e:
@@ -169,12 +155,30 @@ class Tokenizer:
             # exceptions are real bugs and should surface, not degrade routing.
             raise TokenizeError(str(e), status_code=400, type="BadRequestError")
 
-        rendered_inputs = (
-            result if isinstance(request, CompletionRequest) else result[1]
-        )
         input_ids: List[int] = []
         for rendered_input in rendered_inputs:
             components = extract_prompt_components(self._model_config, rendered_input)
             if components.token_ids is not None:
                 input_ids.extend(components.token_ids)
         return input_ids
+
+    async def _render_chat(self, request: ChatCompletionRequest):
+        """Render a chat request to prompt inputs via the engine's own render_chat
+        (HF template, Harmony for gpt_oss, Mistral; refuses untrusted templates)."""
+        result = await self._renderer.render_chat(request, skip_mm_cache=True)
+        if isinstance(result, ErrorResponse):
+            raise TokenizeError(
+                result.error.message,
+                status_code=result.error.code,
+                type=result.error.type,
+            )
+        _, rendered_inputs = result
+        return rendered_inputs
+
+    async def _render_completion(self, request: CompletionRequest):
+        return await self._renderer.preprocess_completion(
+            request,
+            prompt_input=request.prompt,
+            prompt_embeds=None,
+            skip_mm_cache=True,
+        )

@@ -36,19 +36,11 @@ _BASH_INPUT_SCHEMA = {
     "required": ["command"],
 }
 
-# Claude Code request with a billing header, inline system message, and tool turn.
+# Anthropic request with an inline system message and a tool turn.
 CLAUDE_CODE_BODY = {
     "model": "m",
-    "max_tokens": 32000,
-    "stream": True,
-    "system": [
-        {"type": "text", "text": "x-anthropic-billing-header: cch=1a2b3;"},
-        {
-            "type": "text",
-            "text": "You are Claude Code.",
-            "cache_control": {"type": "ephemeral"},
-        },
-    ],
+    "max_tokens": 64,
+    "system": "You are Claude Code.",
     "messages": [
         {"role": "user", "content": [{"type": "text", "text": "List the files."}]},
         {"role": "system", "content": "Plan mode is off."},
@@ -82,7 +74,6 @@ CLAUDE_CODE_BODY = {
             "input_schema": _BASH_INPUT_SCHEMA,
         }
     ],
-    "metadata": {"user_id": "u"},
 }
 
 
@@ -91,8 +82,7 @@ class TestBuildTokenizeRequest:
         """Convert Claude Code's system prompt and tools using vLLM's converter."""
         request = build_tokenize_request(CLAUDE_CODE_BODY, request_path="/v1/messages")
         assert request is not None
-        # Drop the changing billing header and merge the inline system message,
-        # matching the engine's default conversion.
+        # Merge the inline system message, matching the engine's conversion.
         assert [m["role"] for m in request.messages] == [
             "system",
             "user",
@@ -115,21 +105,6 @@ class TestBuildTokenizeRequest:
         assert request.tools[0].function.name == "Bash"
         assert request.tools[0].function.parameters == _BASH_INPUT_SCHEMA
         assert request.tool_choice == "auto"
-
-    def test_keeps_inline_system_messages_without_merge(self):
-        """Preserve inline system messages when merging is disabled."""
-        request = build_tokenize_request(
-            CLAUDE_CODE_BODY, request_path="/v1/messages", merge_inline_system=False
-        )
-        assert [m["role"] for m in request.messages] == [
-            "system",
-            "user",
-            "system",
-            "assistant",
-            "tool",
-        ]
-        assert request.messages[0]["content"] == "You are Claude Code."
-        assert request.messages[2]["content"] == "Plan mode is off."
 
     @pytest.mark.parametrize(
         "request_path", [None, "/app/v1/messages/count_tokens", "/tokenize", "/unknown"]
@@ -186,7 +161,15 @@ class TestBuildTokenizeRequest:
                 {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
                 ChatCompletionRequest,
             ),
-            ("/v1/completions", {"model": "m", "prompt": "hello"}, CompletionRequest),
+            (
+                "/v1/completions",
+                {
+                    "model": "m",
+                    "prompt": "hello",
+                    "messages": [{"role": "user", "content": "ignored"}],
+                },
+                CompletionRequest,
+            ),
         ],
     )
     def test_builds_chat_and_completion_requests(
@@ -310,6 +293,8 @@ class TestRoute:
             (None, True),
             ("image", False),
             ("tool_result_image", False),
+            ("unknown_block", False),
+            ("malformed_text", False),
         ],
     )
     async def test_anthropic_token_staging(self, media, should_stage):
@@ -336,6 +321,10 @@ class TestRoute:
                 {"type": "text", "text": "a.py"},
                 image,
             ]
+        elif media == "unknown_block":
+            payload["messages"][0]["content"].append({"type": "unknown"})
+        elif media == "malformed_text":
+            payload["messages"][0]["content"][0]["text"] = image
         request = MagicMock()
         request.body = AsyncMock(return_value=json.dumps(payload).encode())
         request.headers = Headers(

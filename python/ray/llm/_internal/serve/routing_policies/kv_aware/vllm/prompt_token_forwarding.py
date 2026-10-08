@@ -27,16 +27,22 @@ def _is_text_content(content: Any) -> bool:
         if block_type == "tool_result":
             if not _is_text_content(block.get("content")):
                 return False
-        elif block_type not in (
+        elif block_type in (
             "text",
             "input_text",
             "output_text",
             "refusal",
             "thinking",
             "redacted_thinking",
-            "tool_use",
-            "tool_reference",
         ):
+            field = {
+                "refusal": "refusal",
+                "thinking": "thinking",
+                "redacted_thinking": "data",
+            }.get(block_type, "text")
+            if not isinstance(block.get(field), str):
+                return False
+        elif block_type not in ("tool_use", "tool_reference"):
             return False
     return True
 
@@ -54,6 +60,7 @@ def is_text_only_chat(messages: Any) -> bool:
     )
 
 
+# TODO (jeffreywang): Forward multimodal inputs alongside prompt token IDs.
 def inject_prompt_token_ids(
     request: Any,
     raw_request: Optional[Request],
