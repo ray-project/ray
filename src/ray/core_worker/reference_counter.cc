@@ -1917,6 +1917,9 @@ StatusOr<std::vector<bool>> ReferenceCounter::TryCommitMoves(
           "actor task.",
           object_id.Hex()));
     }
+    // Filled here, before the commit loop below changes any state, so that both
+    // entries of a repeated ID (e.g. f.remote(ref, ref)) are true. In the commit
+    // loop, the second entry would already read MOVED.
     is_move.push_back(move_state == MoveState::MOVABLE);
   }
   for (const ObjectID &object_id : object_ids) {
