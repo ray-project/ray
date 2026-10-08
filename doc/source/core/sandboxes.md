@@ -276,6 +276,73 @@ print(result.stdout)
 ray.get(pool.close.remote())
 ```
 
+### Checkpoint and restore sandboxes
+
+Ray Sandboxes support checkpointing and restoration, which enables two distinct use cases in agentic AI and reinforcement learning:
+
+1. **Parallel branching for tree search**: Algorithms such as Monte Carlo Tree Search (MCTS) or Search-over-Thoughts explore multiple diverging execution paths from a common prefix. Instead of running expensive warmup steps (installing dependencies, compiling, or loading data) repeatedly from scratch for each branch, you can warm up a base sandbox once, take a snapshot checkpoint, and restore multiple isolated child sandboxes with low latency (< 10ms) to explore different branches in parallel without cross-branch pollution.
+2. **Suspend and resume for multi-turn rollouts**: In long-running conversational agent interactions or multi-turn agent evaluations, an environment often remains idle while waiting for an external LLM generation or human response. You can suspend the sandbox state to local disk or NVMe SSD (freeing node memory and CPU resources), and resume the environment on demand when the next turn's action arrives.
+
+#### Branching for tree search
+
+The following example demonstrates checkpointing a warmed environment and branching into isolated parallel sandboxes:
+
+```python
+import ray
+from ray.experimental import sandbox
+
+ray.init()
+
+# 1. Start a base sandbox (must run with rootless=False)
+base_sb = sandbox.create(
+    image="python:3.10-slim",
+    rootless=False,
+    workdir="/workspace",
+)
+
+# 2. Warm up environment (e.g. install dependencies, clone repo, compile)
+ray.get(base_sb.exec.remote("python3 -c 'import math; print(\"Environment warmed!\")'"))
+
+# 3. Take a snapshot checkpoint of the sandbox state to local disk or SSD
+# (checkpoint_path is optional; defaults to /tmp/ray/sandbox/checkpoints/<sandbox_id>-<uuid>)
+checkpoint_path = ray.get(base_sb.checkpoint.remote())
+
+# 4. Restore multiple branching child sandboxes with low latency from the checkpoint
+branch_1 = sandbox.restore(checkpoint_path)
+branch_2 = sandbox.restore(checkpoint_path)
+
+# 5. Execute separate actions in isolated child environments
+res1 = ray.get(branch_1.exec.remote("echo 'branch 1' > /workspace/branch.txt && cat /workspace/branch.txt"))
+res2 = ray.get(branch_2.exec.remote("echo 'branch 2' > /workspace/branch.txt && cat /workspace/branch.txt"))
+
+print("Branch 1:", res1.stdout.strip())
+print("Branch 2:", res2.stdout.strip())
+
+# Clean up
+ray.get(branch_1.delete.remote())
+ray.get(branch_2.delete.remote())
+ray.get(base_sb.delete.remote())
+```
+
+#### Suspend and resume for multi-turn rollouts
+
+To free memory during idle multi-turn rollouts (such as between LLM reasoning turns), you can checkpoint a sandbox and terminate the base process with `leave_running=False`. When the next turn arrives, restore the sandbox from the saved checkpoint to continue execution:
+
+```python
+# Checkpoint and terminate the running sandbox to free resources between turns
+checkpoint_path = ray.get(sb.checkpoint.remote(leave_running=False))
+ray.get(sb.delete.remote())
+
+# Later, resume execution for the next turn
+resumed_sb = sandbox.restore(checkpoint_path)
+res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
+```
+
+:::{note}
+* **Rootless mode:** gVisor's checkpoint and restore mechanism requires `rootless=False` and `SYS_PTRACE` capabilities inside worker containers to dump process memory maps and namespaces.
+* **Node-local storage:** In the current release, restored sandboxes must reside on the same worker node where the checkpoint was captured (e.g. `/tmp/ray` `emptyDir` volume or local NVMe SSD).
+:::
+
 ### Pass custom OCI configurations to gVisor
 
 For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [Open Container Initiative (OCI) runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
@@ -329,20 +396,6 @@ print(result.stdout)
 
 # Clean up resources
 ray.get(sb.delete.remote())
-```
-
-### In-memory pause and resume
-
-To temporarily yield CPU execution without writing state to disk or releasing RAM allocations, use `pause()` and `resume()`:
-
-```python
-# Pause sandbox threads in-place (keeps memory warm in RAM)
-ray.get(sb.pause.remote())
-print("Status:", ray.get(sb.get_status.remote()))  # SandboxStatus.PAUSED
-
-# Resume sandbox threads
-ray.get(sb.resume.remote())
-print("Status:", ray.get(sb.get_status.remote()))  # SandboxStatus.RUNNING
 ```
 
 ## Container images
@@ -447,10 +500,10 @@ The Ray Sandboxes subsystem has the following layers:
 
 ### Core components
 
-* **High-level helper ({func}`~ray.experimental.sandbox.create`)**: Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an `ActorHandle`.
-* **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
-* **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
-* **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
+* **High-level helpers ({func}`~ray.experimental.sandbox.create`, {func}`~ray.experimental.sandbox.restore`)**: Spawns a Ray actor that encapsulates the sandbox lifecycle (or restores a snapshot) and returns an `ActorHandle`.
+* **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution, file I/O, and snapshot checkpointing to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
+* **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle, checkpointing, and restoration of local sandboxes, image pulling and caching, and interactions with the execution backend.
+* **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands, manages snapshots (`runsc checkpoint` / `runsc restore`), and isolates processes through gVisor's OCI runtime (`runsc`).
 * **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
 ## Security and isolation model
