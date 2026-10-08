@@ -25,7 +25,7 @@ This demo will walk through an end-to-end flow:
 To run this demo, you will need:
 
 * Python installed on your development machine (typically your laptop), and
-* an account at your preferred cloud provider (AWS, GCP, Azure, Aliyun, or vSphere).
+* an account at your preferred cloud provider (AWS, GCP, Azure, Aliyun, OCI, or vSphere).
 
 ### Setup
 
@@ -68,6 +68,15 @@ $ pip install -U "ray[default]" aliyun-python-sdk-core aliyun-python-sdk-ecs
 ```
 
 Aliyun Cluster Launcher Maintainers (GitHub handles): @zhuangzhuang131419, @chenk008
+:::
+
+:::{tab-item} OCI
+:sync: OCI
+```shell
+$ pip install -U "ray[default]" oci
+```
+
+OCI Cluster Launcher Maintainers (GitHub handles): @fede-kamel
 :::
 
 :::{tab-item} vSphere
@@ -114,6 +123,11 @@ Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable as described in [t
 Obtain and set the AccessKey pair of the Aliyun account as described in [the docs](https://www.alibabacloud.com/help/en/doc-detail/175967.htm).
 
 Make sure to grant the necessary permissions to the RAM user and set the AccessKey pair in your cluster config file. Refer to the provided [aliyun/example-full.yaml](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aliyun/example-full.yaml) for a sample cluster config.
+:::
+
+:::{tab-item} OCI
+:sync: OCI
+Configure an OCI config file profile with `oci setup config` (API key) or `oci session authenticate` (session token) as described in [the OCI SDK docs](https://docs.oracle.com/iaas/Content/API/Concepts/sdkconfig.htm), and set `provider.compartment_id` in your cluster config file.
 :::
 
 :::{tab-item} vSphere
@@ -273,6 +287,13 @@ provider:
 Please refer to [example-full.yaml](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aliyun/example-full.yaml).
 
 Make sure your account balance is not less than 100 RMB, otherwise you will receive the error `InvalidAccountStatus.NotEnoughBalance`.
+:::
+
+:::{tab-item} OCI
+:sync: OCI
+```{literalinclude} ../../../../python/ray/autoscaler/oci/example-minimal.yaml
+:language: yaml
+```
 :::
 
 :::{tab-item} vSphere
