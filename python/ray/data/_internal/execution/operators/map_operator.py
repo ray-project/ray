@@ -561,19 +561,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
 
-        # Reconstruction inputs must be submitted without bundling, as they are
-        # already bundled by the parent operator. Seed inputs are bundled by this
-        # operator's bundler before they are stored in `_seed_task_inputs`, so they
-        # should also be submitted without bundling. Re-bundling could merge or slice
-        # input blocks, which would incorrectly modify the inputs passed to the reconstruction tasks.
-        #
-        # Skipping the bundler does not skip backpressure, because `add_input` is only
-        # called for operators that `get_eligible_operators` has already cleared.
-        if refs.reconstruction_stamp is not None:
-            self._try_schedule_task(refs, strict=True)
-            return
-
-        # Add RefBundle to the bundler.
+        # Add RefBundle to the bundler. A reconstruction input (one carrying a
+        # `reconstruction_stamp`) passes through the bundler unchanged.
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs, input_index=0)
 

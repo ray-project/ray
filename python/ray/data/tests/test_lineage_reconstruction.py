@@ -332,15 +332,15 @@ def test_reconstruction_stamp_survives_schema_divergence():
     assert rebuilt.reconstruction_stamp == stamp
 
 
-def test_reconstruction_input_bypasses_the_bundler(
+def test_reconstruction_input_passes_through_the_bundler(
     ray_start_regular_shared,
 ):  # noqa: F405
     """A reconstruction input must reach submission exactly as assembled.
 
     This holds for a child's input set and for a re-injected seed's input, which both
-    carry a ``reconstruction_stamp``. ``RebundleQueue`` would hold it back, merge it
-    with other pending input, or slice it to hit the row target. Any of those runs the
-    task against the wrong blocks.
+    carry a ``reconstruction_stamp``. ``RebundleQueue`` must emit it as its own ready
+    bundle instead of holding it back, merging it with other pending input, or slicing
+    it to hit the row target.
     """
     from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
     from ray.data._internal.execution.util import make_ref_bundles
