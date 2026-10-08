@@ -56,6 +56,7 @@
 #include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/joinable_thread.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
@@ -313,11 +314,12 @@ int main(int argc, char *argv[]) {
   SetThreadName("raylet");
 
   boost::asio::io_context metric_context;
-  auto metric_guard = boost::asio::make_work_guard(metric_context);
-  auto metric_thread = std::thread([&metric_context] {
+  auto metric_thread = ray::JoinableThread(std::thread([&metric_context] {
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        metric_context.get_executor());
     SetThreadName("metric_recorder");
     metric_context.run();
-  });
+  }));
 
   // IO Service for node manager.
   instrumented_io_context main_service{
@@ -475,12 +477,11 @@ int main(int argc, char *argv[]) {
   // This can be run by the signal handler or on the main io service.
   auto shutdown_raylet_gracefully =
       [raylet_node_id,
-       &metric_guard,
-       &metric_thread,
        &shutting_down,
        &node_manager,
        &object_directory,
        &main_service,
+       &metric_context,
        &raylet_socket_name,
        &gcs_client,
        &object_manager_rpc_threads](const ray::rpc::NodeDeathInfo &node_death_info) {
@@ -526,10 +527,7 @@ int main(int argc, char *argv[]) {
         gcs_client->Nodes().UnregisterSelf(
             raylet_node_id, node_death_info, std::move(unregister_done_callback));
 
-        metric_guard.reset();
-        if (metric_thread.joinable()) {
-          metric_thread.join();
-        }
+        metric_context.stop();
       };
 
   gcs_client->InternalKV().AsyncGetInternalConfig([&](::ray::Status status,
