@@ -206,7 +206,7 @@ _BASH_TOOL_SCHEMA = {
 }
 
 
-def _claude_code_body(billing_hash: str = "1a2b3") -> dict:
+def _claude_code_body() -> dict:
     """A Claude Code /v1/messages body: billing-header-led system prompt, an
     inline system reminder, Anthropic tool definitions, and a
     tool_use/tool_result turn."""
@@ -217,7 +217,7 @@ def _claude_code_body(billing_hash: str = "1a2b3") -> dict:
         "system": [
             {
                 "type": "text",
-                "text": f"x-anthropic-billing-header: cch={billing_hash};",
+                "text": "x-anthropic-billing-header: cch=1a2b3;",
             },
             {"type": "text", "text": "You are Claude Code. "},
             {
@@ -263,9 +263,7 @@ def _claude_code_body(billing_hash: str = "1a2b3") -> dict:
     }
 
 
-# The OpenAI chat request vLLM's /v1/messages handler converts the body above
-# into, written out by hand. With no custom chat template, the inline system
-# reminder is merged into the leading system message.
+# Handwritten expected conversion, with the inline system message merged.
 _EQUIVALENT_CHAT_BODY = {
     "model": "test-model",
     "messages": [
@@ -338,8 +336,7 @@ class TestAnthropicMessagesExactness:
         )
 
     async def test_matches_equivalent_chat_request(self, tool_tokenizer):
-        """A Claude Code body routes on exactly the prompt of the OpenAI chat
-        request the engine's /v1/messages handler renders it as."""
+        """Claude Code and equivalent chat requests produce identical tokens."""
         ids = await tool_tokenizer.tokenize(
             _claude_code_body(), request_path="/v1/messages"
         )
@@ -348,24 +345,12 @@ class TestAnthropicMessagesExactness:
             _EQUIVALENT_CHAT_BODY, request_path="/v1/chat/completions"
         )
 
-    async def test_billing_header_does_not_change_ids(self, tool_tokenizer):
-        """Claude Code's billing header hash changes per request; dropping it
-        keeps every turn of a session on the same prefix."""
-        ids = await tool_tokenizer.tokenize(
-            _claude_code_body("1a2b3"), request_path="/v1/messages"
-        )
-        assert ids
-        assert ids == await tool_tokenizer.tokenize(
-            _claude_code_body("9f8e7"), request_path="/v1/messages"
-        )
-
     @pytest.mark.parametrize("staged", [True, False])
     async def test_anthropic_engine_reuses_tokens_or_falls_back(
         self, tool_tokenizer, monkeypatch, staged
     ):
-        # Exercise real Anthropic conversion and native rendering, replacing
-        # only generation. Reuse must skip tokenization; a miss must render
-        # the same IDs normally.
+        # Use real conversion and rendering; stub generation. Staged IDs skip
+        # tokenization, while a staging miss must render the same IDs.
         body = _claude_code_body()
         ids = await tool_tokenizer.tokenize(body, request_path="/v1/messages")
         assert ids

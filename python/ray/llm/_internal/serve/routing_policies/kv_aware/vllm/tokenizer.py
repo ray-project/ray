@@ -47,15 +47,11 @@ def build_tokenize_request(
     so ``render_chat`` can drive the engine's own path across model families (HF
     chat template, Harmony for gpt_oss, Mistral).
 
-    Anthropic Messages bodies go through the conversion vLLM's ``/v1/messages``
-    handler runs before rendering, so they route on the prompt the engine
-    prefills. ``merge_inline_system`` must match the engine's handler, which
-    derives it from the deployment's chat template.
+    Convert Anthropic bodies with vLLM's ``/v1/messages`` converter.
+    ``merge_inline_system`` must match the engine's template-derived setting.
 
-    The original API path selects the same request schema as vLLM's FastAPI
-    endpoint. Bodies can be valid for multiple APIs with different prompts,
-    so don't infer the endpoint from their fields. The path can include the
-    Serve application's route prefix.
+    Select the schema by API path: the same body can produce different prompts
+    under different APIs. Paths may include the Serve application's route prefix.
 
     Returns ``None`` for missing or unsupported paths, invalid bodies, or
     completions without a single string prompt. The caller falls back to

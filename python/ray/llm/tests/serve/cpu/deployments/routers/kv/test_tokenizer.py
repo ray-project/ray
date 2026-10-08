@@ -36,9 +36,7 @@ _BASH_INPUT_SCHEMA = {
     "required": ["command"],
 }
 
-# A Claude Code /v1/messages body: a system prompt led by the per-request
-# billing header, an inline system reminder, Anthropic tool definitions, and a
-# tool_use/tool_result turn.
+# Claude Code request with a billing header, inline system message, and tool turn.
 CLAUDE_CODE_BODY = {
     "model": "m",
     "max_tokens": 32000,
@@ -90,15 +88,11 @@ CLAUDE_CODE_BODY = {
 
 class TestBuildTokenizeRequest:
     def test_converts_anthropic_messages_body(self):
-        """A Claude Code body converts the way vLLM's /v1/messages handler
-        converts it before rendering, instead of failing OpenAI validation on
-        its Anthropic tool definitions and falling back to token-less routing."""
+        """Convert Claude Code's system prompt and tools using vLLM's converter."""
         request = build_tokenize_request(CLAUDE_CODE_BODY, request_path="/v1/messages")
         assert request is not None
-        # The billing header changes on every request, so it is dropped from
-        # the system prompt to keep the session's prefix stable. By default
-        # (no custom chat template) the inline system reminder is merged into
-        # the leading system message, as the engine's handler does.
+        # Drop the changing billing header and merge the inline system message,
+        # matching the engine's default conversion.
         assert [m["role"] for m in request.messages] == [
             "system",
             "user",
@@ -123,8 +117,7 @@ class TestBuildTokenizeRequest:
         assert request.tool_choice == "auto"
 
     def test_keeps_inline_system_messages_without_merge(self):
-        """A chat template that accepts system messages anywhere keeps the
-        inline system reminder in place, as the engine's handler does."""
+        """Preserve inline system messages when merging is disabled."""
         request = build_tokenize_request(
             CLAUDE_CODE_BODY, request_path="/v1/messages", merge_inline_system=False
         )

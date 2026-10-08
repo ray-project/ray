@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from unittest.mock import AsyncMock
 
 import pytest
 import requests
@@ -10,7 +11,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve.config import RequestRouterConfig
-from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
+from ray.serve.llm import LLMConfig, LLMServer, ModelLoadingConfig, build_openai_app
 from ray.serve.llm.request_router import KVAwareRouter
 
 from utils import (
@@ -569,6 +570,114 @@ class TestFastokens:
             f"http://localhost:8000{path}", json=payload, timeout=120
         )
         assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(600)
+async def test_anthropic_messages_tokenized_once():
+    class RecordingLLMServer(LLMServer):
+        async def __serve_build_asgi_app__(self):
+            app = await super().__serve_build_asgi_app__()
+            renderer = app.state.anthropic_serving_messages.online_renderer.renderer
+            self._chat_render = AsyncMock(wraps=renderer.render_chat_async)
+            renderer.render_chat_async = self._chat_render
+            self._prompts = []
+            generate = self.engine._engine_client.generate
+
+            def record_prompt(prompt, *args, **kwargs):
+                self._prompts.append(list(prompt["prompt_token_ids"]))
+                return generate(prompt, *args, **kwargs)
+
+            self.engine._engine_client.generate = record_prompt
+            return app
+
+        def reset_tokenization_report(self):
+            self._prompts.clear()
+            self._chat_render.reset_mock()
+
+        def get_tokenization_report(self):
+            return self._prompts, self._chat_render.await_count
+
+    if not ray.is_initialized():
+        ray.init(address="auto")
+    serve.shutdown()
+    app_name = "anthropic_token_forwarding_test"
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=MODEL_ID, model_source=MODEL_SOURCE),
+        server_cls=RecordingLLMServer,
+        deployment_config=dict(
+            num_replicas=1,
+            request_router_config=dict(request_router_class=KVAwareRouter),
+        ),
+        engine_kwargs=dict(
+            max_model_len=2048,
+            enforce_eager=True,
+            gpu_memory_utilization=0.4,
+            default_chat_template_kwargs={"enable_thinking": False},
+        ),
+    )
+    messages = [
+        {"role": "user", "content": "Hi."},
+        {"role": "system", "content": "Be terse."},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "Greet back."},
+                {"type": "text", "text": "Hello."},
+            ],
+        },
+        {"role": "user", "content": "Say hello again."},
+    ]
+    expected_messages = [
+        messages[1],
+        messages[0],
+        {"role": "assistant", "content": "Hello.", "reasoning": "Greet back."},
+        messages[-1],
+    ]
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_SOURCE)
+    expected_prompt = tokenizer.apply_chat_template(
+        expected_messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        enable_thinking=False,
+    )
+    expected_ids = tokenizer.encode(expected_prompt, add_special_tokens=False)
+    payload = {"model": MODEL_ID, "messages": messages, "max_tokens": 16}
+    try:
+        with patch_ingress():
+            handle = serve.run(build_kv_app(llm_config), name=app_name)
+        router = serve.get_deployment_handle("LLMRouter", app_name=app_name)
+        # Warm the best-effort ZMQ connection before checking token reuse.
+        for _ in range(5):
+            await router.broadcast("reset_token_pushes").results_async()
+            await handle.broadcast("reset_tokenization_report").results_async()
+            response = requests.post(
+                "http://localhost:8000/v1/messages", json=payload, timeout=120
+            )
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["type"] == "message"
+            assert body["role"] == "assistant"
+            assert body["model"] == MODEL_ID
+            assert any(block.get("text") for block in body["content"])
+            usage = body["usage"]
+            assert (
+                usage["input_tokens"]
+                + usage.get("cache_read_input_tokens", 0)
+                + usage.get("cache_creation_input_tokens", 0)
+            ) == len(expected_ids)
+            assert 0 < usage["output_tokens"] <= payload["max_tokens"]
+            [(prompts, engine_tokenizations)] = await handle.broadcast(
+                "get_tokenization_report"
+            ).results_async()
+            assert prompts == [expected_ids]
+            reports = await router.broadcast("get_token_push_report").results_async()
+            assert sum(report["tokenizations"] for report in reports) == 1
+            if engine_tokenizations == 0:
+                break
+        assert engine_tokenizations == 0, "Engine re-tokenized every staged request"
+    finally:
+        serve.shutdown()
 
 
 if __name__ == "__main__":

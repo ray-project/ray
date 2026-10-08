@@ -117,8 +117,7 @@ def install_prompt_token_forwarding(
     for attr_name, method_name in (
         ("openai_serving_chat", "create_chat_completion"),
         ("openai_serving_completion", "create_completion"),
-        # create_messages delegates here after converting to OpenAI chat, so
-        # token injection uses the same path as native chat requests.
+        # Inject tokens after create_messages converts the request to chat.
         ("anthropic_serving_messages", "create_chat_completion"),
     ):
         _install_prompt_token_forwarding(
