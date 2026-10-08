@@ -67,6 +67,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaStateContainer,
     _push_freshness_window_s,
+    format_scheduling_constraints,
 )
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
@@ -4384,6 +4385,88 @@ def test_resource_requirements_none():
     replica.resource_requirements()
 
 
+@pytest.mark.parametrize(
+    "replica_config_kwargs,expected",
+    [
+        # No selector: nothing to add to the warning.
+        ({}, ""),
+        # Actor selector with several fallbacks: only their selectors are named.
+        (
+            {
+                "ray_actor_options": {
+                    "label_selector": {"test": "in(test-1, test-2)"},
+                    "fallback_strategy": [
+                        {"label_selector": {"zone": "us-east-1a"}},
+                        {"label_selector": {"zone": "us-east-1b"}},
+                    ],
+                }
+            },
+            'Required node label selector: {"test": "in(test-1, test-2)"}. '
+            "No node matched the fallback label selectors either: "
+            '[{"zone": "us-east-1a"}, {"zone": "us-east-1b"}].',
+        ),
+        # Placement-group deployment: the selectors live on the bundles. A
+        # fallback that only changes the bundles has no selector to name.
+        (
+            {
+                "placement_group_bundles": [{"CPU": 1}],
+                "placement_group_bundle_label_selector": [{"gpu": "a100"}],
+                "placement_group_fallback_strategy": [
+                    {"bundles": [{"CPU": 2}]},
+                    {"label_selector": {"gpu": "h100"}},
+                ],
+            },
+            'Required bundle label selectors: [{"gpu": "a100"}]. '
+            "No node matched the fallback label selectors either: "
+            '[{"gpu": "h100"}].',
+        ),
+    ],
+)
+def test_format_scheduling_constraints(replica_config_kwargs, expected):
+    replica_config = ReplicaConfig.create(lambda x: x, **replica_config_kwargs)
+    assert format_scheduling_constraints(replica_config) == expected
+
+
+def test_slow_scheduling_warning_names_label_selectors(mock_deployment_state_manager):
+    """A replica pending on an unmatched label selector names it in the warning."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    replica_config = ReplicaConfig.create(
+        lambda x: x,
+        ray_actor_options={
+            "num_cpus": 0.1,
+            "label_selector": {"test": "in(test-1, test-2)"},
+            "fallback_strategy": [{"label_selector": {"zone": "us-east-1a"}}],
+        },
+    )
+    info, _ = deployment_info(num_replicas=1, replica_config=replica_config)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    for replica in ds._replicas.get():
+        replica._actor.set_status(ReplicaStartupStatus.PENDING_ALLOCATION)
+
+    timer.advance(SLOW_STARTUP_WARNING_S + 1)
+    dsm.update()
+
+    assert ds.curr_status_info.message == (
+        "Deployment 'test_deployment' in application 'test_app' has 1 replicas "
+        f"that have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
+        "This may be due to waiting for the cluster to auto-scale, for a runtime "
+        "environment to be installed, or for a node matching the replica's label "
+        "selector to become available. "
+        'Resources required for each replica: {"CPU": 0.1}, '
+        "total resources available: {}. "
+        'Required node label selector: {"test": "in(test-1, test-2)"}. '
+        "No node matched the fallback label selectors either: "
+        '[{"zone": "us-east-1a"}]. '
+        "Use `ray status` for more details."
+    )
+
+
 def test_gang_pg_leak_detection_survives_state_api_failure(
     mock_deployment_state_manager,
 ):
@@ -5222,6 +5305,8 @@ class TestAutoscaling:
                 "This may be caused by a slow __init__ or reconfigure method."
             )
         elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+            # No label selector is configured here, so the message keeps its
+            # original wording and names no selector.
             expected_message = (
                 "Deployment 'test_deployment' in application 'test_app' "
                 "has 3 replicas that have taken more than 30s to be scheduled. "

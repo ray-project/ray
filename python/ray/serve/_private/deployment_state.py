@@ -57,7 +57,11 @@ from ray.serve._private.common import (
     RequestRoutingInfo,
     RunningReplicaInfo,
 )
-from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    GangSchedulingConfig,
+    ReplicaConfig,
+)
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION,
@@ -904,6 +908,48 @@ class PushedHealthTracker:
         )
 
 
+def format_scheduling_constraints(replica_config: ReplicaConfig) -> str:
+    """Describe the node label constraints a replica must be scheduled against.
+
+    A replica whose label selector matches no node stays pending while the
+    resources in the slow-startup warning look plentiful, so the warning names
+    the selectors as well. For a placement-group deployment they live on the
+    bundles, otherwise in the actor options.
+
+    Args:
+        replica_config: The replica config to read the selectors from.
+
+    Returns:
+        A sentence naming the selectors, or "" when none are set.
+    """
+    if replica_config.placement_group_bundles:
+        label_selector = replica_config.placement_group_bundle_label_selector
+        fallback_strategy = replica_config.placement_group_fallback_strategy
+        selector_noun = "Required bundle label selectors"
+    else:
+        actor_options = replica_config.ray_actor_options or {}
+        label_selector = actor_options.get("label_selector")
+        fallback_strategy = actor_options.get("fallback_strategy")
+        selector_noun = "Required node label selector"
+
+    sentences = []
+    if label_selector:
+        sentences.append(f"{selector_noun}: {json.dumps(label_selector)}.")
+    # Fallbacks are tried when the selector above matches no node, so a replica
+    # that is still pending did not match them either.
+    fallback_selectors = [
+        option.get("label_selector")
+        for option in fallback_strategy or []
+        if option.get("label_selector")
+    ]
+    if fallback_selectors:
+        sentences.append(
+            "No node matched the fallback label selectors either: "
+            f"{json.dumps(fallback_selectors)}."
+        )
+    return " ".join(sentences)
+
+
 class ActorReplicaWrapper:
     """Wraps a Ray actor for a deployment replica.
 
@@ -937,6 +983,7 @@ class ActorReplicaWrapper:
         self._unrecoverable: bool = False
 
         self._actor_resources: Optional[Dict[str, float]] = None
+        self._scheduling_constraints: str = ""
         # If the replica is being started, this will be the true version
         # If the replica is being recovered, this will be the target
         # version, which may be inconsistent with the actual replica
@@ -1267,6 +1314,9 @@ class ActorReplicaWrapper:
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
+        self._scheduling_constraints = format_scheduling_constraints(
+            deployment_info.replica_config
+        )
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
         self._gang_pg_index = gang_pg_index
@@ -1736,6 +1786,9 @@ class ActorReplicaWrapper:
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
         return self._actor_resources
+
+    def scheduling_constraints(self) -> str:
+        return self._scheduling_constraints
 
     @property
     def available_resources(self) -> Dict[str, float]:
@@ -2449,6 +2502,15 @@ class DeploymentReplica:
         # Use .model_copy(update=...) instead of .model_dump() + reconstruction
         # to avoid full Pydantic serialization and validation on every update.
         self._actor_details = self._actor_details.model_copy(update=kwargs)
+
+    def scheduling_constraints(self) -> str:
+        """Returns the label selectors this replica waits on, as a sentence.
+
+        Empty when the replica has no label selector or its actor is gone.
+        """
+        if self._actor is None:
+            return ""
+        return self._actor.scheduling_constraints()
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -5756,14 +5818,29 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
+                scheduling_constraints = pending_allocation[0].scheduling_constraints()
+                if scheduling_constraints:
+                    # The resources below can look plentiful when no node matches
+                    # the label selector, so name the selector as the likely cause.
+                    likely_causes = (
+                        "This may be due to waiting for the cluster to auto-scale, "
+                        "for a runtime environment to be installed, or for a node "
+                        "matching the replica's label selector to become available. "
+                    )
+                    scheduling_constraints += " "
+                else:
+                    likely_causes = (
+                        "This may be due to waiting for the cluster to auto-scale or "
+                        "for a runtime environment to be installed. "
+                    )
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
                     f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
-                    "This may be due to waiting for the cluster to auto-scale or for a "
-                    "runtime environment to be installed. "
+                    f"{likely_causes}"
                     f"Resources required for each replica: {required}, "
                     f"total resources available: {available}. "
+                    f"{scheduling_constraints}"
                     "Use `ray status` for more details."
                 )
                 logger.warning(message)

@@ -53,6 +53,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
+    format_scheduling_constraints,
 )
 from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -541,6 +542,7 @@ class MockReplicaActorWrapper:
         self._internal_grpc_port = None
         self._http_port = None
         self._pg_bundles = None
+        self._scheduling_constraints = ""
         self._initialization_latency_s = -1
         self._docs_path: Optional[str] = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
@@ -697,6 +699,9 @@ class MockReplicaActorWrapper:
         target_node_id=None,
     ):
         self.started = True
+        self._scheduling_constraints = format_scheduling_constraints(
+            deployment_info.replica_config
+        )
         self._gang_context = gang_context
         self._gang_pg_index = gang_pg_index
         self._assign_rank_callback = assign_rank_callback
@@ -777,6 +782,11 @@ class MockReplicaActorWrapper:
     @property
     def actor_resources(self) -> Dict[str, float]:
         return {"CPU": 0.1}
+
+    def scheduling_constraints(self) -> str:
+        # Only used to print a warning. Derived from the deployment's own
+        # label selectors in start(), so tests configure it through the config.
+        return self._scheduling_constraints
 
     @property
     def available_resources(self) -> Dict[str, float]:
