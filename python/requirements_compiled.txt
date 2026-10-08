@@ -204,8 +204,10 @@ azure-mgmt-resource==24.0.0
     # via -r python/requirements/test-requirements.txt
 azure-storage-blob==12.28.0
     # via
+    #   -r python/requirements/ml/data-test-requirements.txt
     #   adlfs
     #   smart-open
+    #   testcontainers
 babel==2.18.0
     # via jupyterlab-server
 backcall==0.2.0
@@ -430,6 +432,7 @@ dask==2026.3.0
     #   distributed
 databricks-sdk==0.72.0 ; python_version < "3.12"
     # via
+    #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing

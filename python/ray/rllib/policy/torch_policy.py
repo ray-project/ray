@@ -691,7 +691,7 @@ class TorchPolicy(Policy):
 
         Raises:
             AssertionError: If the `stats_name` cannot be found in any one
-            of the tower's `tower_stats` dicts.
+                of the tower's `tower_stats` dicts.
         """
         data = []
         for tower in self.model_gpu_towers:
@@ -917,9 +917,25 @@ class TorchPolicy(Policy):
 
     @with_lock
     def _compute_action_helper(
-        self, input_dict, state_batches, seq_lens, explore, timestep
+        self,
+        input_dict: SampleBatch,
+        state_batches: List[TensorType],
+        seq_lens: Optional[TensorType],
+        explore: Optional[bool],
+        timestep: Optional[int],
     ):
         """Shared forward pass logic (w/ and w/o trajectory view API).
+
+        Args:
+            input_dict: The input tensor dict (already converted to torch tensors)
+                to compute actions for.
+            state_batches: List of RNN state input tensors (empty for non-RNNs).
+            seq_lens: Optional tensor holding the sequence lengths of `input_dict`
+                (only used for RNNs).
+            explore: Whether to sample actions from the action distribution (as
+                opposed to acting greedily). If None, use `self.config["explore"]`.
+            timestep: The current (sampling) timestep to pass to the Exploration
+                component. If None, use `self.global_timestep`.
 
         Returns:
             A tuple consisting of a) actions, b) state_out, c) extra_fetches.

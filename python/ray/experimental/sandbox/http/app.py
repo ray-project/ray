@@ -4,7 +4,7 @@ Deploy on a Ray cluster whose worker nodes have gVisor's ``runsc`` on PATH:
 
     serve run ray.experimental.sandbox.http.app:build_app
 
-or as an Anyscale service (see ``doc/source/ray-core/sandboxes.md``). Bearer
+or as an Anyscale service (see ``doc/source/core/sandboxes.md``). Bearer
 auth is enforced when the environment variable named by
 ``SandboxAPISettings.token_env_var`` (default ``RAY_SANDBOX_API_TOKEN``) is
 set; an Anyscale service can leave it unset because the platform edge already

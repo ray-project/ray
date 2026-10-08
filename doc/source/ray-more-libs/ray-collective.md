@@ -346,12 +346,4 @@ The following links provide helpful resources on how to efficiently leverage the
 
 ## API References
 
-```{eval-rst}
-.. automodule:: ray.util.collective.collective
-   :members:
-```
-
-```{eval-rst}
-.. automodule:: ray.util.collective.backend_registry
-   :members:
-```
+See the {ref}`Ray Collective API reference <ray-collective-api-ref>`.
