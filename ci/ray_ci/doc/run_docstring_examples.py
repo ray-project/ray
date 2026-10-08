@@ -28,8 +28,10 @@ Usage:
   python ci/ray_ci/doc/run_docstring_examples.py --source-dir python/ray/data \
       --list-changed
 
-Without explicit files, it fetches the pull request's base branch and takes
-the modified .py files under --source-dir, excluding tests/ and examples/.
+Without explicit files, it fetches the pull request's base branch from origin
+and takes the modified .py files under --source-dir, excluding tests/ and
+examples/. --base diffs against a ref you name instead, such as
+upstream/master in a clone where origin is a fork.
 --list-changed prints that list and exits, for ci/ray_ci/doc/
 run_docstring_examples.sh, which lists files on the CI host and runs them in
 the library's image.
@@ -104,6 +106,19 @@ def _optionflags(example: doctest.Example) -> int:
     return flags
 
 
+def _exception_message(e: BaseException) -> str:
+    """Format an exception the way the standard library's doctest compares it.
+
+    That's every line format_exception_only returns, so notes added with
+    add_note count, minus the source line and caret a SyntaxError prints first.
+    """
+    lines = traceback.format_exception_only(type(e), e)
+    if isinstance(e, SyntaxError):
+        prefix = f"{type(e).__qualname__}:"
+        lines = lines[next(i for i, l in enumerate(lines) if l.startswith(prefix)) :]
+    return "".join(lines)
+
+
 def run_docstring(
     docstring: DocstringExamples, module_globals: Dict, filename: str
 ) -> Optional[str]:
@@ -126,7 +141,7 @@ def run_docstring(
                 exec(code, namespace)
         except BaseException as e:  # noqa: BLE001 - report any failure.
             if example.exc_msg is not None:
-                got = traceback.format_exception_only(type(e), e)[-1]
+                got = _exception_message(e)
                 if checker.check_output(example.exc_msg, got, flags):
                     continue
                 return (
@@ -156,18 +171,20 @@ def module_name(path: str) -> str:
     return ".".join(parts)
 
 
-def changed_files(source_dir: str) -> List[str]:
-    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH", "master")
-    # Diff against FETCH_HEAD, as the docs example opt-in does: a clone with a
-    # restricted refspec may never create a local origin/<base>.
-    subprocess.check_call(["git", "fetch", "-q", "origin", base_branch])
+def changed_files(source_dir: str, base: Optional[str] = None) -> List[str]:
+    if base is None:
+        base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH", "master")
+        # Diff against FETCH_HEAD, as the docs example opt-in does: a clone with
+        # a restricted refspec may never create a local origin/<base>.
+        subprocess.check_call(["git", "fetch", "-q", "origin", base_branch])
+        base = "FETCH_HEAD"
     output = subprocess.check_output(
         [
             "git",
             "diff",
             "--name-only",
             "--diff-filter=M",
-            "FETCH_HEAD...HEAD",
+            f"{base}...HEAD",
             "--",
             source_dir.rstrip("/") + "/",
         ],
@@ -198,13 +215,18 @@ def main() -> int:
         action="store_true",
         help="Print the modified files under --source-dir and exit.",
     )
+    parser.add_argument(
+        "--base",
+        help="With --source-dir, diff HEAD against this ref instead of fetching "
+        "the base branch from origin.",
+    )
     args = parser.parse_args()
 
     files = args.files
     if not files:
         if not args.source_dir:
             parser.error("pass files or --source-dir")
-        files = changed_files(args.source_dir)
+        files = changed_files(args.source_dir, args.base)
     if args.list_changed:
         print("\n".join(files))
         return 0
@@ -215,7 +237,7 @@ def main() -> int:
     failures = []
     ran = skipped = 0
     for path in files:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             docstrings = extract(f.read(), path)
         if not docstrings:
             print(f"{path}: no >>> examples")

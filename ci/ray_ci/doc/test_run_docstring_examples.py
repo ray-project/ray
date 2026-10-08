@@ -184,6 +184,40 @@ def test_expected_exception_passes(docstrings, module_globals):
     )
 
 
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="add_note is 3.11+")
+def test_expected_exception_with_note_passes():
+    source = '''def noted():
+    """Raises with a note.
+
+    Examples:
+        >>> e = ValueError("boom")
+        >>> e.add_note("a note")
+        >>> raise e
+        Traceback (most recent call last):
+            ...
+        ValueError: boom
+        a note
+    """
+'''
+    (docstring,) = extract(source, "n.py")
+    assert run_docstring(docstring, {}, "n.py") is None
+
+
+def test_expected_syntax_error_passes():
+    source = '''def bad_syntax():
+    """Shows a SyntaxError.
+
+    Examples:
+        >>> 1 +
+        Traceback (most recent call last):
+            ...
+        SyntaxError: invalid syntax
+    """
+'''
+    (docstring,) = extract(source, "s.py")
+    assert run_docstring(docstring, {}, "s.py") is None
+
+
 def test_wrong_exception_fails(docstrings, module_globals):
     failure = run_docstring(docstrings["wrong_exception"], module_globals, "m.py")
     assert "Expected exception" in failure and "ValueError" in failure
