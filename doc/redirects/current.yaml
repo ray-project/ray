@@ -984,6 +984,12 @@ redirects:
 - from: /core/head-node-memory-management.html
   to: /cluster/head-node-memory-management.html
   type: page
+- from: /ray-core/miscellaneous.html
+  to: /core/tasks/dynamic-options.html
+  type: page
+- from: /core/miscellaneous.html
+  to: /core/tasks/dynamic-options.html
+  type: page
 - from: /ray-observability/reference/api.html
   to: /core/api/state.html
   type: page
