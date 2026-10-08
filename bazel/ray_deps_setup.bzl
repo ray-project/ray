@@ -343,6 +343,16 @@ def ray_deps_setup():
         ],
     )
 
+    # Declared before grpc_deps() so its maybe() skips rules_proto 6.0.2, which
+    # reads native proto_common.ProtoLangToolchainInfo (removed in Bazel 8).
+    # 7.x forwards to protobuf's own proto rules instead.
+    auto_http_archive(
+        name = "rules_proto",
+        url = "https://github.com/bazelbuild/rules_proto/releases/download/7.1.0/rules_proto-7.1.0.tar.gz",
+        sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
+        strip_prefix = "rules_proto-7.1.0",
+    )
+
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.

@@ -16,6 +16,18 @@ common --proto_toolchain_for_javalite=@com_google_protobuf//:javalite_toolchain
 # the same sources in a py_library and several py_binary targets, which then
 # produce conflicting __pycache__ outputs. rules_python 0.40 never precompiled.
 common --@rules_python//python/config_settings:precompile=force_disabled
+# Bazel 8 made a glob() that matches nothing an error. Ray's root BUILD.bazel
+# (and likely third-party BUILD files) glob platform-specific paths that are
+# empty on other platforms. Keep Bazel 7's behaviour until they set allow_empty.
+common --noincompatible_disallow_empty_glob
+# Bazel 8 autoloads some formerly built-in symbols from external repos. Its
+# default list includes all of @com_google_protobuf, which in hybrid mode
+# resolves to the module graph's protobuf (protobuf+), not WORKSPACE's, so
+# proto_library and cc_proto_library end up with different ProtoInfo providers.
+# This is Bazel 8.8's default minus @com_google_protobuf: the built-in proto
+# rules still exist in Bazel 8 and stay in use, as on Bazel 7. The Python and
+# Java rules are no longer built in, so their autoloads stay.
+common --incompatible_autoload_externally=+ProtoInfo,+@rules_python,+java_common,+JavaInfo,+JavaPluginInfo,ProguardSpecProvider,java_binary,java_import,java_library,java_plugin,java_test,java_runtime,java_toolchain,java_package_configuration,@rules_shell,+@rules_android
 
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
