@@ -5369,6 +5369,8 @@
       runtime_env:
         HF_HOME: "/home/ray/.cache/huggingface"
         RAY_LLM_BENCHMARK_DATASET_PATH: "/tmp/ray_llm_benchmark_dataset"
+        RAY_DATA_LLM_BENCHMARK_METRICS_WAIT_TIMEOUT_S: "35"
+        RAY_DATA_LLM_BENCHMARK_METRICS_POLL_INTERVAL_S: "1"
         VLLM_DISABLE_COMPILE_CACHE: "1"
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh

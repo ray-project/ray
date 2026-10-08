@@ -196,6 +196,52 @@ def _parse_histogram_bound(le: str) -> float | None:
         return None
 
 
+_E2E_REQUEST_COUNT_METRIC = "ray_vllm_e2e_request_latency_seconds_count"
+
+
+def _engine_e2e_request_count_delta(
+    before_snapshot: dict[str, list[tuple[dict[str, str], float]]],
+    after_snapshot: dict[str, list[tuple[dict[str, str], float]]],
+    model_id: str,
+) -> float:
+    return max(
+        0.0,
+        _sum_metric(after_snapshot, _E2E_REQUEST_COUNT_METRIC, model_id)
+        - _sum_metric(before_snapshot, _E2E_REQUEST_COUNT_METRIC, model_id),
+    )
+
+
+def _wait_for_engine_metrics_snapshot(
+    metric_names: set[str],
+    before_snapshot: dict[str, list[tuple[dict[str, str], float]]],
+    *,
+    expected_requests: int,
+    model_id: str,
+    timeout_s: float,
+    poll_interval_s: float,
+) -> dict[str, list[tuple[dict[str, str], float]]]:
+    """Poll until vLLM e2e request count reflects the completed benchmark."""
+    deadline = time.monotonic() + timeout_s
+    after_snapshot = _get_prometheus_metric_snapshot(metric_names)
+
+    while True:
+        request_count_delta = _engine_e2e_request_count_delta(
+            before_snapshot, after_snapshot, model_id
+        )
+        if request_count_delta >= expected_requests:
+            return after_snapshot
+        if time.monotonic() >= deadline:
+            print(
+                f"Warning: engine Prometheus metrics incomplete after "
+                f"{timeout_s:.1f}s: observed {int(round(request_count_delta))} of "
+                f"{expected_requests} requests in "
+                f"{_E2E_REQUEST_COUNT_METRIC}."
+            )
+            return after_snapshot
+        time.sleep(poll_interval_s)
+        after_snapshot = _get_prometheus_metric_snapshot(metric_names)
+
+
 def _histogram_quantile(
     bucket_counts: dict[str, float], quantile: float
 ) -> float | None:
@@ -454,8 +500,16 @@ def test_single_node_baseline_benchmark():
         pipeline_parallel_size=1,
         tensor_parallel_size=1,
     )
-    time.sleep(2)
-    after_snapshot = _get_prometheus_metric_snapshot(metric_names)
+    after_snapshot = _wait_for_engine_metrics_snapshot(
+        metric_names,
+        before_snapshot,
+        expected_requests=len(prompts),
+        model_id=MODEL_ID,
+        timeout_s=_get_float_env("RAY_DATA_LLM_BENCHMARK_METRICS_WAIT_TIMEOUT_S", 35.0),
+        poll_interval_s=_get_float_env(
+            "RAY_DATA_LLM_BENCHMARK_METRICS_POLL_INTERVAL_S", 1.0
+        ),
+    )
     if not any(after_snapshot.values()):
         print(
             "Warning: no vLLM engine Prometheus metrics were scraped. "
