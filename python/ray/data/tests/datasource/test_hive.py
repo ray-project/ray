@@ -10,11 +10,14 @@ import pytest
 from ray.data.read_api import read_hive
 
 
-def test_public_api_passes_task_options_and_repartitions(monkeypatch):
+@pytest.mark.parametrize("max_errored_blocks", [0, 3, -1])
+def test_public_api_passes_task_options_and_repartitions(
+    monkeypatch, max_errored_blocks
+):
     from ray.data import read_api
 
     class FakeDataset:
-        context = SimpleNamespace(max_errored_blocks=3)
+        context = SimpleNamespace(max_errored_blocks=max_errored_blocks)
         repartition_count = None
 
         def repartition(self, count):
@@ -47,7 +50,7 @@ def test_public_api_passes_task_options_and_repartitions(monkeypatch):
     assert calls[0][1]["ray_remote_args"] == {"max_retries": 0}
     assert calls[0][1]["num_cpus"] == 2
     assert calls[0][1]["resources"] == {"custom": 1}
-    assert dataset.context.max_errored_blocks == 0
+    assert dataset.context.max_errored_blocks == max_errored_blocks
     assert dataset.repartition_count == 4
 
 

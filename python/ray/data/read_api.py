@@ -3984,8 +3984,11 @@ def read_hive(
         for optional schema inference from the same query execution.
 
         Each Dataset execution runs at most one HiveServer2 data query in one
-        Ray task. Ray doesn't retry failed reads. If Ray loses the worker running
-        the query, that Dataset execution fails. This scanner doesn't push
+        Ray task. Ray doesn't retry failed reads. With the default error
+        tolerance, a read error or worker loss fails that Dataset execution.
+        This API preserves ``DataContext.max_errored_blocks``. If you allow
+        block errors, execution can skip failed output and return an
+        incomplete result. This scanner doesn't push
         Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
         The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
         ``override_num_blocks`` repartitions the result after the HiveServer2
@@ -4114,8 +4117,6 @@ def read_hive(
         runtime_env=runtime_env,
         ray_remote_args={"max_retries": 0},
     )
-    # Fail the read instead of silently dropping an errored block.
-    dataset.context.max_errored_blocks = 0
     if override_num_blocks is not None:
         dataset = dataset.repartition(override_num_blocks)
     return dataset
