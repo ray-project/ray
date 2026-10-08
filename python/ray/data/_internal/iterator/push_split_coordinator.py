@@ -1,12 +1,52 @@
-"""Coordinator actor for the push-based streaming_split.
+"""Push-based streaming_split.
 
-The coordinator runs a streaming executor over a ``StreamingSplit`` dataset,
-recreated every epoch behind a barrier that all ``n`` splits must reach. It
-tracks a row-based prefetch window per split: each consumer declares a
-``target_rows`` window and reports what it consumes, and the coordinator
-computes how many more rows the split may be sent. Bytes that are sent but
-not yet consumed feed the executor's external-consumer backpressure, so a
-fast producer can't run far ahead of slow consumers.
+A coordinator actor runs the streaming executor and pushes each split's
+blocks to the actor hosting that split's ``PushBasedDataIterator`` (e.g. a
+Ray Train worker), which iterates them from a local queue.
+
+- The coordinator runs one streaming executor per epoch, behind a barrier
+  that all ``n`` splits must reach, plus one pusher thread per split.
+- Flow control is demand-driven and measured in rows: each consumer
+  declares a ``prefetch_batches * batch_size`` row prefetch window and
+  reports what it consumes; the coordinator pushes whole blocks while
+  ``target_rows - (rows_pushed - rows_consumed)`` is positive. The
+  consumer's local queue stores the prefetched blocks.
+- Bytes sent but not yet consumed feed the executor's external-consumer
+  backpressure, so a fast producer can't run far ahead of slow consumers.
+- Deliveries are sequence-numbered and reordered on arrival, so consumers
+  work regardless of the hosting actor's concurrency (Ray executes a
+  multi-threaded actor's tasks out of order).
+- Consumers reuse the standard batching pipeline (batch -> format/collate ->
+  finalize), so ``iter_torch_batches`` works unchanged; only the ref-level
+  prefetch/resolve stages are skipped.
+- A consumer is any actor that mixes in ``PushSplitReceiverMixin`` (e.g. a
+  Ray Train worker).
+
+Overview::
+
+                  PushSplitCoordinator actor
+    +--------------------------------------------------+
+    |  StreamingExecutor:  read -> ... -> split(n)     |
+    |      split 0       split 1     ...    split n-1  |
+    |         |             |                  |       |
+    |     pusher 0      pusher 1          pusher n-1   |
+    +---------|-------------^--------------------------+
+              | blocks      | request_rows()
+              | (by value)  | (declares the row window,
+              |             |  reports consumption per
+              |             |  block)
+              v             |
+    +--------------------------------------------------+
+    |  consumer actor i  (mixes PushSplitReceiverMixin)|
+    |    deliveries -> reorder by seq -> local queue   |
+    |    PushBasedDataIterator: pop -> batch           |
+    +--------------------------------------------------+
+
+This module holds the coordinator; the consumer side lives in
+``push_based_split_iterator.py``.
+
+In the next PRs: stats/metrics export, locality-aware pushing, mid-epoch
+consumer replacement.
 """
 
 import logging
