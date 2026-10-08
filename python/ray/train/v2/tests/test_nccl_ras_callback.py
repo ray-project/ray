@@ -1404,7 +1404,7 @@ def test_stack_traces_record_a_rank_that_could_not_be_launched(monkeypatch, uplo
 
     ((_, files),) = uploads
     assert files["rank_0.log"] == "trace of rank 0"
-    assert files["rank_1.log"] == "failed to launch: actor unavailable"
+    assert files["rank_1.log"] == "actor unavailable"
 
 
 def test_stack_traces_record_a_rank_that_timed_out(
@@ -1439,7 +1439,7 @@ def test_stack_traces_record_a_rank_whose_dump_failed(monkeypatch, uploads):
     callback.dump_workers_stack_traces()
 
     ((_, files),) = uploads
-    assert files["rank_1.log"] == "failed to collect: worker died"
+    assert files["rank_1.log"] == "worker died"
 
 
 def test_stack_traces_skipped_without_workers(monkeypatch, uploads):
@@ -1560,15 +1560,21 @@ def test_fan_out_collects_every_worker(fan_out):
 
 
 @pytest.mark.parametrize(
-    "broken,expected_error",
+    "broken,expected_type,expected_message",
     [
-        ({"launch_error": RuntimeError("actor is dead")}, "failed to launch"),
-        ({"ready": False}, "timed out after 30s"),
-        ({"get_error": RuntimeError("worker exited")}, "failed to collect"),
+        (
+            {"launch_error": RuntimeError("actor is dead")},
+            RuntimeError,
+            "actor is dead",
+        ),
+        ({"ready": False}, TimeoutError, "timed out after 30s"),
+        ({"get_error": RuntimeError("worker exited")}, RuntimeError, "worker exited"),
     ],
     ids=["launch_failed", "timed_out", "collect_failed"],
 )
-def test_fan_out_records_per_rank_failures(fan_out, broken, expected_error):
+def test_fan_out_records_per_rank_failures(
+    fan_out, broken, expected_type, expected_message
+):
     # One unreachable rank must not cost us the ranks that did answer: it gets an
     # error saying why, which is what ends up in that rank's file.
     workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
@@ -1576,8 +1582,20 @@ def test_fan_out_records_per_rank_failures(fan_out, broken, expected_error):
     dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
 
     assert dumps[0].value is None
-    assert expected_error in dumps[0].error
+    assert isinstance(dumps[0].error, expected_type)
+    assert expected_message in str(dumps[0].error)
     assert dumps[1].value == "stack-1" and dumps[1].error is None
+
+
+def test_fan_out_keeps_a_returned_diagnostic_result(fan_out):
+    # A worker-side function that reports its own failure must not be wrapped
+    # as a successful value.
+    error = RuntimeError("no GPUs")
+    workers = [fan_out.worker(0, value=DiagnosticResult(error=error))]
+
+    dumps = fan_out_to_workers(workers, run_nvidia_smi, 25.0, timeout_s=30.0)
+
+    assert dumps[0].value is None and dumps[0].error is error
 
 
 def fake_nvidia_smi(monkeypatch, **run_result):
@@ -1602,7 +1620,7 @@ def fake_nvidia_smi(monkeypatch, **run_result):
 def test_nvidia_smi_returns_the_report(monkeypatch):
     calls = fake_nvidia_smi(monkeypatch, stdout="GPU 00000000:00:04.0\n")
 
-    assert run_nvidia_smi(25.0) == {"ok": True, "stdout": "GPU 00000000:00:04.0\n"}
+    assert run_nvidia_smi(25.0) == DiagnosticResult(value="GPU 00000000:00:04.0\n")
     ((cmd, kwargs),) = calls
     assert cmd == ["nvidia-smi", "-q"]
     # The driver is what might be wedged, so the call is always bounded.
@@ -1610,24 +1628,37 @@ def test_nvidia_smi_returns_the_report(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "run_result,expected_reason",
+    "run_result,expected_type,expected_message",
     [
-        ({"side_effect": FileNotFoundError()}, "binary_not_found"),
+        (
+            {"side_effect": FileNotFoundError("nvidia-smi")},
+            FileNotFoundError,
+            "nvidia-smi",
+        ),
         (
             {"side_effect": subprocess.TimeoutExpired("nvidia-smi", 25.0)},
+            TimeoutError,
             "timed out after 25s",
         ),
-        ({"side_effect": OSError("no permission")}, "no permission"),
-        ({"returncode": 9, "stderr": "driver/library mismatch"}, "driver/library"),
+        ({"side_effect": OSError("no permission")}, OSError, "no permission"),
+        (
+            {"returncode": 9, "stderr": "driver/library mismatch"},
+            RuntimeError,
+            "driver/library",
+        ),
     ],
     ids=["not_installed", "driver_stuck", "os_error", "non_zero_exit"],
 )
-def test_nvidia_smi_failures_say_why(monkeypatch, run_result, expected_reason):
+def test_nvidia_smi_failures_say_why(
+    monkeypatch, run_result, expected_type, expected_message
+):
     fake_nvidia_smi(monkeypatch, **run_result)
 
     result = run_nvidia_smi(25.0)
 
-    assert result["ok"] is False and expected_reason in result["reason"]
+    assert result.value is None
+    assert isinstance(result.error, expected_type)
+    assert expected_message in str(result.error)
 
 
 def scripted_fan_out(monkeypatch, dumps):
@@ -1654,8 +1685,8 @@ def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
     calls = scripted_fan_out(
         monkeypatch,
         {
-            0: DiagnosticResult(value={"ok": True, "stdout": "node 1 GPUs"}),
-            2: DiagnosticResult(value={"ok": True, "stdout": "node 2 GPUs"}),
+            0: DiagnosticResult(value="node 1 GPUs"),
+            2: DiagnosticResult(value="node 2 GPUs"),
         },
     )
 
@@ -1680,10 +1711,13 @@ def test_nvidia_smi_uploads_one_file_per_node(monkeypatch, uploads):
 @pytest.mark.parametrize(
     "bad_dump,expected_reason",
     [
-        (DiagnosticResult(error="timed out after 30s"), "timed out after 30s"),
         (
-            DiagnosticResult(value={"ok": False, "reason": "`nvidia-smi -q` exited 9"}),
-            "exited 9",
+            DiagnosticResult(error=TimeoutError("timed out after 30s")),
+            "timed out after 30s",
+        ),
+        (
+            DiagnosticResult(error=RuntimeError("`nvidia-smi -q` exited 9")),
+            "`nvidia-smi -q` exited 9",
         ),
     ],
     ids=["fan_out_failed", "nvidia_smi_failed"],
@@ -1697,7 +1731,7 @@ def test_nvidia_smi_failed_node_gets_placeholder(
     callback = make_diagnostics_callback(workers)
     scripted_fan_out(
         monkeypatch,
-        {0: bad_dump, 1: DiagnosticResult(value={"ok": True, "stdout": "GPUs"})},
+        {0: bad_dump, 1: DiagnosticResult(value="GPUs")},
     )
 
     callback.dump_nodes_nvidia_smi()
@@ -1715,8 +1749,7 @@ def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
 
     def local_fan_out(workers, fn, *fn_args, timeout_s):
         return {
-            worker.distributed_context.world_rank: DiagnosticResult(value=fn(*fn_args))
-            for worker in workers
+            worker.distributed_context.world_rank: fn(*fn_args) for worker in workers
         }
 
     monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
@@ -1733,7 +1766,7 @@ def test_stack_traces_upload_per_rank(monkeypatch, uploads):
         monkeypatch,
         {
             0: DiagnosticResult(value="stack 0"),
-            1: DiagnosticResult(error="timed out after 30s"),
+            1: DiagnosticResult(error=TimeoutError("timed out after 30s")),
         },
     )
 
@@ -1741,7 +1774,13 @@ def test_stack_traces_upload_per_rank(monkeypatch, uploads):
 
     assert fs_path == "/exp/hang_detector/stack_traces"
     assert uploads == [
-        (fs_path, {"rank_0.log": "stack 0", "rank_1.log": "timed out after 30s"})
+        (
+            fs_path,
+            {
+                "rank_0.log": "stack 0",
+                "rank_1.log": "timed out after 30s",
+            },
+        )
     ]
     ((_, fn, fn_args, timeout_s),) = calls
     assert (fn, fn_args, timeout_s) == (
