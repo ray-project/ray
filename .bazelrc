@@ -1,7 +1,7 @@
-# Ray resolves external dependencies through WORKSPACE. Bazel 8 turned
-# --enable_workspace off by default and refuses to fetch anything with both
-# switches off, so state both.
-common --noenable_bzlmod
+# POC (not for merge): hybrid mode. Ray's dependencies still come from
+# WORKSPACE; MODULE.bazel adds only rules_rust and rules_rust_pyo3. The two
+# dependency graphs stay separate, so none of Ray's repos change.
+common --enable_bzlmod
 common --enable_workspace
 # Bazel 8 made a glob() that matches nothing an error. Ray's root BUILD.bazel
 # (and likely third-party BUILD files) glob platform-specific paths that are
