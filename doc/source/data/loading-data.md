@@ -920,6 +920,8 @@ Configure authentication, transport, TLS certificate verification, and client re
 
 Read credentials inside the factory. Captured values, including passwords stored in a closure or `functools.partial`, can be serialized with the factory. The optional `user` argument to `read_hive` sets the HS2 session or proxy user through `connection.cursor(user=user)`. Configure the authentication user separately in the factory.
 
+These examples assume `analytics.events` has exactly two columns, `id BIGINT` and `name STRING`, in that order. For the `SELECT *` example, assume HiveServer2 returns `events.id` and `events.name` as result labels. Match the labels returned by your HiveServer2 instance.
+
 ```python
 import os
 
@@ -943,8 +945,23 @@ dataset = ray.data.read_hive(
     "analytics.events", connection_factory=create_connection, user="reader"
 )
 query_dataset = ray.data.read_hive(
-    query="SELECT event_id FROM analytics.events",
-    schema=pa.schema([("event_id", pa.int64())]),
+    query="SELECT * FROM analytics.events",
+    schema=pa.schema(
+        [("events.id", pa.int64()), ("events.name", pa.string())]
+    ),
+    connection_factory=create_connection,
+    user="reader",
+)
+
+# Use explicit SQL aliases to choose unqualified result labels.
+aliased_query_dataset = ray.data.read_hive(
+    query=(
+        "SELECT id AS event_id, name AS event_name "
+        "FROM analytics.events"
+    ),
+    schema=pa.schema(
+        [("event_id", pa.int64()), ("event_name", pa.string())]
+    ),
     connection_factory=create_connection,
     user="reader",
 )

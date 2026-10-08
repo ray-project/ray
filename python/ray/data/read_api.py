@@ -3989,7 +3989,11 @@ def read_hive(
 
     Examples:
 
-        Read a table or a query result:
+        Read a table or a query result. These examples assume
+        ``analytics.events`` has exactly two columns, ``id BIGINT`` and
+        ``name STRING``, in that order. The ``SELECT *`` example assumes
+        HiveServer2 returns ``events.id`` and ``events.name`` as result labels.
+        Match the labels returned by your HiveServer2 instance.
 
         .. testcode::
             :skipif: True
@@ -4011,8 +4015,22 @@ def read_hive(
                 "analytics.events", connection_factory=create_connection
             )
             query_ds = ray.data.read_hive(
-                query="SELECT event_id FROM analytics.events",
-                schema=pa.schema([("event_id", pa.int64())]),
+                query="SELECT * FROM analytics.events",
+                schema=pa.schema(
+                    [("events.id", pa.int64()), ("events.name", pa.string())]
+                ),
+                connection_factory=create_connection,
+            )
+
+            # Use explicit SQL aliases to choose unqualified result labels.
+            aliased_query_ds = ray.data.read_hive(
+                query=(
+                    "SELECT id AS event_id, name AS event_name "
+                    "FROM analytics.events"
+                ),
+                schema=pa.schema(
+                    [("event_id", pa.int64()), ("event_name", pa.string())]
+                ),
                 connection_factory=create_connection,
             )
 
