@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
 :::
 ::::
 
-For the ways to configure Ray, see the {doc}`Configuration <configure>` documentation.
+For the ways to configure Ray, see the {doc}`Configuration <operations/configure>` documentation.
 
 (start-ray-cli)=
 

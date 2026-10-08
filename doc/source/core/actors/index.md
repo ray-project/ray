@@ -506,6 +506,7 @@ To disable task event reporting for individual actor methods, set the `enable_ta
 :maxdepth: 1
 
 named-actors
+namespaces
 terminating-actors
 async-api
 concurrency-group-api
