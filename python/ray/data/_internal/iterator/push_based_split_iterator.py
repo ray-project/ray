@@ -1,44 +1,8 @@
 """Consumer side of the push-based streaming_split.
 
-A ``PushSplitCoordinator`` (see ``push_split_coordinator.py``) pushes each
-split's blocks to the actor hosting that split's ``PushBasedDataIterator``,
-which iterates them from a local queue.
-
-- Each consumer declares a ``prefetch_batches * batch_size`` row prefetch
-  window and reports what it consumes; the coordinator pushes whole blocks
-  while ``target_rows - (rows_pushed - rows_consumed)`` is positive. The
-  local queue stores the prefetched blocks.
-- Deliveries are sequence-numbered and reordered on arrival, so consumers
-  work regardless of the hosting actor's concurrency (Ray executes a
-  multi-threaded actor's tasks out of order).
-- Consumers reuse the standard batching pipeline (batch -> format/collate ->
-  finalize), so ``iter_torch_batches`` works unchanged; only the ref-level
-  prefetch/resolve stages are skipped.
-- A consumer is any actor that mixes in ``PushSplitReceiverMixin`` (e.g. a
-  Ray Train worker).
-
-Overview::
-
-                  PushSplitCoordinator actor
-    +--------------------------------------------------+
-    |  StreamingExecutor:  read -> ... -> split(n)     |
-    |      split 0       split 1     ...    split n-1  |
-    |         |             |                  |       |
-    |     pusher 0      pusher 1          pusher n-1   |
-    +---------|-------------^--------------------------+
-              | blocks      | request_rows()
-              | (by value)  | (declares the row window,
-              |             |  reports consumption per
-              |             |  block)
-              v             |
-    +--------------------------------------------------+
-    |  consumer actor i  (mixes PushSplitReceiverMixin)|
-    |    deliveries -> reorder by seq -> local queue   |
-    |    PushBasedDataIterator: pop -> batch           |
-    +--------------------------------------------------+
-
-In the next PRs: stats/metrics export, locality-aware pushing, mid-epoch
-consumer replacement.
+Holds the receiver and its reorder buffer, ``PushSplitReceiverMixin``, and
+``PushBasedDataIterator``. See ``push_split_coordinator.py`` for an
+overview of the design.
 """
 
 import logging
