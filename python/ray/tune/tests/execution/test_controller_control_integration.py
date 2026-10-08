@@ -9,6 +9,7 @@ from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 STORAGE = mock_storage_context()
@@ -141,6 +142,67 @@ def test_remove_actor_tracking(ray_start_4_cpus_2_gpus_extra, resource_manager_c
     runner.cleanup()
 
     assert len(runner._stopping_actors) == 0
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_pause_trial_during_buffered_results(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """A scheduler pausing a trial while a batch of buffered results is processed
+    should not lead to a queued CONTINUE being executed on the removed actor.
+
+    This is what PBT does when it exploits a trial. Previously, the CONTINUE
+    decision queued for the earlier result was executed after the pause and
+    raised a ``KeyError`` in ``_schedule_trial_task``, and the remaining
+    buffered results were still passed to the scheduler.
+
+    Regression test for https://github.com/ray-project/ray/issues/58483
+    """
+
+    class PauseOnSecondResult(FIFOScheduler):
+        def __init__(self):
+            super().__init__()
+            self.seen_iterations = []
+
+        def on_trial_result(self, tune_controller, trial, result):
+            self.seen_iterations.append(result["training_iteration"])
+            if result["training_iteration"] == 2:
+                # Same as PBT's exploit step.
+                tune_controller.pause_trial(trial, should_checkpoint=False)
+                return TrialScheduler.NOOP
+            return TrialScheduler.CONTINUE
+
+    register_mock_trainable()
+    scheduler = PauseOnSecondResult()
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        scheduler=scheduler,
+        storage=STORAGE,
+    )
+    trial = Trial(
+        MOCK_TRAINABLE_NAME,
+        stopping_criterion={"training_iteration": 10},
+        storage=STORAGE,
+    )
+    runner.add_trial(trial)
+
+    while trial.status != Trial.RUNNING:
+        runner.step()
+
+    # A batch of results, as returned by ``Trainable.train_buffered``.
+    runner._on_training_result(trial, [{"training_iteration": i} for i in range(1, 4)])
+
+    assert trial.status == Trial.PAUSED
+    assert trial not in runner._trial_to_actor
+    assert trial.trial_id not in runner._queued_trial_decisions
+    # Results after the pause are ignored.
+    assert scheduler.seen_iterations == [1, 2]
+
+    # The paused trial can be resumed.
+    while trial.status != Trial.RUNNING:
+        runner.step()
 
 
 if __name__ == "__main__":
