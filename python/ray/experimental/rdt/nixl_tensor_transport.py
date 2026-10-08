@@ -108,6 +108,8 @@ class TensorDesc:
     reg_desc: Any
     # tracks the number of NIXL metadata containing the tensor.
     metadata_count: int
+    # size in bytes of the registered storage.
+    size: int
 
 
 @dataclass
@@ -712,8 +714,18 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             for tensor in tensors:
                 key = tensor.untyped_storage().data_ptr()
+                nbytes = tensor.untyped_storage().nbytes()
                 if key in self._tensor_desc_cache:
-                    self._tensor_desc_cache[key].metadata_count += 1
+                    tensor_desc = self._tensor_desc_cache[key]
+                    if nbytes > tensor_desc.size:
+                        raise ValueError(
+                            f"Tensor storage at {key:#x} was found in the NIXL "
+                            f"registration cache, but its size ({nbytes} bytes) is "
+                            f"larger than the registered size ({tensor_desc.size} "
+                            "bytes). Call deregister_nixl_memory on the old tensor "
+                            "first."
+                        )
+                    tensor_desc.metadata_count += 1
                     continue
                 mem_type = "cuda" if tensor.is_cuda else "cpu"
                 # the GPU ID of the device the tensor is on.
@@ -766,7 +778,7 @@ class NixlTensorTransport(TensorTransportManager):
                         f"size={tensor.untyped_storage().nbytes()} bytes, "
                         f"gpu_id={gpu_id}).{vmm_hint} {troubleshooting}"
                     ) from e
-                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, nbytes)
 
     def _tensor_memory_registered(self, t: "torch.Tensor") -> bool:
         """Check if the tensor's memory has been registered with NIXL."""
