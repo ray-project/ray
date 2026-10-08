@@ -70,9 +70,37 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
 
-  // Create the callback to cancel the infeasible requests if the feature is enabled
   bool has_new_infeasible_requests = false;
-  std::function<void()> callback = [this, &has_new_infeasible_requests]() {
+
+  // Never seen any autoscaling state before - so just takes this.
+  if (!autoscaling_state_.has_value()) {
+    autoscaling_state_ = std::move(*request.mutable_autoscaling_state());
+
+    if (autoscaling_state_->infeasible_resource_requests_size() > 0) {
+      has_new_infeasible_requests = true;
+    }
+  } else if (request.autoscaling_state().autoscaler_state_version() <
+             autoscaling_state_->autoscaler_state_version()) {
+    // We have a state cached. We discard the incoming state if it's older than
+    // the cached state.
+    RAY_LOG(INFO) << "Received an outdated autoscaling state. "
+                  << "Current version: " << autoscaling_state_->autoscaler_state_version()
+                  << ", received version: "
+                  << request.autoscaling_state().autoscaler_state_version()
+                  << ". Discarding incoming request.";
+  } else {
+    // We should overwrite the cache version.
+    if (autoscaling_state_->infeasible_resource_requests_size() <
+        request.mutable_autoscaling_state()->infeasible_resource_requests_size()) {
+      has_new_infeasible_requests = true;
+    }
+    autoscaling_state_ = std::move(*request.mutable_autoscaling_state());
+  }
+
+  // The success callback runs after this handler returns (from
+  // ServerCall::OnReplySent), so it must not reference stack locals: finalize
+  // the flag above and capture it by value.
+  std::function<void()> callback = [this, has_new_infeasible_requests]() {
     bool enable_infeasible_task_early_exit =
         RayConfig::instance().enable_infeasible_task_early_exit();
 
@@ -100,37 +128,6 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     }
   };
 
-  // Never seen any autoscaling state before - so just takes this.
-  if (!autoscaling_state_.has_value()) {
-    autoscaling_state_ = *std::move(request.mutable_autoscaling_state());
-
-    if (autoscaling_state_->infeasible_resource_requests_size() > 0) {
-      has_new_infeasible_requests = true;
-    }
-
-    send_reply_callback(ray::Status::OK(), callback, nullptr);
-    return;
-  }
-
-  // We have a state cached. We discard the incoming state if it's older than the
-  // cached state.
-  if (request.autoscaling_state().autoscaler_state_version() <
-      autoscaling_state_->autoscaler_state_version()) {
-    RAY_LOG(INFO) << "Received an outdated autoscaling state. "
-                  << "Current version: " << autoscaling_state_->autoscaler_state_version()
-                  << ", received version: "
-                  << request.autoscaling_state().autoscaler_state_version()
-                  << ". Discarding incoming request.";
-    send_reply_callback(ray::Status::OK(), callback, nullptr);
-    return;
-  }
-
-  // We should overwrite the cache version.
-  if (autoscaling_state_->infeasible_resource_requests_size() <
-      request.mutable_autoscaling_state()->infeasible_resource_requests_size()) {
-    has_new_infeasible_requests = true;
-  }
-  autoscaling_state_ = std::move(*request.mutable_autoscaling_state());
   send_reply_callback(ray::Status::OK(), callback, nullptr);
 }
 
