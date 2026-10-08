@@ -1748,7 +1748,13 @@ def read_parquet(
             shuffle the input files. Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include each file's path in the ``'path'``
             column. With DataSourceV2, pass a nonempty string to use it as the
-            column name instead. ``False`` omits the path column. To downselect
+            column name instead. ``False`` omits the path column. The path
+            column overwrites a same-named file column. For an unpartitioned
+            file, ``include_paths="source_file"`` preserves an existing
+            ``'path'`` column and stores file paths in ``'source_file'``. A
+            custom name other than ``'path'`` that matches a path-derived
+            partition column raises ``ValueError``. Using ``'row_hash'`` when
+            ``include_row_hash=True`` also raises ``ValueError``. To downselect
             to fewer columns, use :meth:`~ray.data.Dataset.select_columns` and
             include the chosen path column name explicitly to retain it.
         include_row_hash: If ``True``, include a deterministic hash for each row.
