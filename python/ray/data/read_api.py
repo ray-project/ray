@@ -3995,6 +3995,12 @@ def read_hive(
         query. This blocks downstream streaming until the read completes; it
         doesn't parallelize the HiveServer2 query.
 
+        The reader attempts to cancel the HiveServer2 operation and close its
+        cursor and connection when reading ends. Closing a Dataset iterator
+        can force Ray to stop the read worker before Python cleanup runs.
+        Immediate operation cancellation or explicit connection cleanup isn't
+        guaranteed.
+
     Examples:
 
         Read a table or a query result. These examples assume

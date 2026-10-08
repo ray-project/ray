@@ -973,6 +973,10 @@ aliased_query_dataset = ray.data.read_hive(
 
 The example uses the binary HiveServer2 protocol. Each read runs at most one data query in one Ray task. With the default error tolerance, a read error or worker loss fails that Dataset execution. `read_hive` preserves `DataContext.max_errored_blocks`. If you allow block errors, execution can skip failed output and return an incomplete result. If you set `override_num_blocks`, Ray calls `repartition()` on the result after the query. This blocks downstream streaming until the read completes. It doesn't parallelize the HiveServer2 query. Ray doesn't retry failed reads. Each Dataset execution starts a new query, except for a table read with `limit=0`, which skips the data query. Pass only trusted, row-producing SQL.
 
+:::{note}
+The reader attempts to cancel the HiveServer2 operation and close its cursor and connection when reading ends. Closing a Dataset iterator can force Ray to stop the read worker before Python cleanup runs. Immediate operation cancellation or explicit connection cleanup isn't guaranteed.
+:::
+
 Compared with {func}`~ray.data.read_sql`, `read_hive` fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
 
 (reading_sql)=
