@@ -451,7 +451,7 @@ class RouterMetricsManager:
             if report.health_replica_id is not None:
                 # Stamped once the payload exists, so a report that failed to encode
                 # does not stand the replica's heartbeat down for nothing.
-                _SELF_HEALTH_SNAPSHOT["carried_at"] = time.time()
+                _SELF_HEALTH_SNAPSHOT["carried_at"] = time.monotonic()
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_handle.remote(
                     payload
@@ -532,7 +532,7 @@ class RouterMetricsManager:
                     "health_replica_id": snap["replica_id"],
                     "healthy": snap["healthy"],
                     "health_checked_at": snap["checked_at"],
-                    "health_consecutive_failures": snap["failures"],
+                    "health_consecutive_failures": snap["consecutive_failures"],
                 }
         handle_metric_report = HandleMetricReport(
             **carried,

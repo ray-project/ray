@@ -735,15 +735,14 @@ class ReplicaMetricsManager:
             period_s * 0.5,
         )
 
-    def reports_carry_health(self) -> bool:
+    def _reports_carry_health(self) -> bool:
         """Whether a metric report carried health more recently than this heartbeat's
         own cadence, which is the only case where the heartbeat adds nothing."""
-        window_s = self._health_check_period_s / 2
-        last = max(
+        last_carried_at = max(
             self._last_health_carrying_report_at,
             _SELF_HEALTH_SNAPSHOT.get("carried_at", 0.0),
         )
-        return window_s > 0 and time.time() - last < window_s
+        return time.monotonic() - last_carried_at < self._health_check_period_s / 2
 
     async def _eval_and_push_self_health(self) -> None:
         # Invariant: the pusher registers this task only after setting the callable,
@@ -787,9 +786,9 @@ class ReplicaMetricsManager:
             replica_id=self._replica_id.to_full_id_str(),
             healthy=healthy,
             checked_at=checked_at,
-            failures=self._consecutive_failures,
+            consecutive_failures=self._consecutive_failures,
         )
-        if healthy and self.reports_carry_health():
+        if healthy and self._reports_carry_health():
             # An unhealthy result is never suppressed: the controller needs it to
             # replace the replica, and a report may not be due for a while.
             return
@@ -1121,7 +1120,9 @@ class ReplicaMetricsManager:
             # one evaluation rather than a verdict paired with a later count.
             healthy=_SELF_HEALTH_SNAPSHOT.get("healthy"),
             health_checked_at=_SELF_HEALTH_SNAPSHOT.get("checked_at"),
-            health_consecutive_failures=_SELF_HEALTH_SNAPSHOT.get("failures"),
+            health_consecutive_failures=_SELF_HEALTH_SNAPSHOT.get(
+                "consecutive_failures"
+            ),
         )
         with self._metrics_push_lock:
             if self._push_blocked(
@@ -1132,7 +1133,7 @@ class ReplicaMetricsManager:
             if replica_metric_report.healthy is not None:
                 # Only now is it true that a report carried health; marking it at
                 # construction would suppress heartbeats for a push that was skipped.
-                self._last_health_carrying_report_at = time.time()
+                self._last_health_carrying_report_at = time.monotonic()
             self._pending_metrics_push_started_at = time.time()
             self._pending_metrics_push_ref = (
                 # Actor methods are resolved dynamically on the actor handle.

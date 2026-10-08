@@ -3523,17 +3523,24 @@ class TestHandleReportCarriesHealth:
         return m
 
     def _publish(self):
+        """Publish the way the replica does: a full id string, so the controller can
+        route it to the sender's own deployment rather than the handle's target."""
+        sender = ReplicaID("r1", DeploymentID(name="upstream", app_name="app"))
         _SELF_HEALTH_SNAPSHOT.clear()
         _SELF_HEALTH_SNAPSHOT.update(
-            replica_id="r1", healthy=False, checked_at=99.0, failures=2
+            replica_id=sender.to_full_id_str(),
+            healthy=False,
+            checked_at=99.0,
+            consecutive_failures=2,
         )
+        return sender
 
     def test_replica_handle_carries_it(self):
-        self._publish()
+        sender = self._publish()
         report = self._manager_with_config(
             DeploymentHandleSource.REPLICA
         )._get_metrics_report()
-        assert report.health_replica_id == "r1"
+        assert report.health_replica_id == sender.to_full_id_str()
         assert report.healthy is False
         assert report.health_checked_at == 99.0
         assert report.health_consecutive_failures == 2

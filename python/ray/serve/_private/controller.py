@@ -423,20 +423,20 @@ class ServeController:
         replica_id: Optional[ReplicaID],
         healthy: Optional[bool],
         checked_at: Optional[float],
-        failures: Optional[int],
-        fallback_ts: float,
+        consecutive_failures: Optional[int],
     ) -> None:
         """Record self-health a metric report carried, if it carried any."""
-        if replica_id is None or healthy is None or failures is None:
-            # The sender writes all three together, so a report carrying a verdict
-            # without a count predates the field and cannot be mirrored.
+        if (
+            replica_id is None
+            or healthy is None
+            or checked_at is None
+            or consecutive_failures is None
+        ):
+            # The sender writes all four together, so a report missing any of them
+            # predates the fields and cannot be mirrored.
             return
         self.record_replica_health(
-            replica_id,
-            # `or` would take the fallback for a legitimate 0.0.
-            checked_at if checked_at is not None else fallback_ts,
-            healthy,
-            failures,
+            replica_id, checked_at, healthy, consecutive_failures
         )
 
     def record_replica_health(
@@ -468,7 +468,6 @@ class ServeController:
             replica_metric_report.healthy,
             replica_metric_report.health_checked_at,
             replica_metric_report.health_consecutive_failures,
-            replica_metric_report.timestamp,
         )
         self._record_metrics_delay(
             replica_metric_report.timestamp,
@@ -518,7 +517,6 @@ class ServeController:
                     d["healthy"],
                     d["health_checked_at"],
                     d["health_consecutive_failures"],
-                    d["timestamp"],
                 )
                 self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
                 self._health_metrics_tracker.record_handle_ingest(
@@ -547,7 +545,6 @@ class ServeController:
             handle_metric_report.healthy,
             handle_metric_report.health_checked_at,
             handle_metric_report.health_consecutive_failures,
-            handle_metric_report.timestamp,
         )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report

@@ -747,30 +747,25 @@ class TestCarriedHealthIngest:
 
     def test_carriage_uses_the_same_funnel_as_the_heartbeat(self):
         c = self._controller()
-        c._record_carried_health(CARRIED_REPLICA_ID, False, 50.0, 2, 99.0)
+        c._record_carried_health(CARRIED_REPLICA_ID, False, 50.0, 2)
         c.deployment_state_manager.record_replica_health.assert_called_once_with(
             CARRIED_REPLICA_ID, 50.0, False, 2
         )
 
     def test_a_report_carrying_nothing_is_ignored(self):
         c = self._controller()
-        c._record_carried_health(None, True, 50.0, 0, 99.0)  # no id
-        c._record_carried_health(CARRIED_REPLICA_ID, None, 50.0, 0, 99.0)  # no verdict
-        # No count: the sender writes all three together, so this predates the field
-        # and the controller has nothing to mirror.
-        c._record_carried_health(CARRIED_REPLICA_ID, False, 50.0, None, 99.0)
+        c._record_carried_health(None, True, 50.0, 0)  # no id
+        c._record_carried_health(CARRIED_REPLICA_ID, None, 50.0, 0)  # no verdict
+        # The sender writes all four together, so a report missing the count or the
+        # check time predates those fields and there is nothing to mirror.
+        c._record_carried_health(CARRIED_REPLICA_ID, False, 50.0, None)
+        c._record_carried_health(CARRIED_REPLICA_ID, False, None, 1)
         c.deployment_state_manager.record_replica_health.assert_not_called()
-
-    def test_a_missing_check_time_falls_back_to_the_report_timestamp(self):
-        c = self._controller()
-        c._record_carried_health(CARRIED_REPLICA_ID, True, None, 0, 99.0)
-        args = c.deployment_state_manager.record_replica_health.call_args.args
-        assert args[1] == 99.0
 
     def test_a_zero_check_time_is_not_the_same_as_a_missing_one(self):
         """`or` would take the fallback for a legitimate 0.0."""
         c = self._controller()
-        c._record_carried_health(CARRIED_REPLICA_ID, True, 0.0, 0, 99.0)
+        c._record_carried_health(CARRIED_REPLICA_ID, True, 0.0, 0)
         args = c.deployment_state_manager.record_replica_health.call_args.args
         assert args[1] == 0.0
 
