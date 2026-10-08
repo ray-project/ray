@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from ray._private.authentication_test_utils import reset_auth_token_state
+from ray._private.runtime_env import image_uri
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.image_uri import _modify_context_impl
 
@@ -15,7 +16,12 @@ def auth_env(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     # Path.home() reads USERPROFILE on Windows and ignores HOME.
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    for var in ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"):
+    for var in (
+        "RAY_AUTH_MODE",
+        "RAY_AUTH_TOKEN",
+        "RAY_AUTH_TOKEN_PATH",
+        "RAY_ENABLE_K8S_TOKEN_AUTH",
+    ):
         monkeypatch.delenv(var, raising=False)
     yield monkeypatch
     monkeypatch.undo()
@@ -86,6 +92,30 @@ def test_no_mount_when_auth_disabled(auth_env, tmp_path):
 
     assert ":ro" not in command
     assert "RAY_AUTH_TOKEN_PATH" not in command
+
+
+def test_k8s_mounts_sa_dirs_and_forwards_api_server_env(auth_env, tmp_path):
+    ray_sa_dir = tmp_path / "ray.io"
+    ray_sa_dir.mkdir()
+    (ray_sa_dir / "token").write_text(TOKEN)
+    k8s_sa_dir = tmp_path / "kubernetes.io"
+    k8s_sa_dir.mkdir()
+    auth_env.setattr(image_uri, "_RAY_SA_TOKEN_DIR", str(ray_sa_dir))
+    auth_env.setattr(image_uri, "_K8S_SA_DIR", str(k8s_sa_dir))
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    auth_env.setenv("RAY_ENABLE_K8S_TOKEN_AUTH", "true")
+    auth_env.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
+    auth_env.setenv("KUBERNETES_SERVICE_PORT", "443")
+    reset_auth_token_state()
+
+    command = _container_command()
+
+    assert f"-v {ray_sa_dir}:{ray_sa_dir}:ro" in command
+    assert f"-v {k8s_sa_dir}:{k8s_sa_dir}:ro" in command
+    assert "--env KUBERNETES_SERVICE_HOST='10.96.0.1'" in command
+    assert "--env KUBERNETES_SERVICE_PORT='443'" in command
+    assert "RAY_AUTH_TOKEN_PATH" not in command
+    assert TOKEN not in command
 
 
 if __name__ == "__main__":

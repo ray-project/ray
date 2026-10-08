@@ -7,11 +7,27 @@ from typing import List, Optional
 from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
 )
-from ray._private.authentication.authentication_utils import is_token_auth_enabled
+from ray._private.authentication.authentication_utils import (
+    is_k8s_auth_enabled,
+    is_token_auth_enabled,
+)
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 default_logger = logging.getLogger(__name__)
+
+# Directory KubeRay mounts the projected ServiceAccount token into. Ray
+# processes present this token when calling each other. Matches
+# kRaySaTokenPath in src/ray/rpc/authentication/k8s_constants.h.
+_RAY_SA_TOKEN_DIR = "/var/run/secrets/ray.io/serviceaccount"
+# Default K8s ServiceAccount dir (token, ca.crt). The worker's gRPC server
+# reads it to call TokenReview when validating incoming requests. Used in
+# InitK8sClientConfig. Parent directory of kK8sSaTokenPath and kK8sCaCertPath
+# in src/ray/rpc/authentication/k8s_constants.h.
+_K8S_SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
+# API server address for TokenReview. Used in InitK8sClientConfig. Matches
+# kK8sServiceHostEnvVar and kK8sServicePortEnvVar in k8s_constants.h.
+_K8S_API_SERVER_ENV_VARS = ("KUBERNETES_SERVICE_HOST", "KUBERNETES_SERVICE_PORT")
 
 
 async def _create_impl(image_uri: str, logger: logging.Logger):
@@ -120,6 +136,14 @@ def _modify_context_impl(
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
             env_vars["RAY_AUTH_TOKEN_PATH"] = token_path
+
+        if is_k8s_auth_enabled():
+            for sa_dir in (_RAY_SA_TOKEN_DIR, _K8S_SA_DIR):
+                if os.path.isdir(sa_dir):
+                    container_command.extend(["-v", f"{sa_dir}:{sa_dir}:ro"])
+            for var in _K8S_API_SERVER_ENV_VARS:
+                if var in os.environ:
+                    env_vars[var] = os.environ[var]
 
     # Set environment variables
     for env_var_name, env_var_value in env_vars.items():
