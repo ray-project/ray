@@ -2,6 +2,7 @@ load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@rules_java//java:defs.bzl", "java_library")
 
 COPTS_TESTS = select({
     "//:opt": ["-DBAZEL_OPT"],
@@ -88,7 +89,7 @@ def define_java_module(
     """
     lib_name = "io_ray_ray_" + name
     pom_file_targets = [lib_name]
-    native.java_library(
+    java_library(
         name = lib_name,
         srcs = additional_srcs + native.glob(
             [name + "/src/main/java/**/*.java"],
@@ -100,7 +101,7 @@ def define_java_module(
     if define_test_lib:
         test_lib_name = "io_ray_ray_" + name + "_test"
         pom_file_targets.append(test_lib_name)
-        native.java_library(
+        java_library(
             name = test_lib_name,
             srcs = native.glob([name + "/src/test/java/**/*.java"]),
             deps = test_deps,
