@@ -21,7 +21,6 @@
 #include <string>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/periodical_runner.h"

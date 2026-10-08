@@ -51,7 +51,10 @@ from ray.data._internal.datasource.kafka_datasource import (
     PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
+from ray.data._internal.datasource.lerobot_datasource import (
+    LeRobotDatasource,
+    LeRobotPerDatasetDatasource,
+)
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -3421,7 +3424,7 @@ def read_lerobot(
     root: Union[str, List[str]],
     *,
     episodes: Optional[List[int]] = None,
-    read_granularity: Literal["file", "episode"] = "file",
+    read_granularity: Literal["file", "episode", "dataset"] = "file",
     filesystem: Optional[
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
@@ -3519,6 +3522,18 @@ def read_lerobot(
             per file group, so each file is opened once; ``"episode"`` emits one
             task per episode. Use ``override_num_blocks`` to tune the final
             number of output blocks.
+
+            ``"dataset"`` reads at the granularity of entire LeRobot datasets
+            and is intended for reading a very large number of them. It defers
+            all per-dataset metadata resolution to the read tasks -- only the
+            first root is resolved on the driver, for a representative schema --
+            so planning stays cheap as the root count grows. A dataset is the
+            atomic read unit and is never split across tasks, so this mode emits
+            at most one task per dataset and ``override_num_blocks`` may not
+            exceed the number of datasets. All roots must be homogeneous with
+            the first (same ``video_keys`` / ``image_keys`` / ``fps`` /
+            non-camera features); unlike the other granularities this is not
+            pre-checked on the driver.
         filesystem: Filesystem for reading metadata and parquet. A pyarrow
             ``FileSystem`` (wrapped internally with ``ArrowFSWrapper``) or an
             fsspec ``AbstractFileSystem``. By default it is selected from the URI
@@ -3603,23 +3618,65 @@ def read_lerobot(
         A :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
         camera, task, and metadata columns.
     """
-    datasource = LeRobotDatasource(
-        root=root,
-        episodes=episodes,
-        read_granularity=read_granularity,
-        filesystem=filesystem,
-        storage_options=storage_options,
-        frame_tolerance_s=frame_tolerance_s,
-        delta_timestamps=delta_timestamps,
-        delta_tolerance_s=delta_tolerance_s,
-    )
-    if override_num_blocks is None:
-        # Default to one read task per video-file group. Ray's generic
-        # block-count floor would over-split a video read, where each split
-        # re-opens a file and re-inits a torchcodec decoder -- a cost a small
-        # dataset can't amortize. An explicit override_num_blocks still
-        # splits/merges from this base (e.g. to parallelize a monolithic mp4).
-        override_num_blocks = datasource.default_num_blocks()
+    # Validated here rather than only in ``LeRobotDatasource`` so the message
+    # lists every granularity this API accepts -- the datasource proper never
+    # sees ``"dataset"``, and keeps its own (narrower) check for direct use.
+    valid_granularities = ("file", "episode", "dataset")
+    if read_granularity not in valid_granularities:
+        raise ValueError(
+            f"read_granularity must be one of {list(valid_granularities)}, got "
+            f"{read_granularity!r}."
+        )
+
+    if read_granularity == "dataset":
+        # A dataset is the atomic read unit here and is never split across
+        # tasks, so per-dataset metadata resolution is deferred to the read
+        # tasks and at most ``num_datasets`` tasks are produced.
+        datasource = LeRobotPerDatasetDatasource(
+            root,
+            episodes=episodes,
+            filesystem=filesystem,
+            storage_options=storage_options,
+            frame_tolerance_s=frame_tolerance_s,
+            delta_timestamps=delta_timestamps,
+            delta_tolerance_s=delta_tolerance_s,
+        )
+        if (
+            override_num_blocks is not None
+            and override_num_blocks > datasource.num_datasets
+        ):
+            # Fail loudly rather than silently delivering fewer blocks than
+            # requested.
+            raise ValueError(
+                f"override_num_blocks={override_num_blocks} is greater than the "
+                f"number of datasets ({datasource.num_datasets}). "
+                f"read_granularity='dataset' produces at most one read task per "
+                f"dataset, so it cannot deliver {override_num_blocks} blocks. Set "
+                f"override_num_blocks <= {datasource.num_datasets}, or use "
+                f"read_granularity='episode' or 'file' to split within a dataset."
+            )
+        # Do NOT default override_num_blocks to a per-dataset count here: with a
+        # very large number of datasets that would create as many blocks.
+        # Leaving it None lets Ray pick a bounded parallelism (the datasource
+        # reports a None size estimate; see estimate_inmemory_data_size).
+    else:
+        datasource = LeRobotDatasource(
+            root=root,
+            episodes=episodes,
+            read_granularity=read_granularity,
+            filesystem=filesystem,
+            storage_options=storage_options,
+            frame_tolerance_s=frame_tolerance_s,
+            delta_timestamps=delta_timestamps,
+            delta_tolerance_s=delta_tolerance_s,
+        )
+        if override_num_blocks is None:
+            # Default to one read task per video-file group. Ray's generic
+            # block-count floor would over-split a video read, where each split
+            # re-opens a file and re-inits a torchcodec decoder -- a cost a small
+            # dataset can't amortize. An explicit override_num_blocks still
+            # splits/merges from this base (e.g. to parallelize a monolithic mp4).
+            override_num_blocks = datasource.default_num_blocks()
     return read_datasource(
         datasource,
         num_cpus=num_cpus,
@@ -3950,7 +4007,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <reading_sql>`.
+        :ref:`Read SQL databases <reading_sql>`.
 
         .. testcode::
 
@@ -4217,7 +4274,7 @@ def read_databricks_tables(
     .. note::
 
         This function is built on the
-        `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
+        `Databricks statement execution API <https://docs.databricks.com/api/statement-execution/v1/execute-statement>`_.
 
     Examples:
 
@@ -5173,7 +5230,7 @@ def from_huggingface(
     It is recommended to use :func:`~ray.data.read_parquet` with the ``HfFileSystem``
     filesystem to read Hugging Face datasets rather than ``from_huggingface``.
 
-    See :ref:`Loading Hugging Face datasets <loading_huggingface_datasets>` for more details.
+    See :ref:`Load Hugging Face datasets <loading_huggingface_datasets>` for more details.
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.

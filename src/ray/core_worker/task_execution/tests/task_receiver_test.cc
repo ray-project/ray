@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
@@ -28,10 +27,6 @@
 
 namespace ray {
 namespace core {
-
-using ::testing::_;
-using ::testing::ElementsAre;
-using ::testing::Return;
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id,
                                         WorkerID caller_worker_id,
@@ -66,7 +61,7 @@ rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id,
   return request;
 }
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class FakeWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
@@ -93,7 +88,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   int64_t acked_seqno = 0;
 };
 
-class MockTaskEventBuffer : public worker::TaskEventBuffer {
+class FakeTaskEventBuffer : public worker::TaskEventBuffer {
  public:
   void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
 
@@ -132,7 +127,7 @@ class TaskReceiverTest : public ::testing::Test {
             [](const std::vector<rpc::ObjectReference> &args,
                const TaskID &task_id,
                int32_t attempt_number) {})) {
-    auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
+    auto execute_task = std::bind(&TaskReceiverTest::FakeExecuteTask,
                                   this,
                                   std::placeholders::_1,
                                   std::placeholders::_2,
@@ -151,7 +146,7 @@ class TaskReceiverTest : public ::testing::Test {
         /* initialize_thread_callback= */ []() { return []() { return; }; });
   }
 
-  Status MockExecuteTask(
+  Status FakeExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
@@ -174,7 +169,7 @@ class TaskReceiverTest : public ::testing::Test {
   std::unique_ptr<TaskReceiver> receiver_;
 
   instrumented_io_context task_execution_service_;
-  MockTaskEventBuffer task_event_buffer_;
+  FakeTaskEventBuffer task_event_buffer_;
   ray::observability::FakeRayEventRecorder ray_task_event_recorder_;
   std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 };

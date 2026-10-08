@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+from types import SimpleNamespace
 from typing import List, Literal, Union
 
 import numpy as np
@@ -47,6 +48,7 @@ from ray.data.checkpoint.interfaces import (
     CheckpointBackend,
     InvalidCheckpointingConfig,
 )
+from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.checkpoint.util import PrefixTrie
 from ray.data.context import DataContext
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
@@ -947,6 +949,75 @@ def test_commit_checkpoint_neither_exists(fs, base_path):
         writer.commit_checkpoint(pending)
 
 
+@pytest.mark.parametrize(
+    "fs,base_path",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+    ids=["local", "s3"],
+)
+def test_load_checkpoint_excludes_pending_files(
+    ray_start_10_cpus_shared, fs, base_path
+):
+    """Pending row checkpoints must not filter rows during restoration."""
+    ctx = ray.data.DataContext.get_current()
+    checkpoint_path = os.path.join(base_path, "checkpoint")
+    fs.create_dir(_unwrap_protocol(checkpoint_path))
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+        override_filesystem=fs,
+    )
+
+    writer = BatchBasedCheckpointWriter(ctx.checkpoint_config)
+    committed = writer.write_pending_checkpoint(
+        pa.array([1]), checkpoint_id="committed"
+    )
+    assert committed is not None
+    writer.commit_checkpoint(committed)
+    pending = writer.write_pending_checkpoint(pa.array([2]), checkpoint_id="pending")
+    assert pending is not None
+
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
+    checkpoint_ref, checkpoint_size = checkpoint_manager.load_checkpoint()
+
+    assert checkpoint_ref is not None
+    assert checkpoint_size > 0
+    assert ray.get(checkpoint_ref).tolist() == [1]
+    assert fs.get_file_info(pending.pending_path).type != FileType.NotFound
+
+
+def test_load_checkpoint_ignores_non_parquet_files(tmp_path):
+    (tmp_path / "metadata.json").write_text("{}")
+    config = CheckpointConfig(id_column=ID_COL, checkpoint_path=str(tmp_path))
+    manager = IdColumnCheckpointManager(
+        checkpoint_config=config,
+        data_context=ray.data.DataContext.get_current(),
+    )
+
+    assert manager.load_checkpoint() == (None, 0)
+
+
+@pytest.mark.parametrize("defer_cleanup", [True, False])
+def test_checkpoint_callback_can_defer_success_cleanup(tmp_path, defer_cleanup):
+    config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=str(tmp_path),
+        delete_checkpoint_on_success=True,
+    )
+    (tmp_path / "checkpoint.parquet").touch()
+    callback = LoadCheckpointCallback(
+        config, delete_on_execution_success=not defer_cleanup
+    )
+    executor = SimpleNamespace(_data_context=SimpleNamespace(checkpoint_config=config))
+
+    callback.after_execution_succeeds(executor)
+
+    assert tmp_path.exists() is defer_cleanup
+
+
 @pytest.mark.parametrize("data_file_exists", [True, False])
 @pytest.mark.parametrize(
     "fs,base_path",
@@ -1517,6 +1588,92 @@ def test_checkpoint_restore_after_full_execution(
     assert (
         num_rows_second == 0  # No rows should be written
     ), f"Expected 0 rows, got {num_rows_second}"
+
+
+def _count_rows(path: str) -> int:
+    if not os.path.exists(path):
+        return 0
+    return ray.data.read_parquet(path).count()
+
+
+def test_should_restore_false_skips_filtering(
+    ray_start_10_cpus_shared,
+    generate_sample_data_parquet,
+    tmp_path,
+):
+    """Test that `_should_restore=False` skips checkpoint filtering, even if
+    checkpoint data from a previous run exists, while still writing checkpoints.
+
+    Training ingest sets this flag when starting from scratch.
+    """
+    ctx = DataContext.get_current()
+    ckpt_path = str(tmp_path / "checkpoints")
+    parquet_dir = generate_sample_data_parquet()
+
+    # First run: write checkpoint data for all rows.
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+    ray.data.read_parquet(parquet_dir).write_parquet(str(tmp_path / "output_1"))
+    assert _count_rows(str(tmp_path / "output_1")) == SAMPLE_DATA_NUM_ROWS
+
+    # Second run with restoration disabled: all rows should be written,
+    # despite the checkpoint data on disk.
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+    ctx.checkpoint_config._should_restore = False
+    ray.data.read_parquet(parquet_dir).write_parquet(str(tmp_path / "output_2"))
+    assert _count_rows(str(tmp_path / "output_2")) == SAMPLE_DATA_NUM_ROWS
+
+    # The checkpoint writer should still be enabled.
+    checkpointed_ids = read_ids_from_checkpoint_files(ctx.checkpoint_config)
+    assert len(checkpointed_ids) == 2 * SAMPLE_DATA_NUM_ROWS
+
+
+def test_restore_only_first_execution(
+    ray_start_10_cpus_shared,
+    generate_sample_data_parquet,
+    tmp_path,
+):
+    """Test that restoration is disabled after the first successful execution
+    of a dataset.
+
+    For training ingest, only the first epoch after resuming should skip the
+    checkpointed rows, and subsequent epochs should read all rows.
+    """
+    ctx = DataContext.get_current()
+    ckpt_path = str(tmp_path / "checkpoints")
+    parquet_dir = generate_sample_data_parquet()
+
+    # First run: write checkpoint data for all rows.
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+    ray.data.read_parquet(parquet_dir).write_parquet(str(tmp_path / "output"))
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    # Each epoch re-executes the same dataset, like training ingest does.
+    ds = ray.data.read_parquet(parquet_dir)
+    [split_iter] = ds.streaming_split(1)
+
+    # First epoch: restore from the checkpoint, so all rows are filtered out.
+    assert sum(len(b[ID_COL]) for b in split_iter.iter_batches()) == 0
+    # Second epoch: restoration is disabled, so all rows are read.
+    assert (
+        sum(len(b[ID_COL]) for b in split_iter.iter_batches()) == SAMPLE_DATA_NUM_ROWS
+    )
 
 
 @pytest.mark.parametrize(

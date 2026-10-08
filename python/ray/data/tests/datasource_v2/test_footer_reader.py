@@ -12,6 +12,7 @@ import pytest
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data.expressions import col
 
 
@@ -96,32 +97,35 @@ class TestReadAndChunk:
     def test_yields_every_row_group_without_a_predicate(self, four_row_groups):
         path, size = four_row_groups
 
-        chunks = _reader()._read_and_chunk(path, size)
+        chunks = _reader()._read_and_chunk(FileInfo(path, size))
 
-        assert chunks.path == path
-        assert chunks.size == size
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
+        assert chunks.file == FileInfo(path, size)
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
         assert [rg.num_rows for rg in chunks.row_groups] == [25, 25, 25, 25]
         # No predicate means every group is an exact survivor, which is what
         # lets limit push-down count rows without re-filtering.
         assert all(rg.fully_matched for rg in chunks.row_groups)
-        assert all(rg.uncompressed_size > 0 for rg in chunks.row_groups)
+        assert all(rg.size_bytes > 0 for rg in chunks.row_groups)
 
     def test_predicate_prunes_row_groups_by_statistics(self, four_row_groups):
         path, size = four_row_groups
 
         # id >= 50 excludes the first two row groups (0-24, 25-49) outright.
-        chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [2, 3]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
 
     def test_fully_matched_marks_only_wholly_surviving_groups(self, four_row_groups):
         path, size = four_row_groups
 
         # id >= 30 splits row group 1 (25-49) and fully covers 2 and 3.
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
-        by_idx = {rg.rg_idx: rg.fully_matched for rg in chunks.row_groups}
+        by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
         assert by_idx[1] is False, "partially matching group must not count as exact"
         assert by_idx[2] is True
         assert by_idx[3] is True
@@ -129,18 +133,20 @@ class TestReadAndChunk:
     def test_predicate_matching_nothing_yields_no_row_groups(self, four_row_groups):
         path, size = four_row_groups
 
-        chunks = _reader(filter_expr=col("id") > 10_000)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") > 10_000)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         assert chunks.row_groups == ()
 
     def test_projection_accounts_only_the_projected_columns(self, four_row_groups):
         path, size = four_row_groups
-        full = _reader()._read_and_chunk(path, size)
-        ids = _reader(projected_cols=["id"])._read_and_chunk(path, size)
-        pads = _reader(projected_cols=["pad"])._read_and_chunk(path, size)
+        full = _reader()._read_and_chunk(FileInfo(path, size))
+        ids = _reader(projected_cols=["id"])._read_and_chunk(FileInfo(path, size))
+        pads = _reader(projected_cols=["pad"])._read_and_chunk(FileInfo(path, size))
 
         def total(c):
-            return sum(rg.uncompressed_size for rg in c.row_groups)
+            return sum(rg.size_bytes for rg in c.row_groups)
 
         assert total(ids) + total(pads) == total(full)
         assert 0 < total(ids) < total(full)
@@ -162,8 +168,8 @@ class TestReadAndChunk:
         def sizes(**kwargs):
             reader = _reader(**kwargs)
             return [
-                rg.uncompressed_size
-                for rg in reader._read_and_chunk(path, size).row_groups
+                rg.size_bytes
+                for rg in reader._read_and_chunk(FileInfo(path, size)).row_groups
             ]
 
         filtered = sizes(projected_cols=["id"], filter_expr=predicate)
@@ -176,9 +182,11 @@ class TestReadAndChunk:
     def test_coalescing_merges_contiguous_groups(self, four_row_groups):
         path, size = four_row_groups
 
-        uncoalesced = _reader()._read_and_chunk(path, size)
-        per_rg = uncoalesced.row_groups[0].uncompressed_size
-        coalesced = _reader(coalesce_bytes=per_rg * 2)._read_and_chunk(path, size)
+        uncoalesced = _reader()._read_and_chunk(FileInfo(path, size))
+        per_rg = uncoalesced.row_groups[0].size_bytes
+        coalesced = _reader(coalesce_bytes=per_rg * 2)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         assert len(coalesced.row_groups) < len(uncoalesced.row_groups)
         # Coalescing regroups descriptors; it must not lose rows.
@@ -218,7 +226,9 @@ class TestNullsAreNeverExactSurvivors:
             row_group_size=len(values),
         )
 
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         # Measured rather than restated: this guard exists because a null row
         # passes neither the filter nor its negation, so pin what the filter
@@ -263,7 +273,8 @@ class TestNullsAreNeverExactSurvivors:
 
         assert _has_filter_nulls(reader, pq.ParquetFile(path).metadata)
         assert not any(
-            rg.fully_matched for rg in reader._read_and_chunk(path, size).row_groups
+            rg.fully_matched
+            for rg in reader._read_and_chunk(FileInfo(path, size)).row_groups
         )
 
     @pytest.mark.parametrize(
@@ -357,7 +368,7 @@ class TestNullsAreNeverExactSurvivors:
                 )
 
         reader.file_format = _Format(reader.file_format, reader.filter)
-        chunks = reader._read_and_chunk(path, size)
+        chunks = reader._read_and_chunk(FileInfo(path, size))
 
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
@@ -389,7 +400,7 @@ class TestFloatsAreNeverExactSurvivors:
         assert statistics.null_count == 0 and statistics.has_null_count
         assert not _has_filter_nulls(reader, metadata)
 
-        chunks = reader._read_and_chunk(path, size)
+        chunks = reader._read_and_chunk(FileInfo(path, size))
 
         # Two of the three rows survive, so the group's num_rows would
         # over-count and limit push-down would stop a row early.
@@ -409,9 +420,11 @@ class TestFloatsAreNeverExactSurvivors:
             row_group_size=3,
         )
 
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
     def test_a_float_leaf_outside_the_predicate_stays_exact(self, tmp_path):
@@ -427,7 +440,9 @@ class TestFloatsAreNeverExactSurvivors:
             row_group_size=3,
         )
 
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(
+            FileInfo(path, size)
+        )
 
         assert all(rg.fully_matched for rg in chunks.row_groups)
 
@@ -508,9 +523,9 @@ class TestMissingFilterColumnsSkipPruning:
             row_group_size=2,
         )
 
-        chunks = _reader(filter_expr=col("b") > 0)._read_and_chunk(path, size)
+        chunks = _reader(filter_expr=col("b") > 0)._read_and_chunk(FileInfo(path, size))
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
     def test_does_not_abort_sibling_files_in_the_batch(self, tmp_path):
@@ -528,10 +543,10 @@ class TestMissingFilterColumnsSkipPruning:
         reader = _reader(filter_expr=col("b") > 0)
         batches = list(
             reader.read_footers(  # pyrefly: ignore[not-callable]
-                [with_b, without_b], result_batch_size=1
+                [FileInfo(*with_b), FileInfo(*without_b)], result_batch_size=1
             )
         )
-        by_path = {fc.path: fc for batch in batches for fc in batch}
+        by_path = {fc.file.path: fc for batch in batches for fc in batch}
 
         assert set(by_path) == {with_b[0], without_b[0]}
         assert all(rg.fully_matched for rg in by_path[with_b[0]].row_groups)
@@ -560,9 +575,9 @@ class TestMissingFilterColumnsSkipPruning:
                 return _Raises(self._real.make_fragment(*args, **kwargs))
 
         reader.file_format = _Format(reader.file_format)
-        chunks = reader._read_and_chunk(path, size)
+        chunks = reader._read_and_chunk(FileInfo(path, size))
 
-        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
+        assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
 
@@ -611,13 +626,15 @@ class TestReadLeafIndices:
     def test_projection_matching_no_leaf_sizes_all_columns(self, four_row_groups):
         path, size = four_row_groups
 
-        absent = _reader(projected_cols=["absent"])._read_and_chunk(path, size)
-        full = _reader()._read_and_chunk(path, size)
+        absent = _reader(projected_cols=["absent"])._read_and_chunk(
+            FileInfo(path, size)
+        )
+        full = _reader()._read_and_chunk(FileInfo(path, size))
 
-        assert [rg.uncompressed_size for rg in absent.row_groups] == [
-            rg.uncompressed_size for rg in full.row_groups
+        assert [rg.size_bytes for rg in absent.row_groups] == [
+            rg.size_bytes for rg in full.row_groups
         ]
-        assert all(rg.uncompressed_size > 0 for rg in absent.row_groups)
+        assert all(rg.size_bytes > 0 for rg in absent.row_groups)
 
     def test_nested_column_expands_to_all_its_leaves(self, tmp_path):
         table = pa.table(
@@ -642,7 +659,9 @@ class TestReadFootersBatching:
         files = []
         for i in range(3):
             table = pa.table({"id": list(range(10))})
-            files.append(_write(tmp_path / f"f{i}.parquet", table, row_group_size=5))
+            files.append(
+                FileInfo(*_write(tmp_path / f"f{i}.parquet", table, row_group_size=5))
+            )
         return files
 
     @pytest.mark.parametrize(
@@ -663,8 +682,8 @@ class TestReadFootersBatching:
 
         assert [len(b) for b in batches] == expected_batch_sizes
         # Every file appears exactly once regardless of batching.
-        paths = [fc.path for batch in batches for fc in batch]
-        assert sorted(paths) == sorted(p for p, _ in three_files)
+        paths = [fc.file.path for batch in batches for fc in batch]
+        assert sorted(paths) == sorted(f.path for f in three_files)
 
     def test_empty_input_yields_nothing(self):
         # pyrefly: ignore[not-callable]
@@ -679,13 +698,13 @@ class TestReadFootersBatching:
         )
         read_and_chunk = reader._read_and_chunk
         delay_by_path = {
-            path: 0.05 * (len(three_files) - i)
-            for i, (path, _) in enumerate(three_files)
+            file.path: 0.05 * (len(three_files) - i)
+            for i, file in enumerate(three_files)
         }
 
-        def delayed_read_and_chunk(path, size):
-            time.sleep(delay_by_path[path])
-            return read_and_chunk(path, size)
+        def delayed_read_and_chunk(file):
+            time.sleep(delay_by_path[file.path])
+            return read_and_chunk(file)
 
         monkeypatch.setattr(reader, "_read_and_chunk", delayed_read_and_chunk)
 
@@ -695,8 +714,8 @@ class TestReadFootersBatching:
             )
         )
 
-        paths = [fc.path for batch in batches for fc in batch]
-        assert paths == [path for path, _ in three_files]
+        paths = [fc.file.path for batch in batches for fc in batch]
+        assert paths == [f.path for f in three_files]
 
 
 if __name__ == "__main__":
