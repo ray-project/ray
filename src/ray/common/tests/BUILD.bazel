@@ -57,6 +57,10 @@ ray_cc_library(
     name = "testing",
     testonly = True,
     hdrs = ["testing.h"],
+    visibility = [
+        "//src/ray/util/internal/tests:__pkg__",
+        "//src/ray/util/tests:__pkg__",
+    ],
     deps = ["//src/ray/util:macros"],
 )
 

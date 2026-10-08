@@ -3,6 +3,7 @@ load("//bazel:ray.bzl", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 ray_cc_library(
     name = "store_client_test_lib",
     hdrs = ["store_client_test_base.h"],
+    visibility = ["//src/ray/gcs/tests:__pkg__"],
     deps = [
         "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client",

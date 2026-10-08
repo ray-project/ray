@@ -33,7 +33,13 @@ ray_cc_library(
     name = "grpc_client",
     srcs = ["grpc_client.cc"],
     hdrs = ["grpc_client.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/leader_election:__pkg__",
+        "//src/ray/object_manager:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
+        "//src/ray/rpc/authentication/tests:__pkg__",
+    ],
     deps = [
         ":client_call",
         ":common",
@@ -52,7 +58,11 @@ ray_cc_library(
     name = "retryable_grpc_client",
     srcs = ["retryable_grpc_client.cc"],
     hdrs = ["retryable_grpc_client.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/core_worker_rpc_client:__pkg__",
+        "//src/ray/gcs_rpc_client:__pkg__",
+        "//src/ray/raylet_rpc_client:__pkg__",
+    ],
     deps = [
         ":grpc_client",
         "//src/ray/util:exponential_backoff",
@@ -66,7 +76,13 @@ ray_cc_library(
     name = "metrics_agent_client",
     srcs = ["metrics_agent_client.cc"],
     hdrs = ["metrics_agent_client.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet:__pkg__",
+        "//src/ray/stats:__pkg__",
+    ],
     deps = [
         ":grpc_client",
         "//src/ray/protobuf:reporter_cc_grpc",
@@ -80,7 +96,10 @@ ray_cc_library(
 ray_cc_library(
     name = "event_aggregator_client",
     hdrs = ["event_aggregator_client.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/observability:__pkg__",
+    ],
     deps = [
         ":grpc_client",
         "//src/ray/protobuf:events_event_aggregator_service_cc_grpc",
@@ -93,7 +112,7 @@ ray_cc_library(
     name = "rpc_chaos",
     srcs = ["rpc_chaos.cc"],
     hdrs = ["rpc_chaos.h"],
-    visibility = ["//visibility:public"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:ray_config",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -150,7 +169,7 @@ ray_cc_library(
     hdrs = [
         "node_manager/node_manager_server.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/ray/raylet:__pkg__"],
     deps = [
         ":grpc_server",
         "//src/ray/protobuf:node_manager_cc_grpc",
@@ -164,7 +183,7 @@ ray_cc_library(
     hdrs = [
         "object_manager_server.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/ray/object_manager:__pkg__"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/object_manager:object_manager_grpc_client_manager",
@@ -179,7 +198,10 @@ ray_cc_library(
 ray_cc_library(
     name = "utils",
     hdrs = ["utils.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
+    ],
     deps = [
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_protobuf//:protobuf",

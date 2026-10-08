@@ -16,7 +16,7 @@ ray_cc_library(
     hdrs = [
         "cgroup_manager_factory.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/ray/raylet:__pkg__"],
     deps = [
         ":cgroup_manager_interface",
         ":noop_cgroup_manager",
@@ -40,7 +40,10 @@ ray_cc_library(
     hdrs = [
         "cgroup_manager_interface.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/common/monitors:__pkg__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         ":cgroup_driver_interface",
         "//src/ray/common:status",

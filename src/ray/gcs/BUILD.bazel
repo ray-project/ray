@@ -14,6 +14,7 @@ ray_cc_library(
     name = "gcs_table_storage",
     srcs = ["gcs_table_storage.cc"],
     hdrs = ["gcs_table_storage.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:status",
@@ -28,6 +29,7 @@ ray_cc_library(
     name = "gcs_init_data",
     srcs = ["gcs_init_data.cc"],
     hdrs = ["gcs_init_data.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_table_storage",
         "//src/ray/common:id",
@@ -41,6 +43,7 @@ ray_cc_library(
     name = "gcs_kv_manager",
     srcs = ["gcs_kv_manager.cc"],
     hdrs = ["gcs_kv_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:status",
@@ -53,6 +56,7 @@ ray_cc_library(
 ray_cc_library(
     name = "gcs_function_manager",
     hdrs = ["gcs_function_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_kv_manager",
         "//src/ray/asio:instrumented_io_context",
@@ -66,6 +70,10 @@ ray_cc_library(
     name = "gcs_node_manager",
     srcs = ["gcs_node_manager.cc"],
     hdrs = ["gcs_node_manager.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor:__pkg__",
+    ],
     deps = [
         ":gcs_init_data",
         ":gcs_table_storage",
@@ -95,6 +103,7 @@ ray_cc_library(
     name = "fake_gcs_node_manager",
     testonly = True,
     hdrs = ["fake_gcs_node_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_node_manager",
         "//src/ray/asio:instrumented_io_context",
@@ -109,6 +118,7 @@ ray_cc_library(
     name = "gcs_resource_load_puller",
     srcs = ["gcs_resource_load_puller.cc"],
     hdrs = ["gcs_resource_load_puller.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
@@ -123,6 +133,10 @@ ray_cc_library(
     name = "gcs_resource_manager",
     srcs = ["gcs_resource_manager.cc"],
     hdrs = ["gcs_resource_manager.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor/tests:__pkg__",
+    ],
     deps = [
         ":gcs_init_data",
         ":gcs_node_manager",
@@ -144,6 +158,7 @@ ray_cc_library(
     name = "fake_gcs_resource_manager",
     testonly = True,
     hdrs = ["fake_gcs_resource_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":fake_gcs_node_manager",
         ":gcs_node_manager",
@@ -159,6 +174,7 @@ ray_cc_library(
     name = "gcs_usage_stats_client",
     srcs = ["usage_stats_client.cc"],
     hdrs = ["usage_stats_client.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_kv_manager",
         "//src/ray/protobuf:usage_cc_proto",
@@ -169,6 +185,7 @@ ray_cc_library(
     name = "gcs_store_client_kv",
     srcs = ["store_client_kv.cc"],
     hdrs = ["store_client_kv.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_kv_manager",
         "//src/ray/gcs/postable",
@@ -180,6 +197,7 @@ ray_cc_library(
     name = "gcs_pubsub_handler",
     srcs = ["pubsub_handler.cc"],
     hdrs = ["pubsub_handler.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/gcs:grpc_service_interfaces",
@@ -210,6 +228,7 @@ ray_cc_library(
     name = "gcs_worker_manager",
     srcs = ["gcs_worker_manager.cc"],
     hdrs = ["gcs_worker_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_init_data",
         ":gcs_kv_manager",
@@ -229,6 +248,7 @@ ray_cc_library(
     name = "gcs_health_check_manager",
     srcs = ["gcs_health_check_manager.cc"],
     hdrs = ["gcs_health_check_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
@@ -246,6 +266,7 @@ ray_cc_library(
     name = "gcs_ray_event_converter",
     srcs = ["gcs_ray_event_converter.cc"],
     hdrs = ["gcs_ray_event_converter.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:function_descriptor",
         "//src/ray/common:grpc_util",
@@ -260,6 +281,7 @@ ray_cc_library(
     name = "gcs_task_manager",
     srcs = ["gcs_task_manager.cc"],
     hdrs = ["gcs_task_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_ray_event_converter",
         ":gcs_usage_stats_client",
@@ -298,6 +320,7 @@ ray_cc_library(
     name = "gcs_job_manager",
     srcs = ["gcs_job_manager.cc"],
     hdrs = ["gcs_job_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_function_manager",
         ":gcs_init_data",
@@ -323,6 +346,7 @@ ray_cc_library(
     name = "gcs_placement_group",
     srcs = ["gcs_placement_group.cc"],
     hdrs = ["gcs_placement_group.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:bundle_spec",
         "//src/ray/common:id",
@@ -339,6 +363,7 @@ ray_cc_library(
     name = "gcs_placement_group_scheduler",
     srcs = ["gcs_placement_group_scheduler.cc"],
     hdrs = ["gcs_placement_group_scheduler.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_node_manager",
         ":gcs_placement_group",
@@ -357,6 +382,7 @@ ray_cc_library(
     name = "fake_gcs_placement_group_scheduler",
     testonly = True,
     hdrs = ["fake_gcs_placement_group_scheduler.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_placement_group_scheduler",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -367,6 +393,7 @@ ray_cc_library(
     name = "fake_gcs_placement_group_manager",
     testonly = True,
     hdrs = ["fake_gcs_placement_group_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_placement_group_manager",
         "//src/ray/asio:instrumented_io_context",
@@ -380,6 +407,7 @@ ray_cc_library(
     name = "fake_gcs_kv_manager",
     testonly = True,
     hdrs = ["fake_gcs_kv_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_kv_manager",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -390,6 +418,7 @@ ray_cc_library(
     name = "gcs_placement_group_manager",
     srcs = ["gcs_placement_group_manager.cc"],
     hdrs = ["gcs_placement_group_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_init_data",
         ":gcs_placement_group",
@@ -457,6 +486,7 @@ ray_cc_library(
     hdrs = [
         "gcs_autoscaler_state_manager.h",
     ],
+    visibility = [":__subpackages__"],
     deps = [
         ":gcs_init_data",
         ":gcs_kv_manager",
@@ -494,6 +524,11 @@ ray_cc_library(
         "@platforms//os:windows": ["compiler_param_file"],
         "//conditions:default": [],
     }),
+    visibility = [
+        ":__subpackages__",
+        "//:__pkg__",
+        "//src/ray/gcs_rpc_client/tests:__pkg__",
+    ],
     deps = [
         "//src/ray/gcs/actor:gcs_actor",
         "//src/ray/gcs/actor:gcs_actor_manager",

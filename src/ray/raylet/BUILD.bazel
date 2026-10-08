@@ -434,6 +434,10 @@ ray_cc_binary(
 ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
+    visibility = [
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
     deps = [
         "//src/ray/observability:metrics",
         "//src/ray/stats:stats_lib",
@@ -444,6 +448,7 @@ ray_cc_library(
     name = "fake_local_lease_manager",
     testonly = True,
     hdrs = ["fake_local_lease_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":metrics",
         "//src/ray/observability:fake_metric",

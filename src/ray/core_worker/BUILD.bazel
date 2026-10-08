@@ -13,6 +13,11 @@ ray_cc_library(
         "core_worker_rpc_proxy.h",
         "core_worker_shutdown_executor.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//:__pkg__",
+        "//cpp:__pkg__",
+    ],
     deps = [
         ":common",
         ":core_worker_context",
@@ -137,6 +142,10 @@ ray_cc_library(
     name = "core_worker_context",
     srcs = ["context.cc"],
     hdrs = ["context.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/actor_management:__pkg__",
+    ],
     deps = [
         ":common",
         "//src/ray/common:runtime_env",
@@ -151,6 +160,10 @@ ray_cc_library(
 ray_cc_library(
     name = "reference_counter_interface",
     hdrs = ["reference_counter_interface.h"],
+    visibility = [
+        "//src/ray/core_worker/actor_management:__pkg__",
+        "//src/ray/core_worker/task_submission:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/core_worker:lease_policy",
@@ -166,6 +179,7 @@ ray_cc_library(
     name = "reference_counter",
     srcs = ["reference_counter.cc"],
     hdrs = ["reference_counter.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":metrics",
         ":reference_counter_interface",
@@ -235,6 +249,7 @@ ray_cc_library(
     name = "memory_store",
     srcs = ["store_provider/memory_store/memory_store.cc"],
     hdrs = ["store_provider/memory_store/memory_store.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":core_worker_context",
         "//src/ray/asio:instrumented_io_context",
@@ -255,6 +270,7 @@ ray_cc_library(
 ray_cc_library(
     name = "task_manager_interface",
     hdrs = ["task_manager_interface.h"],
+    visibility = ["//src/ray/core_worker/task_submission:__pkg__"],
     deps = [
         ":reference_counter_interface",
         "//src/ray/common:id",
@@ -269,6 +285,10 @@ ray_cc_library(
     name = "fake_task_manager_interface",
     testonly = True,
     hdrs = ["fake_task_manager_interface.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/task_submission/tests:__pkg__",
+    ],
     deps = [
         ":task_manager_interface",
         "//src/ray/common:id",
@@ -283,6 +303,10 @@ ray_cc_library(
     name = "task_manager",
     srcs = ["task_manager.cc"],
     hdrs = ["task_manager.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/task_submission/tests:__pkg__",
+    ],
     deps = [
         ":core_worker_options",
         ":memory_store",
@@ -327,6 +351,7 @@ ray_cc_library(
     name = "future_resolver",
     srcs = ["future_resolver.cc"],
     hdrs = ["future_resolver.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":memory_store",
         ":reference_counter_interface",
@@ -351,6 +376,7 @@ ray_cc_library(
     name = "fake_mutable_object_provider",
     testonly = True,
     hdrs = ["fake_mutable_object_provider.h"],
+    visibility = ["//src/ray/raylet/tests:__pkg__"],
     deps = [
         ":experimental_mutable_object_provider_interface",
     ],
@@ -360,6 +386,10 @@ ray_cc_library(
     name = "experimental_mutable_object_provider",
     srcs = ["experimental_mutable_object_provider.cc"],
     hdrs = ["experimental_mutable_object_provider.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         ":experimental_mutable_object_manager",
         ":experimental_mutable_object_provider_interface",
@@ -373,6 +403,7 @@ ray_cc_library(
     name = "generator_waiter",
     srcs = ["generator_waiter.cc"],
     hdrs = ["generator_waiter.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":common",
         "@com_google_absl//absl/synchronization",
@@ -383,6 +414,7 @@ ray_cc_library(
     name = "object_recovery_manager",
     srcs = ["object_recovery_manager.cc"],
     hdrs = ["object_recovery_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":memory_store",
         ":reference_counter_interface",
@@ -429,6 +461,7 @@ ray_cc_library(
 ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
+    visibility = ["//src/ray/raylet:__pkg__"],
     deps = [
         "//src/ray/stats:stats_metric",
     ],
