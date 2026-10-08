@@ -536,11 +536,12 @@ class DiagnosticResult:
 
     Attributes:
         value: What the diagnostic function returned, or ``None`` if it didn't.
-        error: Why this diagnostic has no value, or ``None`` when it does.
+        error: The exception explaining why this diagnostic has no value, or
+            ``None`` when it does.
     """
 
     value: Optional[Any] = None
-    error: Optional[str] = None
+    error: Optional[Exception] = None
 
 
 def fan_out_to_workers(
@@ -550,7 +551,8 @@ def fan_out_to_workers(
 
     Args:
         workers: The train workers to run ``fn`` on.
-        fn: The worker-side function, called with ``fn_args``.
+        fn: The worker-side function, called with ``fn_args``. It may return a
+            ``DiagnosticResult`` to report its own failure, which is kept as is.
         *fn_args: Positional arguments forwarded to ``fn`` on every worker.
         timeout_s: Budget for the whole fan-out, shared by every worker.
 
@@ -566,7 +568,7 @@ def fan_out_to_workers(
             refs[worker.execute_async(fn, *fn_args)] = rank
         except Exception as e:  # noqa: BLE001
             logger.info("Failed to launch %s on rank %d: %s", fn.__name__, rank, e)
-            dumps[rank] = DiagnosticResult(error=f"failed to launch: {e}")
+            dumps[rank] = DiagnosticResult(error=e)
 
     if refs:
         _, not_ready = ray.wait(list(refs), num_returns=len(refs), timeout=timeout_s)
@@ -580,15 +582,20 @@ def fan_out_to_workers(
                     timeout_s,
                 )
                 dumps[rank] = DiagnosticResult(
-                    error=f"timed out after {timeout_s:.0f}s"
+                    error=TimeoutError(f"timed out after {timeout_s:.0f}s")
                 )
                 continue
 
             try:
-                dumps[rank] = DiagnosticResult(value=ray.get(ref))
+                value = ray.get(ref)
+                dumps[rank] = (
+                    value
+                    if isinstance(value, DiagnosticResult)
+                    else DiagnosticResult(value=value)
+                )
             except Exception as e:  # noqa: BLE001
                 logger.info("Failed to collect %s on rank %d: %s", fn.__name__, rank, e)
-                dumps[rank] = DiagnosticResult(error=f"failed to collect: {e}")
+                dumps[rank] = DiagnosticResult(error=e)
 
     return dumps
 
@@ -632,41 +639,39 @@ def dump_stack_trace(pyspy_timeout_s: float) -> str:
     return "\n".join(lines)
 
 
-def run_nvidia_smi(timeout_s: float) -> Dict[str, Any]:
+def run_nvidia_smi(timeout_s: float) -> DiagnosticResult:
     """Snapshot `nvidia-smi -q` on the current (worker) node.
 
     Args:
         timeout_s: Timeout for the ``nvidia-smi`` subprocess.
 
     Returns:
-        A dict ``{"ok": bool, ...}``. On success ``stdout`` holds the report.
-        On failure ``reason`` says why there is none.
+        The report as ``value`` on success, otherwise ``error`` says why there
+        is none.
     """
     try:
         proc = subprocess.run(
             ["nvidia-smi", "-q"], capture_output=True, text=True, timeout=timeout_s
         )
-    except FileNotFoundError:
-        return {"ok": False, "reason": "`nvidia-smi` is missing on this node"}
     except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "reason": (
+        return DiagnosticResult(
+            error=TimeoutError(
                 f"`nvidia-smi -q` timed out after {timeout_s:.0f}s, which usually "
                 "means the driver is itself stuck"
-            ),
-        }
+            )
+        )
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "reason": f"error: {e}"}
+        return DiagnosticResult(error=e)
 
     if proc.returncode != 0:
         stderr = (proc.stderr or "").strip()
-        return {
-            "ok": False,
-            "reason": f"`nvidia-smi -q` exited {proc.returncode} (stderr: {stderr[:500]})",
-        }
+        return DiagnosticResult(
+            error=RuntimeError(
+                f"`nvidia-smi -q` exited {proc.returncode} (stderr: {stderr[:500]})"
+            )
+        )
 
-    return {"ok": True, "stdout": proc.stdout}
+    return DiagnosticResult(value=proc.stdout)
 
 
 def dump_flight_recorder() -> Dict[str, Any]:
@@ -1196,6 +1201,39 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             files[f"rank_{rank}.json"] = diagnostic_result.value["trace_json"]
 
         return self.upload_diagnostics(_FLIGHT_RECORDER_TOOL, files)
+
+    def dump_nodes_nvidia_smi(self) -> Optional[str]:
+        """Snapshot every node's GPUs and write the reports to the log dir.
+
+        GPUs belong to the node rather than the rank, so exactly one worker
+        per node is queried and each node gets a ``node_<node ip>.log``.
+
+        Returns:
+            The path to the folder with the snapshots.
+        """
+        node_workers: Dict[str, Worker] = {}
+        node_ips: Dict[int, str] = {}
+        for worker in self._worker_group.get_workers():
+            node_workers.setdefault(worker.metadata.node_ip, worker)
+            node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
+
+        dumps = fan_out_to_workers(
+            list(node_workers.values()),
+            run_nvidia_smi,
+            _NVIDIA_SMI_TIMEOUT_S - 1,
+            timeout_s=_NVIDIA_SMI_TIMEOUT_S,
+        )
+
+        files: Dict[str, str] = {}
+        for rank, dump in dumps.items():
+            node_ip = node_ips[rank]
+            files[f"node_{node_ip}.log"] = (
+                str(dump.value)
+                if dump.error is None
+                else f"no `nvidia-smi` snapshot: {dump.error}"
+            )
+
+        return self.upload_diagnostics(_NVIDIA_SMI_TOOL, files)
 
     def upload_diagnostics(self, tool: str, files: Dict[str, str]) -> str:
         """Upload one tool's files to the run's storage filesystem.

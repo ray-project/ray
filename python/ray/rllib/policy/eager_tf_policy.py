@@ -756,7 +756,7 @@ def _build_eager_tf_policy(
             super().set_state(state)
 
         @override(Policy)
-        def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+        def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
             """Exports the Policy's Model to local directory for serving.
 
             Note: Since the TfModelV2 class that EagerTfPolicy uses is-NOT-a

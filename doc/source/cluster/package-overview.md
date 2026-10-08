@@ -15,7 +15,7 @@ This section contains a reference for the cluster management API. If there is an
 :maxdepth: 2
 
 cli
-running-applications/job-submission/jobs-package-ref
+../core/api/job-submission
 running-applications/job-submission/cli
-running-applications/autoscaling/reference
+../core/api/autoscaler
 ```

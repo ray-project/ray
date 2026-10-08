@@ -203,6 +203,8 @@ class DatasetReader(InputReader):
 
         Args:
             ds: Ray dataset to sample from.
+            ioctx: The IOContext to use. If None, a default IOContext is
+                created.
         """
         self._ioctx = ioctx or IOContext()
         self._default_policy = self.policy_map = None

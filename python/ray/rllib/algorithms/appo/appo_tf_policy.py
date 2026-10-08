@@ -53,6 +53,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
     """Construct an APPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
+        name: Name of the policy class to create.
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:

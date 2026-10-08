@@ -37,6 +37,8 @@ class LambdaDefaultDict(defaultdict):
         Args:
             default_factory: The default factory callable, taking a string (key)
                 and returning the default value to use for that key.
+            *args: Additional positional args passed on to `defaultdict.__init__`.
+            **kwargs: Additional keyword args passed on to `defaultdict.__init__`.
         """
         if not callable(default_factory):
             raise TypeError("First argument must be a Callable!")

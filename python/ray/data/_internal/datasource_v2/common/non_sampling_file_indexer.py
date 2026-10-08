@@ -159,8 +159,19 @@ class NonSamplingFileIndexer(FileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        # This per-file listing path ignores predicate/limit/projected_columns;
-        # they're consumed by metadata-aware indexers (e.g. the footer indexer).
+        """Emit one manifest row per file, with ``__file_chunk_metadata`` unset.
+
+        Override this when the file format has some form of horizontal
+        partitioning, like row groups or stripes. Your implementation should:
+
+            1. Take the file paths from :meth:`list_file_infos`.
+            2. Read each file's metadata and drop the pieces that
+               ``predicate`` rules out or ``excluded_read_unit_ids`` names.
+            3. Emit one ``FileChunk`` row per run of remaining pieces.
+
+        ``FooterFileIndexer`` is the Parquet example. This default ignores
+        ``predicate``, ``limit`` and ``projected_columns``.
+        """
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so this method only batches them into manifests, one row per file.
         # Shuffle, when requested, happens after path discovery and before the

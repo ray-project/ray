@@ -68,7 +68,7 @@ class RepresentationLayer(nn.Module):
         # Use same initializers as the Author in their JAX repo.
         dreamerv3_normal_initializer(self.z_generating_layer.weight)
 
-    def forward(self, inputs, return_z_probs=False):
+    def forward(self, inputs: "torch.Tensor", return_z_probs: bool = False):
         """Produces a discrete, differentiable z-sample from some 1D input tensor.
 
         Pushes the input_ tensor through our dense layer, which outputs
@@ -90,6 +90,11 @@ class RepresentationLayer(nn.Module):
             return_z_probs: Whether to return the probabilities for the categorical
                 distribution (in the shape of [B, num_categoricals, num_classes])
                 as a second return value.
+
+        Returns:
+            The drawn one-hot z-states of shape [B, num_categoricals, num_classes],
+            made differentiable via straight-through gradients. If `return_z_probs`
+            is True, a tuple of these z-states and the (unimix'd) class probabilities.
         """
         # Compute the logits (no activation) for our `num_categoricals` Categorical
         # distributions (with `num_classes_per_categorical` classes each).
