@@ -1,5 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier, get_ident
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from threading import Barrier, Event, get_ident
 from types import GeneratorType
 
 import pytest
@@ -25,24 +25,19 @@ def wrap_udf():
 def test_generator_steps_run_on_single_thread(wrap_udf):
     class UDF:
         def __call__(self, value):
+            self.buffer = value
             for step in range(3):
-                yield value, step, get_ident()
+                yield self.buffer, step, get_ident()
 
     udf = wrap_udf(UDF)
     executor_thread = udf.thread_pool_executor.submit(get_ident).result()
     barrier = Barrier(2, timeout=10)
 
     def consume(value):
+        barrier.wait()
         generator = udf(value)
-        outputs = []
         try:
-            for _ in range(3):
-                # Synchronize callers, not UDF bodies, which must run serially.
-                barrier.wait()
-                outputs.append(next(generator))
-            with pytest.raises(StopIteration):
-                next(generator)
-            return get_ident(), outputs
+            return get_ident(), list(generator)
         finally:
             generator.close()
 
@@ -54,6 +49,79 @@ def test_generator_steps_run_on_single_thread(wrap_udf):
     for value, (caller_thread, outputs) in enumerate(results):
         assert caller_thread != executor_thread
         assert outputs == [(value, step, executor_thread) for step in range(3)]
+
+
+@pytest.mark.parametrize("finish", ["exhaust", "close", "raise", "close_raises"])
+def test_generator_serializes_calls_until_finished(wrap_udf, finish):
+    error = ValueError("UDF failed")
+    cleanup_threads = []
+
+    class UDF:
+        def __call__(self, value):
+            self.buffer = value
+            try:
+                yield self.buffer
+                if value == 0 and finish == "raise":
+                    raise error
+                yield self.buffer
+            finally:
+                cleanup_threads.append(get_ident())
+                if value == 0 and finish == "close_raises":
+                    raise error
+
+    udf = wrap_udf(UDF)
+    executor_thread = udf.thread_pool_executor.submit(get_ident).result()
+    first = udf(0)
+    second_generator = udf(1)
+    contender_started = Event()
+
+    def consume_second():
+        contender_started.set()
+        return list(second_generator)
+
+    with ThreadPoolExecutor(max_workers=1) as callers:
+        try:
+            assert next(first) == 0
+            second = callers.submit(consume_second)
+            assert contender_started.wait(timeout=10)
+            with pytest.raises(TimeoutError):
+                second.result(timeout=0.1)
+
+            # A waiting caller must not block the worker needed to resume the UDF.
+            assert (
+                udf.thread_pool_executor.submit(get_ident).result(timeout=10)
+                == executor_thread
+            )
+            if finish == "exhaust":
+                assert list(first) == [0]
+            elif finish == "close":
+                first.close()
+            else:
+                with pytest.raises(ValueError) as exc_info:
+                    if finish == "raise":
+                        next(first)
+                    else:
+                        first.close()
+                assert exc_info.value is error
+
+            assert second.result(timeout=10) == [1, 1]
+            assert cleanup_threads == [executor_thread] * 2
+        finally:
+            first.close()
+
+
+def test_unstarted_generator_does_not_block_other_calls(wrap_udf):
+    class UDF:
+        def __call__(self, value):
+            yield value
+
+    udf = wrap_udf(UDF)
+    first = udf(0)
+    try:
+        assert list(udf(1)) == [1]
+    finally:
+        first.close()
+    assert list(udf(2)) == [2]
 
 
 @pytest.mark.parametrize("num_outputs", [0, 3])

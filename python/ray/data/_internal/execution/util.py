@@ -1,5 +1,6 @@
 import pickle
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from types import GeneratorType
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Union
 
@@ -113,6 +114,7 @@ def make_callable_class_single_threaded(callable_cls: CallableClass) -> Callable
     class _SingleThreadedWrapper(callable_cls):
         def __init__(self, *args, **kwargs):
             self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
+            self._udf_lock = Lock()
             super().__init__(*args, **kwargs)
 
         def __repr__(self):
@@ -126,18 +128,20 @@ def make_callable_class_single_threaded(callable_cls: CallableClass) -> Callable
                 return result
 
             def iterate():
-                try:
-                    while True:
-                        try:
-                            item = self.thread_pool_executor.submit(
-                                next, result
-                            ).result()
-                        except StopIteration:
-                            return
-                        yield item
-                        del item
-                finally:
-                    self.thread_pool_executor.submit(result.close).result()
+                # Keep the lock across yields, but wait for it outside the executor.
+                with self._udf_lock:
+                    try:
+                        while True:
+                            try:
+                                item = self.thread_pool_executor.submit(
+                                    next, result
+                                ).result()
+                            except StopIteration:
+                                return
+                            yield item
+                            del item
+                    finally:
+                        self.thread_pool_executor.submit(result.close).result()
 
             return iterate()
 
