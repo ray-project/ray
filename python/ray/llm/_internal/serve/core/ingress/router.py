@@ -16,6 +16,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.http_util import _matches_session_id_header
@@ -88,6 +89,7 @@ class LLMRouter:
     Request:
         POST /internal/route
         Content-Type: application/json
+        x-serve-router-request-path: the original client API path.
         Body: the target ChatCompletions, Completions, or Anthropic Messages
             request payload.
             Wrapped in a namespace by ``_parse_routing_payload`` and passed to
@@ -116,7 +118,7 @@ class LLMRouter:
             router-derived multiplexed model ID for the direct replica. Its
             ``"x-serve-router-kv-token-key"`` entry is present only when prompt
             token IDs were enqueued to the selected replica's best-effort ZMQ
-            side channel (never for Anthropic Messages bodies); the engine
+            side channel (text-only requests with a known API path); the engine
             falls back to tokenization when it is absent or missing at consume
             time.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
@@ -200,19 +202,23 @@ class LLMRouter:
         request_token_ids = None
         stage_token_ids = False
         if self._tokenizer is not None and routing_payload is not None:
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (  # noqa: E501
+                is_text_only_chat,
+            )
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
                 TokenizeError,
-                is_anthropic_messages_payload,
             )
 
             payload = vars(routing_payload)
+            request_path = request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
             try:
-                request_token_ids = await self._tokenizer.tokenize(payload)
+                request_token_ids = await self._tokenizer.tokenize(
+                    payload, request_path=request_path
+                )
             except TokenizeError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.message)
-            # vLLM's /v1/messages handler renders its own prompt and never reads
-            # staged ids, so stage them only for OpenAI-compatible bodies.
-            stage_token_ids = not is_anthropic_messages_payload(payload)
+            # Media needs engine preprocessing, not just prompt token IDs.
+            stage_token_ids = is_text_only_chat(payload.get("messages", []))
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
         # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path

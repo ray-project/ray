@@ -1,3 +1,4 @@
+import copy
 import json
 import sys
 from typing import Any, Dict
@@ -6,12 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 from starlette.datastructures import Headers
+from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
+from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.core.configs.openai_api_models import (
-    ChatCompletionRequest,
-    TokenizeCompletionRequest,
-)
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs,
     build_openai_app,
@@ -23,10 +22,10 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
     TokenizeError,
     build_tokenize_request,
-    is_anthropic_messages_payload,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
 )
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm.request_router import KVAwareRouter
@@ -88,135 +87,13 @@ CLAUDE_CODE_BODY = {
     "metadata": {"user_id": "u"},
 }
 
-# OpenAI chat bodies with part types vLLM's chat parser accepts that share a
-# name with Anthropic content blocks.
-OPENAI_THINKING_BODY = {
-    "model": "m",
-    "messages": [
-        {"role": "user", "content": "hi"},
-        {
-            "role": "assistant",
-            "content": [
-                {"type": "thinking", "thinking": "Greet back."},
-                {"type": "text", "text": "Hello."},
-            ],
-        },
-        {"role": "user", "content": "Again."},
-    ],
-}
-OPENAI_TOOL_REFERENCE_BODY = {
-    "model": "m",
-    "messages": [
-        {"role": "user", "content": "Find a tool."},
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "c",
-                    "type": "function",
-                    "function": {"name": "search", "arguments": "{}"},
-                }
-            ],
-        },
-        {
-            "role": "tool",
-            "tool_call_id": "c",
-            "content": [{"type": "tool_reference", "name": "f"}],
-        },
-    ],
-}
-
-
-class TestIsAnthropicMessagesPayload:
-    @pytest.mark.parametrize(
-        "payload",
-        [
-            CLAUDE_CODE_BODY,
-            {"model": "m", "system": "Be terse.", "messages": []},
-            {
-                "model": "m",
-                "messages": [{"role": "user", "content": "hi"}],
-                "tools": [{"name": "f", "input_schema": {}}],
-            },
-            {
-                "model": "m",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "tool_result", "tool_use_id": "t", "content": "x"}
-                        ],
-                    }
-                ],
-            },
-            {
-                "model": "m",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {"type": "url", "url": "https://x/y.png"},
-                            }
-                        ],
-                    }
-                ],
-            },
-        ],
-    )
-    def test_anthropic_bodies(self, payload):
-        assert is_anthropic_messages_payload(payload)
-
-    @pytest.mark.parametrize(
-        "payload",
-        [
-            {"model": "m", "prompt": "hello"},
-            {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
-            {
-                "model": "m",
-                "messages": [
-                    {"role": "system", "content": "Be terse."},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "hi"},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": "https://x/y.png"},
-                            },
-                        ],
-                    },
-                    {
-                        "role": "assistant",
-                        "tool_calls": [
-                            {
-                                "id": "c",
-                                "type": "function",
-                                "function": {"name": "f", "arguments": "{}"},
-                            }
-                        ],
-                    },
-                    {"role": "tool", "tool_call_id": "c", "content": "x"},
-                ],
-                "tools": [
-                    {"type": "function", "function": {"name": "f", "parameters": {}}}
-                ],
-            },
-            OPENAI_THINKING_BODY,
-            OPENAI_TOOL_REFERENCE_BODY,
-        ],
-    )
-    def test_openai_bodies(self, payload):
-        assert not is_anthropic_messages_payload(payload)
-
 
 class TestBuildTokenizeRequest:
     def test_converts_anthropic_messages_body(self):
         """A Claude Code body converts the way vLLM's /v1/messages handler
         converts it before rendering, instead of failing OpenAI validation on
         its Anthropic tool definitions and falling back to token-less routing."""
-        request = build_tokenize_request(CLAUDE_CODE_BODY)
+        request = build_tokenize_request(CLAUDE_CODE_BODY, request_path="/v1/messages")
         assert request is not None
         # The billing header changes on every request, so it is dropped from
         # the system prompt to keep the session's prefix stable. By default
@@ -248,7 +125,9 @@ class TestBuildTokenizeRequest:
     def test_keeps_inline_system_messages_without_merge(self):
         """A chat template that accepts system messages anywhere keeps the
         inline system reminder in place, as the engine's handler does."""
-        request = build_tokenize_request(CLAUDE_CODE_BODY, merge_inline_system=False)
+        request = build_tokenize_request(
+            CLAUDE_CODE_BODY, request_path="/v1/messages", merge_inline_system=False
+        )
         assert [m["role"] for m in request.messages] == [
             "system",
             "user",
@@ -260,18 +139,13 @@ class TestBuildTokenizeRequest:
         assert request.messages[2]["content"] == "Plan mode is off."
 
     @pytest.mark.parametrize(
-        "payload", [OPENAI_THINKING_BODY, OPENAI_TOOL_REFERENCE_BODY]
+        "request_path", [None, "/app/v1/messages/count_tokens", "/tokenize", "/unknown"]
     )
-    def test_openai_body_with_shared_part_types_builds_chat_request(self, payload):
-        """thinking and tool_reference parts are valid OpenAI chat parts in
-        vLLM, so these bodies still route on tokens through the chat path."""
-        assert isinstance(build_tokenize_request(payload), ChatCompletionRequest)
-
-    def test_anthropic_count_tokens_body_returns_none(self):
-        """A /v1/messages/count_tokens body (no max_tokens) runs no prefill,
-        so it is not routed on tokens."""
-        payload = {k: v for k, v in CLAUDE_CODE_BODY.items() if k != "max_tokens"}
-        assert build_tokenize_request(payload) is None
+    def test_missing_or_non_generation_path_returns_none(self, request_path):
+        # A generation-shaped body must not override the actual endpoint.
+        assert (
+            build_tokenize_request(CLAUDE_CODE_BODY, request_path=request_path) is None
+        )
 
     @pytest.mark.parametrize("stream", [True, False])
     @pytest.mark.parametrize(
@@ -292,7 +166,8 @@ class TestBuildTokenizeRequest:
                     "messages": [{"role": "user", "content": "hi"}],
                     "stream": stream,
                     **params,
-                }
+                },
+                request_path="/v1/chat/completions",
             )
             is None
         )
@@ -308,26 +183,33 @@ class TestBuildTokenizeRequest:
     def test_untokenizable_payload_returns_none(self, payload):
         """A parsed payload with no single-string prompt yields None, so the
         caller falls back to token-less routing."""
-        assert build_tokenize_request(payload) is None
+        assert build_tokenize_request(payload, request_path="/v1/completions") is None
 
     @pytest.mark.parametrize(
-        "payload, expected_request_type",
+        "request_path, payload, expected_request_type",
         [
             (
+                "/v1/chat/completions",
                 {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
                 ChatCompletionRequest,
             ),
-            ({"model": "m", "prompt": "hello"}, TokenizeCompletionRequest),
+            ("/v1/completions", {"model": "m", "prompt": "hello"}, CompletionRequest),
         ],
     )
-    def test_builds_chat_and_completion_requests(self, payload, expected_request_type):
-        """A chat or completion payload builds the right Tokenize* request."""
-        assert isinstance(build_tokenize_request(payload), expected_request_type)
+    def test_builds_chat_and_completion_requests(
+        self, request_path, payload, expected_request_type
+    ):
+        """Use the generation endpoint's native request model."""
+        assert isinstance(
+            build_tokenize_request(payload, request_path=request_path),
+            expected_request_type,
+        )
 
     @pytest.mark.parametrize(
-        "payload, expected",
+        "request_path, payload, expected",
         [
             (  # chat: template-rendering fields + request-provided prompt flags
+                "/v1/chat/completions",
                 {
                     "model": "m",
                     "messages": [{"role": "user", "content": "hi"}],
@@ -353,6 +235,7 @@ class TestBuildTokenizeRequest:
                 },
             ),
             (  # completion: add_special_tokens comes from the request
+                "/v1/completions",
                 {
                     "model": "m",
                     "prompt": "hi",
@@ -363,13 +246,11 @@ class TestBuildTokenizeRequest:
             ),
         ],
     )
-    def test_forwards_prompt_fields_only(self, payload, expected):
-        """Prompt-rendering fields come from the request (not hardcoded) and
-        sampling params are dropped, so routing ids match prefill."""
-        request = build_tokenize_request(payload)
+    def test_preserves_prompt_fields(self, request_path, payload, expected):
+        """Prompt-rendering fields use the engine's schema and defaults."""
+        request = build_tokenize_request(payload, request_path=request_path)
         for attr, value in expected.items():
             assert getattr(request, attr) == value
-        assert "temperature" not in (request.model_extra or {})
 
 
 class TestRoute:
@@ -416,7 +297,9 @@ class TestRoute:
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
-        request.headers = Headers({})
+        request.headers = Headers(
+            {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/completions"}
+        )
         response = await router.route(request)
 
         router._push_prompt_tokens.assert_called_once()
@@ -428,9 +311,17 @@ class TestRoute:
             assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
 
     @pytest.mark.asyncio
-    async def test_anthropic_body_routes_on_tokens_without_staging(self):
-        # vLLM's /v1/messages handler never reads staged ids, so an Anthropic
-        # body is scored on its tokens but they are not pushed to the replica.
+    @pytest.mark.parametrize(
+        "media, should_stage",
+        [
+            (None, True),
+            ("image", False),
+            ("tool_result_image", False),
+        ],
+    )
+    async def test_anthropic_token_staging(self, media, should_stage):
+        # Images can also appear inside tool results; tokens alone cannot
+        # replace media preprocessing at the engine.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
         router._tokenizer = MagicMock()
@@ -440,14 +331,37 @@ class TestRoute:
         )
         router._push_prompt_tokens = MagicMock(return_value="key")
 
+        payload = copy.deepcopy(CLAUDE_CODE_BODY)
+        image = {
+            "type": "image",
+            "source": {"type": "url", "url": "https://example.com/image.png"},
+        }
+        if media == "image":
+            payload["messages"][0]["content"].append(image)
+        elif media == "tool_result_image":
+            payload["messages"][-1]["content"][0]["content"] = [
+                {"type": "text", "text": "a.py"},
+                image,
+            ]
         request = MagicMock()
-        request.body = AsyncMock(return_value=json.dumps(CLAUDE_CODE_BODY).encode())
-        request.headers = Headers({})
+        request.body = AsyncMock(return_value=json.dumps(payload).encode())
+        request.headers = Headers(
+            {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/messages"}
+        )
         response = await router.route(request)
 
+        router._tokenizer.tokenize.assert_awaited_once_with(
+            payload, request_path="/v1/messages"
+        )
         assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
-        router._push_prompt_tokens.assert_not_called()
-        assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
+        if should_stage:
+            router._push_prompt_tokens.assert_called_once()
+            assert response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
+                KV_TOKEN_KEY_HEADER: "key"
+            }
+        else:
+            router._push_prompt_tokens.assert_not_called()
+            assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
 
     @pytest.mark.asyncio
     async def test_unparseable_body_skips_tokenization(self):

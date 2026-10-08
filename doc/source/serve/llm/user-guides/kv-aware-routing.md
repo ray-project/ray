@@ -181,7 +181,7 @@ The router scores requests using token IDs, so each request is tokenized at the 
 
 - **Tokenization is not repeated at the engine.** The ingress sends the tokenized prompt to the selected engine replica, avoiding duplicate tokenization. The tokens are sent over a separate channel and may arrive before the corresponding HTTP request, so the engine replica temporarily **stages** them until the request arrives. Delivery is best effort: if the token payload is missing or has expired, the engine simply tokenizes the prompt again. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables control how long and how much token data each engine replica can stage.
 
-Anthropic Messages (`/v1/messages`) requests, such as those from Claude Code, are tokenized at the ingress after the same conversion to a chat request that the engine applies, so they're routed on KV cache overlap like chat requests. The ingress doesn't send their tokens to the engine, which tokenizes these requests itself.
+HAProxy forwards the original API path so the ingress selects the same request schema as the engine. Anthropic Messages (`/v1/messages`) requests, such as those from Claude Code, use the engine's conversion to a chat request before tokenization. Text-only requests also reuse staged tokens at the engine. Multimodal requests keep engine rendering to prepare media inputs. If the API path is missing or unsupported, the ingress falls back to routing without tokens.
 
 
 ### Scaling the ingress tier

@@ -15,10 +15,45 @@ from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
 logger = get_logger(__name__)
 
 
-# TODO (jeffreywang): Support multimodal chat. Since vllm-project/vllm#48145 the
-# renderer builds the engine input from the forwarded ids alone, skipping the
-# chat rendering that turns images/audio into ``multi_modal_data``. The engine
-# then gets placeholder tokens with no ``multi_modal_data`` to resolve them.
+def _is_text_content(content: Any) -> bool:
+    if content is None or isinstance(content, str):
+        return True
+    if not isinstance(content, list):
+        return False
+    for block in content:
+        if not isinstance(block, dict):
+            return False
+        block_type = block.get("type")
+        if block_type == "tool_result":
+            if not _is_text_content(block.get("content")):
+                return False
+        elif block_type not in (
+            "text",
+            "input_text",
+            "output_text",
+            "refusal",
+            "thinking",
+            "redacted_thinking",
+            "tool_use",
+            "tool_reference",
+        ):
+            return False
+    return True
+
+
+def is_text_only_chat(messages: Any) -> bool:
+    """Whether OpenAI or Anthropic messages can be rendered from token IDs alone.
+
+    Tool inputs are rendered as text, but Anthropic tool results can contain
+    images, so check their nested content too. Unknown block types keep normal
+    engine rendering.
+    """
+    return isinstance(messages, list) and all(
+        isinstance(message, dict) and _is_text_content(message.get("content"))
+        for message in messages
+    )
+
+
 def inject_prompt_token_ids(
     request: Any,
     raw_request: Optional[Request],
@@ -82,6 +117,9 @@ def install_prompt_token_forwarding(
     for attr_name, method_name in (
         ("openai_serving_chat", "create_chat_completion"),
         ("openai_serving_completion", "create_completion"),
+        # create_messages delegates here after converting to OpenAI chat, so
+        # token injection uses the same path as native chat requests.
+        ("anthropic_serving_messages", "create_chat_completion"),
     ):
         _install_prompt_token_forwarding(
             getattr(state, attr_name, None),

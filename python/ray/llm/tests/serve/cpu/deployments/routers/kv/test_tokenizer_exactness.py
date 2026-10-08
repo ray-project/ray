@@ -1,7 +1,7 @@
 """Correctness tests for in-process pre-routing tokenization.
 
-The in-process tokenizer must produce exactly the token ids vLLM's
-``/tokenize`` endpoint produces: KV-aware routing scores replicas on prompt
+The in-process tokenizer must produce exactly the prompt token IDs vLLM's
+generation endpoints use: KV-aware routing scores replicas on prompt
 prefix overlap, so a divergence silently mis-routes every request. These tests
 cross-validate the vLLM-renderer implementation against an independent ground
 truth (raw ``transformers``) on a real tokenizer, and pin the endpoint's
@@ -11,11 +11,27 @@ parameter semantics (special-token defaults, ``add_generation_prompt``,
 
 import json
 import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from starlette.datastructures import Headers
 from transformers import AutoTokenizer
+from vllm.entrypoints.anthropic.protocol import AnthropicMessagesRequest
+from vllm.entrypoints.anthropic.serving import AnthropicServingMessages
+from vllm.renderers.inputs.preprocess import extract_prompt_components
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_KEY_HEADER,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
+    TokenStore,
+    encode_prompt_token_ids,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
+    install_prompt_token_forwarding,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
     TokenizeError,
     Tokenizer,
@@ -100,7 +116,10 @@ class TestChatExactness:
     async def test_matches_transformers_ground_truth(
         self, tokenizer, hf_tokenizer, messages
     ):
-        ids = await tokenizer.tokenize({"model": "test-model", "messages": messages})
+        ids = await tokenizer.tokenize(
+            {"model": "test-model", "messages": messages},
+            request_path="/v1/chat/completions",
+        )
         assert ids == _hf_chat_ids(hf_tokenizer, messages)
 
     async def test_add_generation_prompt_false(self, tokenizer, hf_tokenizer):
@@ -113,7 +132,8 @@ class TestChatExactness:
                 "model": "test-model",
                 "messages": messages,
                 "add_generation_prompt": False,
-            }
+            },
+            request_path="/v1/chat/completions",
         )
         assert ids == _hf_chat_ids(hf_tokenizer, messages, add_generation_prompt=False)
 
@@ -126,7 +146,8 @@ class TestChatExactness:
                 "model": "test-model",
                 "messages": messages,
                 "chat_template_kwargs": {"enable_thinking": False},
-            }
+            },
+            request_path="/v1/chat/completions",
         )
         expected = _hf_chat_ids(hf_tokenizer, messages, enable_thinking=False)
         assert ids == expected
@@ -141,22 +162,39 @@ class TestChatExactness:
                     "model": "test-model",
                     "messages": [{"role": "user", "content": "hi"}],
                     "chat_template": "{{ messages }}",
-                }
+                },
+                request_path="/v1/chat/completions",
             )
         assert e.value.status_code == 400
 
 
 class TestCompletionExactness:
-    async def test_matches_transformers_ground_truth(self, tokenizer, hf_tokenizer):
+    @pytest.mark.parametrize("truncate_prompt_tokens", [None, 4])
+    async def test_matches_transformers_ground_truth(
+        self, tokenizer, hf_tokenizer, truncate_prompt_tokens
+    ):
         prompt = "The capital of France is"
-        ids = await tokenizer.tokenize({"model": "test-model", "prompt": prompt})
-        # /tokenize completion default: add_special_tokens=True.
-        assert ids == hf_tokenizer.encode(prompt, add_special_tokens=True)
+        ids = await tokenizer.tokenize(
+            {
+                "model": "test-model",
+                "prompt": prompt,
+                "truncate_prompt_tokens": truncate_prompt_tokens,
+                # Extra chat fields must not select chat rendering when the
+                # actual endpoint is completions.
+                "messages": [{"role": "user", "content": "ignored"}],
+            },
+            request_path="/v1/completions",
+        )
+        expected = hf_tokenizer.encode(prompt, add_special_tokens=True)
+        if truncate_prompt_tokens is not None:
+            expected = expected[-truncate_prompt_tokens:]
+        assert ids == expected
 
     async def test_add_special_tokens_false(self, tokenizer, hf_tokenizer):
         prompt = "plain continuation"
         ids = await tokenizer.tokenize(
-            {"model": "test-model", "prompt": prompt, "add_special_tokens": False}
+            {"model": "test-model", "prompt": prompt, "add_special_tokens": False},
+            request_path="/v1/completions",
         )
         assert ids == hf_tokenizer.encode(prompt, add_special_tokens=False)
 
@@ -271,19 +309,108 @@ _EQUIVALENT_CHAT_BODY = {
 
 
 class TestAnthropicMessagesExactness:
+    async def test_api_path_disambiguates_body(self, tokenizer, hf_tokenizer):
+        # Both APIs accept this body, but Anthropic conversion moves the inline
+        # system message and converts thinking to a reasoning field.
+        messages = [
+            {"role": "user", "content": "Hi."},
+            {"role": "system", "content": "Be terse."},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "Greet back."},
+                    {"type": "text", "text": "Hello."},
+                ],
+            },
+            {"role": "user", "content": "Again."},
+        ]
+        expected_messages = [
+            {"role": "system", "content": "Be terse."},
+            messages[0],
+            {"role": "assistant", "content": "Hello.", "reasoning": "Greet back."},
+            messages[-1],
+        ]
+        payload = {"model": "test-model", "max_tokens": 64, "messages": messages}
+        ids = await tokenizer.tokenize(payload, request_path="/app/v1/messages")
+        assert ids == _hf_chat_ids(hf_tokenizer, expected_messages)
+        assert ids != await tokenizer.tokenize(
+            payload, request_path="/app/v1/chat/completions"
+        )
+
     async def test_matches_equivalent_chat_request(self, tool_tokenizer):
         """A Claude Code body routes on exactly the prompt of the OpenAI chat
         request the engine's /v1/messages handler renders it as."""
-        ids = await tool_tokenizer.tokenize(_claude_code_body())
+        ids = await tool_tokenizer.tokenize(
+            _claude_code_body(), request_path="/v1/messages"
+        )
         assert ids
-        assert ids == await tool_tokenizer.tokenize(_EQUIVALENT_CHAT_BODY)
+        assert ids == await tool_tokenizer.tokenize(
+            _EQUIVALENT_CHAT_BODY, request_path="/v1/chat/completions"
+        )
 
     async def test_billing_header_does_not_change_ids(self, tool_tokenizer):
         """Claude Code's billing header hash changes per request; dropping it
         keeps every turn of a session on the same prefix."""
-        ids = await tool_tokenizer.tokenize(_claude_code_body("1a2b3"))
+        ids = await tool_tokenizer.tokenize(
+            _claude_code_body("1a2b3"), request_path="/v1/messages"
+        )
         assert ids
-        assert ids == await tool_tokenizer.tokenize(_claude_code_body("9f8e7"))
+        assert ids == await tool_tokenizer.tokenize(
+            _claude_code_body("9f8e7"), request_path="/v1/messages"
+        )
+
+    @pytest.mark.parametrize("staged", [True, False])
+    async def test_anthropic_engine_reuses_tokens_or_falls_back(
+        self, tool_tokenizer, monkeypatch, staged
+    ):
+        # Exercise real Anthropic conversion and native rendering, replacing
+        # only generation. Reuse must skip tokenization; a miss must render
+        # the same IDs normally.
+        body = _claude_code_body()
+        ids = await tool_tokenizer.tokenize(body, request_path="/v1/messages")
+        assert ids
+        store = TokenStore()
+        if staged:
+            store.put("key", payload=encode_prompt_token_ids(ids))
+        raw_request = SimpleNamespace(headers=Headers({KV_TOKEN_KEY_HEADER: "key"}))
+        serving = AnthropicServingMessages.__new__(AnthropicServingMessages)
+        serving._merge_inline_system = tool_tokenizer._merge_inline_system
+
+        render = AsyncMock(wraps=tool_tokenizer._renderer.renderer.render_chat_async)
+        monkeypatch.setattr(
+            tool_tokenizer._renderer.renderer, "render_chat_async", render
+        )
+
+        generation_stub = tool_tokenizer._renderer.create_error_response(
+            "generation stub"
+        )
+
+        async def generate(chat_request, raw_request=None):
+            _, inputs = await tool_tokenizer._renderer.render_chat(chat_request)
+            actual = [
+                token
+                for inp in inputs
+                for token in extract_prompt_components(
+                    tool_tokenizer._model_config, inp
+                ).token_ids
+            ]
+            assert actual == ids
+            return generation_stub
+
+        serving.create_chat_completion = generate
+        install_prompt_token_forwarding(
+            SimpleNamespace(anthropic_serving_messages=serving), store
+        )
+        response = await serving.create_messages(
+            AnthropicMessagesRequest.model_validate(body), raw_request
+        )
+
+        assert response is generation_stub
+        if staged:
+            render.assert_not_awaited()
+        else:
+            render.assert_awaited_once()
+        assert store.pop("key") is None
 
 
 if __name__ == "__main__":
