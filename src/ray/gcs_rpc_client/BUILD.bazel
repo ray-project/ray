@@ -92,7 +92,6 @@ ray_cc_library(
     hdrs = [
         "gcs_client_context.h",
     ],
-    visibility = [":__pkg__"],
     deps = [
         ":rpc_client",
         "//src/ray/pubsub:gcs_subscriber",
@@ -107,7 +106,6 @@ ray_cc_library(
     hdrs = [
         "accessors/actor_info_accessor.h",
     ],
-    visibility = [":__pkg__"],
     deps = [
         ":actor_accessor_interface",
         ":gcs_client_context",
@@ -137,7 +135,6 @@ ray_cc_library(
         "default_accessor_factory.h",
         "default_gcs_client_context.h",
     ],
-    visibility = [":__pkg__"],
     deps = [
         ":accessor_factory_interface",
         ":actor_accessor_implementation",
@@ -151,10 +148,7 @@ ray_cc_library(
     hdrs = [
         "rpc_client.h",
     ],
-    visibility = [
-        ":__pkg__",
-        "//src/ray/pubsub:__pkg__",
-    ],
+    visibility = ["//src/ray/pubsub:__pkg__"],
     deps = [
         "//src/ray/common:ray_config",
         "//src/ray/protobuf:autoscaler_cc_grpc",

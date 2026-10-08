@@ -4,19 +4,13 @@ ray_cc_library(
     name = "common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],
-    visibility = [
-        "//src/ray/observability:__pkg__",
-        "//src/ray/rpc:__pkg__",
-    ],
+    visibility = ["//src/ray/observability:__pkg__"],
 )
 
 ray_cc_library(
     name = "client_call",
     hdrs = ["client_call.h"],
-    visibility = [
-        ":__pkg__",
-        "//src/ray/core_worker:__pkg__",
-    ],
+    visibility = ["//src/ray/core_worker:__pkg__"],
     deps = [
         ":metrics",
         ":rpc_callback_types",
@@ -125,7 +119,6 @@ ray_cc_library(
     name = "server_call",
     srcs = ["server_call.cc"],
     hdrs = ["server_call.h"],
-    visibility = ["//visibility:private"],
     deps = [
         ":metrics",
         ":rpc_callback_types",

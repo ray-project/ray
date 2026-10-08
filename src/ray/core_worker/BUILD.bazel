@@ -17,6 +17,7 @@ ray_cc_library(
         ":__subpackages__",
         "//:__pkg__",
         "//cpp:__pkg__",
+        "//src/ray/core_worker/lib/java:__pkg__",
     ],
     deps = [
         ":common",
@@ -128,7 +129,11 @@ ray_cc_library(
     name = "common",
     srcs = ["common.cc"],
     hdrs = ["common.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/actor_management:__pkg__",
+        "//src/ray/core_worker/task_execution:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
@@ -179,7 +184,11 @@ ray_cc_library(
     name = "reference_counter",
     srcs = ["reference_counter.cc"],
     hdrs = ["reference_counter.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/actor_management/tests:__pkg__",
+        "//src/ray/core_worker/task_submission/tests:__pkg__",
+    ],
     deps = [
         ":metrics",
         ":reference_counter_interface",
@@ -200,7 +209,10 @@ ray_cc_library(
     name = "lease_policy",
     srcs = ["lease_policy.cc"],
     hdrs = ["lease_policy.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/task_submission:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:lease",
@@ -214,7 +226,10 @@ ray_cc_library(
     name = "task_event_buffer",
     srcs = ["task_event_buffer.cc"],
     hdrs = ["task_event_buffer.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/task_execution:__pkg__",
+    ],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/asio:periodical_runner",
@@ -249,7 +264,11 @@ ray_cc_library(
     name = "memory_store",
     srcs = ["store_provider/memory_store/memory_store.cc"],
     hdrs = ["store_provider/memory_store/memory_store.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker/task_submission:__pkg__",
+        "//src/ray/core_worker/task_submission/tests:__pkg__",
+    ],
     deps = [
         ":core_worker_context",
         "//src/ray/asio:instrumented_io_context",
@@ -334,6 +353,7 @@ ray_cc_library(
     name = "experimental_mutable_object_manager",
     srcs = ["experimental_mutable_object_manager.cc"],
     hdrs = ["experimental_mutable_object_manager.h"],
+    visibility = ["//src/ray/object_manager/plasma/tests:__pkg__"],
     deps = [
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_object",

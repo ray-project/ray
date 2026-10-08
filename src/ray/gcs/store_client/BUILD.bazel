@@ -110,6 +110,10 @@ ray_cc_library(
     srcs = ["rocksdb_store_client.cc"],
     hdrs = ["rocksdb_store_client.h"],
     target_compatible_with = ["@platforms//os:linux"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":store_client",
         "//src/ray/asio:instrumented_io_context",

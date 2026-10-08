@@ -166,6 +166,7 @@ ray_cc_library(
         "//src/ray/core_worker:__pkg__",
         "//src/ray/core_worker/tests:__pkg__",
         "//src/ray/object_manager/plasma:__pkg__",
+        "//src/ray/object_manager/plasma/tests:__pkg__",
         "//src/ray/raylet/scheduling:__pkg__",
     ],
     deps = [

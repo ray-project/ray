@@ -14,7 +14,11 @@ ray_cc_library(
     name = "gcs_table_storage",
     srcs = ["gcs_table_storage.cc"],
     hdrs = ["gcs_table_storage.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor:__pkg__",
+        "//src/ray/gcs/actor/tests:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:status",
@@ -29,7 +33,10 @@ ray_cc_library(
     name = "gcs_init_data",
     srcs = ["gcs_init_data.cc"],
     hdrs = ["gcs_init_data.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor:__pkg__",
+    ],
     deps = [
         ":gcs_table_storage",
         "//src/ray/common:id",
@@ -56,7 +63,11 @@ ray_cc_library(
 ray_cc_library(
     name = "gcs_function_manager",
     hdrs = ["gcs_function_manager.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor:__pkg__",
+        "//src/ray/gcs/actor/tests:__pkg__",
+    ],
     deps = [
         ":gcs_kv_manager",
         "//src/ray/asio:instrumented_io_context",
@@ -73,6 +84,7 @@ ray_cc_library(
     visibility = [
         ":__subpackages__",
         "//src/ray/gcs/actor:__pkg__",
+        "//src/ray/gcs/actor/tests:__pkg__",
     ],
     deps = [
         ":gcs_init_data",
@@ -174,7 +186,10 @@ ray_cc_library(
     name = "gcs_usage_stats_client",
     srcs = ["usage_stats_client.cc"],
     hdrs = ["usage_stats_client.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor:__pkg__",
+    ],
     deps = [
         ":gcs_kv_manager",
         "//src/ray/protobuf:usage_cc_proto",
@@ -407,7 +422,10 @@ ray_cc_library(
     name = "fake_gcs_kv_manager",
     testonly = True,
     hdrs = ["fake_gcs_kv_manager.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/actor/tests:__pkg__",
+    ],
     deps = [
         ":gcs_kv_manager",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -445,7 +463,7 @@ ray_cc_library(
     hdrs = [
         "grpc_service_interfaces.h",
     ],
-    visibility = [":__subpackages__"],
+    visibility = ["//src/ray/gcs/actor:__pkg__"],
     deps = [
         "//src/ray/common:status",
         "//src/ray/protobuf:autoscaler_cc_grpc",
@@ -461,9 +479,6 @@ ray_cc_library(
     ],
     hdrs = [
         "grpc_services.h",
-    ],
-    visibility = [
-        "//src/ray/gcs/tests:__pkg__",
     ],
     deps = [
         ":grpc_service_interfaces",
