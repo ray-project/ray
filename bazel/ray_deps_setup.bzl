@@ -440,6 +440,10 @@ def ray_deps_setup():
         url = "https://github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
         sha256 = "8f9ee2dc10c1ae514ee599a8b42ed99fa262b757058f65ad3c384289ff70c4b8",
         strip_prefix = None,
+        # zip/BUILD uses py_binary without loading it. On Bazel 8 that falls
+        # back to the autoload, which resolves to the module graph's
+        # rules_python, so its PyInfo doesn't match the py_library deps.
+        patches = ["@io_ray//thirdparty/patches:rules_pkg-zip-load-py-binary.patch"],
     )
     auto_http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
