@@ -667,6 +667,13 @@ class ASGIAppReplicaWrapper:
         send: Send,
     ) -> None:
         """Calls into the wrapped ASGI app."""
+        if scope["type"] in ("http", "websocket"):
+            # Preserve middleware state and shallow-copy this replica's
+            # lifespan resources into each request's namespace.
+            scope["state"] = {
+                **scope.get("state", {}),
+                **self._serve_asgi_lifespan.state,
+            }
         await self._asgi_app(
             scope,
             receive,
