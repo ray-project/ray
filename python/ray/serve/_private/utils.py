@@ -5,6 +5,7 @@ import errno
 import importlib
 import inspect
 import logging
+import os
 import random
 import re
 import time
@@ -27,6 +28,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    RAY_SERVE_CRASH_PROBABILITY_TESTING,
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -191,6 +193,22 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Format for component files
 FILE_FMT = "{component_name}_{component_id}{suffix}"
+
+
+def maybe_crash_for_testing() -> None:
+    """Test-only. Crash the controller so recovery is exercised at points a test
+    cannot target with an external `ray.kill`."""
+    if (
+        RAY_SERVE_CRASH_PROBABILITY_TESTING
+        and random.random() < RAY_SERVE_CRASH_PROBABILITY_TESTING
+    ):
+        # Located from the caller's frame, so a site needs no name and two hooks
+        # in one function stay distinguishable. Only on the crash path.
+        frame = inspect.currentframe()
+        caller = frame.f_back if frame else None
+        where = f"{caller.f_code.co_name}:{caller.f_lineno}" if caller else "unknown"
+        logger.warning(f"Intentionally crashing the controller at {where}.")
+        os._exit(1)
 
 
 class _ServeCustomEncoders:

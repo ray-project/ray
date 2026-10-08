@@ -537,6 +537,7 @@ py_test_module_list(
 py_test(
     name = "test_controller_crashes",
     size = "large",
+    timeout = "eternal",
     srcs = [
         "test_api.py",
         "test_api_2.py",
@@ -544,6 +545,9 @@ py_test(
         "test_failure.py",
         "test_failure_2.py",
     ],
+    env = {
+        "RAY_SERVE_CRASH_PROBABILITY_TESTING": "0.5",
+    },
     tags = [
         "exclusive",
         "team:serve",
