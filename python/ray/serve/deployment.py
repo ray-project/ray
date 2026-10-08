@@ -428,6 +428,12 @@ class Deployment:
                 "gang_scheduling_config is provided."
             )
 
+        if gc is not None and (ray_actor_options or {}).get("gpu_memory"):
+            raise ValueError(
+                "Setting gpu_memory in ray_actor_options is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
         if gc is not None and placement_group_strategy is not None:
             raise ValueError(
                 "Setting placement_group_strategy is not allowed when "

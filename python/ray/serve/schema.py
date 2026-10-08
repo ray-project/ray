@@ -301,6 +301,14 @@ class RayActorOptionsSchema(BaseModel):
         ),
         ge=0,
     )
+    gpu_memory: Optional[int] = Field(
+        default=None,
+        description=(
+            "Bytes of VRAM each replica needs on a single GPU. Ray converts it into "
+            "a GPU fraction for each node. Can't be combined with num_gpus."
+        ),
+        gt=0,
+    )
     memory: Optional[float] = Field(
         default=None,
         description=(
@@ -672,6 +680,20 @@ class DeploymentSchema(BaseModel):
         ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
             raise ValueError(
                 "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_gpu_memory_and_gang_scheduling_config(self):
+        if (
+            self.gang_scheduling_config not in [DEFAULT.VALUE, None]
+            and self.ray_actor_options not in [DEFAULT.VALUE, None]
+            and self.ray_actor_options.gpu_memory
+        ):
+            raise ValueError(
+                "Setting gpu_memory in ray_actor_options is not allowed when "
                 "gang_scheduling_config is provided."
             )
 

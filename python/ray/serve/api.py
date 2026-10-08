@@ -577,8 +577,9 @@ def deployment(
         num_replicas: Number of replicas to run that handle requests to
             this deployment. Defaults to 1.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
-            resource requirements. Valid options are: `accelerator_type`, `memory`,
-            `num_cpus`, `num_gpus`, `resources`, `runtime_env`, and `label_selector`.
+            resource requirements. Valid options are: `accelerator_type`, `gpu_memory`,
+            `memory`, `num_cpus`, `num_gpus`, `resources`, `runtime_env`, and
+            `label_selector`.
         placement_group_bundles: Defines a set of placement group bundles to be
             scheduled *for each replica* of this deployment. The replica actor will
             be scheduled in the first bundle provided, so the resources specified in
@@ -662,6 +663,15 @@ def deployment(
             "Setting max_replicas_per_node is not allowed when "
             "gang_scheduling_config is provided. Please set max_replicas_per_node "
             "to None."
+        )
+    if (
+        gang_scheduling_config not in [DEFAULT.VALUE, None]
+        and ray_actor_options not in [DEFAULT.VALUE, None]
+        and ray_actor_options.get("gpu_memory")
+    ):
+        raise ValueError(
+            "Setting gpu_memory in ray_actor_options is not allowed when "
+            "gang_scheduling_config is provided."
         )
     if gang_scheduling_config not in [
         DEFAULT.VALUE,
