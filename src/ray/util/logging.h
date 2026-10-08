@@ -300,6 +300,13 @@ class RayLog {
   /// Log rotation is disabled on windows platform.
   static size_t GetRayLogRotationBackupCountOrDefault();
 
+  /// Get drain timeout, in milliseconds, from env variable.
+  /// Return default value 10000, indicating 10 seconds, if env not set, parse failure or
+  /// return value 0.
+  ///
+  /// The env variable is ignored on windows platform, where the default is always used.
+  static size_t GetRayLogRotationDrainTimeoutMsOrDefault();
+
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();
 

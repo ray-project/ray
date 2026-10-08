@@ -16,12 +16,21 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <future>
 #include <string>
 #include <string_view>
+#include <utility>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 #include "absl/strings/str_format.h"
 #include "ray/common/id.h"
@@ -130,6 +139,63 @@ TEST_P(PipeLoggerTest, RotatedRedirectionWithTee) {
   RAY_ASSERT_OK(actual_content2);
   EXPECT_EQ(*actual_content2, kLogLine1);
 }
+
+#ifndef _WIN32
+// Regression test for a worker-exit hang: with rotation (or tee) enabled the
+// redirected stream is a pipe, and a child process inherits its write end via
+// stdout/stderr. EOF only arrives after every holder exits, so Close() must
+// not wait on it unconditionally. Before the drain wait was bounded, a worker
+// whose child outlived it hung at exit and leaked as a `ray::IDLE` process
+// holding its full RSS.
+TEST(PipeLoggerTest, RedirectionWithLeakedChild) {
+  ScopedEnvSetter scoped_env_setter{"RAY_ROTATION_DRAIN_TIMEOUT_MS", "200"};
+
+  ScopedTemporaryDirectory scoped_directory;
+  const auto test_file_path = scoped_directory.GetDirectory() / RandomID();
+
+  StreamRedirectionOption stream_redirection_opt{};
+  stream_redirection_opt.file_path = test_file_path.string();
+  stream_redirection_opt.rotation_max_size = 1024;
+  stream_redirection_opt.rotation_max_file_count = 2;
+
+  auto stream_redirection_handle = CreateRedirectionFileHandle(stream_redirection_opt);
+  stream_redirection_handle.CompleteWrite(kLogLine1.data(), kLogLine1.length());
+
+  const pid_t child = fork();
+  ASSERT_GE(child, 0);
+  if (child == 0) {
+    const int write_fd = stream_redirection_handle.GetWriteFd();
+
+    // Model an application child that inherits redirected stdout across exec.
+    if (dup2(write_fd, STDOUT_FILENO) == -1) {
+      _exit(127);
+    }
+    if (write_fd != STDOUT_FILENO && fcntl(write_fd, F_SETFD, FD_CLOEXEC) == -1) {
+      _exit(127);
+    }
+
+    char sleep_path[] = "/bin/sleep";
+    char sleep_arg[] = "60";
+    char *const argv[] = {sleep_path, sleep_arg, nullptr};
+    execv(sleep_path, argv);
+    _exit(127);
+  }
+
+  // Move the handle into the async task so the main test thread can enforce
+  // an upper bound on Close() and clean up the child if the check fails.
+  auto close_result = std::async(
+      std::launch::async,
+      [handle = std::move(stream_redirection_handle)]() mutable { handle.Close(); });
+  // Close() returns once the drain timeout expires instead of blocking on the
+  // child forever.
+  EXPECT_EQ(close_result.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+
+  kill(child, SIGKILL);
+  int status = 0;
+  ASSERT_EQ(waitpid(child, &status, 0), child);
+  close_result.get();
+}
+#endif  // !_WIN32
 
 // Testing scenario: log to stdout and file; check whether these two sinks generate
 // expected output.

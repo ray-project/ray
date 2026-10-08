@@ -345,6 +345,20 @@ void RayLog::InitLogFormat() {
   return 1;
 }
 
+/*static*/ size_t RayLog::GetRayLogRotationDrainTimeoutMsOrDefault() {
+#if defined(__APPLE__) || defined(__linux__)
+  if (const char *ray_rotation_drain_timeout_ms =
+          std::getenv("RAY_ROTATION_DRAIN_TIMEOUT_MS");
+      ray_rotation_drain_timeout_ms != nullptr) {
+    size_t timeout_ms = 0;
+    if (absl::SimpleAtoi(ray_rotation_drain_timeout_ms, &timeout_ms) && timeout_ms > 0) {
+      return timeout_ms;
+    }
+  }
+#endif
+  return 10 * 1000;
+}
+
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
                                     RayLogLevel severity_threshold,
                                     const std::string &log_filepath,
