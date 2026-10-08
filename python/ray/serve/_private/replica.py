@@ -99,7 +99,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     RECORD_REPLICA_METADATA_METHOD,
-    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -434,7 +433,7 @@ class ReplicaMetricsManager:
         # have to probe for it.
         self._eval_self_health_fn: Optional[Callable] = None
         self._health_check_period_s: float = 0.0
-        self._self_consecutive_failures = 0
+        self._consecutive_failures = 0
         self._last_counted_failure_at: float = 0.0
         self._pending_health_push_ref: Optional[ObjectRef] = None
         self._pending_health_push_started_at: float = 0.0
@@ -700,7 +699,11 @@ class ReplicaMetricsManager:
 
     async def shutdown(self):
         """Stop periodic background tasks."""
-
+        # A hung user check never reaches the stop event. The self-health task only
+        # observes, so there is nothing to flush: cancel it rather than let
+        # graceful_shutdown wait out its timeout on it.
+        self._metrics_pusher.stop_event.set()
+        self._metrics_pusher.cancel_task(self.PUSH_SELF_HEALTH_TASK_NAME)
         await self._metrics_pusher.graceful_shutdown()
 
     def _push_blocked(self, ref, started_s: float) -> bool:
@@ -733,37 +736,37 @@ class ReplicaMetricsManager:
         # so narrow the Optional for the type checkers.
         eval_fn = self._eval_self_health_fn
         assert eval_fn is not None
-        if self._self_consecutive_failures >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD:
-            # Latched: the controller will replace this replica, so stop re-running the
-            # user check (parity with pull probes, which cease at the threshold) while
-            # still reporting unhealthy.
+        # The check keeps running past the threshold so a pass can clear the count:
+        # the controller only health-checks RUNNING replicas, so a failure counted
+        # while UPDATING would otherwise latch and replace a replica that recovered.
+        healthy = True
+        try:
+            # No deadline here: health_check_timeout_s reaches the actor only at
+            # startup, so enforcing it locally would pin the replica to whatever
+            # the value was then. The controller holds the live one and times its
+            # own probe out; a check that hangs here stops refreshing the cached
+            # result, which check_health() then treats as stale.
+            await eval_fn()
+        except (Exception, asyncio.CancelledError):
+            # CancelledError is not an Exception, and MetricsPusher only catches
+            # Exception, so letting it out would retire the heartbeat for good.
             healthy = False
-        else:
-            healthy = True
-            try:
-                # No deadline here: health_check_timeout_s reaches the actor only at
-                # startup, so enforcing it locally would pin the replica to whatever
-                # the value was then. The controller holds the live one and times its
-                # own probe out; a check that hangs here stops refreshing the cached
-                # result, which check_health() then treats as stale.
-                await eval_fn()
-            except (Exception, asyncio.CancelledError):
-                # CancelledError is not an Exception, and MetricsPusher only catches
-                # Exception, so letting it out would retire the heartbeat for good.
-                healthy = False
-            counted_at = time.time()
-            if healthy:
-                self._self_consecutive_failures = 0
-            elif (
-                self._self_consecutive_failures == 0
-                or counted_at - self._last_counted_failure_at
-                >= self._health_check_period_s
-            ):
-                # Evals run twice per period for freshness, but the controller weighs
-                # this count against a threshold calibrated to the period. Counting
-                # every eval would replace a replica in half the configured time.
-                self._self_consecutive_failures += 1
-                self._last_counted_failure_at = counted_at
+        if self._metrics_pusher.stop_event.is_set():
+            # Shutting down: an interrupted check confirmed nothing, so neither count
+            # it nor tell the controller.
+            return
+        counted_at = time.time()
+        if healthy:
+            self._consecutive_failures = 0
+        elif (
+            self._consecutive_failures == 0
+            or counted_at - self._last_counted_failure_at >= self._health_check_period_s
+        ):
+            # Evals run twice per period for freshness, but the controller weighs
+            # this count against a threshold calibrated to the period. Counting
+            # every eval would replace a replica in half the configured time.
+            self._consecutive_failures += 1
+            self._last_counted_failure_at = counted_at
         checked_at = time.time()
 
         with self._metrics_push_lock:
@@ -782,7 +785,7 @@ class ReplicaMetricsManager:
                     self._replica_id,
                     checked_at,
                     healthy,
-                    self._self_consecutive_failures,
+                    self._consecutive_failures,
                 )
             )
             self._pending_health_push_started_at = time.time()
@@ -1236,7 +1239,7 @@ class Replica:
         # While the periodic self-health task is the active observer, remote probes
         # read its cached verdict instead of re-running the user check.
         self._self_health_active = False
-        self._self_health_evaluated_at: Optional[float] = None
+        self._health_checked_at: Optional[float] = None
         self._health_check_lock = asyncio.Lock()
         self._last_self_health_error: Optional[str] = None
 
@@ -2408,22 +2411,25 @@ class Replica:
             self._deployment_config.health_check_period_s,
         )
 
+    def _cached_verdict_answers_probe(self) -> bool:
+        """Whether a probe can be answered from the self-check's cached verdict.
+
+        A healthy one expires with the push window, since a check that hangs stops
+        refreshing it and a probe is then the only thing that can notice. An
+        unhealthy one does not: serving it can only delay a recovery until the next
+        self-check refreshes it, never hide a failure.
+        """
+        if not self._self_health_active or self._health_checked_at is None:
+            return False
+        if not self._healthy:
+            return True
+        age_s = time.time() - self._health_checked_at
+        return age_s < _push_freshness_window_s(
+            self._deployment_config.health_check_period_s
+        )
+
     async def check_health(self):
-        # Serve the self-health task's cached verdict while it is the active observer.
-        # A healthy one expires, since a self-check that hangs stops refreshing it and
-        # this probe is then the only thing that can notice; an unhealthy one does not,
-        # because the task latches at the threshold and would otherwise flap.
-        if (
-            self._self_health_active
-            and self._self_health_evaluated_at is not None
-            and (
-                not self._healthy
-                or time.time() - self._self_health_evaluated_at
-                < _push_freshness_window_s(
-                    self._deployment_config.health_check_period_s
-                )
-            )
-        ):
+        if self._cached_verdict_answers_probe():
             if not self._healthy:
                 raise RuntimeError(
                     self._last_self_health_error or "Replica self health check failed."
@@ -2462,7 +2468,7 @@ class Replica:
             # A cancelled check confirmed nothing, so it must neither refresh the
             # cached verdict nor pull the replica out of the data-plane rotation.
             if evaluated:
-                self._self_health_evaluated_at = time.time()
+                self._health_checked_at = time.time()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         try:
