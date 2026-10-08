@@ -7885,16 +7885,14 @@ torch-geometric==2.5.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
 torch-scatter==2.1.2+cu.12.8.torch.2.9 \
-    --hash=sha256:35385c774a1792d719608f132c3d50e941aaa3a697dcec72fe54a715d6f6023c \
-    --hash=sha256:57bc485d4d911ad1c88606cf3e6b246ef8d49a448dfc6f03d8e2d19e9be82242 \
-    --hash=sha256:6893a3b00bd6b13e154edb251edd647f00846ca177c53fcc73e3d49c50e76994 \
-    --hash=sha256:97c513c5fb211ff784e7628666c8da648e0605389f4a8c5c8fac84cf06ea9ca2 \
-    --hash=sha256:97cad80ca9d2639988c57003425f92e01d4f9bda522809d0fd38629a1ce3e7fc \
-    --hash=sha256:a3887cef3f3012dc6e3da88116af3bcabbcaaf70c807085659dd3a8bd74ed503 \
-    --hash=sha256:bbc9402c01238cc5671a0b3ff9f055e983e6d2390ff3b56130a715daf5719f55 \
-    --hash=sha256:c835645d889838a09ca4db931783c9260fb5773c3aa569760aae5b887789ddea \
-    --hash=sha256:d60df986a621bd3691e885e814391f38f771de72188a28d930955ff59a78ce83 \
-    --hash=sha256:e6388f4e267cea521d04d10040fdb91fc49e47b0e1489f76764e26aecbcf7c48
+    --hash=sha256:4427c798c53d389c5079a8b07550bcedee9970e443feda9cd0a01061b0e6c112 \
+    --hash=sha256:527bdf32e49f85c07f586bfb0901177ada495e48d89810c2c4ac82875491e83c \
+    --hash=sha256:5a7998c400c15f9682e4f3a7287bbc69708b33f054a2a73f1ddd0bcac7a39ec5 \
+    --hash=sha256:5afb38f3c3c57842f00f4aa1878a314366b0bd241934bc8a93cb9ca56f4d2e8e \
+    --hash=sha256:782192b19cc3577de28a011ffd62353cd5aae32916f4e82dc70c4114b5d03f41 \
+    --hash=sha256:8abb5363ddf38a0e5a9a6ed7458a1951ec3a241e3a5146023a00f6ed40474f25 \
+    --hash=sha256:be4ad1ca19d543469b38f562e0fc329e49d94fc456b4723ebe1222dc7abcf438 \
+    --hash=sha256:d791cb55d12b50f5eae952ceea91207053331b6525007ecd174507024956c189
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
