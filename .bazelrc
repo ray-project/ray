@@ -266,7 +266,11 @@ build:ubsan --copt -fno-sanitize-recover=all
 build:ubsan --copt -g
 build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -fno-sanitize-recover=all
-build:ubsan --per_file_copt="-external/com_github_grpc_grpc/.*@-fsanitize=undefined"
+# GCC rejects abseil (>= 20240722) hash containers under the null,
+# nonnull-attribute and returns-nonnull-attribute checks: they make a
+# function-pointer comparison in a constexpr no longer a constant expression.
+# They have to follow -fsanitize=undefined, so they live in the same flag list.
+build:ubsan --per_file_copt="-external/com_github_grpc_grpc/.*@-fsanitize=undefined,-fno-sanitize=null,-fno-sanitize=nonnull-attribute,-fno-sanitize=returns-nonnull-attribute"
 
 build:cgroup --sandbox_writable_path=/sys/fs/cgroup --config=llvm
 

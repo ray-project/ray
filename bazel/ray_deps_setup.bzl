@@ -317,11 +317,12 @@ def ray_deps_setup():
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     #
-    # Matches what grpc 1.69.0 declares.
+    # The LTS grpc 1.69.0 declares (20240722), at patch 2: patch 1 fixed a
+    # security issue in hash container create/resize.
     auto_http_archive(
         name = "com_google_absl",
-        sha256 = "f50e5ac311a81382da7fa75b97310e4b9006474f9560ac46f54a9967f07d4ae3",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz",
+        sha256 = "ec820b01d9b328ca1f1b9c4e5b305d7a9fa03dc410ef64ba6654b637f9a4c3a8",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.2.tar.gz",
         patches = [
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
             "@io_ray//thirdparty/patches:abseil-cpp-shadow.patch",
@@ -357,6 +358,11 @@ def ray_deps_setup():
             # cf_event_engine includes absl/status/status.h without depending
             # on it), which fails on macOS where clang enforces it.
             "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
+            # gRPC 1.69 turns on its EventEngine client and listener on Windows
+            # (1.58 marked them broken there). They abort at teardown
+            # (win_socket.cc: Check failed: is_shutdown_), so keep Windows on the
+            # iomgr path 1.58 used. Posix is unaffected.
+            "@io_ray//thirdparty/patches:grpc-windows-disable-event-engine.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
             "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
