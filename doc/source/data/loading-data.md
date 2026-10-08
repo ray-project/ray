@@ -910,6 +910,10 @@ Install `impyla` on the driver and Ray workers, then call {func}`~ray.data.read_
 with a table name. Table reads infer their Arrow schema from HiveServer2 metadata.
 For a trusted, row-producing SQL query, pass `query` and an explicit `pyarrow.Schema`; the query is sent to HiveServer2 as given. Result columns must match the schema in count and order; names match case-insensitively, and types must use a supported Arrow mapping. Hive may prefix `SELECT *` result labels with the table name or alias. Use those labels in the schema or alias columns in your query.
 
+:::{note}
+Query reads require an explicit Arrow schema. DataSourceV2 planning needs it on the driver before the read worker executes the query. See [issue #66840](https://github.com/ray-project/ray/issues/66840) for optional schema inference from the same query execution.
+:::
+
 Non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, and decimals; timestamp and complex types are unsupported.
 
 The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` into HiveServer2. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause.

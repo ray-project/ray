@@ -3978,6 +3978,11 @@ def read_hive(
 
     .. note::
 
+        Query reads require an explicit Arrow schema. DataSourceV2 planning
+        needs it on the driver before the read worker executes the query.
+        See `issue #66840 <https://github.com/ray-project/ray/issues/66840>`_
+        for optional schema inference from the same query execution.
+
         Each Dataset execution runs at most one HiveServer2 data query in one
         Ray task. Ray doesn't retry failed reads. If Ray loses the worker running
         the query, that Dataset execution fails. This scanner doesn't push
