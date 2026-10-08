@@ -331,6 +331,20 @@ print(result.stdout)
 ray.get(sb.delete.remote())
 ```
 
+### In-memory pause and resume
+
+To temporarily yield CPU execution without writing state to disk or releasing RAM allocations, use `pause()` and `resume()`:
+
+```python
+# Pause sandbox threads in-place (keeps memory warm in RAM)
+ray.get(sb.pause.remote())
+print("Status:", ray.get(sb.get_status.remote()))  # SandboxStatus.PAUSED
+
+# Resume sandbox threads
+ray.get(sb.resume.remote())
+print("Status:", ray.get(sb.get_status.remote()))  # SandboxStatus.RUNNING
+```
+
 ## Container images
 
 Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. One consequence: a `readonly=True` sandbox with an explicit `workdir` runs on a private writable overlay, because runsc drops the rootfs overlay for read-only roots and can't create the workdir mount point in an immutable image; its writes are discarded with the sandbox. A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
