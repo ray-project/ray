@@ -176,6 +176,46 @@ def test_sort(ray_start_regular, use_polars_sort):
     )
 
 
+@pytest.mark.parametrize("descending", [False, True])
+def test_sort_nulls_last(ray_start_regular, use_polars_sort, descending):
+    sort_key = SortKey("a", descending=descending)
+    blocks = [
+        pa.Table.from_pydict({"a": [3, None]}),
+        pa.Table.from_pydict({"a": [1, 2]}),
+    ]
+    expected = [3, 2, 1, None] if descending else [1, 2, 3, None]
+
+    sorted_blocks = [BlockAccessor.for_block(block).sort(sort_key) for block in blocks]
+    assert sorted_blocks[0]["a"].to_pylist() == [3, None]
+
+    merged, _ = BlockAccessor.for_block(sorted_blocks[0]).merge_sorted_blocks(
+        sorted_blocks, sort_key
+    )
+    assert merged["a"].to_pylist() == expected
+
+
+@pytest.mark.parametrize("descending", [False, True])
+def test_sort_nulls_last_with_multiple_partitions(
+    ray_start_regular, use_polars_sort, descending
+):
+    values = [12, None, 4, 10, 1, 8, None, 6, 3, 11, 5, 9, 2, 7]
+    ds = ray.data.from_items([{"a": value} for value in values], override_num_blocks=4)
+
+    sorted_ds = ds.sort("a", descending=descending, boundaries=[4, 7, 10]).materialize()
+    output_blocks = list(
+        sorted_ds.iter_batches(batch_size=None, batch_format="pyarrow")
+    )
+
+    expected = list(range(12, 0, -1) if descending else range(1, 13)) + [
+        None,
+        None,
+    ]
+    assert len(output_blocks) == 4
+    assert [
+        value for block in output_blocks for value in block["a"].to_pylist()
+    ] == expected
+
+
 def test_sort_arrow_with_empty_blocks(
     ray_start_regular, configure_shuffle_method, use_polars_sort
 ):

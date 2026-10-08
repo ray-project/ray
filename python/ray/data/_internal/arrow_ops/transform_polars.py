@@ -30,11 +30,15 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     df = pl.from_arrow(table)
     if parse_version(pl.__version__) >= _POLARS_SORT_DESCENDING_MIN_VERSION:
         return df.sort(
-            sort_key.get_columns(), descending=sort_key.get_descending()
+            sort_key.get_columns(),
+            descending=sort_key.get_descending(),
+            nulls_last=True,
         ).to_arrow()
     else:
         return df.sort(
-            sort_key.get_columns(), reverse=sort_key.get_descending()
+            sort_key.get_columns(),
+            reverse=sort_key.get_descending(),
+            nulls_last=True,
         ).to_arrow()
 
 
@@ -45,10 +49,14 @@ def concat_and_sort(
     blocks = [pl.from_arrow(block) for block in blocks]
     if parse_version(pl.__version__) >= _POLARS_SORT_DESCENDING_MIN_VERSION:
         df = pl.concat(blocks).sort(
-            sort_key.get_columns(), descending=sort_key.get_descending()
+            sort_key.get_columns(),
+            descending=sort_key.get_descending(),
+            nulls_last=True,
         )
     else:
         df = pl.concat(blocks).sort(
-            sort_key.get_columns(), reverse=sort_key.get_descending()
+            sort_key.get_columns(),
+            reverse=sort_key.get_descending(),
+            nulls_last=True,
         )
     return df.to_arrow()
