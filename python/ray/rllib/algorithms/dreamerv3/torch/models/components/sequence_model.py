@@ -80,8 +80,10 @@ class SequenceModel(nn.Module):
         # In Danijar's code, this layer is called: `gru`.
         self.gru_unit = DreamerV3GRU(input_size=gru_input_size, cell_size=num_gru_units)
 
-    def forward(self, a, h, z):
-        """
+    def forward(
+        self, a: "torch.Tensor", h: "torch.Tensor", z: "torch.Tensor"
+    ) -> "torch.Tensor":
+        """Performs a forward pass through the sequence model (computing ht+1).
 
         Args:
             a: The previous action (already one-hot'd if applicable). (B, ...).
@@ -89,6 +91,10 @@ class SequenceModel(nn.Module):
                 (B, num_gru_units)
             z: The previous stochastic discrete representations of the original
                 observation input. (B, num_categoricals, num_classes_per_categorical).
+
+        Returns:
+            The next deterministic h-state (h(t+1)) of shape (B, num_gru_units), as
+            computed by the GRU from the given (a, h, z) triple.
         """
         # Flatten last two dims of z.
         z_shape = z.shape

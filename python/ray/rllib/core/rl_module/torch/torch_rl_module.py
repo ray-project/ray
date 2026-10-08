@@ -78,6 +78,10 @@ class TorchRLModule(nn.Module, RLModule):
 
         Args:
             compile_config: The compile config to use.
+
+        Returns:
+            This module with its forward methods compiled according to
+            `compile_config`.
         """
         return compile_wrapper(self, compile_config)
 

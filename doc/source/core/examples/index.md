@@ -6,7 +6,7 @@ myst:
 
 (ray-core-examples-tutorial)=
 
-# Ray Core Examples
+# Ray Core examples
 
 ```{toctree}
 :hidden:
@@ -18,30 +18,30 @@ myst:
 <!-- Organize example .rst files in the same manner as the
    .py files in ray/python/ray/train/examples. -->
 
-Below are examples for using Ray Core for a variety use cases.
+The following examples show how to use Ray Core for a variety of use cases.
 
 ## Beginner
 
 ```{list-table}
 * - {doc}`A Gentle Introduction to Ray Core by Example <gentle_walkthrough>`
 * - {doc}`Using Ray for Highly Parallelizable Tasks <highly_parallel>`
-* - {doc}`Monte Carlo Estimation of π <monte-carlo-pi>`
+* - {doc}`monte-carlo-pi`
 ```
 
 
 ## Intermediate
 
 ```{list-table}
-* - {doc}`Running a Simple MapReduce Example with Ray Core <map_reduce>`
-* - {doc}`Speed Up Your Web Crawler by Parallelizing it with Ray <web_crawler>`
+* - {doc}`map_reduce`
+* - {doc}`web_crawler`
 ```
 
 
 ## Advanced
 
 ```{list-table}
-* - {doc}`Build Batch Prediction Using Ray <batch_prediction>`
-* - {doc}`Build a Simple Parameter Server Using Ray <plot_parameter_server>`
+* - {doc}`batch_prediction`
+* - {doc}`plot_parameter_server`
 * - {doc}`Simple Parallel Model Selection <plot_hyperparameter>`
 * - {doc}`Learning to Play Pong <plot_pong_example>`
 ```

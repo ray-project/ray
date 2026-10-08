@@ -26,7 +26,7 @@ class QNetAPI(abc.ABC):
         Args:
             batch: The batch received in the forward pass.
 
-        Results:
+        Returns:
             A dictionary containing the Q-value predictions ("qf_preds")
             and in case of distributional Q-learning - in addition to the Q-value
             predictions ("qf_preds") - the support atoms ("atoms"), the Q-logits

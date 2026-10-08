@@ -286,6 +286,9 @@ class DQNConfig(AlgorithmConfig):
                 data.
                 - This is False AND restoring from a checkpoint that does contain
                 buffer data.
+            lr_schedule: Deprecated (old API stack only). Learning rate schedule in
+                the format of [[timestep, lr-value], [timestep, lr-value], ...].
+                Use `lr` with a schedule on the new API stack instead.
             epsilon: Epsilon exploration schedule. In the format of [[timestep, value],
                 [timestep, value], ...]. A schedule must start from
                 timestep 0.
@@ -348,6 +351,8 @@ class DQNConfig(AlgorithmConfig):
                 initial state - zero or an outdated recorded state. Consider setting
                 this parameter to a positive integer if your stateful RLModule faces
                 convergence challenges or exhibits signs of catastrophic forgetting.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

@@ -109,12 +109,7 @@ for updating the model.
 
 **Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/atari_ppo.py), [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/cartpole_ppo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/pendulum_ppo.py).
 
-**PPO-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.ppo.ppo.PPOConfig
-   :members: training
-```
+**PPO-specific configs**: {py:meth}`PPOConfig.training() <ray.rllib.algorithms.ppo.ppo.PPOConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## Off-policy
 
@@ -143,12 +138,7 @@ RLlib provides all the DQN improvements evaluated in [Rainbow](https://arxiv.org
 For a complete [rainbow](https://arxiv.org/pdf/1710.02298.pdf) setup, make the following changes to the default DQN config: `"n_step": [between 1 and 10], "noisy": True, "num_atoms": [more than 1], "v_min": -10.0, "v_max": 10.0` (set `v_min` and `v_max` according to your expected range of returns).
 :::
 
-**DQN-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.dqn.dqn.DQNConfig
-   :members: training
-```
+**DQN-specific configs**: {py:meth}`DQNConfig.training() <ray.rllib.algorithms.dqn.dqn.DQNConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (sac)=
 
@@ -169,12 +159,7 @@ for updating the model.
 
 **Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/sac/pendulum_sac.py), [HalfCheetah-v4](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/sac/halfcheetah_sac.py).
 
-**SAC-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.sac.sac.SACConfig
-   :members: training
-```
+**SAC-specific configs**: {py:meth}`SACConfig.training() <ray.rllib.algorithms.sac.sac.SACConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## High-throughput on- and off-policy
 
@@ -206,12 +191,7 @@ for updating the model.
 
 **Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/appo/pong_appo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/appo/pendulum_appo.py).
 
-**APPO-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
-   :members: training
-```
+**APPO-specific configs**: {py:meth}`APPOConfig.training() <ray.rllib.algorithms.appo.appo.APPOConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (impala)=
 
@@ -241,12 +221,7 @@ Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pai
 The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
 ```
 
-**IMPALA-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.impala.impala.IMPALAConfig
-   :members: training
-```
+**IMPALA-specific configs**: {py:meth}`IMPALAConfig.training() <ray.rllib.algorithms.impala.impala.IMPALAConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## Model-based RL
 
@@ -326,12 +301,7 @@ BC try to match the behavior policy, which generated the offline data, disregard
 
 **Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/cartpole_bc.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/pendulum_bc.py).
 
-**BC-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
-   :members: training
-```
+**BC-specific configs**: {py:class}`~ray.rllib.algorithms.bc.bc.BCConfig` inherits its `training()` settings from {py:meth}`MARWILConfig.training() <ray.rllib.algorithms.marwil.marwil.MARWILConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (cql)=
 
@@ -350,12 +320,7 @@ The `SACLearner` adds this conservative correction term to the TD-based Q-learni
 
 **Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/cql/pendulum_cql.py).
 
-**CQL-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
-   :members: training
-```
+**CQL-specific configs**: {py:meth}`CQLConfig.training() <ray.rllib.algorithms.cql.cql.CQLConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (iql)=
 
@@ -376,12 +341,7 @@ The `SACLearner` adds this conservative correction term to the TD-based Q-learni
 
 **Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/iql/pendulum_iql.py).
 
-**IQL-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.iql.iql.IQLConfig
-   :members: training
-```
+**IQL-specific configs**: {py:meth}`IQLConfig.training() <ray.rllib.algorithms.iql.iql.IQLConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (marwil)=
 
@@ -402,12 +362,7 @@ episodes into train batches and send these as data iterators directly to the n L
 
 **Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/marwil/cartpole_marwil.py).
 
-**MARWIL-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
-   :members: training
-```
+**MARWIL-specific configs**: {py:meth}`MARWILConfig.training() <ray.rllib.algorithms.marwil.marwil.MARWILConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## Algorithm extensions and plugins
 

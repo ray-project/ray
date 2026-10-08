@@ -88,6 +88,9 @@ def get_action_connectors_from_config(
     Args:
         ctx: context used to create connectors.
         config: The AlgorithmConfig object.
+
+    Returns:
+        An ActionConnectorPipeline containing the default action connectors.
     """
     connectors = [ConvertToNumpyConnector(ctx)]
     if config.get("normalize_actions", False):
@@ -129,6 +132,9 @@ def restore_connectors_for_policy(
     Args:
         policy: Policy instance.
         connector_config: Serialized connector config.
+
+    Returns:
+        The Connector restored from the given serialized `connector_config`.
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
     name, params = connector_config

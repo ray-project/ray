@@ -1,8 +1,12 @@
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 import ray
 from ray.rllib.utils.annotations import OldAPIStack
+
+if TYPE_CHECKING:
+    from ray.rllib.env.env_runner_group import EnvRunnerGroup
+    from ray.rllib.utils.filter import Filter
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +19,12 @@ class FilterManager:
 
     @staticmethod
     def synchronize(
-        local_filters,
-        worker_set,
-        update_remote=True,
+        local_filters: Dict[str, "Filter"],
+        worker_set: "EnvRunnerGroup",
+        update_remote: bool = True,
         timeout_seconds: Optional[float] = None,
         use_remote_data_for_update: bool = True,
-    ):
+    ) -> None:
         """Aggregates filters from remote workers (if use_remote_data_for_update=True).
 
         Local copy is updated and then broadcasted to all remote evaluators
