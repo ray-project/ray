@@ -5,6 +5,7 @@ These pin that ``create()`` arguments actually reach the backend's
 shipped behind a green suite.
 """
 
+import os
 import sys
 import time
 
@@ -43,11 +44,20 @@ class _FakeBackend:
     def get_status(self, sandbox_id):
         return SandboxStatus.RUNNING
 
+    def pause_sandbox(self, sandbox_id: str, timeout_seconds=None):
+        self.paused.append(sandbox_id)
+
+    def resume_sandbox(self, sandbox_id: str, timeout_seconds=None):
+        self.resumed.append(sandbox_id)
+
 
 def _fake_runtime():
     runtime = SandboxRuntime()
     runtime._image_manager = _FakeImageManager()
-    runtime._backend = _FakeBackend()
+    backend = _FakeBackend()
+    backend.paused = []
+    backend.resumed = []
+    runtime._backend = backend
     return runtime
 
 
@@ -110,6 +120,93 @@ def test_no_ttl_by_default():
     (config,) = runtime._backend.configs
     assert config.ttl_seconds is None
     assert config.shell == "/bin/bash"
+
+
+def test_pause_and_resume_forward_to_backend():
+    runtime = _fake_runtime()
+    instance_id = runtime.create(image="fake:latest")
+
+    runtime.pause(instance_id, timeout_seconds=5.0)
+    assert runtime._backend.paused == [instance_id]
+
+    runtime.resume(instance_id, timeout_seconds=5.0)
+    assert runtime._backend.resumed == [instance_id]
+
+
+def test_gvisor_backend_pause_resume_lifecycle(tmp_path, monkeypatch):
+    """Test GVisorSandboxBackend pause/resume handling, state transitions, and error paths."""
+    from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+    from ray.experimental.sandbox.config import SandboxConfig
+    from ray.experimental.sandbox.exceptions import SandboxError
+
+    backend = GVisorSandboxBackend(image_manager=_FakeImageManager())
+    config = SandboxConfig(image="fake:latest")
+    sandbox_id = "test-sandbox-id"
+    root_dir = str(tmp_path / sandbox_id)
+    os.makedirs(root_dir, exist_ok=True)
+    backend._sandbox_metadata[sandbox_id] = {
+        "config": config,
+        "root_dir": root_dir,
+        "status": SandboxStatus.RUNNING,
+    }
+
+    commands_executed = []
+
+    def fake_run(args, **kwargs):
+        commands_executed.append(args)
+
+        class Completed:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Completed()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    # 1. Normal pause
+    backend.pause_sandbox(sandbox_id)
+    assert backend.get_status(sandbox_id) == SandboxStatus.PAUSED
+    assert any("pause" in cmd for cmd in commands_executed)
+
+    # 2. Idempotent pause (should not re-run runsc)
+    len_before = len(commands_executed)
+    backend.pause_sandbox(sandbox_id)
+    assert len(commands_executed) == len_before
+
+    # 3. Normal resume
+    backend.resume_sandbox(sandbox_id)
+    assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
+    assert any("resume" in cmd for cmd in commands_executed)
+
+    # 4. Idempotent resume (should not re-run runsc)
+    len_before = len(commands_executed)
+    backend.resume_sandbox(sandbox_id)
+    assert len(commands_executed) == len_before
+
+    # 5. Terminated sandbox error
+    backend._sandbox_metadata[sandbox_id]["status"] = SandboxStatus.TERMINATED
+    with pytest.raises(SandboxError, match="Cannot pause terminated"):
+        backend.pause_sandbox(sandbox_id)
+    with pytest.raises(SandboxError, match="Cannot resume terminated"):
+        backend.resume_sandbox(sandbox_id)
+
+    # 6. runsc error raises SandboxError
+    backend._sandbox_metadata[sandbox_id]["status"] = SandboxStatus.RUNNING
+
+    def fake_failing_run(args, **kwargs):
+        class Failed:
+            returncode = 1
+            stdout = ""
+            stderr = "runsc execution error"
+
+        return Failed()
+
+    monkeypatch.setattr(subprocess, "run", fake_failing_run)
+    with pytest.raises(SandboxError, match="Failed to pause"):
+        backend.pause_sandbox(sandbox_id)
 
 
 if __name__ == "__main__":

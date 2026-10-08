@@ -13,6 +13,7 @@ class SandboxStatus(Enum):
 
     PENDING = "PENDING"
     RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
 
@@ -150,5 +151,29 @@ class BaseSandboxBackend(ABC):
 
         Returns:
             Current SandboxStatus value.
+        """
+        pass
+
+    @abstractmethod
+    def pause_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Pause all processes inside the sandbox without disk serialization.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            timeout_seconds: Optional timeout for the pause operation.
+        """
+        pass
+
+    @abstractmethod
+    def resume_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Resume execution of a paused sandbox.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            timeout_seconds: Optional timeout for the resume operation.
         """
         pass
