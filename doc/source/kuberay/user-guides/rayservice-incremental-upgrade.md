@@ -7,7 +7,7 @@ myst:
 (kuberay-rayservice-incremental-upgrade)=
 # RayService Zero-Downtime Incremental Upgrades
 
-This guide details how to configure and use the `NewClusterWithIncrementalUpgrade` strategy for a `RayService` with KubeRay. This feature was proposed in a [Ray Enhancement Proposal (REP)](https://github.com/ray-project/enhancements/blob/main/reps/2024-12-4-ray-service-incr-upgrade.md) and implemented with alpha support in KubeRay v1.5.1. If unfamiliar with RayServices and KubeRay, see the [RayService Quickstart](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/rayservice-quick-start.html).
+This guide details how to configure and use the `NewClusterWithIncrementalUpgrade` strategy for a `RayService` with KubeRay. This feature was proposed in a [Ray Enhancement Proposal (REP)](https://github.com/ray-project/enhancements/blob/main/reps/2024-12-4-ray-service-incr-upgrade.md) and implemented with alpha support in KubeRay v1.5.1. If unfamiliar with RayServices and KubeRay, see the [RayService Quickstart](https://docs.ray.io/en/latest/kuberay/getting-started/rayservice-quick-start.html).
 
 In previous versions of KubeRay, zero-downtime upgrades were supported only through the `NewCluster` strategy. This upgrade strategy involved scaling up a pending RayCluster with equal capacity as the active cluster, waiting until the updated Serve applications were healthy, and then switching traffic to the new RayCluster. While this upgrade strategy is reliable, it required users to scale 200% of their original cluster's compute resources which can be prohibitive when dealing with expensive accelerator resources.
 
@@ -42,7 +42,7 @@ Before you can use this feature, you **must** have the following set up in your 
     ```
     Use the `metadata.name`, for example `istio`, in the `gatewayClassName` field of the `RayService` spec.
 
-4.  **Ray Autoscaler:** Incremental upgrades require the Ray Autoscaler to be enabled in your `RayCluster` spec, as KubeRay manages the upgrade by adjusting the `target_capacity` for Ray Serve which adjusts the number of Serve replicas for each deployment. These Serve replicas are translated into a resource load which the Ray autoscaler considers when determining the number of Pods to provision with KubeRay. For information on enabling and configuring Ray autoscaling on Kubernetes, see [KubeRay Autoscaling](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/configuring-autoscaling.html).
+4.  **Ray Autoscaler:** Incremental upgrades require the Ray Autoscaler to be enabled in your `RayCluster` spec, as KubeRay manages the upgrade by adjusting the `target_capacity` for Ray Serve which adjusts the number of Serve replicas for each deployment. These Serve replicas are translated into a resource load which the Ray autoscaler considers when determining the number of Pods to provision with KubeRay. For information on enabling and configuring Ray autoscaling on Kubernetes, see [KubeRay Autoscaling](https://docs.ray.io/en/latest/kuberay/user-guides/configuring-autoscaling.html).
 
 #### Example: Setting up a RayService on kind:
 
@@ -107,7 +107,7 @@ spec:
   - kind-pool" | kubectl apply -f -
 ```
 
-6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
+6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/kuberay/getting-started/operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
 ```bash
 helm install kuberay-operator kuberay/kuberay-operator --version v1.7.0 \
   --set featureGates\[0\].name=RayServiceIncrementalUpgrade \
