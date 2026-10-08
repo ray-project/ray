@@ -1085,18 +1085,3 @@ class ReplicaMetricReport:
     healthy: Optional[bool] = None
     health_checked_at: Optional[float] = None
     health_consecutive_failures: Optional[int] = None
-
-
-@dataclass
-class AsyncInferenceTaskQueueMetricReport:
-    """Metric report from QueueMonitor to controller for async inference.
-
-    Args:
-        deployment_id: The deployment ID this queue belongs to.
-        queue_length: The number of pending tasks in the broker queue.
-        timestamp_s: The time at which this report was created.
-    """
-
-    deployment_id: DeploymentID
-    queue_length: int
-    timestamp_s: float
