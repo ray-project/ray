@@ -43,3 +43,5 @@ Ray releases a task's CPU resources while the task blocks. This prevents deadloc
 ```
 
 While a `g` task runs, it releases its CPU resources when it blocks in the call to `ray.get`, and it reacquires them when `ray.get` returns. The task keeps its GPU resources for its whole lifetime because it most likely continues to use GPU memory.
+
+To use nested tasks for divide-and-conquer parallelism, see {ref}`nested-tasks`.
