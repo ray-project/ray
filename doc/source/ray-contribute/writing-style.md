@@ -89,7 +89,7 @@ Match the grammatical form of items in a series and avoid redundant conjunctions
 
 ### Use contractions
 
-Contractions read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't. Avoid contractions in a warning or an error message, where the extra weight of the full form helps.
+Always use contractions. They read naturally: don't, doesn't, can't, won't, it's, you're, isn't, aren't, wouldn't, shouldn't.
 
 Never use "would've," "could've," "should've," "ain't," or "y'all."
 
@@ -362,11 +362,41 @@ Pick the format that makes the information easiest to extract:
 - Mapping topics to pages, or comparing options side by side, is a table.
 - Listing benefits is usually a cut. Fold the one point that matters into prose.
 
+(ray-core-docs-style)=
+
+## Writing Ray Core docs
+
+Ray Core pages live under `doc/source/core/`. They define the object vocabulary that every other Ray library builds on, such as tasks, actors, objects, and placement groups, so the forms in this section apply wherever another library's pages use those terms.
+
+The "Capitalize Ray components and product names" rule earlier in this guide covers most of it. Lowercase a generic noun even when it names a Ray concept, and keep that noun lowercase in headings past the first word, because headings are sentence case.
+
+### Ray Core terms
+
+Look up the form here rather than deriving it. The `Core.Terms` and `Core.Capitalization` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/core/`.
+
+| Use | Not | Note |
+|---|---|---|
+| raylet | Raylet | The process that runs on each node. Lowercase mid-sentence, matching the source code. Capitalize it only at the start of a sentence or heading. |
+| GCS | gcs | Always uppercase in prose. |
+| Plasma store | plasma store, Plasma Store | Plasma is the name of the in-memory object store implementation, which started as part of Apache Arrow. "Store" is a generic noun. |
+| object store | Object Store | The generic concept. |
+| object ref, `ObjectRef` | Object Ref, object Ref | Write "object ref" in prose. Use `ObjectRef` in code style only when you mean the Python type. |
+| placement group | Placement Group | The class `PlacementGroup` keeps code style. |
+| head node, worker node | Head Node, Worker Node | |
+| worker process, driver | Worker Process, Driver | |
+| runtime environment | runtime env, Runtime Environment | Spell it out in prose. The `runtime_env` argument keeps code style. |
+| fault tolerance | Fault Tolerance | Hyphenate it only as a modifier before a noun, as in "fault-tolerance mechanisms." |
+| remote function, actor handle, named actor, concurrency group | Remote Function, Actor Handle, Named Actor, Concurrency Group | |
+| `asyncio` | AsyncIO, Asyncio | Python's module name, lowercase everywhere. |
+| retryable | retriable | Matches the spelling the source code uses most. |
+| Ray Compiled Graph, Ray Direct Transport (RDT) | Compiled graph, Direct transport | Feature names keep their capitals. |
+| Gloo, NCCL, NIXL, CuPy, libfabric | GLOO, gloo, cupy, LIBFABRIC | Third-party names take each project's own casing. |
+
 (kubernetes-docs-style)=
 
 ## Writing Ray on Kubernetes and KubeRay docs
 
-Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/cluster/kubernetes/` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
+Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/kuberay/` and in `doc/source/cluster/kubernetes.md` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
 
 When two rules conflict in this domain, follow this order:
 

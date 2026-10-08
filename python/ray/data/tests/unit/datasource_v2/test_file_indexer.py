@@ -544,7 +544,7 @@ class TestFooterIndexerFileShuffle:
         ]
 
         batches = list(indexer._batches(iter(shuffled)))
-        flattened = [p for batch in batches for p, _ in batch]
+        flattened = [fi.path for batch in batches for fi in batch]
         assert flattened == [fi.path for fi in shuffled]
         assert len(batches) > 1
 

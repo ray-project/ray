@@ -25,7 +25,6 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
-    PARQUET_FILE_EXTENSIONS,
     check_for_legacy_tensor_type,
 )
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
@@ -76,7 +75,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         *,
         filesystem: Optional["FileSystem"] = None,
         partitioning: Optional[Partitioning] = Partitioning(PartitionStyle.HIVE),
-        file_extensions: Optional[List[str]] = None,
+        file_extensions: Optional[Union[List[str], tuple[str, ...]]] = ("parquet",),
         ignore_missing_paths: bool = False,
         skip_paths: Optional[Union[str, List[str]]] = None,
         include_paths: bool = False,
@@ -100,7 +99,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
-        self._file_extensions = file_extensions or PARQUET_FILE_EXTENSIONS
+        self._file_extensions = (
+            list(file_extensions) if file_extensions is not None else None
+        )
         self._ignore_missing_paths = ignore_missing_paths
         # Resolve "skip_paths" through the same path normalization as the
         # input paths so exact-match comparison against the resolved paths the
@@ -159,7 +160,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         return self._partitioning
 
     @property
-    def file_extensions(self) -> List[str]:
+    def file_extensions(self) -> Optional[List[str]]:
         return self._file_extensions
 
     @property

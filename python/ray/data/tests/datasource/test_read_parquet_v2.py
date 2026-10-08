@@ -360,11 +360,11 @@ def _row_group_pairs(manifests):
     total_rows = 0
     for manifest in manifests:
         for path, md in zip(manifest.paths, manifest.file_chunk_metadatas):
-            assert md is not None and "row_group_ids" in md, (
-                "FooterFileIndexer must emit Parquet row-group metadata; "
-                "without it OnlineBinPacker falls back to whole-file bins"
+            assert md is not None and "unit_ids" in md, (
+                "FooterFileIndexer must emit row-group runs as FileChunk rows; "
+                "without them OnlineBinPacker packs whole files"
             )
-            pairs.extend((str(path), int(rg_id)) for rg_id in md["row_group_ids"])
+            pairs.extend((str(path), int(rg_id)) for rg_id in md["unit_ids"])
             total_rows += int(md["num_rows"])
     return sorted(pairs), total_rows
 

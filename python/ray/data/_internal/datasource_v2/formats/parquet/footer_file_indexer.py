@@ -10,7 +10,6 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Tuple,
 )
 
 import ray
@@ -20,16 +19,10 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+    ChunkedFile,
     FooterReaderActor,
 )
-from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
-    FileChunks,
-    ParquetRowGroupChunkMetadata,
-)
-from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    FileManifest,
-    create_chunk_metadata,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -54,7 +47,7 @@ _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 
 # Files per ``read_footers`` call. Small footers -> batch several per task to
 # amortize the per-task and per-result object-store overhead.
 _DEFAULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", 10)
-# ``FileChunks`` per streamed result. The driver pays one object-store fetch per
+# ``ChunkedFile`` per streamed result. The driver pays one object-store fetch per
 # yielded list, so a large directory costs one fetch per file at ``1``. Raising
 # it trades a little latency-to-first-chunk for far fewer driver-side fetches.
 _DEFAULT_RESULT_BATCH_SIZE = env_integer("RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE", 1)
@@ -68,30 +61,21 @@ _DEFAULT_MAX_INFLIGHT_BATCHES: Optional[int] = env_integer(
 # as a ``FilePartitioner``; see ``ParquetDatasourceV2.get_file_partitioner``.
 
 
-def _file_chunks_to_manifest(file_chunks: FileChunks) -> FileManifest:
+def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
     """One listing row per row-group run of a file.
 
-    The row carries the run's exact footer stats, so a downstream partitioner
-    can group runs into read units -- and split them at row-group boundaries --
+    The row is the run's ``FileChunk`` with its exact footer stats (``size_bytes``
+    is the projection-scoped uncompressed size), so a downstream partitioner
+    can group runs into read tasks -- and split them at row-group boundaries --
     without re-reading the footer. Grouping is deliberately *not* done here:
     listing discovers, the partitioner groups.
     """
-    n = len(file_chunks.row_groups)
+    n = len(chunked_file.row_groups)
+    assert chunked_file.file.size is not None
     return FileManifest.construct_manifest(
-        paths=[file_chunks.path] * n,
-        sizes=[file_chunks.size] * n,
-        chunk_metadatas=[
-            create_chunk_metadata(
-                ParquetRowGroupChunkMetadata,
-                row_group_ids=tuple(range(rg.rg_idx, rg.rg_idx + rg.rg_count)),
-                num_rows=rg.num_rows,
-                uncompressed_size=rg.uncompressed_size,
-                fully_matched=rg.fully_matched,
-                rg_sizes=rg.rg_sizes,
-                rg_rows=rg.rg_rows,
-            )
-            for rg in file_chunks.row_groups
-        ],
+        paths=[chunked_file.file.path] * n,
+        sizes=[chunked_file.file.size] * n,
+        chunk_metadatas=[run.to_metadata() for run in chunked_file.row_groups],
     )
 
 
@@ -312,14 +296,14 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         while pending:
             gen = pending.popleft()
             for ref in gen:  # blocks until this generator's next result lands
-                for file_chunks in ray.get(ref):
-                    yield _file_chunks_to_manifest(file_chunks)
+                for chunked_file in ray.get(ref):
+                    yield _chunked_file_to_manifest(chunked_file)
                     if limit is not None:
                         # Count only fully-matched (exact-survivor) rows so
                         # stopping can never under-deliver under a filter.
                         delivered_fully_matched_rows += sum(
                             rg.num_rows
-                            for rg in file_chunks.row_groups
+                            for rg in chunked_file.row_groups
                             if rg.fully_matched
                         )
                 if limit is not None and delivered_fully_matched_rows >= limit:
@@ -329,14 +313,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             # This generator drained; keep the window full.
             dispatch_next()
 
-    def _batches(
-        self, file_infos: "Iterable[FileInfo]"
-    ) -> Iterator[List[Tuple[str, int]]]:
-        batch: List[Tuple[str, int]] = []
+    def _batches(self, file_infos: "Iterable[FileInfo]") -> Iterator[List[FileInfo]]:
+        batch: List[FileInfo] = []
         for file_info in file_infos:
             if file_info.size is None:
                 continue
-            batch.append((file_info.path, file_info.size))
+            batch.append(file_info)
             if len(batch) >= self._footer_batch_size:
                 yield batch
                 batch = []

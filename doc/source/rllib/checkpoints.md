@@ -140,7 +140,7 @@ RLlib uses a checkpoint versioning system to determine how to restore an Algorit
 
 From Ray 2.40 on, you can find the checkpoint version in the human-readable `metadata.json` file inside all checkpoint directories.
 
-Also starting from `Ray 2.40`, RLlib checkpoints are backward compatible. This means that `Ray 2.x+n` can read and handle a checkpoint created with Ray `2.x`, as long as `x >= 40`. The Ray team ensures backward compatibility with [comprehensive CI tests on checkpoints taken with previous Ray versions](https://github.com/ray-project/ray/blob/master/rllib/utils/tests/test_checkpointable.py).
+Also starting from `Ray 2.40`, RLlib checkpoints are backward compatible. This means that `Ray 2.x+n` can read and handle a checkpoint created with Ray `2.x`, as long as `x >= 40`. The Ray team ensures backward compatibility with [comprehensive CI tests on checkpoints taken with previous Ray versions](https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/tests/test_checkpointable.py).
 
 
 (rllib-checkpoints-structure-of-checkpoint-dir)=
@@ -205,7 +205,7 @@ Support for `msgpack`-based checkpoints is experimental but might become the def
 
 The Ray team is working on completely separating state from architecture within checkpoints. All state information should go into the `state.msgpack` file, which is Python-version independent, whereas all architecture information should go into the `class_and_ctor_args.pkl` file, which still depends on the Python version. When loading from a checkpoint, you provide the architecture part.
 
-See [an example that illustrates this in more detail](https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py).
+See [an example that illustrates this in more detail](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/checkpoints/change_config_during_training.py).
 :::
 
 
@@ -300,10 +300,10 @@ print(results)
 
 ::::
 
-See this [example of how to run policy inference after training](https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py) and this [example of how to run policy inference with an LSTM](https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_w_connector.py).
+See this [example of how to run policy inference after training](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py) and this [example of how to run policy inference with an LSTM](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training_w_connector.py).
 
 :::{hint}
-Because your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` is also a [PyTorch Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module), you can export your model to [ONNX](https://onnx.ai/), [IREE](https://iree.dev/), or other deployment-friendly formats. See this [example script supporting ONNX](https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py) for details.
+Because your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` is also a [PyTorch Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module), you can export your model to [ONNX](https://onnx.ai/), [IREE](https://iree.dev/), or other deployment-friendly formats. See this [example script supporting ONNX](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/inference/policy_inference_after_training.py) for details.
 :::
 
 
@@ -345,7 +345,7 @@ new_ppo.stop()
 
 However, when running through Ray Tune, you don't have direct access to the Algorithm object or any of its subcomponents. Use {ref}`RLlib's callbacks APIs <rllib-callback-docs>` to inject custom code and solve this.
 
-Also see an [example of how to continue training with a different config](https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py).
+Also see an [example of how to continue training with a different config](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/checkpoints/change_config_during_training.py).
 
 ```{testcode}
 from ray import tune

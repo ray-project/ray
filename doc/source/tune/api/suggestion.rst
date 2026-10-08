@@ -273,7 +273,6 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Searcher.suggest
     Searcher.save
