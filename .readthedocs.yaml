@@ -48,7 +48,7 @@ build:
           echo "Could not determine merge-base with origin/master; building docs to be safe."
           exit 0
         fi
-        if git log --format=%B origin/master..HEAD | grep -q '^@rtd-build'; then
+        if git log --format=%B origin/master..HEAD | grep -q '^[[:space:]]*@rtd-build'; then
           echo "A commit message in this PR requests a build with @rtd-build; building docs."
           exit 0
         fi
