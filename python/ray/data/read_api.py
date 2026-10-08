@@ -1806,15 +1806,10 @@ def read_parquet(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to HIVE partitioning.
         merge_schema: If ``True``, infer the schema from every eligible Parquet
-            file before returning the Dataset. This lists all files and reads
-            every footer up front, which can be expensive for large or remote
-            datasets. The files discovered for inference are also the files
-            considered when the Dataset executes. Files appended after discovery
-            aren't included, and a changing directory isn't an atomic snapshot.
-            Retained path and size metadata grows with file count and adds
-            O(files) data to serialized lineage. More than 10,000 candidates
-            emits a warning before footer merging. Defaults to ``False``, which
-            infers from up to 16 files. Requires the V2 datasource.
+            file before returning the Dataset. Defaults to ``False``, which
+            infers from up to 16 files. Requires the V2 datasource and cannot be
+            combined with an explicit ``schema``. See the notes below for cost
+            and file-discovery behavior.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
@@ -1868,6 +1863,19 @@ def read_parquet(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
+
+    .. note::
+
+        ``merge_schema=True`` lists all eligible files and reads every footer during
+        planning, which can be expensive for large or remote datasets. Execution
+        reads footer metadata again. With more than 10,000 candidate files, the
+        reader warns before footer merging. Retained path and size metadata adds
+        O(files) data to serialized lineage.
+
+        The Dataset retains those candidate paths across actions. Files appended
+        after discovery aren't included. Concurrent directory traversal isn't an
+        atomic snapshot, and replacing a file at the same path is outside this
+        guarantee.
 
     .. tip::
 

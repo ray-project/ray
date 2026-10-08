@@ -95,25 +95,9 @@ def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
     assert schema.types[schema.names.index("row_hash")] == pa.uint64()
 
 
-def test_read_parquet_v2_columns_applies_select_columns(tmp_path, restore_ctx):
-    from ray.data._internal.logical.operators.map_operator import Project
-
-    _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
-
-    restore_ctx.use_datasource_v2 = True
-    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
-        ds = ray.data.read_parquet(str(tmp_path), columns=["a"])
-
-    # ``columns=`` is applied via ``ds.select_columns([...])``, which
-    # wraps the ReadFiles op in a Project node.
-    dag = ds._logical_plan.dag
-    assert isinstance(dag, Project)
-    assert [expr.name for expr in dag.exprs] == ["a"]
-    assert isinstance(dag.input_dependencies[0], ReadFiles)
-
-
-def test_read_parquet_v2_columns_with_include_paths_preserves_path(
-    tmp_path, restore_ctx
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_read_parquet_v2_columns_applies_select_columns(
+    tmp_path, restore_ctx, merge_schema
 ):
     from ray.data._internal.logical.operators.map_operator import Project
 
@@ -121,7 +105,35 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
 
     restore_ctx.use_datasource_v2 = True
     with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
-        ds = ray.data.read_parquet(str(tmp_path), columns=["a"], include_paths=True)
+        ds = ray.data.read_parquet(
+            str(tmp_path), columns=["a"], merge_schema=merge_schema
+        )
+
+    # ``columns=`` is applied via ``ds.select_columns([...])``, which
+    # wraps the ReadFiles op in a Project node.
+    dag = ds._logical_plan.dag
+    assert isinstance(dag, Project)
+    assert [expr.name for expr in dag.exprs] == ["a"]
+    assert isinstance(dag.input_dependencies[0], ReadFiles)
+    assert ds.take_all() == [{"a": 1}]
+
+
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_read_parquet_v2_columns_with_include_paths_preserves_path(
+    tmp_path, restore_ctx, merge_schema
+):
+    from ray.data._internal.logical.operators.map_operator import Project
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(
+            str(tmp_path),
+            columns=["a"],
+            include_paths=True,
+            merge_schema=merge_schema,
+        )
 
     dag = ds._logical_plan.dag
     assert isinstance(dag, Project)
@@ -129,6 +141,7 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # ``include_paths=True``; the V2 path appends it to keep that
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
+    assert ds.take_all() == [{"a": 1, "path": str(tmp_path / "data.parquet")}]
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
@@ -605,17 +618,25 @@ def test_count_pushdown_preserves_list_files_fields(tmp_path, restore_ctx, read_
 
 
 @pytest.mark.parametrize("case", ["predicate", "limit"])
-def test_count_pushdown_declines_row_reducing_reads(tmp_path, restore_ctx, case):
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_count_pushdown_declines_row_reducing_reads(
+    tmp_path, restore_ctx, case, merge_schema
+):
     """A row-reducing pushdown makes footer ``num_rows`` an overcount."""
     from ray.data.expressions import col
 
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3, 4]}))
 
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema)
     ds = ds.filter(expr=col("a") > 2) if case == "predicate" else ds.limit(2)
 
     assert any(isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag))
+    assert ds.count() == 2
+    rows = ds.take_all()
+    assert len(rows) == 2
+    if case == "predicate":
+        assert sorted(row["a"] for row in rows) == [3, 4]
 
 
 @pytest.mark.parametrize(
@@ -672,6 +693,8 @@ def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx)
 
 
 def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ctx):
+    from ray.data.expressions import col
+
     for i in range(17):
         data = {"id": [i]}
         if i == 16:
@@ -701,6 +724,9 @@ def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ct
     rows = sorted(merged.take_all(), key=lambda row: row["id"])
     assert all(row["new_feature"] is None for row in rows[:16])
     assert rows[16]["new_feature"] == "latest"
+    assert merged.filter(expr=col("new_feature") == "latest").select_columns(
+        ["id", "new_feature"]
+    ).take_all() == [{"id": 16, "new_feature": "latest"}]
 
 
 def test_merge_schema_warns_for_large_candidate_set(
@@ -716,6 +742,9 @@ def test_merge_schema_warns_for_large_candidate_set(
     restore_ctx.use_datasource_v2 = True
     read_api = importlib.import_module("ray.data.read_api")
     monkeypatch.setattr(read_api, "_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT", 1)
+    # Ray's logger hierarchy can stop propagation before caplog's root handler.
+    monkeypatch.setattr(read_api.logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(read_api.logger, "propagate", False)
 
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.read_parquet([str(first), str(second)], merge_schema=True)
@@ -871,7 +900,7 @@ def test_merge_schema_prelisted_listing_skips_checkpointed_row_group(
         list_files_for_each_block,
     )
     from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
-    from ray.data._internal.datasource_v2.read_units import (
+    from ray.data._internal.datasource_v2.interfaces.read_units import (
         EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
     )
     from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -898,14 +927,87 @@ def test_merge_schema_prelisted_listing_skips_checkpointed_row_group(
             preserve_order=True,
         )
     )
-    remaining = [
-        row_group_id
+    reader = ds._logical_plan.dag.scanner.create_reader()
+    rows = [
+        row
         for block in blocks
-        for metadata in FileManifest(block).file_chunk_metadatas
-        for row_group_id in metadata["row_group_ids"]
+        for table in reader.read(FileManifest(block))
+        for row in table.to_pylist()
     ]
 
-    assert remaining == [1]
+    assert rows == [{"id": 3}, {"id": 4}]
+
+
+def test_merge_schema_file_shuffle_spans_prelisted_blocks(
+    tmp_path, restore_ctx, monkeypatch
+):
+    import numpy as np
+
+    from ray.data._internal.datasource_v2.common import listing_utils
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 2)
+    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
+    for i in range(8):
+        _write(tmp_path / f"f{i:02d}.parquet", pa.table({"id": [i]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        merge_schema=True,
+        shuffle=FileShuffleConfig(seed=42, reseed_after_execution=False),
+    )
+    list_files = ds._logical_plan.dag.input_dependencies[0]
+    assert len(list_files.prelisted_file_infos) == 4
+
+    assert [row["id"] for row in ds.take_all()] == np.random.default_rng(
+        42
+    ).permutation(8).tolist()
+
+
+def test_merge_schema_checkpoint_resume_filters_completed_rows(
+    tmp_path, restore_ctx, monkeypatch
+):
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data.checkpoint import CheckpointConfig
+    from ray.data.expressions import col
+
+    input_path = tmp_path / "input"
+    input_path.mkdir()
+    output_path = tmp_path / "output"
+    pq.write_table(
+        pa.table({"id": [0, 1, 2, 3]}), input_path / "data.parquet", row_group_size=2
+    )
+    monkeypatch.setattr(
+        restore_ctx,
+        "checkpoint_config",
+        CheckpointConfig(
+            id_column="id",
+            checkpoint_path=str(tmp_path / "checkpoint"),
+            override_filesystem=LocalFileSystem(),
+            delete_checkpoint_on_success=False,
+        ),
+    )
+    restore_ctx.use_datasource_v2 = True
+
+    first = ray.data.read_parquet(str(input_path), merge_schema=True)
+    first.filter(expr=col("id") < 2).map(
+        lambda row: {**row, "run": "first"}
+    ).write_parquet(str(output_path))
+
+    resumed = ray.data.read_parquet(str(input_path), merge_schema=True)
+    resumed.map(lambda row: {**row, "run": "resumed"}).write_parquet(str(output_path))
+
+    rows = sorted(
+        ray.data.read_parquet(str(output_path)).take_all(), key=lambda row: row["id"]
+    )
+    assert rows == [
+        {"id": 0, "run": "first"},
+        {"id": 1, "run": "first"},
+        {"id": 2, "run": "resumed"},
+        {"id": 3, "run": "resumed"},
+    ]
 
 
 def test_merge_schema_null_fills_with_extension_column(tmp_path, restore_ctx):
