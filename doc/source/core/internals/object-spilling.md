@@ -37,7 +37,7 @@ The system consists of three main interaction layers:
 
 1. **Detection in the Plasma store thread**: The `CreateRequestQueue` within the Plasma store monitors memory usage. When an allocation fails with an out-of-memory (OOM) error, it triggers a callback to the raylet. This design ensures that I/O operations never block the single-threaded object store.
 
-1. **Orchestration in the raylet main thread**: The `LocalObjectManager` in the raylet receives the spill request. It decides *what* to spill, based on least recently used (LRU) ordering and pinning status. It also decides *when* to spill, batching requests for efficiency. It manages the state of all local objects, which can be Pinned, PendingSpill, or Spilled.
+1. **Orchestration in the raylet main thread**: The `LocalObjectManager` in the raylet receives the spill request. It decides *what* to spill from the pinned primary copies that no worker is actively using. It doesn't order the candidates by recency. It also decides *when* to spill, batching requests for efficiency. It manages the state of all local objects, which can be Pinned, PendingSpill, or Spilled.
 
 1. **Execution in IO worker processes**: A pool of Python `IO Workers` performs the disk or network I/O. The raylet communicates with these workers through gRPC. This separation keeps the raylet's main loop responsive to other cluster events, such as heartbeats and scheduling, even if I/O is slow, for example when writing to S3.
 
@@ -201,7 +201,7 @@ The Plasma store retries `ProcessCreateRequests()` periodically, at an interval 
 
 ### Proactive: Threshold-based spilling
 
-The reactive OOM path fires only *after* the store is already full. To avoid hitting that cliff, Ray also spills objects proactively before the store is full. [NodeManager::SpillIfOverPrimaryObjectsThreshold](https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L2400) checks whether the fraction of primary object bytes in the store exceeds `object_spilling_threshold`, which defaults to 0.8. If it does, it calls `SpillObjectUptoMaxThroughput()`.
+The reactive OOM path fires only *after* the store is already full. To avoid hitting that cliff, Ray also spills objects proactively before the store is full. [NodeManager::SpillIfOverPrimaryObjectsThreshold](https://github.com/ray-project/ray/blob/master/src/ray/raylet/node_manager.cc#L2400) checks whether the fraction of primary object bytes in the store is at least `object_spilling_threshold`, which defaults to 0.8. If so, it calls `SpillObjectUptoMaxThroughput()`.
 
 Two places invoke this check:
 
@@ -227,7 +227,7 @@ When the CoreWorker creates an object in Plasma, it sends a `PinObjectIDs` RPC t
 
 1. Stores object metadata in `local_objects_`. The metadata is the owner address, generator ID, and size.
 1. Holds the `std::unique_ptr<RayObject>` in `pinned_objects_`, preventing Plasma eviction.
-1. Subscribes to eviction notifications through pub/sub. When the object owner says the object can be freed, or the owner process dies, `ReleaseFreedObject()` is called.
+1. Subscribes to eviction notifications through pub/sub. When the object owner says the object can be freed, or the owner process dies, `ReleaseFreedLocalObject()` is called.
 
 Every object that `LocalObjectManager` tracks has an entry in the `local_objects_` metadata map and, at the same time, in exactly one of three sub-maps that corresponds to its current state:
 
@@ -263,8 +263,8 @@ When the owner frees an object, `LocalObjectManager` deletes it by removing it f
 %        PendingSpill --> Spilled : OnObjectSpilled()
 %        PendingSpill --> Pinned : Spill failed (rollback)
 %
-%        Pinned --> [*] : ReleaseFreedObject()<br/>(unpin, remove from local_objects_)
-%        PendingSpill --> [*] : ReleaseFreedObject()<br/>(deferred to spill completion)
+%        Pinned --> [*] : ReleaseFreedLocalObject()<br/>(unpin, remove from local_objects_)
+%        PendingSpill --> [*] : ReleaseFreedLocalObject()<br/>(deferred to spill completion)
 %        Spilled --> [*] : ProcessSpilledObjectsDeleteQueue()<br/>(decrement url_ref_count)
 
 
@@ -340,7 +340,7 @@ Each operation type maps to an `IOWorkerState`:
 
 - `SPILL_WORKER`: A dedicated pool, [spill_io_worker_state](https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.h#L658), that handles `SpillObjects` RPCs.
 - `RESTORE_WORKER`: A dedicated pool, [restore_io_worker_state](https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.h#L660), that handles `RestoreSpilledObjects` RPCs.
-- Delete operations don't have a dedicated pool. [PopDeleteWorker](https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L1063) compares the number of idle workers in the spill and restore pools and borrows a worker from whichever pool has more idle workers. After the delete completes, the worker is returned to its original pool.
+- Delete operations don't have a dedicated pool. [PopDeleteWorker](https://github.com/ray-project/ray/blob/5cf675f5099a17587f4792ca68e35378a7f427d0/src/ray/raylet/worker_pool.cc#L1141) compares the number of idle workers in the spill and restore pools and borrows a worker from whichever pool has more idle workers. After the delete completes, the worker is returned to its original pool.
 
 When [PopSpillWorker](https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L990) or `PopRestoreWorker` is called, one of two things happens:
 
@@ -391,7 +391,7 @@ The [ExternalStorage](https://github.com/ray-project/ray/blob/master/python/ray/
 
 - [FileSystemStorage](https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L271), the default, writes to the local filesystem. It supports multiple directories with round-robin distribution for I/O parallelism across mount points. It names files `{directory}/ray_spilled_objects_{node_id}/{uuid}-multi-{count}`.
 
-- [ExternalStorageSmartOpenImpl](https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L398) uses the `smart_open` library for cloud storage, such as S3 and GCS. It reuses boto3 sessions and uses deferred seek for performance.
+- [ExternalStorageSmartOpenImpl](https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L398) uses the `smart_open` library for cloud storage, such as S3 and Google Cloud Storage. It reuses boto3 sessions and uses deferred seek for performance.
 
 [setup_external_storage](https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L577) selects the backend based on the `object_spilling_config` JSON configuration.
 
@@ -432,7 +432,7 @@ The restore path depends on the storage backend:
 
 - **Filesystem storage**: The object is spilled to local disk, so the spill file exists only on the node that spilled it. If the requesting node is the same node, it restores the object locally through [AsyncRestoreSpilledObject](https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L464). If the requesting node is a *different* node, it sends a pull request to the spilling node. The spilling node reads the object directly from disk and streams it over the network through [PushFromFilesystem](https://github.com/ray-project/ray/blob/master/src/ray/object_manager/object_manager.cc#L409), without restoring the object into its own Plasma store. This approach avoids unnecessary memory pressure on the spilling node.
 
-- **Cloud storage**: The object is spilled to a service such as S3 or GCS, so the spill file is accessible from any node. The requesting node restores the object locally through `AsyncRestoreSpilledObject`, using the cloud URL directly. No cross-node RPC is needed.
+- **Cloud storage**: The object is spilled to a service such as S3 or Google Cloud Storage, so the spill file is accessible from any node. The requesting node restores the object locally through `AsyncRestoreSpilledObject`, using the cloud URL directly. No cross-node RPC is needed.
 
 ### Restore mechanics
 
@@ -451,7 +451,7 @@ Object deletion is a two-phase process. It handles objects that are freed while 
 
 ### Phase 1: Marking objects as freed
 
-When the object owner frees the object through a pub/sub eviction notification, or when the owner dies, [ReleaseFreedObject](https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L111) is called. It does the following:
+When the object owner frees the object through a pub/sub eviction notification, or when the owner dies, [ReleaseFreedLocalObject](https://github.com/ray-project/ray/blob/5cf675f5099a17587f4792ca68e35378a7f427d0/src/ray/raylet/local_object_manager.cc#L69) is called. It does the following:
 
 1. Marks `local_objects_[id].is_freed_ = true`.
 1. If the object is pinned, removes it from `pinned_objects_` and erases the `local_objects_` entry immediately.
@@ -469,7 +469,7 @@ When the object owner frees the object through a pub/sub eviction notification, 
 1. If the object doesn't have a spilled URL, remove it from `pinned_objects_`, if present, and from `local_objects_` to prevent a memory leak. This case happens when the object was freed while still being spilled, and the spill has since either completed without recording a URL for it or been rolled back.
 
 :::{note}
-Ray doesn't maintain a dedicated pool of workers for deleting spilled objects. Instead, deletion tasks borrow an idle worker from either the spill or the restore worker pool. To minimize impact on critical-path operations, the `WorkerPool` dynamically selects a worker from the pool with more idle capacity. See [WorkerPool::PopDeleteWorker](https://github.com/ray-project/ray/blob/master/src/ray/raylet/worker_pool.cc#L1071). Once the delete operation completes, the worker is returned to its original pool.
+Ray doesn't maintain a dedicated pool of workers for deleting spilled objects. Instead, deletion tasks borrow an idle worker from either the spill or the restore worker pool. To minimize impact on critical-path operations, the `WorkerPool` dynamically selects a worker from the pool with more idle capacity. See [WorkerPool::PopDeleteWorker](https://github.com/ray-project/ray/blob/5cf675f5099a17587f4792ca68e35378a7f427d0/src/ray/raylet/worker_pool.cc#L1141). Once the delete operation completes, the worker is returned to its original pool.
 :::
 
 After processing the queue, if any files have had their ref counts drop to zero, [DeleteSpilledObjects](https://github.com/ray-project/ray/blob/master/src/ray/raylet/local_object_manager.cc#L579) is called. This function pops a delete worker from the IO worker pool and sends a `DeleteSpilledObjectsRequest` RPC containing the list of URLs to delete. The delete worker receives the full list of file URLs and deletes each one. For filesystem storage, each deletion is an [`os.remove(path)` call per file](https://github.com/ray-project/ray/blob/master/python/ray/_private/external_storage.py#L364). The C++ side has already decided *which* files to delete through ref counting, and the Python IO worker unconditionally deletes every URL it receives. If the RPC fails, for example because the worker crashes, the entire batch is retried up to 3 times.
@@ -573,7 +573,7 @@ The following diagram shows the delete path, which runs when an object goes out 
 %        participant FS as External Storage
 %
 %        Owner->>LOM: PubSub: object eviction<br/>(or owner death)
-%        LOM->>LOM: ReleaseFreedObject()<br/>[is_freed_ = true]
+%        LOM->>LOM: ReleaseFreedLocalObject()<br/>[is_freed_ = true]
 %
 %        alt Object is PINNED
 %            LOM->>LOM: Unpin immediately<br/>[remove from pinned_objects_]
@@ -601,11 +601,11 @@ The following diagram shows the delete path, which runs when an object goes out 
 The following configuration parameters control object spilling:
 
 - `object_spilling_config`: JSON string specifying the storage backend. Empty string disables spilling.
-- `object_spilling_threshold`: Fraction of available object store memory, from 0.0 to 1.0, at which spilling begins. Default: `0.8`.
+- `object_spilling_threshold`: Fraction of object store capacity, from 0.0 to 1.0, that primary objects can occupy before spilling begins. Default: `0.8`.
 - `min_spilling_size`: Minimum bytes to accumulate before triggering a spill batch.
 - `max_spilling_file_size_bytes`: Maximum bytes allowed in a single fused spill file. The limit is enabled when the value is greater than 0. When enabled, `TryToSpillObjects` stops fusing objects once adding the next object would exceed this limit, though the first object is always included. When enabled, the value must be at least `min_spilling_size`. The default, `-1`, disables the limit.
 - `max_fused_object_count`: Maximum number of objects fused into a single spill file. Default: `2000`.
-- `max_io_workers`: Maximum number of concurrent spill or restore IO worker processes.
+- `max_io_workers`: Maximum number of IO worker processes per type. The spill and restore pools each have this limit.
 - `oom_grace_period_s`: Seconds to wait after OOM before using the fallback allocator.
 - `free_objects_batch_size`: Number of freed objects to batch before flushing.
 - `free_objects_period_milliseconds`: Interval for flushing freed objects.

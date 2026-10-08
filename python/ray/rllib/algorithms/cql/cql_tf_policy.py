@@ -322,8 +322,8 @@ def setup_early_mixins(
 
     Args:
         policy: The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
         config: The Policy's config.
     """
     policy.cur_iter = 0

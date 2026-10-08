@@ -1,4 +1,5 @@
 import sys
+from typing import Any
 
 from ray.rllib.examples.multi_agent.utils.self_play_callback import SelfPlayCallback
 from ray.rllib.examples.multi_agent.utils.self_play_callback_old_api_stack import (
@@ -12,13 +13,16 @@ from ray.rllib.examples.multi_agent.utils.self_play_league_based_callback_old_ap
 )
 
 
-def ask_user_for_action(time_step):
+def ask_user_for_action(time_step: Any) -> int:
     """Asks the user for a valid action on the command line and returns it.
 
     Re-queries the user until she picks a valid one.
 
     Args:
         time_step: The open spiel Environment time-step object.
+
+    Returns:
+        The action (int) the user picked from the current player's legal moves.
     """
     pid = time_step.observations["current_player"]
     legal_moves = time_step.observations["legal_actions"][pid]

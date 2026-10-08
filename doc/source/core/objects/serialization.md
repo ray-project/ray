@@ -45,7 +45,7 @@ If you need to mutate the array, copy it at the destination with `arr = arr.copy
 
 ## Serialization notes
 
-- Ray uses Pickle protocol version 5. Most Python distributions default to Pickle protocol 3. Protocols 4 and 5 are more efficient than protocol 3 for larger objects.
+- Ray uses Pickle protocol version 5.
 
 - For non-native objects, Ray always keeps a single copy, even if an object refers to it multiple times:
 

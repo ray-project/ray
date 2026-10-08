@@ -8,7 +8,7 @@ myst:
 
 # Anti-pattern: Fetching too many objects at once with ray.get causes failure
 
-Avoid calling {func}`ray.get() <ray.get>` on too many objects, because this leads to a heap out-of-memory or object store out-of-space failure. Instead, fetch and process one batch at a time.
+Avoid calling {func}`ray.get() <ray.get>` on too many objects, because this can lead to a heap out-of-memory or object store out-of-space failure. Instead, fetch and process one batch at a time.
 
 If you have many tasks that you want to run in parallel, calling `ray.get()` on all of them at once could fail with a heap out-of-memory or object store out-of-space error, because Ray needs to fetch all the objects to the caller at the same time. Instead, get and process the results one batch at a time. After you process a batch, Ray evicts the objects in that batch to make space for later batches.
 

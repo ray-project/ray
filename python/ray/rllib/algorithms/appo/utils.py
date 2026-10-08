@@ -12,6 +12,7 @@ import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.metrics.ray_metrics import (
     DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
@@ -34,7 +35,8 @@ class CircularBuffer:
     """
 
     def __init__(self, num_batches: int, iterations_per_batch: int):
-        """
+        """Initializes a CircularBuffer instance.
+
         Args:
             num_batches: N from the paper (queue buffer size).
             iterations_per_batch: K ("replay coefficient") from the paper. Defines
@@ -225,8 +227,13 @@ class CircularBuffer:
 
 
 @OldAPIStack
-def make_appo_models(policy) -> ModelV2:
+def make_appo_models(policy: Policy) -> ModelV2:
     """Builds model and target model for APPO.
+
+    Args:
+        policy: The Policy to build the (main and target) models for. The models
+            are assigned to the `policy.model` and `policy.target_model`
+            attributes.
 
     Returns:
         ModelV2: The Model for the Policy to use.

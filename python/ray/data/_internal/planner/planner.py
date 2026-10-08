@@ -300,11 +300,18 @@ class Planner:
 
             callbacks.append(checkpoint_callback)
 
-            # Dynamically set the plan functions for checkpointing because they
-            # need to a reference to the checkpoint ref.
-            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                data_file_dir, data_file_fs
-            )
+            if not checkpoint_config._should_restore:
+                # Skip loading checkpoint data and filtering rows,
+                # but still enable the checkpoint writer.
+                self._plan_fns_for_checkpointing = {
+                    Write: plan_write_op_with_checkpoint_writer,
+                }
+            else:
+                # Dynamically set the plan functions for checkpointing because they
+                # need to a reference to the checkpoint ref.
+                self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
+                    data_file_dir, data_file_fs
+                )
 
         elif checkpoint_config is not None:
             assert not self._check_supports_checkpointing(logical_plan)

@@ -42,6 +42,9 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.utils.torch_utils import FinalizeFn
+    from ray.data.checkpoint.data_iterator_checkpointer import (
+        DataIteratorCheckpointer,
+    )
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -100,6 +103,10 @@ class DataIterator(abc.ABC):
         ╰───────╯
         (Dataset isn't materialized))
     """
+
+    # Set by `_enable_checkpointing`. Declared at the class level so that
+    # every subclass has it.
+    _checkpointer: Optional["DataIteratorCheckpointer"] = None
 
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
@@ -214,12 +221,43 @@ class DataIterator(abc.ABC):
             local_shuffle_seed=local_shuffle_seed,
         )
 
+    @PublicAPI(stability="alpha")
+    def state_dict(self) -> Dict[str, Any]:
+        """Returns the state of the iterator.
+
+        This snapshot is useful upon restoration for resuming the dataset
+        and iterator to the same state.
+
+        Returns:
+            A dictionary containing the state of the iterator.
+
+        Raises:
+            ValueError: If checkpointing is not enabled on this iterator.
+        """
+        if self._checkpointer is None:
+            raise ValueError("Checkpointing is not enabled on this iterator.")
+
+        return self._checkpointer.state_dict()
+
+    def _enable_checkpointing(self, checkpointer: "DataIteratorCheckpointer") -> None:
+        self._checkpointer = checkpointer
+
     def _create_batch_iterator(
         self,
         ref_bundles_iter: Iterator[RefBundle],
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
         **kwargs,
     ) -> BatchIterator:
+        if self._checkpointer is not None:
+            from ray.data.checkpoint.iterator import CheckpointingBatchIterator
+
+            return CheckpointingBatchIterator(
+                ref_bundles_iter,
+                checkpointer=self._checkpointer,
+                prefetch_bytes_callback=prefetch_bytes_callback,
+                **kwargs,
+            )
+
         return BatchIterator(
             ref_bundles_iter,
             prefetch_bytes_callback=prefetch_bytes_callback,

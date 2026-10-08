@@ -20,9 +20,11 @@ After execution, Compiled Graph generates the profiling results in the `compiled
 
 To visualize the traces, use the [Perfetto UI](https://ui.perfetto.dev/).
 
-## Nsight system profiler
+(nsight-system-profiler)=
 
-Compiled Graph builds on Ray's profiling capabilities and uses Nsight system profiling.
+## Nsight Systems profiler
+
+Compiled Graph builds on Ray's profiling capabilities and uses Nsight Systems profiling.
 
 To run Nsight profiling on Compiled Graph, specify the runtime environment for the actors involved, as described in {ref}`Run Nsight on Ray <run-nsight-on-ray>`. The following example shows this setup:
 

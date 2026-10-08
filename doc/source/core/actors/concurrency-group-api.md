@@ -87,14 +87,14 @@ class ConcurrentActor {
 ConcurrencyGroup group1 =
     new ConcurrencyGroupBuilder<ConcurrentActor>()
         .setName("io")
-        .setMaxConcurrency(1)
+        .setMaxConcurrency(2)
         .addMethod(ConcurrentActor::f1)
         .addMethod(ConcurrentActor::f2)
         .build();
 ConcurrencyGroup group2 =
     new ConcurrencyGroupBuilder<ConcurrentActor>()
         .setName("compute")
-        .setMaxConcurrency(1)
+        .setMaxConcurrency(4)
         .addMethod(ConcurrentActor::f3)
         .addMethod(ConcurrentActor::f4)
         .build();

@@ -1590,6 +1590,92 @@ def test_checkpoint_restore_after_full_execution(
     ), f"Expected 0 rows, got {num_rows_second}"
 
 
+def _count_rows(path: str) -> int:
+    if not os.path.exists(path):
+        return 0
+    return ray.data.read_parquet(path).count()
+
+
+def test_should_restore_false_skips_filtering(
+    ray_start_10_cpus_shared,
+    generate_sample_data_parquet,
+    tmp_path,
+):
+    """Test that `_should_restore=False` skips checkpoint filtering, even if
+    checkpoint data from a previous run exists, while still writing checkpoints.
+
+    Training ingest sets this flag when starting from scratch.
+    """
+    ctx = DataContext.get_current()
+    ckpt_path = str(tmp_path / "checkpoints")
+    parquet_dir = generate_sample_data_parquet()
+
+    # First run: write checkpoint data for all rows.
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+    ray.data.read_parquet(parquet_dir).write_parquet(str(tmp_path / "output_1"))
+    assert _count_rows(str(tmp_path / "output_1")) == SAMPLE_DATA_NUM_ROWS
+
+    # Second run with restoration disabled: all rows should be written,
+    # despite the checkpoint data on disk.
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+    ctx.checkpoint_config._should_restore = False
+    ray.data.read_parquet(parquet_dir).write_parquet(str(tmp_path / "output_2"))
+    assert _count_rows(str(tmp_path / "output_2")) == SAMPLE_DATA_NUM_ROWS
+
+    # The checkpoint writer should still be enabled.
+    checkpointed_ids = read_ids_from_checkpoint_files(ctx.checkpoint_config)
+    assert len(checkpointed_ids) == 2 * SAMPLE_DATA_NUM_ROWS
+
+
+def test_restore_only_first_execution(
+    ray_start_10_cpus_shared,
+    generate_sample_data_parquet,
+    tmp_path,
+):
+    """Test that restoration is disabled after the first successful execution
+    of a dataset.
+
+    For training ingest, only the first epoch after resuming should skip the
+    checkpointed rows, and subsequent epochs should read all rows.
+    """
+    ctx = DataContext.get_current()
+    ckpt_path = str(tmp_path / "checkpoints")
+    parquet_dir = generate_sample_data_parquet()
+
+    # First run: write checkpoint data for all rows.
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+    ray.data.read_parquet(parquet_dir).write_parquet(str(tmp_path / "output"))
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    # Each epoch re-executes the same dataset, like training ingest does.
+    ds = ray.data.read_parquet(parquet_dir)
+    [split_iter] = ds.streaming_split(1)
+
+    # First epoch: restore from the checkpoint, so all rows are filtered out.
+    assert sum(len(b[ID_COL]) for b in split_iter.iter_batches()) == 0
+    # Second epoch: restoration is disabled, so all rows are read.
+    assert (
+        sum(len(b[ID_COL]) for b in split_iter.iter_batches()) == SAMPLE_DATA_NUM_ROWS
+    )
+
+
 @pytest.mark.parametrize(
     "data_path",
     [

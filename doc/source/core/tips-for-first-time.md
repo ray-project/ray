@@ -366,7 +366,7 @@ duration = 7.82636022567749
 result =  6
 ```
 
-Waiting for the last task to finish when the other tasks might have finished much earlier unnecessarily increases the program running time. A better solution is to process the data as soon as it becomes available. To do so, call `ray.wait()` on a list of object refs. Without any other parameters, this function returns as soon as an object in its argument list is ready. The call returns two values. The first is the object ref of the ready object, and the second is the list containing the object refs of the objects that aren't ready yet. The following modified program also replaces `process_results()` with `process_incremental()`, which processes one result at a time.
+Waiting for the last task to finish when the other tasks might have finished much earlier unnecessarily increases the program running time. A better solution is to process the data as soon as it becomes available. To do so, call `ray.wait()` on a list of object refs. Without any other parameters, this function returns as soon as an object in its argument list is ready. The call returns two values. The first is a list containing the object ref of the ready object, and the second is the list containing the object refs of the objects that aren't ready yet. The following modified program also replaces `process_results()` with `process_incremental()`, which processes one result at a time.
 
 ```{testcode}
 import time

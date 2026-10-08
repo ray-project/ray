@@ -96,14 +96,8 @@ spark-submit \
 
 ## Ray on Spark APIs
 
-```{eval-rst}
-.. autofunction:: ray.util.spark.setup_ray_cluster
-```
+See the {ref}`Ray on Spark API reference <ray-on-spark-api-ref>` for the following functions:
 
-```{eval-rst}
-.. autofunction:: ray.util.spark.shutdown_ray_cluster
-```
-
-```{eval-rst}
-.. autofunction:: ray.util.spark.setup_global_ray_cluster
-```
+- {py:func}`ray.util.spark.setup_ray_cluster`
+- {py:func}`ray.util.spark.shutdown_ray_cluster`
+- {py:func}`ray.util.spark.setup_global_ray_cluster`

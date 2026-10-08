@@ -53,14 +53,18 @@ To instantiate an actor from the `ActorClass[DemoRay]` type, call `ActorDemoRay.
 The handle provides type hints for the actor methods, including their arguments and return types.
 
 ```python
+import ray
+from ray import ObjectRef
+from ray.actor import ActorProxy
 
 actor: ActorProxy[DemoRay] = ActorDemoRay.remote(1)
 
+@ray.remote
 def func(actor: ActorProxy[DemoRay]) -> int:
     b: ObjectRef[int] = actor.calculate.remote(1, 2)
     return ray.get(b)
 
-a = func.remote()
+a = func.remote(actor)
 print(ray.get(a))
 ```
 
@@ -75,6 +79,8 @@ IDEs and static type checkers can't infer the original type `T` from `ActorClass
 Add the `@ray.method` decorator to actor methods to get type hints for them through the `ActorProxy[T]` type, including their arguments and return types.
 
 ```python
+import ray
+from ray import ObjectRef
 from ray.actor import ActorClass, ActorProxy
 
 class DemoRay:

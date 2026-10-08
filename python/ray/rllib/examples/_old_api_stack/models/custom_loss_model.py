@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
@@ -10,6 +12,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -87,14 +90,15 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         return self.fcnet.value_function()
 
     @override(ModelV2)
-    def custom_loss(self, policy_loss, loss_inputs):
+    def custom_loss(
+        self, policy_loss: List[TensorType], loss_inputs: Dict[str, TensorType]
+    ) -> List[TensorType]:
         """Calculates a custom loss on top of the given policy_loss(es).
 
         Args:
-            policy_loss (List[TensorType]): The list of already calculated
-                policy losses (as many as there are optimizers).
-            loss_inputs: Struct of np.ndarrays holding the
-                entire train batch.
+            policy_loss: The list of already calculated policy losses (as many
+                as there are optimizers).
+            loss_inputs: Struct of np.ndarrays holding the entire train batch.
 
         Returns:
             List[TensorType]: The altered list of policy losses. In case the
