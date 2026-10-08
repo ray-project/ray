@@ -12504,9 +12504,9 @@ class TestPushedHealthTracker:
         timer = MockTimer(start_time=1000.0)
         return PushedHealthTracker(timer=timer), timer
 
-    def _resolve(self, t, probe=None, started_at=0.0, failures=0):
+    def _resolve(self, t, probe=None, started_at=0.0, failures=0, timed_out=False):
         return t.resolve(
-            probe or ReplicaHealthCheckResponse.NONE,
+            ProbeOutcome(probe or ReplicaHealthCheckResponse.NONE, timed_out),
             started_at,
             failures,
             health_check_period_s=10.0,
@@ -12574,6 +12574,36 @@ class TestPushedHealthTracker:
         timer.advance(1)
         t.record(timer.time(), False, 1)
         assert self._resolve(t).source is HealthSource.PUSH
+
+    def test_a_timeout_keeps_a_push_the_replica_sent_while_it_waited(self):
+        """A timeout heard nothing back, so a push that landed while it waited is the
+        newer word from the replica. Dropping it would charge a strike, and let a new
+        probe start at once, against a replica that did report in."""
+        t, timer = self._tracker()
+        probe_started_at = timer.time()
+        timer.advance(5)
+        t.record(timer.time(), True, 0)  # lands in the tick the probe times out
+        r = self._resolve(
+            t,
+            ReplicaHealthCheckResponse.APP_FAILURE,
+            probe_started_at,
+            timed_out=True,
+        )
+        assert r.source is HealthSource.SUPERSEDED_PROBE
+        assert r.response is ReplicaHealthCheckResponse.NONE
+        assert t.should_defer_probe(10.0)  # still in hand, so no new probe yet
+        assert self._resolve(t).source is HealthSource.PUSH
+
+    def test_a_timeout_with_no_push_while_it_waited_still_counts(self):
+        t, timer = self._tracker()
+        r = self._resolve(
+            t,
+            ReplicaHealthCheckResponse.APP_FAILURE,
+            timer.time(),
+            timed_out=True,
+        )
+        assert r.source is HealthSource.PROBE
+        assert r.response is ReplicaHealthCheckResponse.APP_FAILURE
 
     def test_a_probe_started_before_an_applied_push_is_superseded(self):
         t, timer = self._tracker()
