@@ -463,16 +463,16 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   // group returns. GcsPlacementGroupManager::OnNodeDead only reschedules bundles in the
   // committed index, so bundles on dead nodes must be treated as uncommitted here.
   auto committed_bundle_locations = std::make_shared<BundleLocations>();
-  for (const auto &iter : *prepared_bundle_locations) {
-    const auto &node_id = iter.second.first;
-    if (!gcs_node_manager_.GetAliveNode(node_id).has_value()) {
+  for (const auto &[bundle_id, location] : *prepared_bundle_locations) {
+    const auto &[node_id, bundle] = location;
+    if (!gcs_node_manager_.IsNodeAlive(node_id)) {
       RAY_LOG(INFO) << "Node " << node_id << " died before placement group "
                     << placement_group_id << " finished committing bundle index "
-                    << iter.first.second << ", the bundle will be rescheduled.";
-      lease_status_tracker->MarkBundleUncommitted(node_id, iter.second.second);
+                    << bundle_id.second << ", the bundle will be rescheduled.";
+      lease_status_tracker->MarkBundleUncommitted(node_id, bundle);
       continue;
     }
-    committed_bundle_locations->emplace(iter.first, iter.second);
+    committed_bundle_locations->emplace(bundle_id, location);
   }
 
   committed_bundle_location_index_.AddBundleLocations(placement_group_id,
