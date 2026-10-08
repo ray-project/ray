@@ -2,10 +2,11 @@
 """
 Single-node vLLM baseline benchmark for Ray Data LLM batch inference.
 
-Measures throughput and supports env-driven thresholds and
-JSON artifact output.
+Measures throughput and supports env-driven thresholds.
+Writes standardized results (including perf_metrics) to TEST_OUTPUT_JSON.
 """
 import json
+import math
 import os
 import re
 import sys
@@ -125,30 +126,121 @@ def _get_prometheus_metric_snapshot(
     return snapshot
 
 
+def _matching_series(
+    snapshot: dict[str, list[tuple[dict[str, str], float]]],
+    metric_name: str,
+    model_id: str,
+) -> list[tuple[dict[str, str], float]]:
+    series = snapshot.get(metric_name, [])
+    unlabeled: list[tuple[dict[str, str], float]] = []
+    matching: list[tuple[dict[str, str], float]] = []
+    has_model_name_label = False
+
+    for labels, value in series:
+        labeled_model = labels.get("model_name")
+        if labeled_model is None:
+            unlabeled.append((labels, value))
+            continue
+
+        has_model_name_label = True
+        if labeled_model == model_id:
+            matching.append((labels, value))
+
+    if has_model_name_label and not matching:
+        return []
+    return unlabeled + matching
+
+
 def _sum_metric(
     snapshot: dict[str, list[tuple[dict[str, str], float]]],
     metric_name: str,
     model_id: str,
 ) -> float:
-    series = snapshot.get(metric_name, [])
-    total = 0.0
-    has_model_name_label = False
-    has_matching_model = False
+    return sum(value for _, value in _matching_series(snapshot, metric_name, model_id))
 
-    for labels, value in series:
-        labeled_model = labels.get("model_name")
-        if labeled_model is None:
-            total += value
+
+def _histogram_bucket_counts(
+    snapshot: dict[str, list[tuple[dict[str, str], float]]],
+    metric_name: str,
+    model_id: str,
+) -> dict[str, float]:
+    counts: dict[str, float] = {}
+    for labels, value in _matching_series(snapshot, metric_name, model_id):
+        le = labels.get("le")
+        if le is None:
             continue
+        counts[le] = counts.get(le, 0.0) + value
+    return counts
 
-        has_model_name_label = True
-        if labeled_model == model_id:
-            has_matching_model = True
-            total += value
 
-    if has_model_name_label and not has_matching_model:
-        return 0.0
-    return total
+def _histogram_bucket_delta(
+    before_snapshot: dict[str, list[tuple[dict[str, str], float]]],
+    after_snapshot: dict[str, list[tuple[dict[str, str], float]]],
+    metric_name: str,
+    model_id: str,
+) -> dict[str, float]:
+    after_counts = _histogram_bucket_counts(after_snapshot, metric_name, model_id)
+    before_counts = _histogram_bucket_counts(before_snapshot, metric_name, model_id)
+    return {
+        le: max(0.0, after_counts.get(le, 0.0) - before_counts.get(le, 0.0))
+        for le in set(after_counts) | set(before_counts)
+    }
+
+
+def _parse_histogram_bound(le: str) -> float | None:
+    if le in ("+Inf", "Inf", "inf"):
+        return math.inf
+    try:
+        return float(le)
+    except ValueError:
+        return None
+
+
+def _histogram_quantile(
+    bucket_counts: dict[str, float], quantile: float
+) -> float | None:
+    """Prometheus-compatible histogram quantile from cumulative bucket counts."""
+    parsed: list[tuple[float, float]] = []
+    for le, count in bucket_counts.items():
+        bound = _parse_histogram_bound(le)
+        if bound is None:
+            continue
+        parsed.append((bound, count))
+    if not parsed:
+        return None
+
+    parsed.sort(key=lambda item: item[0])
+    observations = parsed[-1][1]
+    if observations <= 0:
+        return None
+
+    rank = quantile * observations
+    bucket_idx = len(parsed) - 1
+    for i, (_, count) in enumerate(parsed[:-1]):
+        if count >= rank:
+            bucket_idx = i
+            break
+
+    if bucket_idx == len(parsed) - 1:
+        if len(parsed) < 2:
+            return None
+        return parsed[-2][0]
+
+    bucket_end = parsed[bucket_idx][0]
+    if bucket_idx == 0:
+        if bucket_end <= 0:
+            return bucket_end
+        bucket_start = 0.0
+        count = parsed[0][1]
+        rank_in_bucket = rank
+    else:
+        bucket_start = parsed[bucket_idx - 1][0]
+        count = parsed[bucket_idx][1] - parsed[bucket_idx - 1][1]
+        rank_in_bucket = rank - parsed[bucket_idx - 1][1]
+
+    if count <= 0:
+        return bucket_start
+    return bucket_start + (bucket_end - bucket_start) * (rank_in_bucket / count)
 
 
 def _build_engine_metrics(
@@ -161,8 +253,10 @@ def _build_engine_metrics(
     generation_tokens_metric = "ray_vllm_generation_tokens_total"
     tpot_sum_metric = "ray_vllm_request_time_per_output_token_seconds_sum"
     tpot_count_metric = "ray_vllm_request_time_per_output_token_seconds_count"
+    tpot_bucket_metric = "ray_vllm_request_time_per_output_token_seconds_bucket"
     e2e_sum_metric = "ray_vllm_e2e_request_latency_seconds_sum"
     e2e_count_metric = "ray_vllm_e2e_request_latency_seconds_count"
+    e2e_bucket_metric = "ray_vllm_e2e_request_latency_seconds_bucket"
 
     def metric_delta(metric_name: str) -> float:
         return max(
@@ -192,8 +286,20 @@ def _build_engine_metrics(
         "mean_tpot_s": (
             tpot_sum_delta / tpot_count_delta if tpot_count_delta > 0 else None
         ),
+        "p50_tpot_s": _histogram_quantile(
+            _histogram_bucket_delta(
+                before_snapshot, after_snapshot, tpot_bucket_metric, model_id
+            ),
+            0.5,
+        ),
         "mean_e2e_latency_s": (
             e2e_sum_delta / e2e_count_delta if e2e_count_delta > 0 else None
+        ),
+        "p50_e2e_latency_s": _histogram_quantile(
+            _histogram_bucket_delta(
+                before_snapshot, after_snapshot, e2e_bucket_metric, model_id
+            ),
+            0.5,
         ),
         "request_count": int(round(e2e_count_delta)),
     }
@@ -226,6 +332,59 @@ def _build_job_metrics(
     }
 
 
+def _add_perf_metric(
+    metrics: list[dict],
+    name: str,
+    value: float | None,
+    metric_type: str,
+) -> None:
+    if value is None:
+        return
+    metrics.append(
+        {
+            "perf_metric_name": name,
+            "perf_metric_value": float(value),
+            "perf_metric_type": metric_type,
+        }
+    )
+
+
+def _build_perf_metrics(result, engine_metrics: dict[str, float | None]) -> list[dict]:
+    metrics: list[dict] = []
+    _add_perf_metric(
+        metrics, "throughput_req_per_s", float(result.throughput), "THROUGHPUT"
+    )
+    _add_perf_metric(
+        metrics,
+        "generation_token_throughput_tok_per_s",
+        engine_metrics.get("generation_token_throughput_tok_per_s"),
+        "THROUGHPUT",
+    )
+    _add_perf_metric(
+        metrics,
+        "total_token_throughput_tok_per_s",
+        engine_metrics.get("total_token_throughput_tok_per_s"),
+        "THROUGHPUT",
+    )
+    _add_perf_metric(
+        metrics, "mean_tpot_s", engine_metrics.get("mean_tpot_s"), "LATENCY"
+    )
+    _add_perf_metric(metrics, "p50_tpot_s", engine_metrics.get("p50_tpot_s"), "LATENCY")
+    _add_perf_metric(
+        metrics,
+        "mean_e2e_latency_s",
+        engine_metrics.get("mean_e2e_latency_s"),
+        "LATENCY",
+    )
+    _add_perf_metric(
+        metrics,
+        "p50_e2e_latency_s",
+        engine_metrics.get("p50_e2e_latency_s"),
+        "LATENCY",
+    )
+    return metrics
+
+
 def test_single_node_baseline_benchmark():
     """
     Single-node baseline benchmark: facebook/opt-1.3b, TP=1, PP=1, 1000 prompts.
@@ -233,7 +392,7 @@ def test_single_node_baseline_benchmark():
     Logs BENCHMARK_* metrics and optionally asserts perf thresholds from env:
     - RAY_DATA_LLM_BENCHMARK_MIN_THROUGHPUT (req/s)
     - RAY_DATA_LLM_BENCHMARK_MAX_LATENCY_S (seconds)
-    Writes JSON artifact to RAY_LLM_BENCHMARK_ARTIFACT_PATH if set.
+    Writes standardized results (including perf_metrics) to TEST_OUTPUT_JSON.
     """
     # Dataset setup
     dataset_path = os.getenv(
@@ -277,8 +436,10 @@ def test_single_node_baseline_benchmark():
         "ray_vllm_generation_tokens_total",
         "ray_vllm_request_time_per_output_token_seconds_sum",
         "ray_vllm_request_time_per_output_token_seconds_count",
+        "ray_vllm_request_time_per_output_token_seconds_bucket",
         "ray_vllm_e2e_request_latency_seconds_sum",
         "ray_vllm_e2e_request_latency_seconds_count",
+        "ray_vllm_e2e_request_latency_seconds_bucket",
     }
     before_snapshot = _get_prometheus_metric_snapshot(metric_names)
 
@@ -323,7 +484,9 @@ def test_single_node_baseline_benchmark():
     print(f"BENCHMARK_LATENCY: {result.elapsed_s:.4f} s")
     print(f"BENCHMARK_SAMPLES: {result.samples}")
     print("ENGINE_MEAN_TPOT_S:", engine_metrics["mean_tpot_s"])
+    print("ENGINE_P50_TPOT_S:", engine_metrics["p50_tpot_s"])
     print("ENGINE_MEAN_E2E_LATENCY_S:", engine_metrics["mean_e2e_latency_s"])
+    print("ENGINE_P50_E2E_LATENCY_S:", engine_metrics["p50_e2e_latency_s"])
     print(
         "ENGINE_GENERATION_TOKEN_THROUGHPUT_TOK_PER_S:",
         engine_metrics["generation_token_throughput_tok_per_s"],
@@ -352,36 +515,31 @@ def test_single_node_baseline_benchmark():
             result.elapsed_s <= max_latency_s
         ), f"Latency regression: {result.elapsed_s:.4f} > {max_latency_s:.4f} s"
 
-    # Optional JSON artifact emission for downstream ingestion
-    artifact_path = os.getenv("RAY_LLM_BENCHMARK_ARTIFACT_PATH")
-    if artifact_path:
-        metrics = {
-            "model": MODEL_ID,
-            "dataset": DATASET_ID,
-            "batch_size": BATCH_SIZE,
-            "concurrency": CONCURRENCY,
-            "samples": int(result.samples),
-            "throughput_req_per_s": float(result.throughput),
-            "elapsed_s": float(result.elapsed_s),
-            "job_metrics": job_metrics,
-            "engine_metrics": engine_metrics,
-        }
-        try:
-            artifact_dir = os.path.dirname(artifact_path)
-            if artifact_dir:
-                os.makedirs(artifact_dir, exist_ok=True)
-            with open(artifact_path, "w", encoding="utf-8") as f:
-                json.dump(metrics, f, indent=2, sort_keys=True)
-            print(f"Wrote benchmark artifact to: {artifact_path}")
-        except Exception as e:  # noqa: BLE001
-            print(
-                f"Warning: failed to write benchmark artifact to {artifact_path}: {e}"
-            )
-    else:
-        print(
-            "Set RAY_LLM_BENCHMARK_ARTIFACT_PATH to write benchmark JSON "
-            "(e.g. /tmp/ray_llm_benchmark.json)."
-        )
+    # Standardized release output for DBReporter / Databricks.
+    perf_metrics = _build_perf_metrics(result, engine_metrics)
+    results = {
+        "model": MODEL_ID,
+        "dataset": DATASET_ID,
+        "batch_size": BATCH_SIZE,
+        "concurrency": CONCURRENCY,
+        "samples": int(result.samples),
+        "throughput_req_per_s": float(result.throughput),
+        "elapsed_s": float(result.elapsed_s),
+        "job_metrics": job_metrics,
+        "engine_metrics": engine_metrics,
+        "perf_metrics": perf_metrics,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
+    try:
+        output_dir = os.path.dirname(test_output_json)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(test_output_json, "w", encoding="utf-8") as f:
+            json.dump(results, f)
+        print(f"Wrote release results to: {test_output_json}")
+        print(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Warning: failed to write release results to {test_output_json}: {e}")
 
 
 if __name__ == "__main__":

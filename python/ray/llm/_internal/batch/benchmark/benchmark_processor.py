@@ -15,6 +15,8 @@ from statistics import mean
 from time import perf_counter, sleep
 from typing import Any
 
+import numpy as np
+
 import ray
 from .dataset import ShareGPTDataset
 from ray import data, serve
@@ -124,15 +126,7 @@ def _build_serve_deployment_config(
 def _percentile(values: list[float], p: float) -> float:
     if not values:
         return 0.0
-    sorted_values = sorted(values)
-    k = (len(sorted_values) - 1) * (p / 100.0)
-    lower = int(k)
-    upper = min(lower + 1, len(sorted_values) - 1)
-    if lower == upper:
-        return sorted_values[lower]
-    return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * (
-        k - lower
-    )
+    return float(np.percentile(values, p))
 
 
 def _summarize_request_latencies(

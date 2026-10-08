@@ -5378,7 +5378,6 @@
 
   run:
     timeout: 3600
-    artifact_path: /tmp/ray_llm_benchmark.json
     script: pytest -v test_batch_single_node_vllm.py::test_single_node_baseline_benchmark
 
 
