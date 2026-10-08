@@ -5338,16 +5338,14 @@ torch-geometric==2.5.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
 torch-scatter==2.1.2+cpu.torch.2.9 ; sys_platform == 'linux' \
-    --hash=sha256:2e34f7d83b32512b349e93355b18b1db48e317f30828d7ab717df6628825e000 \
-    --hash=sha256:34a11594df5338600a3fd55986fed088e4186ba56f2524a0a962cc3e40f75a4d \
-    --hash=sha256:51bcef861b61095f1b00f8451fe179fbfa48dc7f03af80dd01f29635090d66eb \
-    --hash=sha256:53ea146be456e3defaec4e70ad482a7c257db9eb8499865dc76ffe8310212cb1 \
-    --hash=sha256:6f9c0cce6e58e94aa9d0db24f9c579c1189973e03e9e1aa57f1e6492694af48d \
-    --hash=sha256:a2ef52eb9376db18986499b226ee54b94e8c1c39bfdf7f0d0a093a95dd3d3f4a \
-    --hash=sha256:b158c84bbff4554fc244f89e920ccfb2a437e13eb905d16d8b53c911dab467ad \
-    --hash=sha256:db5a7d61692c7827de77dfa79a4b18bf158c296e5d1a822bcd4c8ef90f204243 \
-    --hash=sha256:e176fba25b4658fa13ae8e54bcfbc2758b1d45cea78a308ea5562bc42a62f04e \
-    --hash=sha256:ff2a52e3bfd25fc06b8454ade9759506ddb053ea614a36c8b09cb75163075e6f
+    --hash=sha256:02bca0d2cdee2d7e53feeda7ffdc744f44554dc963d1537590d3ece07d104201 \
+    --hash=sha256:2f8e766598583385ad4c3425bced3a0414194f6229cb7204724b54810a5fe504 \
+    --hash=sha256:518f397615e8fbfecb7d9ce8c244a43e312cf2e8cf126a7888257cfaabb720f8 \
+    --hash=sha256:802f1181ab7796e61efe2dfedd8a8639562c271f029e820352c783b8614c4cd5 \
+    --hash=sha256:817348f597e82815e14400b3e444a1726d95e8aa42a1043a6686468770325ff3 \
+    --hash=sha256:d9b0297136b6cf1fd38bb7df385c43a58c49d3b5e406a6f5cbd8ed81a80561e0 \
+    --hash=sha256:da10d863d135d088cae981a122f54e9c1665cb7c8e0673610dd6ca474e3da07e \
+    --hash=sha256:fa16014f783f299f03f97efb51513ddce1c27175dcf1198d5a7bf2a8b113da01
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
