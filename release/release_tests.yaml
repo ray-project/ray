@@ -3583,6 +3583,7 @@
 
   frequency: nightly
   team: core
+  repeated_run: 3
   env: aws_perf
   cluster:
     anyscale_sdk_2026: true
