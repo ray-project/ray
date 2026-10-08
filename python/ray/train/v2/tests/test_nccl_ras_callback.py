@@ -1263,7 +1263,7 @@ def test_dump_stack_trace_falls_back_to_python(
 def test_nvidia_smi_returns_the_report(monkeypatch):
     calls = fake_subprocess_run(monkeypatch, stdout="GPU 00000000:00:04.0\n")
 
-    assert run_nvidia_smi(25.0) == {"ok": True, "stdout": "GPU 00000000:00:04.0\n"}
+    assert run_nvidia_smi(25.0) == DiagnosticResult(value="GPU 00000000:00:04.0\n")
     ((cmd, kwargs),) = calls
     assert cmd == ["nvidia-smi", "-q"]
     # The driver is what might be wedged, so the call is always bounded.
@@ -1271,25 +1271,38 @@ def test_nvidia_smi_returns_the_report(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "run_result,expected_reason",
+    "run_result,expected_type,expected_message",
     [
-        ({"side_effect": FileNotFoundError()}, "`nvidia-smi` is missing on this node"),
+        (
+            {"side_effect": FileNotFoundError("nvidia-smi")},
+            FileNotFoundError,
+            "nvidia-smi",
+        ),
         (
             {"side_effect": subprocess.TimeoutExpired("nvidia-smi", 25.0)},
+            TimeoutError,
             "timed out after 25s",
         ),
-        ({"side_effect": OSError("no permission")}, "no permission"),
-        ({"returncode": 9, "stderr": "driver/library mismatch"}, "driver/library"),
+        ({"side_effect": OSError("no permission")}, OSError, "no permission"),
+        (
+            {"returncode": 9, "stderr": "driver/library mismatch"},
+            RuntimeError,
+            "driver/library",
+        ),
     ],
     ids=["not_installed", "driver_stuck", "os_error", "non_zero_exit"],
 )
-def test_nvidia_smi_failures_say_why(monkeypatch, run_result, expected_reason):
+def test_nvidia_smi_failures_say_why(
+    monkeypatch, run_result, expected_type, expected_message
+):
     # The reason is written into the node's file, so it has to be readable.
     fake_subprocess_run(monkeypatch, **run_result)
 
     result = run_nvidia_smi(25.0)
 
-    assert result["ok"] is False and expected_reason in result["reason"]
+    assert result.value is None
+    assert isinstance(result.error, expected_type)
+    assert expected_message in str(result.error)
 
 
 def test_flight_recorder_dump_decodes_bytes(fake_c10d):
@@ -1399,28 +1412,37 @@ def test_fan_out_collects_every_worker(fan_out):
 
 
 @pytest.mark.parametrize(
-    "broken,expected_error,expected_log",
+    "broken,expected_type,expected_message,expected_log",
     [
         (
             {"launch_error": RuntimeError("actor is dead")},
-            "failed to launch: actor is dead",
+            RuntimeError,
+            "actor is dead",
             "Failed to launch dump_stack_trace on rank 0",
         ),
         (
             {"ready": False},
+            TimeoutError,
             "timed out after 30s",
             "dump_stack_trace on rank 0 did not finish within 30s",
         ),
         (
             {"get_error": RuntimeError("worker exited")},
-            "failed to collect: worker exited",
+            RuntimeError,
+            "worker exited",
             "Failed to collect dump_stack_trace on rank 0",
         ),
     ],
     ids=["launch_failed", "timed_out", "collect_failed"],
 )
 def test_fan_out_records_per_rank_failures(
-    fan_out, caplog, propagate_logs, broken, expected_error, expected_log
+    fan_out,
+    caplog,
+    propagate_logs,
+    broken,
+    expected_type,
+    expected_message,
+    expected_log,
 ):
     # One unreachable rank (the hung one is the interesting one) must not cost
     # us the ranks that did answer: it gets an error saying why, which is what
@@ -1430,9 +1452,22 @@ def test_fan_out_records_per_rank_failures(
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
         dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
 
-    assert dumps[0].value is None and dumps[0].error == expected_error
+    assert dumps[0].value is None
+    assert isinstance(dumps[0].error, expected_type)
+    assert expected_message in str(dumps[0].error)
     assert dumps[1].value == "stack-1" and dumps[1].error is None
     assert expected_log in caplog.text
+
+
+def test_fan_out_keeps_a_returned_diagnostic_result(fan_out):
+    # A worker-side function that reports its own failure must not be wrapped
+    # as a successful value.
+    error = RuntimeError("no GPUs")
+    workers = [fan_out.worker(0, value=DiagnosticResult(error=error))]
+
+    dumps = fan_out_to_workers(workers, run_nvidia_smi, 25.0, timeout_s=30.0)
+
+    assert dumps[0].value is None and dumps[0].error is error
 
 
 # ---------------------------------------------------------------------------
@@ -1493,7 +1528,9 @@ class FanOutDiagnostic:
         timeout_s: The fan-out's budget.
         ok: The worker's return value for a successful dump of ``contents``.
         failed: The worker's return value when it reports a failure with
-            ``reason``, or ``None`` if the worker-side function never does.
+            ``reason`` inside its value, or ``None`` if the worker-side function
+            never does (or reports it as a ``DiagnosticResult`` error, which is
+            indistinguishable from a fan-out error).
         filename: The file a rank's dump lands in (nvidia-smi: its node's).
         placeholder: What is written in place of a dump that failed with
             ``reason``.
@@ -1529,10 +1566,10 @@ _FAN_OUT_DIAGNOSTICS = [
         fn=nccl_ras.run_nvidia_smi,
         fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 1,),
         timeout_s=nccl_ras._NVIDIA_SMI_TIMEOUT_S,
-        ok=lambda contents: {"ok": True, "stdout": contents},
-        failed=lambda reason: {"ok": False, "reason": reason},
+        ok=lambda contents: contents,
+        failed=None,  # run_nvidia_smi returns a DiagnosticResult error
         filename=lambda rank: f"node_10.0.0.{rank}.log",
-        placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}\n",
+        placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}",
     ),
     FanOutDiagnostic(
         tool=nccl_ras._FLIGHT_RECORDER_TOOL,
@@ -1595,7 +1632,7 @@ def test_diagnostic_failed_target_gets_placeholder(
     callback = make_diagnostics_callback()
     reason = "it went wrong"
     if source == "fan_out_error":
-        bad_dump = DiagnosticResult(error=reason)
+        bad_dump = DiagnosticResult(error=RuntimeError(reason))
     else:
         bad_dump = DiagnosticResult(value=diagnostic.failed(reason))
 
@@ -1623,8 +1660,8 @@ def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
     calls = scripted_fan_out(
         monkeypatch,
         {
-            0: DiagnosticResult(value={"ok": True, "stdout": "node 1 GPUs"}),
-            2: DiagnosticResult(value={"ok": True, "stdout": "node 2 GPUs"}),
+            0: DiagnosticResult(value="node 1 GPUs"),
+            2: DiagnosticResult(value="node 2 GPUs"),
         },
     )
 
@@ -1637,6 +1674,25 @@ def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
         "node_10.0.0.1.log": "node 1 GPUs",
         "node_10.0.0.2.log": "node 2 GPUs",
     }
+
+
+def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
+    # The whole worker-side path: what `nvidia-smi` prints has to arrive intact
+    # in the node's file.
+    fake_subprocess_run(monkeypatch, stdout="Driver Version : 580.65.06\n")
+    callback = make_diagnostics_callback([make_worker(0, node_ip="10.0.0.1")])
+
+    def local_fan_out(workers, fn, *fn_args, timeout_s):
+        return {
+            worker.distributed_context.world_rank: fn(*fn_args) for worker in workers
+        }
+
+    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
+
+    callback.dump_nodes_nvidia_smi()
+
+    ((_, files),) = uploads
+    assert files == {"node_10.0.0.1.log": "Driver Version : 580.65.06\n"}
 
 
 @pytest.mark.parametrize(

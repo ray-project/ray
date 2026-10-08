@@ -1118,53 +1118,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             timeout_s=_STACK_DUMP_TIMEOUT_S,
         )
         files = {
-            f"rank_{rank}.log": diagnostic_reuslt.value
-            if diagnostic_reuslt.error is None
-            else diagnostic_reuslt.error
-            for rank, diagnostic_reuslt in dumps.items()
+            f"rank_{rank}.log": str(dump.value)
+            if dump.error is None
+            else str(dump.error)
+            for rank, dump in dumps.items()
         }
         return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
-
-    def dump_nodes_nvidia_smi(self) -> Optional[str]:
-        """Snapshot every node's GPUs and write the reports to the log dir.
-
-        GPUs belong to the node rather than the rank, so exactly one worker
-        per node is queried and each node gets a ``node_<node ip>.log``. A node with
-        no snapshot (e.g. ``nvidia-smi`` is missing there) gets a one-line
-        placeholder saying why, so mixed clusters are never silent.
-
-        Returns:
-            The path to the folder with the snapshots.
-        """
-        node_workers: Dict[str, Worker] = {}
-        node_ips: Dict[int, str] = {}
-        for worker in self._worker_group.get_workers():
-            node_workers.setdefault(worker.metadata.node_ip, worker)
-            node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
-        if not node_workers:
-            return None
-
-        dumps = fan_out_to_workers(
-            list(node_workers.values()),
-            run_nvidia_smi,
-            _NVIDIA_SMI_TIMEOUT_S - 1,
-            timeout_s=_NVIDIA_SMI_TIMEOUT_S,
-        )
-
-        files: Dict[str, str] = {}
-        for rank, diagnostic_result in dumps.items():
-            node_ip = node_ips[rank]
-            if diagnostic_result.error is None and diagnostic_result.value["ok"]:
-                files[f"node_{node_ip}.log"] = diagnostic_result.value["stdout"]
-            else:
-                reason = (
-                    diagnostic_result.error
-                    if diagnostic_result.error is not None
-                    else diagnostic_result.value["reason"]
-                )
-                files[f"node_{node_ip}.log"] = f"no `nvidia-smi` snapshot: {reason}\n"
-
-        return self.upload_diagnostics(_NVIDIA_SMI_TOOL, files)
 
     def dump_workers_flight_recorder(self) -> Optional[str]:
         """Fan out a Flight Recorder dump to every worker and write it to the log dir.
@@ -1190,7 +1149,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         files: Dict[str, str] = {}
         for rank, diagnostic_result in dumps.items():
             error = diagnostic_result.error
-            if error is None and not diagnostic_result.value["ok"]:
+            if error is not None:
+                error = str(error)
+            elif not diagnostic_result.value["ok"]:
                 error = diagnostic_result.value["reason"]
 
             if error is not None:
@@ -1216,6 +1177,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         for worker in self._worker_group.get_workers():
             node_workers.setdefault(worker.metadata.node_ip, worker)
             node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
+        if not node_workers:
+            return None
 
         dumps = fan_out_to_workers(
             list(node_workers.values()),
