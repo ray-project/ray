@@ -1,0 +1,18 @@
+load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_rust_pyo3//:defs.bzl", "pyo3_extension")
+
+pyo3_extension(
+    name = "ray_probe_ext",
+    srcs = ["ray_probe_ext.rs"],
+    edition = "2021",
+)
+
+# PyInfo from bzlmod-world rules_python 1.6.3 is a different provider identity
+# than WORKSPACE-world rules_python 0.40.0's, so ":ray_probe_ext" cannot go in
+# deps. Consume the .so as a data file instead -- the same shape Ray already
+# uses for _raylet.so.
+py_test(
+    name = "ray_probe_ext_test",
+    srcs = ["ray_probe_ext_test.py"],
+    data = [":ray_probe_ext"],
+)
