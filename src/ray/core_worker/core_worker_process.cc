@@ -799,7 +799,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
-      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
+      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()),
+      metric_thread_(ray::JoinableThread(std::thread([this /*, &metric_context_*/] {
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+            metric_context_.get_executor());
+        SetThreadName("metric_recorder");
+        metric_context_.run();
+      }))) {
   if (options_.enable_logging) {
     // Setup logging for worker system logging.
     {
@@ -870,13 +876,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     RAY_CHECK(!options_.install_failure_signal_handler)
         << "install_failure_signal_handler must be false because ray log is disabled.";
   }
-
-  metric_thread_ = std::thread([this /*, &metric_context_*/] {
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
-        metric_context_.get_executor());
-    SetThreadName("metric_recorder");
-    metric_context_.run();
-  });
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
@@ -962,14 +961,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcessImpl. pid: " << getpid();
   // Shutdown stats module if worker process exits.
+  metric_context_.stop();
   stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
-  }
-
-  metric_context_.stop();
-  if (metric_thread_.joinable()) {
-    metric_thread_.join();
   }
 }
 
