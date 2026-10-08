@@ -1129,7 +1129,25 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadBeforeSuccessfulCommitReply) 
   CheckPlacementGroupSize(0, GcsPlacementGroupStatus::SUCCESS);
   CheckPlacementGroupSize(1, GcsPlacementGroupStatus::FAILURE);
   ASSERT_EQ(placement_group->GetUnplacedBundles().size(), 2);
+
+  // The bundles are rescheduled onto a new node, so removing the placement group must
+  // release them there instead of on the dead node.
+  auto node1 = GenNodeInfo(1);
+  const auto node1_id = NodeID::FromBinary(node1->node_id());
+  AddNode(node1);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  CheckPlacementGroupSize(1, GcsPlacementGroupStatus::SUCCESS);
   ASSERT_TRUE(scheduler_->GetBundlesOnNode(node_id).empty());
+  auto bundles_on_node1 = scheduler_->GetBundlesOnNode(node1_id);
+  ASSERT_EQ(bundles_on_node1[placement_group->GetPlacementGroupID()].size(), 2);
+
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(raylet_clients_[1]->num_bundles_removed, 2);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadBeforeOtherCommitRepliesReturn) {
