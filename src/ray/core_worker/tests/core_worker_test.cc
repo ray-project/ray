@@ -119,9 +119,8 @@ class CoreWorkerTest : public ::testing::Test {
     auto service_handler = std::make_unique<CoreWorkerServiceHandlerProxy>();
     auto worker_context = std::make_unique<WorkerContext>(
         WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
-    boost::asio::io_context metric_context;
     auto core_worker_server = std::make_unique<rpc::GrpcServer>(
-        WorkerTypeString(options.worker_type), 0, true, metric_context);
+        WorkerTypeString(options.worker_type), 0, true, metric_context_);
     core_worker_server->RegisterService(
         std::make_unique<rpc::CoreWorkerGrpcService>(
             io_service_, *service_handler, /*max_active_rpcs_per_handler_=*/-1),
@@ -341,6 +340,7 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
+  boost::asio::io_context metric_context_;
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,

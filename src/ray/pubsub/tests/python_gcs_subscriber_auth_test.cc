@@ -117,11 +117,10 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
       auth_token = std::make_shared<rpc::AuthenticationToken>("");
     }
 
-    boost::asio::io_context metric_context;
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
                                                 0,  // Random port
                                                 true,
-                                                metric_context,
+                                                metric_context_,
                                                 1,
                                                 7200000,
                                                 auth_token);
@@ -159,6 +158,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   std::unique_ptr<rpc::GrpcServer> server_;
   FakeObservabilityPubSubService *fake_service_ptr_ = nullptr;
   int server_port_ = 0;
+  boost::asio::io_context metric_context_;
 };
 
 TEST_F(PythonGcsSubscriberAuthTest, MatchingTokens) {
