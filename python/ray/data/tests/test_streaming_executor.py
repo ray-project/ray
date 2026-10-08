@@ -710,6 +710,37 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
     assert "backpressured" not in summary
 
 
+def test_summary_str_lineage_recovery(ray_start_regular_shared):
+    """The recovery status shows only when seed-input lineage recovery is on and
+    the operator has re-run tasks."""
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
+
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
+    resource_manager = mock_resource_manager()
+
+    # Recovery disabled: nothing shown, even with re-run tasks recorded.
+    o2._num_reconstruction_tasks_finished = 2
+    assert "Recovery" not in format_op_state_summary(topo[o2], resource_manager)
+
+    # Recovery enabled but nothing re-run: nothing shown.
+    o2._lineage_tracker = LineageTracker()
+    o2._num_reconstruction_tasks_finished = 0
+    assert "Recovery" not in format_op_state_summary(topo[o2], resource_manager)
+
+    # The cumulative count stays on the line after recovery has finished.
+    o2._num_reconstruction_tasks_finished = 2
+    summary = format_op_state_summary(topo[o2], resource_manager)
+    assert summary.endswith("; Recovery: 0 queued, 0 running, 2 finished")
+
+
 def test_rank_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(1)])
 
