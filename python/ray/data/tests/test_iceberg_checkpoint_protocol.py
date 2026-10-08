@@ -46,6 +46,15 @@ _OLD_OPERATION_1 = "a" * 32
 _OLD_OPERATION_2 = "b" * 32
 
 
+@pytest.fixture(autouse=True)
+def mock_checkpoint_guard(mocker):
+    # These protocol tests don't start Ray. The guard has separate tests with
+    # real actors, including concurrent acquisition and coordinator restarts.
+    return mocker.patch(
+        "ray.data.checkpoint._iceberg_checkpoint.CheckpointPathGuard", autospec=True
+    )
+
+
 class _FakeSnapshot:
     def __init__(self, snapshot_id, parent_snapshot_id, summary):
         self.snapshot_id = snapshot_id
@@ -205,6 +214,77 @@ def test_wrap_iceberg_datasink(tmp_path):
     assert isinstance(wrapped, IcebergCheckpointDatasink)
     assert wrap_iceberg_datasink(sink, None) is sink
     assert wrap_iceberg_datasink(wrapped, config) is wrapped
+
+
+def test_guard_conflict_prevents_recovery(tmp_path, mock_checkpoint_guard):
+    config = _checkpoint_config(tmp_path)
+    sink = _FakeIcebergSink()
+    _initialize_namespace(config, sink)
+    pending = _write_pending(config, _OLD_OPERATION_1, 0)
+    mock_checkpoint_guard.return_value.acquire.side_effect = RuntimeError("in use")
+
+    wrapper = IcebergCheckpointDatasink(sink, config)
+    with pytest.raises(RuntimeError, match="in use"):
+        wrapper.enable_checkpointing()
+    assert sink.reload_count == 0
+    assert config.filesystem.get_file_info(pending.pending_path).type == FileType.File
+
+
+@pytest.mark.parametrize("failure", [None, "planning", "commit", "interrupt"])
+def test_write_call_holds_guard_until_exit(
+    tmp_path, mocker, mock_checkpoint_guard, failure
+):
+    from ray.data.dataset import Dataset
+
+    config = _checkpoint_config(tmp_path)
+    context = DataContext.get_current()
+    context.checkpoint_config = config
+    wrapper = IcebergCheckpointDatasink(_FakeIcebergSink(), config)
+    mocker.patch.object(
+        IcebergCheckpointDatasink, "min_bytes_per_write", new=property(lambda _: None)
+    )
+    parent = SimpleNamespace(
+        context=context,
+        _logical_plan=LogicalPlan(InputData(input_data=[]), context),
+    )
+    guard = mock_checkpoint_guard.return_value
+
+    def materialize():
+        wrapper.enable_checkpointing()
+        guard.acquire.assert_called_once()
+        guard.release.assert_not_called()
+        if failure == "planning":
+            raise RuntimeError("planning failed")
+        if failure == "interrupt":
+            raise KeyboardInterrupt()
+        return SimpleNamespace(_execute_to_iterator=lambda: (iter([]), None, None))
+
+    mocker.patch.object(
+        Dataset, "_from_parent", return_value=SimpleNamespace(materialize=materialize)
+    )
+
+    def complete(write_result):
+        guard.release.assert_not_called()
+        if failure == "commit":
+            raise RuntimeError("commit failed")
+
+    mocker.patch.object(wrapper, "on_write_complete", side_effect=complete)
+    if failure is None:
+        Dataset.write_datasink(parent, wrapper)
+    else:
+        error_type = KeyboardInterrupt if failure == "interrupt" else RuntimeError
+        with pytest.raises(error_type):
+            Dataset.write_datasink(parent, wrapper)
+    guard.release.assert_called_once()
+
+
+def test_guard_cleanup_preserves_write_error(tmp_path, mock_checkpoint_guard, caplog):
+    wrapper = IcebergCheckpointDatasink(
+        _FakeIcebergSink(), _checkpoint_config(tmp_path)
+    )
+    mock_checkpoint_guard.return_value.release.side_effect = RuntimeError("unavailable")
+    wrapper.release_checkpoint_guard()
+    assert "Failed to release the checkpoint path guard" in caplog.text
 
 
 @pytest.mark.parametrize(

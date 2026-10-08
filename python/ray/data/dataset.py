@@ -134,7 +134,10 @@ from ray.data.block import (
     _apply_batch_format,
     _take_first_non_empty_schema,
 )
-from ray.data.checkpoint._iceberg_checkpoint import wrap_iceberg_datasink
+from ray.data.checkpoint._iceberg_checkpoint import (
+    IcebergCheckpointDatasink,
+    wrap_iceberg_datasink,
+)
 from ray.data.collate_fn import CollateFn
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
@@ -6903,6 +6906,9 @@ class Dataset:
         except Exception as e:
             datasink.on_write_failed(e)
             raise
+        finally:
+            if isinstance(datasink, IcebergCheckpointDatasink):
+                datasink.release_checkpoint_guard()
 
     @ConsumptionAPI(
         delegate=(

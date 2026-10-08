@@ -94,7 +94,9 @@ ctx.checkpoint_config = CheckpointConfig(
 
 Ray Data supports job-level checkpointing for Iceberg writes in `APPEND` mode. The configured ID column must contain a stable, unique value for every source row and must remain present throughout the pipeline. Checkpointed Iceberg writes require the default checkpoint manager and filter.
 
-Use each checkpoint path for one Iceberg table and one logical writer. Don't run concurrent Dataset executions with the same checkpoint path. Ray binds retained checkpoint data to the table identifier and UUID and rejects reuse with a different table.
+Use each checkpoint path for one Iceberg table and one logical writer. Ray rejects overlapping checkpointed Iceberg writes to the same path within a Ray cluster, including jobs in different Ray namespaces. The guard covers checkpoint recovery, execution, the Iceberg commit, and checkpoint cleanup. A conflicting write reports the owning Ray job ID. Wait for that write to finish or choose a different checkpoint path.
+
+The guard coordinates cooperating writers in one cluster. It doesn't coordinate separate Ray clusters, recognize alternate filesystem mounts or storage aliases, or fence writes from failed workers. Use external coordination for these cases and stop the previous execution before recovering its checkpoints. Retained checkpoint data is also bound to the table identifier and UUID, so Ray rejects reuse with a different table.
 
 Workers publish row IDs as pending only after they write their physical Iceberg files. The driver marks the Iceberg snapshot with the operation ID and commits those row checkpoints only after it confirms the marked snapshot. If a write fails before the catalog commit, the next execution discards the pending row checkpoints and recomputes those rows. This process can leave orphaned physical files that Iceberg maintenance should remove.
 

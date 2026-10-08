@@ -2627,6 +2627,17 @@ py_test(
 )
 
 py_test(
+    name = "test_checkpoint_guard",
+    size = "small",
+    srcs = ["tests/test_checkpoint_guard.py"],
+    tags = ["team:data"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_iceberg_checkpoint_protocol",
     size = "small",
     srcs = ["tests/test_iceberg_checkpoint_protocol.py"],

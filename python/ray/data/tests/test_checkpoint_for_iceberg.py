@@ -1,4 +1,6 @@
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,6 +29,43 @@ pytestmark = pytest.mark.usefixtures("restore_data_context")
 _SOURCE = "db.source"
 _DESTINATION = "db.destination"
 _OTHER_DESTINATION = "db.other_destination"
+
+
+def test_overlapping_writes_rejected_before_recovery(
+    ray_start_10_cpus_shared, tmp_path
+):
+    catalog, catalog_kwargs = _create_catalog(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints"
+    _configure_checkpointing(checkpoint_path)
+    committing = threading.Event()
+    finish_commit = threading.Event()
+    original = IcebergDatasink.on_write_complete
+
+    def pause_commit(self, write_result):
+        committing.set()
+        assert finish_commit.wait(timeout=60)
+        original(self, write_result)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with patch.object(IcebergDatasink, "on_write_complete", pause_commit):
+            first = pool.submit(_write_input, catalog_kwargs)
+            try:
+                assert committing.wait(timeout=60)
+                pending = _checkpoint_files(checkpoint_path, ".pending.parquet")
+                assert pending
+                with pytest.raises(RuntimeError, match="already in use"):
+                    _write_input(catalog_kwargs)
+                assert _checkpoint_files(checkpoint_path, ".pending.parquet") == pending
+            finally:
+                finish_commit.set()
+            first.result(timeout=60)
+
+    # The rejected write didn't delete the active writer's checkpoints, and the
+    # completed write released the guard for an ordinary checkpointed retry.
+    _write_input(catalog_kwargs)
+    destination = catalog.load_table(_DESTINATION)
+    assert len(destination.snapshots()) == 1
+    assert destination.scan().to_arrow().num_rows == 3
 
 
 class _CustomCheckpointManager(IdColumnCheckpointManager):

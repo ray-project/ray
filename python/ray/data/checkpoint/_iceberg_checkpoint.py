@@ -10,6 +10,7 @@ from ray.data._internal.datasource.iceberg_datasink import (
 )
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block
+from ray.data.checkpoint._checkpoint_guard import CheckpointPathGuard
 from ray.data.checkpoint._iceberg_checkpoint_state import IcebergCheckpointState
 from ray.data.datasource.datasink import Datasink, WriteResult
 
@@ -38,12 +39,17 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         self._config = config
         self._state = IcebergCheckpointState(config.checkpoint_path, config.filesystem)
         self._operation_id: Optional[str] = None
+        self._guard = CheckpointPathGuard(config.checkpoint_path, config.filesystem)
 
     def enable_checkpointing(self) -> None:
         """Validate the protocol, resolve pending operations, and start one."""
         if self._operation_id is not None:
             return
         self._validate_configuration()
+
+        # Recovery can discard pending files. Establish ownership before any
+        # namespace or recovery I/O, not just before the first write task.
+        self._guard.acquire()
 
         self._sink._reload_table()
         table_uuid = str(self._sink._table.metadata.table_uuid)
@@ -62,6 +68,18 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
                 self._state.discard_operation(operation_id, checkpoints)
 
         self._operation_id = uuid.uuid4().hex
+
+    def release_checkpoint_guard(self) -> None:
+        """Release ownership after the entire driver write call has exited."""
+        self._operation_id = None
+        try:
+            self._guard.release()
+        except Exception:
+            # Preserve the write's original error if cleanup also fails. Retain
+            # ownership in GCS so another write cannot proceed without a guard.
+            logger.warning(
+                "Failed to release the checkpoint path guard.", exc_info=True
+            )
 
     @property
     def operation_id(self) -> str:
