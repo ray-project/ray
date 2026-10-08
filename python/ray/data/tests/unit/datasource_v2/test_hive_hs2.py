@@ -1,6 +1,7 @@
 """Unit tests for HiveServer2 connections, metadata, and batch conversion."""
 
 import sys
+from datetime import datetime
 from typing import Generator, List, Optional, Sequence, Tuple, cast
 
 import pyarrow as pa
@@ -307,6 +308,7 @@ def test_table_schema_rejects_duplicate_column_names():
         ("CHAR(4)", pa.string()),
         ("BINARY", pa.binary()),
         ("DATE", pa.date32()),
+        ("TIMESTAMP", pa.timestamp("us")),
         ("DECIMAL(12, 2)", pa.decimal128(12, 2)),
     ],
 )
@@ -315,7 +317,7 @@ def test_hive_scalar_type_mapping(hive_type, arrow_type):
 
 
 @pytest.mark.parametrize(
-    "hive_type", ["array<int>", "map<string,int>", "decimal(39,0)", "TIMESTAMP"]
+    "hive_type", ["array<int>", "map<string,int>", "decimal(39,0)"]
 )
 def test_unsupported_types_fail_closed(hive_type):
     with pytest.raises(ValueError, match="unsupported column type"):
@@ -327,6 +329,7 @@ def test_unsupported_types_fail_closed(hive_type):
     [
         (("name", "CHAR", None, None, None, None, None), pa.string()),
         (("name", "VARCHAR", None, None, None, None, None), pa.string()),
+        (("created_at", "TIMESTAMP", None, None, None, None, None), pa.timestamp("us")),
         (("amount", "DECIMAL", None, None, 12, 2, None), pa.decimal128(12, 2)),
     ],
 )
@@ -340,12 +343,90 @@ def test_result_metadata_type_mapping(column, arrow_type):
         ("amount", "DECIMAL", None, None, None, None, None),
         ("amount", "DECIMAL", None, None, 39, 0, None),
         ("items", "ARRAY", None, None, None, None, None),
-        ("created_at", "TIMESTAMP", None, None, None, None, None),
     ],
 )
 def test_unsupported_result_metadata_fails_closed(column):
     with pytest.raises(ValueError, match="unsupported column type"):
         hive_hs2._result_arrow_type(column)
+
+
+def test_table_timestamp_schema_uses_naive_microseconds():
+    class TimestampCursor(_Cursor):
+        def get_table_schema(self, table, database):
+            return [("id", "BIGINT"), ("created_at", "TIMESTAMP")]
+
+    cursor = TimestampCursor()
+    connection = _Connection(cursor)
+    spec = HiveReadSpec(lambda: connection, table="analytics.events")
+
+    schema = hive_hs2.infer_table_schema(spec)
+
+    assert schema == pa.schema([("id", pa.int64()), ("created_at", pa.timestamp("us"))])
+    assert cursor.statements == []
+    assert cursor.closed and connection.closed
+
+
+@pytest.mark.parametrize("read_mode", ["table", "query"])
+def test_timestamp_read_preserves_microseconds_and_nulls(read_mode):
+    values = [
+        datetime(2024, 1, 2, 3, 4, 5, 123456),
+        None,
+        datetime(1969, 12, 31, 23, 59, 59, 999999),
+        datetime(2024, 1, 2, 3, 4, 5),
+    ]
+    cursor = _Cursor([list(enumerate(values, start=1))])
+    cursor.description = [
+        ("id", "BIGINT", None, None, None, None, None),
+        ("created_at", "TIMESTAMP", None, None, None, None, None),
+    ]
+    connection = _Connection(cursor)
+    schema = pa.schema([("id", pa.int64()), ("created_at", pa.timestamp("us"))])
+    if read_mode == "table":
+        spec = HiveReadSpec(lambda: connection, table="analytics.events")
+    else:
+        spec = HiveReadSpec(
+            lambda: connection,
+            query="SELECT id, created_at FROM analytics.events",
+            schema=schema,
+        )
+
+    tables = list(hive_hs2.read_hs2_batches(spec, schema))
+
+    assert tables[0].schema == schema
+    assert tables[0].to_pylist() == [
+        {"id": index, "created_at": value}
+        for index, value in enumerate(values, start=1)
+    ]
+    assert cursor.statements == [hive_hs2._statement(spec)]
+    assert cursor.cancelled and cursor.closed and connection.closed
+
+
+@pytest.mark.parametrize(
+    "arrow_type",
+    [
+        pa.timestamp("s"),
+        pa.timestamp("ms"),
+        pa.timestamp("ns"),
+        pa.timestamp("us", tz="UTC"),
+    ],
+)
+def test_timestamp_schema_mismatch_fails_before_fetch(arrow_type):
+    rows = [(datetime(2024, 1, 2, 3, 4, 5, 123456),)]
+    cursor = _Cursor([rows])
+    cursor.description = [
+        ("created_at", "TIMESTAMP", None, None, None, None, None),
+    ]
+    connection = _Connection(cursor)
+    schema = pa.schema([("created_at", arrow_type)])
+    spec = HiveReadSpec(
+        lambda: connection, query="SELECT created_at FROM events", schema=schema
+    )
+
+    with pytest.raises(ValueError, match="result types do not match"):
+        list(hive_hs2.read_hs2_batches(spec, schema))
+
+    assert cursor.batches == [rows]
+    assert cursor.cancelled and cursor.closed and connection.closed
 
 
 def test_one_statement_yields_bounded_batches_and_closes():

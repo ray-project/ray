@@ -4063,7 +4063,8 @@ def read_hive(
             those labels in the schema or alias the columns in your query. Table
             reads infer their schema from HiveServer2 metadata; ``schema`` is
             only supported for query reads. Field types must use a supported
-            Arrow mapping.
+            Arrow mapping. Hive ``TIMESTAMP`` maps to ``pa.timestamp("us")``
+            without a time zone; sub-microsecond precision is truncated.
         user: The HiveServer2 session user or proxy user passed to
             ``connection.cursor(user=user)``. If omitted, Impyla uses the
             operating system username. Configure the authentication user

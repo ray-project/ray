@@ -13,8 +13,6 @@ from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
 _FETCH_ROWS = 1024
 _DECIMAL = re.compile(r"decimal\((\d+),(\d+)\)\Z", re.IGNORECASE)
 _CHAR = re.compile(r"(?:var)?char\(\d+\)\Z", re.IGNORECASE)
-# TIMESTAMP is intentionally unsupported: Impyla decodes HS2 values as Python
-# datetime, which has microsecond precision and drops trailing nanoseconds.
 _HIVE_TYPES = {
     "boolean": pa.bool_(),
     "tinyint": pa.int8(),
@@ -29,6 +27,9 @@ _HIVE_TYPES = {
     "varchar": pa.string(),
     "binary": pa.binary(),
     "date": pa.date32(),
+    # Impyla truncates sub-microsecond digits when decoding TIMESTAMP to datetime.
+    # Keep the values timezone-naive; this reader does not infer or convert time zones.
+    "timestamp": pa.timestamp("us"),
 }
 
 

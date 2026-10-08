@@ -4,7 +4,7 @@ import os
 import socket
 import uuid
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional, TypedDict, cast
 
@@ -205,6 +205,61 @@ def test_hive_scalar_types_over_real_hs2():
                 "event_date": date(2024, 1, 2),
                 "amount": Decimal("12.34"),
             }
+        finally:
+            ray.shutdown()
+
+
+def test_hive_timestamps_over_real_hs2():
+    options = _connection_options()
+    connection_factory = _make_connection_factory(options)
+    schema = pa.schema([("id", pa.int64()), ("created_at", pa.timestamp("us"))])
+    insert_clause = (
+        "SELECT CAST(1 AS BIGINT), "
+        "CAST('2024-01-02 03:04:05.123456789' AS TIMESTAMP) "
+        "UNION ALL SELECT CAST(2 AS BIGINT), CAST(NULL AS TIMESTAMP) "
+        "UNION ALL SELECT CAST(3 AS BIGINT), "
+        "CAST('1969-12-31 23:59:59.999999999' AS TIMESTAMP) "
+        "UNION ALL SELECT CAST(4 AS BIGINT), "
+        "CAST('2024-01-02 03:04:05' AS TIMESTAMP)"
+    )
+    expected = [
+        {"id": 1, "created_at": datetime(2024, 1, 2, 3, 4, 5, 123456)},
+        {"id": 2, "created_at": None},
+        {"id": 3, "created_at": datetime(1969, 12, 31, 23, 59, 59, 999999)},
+        {"id": 4, "created_at": datetime(2024, 1, 2, 3, 4, 5)},
+    ]
+    with _temporary_table(
+        options, "id BIGINT, created_at TIMESTAMP", insert_clause, "STORED AS TEXTFILE"
+    ) as (table, cursor):
+        # Verify Hive retained nanoseconds before Impyla decodes the TIMESTAMP.
+        cursor.execute(
+            f"SELECT id, CAST(created_at AS STRING) FROM {table} ORDER BY id"
+        )
+        stored = cursor.fetchall()
+        assert len(stored) == 4
+        assert stored[0] == (1, "2024-01-02 03:04:05.123456789")
+        assert stored[1] == (2, None)
+        assert stored[2] == (3, "1969-12-31 23:59:59.999999999")
+
+        ray.init(num_cpus=2, include_dashboard=False)
+        try:
+            for read_mode in ("table", "query"):
+                if read_mode == "table":
+                    dataset = ray.data.read_hive(
+                        table,
+                        connection_factory=connection_factory,
+                        user=options["user"],
+                    )
+                else:
+                    dataset = ray.data.read_hive(
+                        query=f"SELECT id AS id, created_at AS created_at FROM {table}",
+                        schema=schema,
+                        connection_factory=connection_factory,
+                        user=options["user"],
+                    )
+                result = dataset.materialize()
+                assert result.schema().base_schema == schema
+                assert sorted(result.take_all(), key=lambda row: row["id"]) == expected
         finally:
             ray.shutdown()
 
