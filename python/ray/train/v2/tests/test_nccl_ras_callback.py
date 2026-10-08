@@ -654,7 +654,7 @@ def test_confirmed_hang_captures_diagnostics(monkeypatch, nvidia_smi):
         callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2
 
     message = str(exc_info.value)
-    assert "per-rank stack traces" in message
+    assert "Compare the stack traces" in message
     assert "/exp/hang_detector/stack_traces" in message
     if nvidia_smi:
         # Snapshotted before the stack traces, which take far longer, so the GPU
