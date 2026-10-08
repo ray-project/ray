@@ -608,20 +608,15 @@ The `runtime_env` is a Python dictionary or a {class}`ray.runtime_env.RuntimeEnv
   :::{note}
   `image_uri` is experimental. If you have requirements or run into problems, open an issue on [GitHub](https://github.com/ray-project/ray/issues).
   :::
+
   **Podman prerequisites on VM workers**
 
-  Ray invokes `podman` to start the worker container. On every VM worker:
+  Ray invokes `podman` to start the worker container. On every VM worker, do the following:
 
-  * Install Podman and ensure that the `podman` command is on the `PATH` of
-    the Ray process, including the raylet and runtime environment subprocesses.
-  * Configure rootful Podman. This mode is required because Ray uses the host
-    network, PID, and IPC namespaces for worker containers.
-  * If Ray runs as a non-root user, configure a `podman` wrapper that invokes
-    rootful Podman with narrowly scoped `sudo` permission and removes the
-    rootless-only `--userns=keep-id` argument. The wrapper must preserve all
-    other arguments exactly.
-  * Allow outbound network access from the worker so Podman can pull the
-    requested image.
+  - Install Podman and make sure the `podman` command is on the `PATH` of the Ray process, including the raylet and runtime environment subprocesses.
+  - Configure rootful Podman. Ray requires this mode because it uses the host network, PID, and IPC namespaces for worker containers.
+  - If Ray runs as a non-root user, configure a `podman` wrapper that invokes rootful Podman with narrowly scoped `sudo` permission and removes the rootless-only `--userns=keep-id` argument. The wrapper must preserve all other arguments exactly.
+  - Allow outbound network access from the worker so Podman can pull the requested image.
 
 - `config` (dict | {class}`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): Configuration for the runtime environment, as either a dict or a `RuntimeEnvConfig`. It supports the following fields:
 
