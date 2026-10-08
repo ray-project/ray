@@ -17,6 +17,7 @@ package main
 import (
 	"os"
 
+	"github.com/ray-project/ray/go/cmd/raygo/autoscaler/monitor"
 	"github.com/ray-project/ray/go/cmd/raygo/dashboard"
 	"github.com/ray-project/ray/go/cmd/raygo/dashboard_agent"
 	"github.com/ray-project/ray/go/cmd/raygo/default_worker"
@@ -50,6 +51,8 @@ func init() {
 	rootCmd.AddCommand(dashboard.GetDashboardCmd())
 	// Register dashboard-agent subcommand (node-side dashboard module host).
 	rootCmd.AddCommand(dashboard_agent.GetDashboardAgentCmd())
+	// Register monitor subcommand (the Go autoscaler v2 monitor).
+	rootCmd.AddCommand(monitor.GetMonitorCmd())
 }
 
 func main() {

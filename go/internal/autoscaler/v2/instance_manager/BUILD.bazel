@@ -1,0 +1,107 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "instance_manager",
+    srcs = [
+        "common.go",
+        "config.go",
+        "instance_manager.go",
+        "instance_storage.go",
+        "storage.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/autoscaler/v2/instance_manager",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/autoscaler",
+        "//go/internal/autoscaler/v2/constant",
+        "//go/internal/autoscaler/v2/service",
+        "//go/internal/common",
+        "//go/internal/gcs/native",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/proto",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_mohae_deepcopy//:deepcopy",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
+
+go_test(
+    name = "storage_test",
+    srcs = ["storage_test.go"],
+    embed = [":instance_manager"],
+    deps = [
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+go_test(
+    name = "instance_storage_test",
+    srcs = ["instance_storage_test.go"],
+    embed = [":instance_manager"],
+    deps = [
+        "//go/proto",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+go_test(
+    name = "common_test",
+    srcs = ["common_test.go"],
+    embed = [":instance_manager"],
+    deps = [
+        "//go/proto",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+go_test(
+    name = "config_test",
+    srcs = ["config_test.go"],
+    embed = [":instance_manager"],
+    deps = [
+        "//go/internal/autoscaler",
+        "//go/internal/common",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/proto",
+        "@com_github_mohae_deepcopy//:deepcopy",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+go_test(
+    name = "instance_manager_test",
+    srcs = [
+        "common_test.go",
+        "config_test.go",
+        "instance_manager_test.go",
+        "instance_storage_test.go",
+        "storage_test.go",
+    ],
+    embed = [":instance_manager"],
+    deps = [
+        "//go/internal/autoscaler/v2/constant",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/proto",
+        "@com_github_mohae_deepcopy//:deepcopy",
+        "@com_github_stretchr_testify//assert",
+    ],
+)

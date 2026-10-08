@@ -123,35 +123,34 @@ int ray_gcs_client_nodes_drain(CGcsClient *client,
                                char ***drained_ids_hex_out,
                                int *drained_count_out,
                                char **error_out) {
-  if (!client || !client->global_state_accessor || !drained_ids_hex_out ||
-      !drained_count_out) {
+  if (!client || !client->gcs_client || !drained_ids_hex_out || !drained_count_out) {
     set_error(error_out, "Invalid arguments");
     return 0;
   }
 
   try {
-    std::unordered_map<ray::NodeID, int64_t> draining_nodes =
-        client->global_state_accessor->GetDrainingNodes();
-
-    std::vector<std::string> drained_ids;
+    std::vector<ray::NodeID> node_ids;
     if (count > 0 && node_ids_hex) {
       for (int i = 0; i < count; i++) {
-        std::string node_id_hex(node_ids_hex[i]);
-        if (node_id_hex.length() != 2 * ray::NodeID::Size()) {
-          continue;  // skip malformed entries in the input list
-        }
-        ray::NodeID node_id = ray::NodeID::FromHex(node_id_hex);
-        if (draining_nodes.count(node_id)) {
-          drained_ids.push_back(node_id_hex);
-        }
-      }
-    } else {
-      for (const auto &pair : draining_nodes) {
-        drained_ids.push_back(pair.first.Hex());
+        node_ids.push_back(ray::NodeID::FromHex(std::string(node_ids_hex[i])));
       }
     }
 
-    if (!allocate_string_array(drained_ids, drained_ids_hex_out, drained_count_out)) {
+    std::vector<std::string> drained_node_ids;
+    ray::Status status = client->gcs_client->Nodes().DrainNodes(
+        node_ids, client->timeout_ms, drained_node_ids);
+
+    if (!status.ok()) {
+      set_error(error_out, ("Failed to drain nodes: " + status.ToString()).c_str());
+      return 0;
+    }
+
+    std::vector<std::string> drained_ids_hex;
+    for (const auto &binary_id : drained_node_ids) {
+      drained_ids_hex.push_back(ray::NodeID::FromBinary(binary_id).Hex());
+    }
+
+    if (!allocate_string_array(drained_ids_hex, drained_ids_hex_out, drained_count_out)) {
       set_error(error_out, "Failed to allocate memory for drained IDs array");
       return 0;
     }

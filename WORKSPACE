@@ -18,6 +18,17 @@ http_archive(
     ],
 )
 
+# These directives are load-bearing for go_repository build file generation:
+# gazelle uses them to resolve the Go import paths declared in
+# go/dependencies.bzl to Bazel repository names when it generates the BUILD
+# files of fetched external Go modules. Without the macro registration an
+# external module whose own go.mod does not list a transitive dependency
+# (e.g. github.com/xeipuuv/gojsonreference) gets a generated BUILD file
+# without that dependency and the Go build fails with
+# "missing strict dependencies".
+# gazelle:repository_macro go/dependencies.bzl%gazelle_dependencies
+# gazelle:prefix github.com/ray-project/ray
+
 # rules_python arrives transitively at 0.9.0 (from rules_foreign_cc 0.9.0), which
 # predates bzlmod and pins pip 22.0.4. 0.40.0 is deliberate, not the newest: it is
 # the last release that still ships python/pip_install/repositories.bzl (loaded

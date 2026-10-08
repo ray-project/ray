@@ -248,6 +248,9 @@ func (m *mockGcsClient) GetAll(ctx context.Context, nodeIDs []ids.NodeID) (map[i
 func (m *mockGcsClient) DrainNodes(ctx context.Context, nodeIDs []ids.NodeID) ([]ids.NodeID, error) {
 	return nil, gcs.ErrNotImplemented
 }
+func (m *mockGcsClient) DrainNode(ctx context.Context, nodeID ids.NodeID, reason proto.DrainNodeReason, reasonMessage string, deadlineTimestampMs int64) (bool, string, error) {
+	return false, "", gcs.ErrNotImplemented
+}
 func (m *mockGcsClient) GetNodeToConnect(ctx context.Context, nodeIpAddress string) (*proto.GcsNodeInfo, error) {
 	return nil, gcs.ErrNotImplemented
 }

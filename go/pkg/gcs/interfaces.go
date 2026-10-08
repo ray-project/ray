@@ -37,6 +37,10 @@ type NodeInfoInterface interface {
 	CheckAlive(ctx context.Context, nodeIDs []ids.NodeID) ([]bool, error)
 	GetAll(ctx context.Context, nodeIDs []ids.NodeID) (map[ids.NodeID]*proto.GcsNodeInfo, error)
 	DrainNodes(ctx context.Context, nodeIDs []ids.NodeID) ([]ids.NodeID, error)
+	// DrainNode drains a single node (with a reason, for idle termination
+	// scenarios). It returns whether the drain was accepted, the rejection
+	// reason, and an error.
+	DrainNode(ctx context.Context, nodeID ids.NodeID, reason proto.DrainNodeReason, reasonMessage string, deadlineTimestampMs int64) (bool, string, error)
 	// GetNodeToConnect returns the node that a driver should connect to for the
 	// given node IP address.
 	GetNodeToConnect(ctx context.Context, nodeIpAddress string) (*proto.GcsNodeInfo, error)

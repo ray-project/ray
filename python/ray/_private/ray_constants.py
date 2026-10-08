@@ -456,10 +456,13 @@ ENABLE_GO_DASHBOARD_HEAD = env_bool("RAY_ENABLE_GO_DASHBOARD_HEAD", False)
 
 ENABLE_GO_DASHBOARD_AGENT = env_bool("RAY_ENABLE_GO_DASHBOARD_AGENT", False)
 
+ENABLE_GO_AUTOSCALER_MONITOR = env_bool("RAY_ENABLE_GO_AUTOSCALER_MONITOR", False)
+
 # Subcommands supported by the Go raygo executable.
 RAYGO_AVAILABLE_COMMAND_SETUP_WORKER = "setup_worker"
 RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER = "defaultworker"
 RAYGO_AVAILABLE_COMMAND_RUNTIME_ENV_AGENT = "runtime-env-agent"
+RAYGO_AVAILABLE_COMMAND_MONITOR = "monitor"
 
 # Enable launching the Go runtime env agent instead of the Python one.
 ENABLE_GO_RUNTIME_ENV_AGENT = env_bool("RAY_ENABLE_GO_RUNTIME_ENV_AGENT", False)

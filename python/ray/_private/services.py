@@ -2591,19 +2591,32 @@ def start_monitor(
     Returns:
         ProcessInfo for the process that was started.
     """
-    if autoscaler_v2:
-        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_V2_DIR, "monitor.py")
+    # When the Go autoscaler monitor switch is on, always take the Go (v2)
+    # path -- even if v1 was selected for the rest of the cluster; the v1
+    # Python entrypoint is only used when the switch is off.
+    use_go_monitor = ray_constants.ENABLE_GO_AUTOSCALER_MONITOR
+    if use_go_monitor:
+        command = [
+            RAYGO_EXECUTABLE,
+            ray_constants.RAYGO_AVAILABLE_COMMAND_MONITOR,
+            f"--logs-dir={logs_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
     else:
-        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
+        if autoscaler_v2:
+            entrypoint = os.path.join(RAY_PATH, AUTOSCALER_V2_DIR, "monitor.py")
+        else:
+            entrypoint = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
 
-    command = [
-        sys.executable,
-        "-u",
-        entrypoint,
-        f"--logs-dir={logs_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-    ]
+        command = [
+            sys.executable,
+            "-u",
+            entrypoint,
+            f"--logs-dir={logs_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
     assert gcs_address is not None
     command.append(f"--gcs-address={gcs_address}")
 
@@ -2616,11 +2629,13 @@ def start_monitor(
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
-        # Use stderr log format with the component name as a message prefix.
-        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
-            component=ray_constants.PROCESS_TYPE_MONITOR
-        )
-        command.append(f"--logging-format={logging_format}")
+        if not use_go_monitor:
+            # Use stderr log format with the component name as a message prefix.
+            # The Go monitor configures its own log format.
+            logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+                component=ray_constants.PROCESS_TYPE_MONITOR
+            )
+            command.append(f"--logging-format={logging_format}")
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if monitor_ip:

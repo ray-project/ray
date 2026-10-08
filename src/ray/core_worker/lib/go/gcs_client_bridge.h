@@ -198,6 +198,31 @@ int ray_gcs_client_autoscaler_get_status(CGcsClient *client,
                                          int *size_out,
                                          char **error_out);
 
+// Autoscaler - Report the autoscaler state
+// serialized_state: protobuf-serialized AutoscalingState bytes
+// state_size: size of serialized_state in bytes
+// Returns 1 on success, 0 on failure (error_out holds the details)
+int ray_gcs_client_autoscaler_report_state(CGcsClient *client,
+                                           const char *serialized_state,
+                                           int32_t state_size,
+                                           char **error_out);
+
+// Autoscaler - Drain a single node (with a reason, for idle termination)
+// reason: DrainNodeReason enum value (0=UNSPECIFIED, 1=IDLE_TERMINATION,
+// 2=PREEMPTION)
+// deadline_timestamp_ms: 0 means no deadline
+// is_accepted_out: 1 if the drain was accepted, 0 if rejected
+// rejection_reason_out: the rejection reason message when rejected (the caller
+// must free it via ray_gcs_free_string)
+int ray_gcs_client_drain_node(CGcsClient *client,
+                              const char *node_id_hex,
+                              int32_t reason,
+                              const char *reason_message,
+                              int64_t deadline_timestamp_ms,
+                              int *is_accepted_out,
+                              char **rejection_reason_out,
+                              char **error_out);
+
 // PlacementGroups
 int ray_gcs_client_placement_groups_get_all(CGcsClient *client,
                                             char ***serialized_out,

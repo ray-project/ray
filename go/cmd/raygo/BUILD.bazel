@@ -20,6 +20,7 @@ go_library(
     importpath = "github.com/ray-project/ray/go/cmd/raygo",
     visibility = ["//visibility:private"],
     deps = [
+        "//go/cmd/raygo/autoscaler/monitor",
         "//go/cmd/raygo/dashboard",
         "//go/cmd/raygo/dashboard_agent",
         "//go/cmd/raygo/default_worker",

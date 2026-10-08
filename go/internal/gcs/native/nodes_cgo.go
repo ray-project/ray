@@ -220,3 +220,50 @@ func (c *cgoClient) DrainNodes(ctx context.Context, nodeIDs []ids.NodeID) ([]ids
 
 	return result, nil
 }
+
+// DrainNode drains a single node (with a reason, used for idle termination).
+// It returns whether the drain was accepted, the rejection reason, and an error.
+func (c *cgoClient) DrainNode(ctx context.Context, nodeID ids.NodeID, reason proto.DrainNodeReason, reasonMessage string, deadlineTimestampMs int64) (bool, string, error) {
+	cNodeID := C.CString(nodeID.Hex())
+	defer C.free(unsafe.Pointer(cNodeID))
+
+	cReasonMsg := C.CString(reasonMessage)
+	defer C.free(unsafe.Pointer(cReasonMsg))
+
+	var cErr *C.char
+	var cAccepted C.int
+	var cRejectionReason *C.char
+
+	ok := C.ray_gcs_client_drain_node(
+		c.ptr,
+		cNodeID,
+		C.int32_t(reason),
+		cReasonMsg,
+		C.int64_t(deadlineTimestampMs),
+		&cAccepted,
+		&cRejectionReason,
+		&cErr,
+	)
+	if cErr != nil {
+		defer C.free(unsafe.Pointer(cErr))
+		if cRejectionReason != nil {
+			C.free(unsafe.Pointer(cRejectionReason))
+		}
+		return false, "", fmt.Errorf("drain node failed: %s", C.GoString(cErr))
+	}
+	if ok == 0 {
+		if cRejectionReason != nil {
+			C.free(unsafe.Pointer(cRejectionReason))
+		}
+		return false, "", fmt.Errorf("drain node failed: C++ returned ok=0 with no error")
+	}
+
+	accepted := cAccepted != 0
+	var rejectionReason string
+	if cRejectionReason != nil {
+		rejectionReason = C.GoString(cRejectionReason)
+		C.free(unsafe.Pointer(cRejectionReason))
+	}
+
+	return accepted, rejectionReason, nil
+}

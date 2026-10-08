@@ -26,9 +26,9 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"unsafe"
 
-	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/log"
 	protopb "github.com/ray-project/ray/go/proto"
 	"google.golang.org/protobuf/proto"
@@ -70,8 +70,38 @@ func (c *cgoClient) GetAutoscalerStatus(ctx context.Context) (*protopb.GetCluste
 }
 
 // ReportAutoscalingState reports the autoscaling state to GCS.
-// TODO: The C++ bridge does not yet expose report_autoscaling_state; once the
-// interface is wired up this method should call it via CGO.
+// autoscalingState holds the protobuf-serialized AutoscalingState bytes.
 func (c *cgoClient) ReportAutoscalingState(autoscalingState string) error {
-	return gcs.ErrNotImplemented
+	if c.closed.Load() {
+		return fmt.Errorf("client is closed")
+	}
+	stateBytes := []byte(autoscalingState)
+	if len(stateBytes) == 0 {
+		return fmt.Errorf("autoscaling state must not be empty")
+	}
+
+	// Pin the Go memory with runtime.Pinner to avoid the overhead of C.CBytes,
+	// which allocates new C memory and copies the data, so a large state would
+	// consume twice the memory. Pinner keeps the Go memory from being moved by
+	// the GC during the CGO call.
+	var p runtime.Pinner
+	p.Pin(&stateBytes[0])
+	defer p.Unpin()
+
+	var cErr *C.char
+	ok := C.ray_gcs_client_autoscaler_report_state(
+		c.getPtr(),
+		(*C.char)(unsafe.Pointer(&stateBytes[0])),
+		C.int32_t(len(stateBytes)),
+		&cErr)
+	if cErr != nil {
+		defer C.free(unsafe.Pointer(cErr))
+		if ok == 0 {
+			return fmt.Errorf("report autoscaling state failed: %s", C.GoString(cErr))
+		}
+	}
+	if ok == 0 {
+		return fmt.Errorf("report autoscaling state failed: C++ returned ok=0 with no error")
+	}
+	return nil
 }
