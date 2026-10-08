@@ -421,6 +421,7 @@ ray_cc_binary(
         "//src/ray/util:clock",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:event",
+        "//src/ray/util:joinable_thread",
         "//src/ray/util:process",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
