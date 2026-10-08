@@ -225,7 +225,7 @@ class DiskHashShuffleMapOp(
         if estimated_bytes > 0:
             resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
-        ray_options: Dict[str, Any] = {**resources}
+        ray_options: Dict[str, Any] = {**resources, "name": self.name}
         if target_node_id is not None:
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True

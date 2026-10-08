@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import DefaultDict, List, Optional, Set
+from typing import TYPE_CHECKING, DefaultDict, List, Optional, Set
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -8,10 +8,13 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.util.debug import Suspect, _test_some_code_for_memory_leaks
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm import Algorithm
+
 
 @DeveloperAPI
 def check_memory_leaks(
-    algorithm,
+    algorithm: "Algorithm",
     to_check: Optional[Set[str]] = None,
     repeats: Optional[int] = None,
     max_num_trials: int = 3,
@@ -33,7 +36,7 @@ def check_memory_leaks(
             repeats: actual_repeats = `repeats` * (trial + 1) (1st trial == 0).
         max_num_trials: The maximum number of trials to run each check for.
 
-    Raises:
+    Returns:
         A defaultdict(list) with keys being the `to_check` strings and values being
         lists of Suspect instances that were found.
     """

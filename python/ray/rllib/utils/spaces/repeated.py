@@ -17,6 +17,13 @@ class Repeated(gym.Space):
     """
 
     def __init__(self, child_space: gym.Space, max_len: int):
+        """Initializes a Repeated instance.
+
+        Args:
+            child_space: The space of the individual items in the (variable-length)
+                list represented by this space.
+            max_len: The maximum number of items the list may contain.
+        """
         super().__init__()
         self.child_space = child_space
         self.max_len = max_len

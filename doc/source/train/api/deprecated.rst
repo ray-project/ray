@@ -22,6 +22,10 @@ PyTorch Ecosystem
     :toctree: doc/
 
     ~train.torch.torch_trainer.TorchTrainer
+
+.. autosummary::
+    :nosignatures:
+
     ~train.torch.TorchConfig
     ~train.torch.xla.TorchXLAConfig
 
@@ -30,7 +34,6 @@ PyTorch
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~train.torch.get_device
     ~train.torch.get_devices
@@ -43,7 +46,6 @@ PyTorch Lightning
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~train.lightning.prepare_trainer
     ~train.lightning.RayLightningEnvironment
@@ -57,7 +59,6 @@ Hugging Face Transformers
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~train.huggingface.transformers.prepare_trainer
     ~train.huggingface.transformers.RayTrainReportCallback
@@ -74,6 +75,10 @@ TensorFlow/Keras
     :toctree: doc/
 
     ~train.tensorflow.tensorflow_trainer.TensorflowTrainer
+
+.. autosummary::
+    :nosignatures:
+
     ~train.tensorflow.TensorflowConfig
     ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.keras.ReportCheckpointCallback
@@ -97,6 +102,10 @@ XGBoost
     :toctree: doc/
 
     ~train.xgboost.xgboost_trainer.XGBoostTrainer
+
+.. autosummary::
+    :nosignatures:
+
     ~train.xgboost.RayTrainReportCallback
 
 
@@ -108,6 +117,10 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.lightgbm_trainer.LightGBMTrainer
+
+.. autosummary::
+    :nosignatures:
+
     ~train.lightgbm.RayTrainReportCallback
 
 
@@ -121,8 +134,17 @@ Ray Train Configuration
     ~air.config.ScalingConfig
     ~air.config.RunConfig
     ~air.config.FailureConfig
+
+.. autosummary::
+    :nosignatures:
+
     ~train.CheckpointConfig
     ~train.DataConfig
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~train.SyncConfig
 
 
@@ -133,9 +155,13 @@ Ray Train Utilities
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~train.Checkpoint
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~train.context.TrainContext
 
 **Functions**
@@ -155,7 +181,6 @@ Ray Train Output
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~train.Result
 
@@ -190,7 +215,6 @@ Train Backend Base Classes
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
     :template: autosummary/class_without_autosummary.rst
 
     ~train.backend.Backend
