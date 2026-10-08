@@ -1,5 +1,6 @@
 import copy
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
@@ -67,6 +68,12 @@ class RayDatasetShardProvider:
             self._cached_dataset_shards[dataset_name] = ray.get(
                 self._dataset_manager.get_dataset_shard.remote(dataset_info)
             )
+        elif dataset_info.state_dict is not None:
+            raise ValueError(
+                "Loading a `state_dict` is only supported for the first call to "
+                "`ray.train.get_dataset_shard` for a dataset. "
+                "Updating the data iterator state is not supported."
+            )
 
         return self._cached_dataset_shards[dataset_name]
 
@@ -91,6 +98,35 @@ class DatasetsCallback(WorkerGroupCallback):
         self._datasets = datasets
         self._data_config = copy.deepcopy(train_run_context.dataset_config)
         self._dataset_shard_provider: Optional[RayDatasetShardProvider] = None
+
+        # Update default dataset checkpoint paths/filesystem to the RunConfig settings.
+        storage_context = train_run_context.run_config.storage_context
+        dataset_checkpoint_configs = self._data_config.dataset_checkpoint_configs
+        for dataset_name, checkpoint_config in dataset_checkpoint_configs.items():
+            if not checkpoint_config.checkpoint_path:
+                checkpoint_config.checkpoint_path = Path(
+                    storage_context.experiment_fs_path,
+                    "ray_data_checkpoints",
+                    dataset_name,
+                ).as_posix()
+                # The default path is on the RunConfig storage filesystem.
+                # Otherwise, the filesystem is inferred from the user's path.
+                if not checkpoint_config.override_filesystem:
+                    checkpoint_config.override_filesystem = (
+                        storage_context.storage_filesystem
+                    )
+
+        # Datasets can't share a checkpoint path, since the checkpoint files
+        # aren't partitioned by dataset.
+        checkpoint_paths = [
+            config.checkpoint_path for config in dataset_checkpoint_configs.values()
+        ]
+        if len(set(checkpoint_paths)) != len(checkpoint_paths):
+            raise ValueError(
+                "Each dataset in `DataConfig.dataset_checkpoint_configs` must use a "
+                "different `checkpoint_path`, but got: "
+                f"{dict(zip(dataset_checkpoint_configs, checkpoint_paths))}"
+            )
 
         # Capture the current DataContext to propagate it to
         # the Train workers later.

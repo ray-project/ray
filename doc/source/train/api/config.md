@@ -27,3 +27,12 @@ These `ray.train` classes configure a training run: how many workers to use, whe
     ~train.ScalingConfig
     ~train.ValidationConfig
 ```
+
+```{eval-rst}
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.DatasetCheckpointConfig
+```
