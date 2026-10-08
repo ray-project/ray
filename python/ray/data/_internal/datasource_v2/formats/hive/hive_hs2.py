@@ -2,12 +2,11 @@
 
 import re
 from contextlib import suppress
-from typing import Iterator, List, Optional, Tuple
+from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
-    HiveConnectionOptions,
     HiveReadSpec,
 )
 
@@ -47,28 +46,9 @@ def _arrow_type(hive_type: str) -> pa.DataType:
     raise ValueError("HiveServer2 table has an unsupported column type")
 
 
-def _connect(options: HiveConnectionOptions):
+def _connect(connection_factory: Callable[[], Any]):
     try:
-        from impala.dbapi import connect
-    except ImportError:
-        raise ImportError(
-            "read_hive requires Impyla. Install it with `pip install impyla`."
-        ) from None
-
-    try:
-        return connect(
-            host=options.host,
-            port=options.port,
-            auth_mechanism=options.auth_mechanism,
-            user=options.user,
-            password=options.password,
-            kerberos_service_name=options.kerberos_service_name,
-            use_ssl=options.use_ssl,
-            ca_cert=options.ca_cert,
-            verify_cert=options.use_ssl,
-            timeout=options.timeout,
-            retries=1,
-        )
+        return connection_factory()
     except Exception as exc:
         raise RuntimeError("HiveServer2 connection failed") from exc
 
@@ -88,10 +68,10 @@ def infer_table_schema(spec: HiveReadSpec) -> pa.Schema:
     if table_identifier is None:
         raise ValueError("table schema inference requires a table read")
     database, table = table_identifier
-    connection = _connect(spec.connection)
+    connection = _connect(spec.connection_factory)
     cursor = None
     try:
-        cursor = connection.cursor(user=spec.connection.user)
+        cursor = connection.cursor(user=spec.user)
         metadata_columns = cursor.get_table_schema(
             _metadata_pattern(table), _metadata_pattern(database)
         )
@@ -234,11 +214,11 @@ def read_hs2_batches(spec: HiveReadSpec, schema: pa.Schema) -> Iterator[pa.Table
         yield pa.Table.from_batches([], schema=schema)
         return
 
-    connection = _connect(spec.connection)
+    connection = _connect(spec.connection_factory)
     cursor = None
     try:
         try:
-            cursor = connection.cursor(user=spec.connection.user)
+            cursor = connection.cursor(user=spec.user)
             cursor.execute(_statement(spec))
             description = cursor.description
         except Exception as exc:

@@ -1,30 +1,33 @@
 from dataclasses import FrozenInstanceError
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 import pyarrow as pa
 import pytest
 
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
-    HiveConnectionOptions,
     HiveReadSpec,
 )
 
 
 def test_table_and_query_modes():
-    connection = HiveConnectionOptions(host="hive.example.com", auth_mechanism="NOSASL")
-    assert HiveReadSpec(connection, table="events").table_identifier == (
+    def connection_factory():
+        return object()
+
+    assert HiveReadSpec(connection_factory, table="events").table_identifier == (
         "default",
         "events",
     )
     assert HiveReadSpec(
-        connection, table="analytics.events", limit=0
+        connection_factory, table="analytics.events", limit=0
     ).table_identifier == (
         "analytics",
         "events",
     )
 
     schema = pa.schema([("id", pa.int64())])
-    query = HiveReadSpec(connection, query="SELECT id FROM events", schema=schema)
+    query = HiveReadSpec(
+        connection_factory, query="SELECT id FROM events", schema=schema
+    )
     assert query.table_identifier is None
     assert query.schema == schema
     with pytest.raises(FrozenInstanceError):
@@ -73,76 +76,47 @@ def test_table_and_query_modes():
 def test_read_spec_rejects_unsupported_inputs(kwargs, message):
     with pytest.raises(ValueError, match=message):
         HiveReadSpec(
-            HiveConnectionOptions(host="hive.example.com", auth_mechanism="NOSASL"),
+            lambda: object(),
             **kwargs,
         )
 
 
-@pytest.mark.parametrize(
-    "kwargs, message",
-    [
-        ({"host": ""}, "host"),
-        ({"host": " hive.example.com "}, "host"),
-        ({"host": "hive\n.example.com"}, "host"),
-        ({"host": "hive.example.com", "port": True}, "port"),
-        ({"host": "hive.example.com", "port": 0}, "port"),
-        ({"host": "hive.example.com", "auth_mechanism": "NONE"}, "auth_mechanism"),
-        ({"host": "hive.example.com", "auth_mechanism": "PLAIN"}, "user and password"),
-        ({"host": "hive.example.com", "password": "secret"}, "only supported"),
-        (
-            {
-                "host": "hive.example.com",
-                "auth_mechanism": "GSSAPI",
-                "password": "secret",
-            },
-            "only supported",
-        ),
-        ({"host": "hive.example.com", "user": ""}, "user"),
-        ({"host": "hive.example.com", "ca_cert": "ca.pem"}, "use_ssl"),
-        ({"host": "hive.example.com", "use_ssl": "yes"}, "use_ssl"),
-        ({"host": "hive.example.com", "timeout": float("inf")}, "timeout"),
-        ({"host": "hive.example.com", "timeout": 0}, "timeout"),
-        ({"host": "hive.example.com", "timeout": -1}, "timeout"),
-    ],
-)
-def test_connection_options_reject_unsupported_inputs(kwargs, message):
-    with pytest.raises(ValueError, match=message):
-        cast(Callable[..., HiveConnectionOptions], HiveConnectionOptions)(
-            **{"auth_mechanism": "NOSASL", **kwargs}
-        )
+@pytest.mark.parametrize("connection_factory", [None, "hs2", 1, object()])
+def test_read_spec_requires_callable_connection_factory(connection_factory):
+    with pytest.raises(TypeError, match="connection_factory must be callable"):
+        HiveReadSpec(connection_factory, table="events")
 
 
-def test_authentication_selection_is_required():
-    with pytest.raises(TypeError, match="auth_mechanism"):
-        cast(Callable[..., HiveConnectionOptions], HiveConnectionOptions)(
-            host="hive.example.com"
-        )
+@pytest.mark.parametrize("user", ["", " reader ", 123, True])
+def test_read_spec_rejects_invalid_session_user(user):
+    with pytest.raises(ValueError, match="user"):
+        HiveReadSpec(lambda: object(), user=user, table="events")
 
 
-def test_read_spec_requires_connection_options():
-    with pytest.raises(TypeError, match="connection"):
-        cast(Callable[..., HiveReadSpec], HiveReadSpec)(
-            "hive.example.com", table="events"
-        )
+def test_factory_is_not_called_during_input_validation():
+    def connection_factory():
+        pytest.fail("Input validation must not open a connection")
+
+    spec = HiveReadSpec(connection_factory, table="events", user="session-user")
+    assert spec.connection_factory is connection_factory
+    assert spec.user == "session-user"
 
 
-def test_supported_auth_profiles_and_secret_redaction():
-    plain = HiveConnectionOptions(
-        host="hive.example.com",
-        auth_mechanism="PLAIN",
-        user="reader",
-        password="private-password",
-        use_ssl=True,
-        ca_cert="ca.pem",
-    )
-    kerberos = HiveConnectionOptions(host="hive.example.com", auth_mechanism="GSSAPI")
-    assert plain.auth_mechanism == "PLAIN"
-    assert kerberos.kerberos_service_name == "hive"
-    assert "private-password" not in repr(plain)
+def test_callable_object_and_query_are_hidden_from_repr():
+    class ConnectionFactory:
+        def __call__(self):
+            return object()
 
+        def __repr__(self):
+            return "private-factory-state"
+
+    factory = ConnectionFactory()
     query_text = "SELECT * FROM events WHERE token = 'private-literal'"
-    spec = HiveReadSpec(plain, query=query_text, schema=pa.schema([("id", pa.int64())]))
-    assert "private-password" not in repr(spec)
+    spec = HiveReadSpec(
+        factory, query=query_text, schema=pa.schema([("id", pa.int64())])
+    )
+    assert spec.connection_factory is factory
+    assert "private-factory-state" not in repr(spec)
     assert "private-literal" not in repr(spec)
 
 

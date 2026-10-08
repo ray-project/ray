@@ -6,17 +6,13 @@ import uuid
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
-from typing import Optional, TypedDict, cast
+from typing import Literal, Optional, TypedDict, cast
 
 import pyarrow as pa
 import pytest
 
 import ray
 import ray.data
-from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
-    HiveAuthMechanism,
-    HiveConnectionOptions,
-)
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _connect as connect_read_hive,
 )
@@ -31,13 +27,12 @@ pytestmark = pytest.mark.skipif(
 
 
 class _ConnectionOptions(TypedDict):
-    """Connection keywords shared by the HS2 client and public read API."""
+    """Non-secret connection settings captured by the test factory."""
 
     host: str
     port: int
-    auth_mechanism: HiveAuthMechanism
+    auth_mechanism: Literal["NOSASL", "PLAIN", "GSSAPI"]
     user: str
-    password: Optional[str]
     kerberos_service_name: str
     use_ssl: bool
     ca_cert: Optional[str]
@@ -51,30 +46,43 @@ def _connection_options() -> _ConnectionOptions:
     )
     if _AUTH == "PLAIN" and not password:
         pytest.fail("PLAIN integration requires HIVE_TEST_PASSWORD")
-    if _AUTH != "PLAIN":
-        password = None
-
     ssl_setting = os.environ.get("RAY_HIVE_TEST_USE_SSL", "false").lower()
     if ssl_setting not in ("true", "false", "1", "0"):
         pytest.fail("RAY_HIVE_TEST_USE_SSL must be true or false")
     options: _ConnectionOptions = {
         "host": cast(str, _HOST),
         "port": int(os.environ.get("RAY_HIVE_TEST_PORT", "10000")),
-        "auth_mechanism": cast(HiveAuthMechanism, _AUTH),
+        "auth_mechanism": cast(Literal["NOSASL", "PLAIN", "GSSAPI"], _AUTH),
         "user": os.environ.get("RAY_HIVE_TEST_USER", "hive"),
-        "password": password,
         "kerberos_service_name": os.environ.get(
             "RAY_HIVE_TEST_KERBEROS_SERVICE", "hive"
         ),
         "use_ssl": ssl_setting in ("true", "1"),
         "ca_cert": os.environ.get("RAY_HIVE_TEST_CA_CERT"),
     }
-    HiveConnectionOptions(**options)
     return options
 
 
+def _make_connection_factory(options: _ConnectionOptions):
+    def connection_factory():
+        from impala.dbapi import connect
+
+        password = None
+        if options["auth_mechanism"] == "PLAIN":
+            password = os.environ.get("HIVE_TEST_PASSWORD") or os.environ.get(
+                "RAY_HIVE_TEST_PASSWORD"
+            )
+            if not password:
+                raise ValueError("PLAIN integration requires HIVE_TEST_PASSWORD")
+        return connect(
+            **options, password=password, verify_cert=options["use_ssl"], retries=1
+        )
+
+    return connection_factory
+
+
 def _connect(options: _ConnectionOptions):
-    return connect_read_hive(HiveConnectionOptions(**options))
+    return connect_read_hive(_make_connection_factory(options))
 
 
 @contextmanager
@@ -103,6 +111,7 @@ def _temporary_table(options, columns, insert_clause, storage_clause=""):
 
 def test_hive_table_query_limit_and_repartition():
     options = _connection_options()
+    connection_factory = _make_connection_factory(options)
     with _temporary_table(
         options,
         "id BIGINT, name STRING",
@@ -116,7 +125,10 @@ def test_hive_table_query_limit_and_repartition():
         ray.init(num_cpus=2, include_dashboard=False)
         try:
             rows = [
-                dict(row) for row in ray.data.read_hive(table, **options).take_all()
+                dict(row)
+                for row in ray.data.read_hive(
+                    table, connection_factory=connection_factory, user=options["user"]
+                ).take_all()
             ]
             assert sorted(rows, key=lambda row: row["id"]) == [
                 {"id": 1, "name": "a"},
@@ -127,12 +139,29 @@ def test_hive_table_query_limit_and_repartition():
                 query=f"SELECT id FROM {table}",
                 schema=pa.schema([("id", pa.int64())]),
                 override_num_blocks=2,
-                **options,
+                connection_factory=connection_factory,
+                user=options["user"],
             )
             assert sorted(row["id"] for row in query.take_all()) == [1, 2]
 
-            assert ray.data.read_hive(table, limit=0, **options).count() == 0
-            assert ray.data.read_hive(table, limit=1, **options).count() == 1
+            assert (
+                ray.data.read_hive(
+                    table,
+                    limit=0,
+                    connection_factory=connection_factory,
+                    user=options["user"],
+                ).count()
+                == 0
+            )
+            assert (
+                ray.data.read_hive(
+                    table,
+                    limit=1,
+                    connection_factory=connection_factory,
+                    user=options["user"],
+                ).count()
+                == 1
+            )
         finally:
             ray.shutdown()
 
@@ -141,6 +170,7 @@ def test_hive_scalar_types_over_real_hs2():
     if _AUTH != "PLAIN":
         pytest.skip("Run the scalar type matrix once with RAY_HIVE_TEST_AUTH=PLAIN")
     options = _connection_options()
+    connection_factory = _make_connection_factory(options)
     columns = (
         "flag BOOLEAN, tiny TINYINT, small SMALLINT, id INT, big BIGINT, "
         "ratio FLOAT, score DOUBLE, name STRING, payload BINARY, "
@@ -158,7 +188,9 @@ def test_hive_scalar_types_over_real_hs2():
     ) as (table, _):
         ray.init(num_cpus=2, include_dashboard=False)
         try:
-            rows = ray.data.read_hive(table, **options).take_all()
+            rows = ray.data.read_hive(
+                table, connection_factory=connection_factory, user=options["user"]
+            ).take_all()
             assert len(rows) == 1
             assert dict(rows[0]) == {
                 "flag": True,
@@ -191,7 +223,7 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
         pytest.skip("Run against a TLS-enabled HiveServer2 with a test CA certificate")
 
     # Positive control: the configured endpoint trusts the test CA.
-    connect_read_hive(HiveConnectionOptions(**options)).close()
+    _connect(options).close()
 
     wrong_host = os.environ.get("RAY_HIVE_TEST_WRONG_HOST", "127.0.0.1")
     if wrong_host == options["host"]:
@@ -206,12 +238,12 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
     mismatched_host_options = options.copy()
     mismatched_host_options["host"] = wrong_host
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
-        connect_read_hive(HiveConnectionOptions(**mismatched_host_options))
+        _connect(mismatched_host_options)
 
     untrusted_ca_options = options.copy()
     untrusted_ca_options["ca_cert"] = None
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
-        connect_read_hive(HiveConnectionOptions(**untrusted_ca_options))
+        _connect(untrusted_ca_options)
 
 
 if __name__ == "__main__":

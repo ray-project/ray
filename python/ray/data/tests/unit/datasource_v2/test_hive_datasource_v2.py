@@ -1,5 +1,6 @@
 """Unit tests for the metadata-backed HiveServer2 datasource."""
 
+import os
 import sys
 
 import pyarrow as pa
@@ -8,7 +9,6 @@ import pytest
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.datasource_v2.formats.hive import hive_datasource_v2
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
-    HiveConnectionOptions,
     HiveReadSpec,
 )
 from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
@@ -21,7 +21,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import Partiti
 
 def _query_spec():
     return HiveReadSpec(
-        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"),
+        lambda: object(),
         query="SELECT id FROM events",
         schema=pa.schema([("id", pa.int64())]),
     )
@@ -89,9 +89,7 @@ def test_query_schema_does_not_request_table_metadata(monkeypatch):
 
 
 def test_table_schema_uses_hive_metadata(monkeypatch):
-    spec = HiveReadSpec(
-        HiveConnectionOptions(host="hs2", auth_mechanism="NOSASL"), table="events"
-    )
+    spec = HiveReadSpec(lambda: object(), table="events")
     expected = pa.schema([("id", pa.int64())])
     calls = []
     monkeypatch.setattr(
@@ -133,6 +131,61 @@ def test_scanner_and_reader_survive_worker_serialization(monkeypatch):
         paths=["hive://read"], sizes=[0], chunk_metadatas=[None]
     )
     assert list(reader.read(manifest)) == [expected]
+
+
+def test_serialized_factory_reads_credentials_when_called(monkeypatch):
+    class Cursor:
+        description = [("id", "BIGINT", None, None, None, None, None)]
+
+        def __init__(self, value):
+            self._rows = [(value,)]
+
+        def execute(self, statement):
+            assert statement == "SELECT id FROM events"
+
+        def fetchmany(self, size):
+            rows, self._rows = self._rows, []
+            return rows
+
+        def cancel_operation(self):
+            pass
+
+        def close(self):
+            pass
+
+    class Connection:
+        def __init__(self, credential):
+            self._credential = credential
+
+        def cursor(self, *, user):
+            assert user == "session-user"
+            assert self._credential == "worker-credential"
+            return Cursor(1)
+
+        def close(self):
+            pass
+
+    def connection_factory():
+        return Connection(os.environ["HIVE_FACTORY_TEST_CREDENTIAL"])
+
+    monkeypatch.setenv("HIVE_FACTORY_TEST_CREDENTIAL", "driver-credential")
+    spec = HiveReadSpec(
+        connection_factory,
+        user="session-user",
+        query="SELECT id FROM events",
+        schema=pa.schema([("id", pa.int64())]),
+    )
+    scanner = HiveDatasourceV2(spec).create_scanner(spec.schema)
+    serialized = cloudpickle.dumps(scanner)
+    assert b"driver-credential" not in serialized
+
+    monkeypatch.setenv("HIVE_FACTORY_TEST_CREDENTIAL", "worker-credential")
+    scanner = cloudpickle.loads(serialized)
+    reader = cloudpickle.loads(cloudpickle.dumps(scanner.create_reader()))
+    manifest = FileManifest.construct_manifest(
+        paths=["hive://read"], sizes=[0], chunk_metadatas=[None]
+    )
+    assert [table.to_pylist() for table in reader.read(manifest)] == [[{"id": 1}]]
 
 
 if __name__ == "__main__":

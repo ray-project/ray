@@ -30,8 +30,10 @@ def test_public_api_passes_task_options_and_repartitions(monkeypatch):
     )
     schema = pa.schema([("id", pa.int64())])
     result = read_hive(
-        host="hs2",
-        auth_mechanism="NOSASL",
+        connection_factory=lambda: pytest.fail(
+            "Explicit query schema must not connect"
+        ),
+        user="session-user",
         query="SELECT id FROM events",
         schema=schema,
         num_cpus=2,
@@ -40,6 +42,7 @@ def test_public_api_passes_task_options_and_repartitions(monkeypatch):
     )
     assert result is dataset
     assert calls[0][0].infer_schema(None) == schema
+    assert calls[0][0]._spec.user == "session-user"
     assert calls[0][1]["parallelism"] == 1
     assert calls[0][1]["ray_remote_args"] == {"max_retries": 0}
     assert calls[0][1]["num_cpus"] == 2
@@ -52,20 +55,29 @@ def test_public_api_passes_task_options_and_repartitions(monkeypatch):
 def test_public_api_rejects_invalid_block_counts(block_count):
     with pytest.raises(ValueError, match="override_num_blocks"):
         read_hive(
-            host="hs2",
-            auth_mechanism="NOSASL",
+            connection_factory=lambda: object(),
             query="SELECT id FROM events",
             schema=pa.schema([("id", pa.int64())]),
             override_num_blocks=block_count,
         )
 
 
-def test_public_api_requires_authentication_selection():
-    with pytest.raises(TypeError, match="auth_mechanism"):
+def test_public_api_requires_connection_factory():
+    with pytest.raises(TypeError, match="connection_factory"):
         cast(Callable[..., Any], read_hive)(
-            host="hs2",
             query="SELECT id FROM events",
             schema=pa.schema([("id", pa.int64())]),
+        )
+
+
+@pytest.mark.parametrize("keyword", ["host", "password", "auth_mechanism"])
+def test_public_api_rejects_replaced_connection_keywords(keyword):
+    with pytest.raises(TypeError, match=keyword):
+        cast(Callable[..., Any], read_hive)(
+            connection_factory=lambda: object(),
+            query="SELECT id FROM events",
+            schema=pa.schema([("id", pa.int64())]),
+            **{keyword: "unused"},
         )
 
 

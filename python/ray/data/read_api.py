@@ -72,8 +72,6 @@ from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
-    HiveAuthMechanism,
-    HiveConnectionOptions,
     HiveReadSpec,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -3958,17 +3956,10 @@ def read_binary_files(
 def read_hive(
     table: Optional[str] = None,
     *,
-    host: str,
+    connection_factory: Callable[[], Connection],
     query: Optional[str] = None,
     schema: Optional["pyarrow.Schema"] = None,
-    port: int = 10000,
-    auth_mechanism: HiveAuthMechanism,
     user: Optional[str] = None,
-    password: Optional[str] = None,
-    kerberos_service_name: str = "hive",
-    use_ssl: bool = False,
-    ca_cert: Optional[str] = None,
-    timeout: Optional[float] = None,
     limit: Optional[int] = None,
     num_cpus: Optional[float] = None,
     memory: Optional[float] = None,
@@ -3981,13 +3972,14 @@ def read_hive(
     """Read a HiveServer2 table or trusted SQL query into a Dataset.
 
     Install the optional ``impyla`` package on the driver and Ray workers.
-    ``GSSAPI`` also requires ``impyla[kerberos]`` and Kerberos credentials on
-    those nodes. TLS certificates are verified when ``use_ssl=True``.
+    Configure authentication, transport, and TLS certificate verification in
+    ``connection_factory``. ``GSSAPI`` also requires ``impyla[kerberos]`` and
+    Kerberos credentials on those nodes.
 
     .. note::
 
         Each Dataset execution runs at most one HiveServer2 data query in one
-        Ray task. Failed reads aren't retried. If Ray loses the worker running
+        Ray task. Ray doesn't retry failed reads. If Ray loses the worker running
         the query, that Dataset execution fails. This scanner doesn't push
         Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
         The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
@@ -4005,18 +3997,37 @@ def read_hive(
             import pyarrow as pa
             import ray
 
-            connection = {"host": "hive.example.com", "auth_mechanism": "NOSASL"}
-            table_ds = ray.data.read_hive("analytics.events", **connection)
+            def create_connection():
+                from impala.dbapi import connect
+
+                return connect(
+                    host="hive.example.com",
+                    port=10000,
+                    auth_mechanism="NOSASL",
+                    retries=1,
+                )
+
+            table_ds = ray.data.read_hive(
+                "analytics.events", connection_factory=create_connection
+            )
             query_ds = ray.data.read_hive(
                 query="SELECT event_id FROM analytics.events",
                 schema=pa.schema([("event_id", pa.int64())]),
-                **connection,
+                connection_factory=create_connection,
             )
 
     Args:
         table: The Hive table to read, optionally qualified as
             ``database.table``. Specify exactly one of ``table`` and ``query``.
-        host: The HiveServer2 hostname.
+        connection_factory: A serializable function that takes no arguments and
+            returns a new Impyla HiveServer2 connection on each call. Ray calls
+            it on the driver for table metadata and on the read worker for data.
+            Query reads with an explicit schema only call it on the read worker.
+            Ray closes each returned connection. Configure authentication, TLS
+            verification, and client retries in the factory. Read credentials
+            inside the factory to avoid capturing them in its serialized state.
+            Dependencies, credentials, and certificate files must be available
+            wherever the factory runs.
         query: A trusted, row-producing SQL query. Specify exactly one of
             ``table`` and ``query``. The query is sent to HiveServer2 as given
             and must return a result set.
@@ -4027,22 +4038,10 @@ def read_hive(
             reads infer their schema from HiveServer2 metadata; ``schema`` is
             only supported for query reads. Field types must use a supported
             Arrow mapping.
-        port: The HiveServer2 binary protocol port.
-        auth_mechanism: The HiveServer2 authentication profile: ``NOSASL``,
-            ``PLAIN``, or ``GSSAPI``. Choose the profile configured on the
-            server. HiveServer2 mode ``NONE`` uses ``PLAIN`` SASL.
-        user: The HiveServer2 user or proxy user. Required for ``PLAIN``
-            authentication.
-        password: The password for ``PLAIN`` authentication. ``PLAIN`` does
-            not encrypt the password unless TLS is enabled.
-        kerberos_service_name: The Kerberos service principal name. Defaults
-            to ``"hive"``.
-        use_ssl: Whether to use TLS. The server certificate is verified when
-            TLS is enabled.
-        ca_cert: The path to a CA certificate file. It must be accessible on
-            the driver and read worker, and requires ``use_ssl=True``.
-        timeout: The HiveServer2 transport I/O timeout in seconds. It is not a
-            query deadline.
+        user: The HiveServer2 session user or proxy user passed to
+            ``connection.cursor(user=user)``. If omitted, Impyla uses the
+            operating system username. Configure the authentication user
+            separately in ``connection_factory``.
         limit: The maximum number of rows to read from a table. ``0`` skips
             the data query. The limit is sent to HiveServer2 as SQL. This
             argument isn't supported for query reads.
@@ -4074,17 +4073,8 @@ def read_hive(
     )
 
     spec = HiveReadSpec(
-        connection=HiveConnectionOptions(
-            host=host,
-            port=port,
-            auth_mechanism=auth_mechanism,
-            user=user,
-            password=password,
-            kerberos_service_name=kerberos_service_name,
-            use_ssl=use_ssl,
-            ca_cert=ca_cert,
-            timeout=timeout,
-        ),
+        connection_factory=connection_factory,
+        user=user,
         table=table,
         query=query,
         schema=schema,

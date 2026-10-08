@@ -914,13 +914,11 @@ Non-nullable fields reject null rows. Table reads support scalar boolean values,
 
 The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` into HiveServer2. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause.
 
-Choose `auth_mechanism` explicitly. Use `NOSASL` only with a HiveServer2
-configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple
-Authentication and Security Layer (SASL) mechanism; use a non-sensitive
-placeholder password because the server doesn't check it.
-`PLAIN` doesn't encrypt the password when `use_ssl=False`.
-For the `GSSAPI` mechanism, install `impyla[kerberos]` and configure
-authentication credentials on both the driver and read worker.
+Pass a zero-argument `connection_factory` that Ray can serialize and that returns a new connection from `impala.dbapi.connect()` on each call. Ray calls the factory on the driver for table metadata and on the read worker for data. Query reads with an explicit schema only call it on the read worker. Ray closes each returned connection. Install the factory's dependencies and make its credentials and certificate files available wherever it runs.
+
+Configure authentication, transport, TLS certificate verification, and client retries in the factory. Choose `auth_mechanism` explicitly when calling `impala.dbapi.connect()`. Use `NOSASL` only with a HiveServer2 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple Authentication and Security Layer (SASL) mechanism. Use a non-sensitive placeholder password because that server mode doesn't check it. `PLAIN` doesn't encrypt the password without TLS. For TLS connections, set `verify_cert=True` or provide a trusted `ca_cert`. For `GSSAPI`, install `impyla[kerberos]`, set `kerberos_service_name="hive"`, and configure authentication credentials on the driver and read worker.
+
+Read credentials inside the factory. Captured values, including passwords stored in a closure or `functools.partial`, can be serialized with the factory. The optional `user` argument to `read_hive` sets the HS2 session or proxy user through `connection.cursor(user=user)`. Configure the authentication user separately in the factory.
 
 ```python
 import os
@@ -928,21 +926,31 @@ import os
 import pyarrow as pa
 import ray
 
-connection = {
-    "host": "hive.example.com",
-    "auth_mechanism": "PLAIN",
-    "user": "reader",
-    "password": os.environ["HIVE_NONE_PLACEHOLDER"],
-}
-dataset = ray.data.read_hive("analytics.events", **connection)
+def create_connection():
+    from impala.dbapi import connect
+
+    return connect(
+        host="hive.example.com",
+        port=10000,
+        auth_mechanism="PLAIN",
+        user="reader",
+        password=os.environ["HIVE_NONE_PLACEHOLDER"],
+        retries=1,
+    )
+
+
+dataset = ray.data.read_hive(
+    "analytics.events", connection_factory=create_connection, user="reader"
+)
 query_dataset = ray.data.read_hive(
     query="SELECT event_id FROM analytics.events",
     schema=pa.schema([("event_id", pa.int64())]),
-    **connection,
+    connection_factory=create_connection,
+    user="reader",
 )
 ```
 
-Reads use the binary HiveServer2 protocol. Each read runs at most one data query in one Ray task. If Ray loses the worker running the query, that Dataset execution fails. If you set `override_num_blocks`, Ray calls `repartition()` on the result after the query. This blocks downstream streaming until the read completes. It doesn't parallelize the HiveServer2 query. Failed reads aren't retried. Each Dataset execution starts a new query, except for a table read with `limit=0`, which skips the data query. Pass only trusted, row-producing SQL. The `ca_cert` path must be accessible on the driver and read worker.
+The example uses the binary HiveServer2 protocol. Each read runs at most one data query in one Ray task. If Ray loses the worker running the query, that Dataset execution fails. If you set `override_num_blocks`, Ray calls `repartition()` on the result after the query. This blocks downstream streaming until the read completes. It doesn't parallelize the HiveServer2 query. Ray doesn't retry failed reads. Each Dataset execution starts a new query, except for a table read with `limit=0`, which skips the data query. Pass only trusted, row-producing SQL.
 
 Compared with {func}`~ray.data.read_sql`, `read_hive` fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
 

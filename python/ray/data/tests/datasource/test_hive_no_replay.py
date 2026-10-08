@@ -57,6 +57,11 @@ def connect(**kwargs):
     "failure_mode", ["before_first_block", "after_first_block", "worker_crash"]
 )
 def test_failed_read_submits_one_data_query(tmp_path: Path, failure_mode: str):
+    def connection_factory():
+        from impala.dbapi import connect
+
+        return connect()
+
     working_dir = tmp_path / "worker_modules"
     impala_package = working_dir / "impala"
     impala_package.mkdir(parents=True)
@@ -84,8 +89,7 @@ def test_failed_read_submits_one_data_query(tmp_path: Path, failure_mode: str):
             ray.data.DataContext.get_current().target_max_block_size = 1
         dataset = ray.data.read_hive(
             query="SELECT id",
-            host="hive.invalid",
-            auth_mechanism="NOSASL",
+            connection_factory=connection_factory,
             schema=pa.schema([("id", pa.int64())]),
         )
         if failure_mode == "worker_crash":
