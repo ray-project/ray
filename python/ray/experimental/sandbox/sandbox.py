@@ -44,12 +44,13 @@ class Sandbox:
             fail with ENOSPC. Zero (default) means no cap. Requires
             ``readonly=False`` or a ``workdir``; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+        restore_from: Path to checkpoint directory if restoring an existing sandbox.
         **kwargs: Additional parameters passed to runtime.
     """
 
     def __init__(
         self,
-        image: str,
+        image: Optional[str] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         env: Optional[Dict[str, str]] = None,
@@ -57,43 +58,66 @@ class Sandbox:
         ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
-        network: str = "none",
+        network: Optional[str] = None,
         dns: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
-        readonly: bool = True,
+        readonly: Optional[bool] = None,
         disk: Union[str, int, float] = 0,
+        restore_from: Optional[str] = None,
         **kwargs,
     ):
-        env = env or {}
-
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
-        try:
-            assigned = ray.get_runtime_context().get_assigned_resources()
-            if (cpu is None or cpu <= 0) and "CPU" in assigned and assigned["CPU"] > 0:
-                cpu = float(assigned["CPU"])
+        # For restore_from, do not default to actor-assigned resources unless explicitly requested,
+        # so that the checkpoint's recorded resource limits are preserved.
+        if not restore_from:
+            env = env or {}
+            if readonly is None:
+                readonly = True
+            try:
+                assigned = ray.get_runtime_context().get_assigned_resources()
+                if (
+                    (cpu is None or cpu <= 0)
+                    and "CPU" in assigned
+                    and assigned["CPU"] > 0
+                ):
+                    cpu = float(assigned["CPU"])
 
-            if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
-                memory = int(assigned["memory"])
-        except Exception:
-            pass
+                if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
+                    memory = int(assigned["memory"])
+            except Exception:
+                pass
 
         self.runtime = SandboxRuntime()
-        self.instance_id = self.runtime.create(
-            image=image,
-            cpu=cpu,
-            memory=memory,
-            env=env,
-            workdir=workdir,
-            ttl_seconds=ttl_seconds,
-            timeout_seconds=timeout_seconds,
-            rootless=rootless,
-            network=network,
-            dns=dns,
-            capabilities=capabilities,
-            readonly=readonly,
-            disk=disk,
-            **kwargs,
-        )
+        if restore_from:
+            self.instance_id = self.runtime.restore(
+                checkpoint_path=restore_from,
+                cpu=cpu,
+                memory=memory,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                **kwargs,
+            )
+        else:
+            if not image:
+                raise ValueError("Must provide either 'image' or 'restore_from'")
+            if network is None:
+                network = "none"
+            self.instance_id = self.runtime.create(
+                image=image,
+                cpu=cpu,
+                memory=memory,
+                env=env,
+                workdir=workdir,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                rootless=rootless,
+                network=network,
+                dns=dns,
+                capabilities=capabilities,
+                readonly=readonly,
+                disk=disk,
+                **kwargs,
+            )
 
     def __del__(self):
         try:
@@ -192,6 +216,32 @@ class Sandbox:
             SandboxStatus of the sandbox instance.
         """
         return self.runtime.get_status(self.instance_id)
+
+    def checkpoint(
+        self,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Create a checkpoint of the running sandbox.
+
+        Args:
+            checkpoint_path: Path where the checkpoint directory will be saved.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            timeout_seconds: Timeout for the checkpoint operation.
+            **kwargs: Additional parameters passed to runtime checkpoint.
+
+        Returns:
+            Absolute path to the checkpoint directory.
+        """
+        return self.runtime.checkpoint(
+            self.instance_id,
+            checkpoint_path=checkpoint_path,
+            leave_running=leave_running,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
 
     def pause(self, timeout_seconds: float = 10.0) -> None:
         """Pause the running sandbox instance.
