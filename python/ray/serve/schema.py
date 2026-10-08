@@ -417,7 +417,7 @@ class DeploymentSchema(BaseModel):
             "default, or 429) and an optional `Retry-After` header."
         ),
     )
-    user_config: Optional[Dict] = Field(
+    user_config: Any = Field(
         default=DEFAULT.VALUE,
         description=(
             "Config to pass into this deployment's "

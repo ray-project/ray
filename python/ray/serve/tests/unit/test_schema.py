@@ -1595,6 +1595,27 @@ def test_deployment_info_to_schema_includes_max_replicas_per_node():
     assert schema.max_replicas_per_node == 3
 
 
+@pytest.mark.parametrize("user_config", ["updated", ["updated"]])
+def test_deployment_info_user_config_schema_roundtrip(user_config):
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    info = DeploymentInfo(
+        deployment_config=DeploymentConfig.from_default(user_config=user_config),
+        replica_config=ReplicaConfig.create(
+            deployment_def="",
+            init_args=(),
+            init_kwargs={},
+        ),
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.user_config == user_config
+    assert schema_to_deployment(schema).user_config == user_config
+
+
 def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
     """When max_replicas_per_node is None (default), the schema field should
     remain at its default (DEFAULT.VALUE), i.e. unset."""
