@@ -63,6 +63,7 @@ py_test_module_list(
         "test_gcs_utils.py",
         "test_get_locations.py",
         "test_get_or_create_actor.py",
+        "test_gpu_memory_scheduling.py",
         "test_healthcheck.py",
         "test_iter.py",
         "test_metric_cardinality.py",
