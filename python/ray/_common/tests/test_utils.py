@@ -13,6 +13,7 @@ import warnings
 
 import pytest
 
+import ray
 from ray._common.utils import (
     _BACKGROUND_TASKS,
     env_bool,
@@ -20,6 +21,8 @@ from ray._common.utils import (
     get_or_create_event_loop,
     get_system_memory,
     load_class,
+    resolve_gpu_memory,
+    resources_from_ray_options,
     run_background_task,
     try_to_create_directory,
 )
@@ -586,6 +589,31 @@ class TestGetCgroupAwareSwapMemory:
 
         assert total == 0
         assert used == 0
+
+
+class TestGpuMemory:
+    def test_resources_from_ray_options(self):
+        assert resources_from_ray_options({"gpu_memory": 2e10 + 0.5}) == {
+            "gpu_memory": 20000000001
+        }
+        with pytest.raises(ValueError, match="num_gpus"):
+            resources_from_ray_options({"gpu_memory": 1, "num_gpus": 0.5})
+        with pytest.raises(ValueError, match="gpu_memory"):
+            resources_from_ray_options({"resources": {"gpu_memory": 1}})
+
+    def test_resolve_gpu_memory(self):
+        key = ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY
+        labels = {key: str(80 * 10**9)}
+        assert resolve_gpu_memory({"CPU": 1}, {}) == {"CPU": 1}
+        assert resolve_gpu_memory({"CPU": 1, "gpu_memory": 2 * 10**10}, labels) == {
+            "CPU": 1,
+            "GPU": 0.25,
+        }
+        assert resolve_gpu_memory({"gpu_memory": 1}, labels) == {"GPU": 0.0001}
+        assert resolve_gpu_memory({"gpu_memory": 8 * 10**10}, labels) == {"GPU": 1}
+        assert resolve_gpu_memory({"gpu_memory": 8 * 10**10 + 1}, labels) is None
+        assert resolve_gpu_memory({"gpu_memory": 1}, {}) is None
+        assert resolve_gpu_memory({"gpu_memory": 1}, {key: "bad"}) is None
 
 
 if __name__ == "__main__":

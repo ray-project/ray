@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import List
 from unittest.mock import patch
 
@@ -67,6 +68,11 @@ class PyNVMLMock:
     def nvmlDeviceGetGpuInstanceId(self, mig_handle):
         return mig_handle["gi_id"]
 
+    def nvmlDeviceGetMemoryInfo(self, handle):
+        if "memory_total" not in handle:
+            raise pynvml.NVMLError_NotSupported
+        return SimpleNamespace(total=handle["memory_total"])
+
 
 @pytest.fixture
 def patch_mock_pynvml(mock_nvml):
@@ -97,5 +103,8 @@ def patch_mock_pynvml(mock_nvml):
     ), patch(
         "ray._private.thirdparty.pynvml.nvmlDeviceGetGpuInstanceId",
         mock_nvml.nvmlDeviceGetGpuInstanceId,
+    ), patch(
+        "ray._private.thirdparty.pynvml.nvmlDeviceGetMemoryInfo",
+        mock_nvml.nvmlDeviceGetMemoryInfo,
     ):
         yield

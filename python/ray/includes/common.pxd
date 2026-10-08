@@ -893,6 +893,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kNodeZoneEnv
     cdef const char[] kLabelKeyNodeID
     cdef const char[] kLabelKeyNodeAcceleratorType
+    cdef const char[] kLabelKeyGpuMemoryPerDevice
     cdef const char[] kLabelKeyNodeMarketType
     cdef const char[] kLabelKeyNodeRegion
     cdef const char[] kLabelKeyNodeZone

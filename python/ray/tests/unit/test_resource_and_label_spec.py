@@ -22,12 +22,14 @@ class FakeAcceleratorManager(AcceleratorManager):
         num_accelerators,
         additional_resources=None,
         visible_ids=None,
+        labels=None,
     ):
         self._resource_name = resource_name
         self._accelerator_type = accelerator_type
         self._num_accelerators = num_accelerators
         self._additional_resources = additional_resources
         self._visible_ids = visible_ids
+        self._labels = labels
 
     def get_current_node_num_accelerators(self) -> int:
         return self._num_accelerators
@@ -48,6 +50,9 @@ class FakeAcceleratorManager(AcceleratorManager):
 
     def get_current_node_additional_resources(self):
         return self._additional_resources or {}
+
+    def get_current_node_accelerator_labels(self):
+        return self._labels
 
     def set_current_process_visible_accelerator_ids(self, ids):
         pass
@@ -82,6 +87,20 @@ def test_resource_and_label_spec_resolves_with_params():
     assert spec.labels["ray.io/market-type"] == "spot"
 
     assert spec.resolved()
+
+
+def test_resource_and_label_spec_includes_gpu_accelerator_labels():
+    spec = ResourceAndLabelSpec(
+        num_cpus=1, memory=1024**3, object_store_memory=1024**3
+    )
+    labels = {"ray.io/gpu-memory-per-device": str(80 * 10**9)}
+    with mock_accelerator_detection(
+        FakeAcceleratorManager("GPU", "A100", 2, labels=labels)
+    ):
+        spec.resolve(is_head=False)
+
+    assert spec.labels["ray.io/gpu-memory-per-device"] == str(80 * 10**9)
+    assert spec.labels["ray.io/accelerator-type"] == "A100"
 
 
 def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
