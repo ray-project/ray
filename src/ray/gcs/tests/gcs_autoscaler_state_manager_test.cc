@@ -14,7 +14,6 @@
 
 #include "ray/gcs/gcs_autoscaler_state_manager.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -25,17 +24,18 @@
 #include <unordered_map>
 #include <vector>
 
-#include "mock/ray/gcs/gcs_actor_manager.h"
-#include "mock/ray/gcs/gcs_node_manager.h"
-#include "mock/ray/gcs/gcs_placement_group_manager.h"
-#include "mock/ray/gcs/store_client/store_client.h"
-#include "mock/ray/rpc/worker/core_worker_client.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs/actor/fake_gcs_actor_manager.h"
+#include "ray/gcs/fake_gcs_node_manager.h"
+#include "ray/gcs/fake_gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_resource_manager.h"
+#include "ray/gcs/store_client/fake_store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
@@ -46,8 +46,6 @@
 namespace ray {
 
 namespace gcs {
-using ::testing::_;
-using ::testing::Return;
 
 using ResourceBundleMap = std::unordered_map<std::string, double>;
 using BundlesOnNodeMap = absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>;
@@ -65,10 +63,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::shared_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
-  std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<FakeGcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<FakeGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
-  std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::shared_ptr<FakeGcsPlacementGroupManager> gcs_placement_group_manager_;
   std::unique_ptr<GCSFunctionManager> function_manager_;
   std::unique_ptr<RuntimeEnvManager> runtime_env_manager_;
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
@@ -88,9 +86,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ =
         std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_service_));
-    gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
+    gcs_node_manager_ = std::make_shared<FakeGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
-        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
+        std::make_unique<StoreClientInternalKV>(std::make_unique<FakeStoreClient>()),
         kRayletConfig,
         io_service_);
     function_manager_ =
@@ -103,9 +101,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         });
     worker_client_pool_ =
         std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
-          return std::make_shared<rpc::MockCoreWorkerClientInterface>();
+          return std::make_shared<rpc::FakeCoreWorkerClient>();
         });
-    gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(*runtime_env_manager_,
+    gcs_actor_manager_ = std::make_unique<FakeGcsActorManager>(*runtime_env_manager_,
                                                                *function_manager_,
                                                                *raylet_client_pool_,
                                                                *worker_client_pool_);
@@ -117,7 +115,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                              *gcs_node_manager_,
                                              NodeID::FromRandom());
 
-    gcs_placement_group_manager_ = std::make_shared<MockGcsPlacementGroupManager>(
+    gcs_placement_group_manager_ = std::make_shared<FakeGcsPlacementGroupManager>(
         *gcs_resource_manager_,
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
@@ -527,12 +525,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
   {
     auto pg1 = PlacementGroupID::Of(JobID::FromInt(0));
     auto pg2 = PlacementGroupID::Of(JobID::FromInt(1));
-    EXPECT_CALL(*gcs_placement_group_manager_,
-                GetBundlesOnNode(NodeID::FromBinary(node->node_id())))
-        .WillRepeatedly(Return(BundlesOnNodeMap{
-            {pg1, {1, 2, 3}},
-            {pg2, {4, 5, 6}},
-        }));
+    gcs_placement_group_manager_->get_bundles_on_node_return = BundlesOnNodeMap{
+        {pg1, {1, 2, 3}},
+        {pg2, {4, 5, 6}},
+    };
 
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states_size(), 1);
@@ -600,14 +596,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   // A strict spread pending pg should generate pending gang resource requests.
   {
     auto pg = PlacementGroupID::Of(job_id);
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(Return(GenPlacementGroupLoad(
-            {GenPlacementGroupTableData(pg,
-                                        job_id,
-                                        {{{"CPU", 1}}, {{"GPU", 1}}},
-                                        {"", ""},
-                                        rpc::PlacementStrategy::STRICT_SPREAD,
-                                        rpc::PlacementGroupTableData::PENDING)})));
+    gcs_placement_group_manager_->get_placement_group_load_return = GenPlacementGroupLoad(
+        {GenPlacementGroupTableData(pg,
+                                    job_id,
+                                    {{{"CPU", 1}}, {{"GPU", 1}}},
+                                    {"", ""},
+                                    rpc::PlacementStrategy::STRICT_SPREAD,
+                                    rpc::PlacementGroupTableData::PENDING)});
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -620,14 +615,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   // A strict pack should also generate constraints.
   {
     auto pg = PlacementGroupID::Of(job_id);
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(Return(GenPlacementGroupLoad(
-            {GenPlacementGroupTableData(pg,
-                                        job_id,
-                                        {{{"CPU", 1}}, {{"GPU", 1}}},
-                                        {"", ""},
-                                        rpc::PlacementStrategy::STRICT_PACK,
-                                        rpc::PlacementGroupTableData::PENDING)})));
+    gcs_placement_group_manager_->get_placement_group_load_return = GenPlacementGroupLoad(
+        {GenPlacementGroupTableData(pg,
+                                    job_id,
+                                    {{{"CPU", 1}}, {{"GPU", 1}}},
+                                    {"", ""},
+                                    rpc::PlacementStrategy::STRICT_PACK,
+                                    rpc::PlacementGroupTableData::PENDING)});
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -652,20 +646,19 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
   {
     auto pg1 = PlacementGroupID::Of(job_id1);
     auto pg2 = PlacementGroupID::Of(job_id2);
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(Return(GenPlacementGroupLoad(
-            {GenPlacementGroupTableData(pg1,
-                                        job_id1,
-                                        {{{"CPU", 1}, {"GPU", 2}}},
-                                        {""},
-                                        rpc::PlacementStrategy::PACK,
-                                        rpc::PlacementGroupTableData::PENDING),
-             GenPlacementGroupTableData(pg2,
-                                        job_id2,
-                                        {{{"TPU", 1}}},
-                                        {""},
-                                        rpc::PlacementStrategy::SPREAD,
-                                        rpc::PlacementGroupTableData::PENDING)})));
+    gcs_placement_group_manager_->get_placement_group_load_return = GenPlacementGroupLoad(
+        {GenPlacementGroupTableData(pg1,
+                                    job_id1,
+                                    {{{"CPU", 1}, {"GPU", 2}}},
+                                    {""},
+                                    rpc::PlacementStrategy::PACK,
+                                    rpc::PlacementGroupTableData::PENDING),
+         GenPlacementGroupTableData(pg2,
+                                    job_id2,
+                                    {{{"TPU", 1}}},
+                                    {""},
+                                    rpc::PlacementStrategy::SPREAD,
+                                    rpc::PlacementGroupTableData::PENDING)});
 
     const auto &state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -686,14 +679,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
   {
     auto pg1 = PlacementGroupID::Of(job_id1);
 
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(Return(GenPlacementGroupLoad(
-            {GenPlacementGroupTableData(pg1,
-                                        job_id1,
-                                        {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
-                                        {"", node->node_id()},
-                                        rpc::PlacementStrategy::STRICT_SPREAD,
-                                        rpc::PlacementGroupTableData::RESCHEDULING)})));
+    gcs_placement_group_manager_->get_placement_group_load_return = GenPlacementGroupLoad(
+        {GenPlacementGroupTableData(pg1,
+                                    job_id1,
+                                    {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
+                                    {"", node->node_id()},
+                                    rpc::PlacementStrategy::STRICT_SPREAD,
+                                    rpc::PlacementGroupTableData::RESCHEDULING)});
 
     const auto &state = GetClusterResourceStateSync();
 
@@ -1290,8 +1282,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   (*bundle2->mutable_unit_resources())["CPU"] = 4;
   (*bundle2->mutable_label_selector())["accelerator"] = "!in(TPU)";
 
-  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+  gcs_placement_group_manager_->get_placement_group_load_return =
+      std::make_shared<rpc::PlacementGroupLoad>(std::move(load));
 
   const auto &state = GetClusterResourceStateSync();
   const auto &requests = state.pending_gang_resource_requests();
@@ -1312,9 +1304,11 @@ TEST_F(GcsAutoscalerStateManagerTest,
   EXPECT_EQ(c1.label_key(), "accelerator");
   EXPECT_EQ(c1.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
   ASSERT_EQ(c1.label_values_size(), 2);
-  EXPECT_THAT(absl::flat_hash_set<std::string>(c1.label_values().begin(),
-                                               c1.label_values().end()),
-              ::testing::UnorderedElementsAre("A100", "B200"));
+  absl::flat_hash_set<std::string> c1_values(c1.label_values().begin(),
+                                             c1.label_values().end());
+  EXPECT_EQ(c1_values.size(), 2);
+  EXPECT_TRUE(c1_values.contains("A100"));
+  EXPECT_TRUE(c1_values.contains("B200"));
 
   EXPECT_EQ(c2.label_key(), "accelerator");
   EXPECT_EQ(c2.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
@@ -1338,8 +1332,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   auto *bundle2 = pg_data->add_bundles();
   (*bundle2->mutable_unit_resources())["GPU"] = 4;
 
-  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+  gcs_placement_group_manager_->get_placement_group_load_return =
+      std::make_shared<rpc::PlacementGroupLoad>(std::move(load));
 
   const auto &state = GetClusterResourceStateSync();
   const auto &requests = state.pending_gang_resource_requests();
@@ -1381,8 +1375,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   auto *unplaced_bundle = pg_data->add_bundles();
   (*unplaced_bundle->mutable_unit_resources())["GPU"] = 4;
 
-  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+  gcs_placement_group_manager_->get_placement_group_load_return =
+      std::make_shared<rpc::PlacementGroupLoad>(std::move(load));
 
   const auto &state = GetClusterResourceStateSync();
   const auto &requests = state.pending_gang_resource_requests();
@@ -1425,8 +1419,8 @@ TEST_F(GcsAutoscalerStateManagerTest,
   auto *bundle = pg_data->add_bundles();
   (*bundle->mutable_unit_resources())["CPU"] = 2;
 
-  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+  gcs_placement_group_manager_->get_placement_group_load_return =
+      std::make_shared<rpc::PlacementGroupLoad>(std::move(load));
 
   const auto &state = GetClusterResourceStateSync();
   const auto &requests = state.pending_gang_resource_requests();
