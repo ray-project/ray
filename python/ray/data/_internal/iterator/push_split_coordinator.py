@@ -538,6 +538,9 @@ class PushSplitCoordinator:
                     seq += 1
                     flow.record_push(num_rows, size_bytes)
                 self._update_external_consumer_bytes()
+                # Fetching and sending count as coordinator overhead, like
+                # SplitCoordinator.get() (which also blocks in get_next).
+                self._coordinator_overhead_s += time.monotonic() - t0
         except StopIteration:
             if not stop.is_set():
                 logger.debug(
