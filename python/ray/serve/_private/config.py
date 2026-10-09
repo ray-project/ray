@@ -166,8 +166,12 @@ class DeploymentConfig(BaseModel):
         max_surge_percent: Extra replicas allowed during a rolling restart,
             as a percentage of the target count. Must be in ``[0, 100]``;
             rounds up to whole replicas or gangs. With a positive value, old
-            replicas keep serving until replacements are ready. Defaults to
-            ``0``, which stops old replicas before starting replacements.
+            replicas keep serving until replacements are ready. Stopping
+            replicas do not count toward the limit, so live actors can exceed
+            the target plus surge while old replicas drain. Lightweight
+            configuration changes to replicas on the new code wait until
+            restarts finish. Defaults to ``0``, which stops old replicas before
+            starting replacements.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(

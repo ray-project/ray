@@ -12447,8 +12447,14 @@ class TestMaxSurge:
 
         threshold = 4 * mock_max_per_replica_retry_count
         failures = 0
+        # Every pass fails at least one replacement, so the loop is bounded.
         while failures < threshold:
-            for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            starting = ds._replicas.get(states=[ReplicaState.STARTING])
+            assert starting, (
+                f"No replacement started after {failures} failures. Replicas: "
+                f"{ {s: ds._replicas.count(states=[s]) for s in ALL_REPLICA_STATES} }"
+            )
+            for replica in starting:
                 replica._actor.set_failed_to_start()
                 failures += 1
             dsm.update()
@@ -12462,6 +12468,94 @@ class TestMaxSurge:
         check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v1)])
         _assert_rollout_frozen(dsm, ds, v1, num_old=4)
         assert _last_broadcast_target_info(ds).is_available is True
+
+    @pytest.mark.parametrize("lightweight_change", [False, True])
+    def test_failed_version_keeps_the_surviving_replacement(
+        self,
+        mock_deployment_state_manager,
+        mock_max_per_replica_retry_count,
+        lightweight_change: bool,
+    ):
+        """Preserve old replicas and a successful replacement after retry exhaustion.
+
+        A later target reduction stops only old replicas. A replacement with stale
+        lightweight config must not count toward the old-replica stop budget.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(
+            dsm, TEST_DEPLOYMENT_ID, num_replicas=4, version="1", max_surge_percent=50
+        )
+        v1 = ds.target_version
+        info_2, v2 = deployment_info(num_replicas=4, version="2", max_surge_percent=50)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        check_counts(ds, by_state=[(ReplicaState.STARTING, 2, v2)])
+        survivor = ds._replicas.get(states=[ReplicaState.STARTING])[0]
+
+        config = {"max_ongoing_requests": 3} if lightweight_change else {}
+
+        def target_info(num_replicas: int) -> DeploymentInfo:
+            return deployment_info(
+                num_replicas=num_replicas, version="2", max_surge_percent=50, **config
+            )[0]
+
+        if lightweight_change:
+            assert dsm.deploy(TEST_DEPLOYMENT_ID, target_info(4))
+            dsm.update()
+            check_counts(ds, by_state=[(ReplicaState.STARTING, 2, v2)])
+
+        def fail_other_replacements() -> int:
+            others = [
+                replica
+                for replica in ds._replicas.get(states=[ReplicaState.STARTING])
+                if replica is not survivor
+            ]
+            assert others, "no replacement started beside the survivor"
+            for replica in others:
+                replica._actor.set_failed_to_start()
+            return len(others)
+
+        threshold = 4 * mock_max_per_replica_retry_count
+        failures = 0
+        while failures < threshold - 1:
+            failures += fail_other_replacements()
+            dsm.update()
+            for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                replica._actor.set_done_stopping()
+            dsm.update()
+        # The last failure lands in the tick that makes the survivor ready.
+        survivor._actor.set_ready()
+        fail_other_replacements()
+        dsm.update()
+        assert ds._target_state.rolling_update_failed
+        for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        dsm.update()
+        check_counts(
+            ds,
+            total=5,
+            by_state=[(ReplicaState.RUNNING, 4, v1), (ReplicaState.RUNNING, 1, v2)],
+        )
+        _assert_rollout_frozen(dsm, ds, v1, num_old=4)
+
+        # Lowering the target stops old replicas in batches and keeps the survivor.
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, target_info(2))
+        for expected_old in (3, 2):
+            dsm.update()
+            check_counts(
+                ds,
+                by_state=[
+                    (ReplicaState.RUNNING, expected_old, v1),
+                    (ReplicaState.STOPPING, 1, v1),
+                    (ReplicaState.RUNNING, 1, v2),
+                ],
+            )
+            ds._replicas.get(states=[ReplicaState.STOPPING])[
+                0
+            ]._actor.set_done_stopping()
+        _assert_rollout_frozen(dsm, ds, v1, num_old=2)
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 1, v2)])
 
     def test_unplaceable_replacements_wait(self, mock_deployment_state_manager):
         create_dsm, _, _, _ = mock_deployment_state_manager
@@ -12683,12 +12777,12 @@ class TestMaxSurge:
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=4, version="1")
-        assert ds._plan_surge_rollout() is None
+        assert not ds._surge_rollout_in_progress()
         info_2, v2 = deployment_info(
             num_replicas=4, version="1", user_config={"a": 1}, max_surge_percent=50
         )
         assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
-        assert ds._plan_surge_rollout() is None
+        assert not ds._surge_rollout_in_progress()
         dsm.update()
         check_counts(ds, total=4)
         assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
@@ -12885,8 +12979,8 @@ class TestMaxSurge:
 
         # Two RUNNING old plus two new leaves no surplus, so nothing stops: the
         # migrating replica is not a free stop even though it is not RUNNING.
-        _, to_stop = ds._plan_surge_rollout()
-        assert to_stop == []
+        assert ds._surge_rollout_in_progress()
+        assert ds._surge_replicas_to_stop() == []
 
     def test_rollback_stops_pending_replacements(self, mock_deployment_state_manager):
         create_dsm, _, _, _ = mock_deployment_state_manager

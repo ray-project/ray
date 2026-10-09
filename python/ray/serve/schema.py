@@ -558,8 +558,11 @@ class DeploymentSchema(BaseModel):
             "of the target count, rounded up to whole replicas or gangs. "
             "Must be in [0, 100]. When positive, replacements start before old "
             "replicas stop. If capacity is unavailable, old replicas keep serving "
-            "while replacements wait. Defaults to 0, which stops old replicas "
-            "before starting replacements."
+            "while replacements wait. Stopping replicas do not count toward the "
+            "limit, so live actors can exceed the target plus surge while old "
+            "replicas drain. Lightweight configuration changes to replicas on "
+            "the new code wait until restarts finish. Defaults to 0, which stops "
+            "old replicas before starting replacements."
         ),
         ge=0,
         le=100,

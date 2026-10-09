@@ -317,7 +317,11 @@ class Deployment:
                 The allowance rounds up to whole replicas or gangs. When positive,
                 replacements start before old replicas stop. If the cluster lacks
                 capacity, old replicas keep serving while replacements wait.
-                Setting this to ``0`` stops old replicas before starting replacements.
+                Stopping replicas do not count toward the limit, so live actors
+                can exceed the target plus surge while old replicas drain.
+                Lightweight configuration changes to replicas on the new code
+                wait until restarts finish. Setting this to ``0`` stops old
+                replicas before starting replacements.
 
         Returns:
             A copy of this deployment with the given options applied.

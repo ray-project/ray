@@ -2190,6 +2190,357 @@ def test_surge_replacements_wait_for_capacity(serve_instance):
         wait_for_condition(check_rolled_back, raise_exceptions=True, timeout=60)
 
 
+def test_surge_rolling_update_with_one_replica(serve_instance_with_signal):
+    """Keep one replica serving through failure, rollback, and replacement.
+
+    Verify constructor ranks and reassignment after a successful rollout.
+    """
+    client, signal = serve_instance_with_signal
+    one = {"name": "FailOnFlag", "num_replicas": 1, "max_surge_percent": 100}
+    client.deploy_apps(_rolling_update_config(one))
+    wait_for_condition(check_running, timeout=60)
+    initial_pids = _running_replica_pids(client)
+    assert len(initial_pids) == 1
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    assert handle.ranks.remote().result() == {"init": (0, 1), "current": (0, 1)}
+    surged = {"RUNNING": 1, "STARTING": 1}
+
+    with _background_traffic():
+        client.deploy_apps(
+            _rolling_update_config(
+                _env_override(one, BLOCK_INIT_ON_SIGNAL="1", FAIL_ON_INIT="1")
+            )
+        )
+        wait_for_condition(
+            _check_surged, client=client, states=surged, old_pids=initial_pids
+        )
+        ray.get(signal.send.remote())
+
+        def check_failed_keeping_the_replica():
+            assert _running_replica_pids(client) == initial_pids
+            app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+            return app.status == ApplicationStatus.DEPLOY_FAILED and (
+                _replica_states() == {"RUNNING": 1}
+            )
+
+        wait_for_condition(
+            check_failed_keeping_the_replica, raise_exceptions=True, timeout=60
+        )
+        _check_terminal_rolling_update(client, running=1)
+        _assert_rollout_stays_stopped(client, initial_pids)
+
+        client.deploy_apps(_rolling_update_config(one))
+
+        def check_rolled_back():
+            assert _running_replica_pids(client) == initial_pids
+            return _app_running() and _replica_states() == {"RUNNING": 1}
+
+        wait_for_condition(check_rolled_back, raise_exceptions=True, timeout=60)
+
+        ray.get(signal.send.remote(clear=True))
+        client.deploy_apps(
+            _rolling_update_config(
+                _env_override(one, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2")
+            )
+        )
+        wait_for_condition(
+            _check_surged, client=client, states=surged, old_pids=initial_pids
+        )
+        ray.get(signal.send.remote())
+
+        def check_replaced():
+            running = _running_replica_pids(client)
+            assert len(running) == 1, _replica_states()
+            return _app_running() and running != initial_pids
+
+        wait_for_condition(check_replaced, raise_exceptions=True, timeout=60)
+
+    # The replacement starts with (rank, world_size) = (1, 1). After the rollout
+    # completes, its rank becomes 0 without restarting the replica.
+    replaced_pids = _running_replica_pids(client)
+
+    def check_rank_reassigned():
+        ranks = handle.ranks.remote().result()
+        assert ranks["init"] == (1, 1), ranks
+        return ranks["current"] == (0, 1)
+
+    wait_for_condition(check_rank_reassigned, raise_exceptions=True, timeout=60)
+    assert _running_replica_pids(client) == replaced_pids
+
+
+def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
+    """Defer lightweight reconfiguration until the blocked rollout completes.
+
+    Old replicas keep serving, and reconfiguration preserves the new replicas.
+    """
+    client = serve_instance
+    deployment_id = DeploymentID("FailOnFlag", SERVE_DEFAULT_APP_NAME)
+    v1 = {**SURGE_DEPLOYMENT, "ray_actor_options": {"num_cpus": 4}}
+    v2 = _env_override(
+        {**SURGE_DEPLOYMENT, "ray_actor_options": {"num_cpus": 8}}, MARKER="v2"
+    )
+    # Of 36 CPUs, 12 for v1 and 16 reserved leave room for one 8-CPU
+    # replacement. Stopping a 4-CPU old replica doesn't make room for another.
+    reserved = ray.util.placement_group([{"CPU": 1}] * 16)
+    ray.get(reserved.ready())
+
+    def running_max_ongoing_requests() -> Dict[int, int]:
+        """The max_ongoing_requests each RUNNING replica is configured with."""
+        replicas = ray.get(
+            client._controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+        return {
+            r.actor_details.pid: r.version.deployment_config.max_ongoing_requests
+            for r in replicas.get([ReplicaState.RUNNING])
+        }
+
+    try:
+        client.deploy_apps(_rolling_update_config(v1))
+        wait_for_condition(check_running, timeout=60)
+        initial_pids = _running_replica_pids(client)
+
+        with _background_traffic():
+            client.deploy_apps(_rolling_update_config(v2))
+
+            # One replacement runs and one old replica stops; the allowance then
+            # admits a third replacement, but neither pending one can be placed.
+            def check_stalled():
+                states = _replica_states()
+                assert states.get("RUNNING", 0) >= 3, states
+                running = _running_replica_pids(client)
+                assert len(set(running) & set(initial_pids)) >= 2, running
+                return states == {"RUNNING": 3, "STARTING": 2} and (
+                    len(set(running) - set(initial_pids)) == 1
+                )
+
+            wait_for_condition(check_stalled, raise_exceptions=True, timeout=60)
+            replaced_pid = (
+                set(_running_replica_pids(client)) - set(initial_pids)
+            ).pop()
+            assert running_max_ongoing_requests()[replaced_pid] == 7
+
+            # The change reconfigures nothing until the old replicas are gone.
+            client.deploy_apps(
+                _rolling_update_config({**v2, "max_ongoing_requests": 3})
+            )
+            wait_for_condition(lambda: _config_options(client) == (3, 3))
+            deadline = time.monotonic() + 5
+
+            def check_still_stalled():
+                assert check_stalled()
+                assert _deployment_details(client).status == "UPDATING"
+                assert running_max_ongoing_requests()[replaced_pid] == 7
+                return time.monotonic() >= deadline
+
+            wait_for_condition(check_still_stalled, raise_exceptions=True, timeout=20)
+
+            ray.util.remove_placement_group(reserved)
+            reserved = None
+            wait_for_condition(check_running, timeout=90)
+
+        configured = running_max_ongoing_requests()
+        assert len(configured) == 3 and set(configured.values()) == {3}, configured
+        assert replaced_pid in configured
+        assert not set(configured) & set(initial_pids)
+    finally:
+        if reserved is not None:
+            ray.util.remove_placement_group(reserved)
+
+
+def test_surge_rolling_update_follows_autoscaling_mid_rollout(
+    serve_instance_with_signal,
+):
+    """Follow autoscaling from 1 to 4 to 1 during rollout, then scale to zero."""
+    client, signal = serve_instance_with_signal
+    v1 = {
+        "name": "FailOnFlag",
+        "max_surge_percent": 50,
+        "autoscaling_config": {
+            "min_replicas": 0,
+            "max_replicas": 4,
+            "target_ongoing_requests": 1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 2,
+            "downscale_to_zero_delay_s": 2,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
+        },
+        "graceful_shutdown_timeout_s": 60,
+        "ray_actor_options": {"runtime_env": {"env_vars": {"BLOCK_ON_SIGNAL": "1"}}},
+    }
+    client.deploy_apps(_rolling_update_config(v1))
+    wait_for_condition(check_running, timeout=60)
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    first = handle.remote()
+    more = []
+    try:
+        wait_for_condition(lambda: len(_running_replica_pids(client)) == 1, timeout=60)
+        old_pids = _running_replica_pids(client)
+
+        # Replacements block in their constructors, so the rollout stays in flight.
+        v2 = _env_override(
+            v1, BLOCK_ON_SIGNAL="1", BLOCK_INIT_ON_SIGNAL="1", MARKER="v2"
+        )
+        client.deploy_apps(_rolling_update_config(v2))
+        wait_for_condition(
+            _check_surged,
+            client=client,
+            states={"RUNNING": 1, "STARTING": 1},
+            old_pids=old_pids,
+        )
+
+        # More blocked requests raise the target to four; the surge follows it.
+        more = [handle.remote() for _ in range(3)]
+
+        def check_scaled_up():
+            assert _running_replica_pids(client) == old_pids
+            states = _replica_states()
+            assert states.get("RUNNING") == 1 and "STOPPING" not in states, states
+            assert states.get("STARTING", 0) <= 4, states
+            return _deployment_details(client).target_num_replicas == 4 and (
+                states == {"RUNNING": 1, "STARTING": 4}
+            )
+
+        wait_for_condition(check_scaled_up, raise_exceptions=True, timeout=60)
+
+        # Cancelling them lowers the target to one: the old replica keeps serving
+        # its request and no further replacement starts.
+        for response in more:
+            response.cancel()
+        wait_for_condition(
+            lambda: _deployment_details(client).target_num_replicas == 1, timeout=60
+        )
+        deadline = time.monotonic() + 3
+
+        def check_scaled_down():
+            assert _running_replica_pids(client) == old_pids
+            states = _replica_states()
+            assert states.get("RUNNING") == 1 and "STOPPING" not in states, states
+            assert states.get("STARTING", 0) <= 4, states
+            return time.monotonic() >= deadline
+
+        wait_for_condition(check_scaled_down, raise_exceptions=True, timeout=15)
+
+        # Releasing the signal finishes the replacements and the pending request.
+        ray.get(signal.send.remote())
+        assert first.result(timeout_s=60) == "ok"
+
+        def check_replaced():
+            running = _running_replica_pids(client)
+            return bool(running) and not set(running) & set(old_pids)
+
+        wait_for_condition(check_replaced, timeout=60)
+        wait_for_condition(
+            lambda: _deployment_details(client).target_num_replicas == 0
+            and _replica_states() == {}
+            and _app_running(),
+            timeout=90,
+        )
+    finally:
+        ray.get(signal.send.remote())
+        for response in [first, *more]:
+            response.cancel()
+
+
+def test_autoscaling_after_a_failed_surge_rollout(serve_instance_with_signal):
+    """Allow downscaling after terminal failure without retrying the broken version."""
+    client, signal = serve_instance_with_signal
+    v1 = {
+        "name": "FailOnFlag",
+        "max_surge_percent": 50,
+        "autoscaling_config": {
+            "min_replicas": 0,
+            "max_replicas": 6,
+            "target_ongoing_requests": 1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 2,
+            "downscale_to_zero_delay_s": 2,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
+        },
+        "graceful_shutdown_timeout_s": 60,
+        "ray_actor_options": {"runtime_env": {"env_vars": {"BLOCK_ON_SIGNAL": "1"}}},
+    }
+    client.deploy_apps(_rolling_update_config(v1))
+    wait_for_condition(check_running, timeout=60)
+    handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    requests = [handle.remote() for _ in range(4)]
+    try:
+        wait_for_condition(lambda: len(_running_replica_pids(client)) == 4, timeout=60)
+        old_pids = _running_replica_pids(client)
+
+        client.deploy_apps(
+            _rolling_update_config(
+                _env_override(v1, BLOCK_ON_SIGNAL="1", FAIL_ON_INIT="1")
+            )
+        )
+
+        def check_failed_keeping_capacity():
+            assert _running_replica_pids(client) == old_pids
+            app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+            return app.status == ApplicationStatus.DEPLOY_FAILED and (
+                _replica_states() == {"RUNNING": 4}
+            )
+
+        wait_for_condition(
+            check_failed_keeping_capacity, raise_exceptions=True, timeout=90
+        )
+        _check_terminal_rolling_update(client, running=4)
+
+        # Two requests fewer: the autoscaler shrinks the old replicas to two. A
+        # replica still holding a request drains until the signal.
+        for response in requests[2:]:
+            response.cancel()
+
+        def check_scaled_down():
+            assert set(_running_replica_pids(client)) <= set(old_pids)
+            states = _replica_states()
+            assert set(states) <= {"RUNNING", "STOPPING"}, states
+            return (
+                _deployment_details(client).target_num_replicas == 2
+                and states.get("RUNNING") == 2
+            )
+
+        wait_for_condition(check_scaled_down, raise_exceptions=True, timeout=60)
+        _check_terminal_rolling_update(client)
+        survivors = _running_replica_pids(client)
+
+        # Replace the remaining requests with six fresh ones on running replicas.
+        # Requests on draining replicas do not count toward the autoscaling target;
+        # cancelling them also lets those replicas stop.
+        earlier, requests = requests[:2], [handle.remote() for _ in range(6)]
+        for response in earlier:
+            response.cancel()
+        wait_for_condition(
+            lambda: _deployment_details(client).target_num_replicas == 6
+            and _replica_states() == {"RUNNING": 2},
+            timeout=60,
+        )
+        deadline = time.monotonic() + 5
+
+        def check_no_replacements():
+            assert _running_replica_pids(client) == survivors
+            assert _replica_states() == {"RUNNING": 2}, _replica_states()
+            _check_terminal_rolling_update(client, running=2)
+            return time.monotonic() >= deadline
+
+        wait_for_condition(check_no_replacements, raise_exceptions=True, timeout=20)
+
+        # Finishing the requests scales the deployment to zero.
+        ray.get(signal.send.remote())
+        assert [r.result(timeout_s=60) for r in requests] == ["ok"] * 6
+        wait_for_condition(
+            lambda: _deployment_details(client).target_num_replicas == 0
+            and _replica_states() == {},
+            timeout=90,
+        )
+        _check_terminal_rolling_update(client, running=0)
+    finally:
+        ray.get(signal.send.remote())
+        for response in requests:
+            response.cancel()
+
+
 if __name__ == "__main__":
     # Forward bazel `args` (the -k filter in BUILD.bazel) through to pytest.
     sys.exit(pytest.main(["-v", "-s", __file__] + sys.argv[1:]))

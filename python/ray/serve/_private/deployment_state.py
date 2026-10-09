@@ -4311,18 +4311,10 @@ class DeploymentState:
                 else:
                     remaining.append(replica)
 
-            # Group restart-candidates by gang_id.
-            gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
-            for replica in need_restart:
-                # Gang deployments always set `gang_context` on their replicas.
-                # pyrefly: ignore[missing-attribute]
-                gangs[replica.gang_context.gang_id].append(replica)  # type: ignore[union-attr]
-
             # Stop complete gangs atomically within the budget
-            for _, gang_replicas in gangs.items():
-                # pyrefly: ignore[missing-attribute]
-                expected_size = gang_replicas[0].gang_context.world_size  # type: ignore[union-attr]
-                if len(gang_replicas) != expected_size:
+            gangs = self._group_replicas_by_gang_id(need_restart)
+            for gang_replicas in gangs.values():
+                if not self._is_complete_gang(gang_replicas):
                     # Gang is incomplete (members may be RECOVERING/UPDATING);
                     # wait for them to stabilize before tearing down.
                     for replica in gang_replicas:
@@ -4418,53 +4410,51 @@ class DeploymentState:
         gang_size = self.get_gang_config().gang_size
         return math.ceil(max(num_replicas, gang_size) / gang_size) * gang_size
 
-    def _plan_surge_rollout(
-        self,
-    ) -> Optional[Tuple[int, List[DeploymentReplica]]]:
-        """Return (replicas to start, old replicas to stop), or None without surge.
+    def _surge_rollout_in_progress(self) -> bool:
+        """Return whether replica replacement needs surge handling.
 
-        When no outdated active replicas are known, assume recovering replicas
-        may need replacement until their versions are known. Count them toward
-        the limit, but do not stop them.
-        Stop old replicas in batches without reducing running capacity below target.
-        Lightweight changes to replicas already on the new code wait until the
-        rollout converges.
+        Cached counts avoid scanning replicas when versions match. Recovering
+        replicas may need replacement until their versions are known. Failed
+        rollouts still use this path to protect surviving replicas.
         """
+        if (
+            self._target_state.target_num_replicas == 0
+            or self._deployed_info.deployment_config.max_surge_percent <= 0
+        ):
+            return False
+        target_version = self._target_state.version
+        active_states = [
+            ReplicaState.STARTING,
+            ReplicaState.UPDATING,
+            ReplicaState.RUNNING,
+        ]
+        if (
+            self._replicas.count(exclude_version=target_version, states=active_states)
+            == 0
+        ):
+            return self._replicas.count(states=[ReplicaState.RECOVERING]) > 0
+        return any(
+            replica.version.requires_actor_restart(target_version)
+            for replica in self._replicas.get(states=active_states)
+            if replica.version != target_version
+        )
+
+    def _surge_replicas_to_start(self) -> int:
+        """Return how many replacements fit within the surge allowance.
+
+        Count recovering replicas toward the limit. Return zero after
+        terminal failure.
+        """
+        if self._terminally_failed():
+            return 0
         target = self._target_state.target_num_replicas
         surge_percent = self._deployed_info.deployment_config.max_surge_percent
-        if target == 0 or surge_percent <= 0:
-            return None
-        target_version = self._target_state.version
-        old_active = [
-            replica
-            for replica in self._replicas.get(
-                states=[
-                    ReplicaState.STARTING,
-                    ReplicaState.UPDATING,
-                    ReplicaState.RUNNING,
-                ]
-            )
-            if replica.version != target_version
-        ]
-        if old_active:
-            needs_replacement = any(
-                replica.version.requires_actor_restart(target_version)
-                for replica in old_active
-            )
-        else:
-            needs_replacement = (
-                self._replicas.count(states=[ReplicaState.RECOVERING]) > 0
-            )
-
-        if not needs_replacement:
-            return None
-
         # Integer ceiling; float math rounds 28% of 25 up to 8.
         surge = (surge_percent * target + 99) // 100
         if self._is_gang_deployment:
             surge = self._round_up_to_gang_size(surge)
         target_version_replicas = self._replicas.count(
-            version=target_version,
+            version=self._target_state.version,
             states=[
                 ReplicaState.STARTING,
                 ReplicaState.UPDATING,
@@ -4480,40 +4470,34 @@ class DeploymentState:
             # pyrefly: ignore[missing-attribute]
             gang_size = self.get_gang_config().gang_size
             to_start = to_start // gang_size * gang_size
-        if self._terminally_failed():
-            return to_start, []
-        # The target version is set for deployed target states.
-        # pyrefly: ignore[bad-argument-type]
-        return to_start, self._surge_replicas_to_stop(target, target_version)  # type: ignore[arg-type]
+        return to_start
 
-    def _surge_replicas_to_stop(
-        self, target: int, target_version: DeploymentVersion
-    ) -> List[DeploymentReplica]:
-        """Pick old replicas, or whole gangs, to stop while keeping `target` RUNNING.
+    def _surge_replicas_to_stop(self) -> List[DeploymentReplica]:
+        """Select a rollout batch without reducing running capacity below target.
 
-        Each group costs its RUNNING members against the surplus above target, so
-        groups that are still starting go first. The batch is capped by the
-        rollout size. Replicas on draining nodes are left to the migration flow.
+        Prefer starting replicas, keep gangs intact, and leave draining replicas
+        to migration. After terminal failure, keep successful replacements and
+        stop old replicas only when their running count exceeds the target.
         """
+        target = self._target_state.target_num_replicas
+        target_version = self._target_state.version
+        failed = self._terminally_failed()
         old = [
             replica
             for replica in self._replicas.get(
-                states=[ReplicaState.STARTING, ReplicaState.RUNNING]
+                states=[ReplicaState.RUNNING]
+                if failed
+                else [ReplicaState.STARTING, ReplicaState.RUNNING]
             )
             if replica.version != target_version
             and replica.version.requires_actor_restart(target_version)
         ]
         if self._is_gang_deployment:
-            gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
-            for replica in old:
-                # pyrefly: ignore[missing-attribute]
-                gangs[replica.gang_context.gang_id].append(replica)  # type: ignore[union-attr]
             # A gang with a member in another state (RECOVERING, UPDATING) waits.
             groups = [
                 gang
-                for gang in gangs.values()
-                # pyrefly: ignore[missing-attribute]
-                if len(gang) == gang[0].gang_context.world_size  # type: ignore[union-attr]
+                for gang in self._group_replicas_by_gang_id(old).values()
+                if self._is_complete_gang(gang)
             ]
         else:
             groups = [[replica] for replica in old]
@@ -4523,7 +4507,11 @@ class DeploymentState:
                 replica.actor_details.state == ReplicaState.RUNNING for replica in group
             )
 
-        surplus = max(self._replicas.count(states=[ReplicaState.RUNNING]) - target, 0)
+        if failed:
+            surplus = len(old) - target
+        else:
+            surplus = self._replicas.count(states=[ReplicaState.RUNNING]) - target
+        surplus = max(surplus, 0)
         remaining_batch = self._rollout_size()
         selected: List[DeploymentReplica] = []
         for group in sorted(groups, key=running_members):
@@ -4537,6 +4525,8 @@ class DeploymentState:
 
     def _stop_old_replicas(self, replicas: List[DeploymentReplica]) -> None:
         """Stop the old replicas a surge rollout picked."""
+        if not replicas:
+            return
         self._replicas.remove([replica.replica_id for replica in replicas])
         for replica in replicas:
             graceful_stop = (
@@ -4549,11 +4539,12 @@ class DeploymentState:
         )
 
     def _num_replicas_to_start(self) -> int:
-        """Return how many replicas to start, including surge replicas."""
-        surge_plan = self._plan_surge_rollout()
-        if surge_plan is not None:
-            return surge_plan[0]
-        return self._get_target_replica_delta()
+        """Return the start count, including surge, or zero after terminal failure."""
+        if self._terminally_failed():
+            return 0
+        if self._surge_rollout_in_progress():
+            return self._surge_replicas_to_start()
+        return max(self._get_target_replica_delta(), 0)
 
     def _check_and_stop_outdated_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
@@ -4655,8 +4646,8 @@ class DeploymentState:
         upscale: List[ReplicaSchedulingRequest] = []
         downscale: Optional[DeploymentDownscaleRequest] = None
 
-        surge_plan = self._plan_surge_rollout()
-        if surge_plan is None:
+        surge_rollout = self._surge_rollout_in_progress()
+        if not surge_rollout:
             self._check_and_stop_outdated_version_replicas()
         self.stop_deployment_actors_if_needed()
 
@@ -4669,13 +4660,13 @@ class DeploymentState:
                 # Deployment actors not ready yet; defer replica creation.
                 return (upscale, downscale)
 
-        if surge_plan is None:
-            delta_replicas = self._get_target_replica_delta()
+        if surge_rollout:
+            # Plan both from one snapshot. Old replicas are picked explicitly
+            # because a general downscale could stop new ones.
+            delta_replicas = self._surge_replicas_to_start()
+            self._stop_old_replicas(self._surge_replicas_to_stop())
         else:
-            # Select old replicas explicitly; a general downscale could stop new ones.
-            delta_replicas, to_stop = surge_plan
-            if to_stop:
-                self._stop_old_replicas(to_stop)
+            delta_replicas = self._get_target_replica_delta()
 
         if delta_replicas == 0:
             return (upscale, downscale)
@@ -6091,6 +6082,13 @@ class DeploymentState:
             # pyrefly: ignore[missing-attribute]
             gangs[replica.gang_context.gang_id].append(replica)  # type: ignore[union-attr]
         return gangs
+
+    @staticmethod
+    def _is_complete_gang(gang: List[DeploymentReplica]) -> bool:
+        """Return whether all expected gang members are present."""
+        # Gang deployments always set `gang_context` on their replicas.
+        # pyrefly: ignore[missing-attribute]
+        return len(gang) == gang[0].gang_context.world_size  # type: ignore[union-attr]
 
     def _choose_pending_migration_gangs_to_stop(
         self,
@@ -7511,10 +7509,6 @@ class DeploymentStateManager:
             num_replicas_to_add = deployment_state._num_replicas_to_start()
             if num_replicas_to_add <= 0:
                 # Only reserve PGs if we need to add replicas
-                continue
-
-            # Skip if deployment is terminally failed
-            if deployment_state._terminally_failed():
                 continue
 
             # Skip if deployment has replicas still stopping. Their resources
