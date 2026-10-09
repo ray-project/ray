@@ -24,6 +24,7 @@ class DeploymentInfo:
         ingress_request_router: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        router_application: bool = False,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -41,6 +42,7 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.ingress = ingress
         self.ingress_request_router = ingress_request_router
+        self.router_application = router_application
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -74,6 +76,7 @@ class DeploymentInfo:
             ingress_request_router=self.ingress_request_router,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
+            router_application=self.router_application,
         )
 
     def set_target_capacity(
@@ -147,6 +150,7 @@ class DeploymentInfo:
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
             "ingress_request_router": proto.ingress_request_router,
+            "router_application": proto.router_application,
         }
 
         return cls(**data)
@@ -171,6 +175,7 @@ class DeploymentInfo:
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
         data["ingress_request_router"] = self.ingress_request_router
+        data["router_application"] = self.router_application
         return DeploymentInfoProto(**data)
 
     def to_dict(self):

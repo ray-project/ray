@@ -369,6 +369,7 @@ class ServeControllerClient:
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    router_application=is_ingress and app.is_router_application,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -392,6 +393,9 @@ class ServeControllerClient:
                 ]
                 deployment_args_proto.uses_multiplexing = deployment_args[
                     "uses_multiplexing"
+                ]
+                deployment_args_proto.router_application = deployment_args[
+                    "router_application"
                 ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
@@ -507,6 +511,7 @@ class ServeControllerClient:
         """
         for app in built_apps:
             app.validate_single_fastapi_ingress()
+            app.validate_router_application()
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):
