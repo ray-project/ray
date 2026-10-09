@@ -3,15 +3,6 @@
 # dependency graphs stay separate, so none of Ray's repos change.
 common --enable_bzlmod
 common --enable_workspace
-# The proto toolchain flags default to @bazel_tools//tools/proto:*, which with
-# bzlmod on resolve to the module graph's protobuf (protobuf~, pulled in by
-# rules_rust), not WORKSPACE's. Its protoc then generates code that WORKSPACE
-# protobuf 29.6's headers reject ("gencode is built with an incompatible
-# version"). Name WORKSPACE's toolchains explicitly.
-common --proto_compiler=@com_google_protobuf//:protoc
-common --proto_toolchain_for_cc=@com_google_protobuf//:cc_toolchain
-common --proto_toolchain_for_java=@com_google_protobuf//:java_toolchain
-common --proto_toolchain_for_javalite=@com_google_protobuf//:javalite_toolchain
 # Bazel 8 made a glob() that matches nothing an error. Ray's root BUILD.bazel
 # (and likely third-party BUILD files) glob platform-specific paths that are
 # empty on other platforms. Keep Bazel 7's behaviour until they set allow_empty.
