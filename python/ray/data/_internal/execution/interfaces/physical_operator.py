@@ -675,14 +675,6 @@ class PhysicalOperator(Operator):
         """Return a unique identifier for this operator."""
         return self._id
 
-    def owns_data_task(self, lineage_task_id: str) -> bool:
-        """Whether this operator minted ``lineage_task_id`` for one of its tasks.
-
-        Only map operators mint lineage ids (``MapOperator._lineage_task_id_for``);
-        every other operator answers False.
-        """
-        return False
-
     @property
     def data_context(self) -> DataContext:
         return self._data_context

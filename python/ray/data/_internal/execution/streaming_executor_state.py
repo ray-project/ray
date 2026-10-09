@@ -35,6 +35,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
+    LineageReconstructionMixin,
+)
 from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
@@ -735,7 +738,15 @@ def _reconstruct_lost_object(
             raise LineageReconstructionError(
                 lost_error, f"no retained input for seed task {seed_id} ({err})."
             ) from lost_error
-        seed_op = next((op for op in topology if op.owns_data_task(seed_id)), None)
+        seed_op = next(
+            (
+                op
+                for op in topology
+                if isinstance(op, LineageReconstructionMixin)
+                and op.owns_data_task(seed_id)
+            ),
+            None,
+        )
         if seed_op is None:
             raise LineageReconstructionError(
                 lost_error, f"no operator owns seed task {seed_id}."
