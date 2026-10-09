@@ -1,0 +1,51 @@
+# Overrides applied only when compiling python/requirements_compiled_py3.14.txt
+# (ci/ci.sh compile_pip_dependencies_py314). The shared source files pin
+# versions that have no cp314 wheel; without these, the py3.14 constraints
+# drift into pins that fall back to a source build and fail in the images
+#
+# A bare name drops the source pin so the resolver picks a version with a cp314
+# wheel. A `python_version < '3.14'` marker drops the package on 3.14 entirely
+# because no release has a cp314 wheel yet. Remove entries once the shared
+# source pins move past them.
+
+# Source pins with no cp314 wheel: let the resolver pick a newer release.
+ale-py
+cffi
+crc32c
+cupy-cuda12x==14.0.1; sys_platform != 'darwin'
+h5py
+jax==0.11.2; sys_platform != 'darwin'
+jaxlib==0.11.2; sys_platform != 'darwin'
+llvmlite
+mujoco
+numba
+numcodecs
+numpy
+open-spiel
+pyiceberg
+pymongo
+pymunk
+s3torchconnectorclient
+snowflake-connector-python
+tensordict; sys_platform != 'darwin'
+
+# The main lock keeps the marker on the direct pin but drops it on the companion,
+# so the companion has to follow the 3.14 branch here.
+pydantic-core
+
+# snowflake-connector-python needs cryptography>=46, which in turn needs a newer pyopenssl.
+cryptography
+pyopenssl
+
+# pytest 7.x uses ast.Str, which Python 3.14 remove
+pytest==8.3.3
+urllib3==2.0.7
+
+# No release has a cp314 wheel.
+datasketches; python_version < '3.14'
+fastrlock; python_version < '3.14'
+netifaces; python_version < '3.14'
+pygame; python_version < '3.14'
+tensorflow; python_version < '3.14'
+tinyscaler; python_version < '3.14'
+torchtext; python_version < '3.14'
