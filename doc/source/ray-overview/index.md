@@ -57,7 +57,7 @@ Ray's unified compute framework consists of three layers:
 
 **Scale machine learning workloads**
 ^^^
-Build ML applications with a toolkit of libraries for distributed {doc}`data processing <../data/index>`, {doc}`model training <../train/train>`, {doc}`tuning <../tune/index>`, {doc}`reinforcement learning <../rllib/index>`, {doc}`model serving <../serve/index>`, and {doc}`more <../ray-more-libs/index>`.
+Build ML applications with a toolkit of libraries for distributed {doc}`data processing <../data/index>`, {doc}`model training <../train/index>`, {doc}`tuning <../tune/index>`, {doc}`reinforcement learning <../rllib/index>`, {doc}`model serving <../serve/index>`, and {doc}`more <../ray-more-libs/index>`.
 +++
 ```{button-ref} libraries-quickstart
 :color: primary
@@ -102,7 +102,7 @@ Ray Clusters
 
 Each of [Ray's](../ray-air/getting-started) five native libraries distributes a specific ML task:
 - [Data](../data/index): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
-- [Train](../train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
+- [Train](../train/index): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
 - [Tune](../tune/index): Scalable hyperparameter tuning to optimize model performance.
 - [Serve](../serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.
 - [RLlib](../rllib/index): Scalable distributed reinforcement learning workloads.
