@@ -3,6 +3,7 @@ import sys
 import pytest
 
 from ray.train.health import (
+    ControllerProbe,
     Diagnose,
     Evaluator,
     Evict,
@@ -33,6 +34,15 @@ class Named(NodeProbe):
 class Loss(WorkerProbe):
     def poll(self):
         return ProbeResult(metrics={"loss": 1.0})
+
+
+class CommProgress(ControllerProbe):
+    def __init__(self):
+        self.polls = 0
+
+    def poll(self):
+        self.polls += 1
+        return {"comm0": ProbeResult(metrics={"polls": float(self.polls)})}
 
 
 class Healthy(Evaluator):
@@ -77,6 +87,20 @@ def test_evict_takes_its_nodes_by_keyword():
         Evict(["n1"])
     with pytest.raises(TypeError):
         Evict(reason="hot")
+
+
+def test_a_controller_probe_reports_its_own_keys_and_keeps_state():
+    probe = CommProgress()
+    assert probe.poll() == {"comm0": ProbeResult(metrics={"polls": 1.0})}
+    assert probe.poll() == {"comm0": ProbeResult(metrics={"polls": 2.0})}
+
+
+def test_a_controller_probe_must_implement_poll():
+    class NoPoll(ControllerProbe):
+        pass
+
+    with pytest.raises(TypeError):
+        NoPoll()
 
 
 def test_an_evaluator_returns_one_decision():
