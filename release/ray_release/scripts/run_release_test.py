@@ -20,6 +20,7 @@ from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
 from ray_release.reporter.log import LogReporter
+from ray_release.reporter.observability_agent import ObservabilityAgentReporter
 from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.result import Result
 
@@ -129,6 +130,11 @@ def main(
     # off quickly. We should remove this when the new db reporter is stable.
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
+
+    # Against "1", so that setting the flag to 0 turns the agent off. Appended
+    # last so the analysis is written after the result has been recorded.
+    if os.environ.get("TRIGGER_OBSERVABILITY_AGENT") == "1":
+        reporters.append(ObservabilityAgentReporter())
 
     try:
         result = run_release_test(

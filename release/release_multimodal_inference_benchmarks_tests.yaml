@@ -9,16 +9,17 @@
   cluster:
     byod:
       runtime_env:
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
         # Fail the test if a node dies
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        RAYTEST_FAIL_ON_DEAD_NODES: "1"
         # Ray Data attempts to limit cluster-wide object store usage of primary copies
         # to 50% with its `ResourceBudget` backpressure policy. Since Ray Data doesn't
         # keep track of secondary copies, the worst case utilization is 50% * 2 copies
         # = 100%. If we exceed this amount on a linear pipeline, it means backpressure
         # is very broken.
-        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "100"
 
 - name: image_classification
 
@@ -38,9 +39,6 @@
       run:
         script: python image_classification/ray_data_main.py
 
-    - __suffix__: daft
-      run:
-        script: python image_classification/daft_main.py
 
 - name: document_embedding
 
@@ -59,10 +57,6 @@
     frequency: nightly
     run:
       script: python document_embedding/ray_data_main.py
-
-  - __suffix__: daft
-    run:
-      script: python document_embedding/daft_main.py
 
 
 - name: audio_transcription
@@ -84,10 +78,6 @@
       run:
         script: python audio_transcription/ray_data_main.py
 
-    - __suffix__: daft
-      run:
-        script: python audio_transcription/daft_main.py
-
 - name: video_object_detection
 
   cluster:
@@ -104,7 +94,3 @@
       frequency: nightly
       run:
         script: python video_object_detection/ray_data_main.py
-
-    - __suffix__: daft
-      run:
-        script: python video_object_detection/daft_main.py

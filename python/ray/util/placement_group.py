@@ -50,16 +50,11 @@ class PlacementGroup:
             created and all bundles are scheduled.
 
         Example:
-            .. testcode::
-
-                import ray
-
-                pg = ray.util.placement_group([{"CPU": 1}])
-                ray.get(pg.ready())
-
-                pg = ray.util.placement_group([{"CPU": 1}])
-                ray.wait([pg.ready()])
-
+            >>> import ray
+            >>> pg = ray.util.placement_group([{"CPU": 1}])
+            >>> _ = ray.get(pg.ready())
+            >>> pg = ray.util.placement_group([{"CPU": 1}])
+            >>> _ = ray.wait([pg.ready()])
         """
         if self.is_empty:
             return ray.put(self)
@@ -299,26 +294,20 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     (because drivers never belong to any placement group).
 
     Examples:
-        .. testcode::
-
-            import ray
-            from ray.util.placement_group import get_current_placement_group
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-            @ray.remote
-            def f():
-                # This returns the placement group the task f belongs to.
-                # It means this pg is identical to the pg created below.
-                return get_current_placement_group()
-
-            pg = ray.util.placement_group([{"CPU": 2}])
-            assert ray.get(f.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=pg)).remote()) == pg
-
-            # Driver doesn't belong to any placement group,
-            # so it returns None.
-            assert get_current_placement_group() is None
+        >>> import ray
+        >>> from ray.util.placement_group import get_current_placement_group
+        >>> from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        >>> @ray.remote
+        ... def f():
+        ...     # This returns the placement group the task f belongs to.
+        ...     # It means this pg is identical to the pg created below.
+        ...     return get_current_placement_group()
+        >>> pg = ray.util.placement_group([{"CPU": 2}])
+        >>> assert ray.get(f.options(
+        ...     scheduling_strategy=PlacementGroupSchedulingStrategy(
+        ...         placement_group=pg)).remote()) == pg
+        >>> # Driver doesn't belong to any placement group, so it returns None.
+        >>> assert get_current_placement_group() is None
 
     Returns:
         PlacementGroup: Placement group object.

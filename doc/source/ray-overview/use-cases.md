@@ -11,7 +11,7 @@ myst:
 ```{toctree}
 :hidden:
 
-../ray-air/getting-started
+ml-infrastructure
 ```
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
@@ -141,7 +141,7 @@ Learn more about reinforcement learning with the following resources.
 - [[Blog] Intro to RLlib: Example Environments](https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70)
 - {doc}`[Guide] Getting Started with RLlib </rllib/getting-started>`
 - [[Talk] Deep reinforcement learning at Riot Games](https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games)
-- {doc}`[Gallery] RLlib Examples Gallery </rllib/rllib-examples>`
+- {doc}`[Gallery] RLlib Examples Gallery </rllib/examples>`
 - [[Gallery] More RL Use Cases on the Blog](https://www.anyscale.com/blog?tag=rllib)
 
 (ref-use-cases-ml-platform)=
@@ -172,4 +172,4 @@ The following highlights feature projects leveraging Ray Core's distributed APIs
 - [[Blog] Highly Available and Scalable Online Applications on Ray at Ant Group](https://www.anyscale.com/blog/building-highly-available-and-scalable-online-applications-on-ray-at-ant)
 - [[Blog] Ray Forward 2022 Conference: Hyper-scale Ray Application Use Cases](https://www.anyscale.com/blog/ray-forward-2022)
 - [[Blog] A new world record on the CloudSort benchmark using Ray](https://www.anyscale.com/blog/ray-breaks-the-usd1-tb-barrier-as-the-worlds-most-cost-efficient-sorting)
-- {doc}`[Example] Speed up your web crawler by parallelizing it with Ray </ray-core/examples/web_crawler>`
+- {doc}`[Example] Speed up your web crawler by parallelizing it with Ray </core/examples/web_crawler>`

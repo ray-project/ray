@@ -15,13 +15,20 @@
 #include "ray/gcs/store_client/redis_context.h"
 
 #include <cerrno>
+#include <charconv>
+#include <cstddef>
+#include <cstring>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "ray/asio/asio_util.h"
+#include "ray/gcs/store_client/redis_tcp_keepalive.h"
 #include "ray/util/network_util.h"
 
 extern "C" {
@@ -30,6 +37,8 @@ extern "C" {
 }
 
 // TODO(pcm): Integrate into the C++ tree.
+#include "absl/functional/function_ref.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -39,6 +48,61 @@ extern "C" {
 namespace ray {
 
 namespace gcs {
+
+namespace {
+
+constexpr size_t kMaxRedisCommandLabelLength = 16;
+
+}  // namespace
+
+size_t ResponsePayloadBytes(const redisReply &reply) {
+  switch (reply.type) {
+  case REDIS_REPLY_STRING:
+  case REDIS_REPLY_STATUS:
+  // Only reachable for an error nested inside an aggregate reply; a top-level
+  // error is retried before it gets here. See the header.
+  case REDIS_REPLY_ERROR:
+  case REDIS_REPLY_VERB:
+  case REDIS_REPLY_BIGNUM:
+    return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_INTEGER: {
+    char buffer[std::numeric_limits<long long>::digits10 + 3];
+    const auto [end, error] =
+        std::to_chars(buffer, buffer + sizeof(buffer), reply.integer);
+    RAY_CHECK(error == std::errc{});
+    return static_cast<size_t>(end - buffer);
+  }
+  case REDIS_REPLY_DOUBLE:
+    // hiredis preserves the original RESP3 decimal representation in `str`.
+    return static_cast<size_t>(reply.len);
+  case REDIS_REPLY_BOOL:
+    // RESP3 encodes booleans as one application byte: `t` or `f`.
+    return 1;
+  case REDIS_REPLY_NIL:
+    return 0;
+  case REDIS_REPLY_ARRAY:
+  case REDIS_REPLY_MAP:
+  case REDIS_REPLY_SET:
+  case REDIS_REPLY_PUSH: {
+    // hiredis leaves `element` uninitialized when `elements` is 0, so the loop
+    // bound is what keeps this from dereferencing garbage.
+    size_t total = 0;
+    for (size_t i = 0; i < reply.elements; ++i) {
+      total += ResponsePayloadBytes(*reply.element[i]);
+    }
+    return total;
+  }
+  default:
+    // Unknown reply types have no payload definition.
+    return 0;
+  }
+}
+
+std::string NormalizeRedisCommandLabel(std::string_view verb) {
+  std::string label(verb.substr(0, kMaxRedisCommandLabelLength));
+  absl::AsciiStrToUpper(&label);
+  return label;
+}
 
 CallbackReply::CallbackReply(const redisReply &redis_reply)
     : reply_type_(redis_reply.type) {
@@ -163,7 +227,9 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
                                          RedisAsyncContext *context,
                                          std::vector<std::string> args,
-                                         ClockInterface &clock)
+                                         ClockInterface &clock,
+                                         RedisMetrics *metrics,
+                                         std::string_view table_label)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
                     RayConfig::instance().redis_retry_max_ms()),
@@ -173,12 +239,23 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
       callback_(std::move(callback)),
       start_time_(clock.Now()),
       redis_cmds_(std::move(args)),
-      clock_(clock) {
+      clock_(clock),
+      metrics_(metrics) {
+  RAY_CHECK(!redis_cmds_.empty());
   argc_.reserve(redis_cmds_.size());
   argv_.reserve(redis_cmds_.size());
   for (size_t i = 0; i < redis_cmds_.size(); ++i) {
     argv_.push_back(redis_cmds_[i].data());
     argc_.push_back(redis_cmds_[i].size());
+  }
+  if (metrics_ != nullptr) {
+    command_label_ = NormalizeRedisCommandLabel(redis_cmds_.front());
+    table_label_ = std::string(table_label);
+    // This context owns the argument buffers, so their sizes remain valid even
+    // when a caller moved a value into the command on the way here.
+    for (const auto &command_arg : redis_cmds_) {
+      request_payload_bytes_ += command_arg.size();
+    }
   }
 }
 
@@ -204,6 +281,15 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
   } else {
+    // Measure while hiredis still owns the reply, and before anything is posted
+    // to the io_service: `request_cxt` is deleted at the end of this branch, so
+    // every read of it has to happen above the post.
+    if (request_cxt->metrics_ != nullptr) {
+      request_cxt->metrics_->response_payload_bytes_sum.Record(
+          static_cast<double>(ResponsePayloadBytes(*redis_reply)),
+          {{"Command", request_cxt->command_label_},
+           {"TableName", request_cxt->table_label_}});
+    }
     auto reply = std::make_shared<CallbackReply>(*redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {
@@ -228,12 +314,50 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
+  struct AcceptedRequestMetrics {
+    RedisMetrics metrics;
+    std::string command_label;
+    std::string table_label;
+    size_t request_payload_bytes;
+  };
+  std::optional<AcceptedRequestMetrics> accepted;
+  auto capture_acceptance = [&]() {
+    if (request_metrics_claimed_) {
+      return;
+    }
+    // The submission lock keeps this request alive while copying its labels.
+    // Claim the records now: a retry may run before the records finish below.
+    accepted.emplace(AcceptedRequestMetrics{
+        *metrics_, command_label_, table_label_, request_payload_bytes_});
+    request_metrics_claimed_ = true;
+  };
   Status status = redis_context_->RedisAsyncCommandArgv(
-      RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
-
-  if (!status.ok()) {
-    RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
+      RedisResponseFn,
+      this,
+      argv_.size(),
+      argv_.data(),
+      argc_.data(),
+      metrics_ != nullptr
+          ? std::make_optional(absl::FunctionRef<void()>(capture_acceptance))
+          : std::nullopt);
+  if (status.ok()) {
+    // The submission lock has been released, so a reply on the IO thread may
+    // already have deleted this request. Only use the independent local snapshot,
+    // and do not hold the Redis mutex while acquiring metric recorder locks.
+    if (accepted.has_value()) {
+      const std::vector<std::pair<std::string_view, std::string>> tags{
+          {"Command", accepted->command_label}, {"TableName", accepted->table_label}};
+      accepted->metrics.request_payload_bytes_sum.Record(
+          static_cast<double>(accepted->request_payload_bytes), tags);
+      accepted->metrics.command_count_counter.Record(1, tags);
+    }
+    return;
   }
+
+  // A rejected submission has no hiredis callback. Use the owned Status for
+  // diagnostics; the raw context may have been freed since submission returned.
+  RAY_LOG(ERROR) << "Redis command submission failed: " << status;
+  RedisResponseFn(nullptr, nullptr, this);
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \
@@ -244,9 +368,12 @@ void RedisRequestContext::Run() {
     return Status::RedisError(REPLY->str);      \
   }
 
-RedisContext::RedisContext(instrumented_io_context &io_service, ClockInterface &clock)
+RedisContext::RedisContext(instrumented_io_context &io_service,
+                           ClockInterface &clock,
+                           std::optional<RedisMetrics> metrics)
     : io_service_(io_service),
       clock_(clock),
+      metrics_(std::move(metrics)),
       context_(nullptr),
       ssl_context_(nullptr),
       redis_db_probe_timeout_milliseconds_(
@@ -324,6 +451,156 @@ Status RestoreRedisTimeout(redisContext *context) {
   return Status::OK();
 }
 
+namespace {
+
+// hiredis' async context embeds the sync context; the socket lives in c.fd.
+redisContext *AsRedisContext(redisContext *context) { return context; }
+redisContext *AsRedisContext(redisAsyncContext *context) { return &context->c; }
+
+// Linux caps both TCP_KEEPIDLE and TCP_KEEPINTVL at 32767 seconds.
+constexpr int64_t kMaxRedisTcpKeepaliveIntervalSeconds = 32767;
+// Linux caps TCP_KEEPCNT at 127.
+constexpr int64_t kMaxRedisTcpKeepaliveProbes = 127;
+
+// Validates the keepalive configuration on its own, so a bad value fails before
+// any connection attempt instead of surfacing as a Redis connectivity error
+// after the connect-retry budget is spent.
+Status ValidateRedisTcpKeepaliveConfig() {
+  const int64_t interval = RayConfig::instance().redis_tcp_keepalive_interval_seconds();
+  if (interval < 0 || interval > kMaxRedisTcpKeepaliveIntervalSeconds) {
+    return Status::InvalidArgument(
+        absl::StrCat("redis_tcp_keepalive_interval_seconds must be in [0, ",
+                     kMaxRedisTcpKeepaliveIntervalSeconds,
+                     "], got ",
+                     interval,
+                     ". Set RAY_redis_tcp_keepalive_interval_seconds=0 to disable "
+                     "TCP keepalive."));
+  }
+  const int64_t probes = RayConfig::instance().redis_tcp_keepalive_probes();
+  if (interval > 0 && (probes < 1 || probes > kMaxRedisTcpKeepaliveProbes)) {
+    return Status::InvalidArgument(
+        absl::StrCat("redis_tcp_keepalive_probes must be in [1, ",
+                     kMaxRedisTcpKeepaliveProbes,
+                     "] when TCP keepalive is enabled, got ",
+                     probes,
+                     "."));
+  }
+  return Status::OK();
+}
+
+std::string DescribeRedisTcpKeepalivePolicy(int64_t interval, int64_t probes) {
+  if (interval == 0) {
+    return "disabled by configuration";
+  }
+  static_cast<void>(probes);
+#if defined(__linux__) && defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && \
+    defined(TCP_KEEPCNT)
+  return absl::StrCat("idle=",
+                      interval,
+                      "s, probe interval=",
+                      interval,
+                      "s, probes=",
+                      probes,
+                      " (idle, unresponsive connection detected after ~",
+                      interval * (1 + probes),
+                      "s)");
+#elif defined(__APPLE__) && defined(__MACH__)
+  return absl::StrCat(
+      "idle=", interval, "s; probe interval and count are controlled by the OS");
+#elif defined(_WIN32)
+  return absl::StrCat("idle=",
+                      interval,
+                      "s, probe interval=",
+                      interval,
+                      "s; probe count is controlled by the OS");
+#else
+  return "SO_KEEPALIVE enabled; idle time, probe interval, and probe count are "
+         "controlled by the OS";
+#endif
+}
+
+// Applies the configured TCP keepalive policy to a freshly created hiredis
+// context. Called from exactly one place (ConnectWithoutRetries) so that every
+// external Redis socket - sync, async, Sentinel, Cluster-redirect, and cleanup
+// connections - receives the same policy before TLS, AUTH, or any command.
+//
+// Validation and failures to enable keepalive are non-retryable. On POSIX,
+// tuning failures leave keepalive enabled and warn without rejecting a usable
+// connection. Windows retains hiredis' combined enable/tune operation.
+Status ConfigureRedisTcpKeepalive(redisContext *context,
+                                  const std::string &address,
+                                  int port) {
+  RAY_RETURN_NOT_OK(ValidateRedisTcpKeepaliveConfig());
+  const int64_t interval = RayConfig::instance().redis_tcp_keepalive_interval_seconds();
+  if (interval == 0) {
+    RAY_LOG(INFO) << "TCP keepalive is disabled by configuration for the Redis "
+                     "connection to "
+                  << BuildAddress(address, port) << ".";
+    return Status::OK();
+  }
+#ifdef _WIN32
+  if (::redisEnableKeepAliveWithInterval(context, static_cast<int>(interval)) !=
+      REDIS_OK) {
+    return Status::IOError(
+        absl::StrCat("Failed to enable TCP keepalive on the Redis connection to ",
+                     BuildAddress(address, port),
+                     ": ",
+                     context->errstr,
+                     ". Set RAY_redis_tcp_keepalive_interval_seconds=0 to disable TCP "
+                     "keepalive if this platform cannot support it."));
+  }
+
+#else
+  // hiredis also tunes the timing, and marks context->err on any failure.
+  // Apply options directly so a rejected timing option cannot poison an
+  // otherwise usable hiredis context. This also applies Linux timing on musl.
+  Status enable_status = Status::OK();
+  const auto result = internal::SetRedisTcpKeepalive(
+      static_cast<int>(interval),
+      static_cast<int>(RayConfig::instance().redis_tcp_keepalive_probes()),
+      [&](int level, int option, const char *name, int value) {
+        if (::setsockopt(context->fd, level, option, &value, sizeof(value)) == 0) {
+          return true;
+        }
+        const int saved_errno = errno;
+        const auto error = absl::StrCat("Failed to set ",
+                                        name,
+                                        "=",
+                                        value,
+                                        " on the Redis connection to ",
+                                        BuildAddress(address, port),
+                                        " (errno=",
+                                        saved_errno,
+                                        "): ",
+                                        std::strerror(saved_errno));
+        if (level == SOL_SOCKET && option == SO_KEEPALIVE) {
+          enable_status = Status::IOError(absl::StrCat(
+              error,
+              ". Set RAY_redis_tcp_keepalive_interval_seconds=0 to disable TCP "
+              "keepalive if this platform cannot support it."));
+        } else {
+          RAY_LOG(WARNING) << error
+                           << ". TCP keepalive remains enabled; this option retains "
+                              "its previous value. The requested detection window "
+                              "may not apply. Continuing with the connection.";
+        }
+        return false;
+      });
+  RAY_RETURN_NOT_OK(enable_status);
+  if (result == internal::RedisTcpKeepaliveResult::kDegraded) {
+    return Status::OK();
+  }
+#endif
+  RAY_LOG(INFO) << "Enabled TCP keepalive on the Redis connection to "
+                << BuildAddress(address, port) << ": "
+                << DescribeRedisTcpKeepalivePolicy(
+                       interval, RayConfig::instance().redis_tcp_keepalive_probes())
+                << ".";
+  return Status::OK();
+}
+
+}  // namespace
+
 Status AuthenticateRedis(redisContext *context,
                          const std::string &username,
                          const std::string &password,
@@ -376,7 +653,25 @@ Status AuthenticateRedis(redisAsyncContext *context,
 }
 
 void RedisAsyncContextDisconnectCallback(const redisAsyncContext *context, int status) {
-  RAY_LOG(DEBUG) << "Redis async context disconnected. Status: " << status;
+  if (status == REDIS_OK) {
+    // Deliberate disconnect (Disconnect()/teardown); keep quiet on shutdown.
+    RAY_LOG(DEBUG) << "Redis async context disconnected. Status: " << status;
+  } else {
+    // Copy the error fields before hiredis frees the context below.
+    // errno is not meaningful at this point (the failure happened
+    // earlier, inside hiredis); errstr already carries the strerror(errno)
+    // captured at the failure point.
+    const int err = context->c.err;
+    const std::string errstr =
+        context->c.errstr[0] != '\0' ? context->c.errstr : "unknown error";
+    RAY_LOG(WARNING) << "Redis async connection was closed unexpectedly (err = " << err
+                     << ", " << errstr
+                     << "). Current TCP keepalive configuration: interval="
+                     << RayConfig::instance().redis_tcp_keepalive_interval_seconds()
+                     << "s, probes=" << RayConfig::instance().redis_tcp_keepalive_probes()
+                     << ". Applied socket settings may differ; see connection setup "
+                        "logs.";
+  }
   // Reset raw 'redisAsyncContext' to nullptr because hiredis will release this context.
   reinterpret_cast<RedisAsyncContext *>(context->data)->ResetRawRedisAsyncContext();
 }
@@ -398,6 +693,9 @@ ConnectWithoutRetries(const std::string &address,
   // as an output parameter and in the Status::RedisError,
   // because we're not sure whether we'll want to change what this returns.
   RedisContextType *newContext = connect_function(address.c_str(), port);
+  // Own the context right away so every failure path below frees it.
+  std::unique_ptr<RedisContextType, RedisContextDeleter> context_holder(
+      newContext, RedisContextDeleter());
   if (newContext == nullptr || (newContext)->err) {
     std::ostringstream oss;
     if (newContext == nullptr) {
@@ -408,9 +706,15 @@ ConnectWithoutRetries(const std::string &address,
     }
     return std::make_pair(Status::RedisError(oss.str()), nullptr);
   }
-  return std::make_pair(Status::OK(),
-                        std::unique_ptr<RedisContextType, RedisContextDeleter>(
-                            newContext, RedisContextDeleter()));
+  // Apply the TCP keepalive policy before the context is used for anything
+  // (TLS, AUTH, or the first command). For the async context the TCP handshake
+  // may not have completed yet; that is fine - the options apply to the
+  // socket, not the connection.
+  Status status = ConfigureRedisTcpKeepalive(AsRedisContext(newContext), address, port);
+  if (!status.ok()) {
+    return std::make_pair(status, nullptr);
+  }
+  return std::make_pair(Status::OK(), std::move(context_holder));
 }
 
 template <typename RedisContextType, typename RedisConnectFunctionType>
@@ -424,6 +728,14 @@ ConnectWithRetries(const std::string &address,
   auto resp = ConnectWithoutRetries<RedisContextType>(address, port, connect_function);
   auto status = resp.first;
   while (!status.ok()) {
+    if (!status.IsRedisError()) {
+      // Policy/configuration failures (e.g. TCP keepalive setup) are not
+      // transient; retrying cannot fix them. Surface them immediately instead
+      // of retrying for ~60s and then reporting Redis as unreachable.
+      RAY_LOG(ERROR) << "Giving up connecting to Redis due to a non-retryable error: "
+                     << status.ToString();
+      break;
+    }
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       // Do not crash here. Return the failed status so callers (e.g. an
       // in-place reconnect) can decide how to recover. Existing callers still
@@ -709,6 +1021,10 @@ Status RedisContext::Connect(const std::string &address,
 
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
+  // Reject a bad keepalive configuration before touching the network, so it
+  // surfaces as itself rather than as a Redis connectivity error after DNS
+  // resolution and the connect-retry budget.
+  RAY_RETURN_NOT_OK(ValidateRedisTcpKeepaliveConfig());
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
   // ResolveDNS may throw (boost resolver) when the name cannot be resolved
@@ -832,13 +1148,18 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 }
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
-                                RedisCallback redis_callback) {
+                                RedisCallback redis_callback,
+                                std::string_view table_label) {
   RAY_CHECK(redis_async_context_);
-  auto request_context = new RedisRequestContext(io_service_,
-                                                 std::move(redis_callback),
-                                                 redis_async_context_.get(),
-                                                 std::move(args),
-                                                 clock_);
+  RAY_CHECK(!args.empty());
+  auto request_context =
+      new RedisRequestContext(io_service_,
+                              std::move(redis_callback),
+                              redis_async_context_.get(),
+                              std::move(args),
+                              clock_,
+                              metrics_.has_value() ? &*metrics_ : nullptr,
+                              table_label);
   // RedisRequestContext is thread safe.
   request_context->Run();
 }

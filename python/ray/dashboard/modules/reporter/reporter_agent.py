@@ -38,6 +38,7 @@ from ray._private.ray_constants import (
     env_bool,
     env_integer,
 )
+from ray._private.runtime_env.redaction import redact_serialized_runtime_env
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
@@ -472,6 +473,31 @@ PSUTIL_PROCESS_ATTRS = (
 )
 
 
+# `setup_worker.py` receives the runtime env context, including `env_vars`, on its
+# command line.
+_RUNTIME_ENV_CONTEXT_ARG = "--serialized-runtime-env-context="
+
+
+def _redact_cmdline(cmdline: Optional[List[str]]) -> Optional[List[str]]:
+    """Mask `env_vars` values in a process command line."""
+    if not cmdline:
+        return cmdline
+    return [
+        _RUNTIME_ENV_CONTEXT_ARG
+        + redact_serialized_runtime_env(arg[len(_RUNTIME_ENV_CONTEXT_ARG) :])
+        if arg.startswith(_RUNTIME_ENV_CONTEXT_ARG)
+        else arg
+        for arg in cmdline
+    ]
+
+
+def _process_as_dict(proc: psutil.Process) -> dict:
+    """`proc.as_dict(PSUTIL_PROCESS_ATTRS)` with secrets masked in the cmdline."""
+    info = proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+    info["cmdline"] = _redact_cmdline(info.get("cmdline"))
+    return info
+
+
 class ReporterAgent(
     dashboard_utils.DashboardAgentModule,
     reporter_pb2_grpc.ReporterServiceServicer,
@@ -524,6 +550,7 @@ class ReporterAgent(
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
         self._open_telemetry_metric_recorder = None
+        self._export_failure_warned = set()
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             stats_exporter = prometheus_exporter.new_stats_exporter(
@@ -564,6 +591,11 @@ class ReporterAgent(
         self._executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
             thread_name_prefix="reporter_agent_executor",
+        )
+        # One worker preserves OTLP report order without blocking the event loop.
+        self._otlp_ingest_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reporter_agent_otlp_ingest",
         )
         self._gcs_pid = None
         self._gcs_proc = None
@@ -774,6 +806,31 @@ class ReporterAgent(
                 data_point.as_double,
             )
 
+    def _ingest_exported_metrics(
+        self,
+        request: metrics_service_pb2.ExportMetricsServiceRequest,
+    ) -> None:
+        for resource_metrics in request.resource_metrics:
+            for scope_metrics in resource_metrics.scope_metrics:
+                for metric in scope_metrics.metrics:
+                    # Isolate failures per metric: one bad metric must not discard
+                    # the reporting component's remaining metrics.
+                    try:
+                        if metric.WhichOneof("data") == "histogram":
+                            self._export_histogram_data(metric)
+                        else:
+                            self._export_number_data(metric)
+                    except Exception as e:
+                        # A failing metric usually keeps failing every interval, so
+                        # warn once per name rather than on every export.
+                        if metric.name not in self._export_failure_warned:
+                            self._export_failure_warned.add(metric.name)
+                            logger.warning(
+                                "Failed to export metric %s, skipping it: %r",
+                                metric.name,
+                                e,
+                            )
+
     async def Export(
         self,
         request: metrics_service_pb2.ExportMetricsServiceRequest,
@@ -785,13 +842,11 @@ class ReporterAgent(
         implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.
         """
-        for resource_metrics in request.resource_metrics:
-            for scope_metrics in resource_metrics.scope_metrics:
-                for metric in scope_metrics.metrics:
-                    if metric.WhichOneof("data") == "histogram":
-                        self._export_histogram_data(metric)
-                    else:
-                        self._export_number_data(metric)
+        await get_or_create_event_loop().run_in_executor(
+            self._otlp_ingest_executor,
+            self._ingest_exported_metrics,
+            request,
+        )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
@@ -1141,7 +1196,7 @@ class ReporterAgent(
                         continue
 
                     # Get basic process info
-                    worker_info = w.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                    worker_info = _process_as_dict(w)
 
                     # Add GPU information if available
                     worker_pid = worker_info["pid"]
@@ -1196,7 +1251,7 @@ class ReporterAgent(
             if not self._gcs_proc or self._gcs_pid != self._gcs_proc.pid:
                 self._gcs_proc = psutil.Process(self._gcs_pid)
             if self._gcs_proc:
-                dictionary = self._gcs_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+                dictionary = _process_as_dict(self._gcs_proc)
                 return dictionary
         return {}
 
@@ -1205,13 +1260,13 @@ class ReporterAgent(
         if raylet_proc is None:
             return None
         else:
-            return raylet_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+            return _process_as_dict(raylet_proc)
 
     def _get_agent(self):
         # Current proc == agent proc
         if not self._agent_proc:
             self._agent_proc = psutil.Process()
-        return self._agent_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
+        return _process_as_dict(self._agent_proc)
 
     def _get_load_avg(self):
         if sys.platform == "win32":

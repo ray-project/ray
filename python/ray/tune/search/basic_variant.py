@@ -11,7 +11,7 @@ import numpy as np
 from ray.air._internal.usage import tag_searcher
 from ray.tune.error import TuneError
 from ray.tune.experiment.config_parser import _create_trial_from_spec, _make_parser
-from ray.tune.search.sample import _BackwardsCompatibleNumpyRng, np_random_generator
+from ray.tune.search.sample import _BackwardsCompatibleNumpyRng
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.variant_generator import (
     _count_spec_samples,
@@ -99,7 +99,7 @@ class _TrialIterator:
         lazy_eval: bool = False,
         start: int = 0,
         random_state: Optional[
-            Union[int, "np_random_generator", np.random.RandomState]
+            Union[int, np.random.Generator, np.random.RandomState]
         ] = None,
     ):
         self.parser = _make_parser()
@@ -288,7 +288,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         max_concurrent: int = 0,
         constant_grid_search: bool = False,
         random_state: Optional[
-            Union[int, "np_random_generator", np.random.RandomState]
+            Union[int, np.random.Generator, np.random.RandomState]
         ] = None,
     ):
         tag_searcher(self)

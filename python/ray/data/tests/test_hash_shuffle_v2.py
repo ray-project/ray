@@ -6,6 +6,9 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
     make_partition_sentinel,
@@ -254,17 +257,20 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
 @pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
 def test_shuffle_input_batch_bytes_controls_map_task_batching(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    map_op_cls,
     batch_bytes,
     expected_num_tasks,
 ):
     """batch_bytes=0 submits one map task per input bundle; a large value
-    buffers all input into a single map task, flushed when input ends."""
+    buffers all input into a single map task, flushed when input ends.
+    Both map-op variants share the same batching policy."""
     restore_data_context.shuffle_input_batch_bytes = batch_bytes
-    op = ShuffleMapOp(
+    op = map_op_cls(
         InputDataBuffer(restore_data_context, []),
         restore_data_context,
         num_partitions=2,
@@ -427,6 +433,69 @@ def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus
     out = pa.concat_tables(_drain_reduce_op(op, feed))
     assert out.column("src").to_pylist() == ["L"]
     assert op.has_completed()
+
+
+def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
+    """With block splitting disallowed (target_max_block_size=None), the reduce
+    task must emit reduce_fn's blocks as-is instead of coalescing them into a
+    single block."""
+
+    def _one_row_blocks_reduce(partition_id, tables_by_input):
+        tables = [t for shards in tables_by_input for t in shards]
+        combined = pa.concat_tables(tables)
+        for i in range(combined.num_rows):
+            yield combined.slice(i, 1)
+
+    op = _make_multi_input_reduce_op(_one_row_blocks_reduce, num_inputs=2)
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"v": [1, 2]})), 0),
+        (_ipc_shard_bundle(0, pa.table({"v": [3, 4]})), 1),
+    ]
+    tables = _drain_reduce_op(op, feed)
+    assert [t.num_rows for t in tables] == [1, 1, 1, 1]
+    assert sorted(v for t in tables for v in t.column("v").to_pylist()) == [1, 2, 3, 4]
+
+
+@pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
+def test_shuffle_ops_report_per_task_exec_stats(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    restore_data_context,
+    use_disk,
+):
+    """Shuffle map and reduce tasks build their exec stats worker-side, where
+    the task index isn't known; the operators are responsible for stamping it.
+    Without the stamp (or with the old zero-width reduce spans), shuffle
+    operators silently vanish from per-task stats consumers."""
+    DataContext.get_current().use_disk_based_hash_shuffle = use_disk
+
+    ds = ray.data.range(1000, override_num_blocks=4).groupby("id").count().materialize()
+
+    stats = (
+        ds._current_executor.get_stats() if ds._current_executor else ds._raw_stats()
+    )
+    block_stats_by_op = {}
+
+    def visit(s):
+        for name, block_stats in s.metadata.items():
+            block_stats_by_op.setdefault(name, []).extend(block_stats)
+        for parent in s.parents:
+            visit(parent)
+
+    visit(stats)
+
+    for phase in ("HashAggregateMap", "HashAggregateReduce"):
+        blocks = [
+            bs for name, bss in block_stats_by_op.items() if phase in name for bs in bss
+        ]
+        assert blocks, (phase, sorted(block_stats_by_op))
+        for bs in blocks:
+            assert bs.exec_stats is not None, phase
+            assert bs.exec_stats.task_idx is not None, phase
+        assert (
+            sum(bs.exec_stats.end_time_s - bs.exec_stats.start_time_s for bs in blocks)
+            > 0
+        ), phase
 
 
 if __name__ == "__main__":

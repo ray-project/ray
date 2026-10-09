@@ -4,12 +4,13 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
-COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch ./
+COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch \
+    python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch ./
 COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.27.0"
+ARG VLLM_SCRIPTS_REF="v0.31.0"
 
 # Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile. This is
 # DeepEP V2 ("NCCL Gin"), which needs NCCL >= 2.30.4 at build and run time;
@@ -47,6 +48,7 @@ uv pip install --system --no-cache-dir --no-deps \
 # reloads a torch.compile artifact built for a different physical GPU.
 # TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/vllm-device-aware-compile-cache.patch"
+VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH="$(pwd)/vllm-preserve-model-eos-tokens.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -70,6 +72,8 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+    # TODO (jeffreywang): Remove this patch when https://github.com/vllm-project/vllm/pull/52153 is merged.
+    git apply "${VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH}"
 )
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
@@ -94,9 +98,6 @@ export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
     bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
-
-# Install DeepGEMM
-curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
 
 # DeepEP V2 links against NCCL's GIN API, so a downgrade slipped in by one of the
 # scripts above breaks it at runtime even when the build succeeded. Fail here
