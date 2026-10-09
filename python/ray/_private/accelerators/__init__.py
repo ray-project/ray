@@ -6,6 +6,7 @@ from ray._private.accelerators.accelerator import (
 )
 from ray._private.accelerators.amd_gpu import AMDGPUAcceleratorManager
 from ray._private.accelerators.apple_gpu import AppleGPUAcceleratorManager
+from ray._private.accelerators.biren_gpu import BirenGPUAcceleratorManager
 from ray._private.accelerators.furiosa import FuriosaAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
 from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
@@ -15,7 +16,6 @@ from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.npu import NPUAcceleratorManager
 from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
 from ray._private.accelerators.rbln import RBLNAcceleratorManager
-from ray._private.accelerators.biren_gpu import BirenGPUAcceleratorManager
 from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.accelerators.ttnpu import TTNPUAcceleratorManager
 
