@@ -429,6 +429,9 @@ exclude_patterns = [
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
     "serve/tutorials/video-analysis/*.ipynb",
+    # Unpublished until the example is rebuilt on current diffusers. A
+    # temporary redirect in doc/redirects/current.yaml covers the old URL.
+    "train/examples/pytorch/dreambooth-finetuning.md",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",

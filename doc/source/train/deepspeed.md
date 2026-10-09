@@ -116,20 +116,6 @@ See this step-by-step guide for how to fine-tune large language models (LLMs) wi
 
 Many deep learning frameworks have integrated with DeepSpeed, including Lightning, Transformers, Accelerate, and more. You can run all these combinations in Ray Train.
 
-Check the below examples for more details:
-
-```{list-table}
-:header-rows: 1
-
-* - Framework
-  - Example
-* - Accelerate ({ref}`User Guide <train-hf-accelerate>`)
-  - [Fine-tune Llama-2 series models with DeepSpeed, Accelerate, and Ray Train.](https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed)
-* - Transformers ({ref}`User Guide <train-pytorch-transformers>`)
-  - {doc}`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj-deepspeed-fine-tuning>`
-* - Lightning ({ref}`User Guide <train-pytorch-lightning>`)
-  - {doc}`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <examples/lightning/vicuna-13b-lightning-deepspeed-finetune>`
-```
-
+To get started with each framework, see the {ref}`Accelerate <train-hf-accelerate>`, {ref}`Transformers <train-pytorch-transformers>`, and {ref}`Lightning <train-pytorch-lightning>` user guides.
 
 For more information about DeepSpeed configuration options, refer to the [official DeepSpeed documentation](https://www.deepspeed.ai/docs/config-json/).
