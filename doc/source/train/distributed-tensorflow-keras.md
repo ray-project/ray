@@ -115,9 +115,9 @@ trainer.fit()
 
 By default, TensorFlow uses its own internal dataset sharding policy, as the [dataset sharding section](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#dataset_sharding) of TensorFlow's multi-worker tutorial describes. If your TensorFlow dataset is compatible with distributed loading, you don't need to change anything.
 
-For more advanced preprocessing, use Ray Data for distributed data ingest. See {ref}`Ray Data with Ray Train <data-ingest-torch>`.
+For more advanced preprocessing, consider using Ray Data for distributed data ingest. See {ref}`Ray Data with Ray Train <data-ingest-torch>`.
 
-The main difference is that, to use the Keras API for model training, you convert your Ray Data dataset shard to a TensorFlow dataset in your training function.
+The main difference is that, to use the Keras API for model training, you might want to convert your Ray Data dataset shard to a TensorFlow dataset in your training function.
 
 For distributed data loading, see the [TensorFlow autoencoder example](https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tensorflow_autoencoder_example.py). The following code shows the relevant parts:
 
@@ -183,7 +183,7 @@ This callback automatically forwards all results and checkpoints from the Keras 
 
 ### Aggregate results
 
-TensorFlow Keras automatically aggregates metrics from all workers. For more control over aggregation, implement a [custom training loop](https://www.tensorflow.org/tutorials/distribute/custom_training).
+TensorFlow Keras automatically aggregates metrics from all workers. For more control over aggregation, consider implementing a [custom training loop](https://www.tensorflow.org/tutorials/distribute/custom_training).
 
 
 ## Save and load checkpoints

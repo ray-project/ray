@@ -10,7 +10,7 @@ myst:
 
 # Ray Train overview
 
-To use Ray Train, understand the following four concepts:
+To use Ray Train effectively, understand the following four main concepts:
 
 * {ref}`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 * {ref}`Worker <train-overview-worker>`: A process that runs the training function.
