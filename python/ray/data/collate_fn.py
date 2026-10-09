@@ -152,7 +152,7 @@ TensorBatchReturnType = Union[
 
 
 @DeveloperAPI
-class CollateFn(Generic[DataBatchType]):
+class CollateFn(abc.ABC, Generic[DataBatchType]):
     """Abstract interface for collate_fn for `iter_torch_batches`. See doc-string of
     `collate_fn` in `iter_torch_batches` API for more details.
     """
