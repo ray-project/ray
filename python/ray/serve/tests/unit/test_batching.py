@@ -950,7 +950,7 @@ async def test_batch_size_fn_rejects_omitted_default_without_killing_worker(
     assert await asyncio.wait_for(invoke("valid"), timeout=1) == "valid"
     with pytest.raises(
         TypeError,
-        match="requires an input value to pass to `batch_size_fn`",
+        match="pass the handler's first input parameter as the first argument",
     ):
         await asyncio.wait_for(invoke(), timeout=1)
 
@@ -960,7 +960,56 @@ async def test_batch_size_fn_rejects_omitted_default_without_killing_worker(
 
 
 @pytest.mark.asyncio
-async def test_batch_size_fn_rejects_keywords_for_multi_input_handler() -> None:
+@pytest.mark.parametrize("use_var_keyword", [False, True])
+async def test_batch_size_fn_sizes_first_input_with_other_keywords(
+    use_var_keyword: bool,
+) -> None:
+    batch_size_fn_calls = []
+
+    def batch_size_fn(items: List[str]) -> int:
+        batch_size_fn_calls.append(items)
+        return sum(len(item) for item in items)
+
+    batch_decorator = serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=batch_size_fn,
+    )
+
+    if use_var_keyword:
+
+        @batch_decorator
+        async def func(items: List[str], **extra: List[str]) -> List[str]:
+            return [f"{item}:{tag}" for item, tag in zip(items, extra["tag"])]
+
+    else:
+
+        @batch_decorator
+        async def func(items: List[str], *, tag: List[str]) -> List[str]:
+            return [f"{item}:{item_tag}" for item, item_tag in zip(items, tag)]
+
+    # The batch only fills if `batch_size_fn` sizes `items` rather than `tag`.
+    results = await asyncio.wait_for(
+        asyncio.gather(func("ab", tag="t1"), func(items="cde", tag="t2")),
+        timeout=1,
+    )
+    assert results == ["ab:t1", "cde:t2"]
+    assert batch_size_fn_calls[-1] == ["ab", "cde"]
+
+    calls_before_invalid_request = len(batch_size_fn_calls)
+    with pytest.raises(
+        TypeError,
+        match="pass the handler's first input parameter as the first argument",
+    ):
+        await asyncio.wait_for(func(tag="t", items="x" * 20), timeout=1)
+
+    assert len(batch_size_fn_calls) == calls_before_invalid_request
+    assert await asyncio.wait_for(func("abcde", tag="t"), timeout=1) == "abcde:t"
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_rejects_var_positional_with_many_values() -> None:
     batch_size_fn_calls = []
 
     def batch_size_fn(items: List[str]) -> int:
@@ -972,28 +1021,16 @@ async def test_batch_size_fn_rejects_keywords_for_multi_input_handler() -> None:
         batch_wait_timeout_s=0,
         batch_size_fn=batch_size_fn,
     )
-    async def func(items: List[str], tag: List[str]) -> List[str]:
-        return [f"{item}:{item_tag}" for item, item_tag in zip(items, tag)]
+    async def func(*values: List[str]) -> List[str]:
+        return values[0]
 
-    # Preserve the existing multi-input positional behavior: batch_size_fn sizes
-    # each request using the first positional input.
-    assert await asyncio.wait_for(func("ok", "positional"), timeout=1) == (
-        "ok:positional"
-    )
+    assert await asyncio.wait_for(func("ab"), timeout=1) == "ab"
 
-    calls_before_invalid_request = list(batch_size_fn_calls)
-    with pytest.raises(
-        TypeError,
-        match="keyword arguments are only supported for batch handlers with a "
-        "single input parameter",
-    ):
-        # Put the second parameter first to exercise flattened keyword ordering.
-        await asyncio.wait_for(func(tag="t", items="x" * 20), timeout=1)
+    calls_before_invalid_request = len(batch_size_fn_calls)
+    with pytest.raises(TypeError, match=r"can't size `\*\*kwargs` or `\*args`"):
+        await asyncio.wait_for(func("ab", "cdefgh"), timeout=1)
 
-    assert batch_size_fn_calls == calls_before_invalid_request
-    assert await asyncio.wait_for(func("still-ok", "positional"), timeout=1) == (
-        "still-ok:positional"
-    )
+    assert len(batch_size_fn_calls) == calls_before_invalid_request
     assert await func._is_batching_task_alive()
 
 
@@ -1031,10 +1068,7 @@ async def test_batch_size_fn_rejects_variadic_keyword_handler(
         func = batch_decorator(unary_func)
 
     assert await func._is_batching_task_alive()
-    with pytest.raises(
-        TypeError,
-        match="variadic keyword parameters are not supported",
-    ):
+    with pytest.raises(TypeError, match=r"can't size `\*\*kwargs` or `\*args`"):
         await asyncio.wait_for(func(**kwargs), timeout=1)
 
     assert batch_size_fn_calls == []

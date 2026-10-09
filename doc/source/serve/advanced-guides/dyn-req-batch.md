@@ -64,15 +64,13 @@ By default, Ray Serve measures batch size as the number of items in the batch (`
 
 Use the `batch_size_fn` parameter to define a custom metric for batch size.
 
-For a handler with a single input parameter, you can pass each item positionally
-or by keyword. For example, `await handler(text)` and
-`await handler(items=text)` both pass `text` to the sizing function when the
-handler's parameter is named `items`. Keyword-only input parameters are also
-supported. The sizing function receives a list of the input values, regardless
-of the call style. For handlers with multiple input parameters, pass all inputs
-positionally; keyword arguments are rejected because their ordering is not
-well-defined across a batch. Variadic keyword parameters (`**kwargs`) are not
-supported with custom batch sizing.
+The sizing function receives a list with each request's value for the handler's
+first input parameter. Pass that value as the first argument, positionally or by
+keyword. For example, with `async def handler(self, items, *, tag)`, both
+`await handler(text, tag="t")` and `await handler(items=text, tag="t")` pass
+`text` to the sizing function. Serve rejects a call that omits the first input
+or passes another keyword argument before it. A first input parameter of
+`**kwargs`, or of `*args` with more than one value, isn't supported.
 
 ### Graph Neural Network example
 

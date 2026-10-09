@@ -25,7 +25,12 @@ from typing import (
 )
 
 from ray import serve
-from ray._common.signature import extract_signature, flatten_args, recover_args
+from ray._common.signature import (
+    DUMMY_TYPE,
+    extract_signature,
+    flatten_args,
+    recover_args,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
     BATCH_EXECUTION_TIME_BUCKETS_MS,
@@ -112,6 +117,29 @@ def _batch_args_kwargs(
             )
 
     return recover_args(batched_flattened_args)
+
+
+def _is_first_input_value(
+    input_parameters: List[Parameter], flattened_args: List[Any]
+) -> bool:
+    """Whether the first flattened value is the whole first input parameter.
+
+    `batch_size_fn` sizes `flattened_args[1]`, so it must be the only value
+    bound to the handler's first input parameter.
+    """
+    if not input_parameters or not flattened_args:
+        return False
+
+    first_parameter = input_parameters[0]
+    if first_parameter.kind == Parameter.VAR_KEYWORD:
+        return False
+    if flattened_args[0] != DUMMY_TYPE:
+        return flattened_args[0] == first_parameter.name
+    if first_parameter.kind == Parameter.VAR_POSITIONAL:
+        # `*args` holds every positional value, so it must get exactly one.
+        args, _ = recover_args(flattened_args)
+        return len(args) == 1
+    return True
 
 
 class _BatchQueue:
@@ -240,7 +268,7 @@ class _BatchQueue:
             return len(batch)
 
         # Flattened arguments alternate names and values, with `self` already
-        # removed. The first value is the item for either positional or keyword calls.
+        # removed. `enqueue_request` ensures the first value is the first input.
         items = [request.flattened_args[1] for request in batch]
         return self.batch_size_fn(items)
 
@@ -954,28 +982,12 @@ def batch(
                     if self is not None
                     else signature_parameters
                 )
-                if not flattened_args:
+                if not _is_first_input_value(input_parameters, flattened_args):
                     raise TypeError(
-                        "A batch handler using `batch_size_fn` requires an input "
-                        "value to pass to `batch_size_fn`."
-                    )
-
-                _, keyword_args = recover_args(flattened_args)
-                if keyword_args and any(
-                    parameter.kind == Parameter.VAR_KEYWORD
-                    for parameter in input_parameters
-                ):
-                    raise TypeError(
-                        "When using `batch_size_fn`, variadic keyword parameters "
-                        "are not supported. Use an explicit single input parameter "
-                        "or pass multiple inputs positionally instead."
-                    )
-
-                if len(input_parameters) > 1 and keyword_args:
-                    raise TypeError(
-                        "When using `batch_size_fn`, keyword arguments are only "
-                        "supported for batch handlers with a single input parameter. "
-                        "Pass all arguments positionally instead."
+                        "When using `batch_size_fn`, pass the handler's first input "
+                        "parameter as the first argument, positionally or by "
+                        "keyword. `batch_size_fn` can't size `**kwargs` or `*args` "
+                        "with more than one value."
                     )
 
             batch_queue = lazy_batch_queue_wrapper.queue
