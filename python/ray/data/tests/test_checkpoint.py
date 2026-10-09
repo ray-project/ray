@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+import shutil
 from types import SimpleNamespace
 from typing import List, Literal, Union
 
@@ -33,7 +34,9 @@ from ray.data._internal.planner.checkpoint.plan_write_op import (
     WRITE_UUID_KWARG_NAME,
     _generate_base_filename,
     _generate_prepare_checkpoint_transform,
+    _generate_write_fn_skipping_committed,
 )
+from ray.data._internal.planner.plan_write_op import generate_write_fn
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import (
@@ -43,6 +46,7 @@ from ray.data.checkpoint.checkpoint_filter import (
 from ray.data.checkpoint.checkpoint_writer import (
     PENDING_CHECKPOINT_SUFFIX,
     BatchBasedCheckpointWriter,
+    CheckpointWriter,
 )
 from ray.data.checkpoint.interfaces import (
     CheckpointBackend,
@@ -1314,6 +1318,110 @@ def test_clean_pending_checkpoint_with_partitioned_data(
     assert fs.get_file_info(pending.pending_path).type == FileType.NotFound
 
 
+@pytest.mark.parametrize(
+    "fs,base_path",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+    ids=["local", "s3"],
+)
+def test_clean_pending_checkpoint_keeps_committed_task_data(
+    ray_start_10_cpus_shared, fs, base_path
+):
+    """Test that cleanup keeps the data files of a committed task.
+
+    A pending checkpoint can sit next to a committed one for the same task:
+    a retry of the committed task can stop after writing its pending
+    checkpoint, and on S3 the commit's move is a copy followed by a delete.
+    The committed task's IDs filter its rows out of the rerun, so its data
+    files must be kept. A task with only a pending checkpoint still loses its
+    data files.
+    """
+    ctx = ray.data.DataContext.get_current()
+    checkpoint_path = os.path.join(base_path, "checkpoint")
+    data_dir = os.path.join(base_path, "data")
+    for p in [checkpoint_path, data_dir]:
+        fs.create_dir(_unwrap_protocol(p))
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+        override_filesystem=fs,
+    )
+    writer = BatchBasedCheckpointWriter(ctx.checkpoint_config)
+
+    def write_data_file(checkpoint_id: str) -> str:
+        path = os.path.join(_unwrap_protocol(data_dir), f"{checkpoint_id}.csv")
+        with fs.open_output_stream(path) as f:
+            f.write(b"id\n0\n")
+        return path
+
+    # Task 0 committed. A retry of it then wrote a new pending checkpoint.
+    committed = writer.write_pending_checkpoint(pa.array([0]), checkpoint_id="w_000000")
+    committed_data_file = write_data_file("w_000000")
+    writer.commit_checkpoint(committed)
+    writer.write_pending_checkpoint(pa.array([0]), checkpoint_id="w_000000")
+
+    # Task 1 never committed.
+    uncommitted = writer.write_pending_checkpoint(
+        pa.array([1]), checkpoint_id="w_000001"
+    )
+    uncommitted_data_file = write_data_file("w_000001")
+
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
+    checkpoint_manager._clean_pending_checkpoints(data_dir, fs)
+
+    assert fs.get_file_info(committed_data_file).type != FileType.NotFound
+    assert fs.get_file_info(committed.committed_path).type != FileType.NotFound
+    assert fs.get_file_info(committed.pending_path).type == FileType.NotFound
+    assert fs.get_file_info(uncommitted_data_file).type == FileType.NotFound
+    assert fs.get_file_info(uncommitted.pending_path).type == FileType.NotFound
+
+
+@pytest.mark.parametrize("longer_id_committed", [True, False])
+def test_clean_pending_checkpoint_matches_longest_task_prefix(
+    ray_start_10_cpus_shared, tmp_path, longer_id_committed
+):
+    """Test that cleanup matches each data file to the task that wrote it.
+
+    Task indices are padded to 6 digits, so task 100000's checkpoint ID
+    ("w_100000") is a prefix of task 1000000's ID ("w_1000000") and of that
+    task's file names. Each data file belongs to the longest checkpoint ID
+    that prefixes its name.
+    """
+    ctx = ray.data.DataContext.get_current()
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
+    data_dir = os.path.join(tmp_path, "data")
+    os.makedirs(data_dir)
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+    )
+    writer = BatchBasedCheckpointWriter(ctx.checkpoint_config)
+
+    shorter_id, longer_id = "w_100000", "w_1000000"
+    writer.write_pending_checkpoint(pa.array([0]), checkpoint_id=shorter_id)
+    longer = writer.write_pending_checkpoint(pa.array([1]), checkpoint_id=longer_id)
+    if longer_id_committed:
+        writer.commit_checkpoint(longer)
+
+    shorter_data_file = os.path.join(data_dir, f"{shorter_id}.csv")
+    longer_data_file = os.path.join(data_dir, f"{longer_id}.csv")
+    for path in [shorter_data_file, longer_data_file]:
+        with open(path, "w") as f:
+            f.write("id\n0\n")
+
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
+    checkpoint_manager._clean_pending_checkpoints(data_dir)
+
+    assert not os.path.exists(shorter_data_file)
+    assert os.path.exists(longer_data_file) == longer_id_committed
+
+
 def test_clean_pending_checkpoints_nonexistent_path(ray_start_10_cpus_shared, tmp_path):
     """Test that _clean_pending_checkpoints handles a non-existent checkpoint dir.
 
@@ -1384,6 +1492,54 @@ def test_prepare_checkpoint_transform_writes_pending(tmp_path):
     # Verify pending checkpoint filename matches the base filename
     base_filename = _generate_base_filename(datasink, ctx_task)
     assert pending_files[0] == f"{base_filename}{PENDING_CHECKPOINT_SUFFIX}.parquet"
+
+
+def test_write_skips_task_committed_by_earlier_attempt(tmp_path):
+    """Test that a retried write task leaves committed output unchanged.
+
+    If Ray retries a write task after an earlier attempt committed its
+    checkpoint (for example, because the worker died before the task
+    finished), the task must not write a new pending checkpoint or rewrite its
+    data files. It passes its blocks through so write stats stay correct.
+    """
+
+    class CSVDatasink(BlockBasedFileDatasink):
+        def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+            block.to_pandas().to_csv(file, index=False)
+
+    ctx = ray.data.DataContext.get_current()
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
+    data_output_path = os.path.join(tmp_path, "output")
+    os.makedirs(data_output_path)
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    datasink = CSVDatasink(data_output_path, file_format="csv")
+    checkpoint_writer = BatchBasedCheckpointWriter(ctx.checkpoint_config)
+    prepare = _generate_prepare_checkpoint_transform(ctx, datasink, checkpoint_writer)
+    write = _generate_write_fn_skipping_committed(generate_write_fn(datasink))
+
+    task_ctx = TaskContext(task_idx=0, op_name="test")
+    task_ctx.kwargs[WRITE_UUID_KWARG_NAME] = "test-write-uuid"
+    base_filename = _generate_base_filename(datasink, task_ctx)
+
+    # An earlier attempt of this task committed its checkpoint.
+    assert not checkpoint_writer.is_committed(base_filename)
+    pending = checkpoint_writer.write_pending_checkpoint(
+        pa.array([0]), checkpoint_id=base_filename
+    )
+    checkpoint_writer.commit_checkpoint(pending)
+    assert checkpoint_writer.is_committed(base_filename)
+
+    df = pd.DataFrame({ID_COL: [0], "col1": [0.1]})
+    output = list(write(prepare._apply_transform(task_ctx, [df]), task_ctx))
+
+    assert len(output) == 1 and output[0].equals(df)
+    assert os.listdir(checkpoint_path) == [f"{base_filename}.parquet"]
+    assert os.listdir(data_output_path) == []
 
 
 def test_2pc_fail_retry_cleans_pending_checkpoints(
@@ -1472,6 +1628,115 @@ def test_2pc_fail_retry_cleans_pending_checkpoints(
     actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
     expected_output = sorted(range(SAMPLE_DATA_NUM_ROWS))
     assert actual_output == expected_output
+
+
+def test_retry_of_committed_write_task_keeps_output(
+    ray_start_10_cpus_shared, tmp_path, monkeypatch
+):
+    """Test that a write task retried after its commit keeps its output.
+
+    Write task 0 commits its checkpoint, then its worker dies before the task
+    finishes, so Ray retries the task. The retry must not write a new pending
+    checkpoint or rewrite the data. Otherwise, if the retry also failed, a
+    restart would delete the committed data files while the committed IDs
+    still filter those rows out.
+    """
+    ctx = ray.data.DataContext.get_current()
+    ctx.raise_original_map_exception = True
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
+    data_output_path = os.path.join(tmp_path, "output")
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+    )
+    # Task 0's first attempt creates this file right after it commits.
+    committed_marker = os.path.join(tmp_path, "task_0_committed")
+
+    class DieAfterFirstCommitWriter(BatchBasedCheckpointWriter):
+        def commit_checkpoint(self, pending):
+            BatchBasedCheckpointWriter.commit_checkpoint(self, pending)
+            if pending.committed_path.endswith("_000000.parquet") and not (
+                os.path.exists(committed_marker)
+            ):
+                open(committed_marker, "w").close()
+                os._exit(1)
+
+    class FailOnRewriteCSVDatasink(BlockBasedFileDatasink):
+        def write_block(self, block, block_index, task_ctx):
+            if task_ctx.task_idx == 0 and os.path.exists(committed_marker):
+                raise RuntimeError("The retry rewrote committed output")
+            BlockBasedFileDatasink.write_block(self, block, block_index, task_ctx)
+
+        def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+            block.to_pandas().to_csv(file, index=False)
+
+    monkeypatch.setattr(
+        CheckpointWriter,
+        "create",
+        staticmethod(lambda config: DieAfterFirstCommitWriter(config)),
+    )
+    ray.data.range(SAMPLE_DATA_NUM_ROWS, override_num_blocks=2).write_datasink(
+        FailOnRewriteCSVDatasink(data_output_path, file_format="csv")
+    )
+
+    assert os.path.exists(committed_marker), "Task 0's worker should have died."
+    assert not [
+        f
+        for f in os.listdir(checkpoint_path)
+        if f.endswith(f"{PENDING_CHECKPOINT_SUFFIX}.parquet")
+    ]
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_csv(data_output_path)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    assert actual_output == list(range(SAMPLE_DATA_NUM_ROWS))
+
+
+def test_restart_keeps_committed_task_with_leftover_pending_checkpoint(
+    ray_start_10_cpus_shared, tmp_path
+):
+    """Test that a restart keeps every row when a commit stopped halfway.
+
+    On S3, committing a checkpoint is a copy followed by a delete. If the job
+    stops between the two, both the committed and the pending checkpoint
+    exist. The restart must treat the task as committed and keep its data
+    files, so every row is written exactly once.
+    """
+    ctx = ray.data.DataContext.get_current()
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
+    data_output_path = os.path.join(tmp_path, "output")
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+    )
+    ds = ray.data.range(SAMPLE_DATA_NUM_ROWS, override_num_blocks=2)
+    ds.write_csv(data_output_path)
+
+    # Recreate one pending checkpoint, as if the delete half of its move
+    # never ran.
+    committed_file = sorted(os.listdir(checkpoint_path))[0]
+    checkpoint_id = committed_file[: -len(".parquet")]
+    shutil.copy(
+        os.path.join(checkpoint_path, committed_file),
+        os.path.join(
+            checkpoint_path, f"{checkpoint_id}{PENDING_CHECKPOINT_SUFFIX}.parquet"
+        ),
+    )
+
+    # Restart the same pipeline.
+    ds = ray.data.range(SAMPLE_DATA_NUM_ROWS, override_num_blocks=2)
+    ds.write_csv(data_output_path)
+
+    assert not [
+        f
+        for f in os.listdir(checkpoint_path)
+        if f.endswith(f"{PENDING_CHECKPOINT_SUFFIX}.parquet")
+    ]
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_csv(data_output_path)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    assert actual_output == list(range(SAMPLE_DATA_NUM_ROWS))
 
 
 @pytest.mark.parametrize(

@@ -45,6 +45,7 @@ class CheckpointWriter:
     For 2-phase commit support, subclasses should also implement:
     - `.write_pending_checkpoint()`: Write checkpoint as pending file
     - `.commit_checkpoint()`: Rename pending to committed
+    - `.is_committed()`: Check whether a checkpoint is already committed
     """
 
     def __init__(self, config: CheckpointConfig):
@@ -105,6 +106,25 @@ class CheckpointWriter:
 
         Args:
             pending: The PendingCheckpoint to commit.
+        """
+        raise NotImplementedError(
+            "2-phase commit not implemented for this checkpoint writer"
+        )
+
+    def is_committed(self, checkpoint_id: str) -> bool:
+        """Check whether the checkpoint for `checkpoint_id` is committed.
+
+        A write task calls this BEFORE writing anything. If an earlier attempt
+        of the same task already committed (for example, Ray retried the task
+        because its worker died after the commit), the task's data files are
+        final and must not be written again.
+
+        Args:
+            checkpoint_id: Deterministic identifier for the checkpoint file,
+                derived from write_uuid and task_idx.
+
+        Returns:
+            True if the committed checkpoint file exists.
         """
         raise NotImplementedError(
             "2-phase commit not implemented for this checkpoint writer"
@@ -193,6 +213,28 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
             logger.exception(f"Checkpoint write failed: {file_name}")
             raise
 
+    def _pending_path(self, checkpoint_id: str) -> str:
+        return os.path.join(
+            self.checkpoint_path_unwrapped,
+            f"{checkpoint_id}{PENDING_CHECKPOINT_SUFFIX}.parquet",
+        )
+
+    def _committed_path(self, checkpoint_id: str) -> str:
+        return os.path.join(self.checkpoint_path_unwrapped, f"{checkpoint_id}.parquet")
+
+    def is_committed(self, checkpoint_id: str) -> bool:
+        committed_path = self._committed_path(checkpoint_id)
+
+        def _exists() -> bool:
+            file_info = self.filesystem.get_file_info(committed_path)
+            return file_info.type != FileType.NotFound
+
+        return call_with_retry(
+            _exists,
+            description=f"Check committed checkpoint: {committed_path}",
+            match=DataContext.get_current().retried_io_errors,
+        )
+
     def write_pending_checkpoint(
         self,
         id_column_data,
@@ -200,13 +242,8 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
     ) -> Optional[PendingCheckpoint]:
         if len(id_column_data) == 0:
             return None
-        pending_file_name = f"{checkpoint_id}{PENDING_CHECKPOINT_SUFFIX}.parquet"
-        committed_file_name = f"{checkpoint_id}.parquet"
-
-        pending_path = os.path.join(self.checkpoint_path_unwrapped, pending_file_name)
-        committed_path = os.path.join(
-            self.checkpoint_path_unwrapped, committed_file_name
-        )
+        pending_path = self._pending_path(checkpoint_id)
+        committed_path = self._committed_path(checkpoint_id)
 
         checkpoint_ids_table = self._prepare_checkpoint_table_from_id_column(
             id_column_data
@@ -221,7 +258,7 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
 
         call_with_retry(
             _write,
-            description=f"Write pending checkpoint file: {pending_file_name}",
+            description=f"Write pending checkpoint file: {pending_path}",
             match=DataContext.get_current().retried_io_errors,
         )
         return PendingCheckpoint(
@@ -238,6 +275,12 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
         (and pending doesn't), it's considered already committed. This handles
         the case where a retry happens after successful commit (e.g., network
         timeout after move succeeded but before acknowledgment).
+
+        The move is not atomic on every filesystem. On S3, for example, it is
+        a copy followed by a delete, so a failure between the two leaves the
+        pending file next to the committed one. Once the committed file
+        exists, the checkpoint counts as committed: this method deletes a
+        leftover pending file, and recovery keeps the task's data files.
 
         Args:
             pending: The PendingCheckpoint to commit.
