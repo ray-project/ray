@@ -833,6 +833,12 @@ redirects:
 - from: /ray-air/examples/*
   to: /ray-overview/examples.html
   type: page
+- from: /ray-air/getting-started.html
+  to: /ray-overview/ml-infrastructure.html
+  type: page
+- from: /ray-air/deployment.html
+  to: /ray-overview/ml-infrastructure.html#deploying-ray-for-ml-platforms
+  type: page
 - from: /ray-air/*
   to: /ray-air/getting-started.html
   type: page

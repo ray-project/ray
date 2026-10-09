@@ -100,7 +100,7 @@ Ray Clusters
 :::
 ::::
 
-Each of [Ray's](../ray-air/getting-started) five native libraries distributes a specific ML task:
+Each of [Ray's](ml-infrastructure) five native libraries distributes a specific ML task:
 - [Data](../data/index): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
 - [Train](../train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
 - [Tune](../tune/index): Scalable hyperparameter tuning to optimize model performance.

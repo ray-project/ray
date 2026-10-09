@@ -140,8 +140,6 @@ llms_txt_exclude = [
     # than omitting it — the agent may follow the old API. (DOC-908)
     "train/api/deprecated",
     "train/deprecated-user-guides/*",
-    # Retired Ray AIR namespace: orphaned, no longer in the site nav.
-    "ray-air/deployment",
     # Include-only fragments spliced into other pages (no standalone title).
     "train/common/*",
     "ray-contribute/involvement",
