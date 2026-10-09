@@ -1,0 +1,21 @@
+# NOTE: performance decreases are related to enabling reference counting and
+# pinning by default for objects passed using the ray API. 'single client get'
+# results dropped because we are no longer keeping a buffer reference in object
+# IDs for ray.put() objects. This shouldn't have a large impact on applications
+# and will be fixed in the future by caching buffers after the first ray.get()
+# on each object ID.
+
+single client get calls (Plasma Store) per second 12550.57 +- 1835.19
+single client put calls (Plasma Store) per second 6791.78 +- 176.65
+single client put gigabytes per second 13.36 +- 5.7
+multi client put calls (Plasma Store) per second 13503.59 +- 179.1
+multi client put gigabytes per second 16.22 +- 1.36
+single client tasks sync per second 1295.56 +- 42.81
+single client tasks async per second 14825.7 +- 358.92
+multi client tasks async per second 43699.93 +- 627.98
+1:1 actor calls sync per second 2194.35 +- 57.18
+1:1 actor calls async per second 6873.68 +- 87.3
+1:1 actor calls concurrent per second 7285.91 +- 50.57
+1:n actor calls async per second 13290.25 +- 140.2
+n:n actor calls async per second 45354.88 +- 678.84
+n:n actor calls with arg async per second 13668.97 +- 105.62

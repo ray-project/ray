@@ -1,0 +1,13 @@
+# Single-node compute config for Ray Data LLM baseline benchmark
+# Instance: g6.xlarge (1x NVIDIA L4 GPU, 24GB VRAM)
+
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.large
+
+worker_nodes:
+    - instance_type: g6.xlarge
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND

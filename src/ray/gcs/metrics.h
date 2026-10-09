@@ -1,0 +1,259 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include "ray/observability/metrics.h"
+#include "ray/stats/metric.h"
+
+namespace ray {
+namespace gcs {
+
+struct GcsServerMetrics {
+  ray::observability::MetricInterface &actor_by_state_gauge;
+  ray::observability::MetricInterface &gcs_actor_by_state_gauge;
+  ray::observability::MetricInterface &running_job_gauge;
+  ray::observability::MetricInterface &finished_job_counter;
+  ray::observability::MetricInterface &job_duration_in_seconds_gauge;
+  ray::observability::MetricInterface &placement_group_gauge;
+  ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram;
+  ray::observability::MetricInterface &placement_group_scheduling_latency_in_ms_histogram;
+  ray::observability::MetricInterface &placement_group_count_gauge;
+  ray::observability::MetricInterface &task_events_reported_gauge;
+  ray::observability::MetricInterface &task_events_dropped_gauge;
+  ray::observability::MetricInterface &task_events_stored_gauge;
+  ray::observability::MetricInterface &event_recorder_dropped_events_counter;
+  ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram;
+  ray::observability::MetricInterface &storage_operation_count_counter;
+  ray::observability::MetricInterface &redis_request_payload_bytes_sum;
+  ray::observability::MetricInterface &redis_response_payload_bytes_sum;
+  ray::observability::MetricInterface &redis_command_count_counter;
+  ray::observability::MetricInterface &resource_usage_gauge;
+  ray::observability::MetricInterface &scheduler_placement_time_ms_histogram;
+  ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram;
+  ray::observability::MetricInterface &io_context_monitor_latency_ms_gauge;
+  ray::observability::MetricInterface &io_context_monitor_unhealthy_counter;
+};
+
+inline ray::stats::Gauge GetRunningJobGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"running_jobs",
+      /*description=*/"Number of jobs currently running.",
+      /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Count GetFinishedJobCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"finished_jobs",
+      /*description=*/"Number of jobs finished.",
+      /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetJobDurationInSecondsGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"job_duration_s",
+      /*description=*/"Duration of jobs finished in seconds.",
+      /*unit=*/"",
+      /*tag_keys=*/{"JobId"},
+  };
+}
+
+inline ray::stats::Gauge GetPlacementGroupGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"placement_groups",
+      /*description=*/"Number of placement groups broken down by state.",
+      /*unit=*/"",
+      // State: from rpc::PlacementGroupData::PlacementGroupState.
+      /*tag_keys=*/{"State", "Source"},
+  };
+}
+
+inline ray::stats::Histogram GetPlacementGroupCreationLatencyInMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"gcs_placement_group_creation_latency_ms",
+      /*description=*/"end to end latency of placement group creation",
+      /*unit=*/"",
+      /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Histogram GetPlacementGroupSchedulingLatencyInMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"gcs_placement_group_scheduling_latency_ms",
+      /*description=*/"scheduling latency of placement groups",
+      /*unit=*/"",
+      /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetPlacementGroupCountGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_placement_group_count",
+      /*description=*/
+      "Number of placement groups broken down by state in {Registered, Pending, "
+      "Infeasible}",
+      /*unit=*/"",
+      /*tag_keys=*/{"State"},
+  };
+}
+
+inline ray::stats::Gauge GetTaskManagerTaskEventsReportedGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_task_manager_task_events_reported",
+      /*description=*/"Number of all task events reported to gcs.",
+      /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetTaskManagerTaskEventsDroppedGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_task_manager_task_events_dropped",
+      /*description=*/
+      "Number of task events dropped per type {PROFILE_EVENT, STATUS_EVENT}",
+      /*unit=*/"",
+      /*tag_keys=*/{"Type"},
+  };
+}
+
+inline ray::stats::Gauge GetTaskManagerTaskEventsStoredGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_task_manager_task_events_stored",
+      /*description=*/"Number of task events stored in GCS.",
+      /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetGcsActorByStateGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"gcs_actors_count",
+      /*description=*/
+      "Number of actors per state {Created, Destroyed, Unresolved, Pending}",
+      /*unit=*/"",
+      /*tag_keys=*/{"State"},
+  };
+}
+
+inline ray::stats::Histogram GetGcsStorageOperationLatencyInMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"gcs_storage_operation_latency_ms",
+      /*description=*/"Time to invoke an operation on Gcs storage",
+      /*unit=*/"",
+      /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"Operation"},
+  };
+}
+
+inline ray::stats::Count GetGcsStorageOperationCountCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"gcs_storage_operation_count",
+      /*description=*/"Number of operations invoked on Gcs storage",
+      /*unit=*/"",
+      /*tag_keys=*/{"Operation"},
+  };
+}
+
+// The payload definitions below are normative: they are what the metric means,
+// and tests assert exact deltas against them. "Payload" is always the
+// application data carried by RESP values, and never the RESP framing
+// ("*N\r\n", "$len\r\n", type prefixes, trailing CRLF), TLS records or TCP/IP
+// headers.
+// GCS values are not compressed anywhere between GcsTable::Put and the socket,
+// so compressed bytes do not arise. To reconcile with Redis' own
+// total_net_input_bytes, add framing: 3 + digits(nargs) per command plus
+// 5 + digits(len) per argument.
+
+inline ray::stats::Sum GetGcsRedisRequestPayloadBytesSumMetric() {
+  return ray::stats::Sum{
+      /*name=*/"gcs_redis_request_payload_bytes",
+      /*description=*/
+      "Bytes of Redis command arguments accepted for sending by the GCS Redis "
+      "client: the sum of the byte lengths of the RESP arguments, including the "
+      "command verb, the Redis key, hash field names and values. Excludes RESP "
+      "framing, TLS and TCP/IP overhead; GCS values are not compressed. Recorded "
+      "on the first successful submission of each logical command; retries are "
+      "not counted again.",
+      /*unit=*/"bytes",
+      /*tag_keys=*/{"Command", "TableName"},
+  };
+}
+
+inline ray::stats::Sum GetGcsRedisResponsePayloadBytesSumMetric() {
+  return ray::stats::Sum{
+      /*name=*/"gcs_redis_response_payload_bytes",
+      /*description=*/
+      "Bytes of Redis replies received by the GCS: the sum of the byte lengths "
+      "of every bulk string and status string in the reply, including the field "
+      "names returned by HSCAN. Integers count as their decimal text; nil replies "
+      "contribute zero. Excludes RESP framing, TLS and TCP/IP overhead. A reply "
+      "that comes back as an error is retried instead of delivered, and "
+      "contributes nothing at all -- error bytes are never counted here.",
+      /*unit=*/"bytes",
+      /*tag_keys=*/{"Command", "TableName"},
+  };
+}
+
+inline ray::stats::Count GetGcsRedisCommandCountCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"gcs_redis_command_count",
+      /*description=*/
+      "Number of logical Redis commands accepted for sending by the GCS Redis "
+      "client, broken down by command and table. Batched operations count once "
+      "per chunk and a table scan counts once per HSCAN command. Retries are not "
+      "counted again, so this is not a count of network round trips.",
+      /*unit=*/"",
+      /*tag_keys=*/{"Command", "TableName"},
+  };
+}
+
+inline ray::stats::Histogram GetHealthCheckRpcLatencyMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"health_check_rpc_latency_ms",
+      /*description=*/"Latency of rpc request for health check.",
+      /*unit=*/"",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Gauge GetIoContextMonitorLatencyMsGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"io_context_monitor_latency_ms",
+      /*description=*/
+      "Latency of the most recent probe on this io context.",
+      /*unit=*/"ms",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Count GetIoContextMonitorUnhealthyCountMetric() {
+  return ray::stats::Count{
+      /*name=*/"io_context_monitor_unhealthy_count",
+      /*description=*/
+      "Number of times this io_context was marked unhealthy by the io context monitor "
+      "(i.e. a probe exceeded the healthy deadline).",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+}  // namespace gcs
+}  // namespace ray

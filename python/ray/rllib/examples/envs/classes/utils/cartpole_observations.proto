@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+message CartPoleObservation {
+  double x_pos = 1;
+  double x_veloc = 2;
+  double angle_pos = 3;
+  double angle_veloc = 4;
+}

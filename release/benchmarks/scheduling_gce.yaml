@@ -1,0 +1,21 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones:
+    - us-west1-c
+
+head_node:
+    instance_type: n2-standard-16
+    resources:
+      # Assume the node has 64 CPU instead of 16.
+      # This should be fine since each task has little
+      # computation in scheduling tests.
+      CPU: 64
+      node: 1
+
+worker_nodes:
+    - instance_type: n2-standard-16
+      min_nodes: 31
+      max_nodes: 31
+      market_type: ON_DEMAND
+      resources:
+        CPU: 64
+        node: 1

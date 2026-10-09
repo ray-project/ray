@@ -1,0 +1,2 @@
+pymongoarrow==1.7.2
+pymongo>=4.4

@@ -1,0 +1,13 @@
+<!-- APIs-tab sidebar (Pattern B): a tiny container that loads ONE shared API nav
+     fragment (_static/api-nav.html) client-side, instead of server-rendering the
+     nav into every page. The fragment is generated once (see _ext/api_sidebar.py)
+     and hydrated/highlighted by _static/api-nav-loader.js. Reuses id="main-sidebar"
+     so it inherits Ray's #main-sidebar CSS. -->
+<nav id="main-sidebar" class="bd-docs-nav bd-links" aria-label="{{ _('APIs Navigation') }}">
+  <div id="api-nav-mount" class="bd-toc-item navbar-nav"
+       data-api-nav-url="{{ pathto('_static/api-nav.html', 1) }}"
+       data-pagename="{{ pagename }}">
+    <p class="api-nav-status">{{ _('Loading API navigation…') }}</p>
+  </div>
+</nav>
+<script src="{{ pathto('_static/api-nav-loader.js', 1) }}" defer></script>

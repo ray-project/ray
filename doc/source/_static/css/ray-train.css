@@ -1,0 +1,14 @@
+#train-logo > #train-logo-icon > path, #train-logo > #train-logo-icon > circle {
+  stroke: var(--ray-blue);
+  stroke-width: 10;
+  fill: transparent;
+}
+
+#train-logo > #train-logo-text {
+  stroke: var(--pst-color-text-base);
+  fill: var(--pst-color-text-base);
+}
+
+#train-logo {
+  margin: 3em 0em;
+}

@@ -1,0 +1,70 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
+
+enum AgentRpcStatus {
+  // OK.
+  AGENT_RPC_STATUS_OK = 0;
+  // Failed.
+  AGENT_RPC_STATUS_FAILED = 1;
+}
+
+message GetOrCreateRuntimeEnvRequest {
+  /// Json serialized [RuntimeEnv].
+  /// For details, checkout "//python/ray/runtime_env/runtime_env.py".
+  string serialized_runtime_env = 1;
+
+  RuntimeEnvConfig runtime_env_config = 2;
+  /// Hex format of [JobId].
+  /// For details, checkout "//src/ray/common/id.h".
+  bytes job_id = 3;
+  string source_process = 4;
+}
+
+message GetOrCreateRuntimeEnvReply {
+  AgentRpcStatus status = 1;
+  string error_message = 2;
+  /// Json serialized [RuntimeEnvContext].
+  /// For details, checkeout "//python/ray/_private/runtime_env/context.py".
+  string serialized_runtime_env_context = 3;
+}
+
+message DeleteRuntimeEnvIfPossibleRequest {
+  /// Json serialized [RuntimeEnv].
+  string serialized_runtime_env = 1;
+  string source_process = 2;
+}
+
+message DeleteRuntimeEnvIfPossibleReply {
+  AgentRpcStatus status = 1;
+  string error_message = 2;
+}
+
+message GetRuntimeEnvsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetRuntimeEnvsInfoReply {
+  repeated RuntimeEnvState runtime_env_states = 1;
+  // Length of the corresponding resource without truncation.
+  int64 total = 2;
+}

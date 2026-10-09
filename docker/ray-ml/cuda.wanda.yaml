@@ -1,0 +1,21 @@
+name: "ray-ml-py$PYTHON_VERSION-cu$CUDA_VERSION-base"
+froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"]
+dockerfile: docker/ray-ml/Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/dl-gpu-requirements.txt
+  - python/requirements/ml/core-requirements.txt
+  - python/requirements/ml/data-requirements.txt
+  - python/requirements/ml/rllib-requirements.txt
+  - python/requirements/ml/rllib-test-requirements.txt
+  - python/requirements/ml/train-requirements.txt
+  - python/requirements/ml/train-test-requirements.txt
+  - python/requirements/ml/tune-requirements.txt
+  - python/requirements/ml/tune-test-requirements.txt
+  - python/requirements/docker/ray-docker-requirements.txt
+  - docker/ray-ml/install-ml-docker-requirements.sh
+build_args:
+  - FULL_BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
+tags:
+  - cr.ray.io/rayproject/ray-ml-py$PYTHON_VERSION-cu$CUDA_VERSION-base

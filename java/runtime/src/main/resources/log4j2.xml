@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--NOTE: This configuration file is important, we shouldn't remove it.
+ In log4j2, if we don't specify the log level, the default value is error.
+ In our case that if we logged before `Ray.init()`, the logs will not printed.
+ -->
+<Configuration status="info" name="RayDefaultLog4j2ConfigBeforeInit">
+    <ThresholdFilter level="debug"/>
+
+    <Appenders>
+        <Console name="STDOUT" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss,SSS} %p %c{1} [%t]: %m%n"/>
+            <ThresholdFilter level="debug"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="STDOUT"/>
+        </Root>
+    </Loggers>
+
+</Configuration>

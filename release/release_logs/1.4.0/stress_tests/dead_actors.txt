@@ -1,0 +1,4 @@
+Finished in: 200.69372820854187s
+Average iteration time: 2.006935486793518s
+Max iteration time: 41.49158835411072s
+Min iteration time: 0.10450339317321777s

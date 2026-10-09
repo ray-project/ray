@@ -1,0 +1,16 @@
+base_image: anyscale/ray-ml:nightly-py39-gpu
+env_vars: {}
+
+post_build_cmds:
+  # Install Ray
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+
+python:
+  pip_packages:
+    - statsforecast==1.5.0
+    # numba doesn't support numpy > 1.24
+    # See: https://github.com/numba/numba/issues/8698
+    # NOTE: This is only an issue when `statsforecast` is installed with
+    # `pip install -U`, which is what's happening for this cluster env.
+    - numpy<1.25.0

@@ -1,0 +1,18 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: m5.16xlarge
+    resources:
+        CPU: 0
+        head: 1
+
+worker_nodes:
+    - instance_type: m5.4xlarge
+      min_nodes: 9
+      max_nodes: 9
+      market_type: ON_DEMAND
+      resources:
+          worker: 1

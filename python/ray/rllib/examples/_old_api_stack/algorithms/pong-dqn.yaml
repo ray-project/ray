@@ -1,0 +1,35 @@
+# @OldAPIStack
+# You can expect ~20 reward within 1.1m timesteps / 2.1 hours on a K80 GPU
+pong-deterministic-dqn:
+    env: ale_py:ALE/Pong-v5
+    run: DQN
+    stop:
+        env_runners/episode_return_mean: 20
+        time_total_s: 7200
+    config:
+        # Works for both torch and tf.
+        framework: torch
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
+        num_gpus: 1
+        gamma: 0.99
+        lr: .0001
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          capacity: 50000
+        num_steps_sampled_before_learning_starts: 10000
+        rollout_fragment_length: 4
+        train_batch_size: 32
+        exploration_config:
+          epsilon_timesteps: 200000
+          final_epsilon: .01
+        model:
+          grayscale: True
+          zero_mean: False
+          dim: 42
+        # we should set compress_observations to True because few machines
+        # would be able to contain the replay buffers in memory otherwise
+        compress_observations: True

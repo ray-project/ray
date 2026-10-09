@@ -1,0 +1,112 @@
+<!-- Extra header to include at the top of each template.
+Kept separately so that it can easily be included in any templates
+that need to be overridden for individual pages; e.g. included
+both in the usual template (layout.html) as well as (index.html). -->
+
+<!-- Pre-paint banner dismissal. The announcement banners render server-side and
+are visible in the initial HTML, so a banner the visitor already dismissed
+flashes on every page load before the deferred js/dismissable-banner.js runs on
+DOMContentLoaded. This synchronous head script closes that gap: it reads the
+same localStorage dismissal flags and injects a stylesheet hiding the dismissed
+banners before the body paints. dismissable-banner.js still wires the close
+buttons and collapses the region after a click. Keep the dismissal contract in
+sync with that file: a banner is dismissed when its `data-banner-key` is stored
+with the value "true". -->
+<script>
+  (function () {
+    try {
+      var selectors = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (localStorage.getItem(key) === 'true') {
+          selectors.push(
+            '[data-banner-key="' + key.replace(/[\\"]/g, '\\$&') + '"]'
+          );
+        }
+      }
+      if (!selectors.length) {
+        return;
+      }
+      var style = document.createElement('style');
+      style.textContent = selectors.join(',') + '{display:none !important;}';
+      document.head.appendChild(style);
+    } catch (e) {
+      /* localStorage can throw when storage is disabled; fall back to the
+         deferred script, which reproduces the same hiding on DOMContentLoaded. */
+    }
+  })();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;900&family=Roboto:wght@400;500;700&display=swap"
+  rel="stylesheet"
+/>
+<link
+  rel="stylesheet"
+  title="light"
+  href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
+  disabled="disabled"
+/>
+<link
+  rel="stylesheet"
+  title="dark"
+  href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+  disabled="disabled"
+/>
+<link
+  href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css"
+  rel="stylesheet"
+/>
+
+<!-- Used for text embedded in html on the index page  -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+<!-- Parser used to call hljs on responses from Ray Assistant -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<!-- Sanitizer for Ray Assistant AI -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.3/purify.min.js"></script>
+
+<!-- Fathom - beautiful, simple website analytics -->
+<script src="https://deer.ray.io/script.js" data-site="WYYANYOS" defer></script>
+<!-- / Fathom -->
+
+<!-- Google Tag Manager -->
+<script>
+  (function (w, d, s, l, i) {
+    w[l] = w[l] || [];
+    w[l].push({
+      'gtm.start': new Date().getTime(),
+      event: 'gtm.js',
+    });
+    var f = d.getElementsByTagName(s)[0],
+      j = d.createElement(s),
+      dl = l != 'dataLayer' ? '&l=' + l : '';
+    j.async = true;
+    j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
+    f.parentNode.insertBefore(j, f);
+  })(window, document, 'script', 'dataLayer', 'GTM-N7VD67MZ');
+</script>
+<!-- End Google Tag Manager -->
+
+<!-- Data to be shared with JS on every page -->
+<script>
+  window.data = {
+    copyIconSrc: "{{ pathto('_static/copy-button.svg', 1) }}",
+  };
+</script>
+
+<!-- Herald Widget -->
+<script
+  type="module"
+  id="runllm-widget-script"
+  src="https://widget.runllm.com"
+  version="stable"
+  crossorigin="anonymous"
+  runllm-keyboard-shortcut="Mod+j"
+  runllm-name="Ray Docs"
+  runllm-position="BOTTOM_RIGHT"
+  runllm-assistant-id="1003"
+></script>

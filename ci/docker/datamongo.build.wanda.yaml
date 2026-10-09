@@ -1,0 +1,12 @@
+name: "datamongobuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
+dockerfile: ci/docker/data.build.Dockerfile
+srcs:
+  - python/deplocks/ci/data-mongo-ci_depset_py$PYTHON.lock
+build_args:
+  - RAY_CI_JAVA_BUILD=1
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
+  - IMAGE_TYPE=mongo
+  - PYTHON=$PYTHON
+tags:
+  - cr.ray.io/rayproject/datamongobuild-py$PYTHON

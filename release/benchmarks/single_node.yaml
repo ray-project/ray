@@ -1,0 +1,16 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
+
+head_node:
+    instance_type: m4.16xlarge
+    resources:
+      # 128 GB
+      object_store_memory: 128000000000
+
+worker_nodes: []

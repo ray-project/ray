@@ -1,0 +1,48 @@
+{#
+  It's a known bug (https://github.com/sphinx-doc/sphinx/issues/9884)
+  that autosummary will generate warning for inherited instance attributes.
+  Those warnings will fail our build.
+  For now, we don't autosummary classes with inherited instance attributes.
+  To opt out, use `:template: autosummary/class_without_autosummary.rst`
+#}
+
+{# Short label: fullname is the fully-qualified path (e.g. ray.data.Dataset.map);
+   split('.')[-1] keeps just the leaf ("map") so the API-sidebar label (and page H1)
+   stay readable rather than repeating the full dotted path. -#}
+{{ fullname.split('.')[-1] | escape | underline}}
+
+.. currentmodule:: {{ module }}
+
+.. autoclass:: {{ objname }}
+   :show-inheritance:
+
+   {% block methods %}
+   {% if methods %}
+   .. rubric:: {{ _('Methods') }}
+
+   .. autosummary::
+      :nosignatures:
+      :toctree:
+
+   {% for item in methods %}
+      {{ item | filter_out_undoc_class_members(name, module) }}
+   {%- endfor %}
+
+   {% endif %}
+   {% endblock %}
+
+
+   {% block attributes %}
+   {% if attributes %}
+   .. rubric:: {{ _('Attributes') }}
+
+   .. autosummary::
+      :nosignatures:
+      :toctree:
+
+   {% for item in attributes %}
+      ~{{ name }}.{{ item }}
+   {%- endfor %}
+
+   {% endif %}
+   {% endblock %}

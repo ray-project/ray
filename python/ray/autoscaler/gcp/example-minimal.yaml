@@ -1,0 +1,8 @@
+auth:
+  ssh_user: ubuntu
+cluster_name: minimal
+provider:
+  availability_zone: us-west1-a
+  project_id: null # TODO: set your GCP project ID here
+  region: us-west1
+  type: gcp

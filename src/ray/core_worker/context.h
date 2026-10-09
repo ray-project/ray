@@ -1,0 +1,232 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <boost/thread.hpp>
+#include <memory>
+#include <string>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "nlohmann/json.hpp"
+#include "ray/common/task/task_spec.h"
+#include "ray/core_worker/common.h"
+
+namespace ray::core {
+
+struct WorkerThreadContext;
+
+class WorkerContext {
+ public:
+  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
+
+  /**
+   * @brief Return the generator return ID.
+   *
+   * By default, it deduces a generator return ID from a current task
+   * from the context. However, it also supports manual specification of
+   * put index and task id to support `AllocateDynamicReturnId`.
+   *
+   * The caller should either not specify both task_id AND put_index
+   * or specify both at the same time. Otherwise it will panic.
+   *
+   * @param task_id The task id of the dynamically generated return ID.
+   *                Nil() together with a std::nullopt put_index deduces both from the
+   * current worker context.
+   * @param put_index The equivalent of the return value of
+   *                  WorkerContext::GetNextPutIndex.
+   * Both task_id and put_index have to be supplied, or neither: deducing one
+   * while the caller supplies the other would key the ObjectID to one task
+   * while drawing the index from another. Mixing them panics.
+   * @return The generator return ID.
+   */
+  ObjectID GetGeneratorReturnId(const TaskID &task_id,
+                                std::optional<ObjectIDIndexType> put_index);
+
+  WorkerType GetWorkerType() const;
+
+  const WorkerID &GetWorkerID() const;
+
+  JobID GetCurrentJobID() const ABSL_LOCKS_EXCLUDED(mutex_);
+  rpc::JobConfig GetCurrentJobConfig() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  const TaskID &GetCurrentTaskID() const;
+
+  TaskID GetMainThreadOrActorCreationTaskID() const;
+
+  PlacementGroupID GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  bool ShouldCaptureChildTasksInPlacementGroup() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  std::shared_ptr<rpc::RuntimeEnvInfo> GetCurrentRuntimeEnvInfo() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  const std::string &GetCurrentSerializedRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  std::shared_ptr<nlohmann::json> GetCurrentRuntimeEnv() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @brief Initialize worker's job_id and job_config if they haven't already.
+   *        A worker's job config can't be changed after initialization.
+   * @param job_id The job ID to initialize the worker to.
+   * @param job_config The job config to initialize the worker to.
+   * @return True if the job info was initialized by this call.
+   */
+  bool MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @return whether the job config disables job level lineage reconstruction.
+   *         Default to false.
+   */
+  bool GetDisableJobLevelLineageReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @brief Whether this worker should pin the lineage of the objects it owns so
+   *        that they can be reconstructed if lost.
+   *
+   *         If job level lineage reconstruction is disabled, the application
+   *         needs to handle reconstruction of lost objects itself. In this case,
+   *         Ray will simply throw an error when it encounters a lost object.
+   *         Otherwise, we defer to the cluster wide lineage pinning configuration.
+   *
+   * @return whether to pin object lineage on this worker.
+   */
+  bool ShouldPinObjectLineage() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
+
+  const TaskID &GetCurrentInternalTaskId() const;
+
+  void SetCurrentActorId(const ActorID &actor_id) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void SetTaskDepth(int64_t depth) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void SetCurrentTask(const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void ResetCurrentTask();
+
+  /// NOTE: This method can't be used in fiber/async actor context.
+  std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
+
+  const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  ActorID GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @return whether the current thread is the main worker thread.
+   */
+  bool CurrentThreadIsMain() const;
+
+  /**
+   * @return whether we should Block/Unblock through the raylet on Get/Wait.
+   *         This only applies to direct task calls.
+   */
+  bool ShouldReleaseResourcesOnBlockingCalls() const;
+
+  /**
+   * @return whether we are in a direct call actor.
+   */
+  bool CurrentActorIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @return whether we are in a direct call task. This encompasses both direct
+   *         actor and normal tasks.
+   */
+  bool CurrentTaskIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  int CurrentActorMaxConcurrency() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @brief Set a flag to indicate that the current actor should exit, it'll be checked
+   *        periodically and the actor will exit if the flag is set.
+   */
+  void SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /**
+   * @return the flag to indicate that the current actor should exit.
+   */
+  bool GetCurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  uint64_t GetNextTaskIndex();
+
+  uint64_t GetTaskIndex() const;
+
+  /**
+   * @brief Returns the next put object index; used to calculate ObjectIDs for puts.
+   * @return The next put object index.
+   */
+  ObjectIDIndexType GetNextPutIndex();
+
+  int64_t GetTaskDepth() const;
+
+ private:
+  const WorkerType worker_type_;
+  const WorkerID worker_id_;
+
+  // a worker's job information might be lazily initialized.
+  JobID current_job_id_ ABSL_GUARDED_BY(mutex_);
+  std::optional<rpc::JobConfig> job_config_ ABSL_GUARDED_BY(mutex_);
+
+  int64_t task_depth_ ABSL_GUARDED_BY(mutex_) = 0;
+  // `true` if the worker has ever begun executing a normal (non-actor) task.
+  bool current_task_is_direct_call_ ABSL_GUARDED_BY(mutex_) = false;
+  // `true` if the worker has ever begun executing an actor creation task.
+  bool current_actor_is_direct_call_ ABSL_GUARDED_BY(mutex_) = false;
+  ActorID current_actor_id_ ABSL_GUARDED_BY(mutex_);
+  int current_actor_max_concurrency_ ABSL_GUARDED_BY(mutex_) = 1;
+  bool current_actor_is_asyncio_ ABSL_GUARDED_BY(mutex_) = false;
+  bool current_actor_should_exit_ ABSL_GUARDED_BY(mutex_) = false;
+  bool is_detached_actor_ ABSL_GUARDED_BY(mutex_) = false;
+  // The placement group id that the current actor belongs to.
+  PlacementGroupID current_actor_placement_group_id_ ABSL_GUARDED_BY(mutex_);
+  // Whether or not we should implicitly capture parent's placement group.
+  bool placement_group_capture_child_tasks_ ABSL_GUARDED_BY(mutex_);
+  // The runtime env for the current actor or task.
+  // For one worker context, it should have exactly one serialized runtime env; cache the
+  // parsed json and string for reuse.
+  std::string serialized_runtime_env_ ABSL_GUARDED_BY(mutex_);
+  std::shared_ptr<nlohmann::json> runtime_env_ ABSL_GUARDED_BY(mutex_);
+  // The runtime env info.
+  // For one worker context, it should be assigned only once because Ray currently doesn't
+  // reuse worker to run tasks or actors with different runtime envs.
+  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ ABSL_GUARDED_BY(mutex_);
+  /// The id of the (main) thread that constructed this worker context.
+  const boost::thread::id main_thread_id_;
+  /// The currently executing main thread's task id. It's the actor creation task id
+  /// for concurrent actor, or the main thread's task id for other cases.
+  /// Used merely for observability purposes to track task hierarchy.
+  TaskID main_thread_or_actor_creation_task_id_ ABSL_GUARDED_BY(mutex_);
+  /// If the current task or actor is originated from a detached actor,
+  /// this contains that actor's id otherwise it's nil.
+  ActorID root_detached_actor_id_ ABSL_GUARDED_BY(mutex_);
+  // To protect access to mutable members;
+  mutable absl::Mutex mutex_;
+
+ private:
+  /// NOTE: This method can't be used in fiber/async actor context.
+  WorkerThreadContext &GetThreadContext() const;
+
+  /// Per-thread worker context.
+  static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
+};
+
+}  // namespace ray::core

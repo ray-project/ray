@@ -1,0 +1,3 @@
+applications:
+  - name: default
+    import_path: ray.serve.tests.test_config_files.fail.node

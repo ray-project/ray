@@ -1,0 +1,187 @@
+.. meta::
+   :description: Reference table of the system metrics Ray exports for tasks, actors, resources, and hardware utilization, with semantics and consistency guarantees.
+
+.. _system-metrics:
+
+System Metrics
+--------------
+Ray exports a number of system metrics, which provide introspection into the state of Ray workloads, as well as hardware utilization statistics. The following table describes the officially supported metrics:
+
+.. note::
+
+  Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
+
+  Starting with Ray 2.53+, the `WorkerId` label is no longer exported by default due to its high cardinality. 
+  The Ray team doesn't expect this to be a breaking change, as none of Ray’s built-in components rely on this label. 
+  However, if you have custom tooling that depends on `WorkerId` label, take note of this change.
+
+  You can restore or adjust label behavior using the environment variable `RAY_metric_cardinality_level`:
+
+  - `legacy`: Preserve all labels. (This was the default behavior before Ray 2.53.)
+  - `recommended`: Drop high-cardinality labels. Ray internally determines specific labels; currently this includes only `WorkerId`. (This is the default behavior since Ray 2.53.)
+  - `low`: Same as `recommended`, but also drops the Name label for tasks and actors.
+
+.. note::
+
+  Ray uses an optional NVML API to collect per-process GPU SM utilization. Ray
+  automatically skips this API for devices whose name matches a known PPU
+  device-name pattern (for example, ``PPU-ZW810``). For other NVML-compatible
+  libraries that don't safely support this API, set
+  ``RAY_SKIP_PROCESS_UTIL_API=true`` on each affected Ray node.
+  To skip specific device names, use the comma-separated
+  ``RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES`` environment variable (names are
+  matched case-insensitively and exactly).
+
+  These variables must be set in the Ray node and Dashboard Reporter process
+  environment before ``ray start`` (for example, in the Pod environment when
+  using KubeRay). They are not applied through ``runtime_env``. Ray continues to
+  report GPU process IDs, allocated GPU memory, and device-level utilization,
+  memory, power, and temperature metrics. Only per-process GPU utilization is
+  unavailable.
+
+.. list-table:: Ray System Metrics
+   :header-rows: 1
+
+   * - Prometheus Metric
+     - Labels
+     - Description
+   * - `ray_tasks`
+     - `Name`, `State`, `IsRetry`
+     - Current number of tasks (both remote functions and actor calls) by state. The State label (e.g., RUNNING, FINISHED, FAILED) describes the state of the task. See `rpc::TaskState <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/common.proto#L583>`_ for more information. The function/method name is available as the Name label. If the task was retried due to failure or reconstruction, the IsRetry label will be set to "1", otherwise "0".
+   * - `ray_actors`
+     - `Name`, `State`
+     - Current number of actors in each state described in `rpc::ActorTableData::ActorState <https://github.com/ray-project/ray/blob/b3799a53dcabd8d1a4d20f22faa98e781b0059c7/src/ray/protobuf/gcs.proto#L79>`. ALIVE has two sub-states: ALIVE_IDLE, and ALIVE_RUNNING_TASKS. An actor is considered ALIVE_IDLE if it is not running any tasks.
+   * - `ray_resources`
+     - `Name`, `State`, `instance`
+     - Logical resource usage for each node of the cluster. Each resource has some quantity that's either in the USED or AVAILABLE state. The Name label defines the resource name (e.g., CPU, GPU).
+   * - `ray_object_store_memory`
+     - `Location`, `ObjectState`, `instance`
+     - Object store memory usage in bytes, broken down by logical Location (SPILLED, MMAP_DISK, MMAP_SHM, and WORKER_HEAP). Definitions are as follows. SPILLED--Objects that have spilled to disk or a remote Storage solution (for example, AWS S3). The default is the disk. MMAP_DISK--Objects stored on a memory-mapped page on disk. This mode very slow and only happens under severe memory pressure. MMAP_SHM--Objects store on a memory-mapped page in Shared Memory. This mode is the default, in the absence of memory pressure. WORKER_HEAP--Objects, usually smaller, stored in the memory of the Ray Worker process itself. Small objects are stored in the worker heap.
+   * - `ray_placement_groups`
+     - `State`
+     - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
+   * - OpenTelemetry: `ray_gcs_redis_request_payload_bytes`; OpenCensus: `ray_gcs_redis_request_payload_bytes_total` (plus the deprecated unsuffixed gauge when `RAY_EXPORT_COUNTER_AS_GAUGE=true`)
+     - `Command`, `TableName`
+     - Application bytes in Redis command arguments accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes the verb, Redis key, field names, and values; excludes RESP framing, TLS, and TCP/IP overhead. Recorded on the first successful submission of each logical command; retries are not counted again. `Command` is the actual verb normalized to uppercase ASCII and truncated to 16 bytes; this limits label length, not the number of distinct labels, so production verbs must remain code-controlled. `TableName` is a GCS table, `NONE`, or `ALL`.
+   * - OpenTelemetry: `ray_gcs_redis_response_payload_bytes`; OpenCensus: `ray_gcs_redis_response_payload_bytes_total` (plus the deprecated unsuffixed gauge when `RAY_EXPORT_COUNTER_AS_GAUGE=true`)
+     - `Command`, `TableName`
+     - Application bytes in Redis replies received by the GCS, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes bulk/status strings, HSCAN field names, and integer decimal text; excludes nil replies, error replies that are retried, RESP framing, TLS, and TCP/IP overhead.
+   * - OpenTelemetry and OpenCensus: `ray_gcs_redis_command_count_total`
+     - `Command`, `TableName`
+     - Number of logical Redis commands accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Batches count per chunk and table scans per HSCAN command; retries are not counted again, so this is not a count of network round trips. All three metrics exclude connection-establishment commands sent through synchronous or raw connection paths, such as `AUTH`, `SENTINEL MASTERS`, and `INFO CLUSTER`; they do not measure total Redis network traffic. Divide the byte metrics by this for mean bytes per logical command. Set `RAY_gcs_redis_payload_metrics_enabled=false` to stop recording all three metrics. Ray's `Sum` instrument is exposed as an OpenTelemetry up-down counter even though these byte metrics only record positive deltas, which is why its Prometheus name has no `_total` suffix on that backend.
+   * - `ray_memory_manager_worker_eviction_total`
+     - `Type`, `Name`
+     - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).
+   * - `ray_node_cpu_utilization`
+     - `instance`
+     - The CPU utilization per node as a percentage quantity (0..100). This should be scaled by the number of cores per node to convert the units into cores.
+   * - `ray_node_cpu_count`
+     - `instance`
+     - The number of CPU cores per node.
+   * - `ray_node_gpus_utilization`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G), `GpuIndex` is the index of the GPU, and `GpuUuid` is the unique device identifier.
+   * - `ray_node_gpus_available`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The number of GPUs available.
+   * - `ray_node_gpu_power_milliwatts`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The current GPU power per GPU, in milliwatts.
+   * - `ray_node_gpu_temperature_celsius`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The current GPU temperature per GPU, in Celsius.
+   * - `ray_node_disk_usage`
+     - `instance`
+     - The amount of disk space used per node, in bytes.
+   * - `ray_node_disk_free`
+     - `instance`
+     - The amount of disk space available per node, in bytes.
+   * - `ray_node_disk_write_iops`
+     - `instance`, `node_type`
+     - The disk write operations per second per node.
+   * - `ray_node_disk_io_write_speed`
+     - `instance`
+     - The disk write throughput per node, in bytes per second.
+   * - `ray_node_disk_read_iops`
+     - `instance`, `node_type`
+     - The disk read operations per second per node.
+   * - `ray_node_disk_io_read_speed`
+     - `instance`
+     - The disk read throughput per node, in bytes per second.
+   * - `ray_node_mem_available`
+     - `instance`, `node_type`
+     - The amount of physical memory available per node, in bytes.
+   * - `ray_node_mem_shared_bytes`
+     - `instance`, `node_type`
+     - The amount of shared memory per node, in bytes.
+   * - `ray_node_mem_used`
+     - `instance`
+     - The amount of physical memory used per node, in bytes.
+   * - `ray_node_mem_total`
+     - `instance`
+     - The amount of physical memory available per node, in bytes.
+   * - `ray_node_mem_used_host`
+     - `instance`
+     - The host (OS-level) physical memory used per node, in bytes.
+   * - `ray_node_mem_total_host`
+     - `instance`
+     - The host (OS-level) total physical memory per node, in bytes.
+   * - `ray_node_cgroup_mem_used`
+     - `instance`
+     - The container memory usage per node (from cgroup), in bytes. Only emitted when cgroup memory limits are present.
+   * - `ray_node_cgroup_mem_total`
+     - `instance`
+     - The container memory limit per node (from cgroup), in bytes. Only emitted when cgroup memory limits are present.
+   
+   * - `ray_component_rss_mb`
+     - `Component`, `instance`
+     - Note: This metric will be deprecated in the future, please use `ray_component_rss_bytes` instead. The measured resident set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_rss_bytes`
+     - `Component`, `instance`
+     - The measured resident set size in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_shared_bytes`
+     - `Component`, `instance`
+     - The measured shared memory in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_uss_mb`
+     - `Component`, `instance`
+     - Note: This metric will be deprecated in the future, please use `ray_component_uss_bytes` instead. The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_uss_bytes`
+     - `Component`, `instance`
+     - The measured unique set size in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_cpu_percentage`
+     - `Component`, `instance`
+     - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_node_gram_available`
+     - `instance`, `node_type`, `GpuIndex`, `GpuDeviceName`, `GpuUuid`
+     - The amount of GPU memory available per GPU, in megabytes.
+   * - `ray_node_gram_used`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The amount of GPU memory used per GPU, in bytes.
+   * - `ray_node_network_received`
+     - `instance`, `node_type`
+     - The total network traffic received per node, in bytes.
+   * - `ray_node_network_sent`
+     - `instance`, `node_type`
+     - The total network traffic sent per node, in bytes.
+   * - `ray_node_network_receive_speed`
+     - `instance`
+     - The network receive throughput per node, in bytes per second.
+   * - `ray_node_network_send_speed`
+     - `instance`
+     - The network send throughput per node, in bytes per second.
+   * - `ray_cluster_active_nodes`
+     - `node_type`
+     - The number of healthy nodes in the cluster, broken down by autoscaler node type.
+   * - `ray_cluster_failed_nodes`
+     - `node_type`
+     - The number of failed nodes reported by the autoscaler, broken down by node type.
+   * - `ray_cluster_pending_nodes`
+     - `node_type`
+     - The number of pending nodes reported by the autoscaler, broken down by node type.
+
+Metrics Semantics and Consistency
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray guarantees all its internal state metrics are *eventually* consistent even in the presence of failures--- should any worker fail, eventually the right state will be reflected in the Prometheus time-series output. However, any particular metrics query is not guaranteed to reflect an exact snapshot of the cluster state.
+
+For the `ray_tasks` and `ray_actors` metrics, you should use sum queries to plot their outputs (e.g., ``sum(ray_tasks) by (Name, State)``). The reason for this is that Ray's task metrics are emitted from multiple distributed components. Hence, there are multiple metric points, including negative metric points, emitted from different processes that must be summed to produce the correct logical view of the distributed system. For example, for a single task submitted and executed, Ray may emit  ``(submitter) SUBMITTED_TO_WORKER: 1, (executor) SUBMITTED_TO_WORKER: -1, (executor) RUNNING: 1``, which reduces to ``SUBMITTED_TO_WORKER: 0, RUNNING: 1`` after summation.

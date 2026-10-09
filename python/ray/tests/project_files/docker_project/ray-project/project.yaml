@@ -1,0 +1,8 @@
+name: testproject1
+description: "Test project for docker environment"
+
+environment:
+  dockerfile: "Dockerfile"
+
+cluster:
+  config: cluster.yaml

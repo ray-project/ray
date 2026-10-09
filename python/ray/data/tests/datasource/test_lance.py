@@ -1,0 +1,582 @@
+import os
+import pickle
+
+import lance
+import pyarrow as pa
+import pytest
+from packaging.version import Version
+from pytest_lazy_fixtures import lf as lazy_fixture
+
+import ray
+from ray._common.test_utils import wait_for_condition
+from ray.data import Schema
+from ray.data._internal.datasource.lance_datasink import (
+    _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
+    LanceDatasink,
+    _align_block_to_schema,
+    _null_column,
+    _write_fragment,
+)
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+from ray.data.datasource import SaveMode
+from ray.data.datasource.path_util import _unwrap_protocol
+
+# Skip tests for older pylance versions (<=0.3.19) due to incompatible lance API changes with pyarrow v9.0.0
+pytestmark = pytest.mark.skipif(
+    Version(lance.__version__) <= Version("0.3.19"),
+    reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
+)
+
+
+def test_read_lance_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, monkeypatch
+):
+    # Set the environment variable on both the driver and the worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    path = os.path.join(str(tmp_path), "trusted.lance")
+    lance.write_dataset(table, path)
+
+    rows = ray.data.read_lance(path).take_all()
+
+    assert rows == [{"col": {"key": "value"}}]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "batch_size",
+    [None, 100],
+)
+def test_lance_read_basic(fs, data_path, batch_size, ray_start_regular_shared):
+    df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    lance.write_dataset(df1, path)
+
+    ds_lance = lance.dataset(path)
+    assert ds_lance is not None
+    df2 = pa.table(
+        {
+            "one": [1, 2, 3, 4, 5, 6],
+            "three": [4, 5, 8, 9, 12, 13],
+            "four": ["u", "v", "w", "x", "y", "z"],
+        }
+    )
+    ds_lance.merge(df2, "one")
+
+    if batch_size is None:
+        ds = ray.data.read_lance(path)
+    else:
+        ds = ray.data.read_lance(path, scanner_options={"batch_size": batch_size})
+
+    # Test metadata-only ops.
+    assert ds.count() == 6
+    assert ds.schema() == Schema(
+        pa.schema(
+            {
+                "one": pa.int64(),
+                "two": pa.string(),
+                "three": pa.int64(),
+                "four": pa.string(),
+            }
+        )
+    )
+
+    # Test read.
+    values = [[s["one"], s["two"]] for s in ds.take_all()]
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+    # Test column projection.
+    ds = ray.data.read_lance(path, columns=["one"])
+    values = [s["one"] for s in ds.take_all()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+    assert ds.schema().names == ["one"]
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_read_with_scanner_fragments(data_path, ray_start_regular_shared):
+    table = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    dataset = lance.write_dataset(table, path, max_rows_per_file=2)
+    assert dataset is not None
+
+    fragments = dataset.get_fragments()
+    ds = ray.data.read_lance(path, scanner_options={"fragments": fragments[:1]})
+    values = [[s["one"], s["two"]] for s in ds.take_all()]
+    assert values == [
+        [2, "b"],
+        [1, "a"],
+    ]
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_read_lance_multi_uri_null_fills_missing_columns(
+    data_path, ray_start_regular_shared
+):
+    # Heterogeneous multi-URI read: each block must null-fill the columns
+    # that exist only in the other dataset so it matches the unified schema.
+    setup_data_path = _unwrap_protocol(data_path)
+    p1 = os.path.join(setup_data_path, "part1.lance")
+    p2 = os.path.join(setup_data_path, "part2.lance")
+    lance.write_dataset(pa.table({"a": [1, 2], "b": ["x", "y"]}), p1)
+    lance.write_dataset(pa.table({"a": [3, 4], "c": [True, False]}), p2)
+
+    ds = ray.data.read_lance([p1, p2])
+    assert set(ds.schema().names) == {"a", "b", "c"}
+
+    collected = ds.take_all()
+    assert len(collected) == 4
+    for row in collected:
+        assert set(row.keys()) == {"a", "b", "c"}
+        if row["a"] <= 2:
+            assert row["b"] in ("x", "y")
+            assert row["c"] is None
+        else:
+            assert row["b"] is None
+            assert row["c"] in (True, False)
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_read_lance_block_columns_match_unified_schema_order(
+    data_path, ray_start_regular_shared
+):
+    # Per-dataset scanners return columns in their own order; _fill_missing_columns
+    # must reorder every block to the unified ReadTask schema so positional
+    # consumers (Table.cast, RecordBatchReader.from_batches) see a stable order.
+    from ray.data._internal.datasource.lance_datasource import _fill_missing_columns
+
+    schema = pa.schema([("a", pa.int64()), ("b", pa.string())])
+
+    # Missing column is appended in schema order.
+    out = _fill_missing_columns(pa.table({"a": [1]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # A reversed column order is reordered to the unified schema order.
+    out = _fill_missing_columns(pa.table({"b": ["x"], "a": [1]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # Missing + reversed: appends in schema order, then reorders the block.
+    out = _fill_missing_columns(pa.table({"b": ["x"]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # Already-ordered blocks are left in place (no-op).
+    out = _fill_missing_columns(pa.table({"a": [1], "b": ["x"]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # Under `columns=` projection the block is returned untouched.
+    out = _fill_missing_columns(pa.table({"b": ["x"]}), schema, {"columns": ["b"]})
+    assert out.schema.names == ["b"]
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_read_many_files(data_path, ray_start_regular_shared):
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    num_rows = 1024
+    data = pa.table({"id": pa.array(range(num_rows))})
+    lance.write_dataset(data, path, max_rows_per_file=1)
+
+    def test_lance():
+        ds = ray.data.read_lance(path)
+        return ds.count() == num_rows
+
+    wait_for_condition(test_lance, timeout=10)
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write(data_path, ray_start_regular_shared):
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema)
+
+    ds = lance.dataset(data_path)
+    assert ds is not None
+    ds.count_rows() == 10
+    assert ds.schema.names == schema.names
+    # The schema is platform-dependent, because numpy uses int32 on Windows.
+    # So we observe the schema that is written and use that.
+    schema = ds.schema
+
+    tbl = ds.to_table()
+    assert sorted(tbl["id"].to_pylist()) == list(range(10))
+    assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(10)}
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
+    ).write_lance(data_path, mode=SaveMode.APPEND)
+
+    ds = lance.dataset(data_path)
+    assert ds is not None
+    ds.count_rows() == 20
+    tbl = ds.to_table()
+    assert sorted(tbl["id"].to_pylist()) == list(range(20))
+    assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(20)}
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema, mode=SaveMode.OVERWRITE)
+
+    ds = lance.dataset(data_path)
+    assert ds is not None
+    ds.count_rows() == 10
+    assert ds.schema == schema
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_create_errors_if_exists(data_path, ray_start_regular_shared):
+    table_path = os.path.join(data_path, "my_table")
+    ds = ray.data.range(10)
+
+    # First CREATE succeeds on an empty destination.
+    ds.write_lance(table_path, mode=SaveMode.CREATE)
+    assert lance.dataset(table_path).count_rows() == 10
+
+    # A second CREATE must error instead of silently overwriting.
+    with pytest.raises(ValueError, match="already exists"):
+        ray.data.range(5).write_lance(table_path, mode=SaveMode.CREATE)
+
+    # Existing data is untouched.
+    assert lance.dataset(table_path).count_rows() == 10
+
+    # CREATE is also the default mode, so it must guard too.
+    with pytest.raises(ValueError, match="already exists"):
+        ray.data.range(5).write_lance(table_path)
+    assert lance.dataset(table_path).count_rows() == 10
+
+    # OVERWRITE replaces the existing data.
+    ray.data.range(5).write_lance(table_path, mode=SaveMode.OVERWRITE)
+    assert lance.dataset(table_path).count_rows() == 5
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_append_errors_if_missing(data_path, ray_start_regular_shared):
+    table_path = os.path.join(data_path, "missing_table")
+    # APPEND surfaces Lance's own "not found" error. We don't pin the message,
+    # since it can change across Lance versions.
+    expected_errors: tuple[type[Exception], ...] = (
+        ValueError,
+        OSError,
+        FileNotFoundError,
+    )
+    with pytest.raises(expected_errors):
+        ray.data.range(5).write_lance(table_path, mode=SaveMode.APPEND)
+    assert not os.path.exists(table_path)
+
+
+def test_align_block_to_schema_reorders_fills_and_validates():
+    """Unit test for the schema-alignment helper used before Lance writes."""
+    schema = pa.schema(
+        [
+            pa.field("a", pa.int64()),
+            pa.field("b", pa.string()),
+            pa.field("c", pa.float64()),
+        ]
+    )
+
+    # Already aligned: returned unchanged.
+    aligned = pa.table({"a": [1], "b": ["x"], "c": [1.0]})
+    assert _align_block_to_schema(aligned, schema) is aligned
+
+    # Same fields, different order: reordered to the schema's order. This guards
+    # the reorder behavior we preserved from ``reorder_columns_by_schema``.
+    reordered = pa.table({"c": [1.0], "a": [1], "b": ["x"]})
+    out = _align_block_to_schema(reordered, schema)
+    assert out.schema.names == ["a", "b", "c"]
+    assert out["a"].to_pylist() == [1]
+
+    # Missing column: filled with nulls of the target type.
+    subset = pa.table({"a": [1, 2], "b": ["x", "y"]})
+    out = _align_block_to_schema(subset, schema)
+    assert out.schema.names == ["a", "b", "c"]
+    assert out.schema.field("c").type == pa.float64()
+    assert out["c"].null_count == 2
+
+    # Column not in the target schema: clear error instead of a silent drop.
+    with pytest.raises(ValueError, match="not present in the target Lance schema"):
+        _align_block_to_schema(pa.table({"a": [1], "z": [9]}), schema)
+
+
+def test_null_column_supports_extension_and_nested_types():
+    """``_null_column`` builds all-null columns for extension types (e.g. Lance's
+    ``arrow.json``), where ``pa.nulls`` may not construct directly, and for
+    nested types."""
+
+    class _MyExtensionType(pa.ExtensionType):
+        def __init__(self):
+            super().__init__(pa.string(), "test.myext")
+
+        def __arrow_ext_serialize__(self):
+            return b""
+
+        @classmethod
+        def __arrow_ext_deserialize__(cls, storage_type, serialized):
+            return cls()
+
+    ext = _null_column(_MyExtensionType(), 3)
+    assert len(ext) == 3
+    assert ext.null_count == 3
+
+    nested = _null_column(pa.list_(pa.int64()), 2)
+    assert len(nested) == 2
+    assert nested.null_count == 2
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_append_fills_missing_columns_with_null(data_path):
+    """Appending a subset of the dataset's columns fills the rest with null
+    instead of failing on the field-set mismatch."""
+    table_path = os.path.join(data_path, "subset_append")
+    schema = pa.schema(
+        [
+            pa.field("a", pa.int64()),
+            pa.field("b", pa.int64()),
+            pa.field("c", pa.int64()),
+        ]
+    )
+
+    ray.data.from_items([{"a": 1, "b": 4, "c": 7}]).write_lance(
+        table_path, schema=schema, mode=SaveMode.CREATE
+    )
+
+    # New rows provide only (a, b); "c" must be written as null, not raise.
+    ray.data.from_items([{"a": 10, "b": 40}, {"a": 11, "b": 41}]).write_lance(
+        table_path, mode=SaveMode.APPEND
+    )
+
+    tbl = lance.dataset(table_path).to_table()
+    assert tbl.num_rows == 3
+    assert tbl.schema.names == ["a", "b", "c"]
+    rows = {row["a"]: row for row in tbl.to_pylist()}
+    assert rows[1]["c"] == 7  # existing row untouched
+    assert rows[10]["b"] == 40 and rows[10]["c"] is None
+    assert rows[11]["b"] == 41 and rows[11]["c"] is None
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_min_rows_per_file(data_path, ray_start_regular_shared):
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema, min_rows_per_file=100)
+
+    ds = lance.dataset(data_path)
+    assert ds is not None
+    assert ds.count_rows() == 10
+    assert ds.schema == schema
+
+    assert len(ds.get_fragments()) == 1
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_max_rows_per_file(data_path, ray_start_regular_shared):
+    schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
+
+    ray.data.range(10).map(
+        lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
+    ).write_lance(data_path, schema=schema, max_rows_per_file=1)
+
+    ds = lance.dataset(data_path)
+    assert ds is not None
+    assert ds.count_rows() == 10
+    assert ds.schema == schema
+
+    assert len(ds.get_fragments()) == 10
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_read_with_version(data_path, ray_start_regular_shared):
+    # Write an initial dataset (version 1)
+    df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test_version.lance")
+    lance.write_dataset(df1, path)
+
+    # Merge new data to create a later version (latest)
+    ds_lance = lance.dataset(path)
+    assert ds_lance is not None
+    # Get the initial version
+    initial_version = ds_lance.version
+
+    df2 = pa.table(
+        {
+            "one": [1, 2, 3, 4, 5, 6],
+            "three": [4, 5, 8, 9, 12, 13],
+            "four": ["u", "v", "w", "x", "y", "z"],
+        }
+    )
+    ds_lance.merge(df2, "one")
+
+    # Default read should return the latest (merged) dataset.
+    ds_latest = ray.data.read_lance(path)
+
+    assert ds_latest.count() == 6
+    # Latest dataset should contain merged columns
+    assert "three" in ds_latest.schema().names
+
+    # Read the initial version and ensure it contains the original columns
+    ds_prev = ray.data.read_lance(path, version=initial_version)
+    assert ds_prev.count() == 6
+    assert ds_prev.schema().names == ["one", "two"]
+
+    values_prev = [[s["one"], s["two"]] for s in ds_prev.take_all()]
+    assert sorted(values_prev) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+
+@pytest.fixture
+def mock_lance_write(monkeypatch):
+    captured = {}
+
+    class _FakeLanceDatasink:
+        def __init__(self, path, **kwargs):
+            captured["path"] = path
+            captured["kwargs"] = kwargs
+
+    def _fake_write_datasink(self, datasink, **kwargs):
+        captured["datasink"] = datasink
+        captured["write_kwargs"] = kwargs
+
+    monkeypatch.setattr(ray.data.dataset, "LanceDatasink", _FakeLanceDatasink)
+    monkeypatch.setattr(ray.data.Dataset, "write_datasink", _fake_write_datasink)
+
+    return captured, _FakeLanceDatasink
+
+
+def test_write_lance_passes_namespace_args(mock_lance_write, ray_start_regular_shared):
+    captured, fake_lance_datasink_cls = mock_lance_write
+    table_id = ["db", "table"]
+    namespace_impl = "dir"
+    namespace_properties = {"path": "/tmp/ns"}
+
+    ds = ray.data.range(1)
+    ds.write_lance(
+        "/tmp/lance-namespace-test",
+        table_id=table_id,
+        namespace_impl=namespace_impl,
+        namespace_properties=namespace_properties,
+    )
+
+    assert captured["path"] == "/tmp/lance-namespace-test"
+    assert captured["kwargs"]["table_id"] == table_id
+    assert captured["kwargs"]["namespace_impl"] == namespace_impl
+    assert captured["kwargs"]["namespace_properties"] == namespace_properties
+    assert isinstance(captured["datasink"], fake_lance_datasink_cls)
+
+
+@pytest.mark.parametrize("mode", [SaveMode.APPEND, SaveMode.OVERWRITE])
+def test_lance_namespace_write_rejects_non_create_mode(monkeypatch, mode):
+    class _FakeNamespace:
+        pass
+
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_datasink.get_or_create_namespace",
+        lambda namespace_impl, namespace_properties: _FakeNamespace(),
+    )
+
+    with pytest.raises(ValueError, match="Namespace writes currently only support"):
+        LanceDatasink(
+            uri="/tmp/lance-namespace-test",
+            mode=mode,
+            table_id=["db", "table"],
+            namespace_impl="dir",
+            namespace_properties={"path": "/tmp/ns"},
+        )
+
+
+@pytest.mark.parametrize(
+    "max_attempts,expected_blocks_consumed_before_write",
+    [(1, 1), (2, 3)],
+)
+def test_write_fragment_only_materializes_stream_when_retrying(
+    monkeypatch, max_attempts, expected_blocks_consumed_before_write
+):
+    import lance.fragment
+
+    consumed = {"count": 0}
+    blocks = [pa.table({"id": [i]}) for i in range(3)]
+
+    def block_stream():
+        for block in blocks:
+            consumed["count"] += 1
+            yield block
+
+    def fake_write_fragments(reader, uri, **kwargs):
+        assert consumed["count"] == expected_blocks_consumed_before_write
+        return []
+
+    monkeypatch.setattr(lance.fragment, "write_fragments", fake_write_fragments)
+
+    _write_fragment(
+        block_stream(),
+        "/tmp/lance-materialization-test",
+        retry_params={
+            "description": _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
+            "match": [],
+            "max_attempts": max_attempts,
+            "max_backoff_s": 0,
+        },
+    )
+
+
+def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    path = os.path.join(str(tmp_path), "exploit.lance")
+    lance.write_dataset(table, path)
+
+    ds = ray.data.read_lance(path)
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,0 +1,98 @@
+# View the docs https://docs.anyscale.com/reference/service-api#serviceconfig.
+
+name: video-analysis-app
+
+image_uri:  # add image uri here
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    - instance_type: m8i.4xlarge
+      min_nodes: 1
+      max_nodes: 32
+    - instance_type: g6.xlarge
+      min_nodes: 1
+      max_nodes: 32
+
+working_dir: .
+excludes:
+    - .git
+    - .env
+    - .venv
+    - '**/*.egg-info/**'
+    - '**/.DS_Store/**'
+    - '**/__pycache__/**'
+
+applications:
+- name: app1
+  route_prefix: /
+  import_path: app:app
+  runtime_env: {}
+  autoscaling_policy:
+    policy_function: autoscaling_policy:coordinated_scaling_policy
+  deployments:
+  - name: VideoEncoder
+    num_replicas: "auto"
+    max_ongoing_requests: 2
+    autoscaling_config:
+      min_replicas: 1
+      initial_replicas: null
+      max_replicas: 32
+      target_ongoing_requests: 2.0
+      metrics_interval_s: 10.0
+      look_back_period_s: 30.0
+      smoothing_factor: 1.0
+      upscale_smoothing_factor: null
+      downscale_smoothing_factor: null
+      upscaling_factor: null
+      downscaling_factor: null
+      downscale_delay_s: 600.0
+      downscale_to_zero_delay_s: null
+      upscale_delay_s: 30.0
+      aggregation_function: mean
+    ray_actor_options:
+      num_cpus: 2.0
+      num_gpus: 1.0
+  - name: MultiDecoder
+    num_replicas: "auto"
+    max_ongoing_requests: 4
+    autoscaling_config:
+      min_replicas: 1
+      initial_replicas: null
+      max_replicas: 32
+      target_ongoing_requests: 2.0
+      metrics_interval_s: 10.0
+      look_back_period_s: 30.0
+      smoothing_factor: 1.0
+      upscale_smoothing_factor: null
+      downscale_smoothing_factor: null
+      upscaling_factor: null
+      downscaling_factor: null
+      downscale_delay_s: 600.0
+      downscale_to_zero_delay_s: null
+      upscale_delay_s: 30.0
+      aggregation_function: mean
+    ray_actor_options:
+      num_cpus: 1.0
+  - name: VideoAnalyzer
+    num_replicas: "auto"
+    max_ongoing_requests: 4
+    autoscaling_config:
+      min_replicas: 1
+      initial_replicas: null
+      max_replicas: 64
+      target_ongoing_requests: 2.0
+      metrics_interval_s: 10.0
+      look_back_period_s: 30.0
+      smoothing_factor: 1.0
+      upscale_smoothing_factor: null
+      downscale_smoothing_factor: null
+      upscaling_factor: null
+      downscaling_factor: null
+      downscale_delay_s: 600.0
+      downscale_to_zero_delay_s: null
+      upscale_delay_s: 30.0
+      aggregation_function: mean
+    ray_actor_options:
+      num_cpus: 6.0

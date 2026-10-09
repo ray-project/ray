@@ -1,0 +1,28 @@
+build_arg_sets:
+  py311_cpu:
+      CUDA_VERSION: cpu
+      PYTHON_VERSION: py311
+
+depsets:
+  - name: other_config_depset
+    operation: expand
+    depsets:
+      - expand_general_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+      - expanded_depset__${PYTHON_VERSION}_${CUDA_VERSION}
+    output: requirements_compiled_other_config.txt
+    build_arg_sets:
+      - py311_cpu
+  - name: pre_hook_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook.txt
+    pre_hooks:
+      - pre-hook-test.sh
+  - name: pre_hook_invalid_test_depset
+    operation: compile
+    requirements:
+      - requirements_test.txt
+    output: requirements_compiled_pre_hook_invalid.txt
+    pre_hooks:
+      - pre-hook-error-test.sh

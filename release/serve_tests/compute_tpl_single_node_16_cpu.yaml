@@ -1,0 +1,14 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
+
+head_node:
+    # 16 cpus, arm, 64G mem, 12.5Gb NIC
+    instance_type: m7a.4xlarge
+
+worker_nodes: []

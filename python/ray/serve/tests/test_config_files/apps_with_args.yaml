@@ -1,0 +1,17 @@
+applications:
+  - name: untyped_default
+    route_prefix: /untyped_default
+    import_path: ray.serve.tests.test_config_files.arg_builders.build_echo_app
+  - name: untyped_hello
+    route_prefix: /untyped_hello
+    import_path: ray.serve.tests.test_config_files.arg_builders.build_echo_app
+    args:
+      message: hello
+  - name: typed_default
+    route_prefix: /typed_default
+    import_path: ray.serve.tests.test_config_files.arg_builders.build_echo_app_typed
+  - name: typed_hello
+    route_prefix: /typed_hello
+    import_path: ray.serve.tests.test_config_files.arg_builders.build_echo_app_typed
+    args:
+      message: hello

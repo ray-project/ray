@@ -1,0 +1,475 @@
+"""
+This file stores global state for a Serve application. Deployment replicas
+can use this state to access metadata or the Serve controller.
+"""
+
+import asyncio
+import contextvars
+import logging
+import os
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional
+
+import ray
+from ray.serve._private.client import ServeControllerClient
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.constants import (
+    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    SERVE_CONTROLLER_NAME,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+)
+from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.utils import get_deployment_actor_name
+from ray.serve.exceptions import RayServeException
+from ray.serve.gang import GangContext
+from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import ReplicaRank
+from ray.util.annotations import DeveloperAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
+_INTERNAL_DEPLOYMENT_ACTOR_CONTEXT: "DeploymentActorContext" = None
+_global_client: ServeControllerClient = None
+# Ray job id (driver session) that created the cached client above. ray.shutdown()
+# leaves this module global intact, so after a reconnect (new job id) the cached
+# handle is unusable and must not be reused. See #64647.
+_global_client_job_id: Optional[str] = None
+
+
+@DeveloperAPI
+@dataclass
+class ReplicaContext:
+    """Stores runtime context info for replicas.
+
+    Fields:
+        - app_name: name of the application the replica is a part of.
+        - deployment: name of the deployment the replica is a part of.
+        - replica_tag: unique ID for the replica.
+        - servable_object: instance of the user class/function this replica is running.
+        - rank: the rank of the replica.
+        - world_size: the number of replicas in the deployment.
+        - gang_context: context information for the gang the replica is part of.
+        - code_version: code version of the deployment (for get_deployment_actor).
+    """
+
+    replica_id: ReplicaID
+    servable_object: Callable
+    _deployment_config: DeploymentConfig
+    rank: ReplicaRank
+    world_size: int
+    _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
+    gang_context: Optional[GangContext] = None
+    code_version: Optional[str] = None
+
+    @property
+    def app_name(self) -> str:
+        return self.replica_id.deployment_id.app_name
+
+    @property
+    def deployment(self) -> str:
+        return self.replica_id.deployment_id.name
+
+    @property
+    def replica_tag(self) -> str:
+        return self.replica_id.unique_id
+
+
+@DeveloperAPI
+@dataclass
+class DeploymentActorContext:
+    """Stores runtime context info for deployment-scoped actors."""
+
+    deployment_id: DeploymentID
+    actor_name: str
+    code_version: Optional[str] = None
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
+
+    @property
+    def deployment(self) -> str:
+        return self.deployment_id.name
+
+
+def _get_global_client(
+    raise_if_no_controller_running: bool = True,
+) -> Optional[ServeControllerClient]:
+    """Gets the global client, which stores the controller's handle.
+
+    Args:
+        raise_if_no_controller_running: Whether to raise an exception if
+            there is no currently running Serve controller.
+
+    Returns:
+        ServeControllerClient to the running Serve controller. If there
+        is no running controller and raise_if_no_controller_running is
+        set to False, returns None.
+
+    Raises:
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
+    """
+
+    if _cached_client_from_current_session():
+        return _global_client
+
+    # No usable cache (never set, or left over from a previous driver session).
+    # Drop any stale handle and rediscover the controller by name.
+    _disconnect()
+    return _connect(raise_if_no_controller_running)
+
+
+def _check_cached_client_alive() -> tuple:
+    """Health-check the cached controller client.
+
+    Returns:
+        (client, had_cached) tuple.
+        - ``(client, True)``: cached client from the current session is alive.
+        - ``(None, True)``: cached client from the current session existed but
+          is unreachable; the cache has been cleared. Callers should **not**
+          attempt to reconnect via ``_connect()`` because GCS is likely dead and
+          ``ray.get_actor()`` would hang until the 60-second C++ GCS
+          reconnection timeout kills the process.
+        - ``(None, False)``: no usable cached client (never set, or left over
+          from a previous driver session). Callers may safely call
+          ``_get_global_client()`` to discover a running controller.
+    """
+
+    if not _cached_client_from_current_session():
+        # Either nothing cached, or a handle left behind by a previous driver
+        # session. In the latter case GCS is alive (we are connected now), so it
+        # is safe for callers to reconnect. Drop any stale handle.
+        _disconnect()
+        return None, False
+
+    try:
+        ray.get(_global_client._controller.check_alive.remote(), timeout=5)
+        return _global_client, True
+    except Exception as e:
+        logger.info(f"The cached controller has died or is unreachable: {e}.")
+        _disconnect()
+        return None, True
+
+
+def _set_global_client(client):
+    global _global_client, _global_client_job_id
+    _global_client = client
+    _global_client_job_id = (
+        ray.get_runtime_context().get_job_id() if client is not None else None
+    )
+
+
+def _disconnect():
+    """Forget the cached controller client for this driver session.
+
+    Mirrors ``_connect()``. This does **not** shut Serve down on the cluster; it
+    only drops the local cached handle so the next call rediscovers the
+    controller by name.
+    """
+    _set_global_client(None)
+
+
+def _cached_client_from_current_session() -> bool:
+    """Whether a usable cached client exists for the current Ray session.
+
+    ``_global_client`` is a module global that survives ``ray.shutdown()``, so a
+    handle cached by a previous driver session cannot be used after the driver
+    reconnects (which yields a new job id). Comparing job ids detects that case.
+    """
+    if _global_client is None or not ray.is_initialized():
+        return False
+    return _global_client_job_id == ray.get_runtime_context().get_job_id()
+
+
+def _get_internal_replica_context():
+    return _INTERNAL_REPLICA_CONTEXT
+
+
+def _get_internal_deployment_actor_context():
+    global _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
+
+    if _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT is not None:
+        return _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
+
+    app_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR)
+    deployment_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR)
+    actor_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR)
+
+    if app_name is None or deployment_name is None or actor_name is None:
+        return None
+
+    _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT = DeploymentActorContext(
+        deployment_id=DeploymentID(name=deployment_name, app_name=app_name),
+        actor_name=actor_name,
+        code_version=os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR),
+    )
+    return _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
+
+
+def _get_deployment_actor(actor_name: str):
+    """Get a handle to a deployment-scoped actor by name.
+
+    Thin wrapper around ``ray.get_actor`` with the Serve deployment-actor naming
+    convention. See ``serve.get_deployment_actor`` docstring for behavior,
+    ``ValueError``/``RayActorError`` expectations, and refresh patterns.
+    """
+    internal_context = _get_internal_replica_context()
+    if internal_context is None:
+        raise RayServeException(
+            "`serve.get_deployment_actor()` may only be called from within "
+            "a Ray Serve deployment replica."
+        )
+    deployment_id = internal_context.replica_id.deployment_id
+    return ray.get_actor(
+        get_deployment_actor_name(
+            deployment_id,
+            actor_name,
+            code_version=internal_context.code_version,
+        ),
+        namespace=SERVE_NAMESPACE,
+    )
+
+
+def _set_internal_replica_context(
+    *,
+    replica_id: ReplicaID,
+    servable_object: Callable,
+    _deployment_config: DeploymentConfig,
+    rank: ReplicaRank,
+    world_size: int,
+    handle_registration_callback: Optional[Callable[[str, str], None]] = None,
+    gang_context: Optional[GangContext] = None,
+    code_version: Optional[str] = None,
+):
+    global _INTERNAL_REPLICA_CONTEXT
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
+        replica_id=replica_id,
+        servable_object=servable_object,
+        _deployment_config=_deployment_config,
+        rank=rank,
+        world_size=world_size,
+        _handle_registration_callback=handle_registration_callback,
+        gang_context=gang_context,
+        code_version=code_version,
+    )
+
+
+def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
+    """Connect to an existing Serve application on this Ray cluster.
+
+    If called from within a replica, this will connect to the same Serve
+    app that the replica is running in.
+
+    Args:
+        raise_if_no_controller_running: If ``True``, raise when no Serve
+            controller actor is found. If ``False``, return ``None`` instead.
+
+    Returns:
+        ServeControllerClient that encapsulates a Ray actor handle to the
+        existing Serve application's Serve Controller. None if there is
+        no running Serve controller actor and raise_if_no_controller_running
+        is set to False.
+
+    Raises:
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
+    """
+
+    # Initialize ray if needed.
+    ray._private.worker.global_worker._filter_logs_by_job = False
+    if not ray.is_initialized():
+        ray.init(namespace=SERVE_NAMESPACE)
+
+    # Try to get serve controller if it exists
+    try:
+        controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    except ValueError:
+        if raise_if_no_controller_running:
+            raise RayServeException(
+                "There is no Serve instance running on this Ray cluster."
+            )
+        return
+
+    client = ServeControllerClient(
+        controller,
+    )
+    _set_global_client(client)
+    return client
+
+
+# Serve request context var which is used for storing the internal
+# request context information.
+# route_prefix: http url route path, e.g. http://127.0.0.1:/app
+#     the route is "/app". When you send requests by handle,
+#     the route is empty.
+# request_id: the request id is generated from http proxy, the value
+#     shouldn't be changed when the variable is set.
+#     This can be from the client and is used for logging.
+# _internal_request_id: the request id is generated from the proxy. Used to track the
+#     request objects in the system.
+# note:
+#   The request context is readonly to avoid potential
+#       async task conflicts when using it concurrently.
+
+
+@dataclass(frozen=True)
+class _RequestContext:
+    route: str = ""
+    request_id: str = ""
+    _internal_request_id: str = ""
+    app_name: str = ""
+    multiplexed_model_id: str = ""
+    session_id: str = ""
+    grpc_context: Optional[RayServegRPCContext] = None
+    is_http_request: bool = False
+    cancel_on_parent_request_cancel: bool = False
+    # The client address in "host:port" format, if available.
+    _client: str = ""
+    # Ray tracing context for this request (if tracing is enabled)
+    # This is extracted from _ray_trace_ctx kwarg at the replica entry point
+    # Advanced users can access this to propagate tracing to external systems
+    _ray_trace_ctx: Optional[dict] = None
+
+
+_serve_request_context = contextvars.ContextVar(
+    "Serve internal request context variable", default=None
+)
+
+_serve_batch_request_context = contextvars.ContextVar(
+    "Serve internal batching request context variable", default=None
+)
+
+
+def _get_serve_request_context() -> "_RequestContext":
+    """Get the current request context.
+
+    Returns:
+        The current request context
+    """
+
+    if _serve_request_context.get() is None:
+        _serve_request_context.set(_RequestContext())
+    return _serve_request_context.get()
+
+
+def _get_serve_batch_request_context():
+    """Get the list of request contexts for the current batch."""
+    if _serve_batch_request_context.get() is None:
+        _serve_batch_request_context.set([])
+    return _serve_batch_request_context.get()
+
+
+def _set_request_context(
+    route: str = "",
+    request_id: str = "",
+    _internal_request_id: str = "",
+    app_name: str = "",
+    multiplexed_model_id: str = "",
+):
+    """Set the request context. If the value is not set,
+    the current context value will be used."""
+
+    current_request_context = _get_serve_request_context()
+
+    _serve_request_context.set(
+        _RequestContext(
+            route=route or current_request_context.route,
+            request_id=request_id or current_request_context.request_id,
+            _internal_request_id=_internal_request_id
+            or current_request_context._internal_request_id,
+            app_name=app_name or current_request_context.app_name,
+            multiplexed_model_id=multiplexed_model_id
+            or current_request_context.multiplexed_model_id,
+        )
+    )
+
+
+def _unset_request_context():
+    """Unset the request context."""
+    _serve_request_context.set(_RequestContext())
+
+
+def _set_batch_request_context(request_contexts: List[_RequestContext]):
+    """Add the request context to the batch request context."""
+    _serve_batch_request_context.set(request_contexts)
+
+
+# `_requests_pending_assignment` is a map from request ID to a
+# dictionary of asyncio tasks.
+# The request ID points to an ongoing request that is executing on the
+# current replica, and the asyncio tasks are ongoing tasks started on
+# the router to assign child requests to downstream replicas.
+
+# A dictionary is used over a set to track the asyncio tasks for more
+# efficient addition and deletion time complexity. A uniquely generated
+# `response_id` is used to identify each task.
+
+_requests_pending_assignment: Dict[str, Dict[str, asyncio.Task]] = defaultdict(dict)
+
+
+# Note that the functions below that manipulate
+# `_requests_pending_assignment` are NOT thread-safe. They are only
+# expected to be called from the same thread/asyncio event-loop.
+
+
+def _get_requests_pending_assignment(parent_request_id: str) -> Dict[str, asyncio.Task]:
+    if parent_request_id in _requests_pending_assignment:
+        return _requests_pending_assignment[parent_request_id]
+
+    return {}
+
+
+def _add_request_pending_assignment(parent_request_id: str, response_id: str, task):
+    # NOTE: `parent_request_id` is the `internal_request_id` corresponding
+    # to an ongoing Serve request, so it is always non-empty.
+    _requests_pending_assignment[parent_request_id][response_id] = task
+
+
+def _remove_request_pending_assignment(parent_request_id: str, response_id: str):
+    if response_id in _requests_pending_assignment[parent_request_id]:
+        del _requests_pending_assignment[parent_request_id][response_id]
+
+    if len(_requests_pending_assignment[parent_request_id]) == 0:
+        del _requests_pending_assignment[parent_request_id]
+
+
+# `_in_flight_requests` is a map from request ID to a dictionary of replica results.
+# The request ID points to an ongoing Serve request, and the replica results are
+# in-flight child requests that have been assigned to a downstream replica.
+
+# A dictionary is used over a set to track the replica results for more
+# efficient addition and deletion time complexity. A uniquely generated
+# `response_id` is used to identify each replica result.
+
+_in_flight_requests: Dict[str, Dict[str, ReplicaResult]] = defaultdict(dict)
+
+# Note that the functions below that manipulate `_in_flight_requests`
+# are NOT thread-safe. They are only expected to be called from the
+# same thread/asyncio event-loop.
+
+
+def _get_in_flight_requests(parent_request_id):
+    if parent_request_id in _in_flight_requests:
+        return _in_flight_requests[parent_request_id]
+
+    return {}
+
+
+def _add_in_flight_request(parent_request_id, response_id, replica_result):
+    _in_flight_requests[parent_request_id][response_id] = replica_result
+
+
+def _remove_in_flight_request(parent_request_id, response_id):
+    if response_id in _in_flight_requests[parent_request_id]:
+        del _in_flight_requests[parent_request_id][response_id]
+
+    if len(_in_flight_requests[parent_request_id]) == 0:
+        del _in_flight_requests[parent_request_id]

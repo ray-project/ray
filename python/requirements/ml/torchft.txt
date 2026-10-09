@@ -1,0 +1,1 @@
+torchft-nightly==2026.5.15

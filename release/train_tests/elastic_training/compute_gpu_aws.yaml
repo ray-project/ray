@@ -1,0 +1,30 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 800
+            Iops: 5000
+            Throughput: 1000
+            VolumeType: gp3
+    TagSpecifications:
+        - ResourceType: "instance"
+          Tags:
+            - Key: chaos-test-name
+              Value: "train-chaos-test"
+
+head_node:
+    instance_type: g4dn.12xlarge
+    # GPU head — expose natural resources (48 vCPU + 4 T4 GPU) so elastic
+    # training can use the head as one of its GPU nodes.
+    resources:
+      CPU: 48
+      GPU: 4
+
+worker_nodes:
+    - instance_type: g4dn.12xlarge
+      min_nodes: 0
+      max_nodes: 3
+      market_type: ON_DEMAND

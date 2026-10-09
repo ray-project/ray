@@ -1,0 +1,523 @@
+from typing import Dict, List, Optional, Set, Tuple
+
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsProjectionPushdown,
+    LogicalPlan,
+    Rule,
+)
+from ray.data._internal.logical.operators import Project
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    _ColumnReferenceCollector,
+    _ColumnSubstitutionVisitor,
+    _is_col_expr,
+)
+from ray.data.expressions import (
+    AliasExpr,
+    Expr,
+    StarExpr,
+    is_rename_expr,
+)
+
+__all__ = [
+    "ProjectionPushdown",
+]
+
+
+def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
+    """
+    Extract all column names referenced by the given expressions.
+
+    Recursively traverses expression trees to find all ColumnExpr nodes
+    and collects their names.
+
+    Example: For expression "col1 + col2", returns {"col1", "col2"}
+    """
+    # ``StarExpr`` is eagerly expanded to explicit ``col()`` refs in
+    # ``Project.__post_init__`` when the input schema is known. So this
+    # branch is hit only on the UDF-fallback path (Project on top of an
+    # opaque-schema input like ``MapBatches``), where we can't enumerate
+    # columns and have to fall back to "all columns" (``None``).
+    if any(isinstance(expr, StarExpr) for expr in exprs):
+        return None
+
+    collector = _ColumnReferenceCollector()
+    for expr in exprs or []:
+        collector.visit(expr)
+
+    return collector.get_column_refs()
+
+
+def _analyze_upstream_project(
+    upstream_project: Project,
+) -> Tuple[Set[str], dict[str, Expr], Set[str]]:
+    """
+    Analyze what the upstream project produces and identifies removed columns.
+
+    Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
+    """
+    output_column_names = {
+        expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
+    }
+
+    # Compose column definitions in the form of a mapping of
+    #   - Target column name
+    #   - Target expression
+    output_column_defs = {
+        expr.name: expr for expr in _filter_out_star(upstream_project.exprs)
+    }
+
+    # Identify upstream input columns removed by renaming (ie not propagated into
+    # its output)
+    upstream_column_renaming_map = _extract_input_columns_renaming_mapping(
+        upstream_project.exprs
+    )
+
+    return (
+        output_column_names,
+        output_column_defs,
+        set(upstream_column_renaming_map.keys()),
+    )
+
+
+def _validate_fusion(
+    downstream_project: Project,
+    upstream_has_all: bool,
+    upstream_output_columns: Set[str],
+    removed_by_renames: Set[str],
+) -> Tuple[bool, Set[str]]:
+    """
+    Validate if fusion is possible without rewriting expressions.
+
+    Args:
+        downstream_project: The downstream Project operator
+        upstream_has_all: True if the upstream Project has all columns, False otherwise
+        upstream_output_columns: Set of column names that are available in the upstream Project
+        removed_by_renames: Set of column names that are removed by renames in the upstream Project
+
+    Returns:
+        Tuple of (is_valid, missing_columns)
+        - is_valid: True if all expressions can be fused, False otherwise
+        - missing_columns: Set of column names that are referenced but not available
+
+    Example: Downstream refs "x" but upstream renamed "x" to "y" and dropped "x"
+             → (False, {"x"})
+    """
+    missing_columns = set()
+
+    for expr in downstream_project.exprs:
+        if isinstance(expr, StarExpr):
+            continue
+
+        column_refs = _collect_referenced_columns([expr])
+        column_refs_set = set(column_refs or [])
+
+        columns_from_original = column_refs_set - (
+            column_refs_set & upstream_output_columns
+        )
+
+        # Validate accessibility
+        if not upstream_has_all and columns_from_original:
+            # Example: Upstream selects ["a", "b"], Downstream refs "c" → can't fuse
+            missing_columns.update(columns_from_original)
+
+        if any(col in removed_by_renames for col in columns_from_original):
+            # Example: Upstream renames "x" to "y" (dropping "x"), Downstream refs "x" → can't fuse
+            removed_cols = {
+                col for col in columns_from_original if col in removed_by_renames
+            }
+            missing_columns.update(removed_cols)
+
+    is_valid = len(missing_columns) == 0
+    return is_valid, missing_columns
+
+
+def _would_duplicate_nonidempotent_expr(
+    upstream_project: Project,
+    downstream_project: Project,
+    upstream_column_defs: Dict[str, Expr],
+) -> bool:
+    """Return ``True`` if fusing would materialize a non-idempotent column >1 time.
+
+    Fusion inlines each upstream output column definition into every downstream
+    reference. For a non-idempotent definition (random/uuid/monotonically_increasing_id)
+    this changes its evaluation count, so we block the fusion and let the upstream
+    evaluate it exactly once.
+
+    Materialization count for an upstream column post-fusion is its downstream reference
+    multiplicity, plus one if it survives as a passthrough (the composition/star case).
+    """
+    nonidem_cols = {
+        name
+        for name, def_expr in upstream_column_defs.items()
+        if not def_expr.is_idempotent()
+    }
+    if not nonidem_cols:
+        return False
+
+    # Downstream reference multiplicity (counts ``x + x`` as 2).
+    counter = _ColumnReferenceCollector()
+    # Note: We ignore _common_sub_exprs field as CSE rule is applied post-optimization.
+    # If order is to be changed, we also need to invoke the _ColumnReferenceCollector
+    # on _common_sub_exprs.
+    for e in _filter_out_star(downstream_project.exprs):
+        counter.visit(e)
+    ref_counts = counter.get_counts()
+
+    # In the composition (downstream-star) case the upstream column also survives in
+    # the fused output unless downstream renames it away, adding one materialization.
+    passthrough: Set[str] = set()
+    if downstream_project.has_star_expr():
+        renamed_away = _extract_input_columns_renaming_mapping(downstream_project.exprs)
+        passthrough = {
+            e.name
+            for e in upstream_project.exprs
+            if not isinstance(e, StarExpr) and e.name not in renamed_away
+        }
+
+    for name in nonidem_cols:
+        total = ref_counts.get(name, 0) + (1 if name in passthrough else 0)
+        if total > 1:
+            return True
+    return False
+
+
+def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
+    """
+    Attempt to merge two consecutive Project operations into one.
+
+    Example: Upstream: [star(), col("x").alias("y")], Downstream: [star(), (col("y") + 1).alias("z")] → Fused: [star(), (col("x") + 1).alias("z")]
+    """
+    # Check resource compatibility before attempting fusion
+    # This ensures with_column respects resource boundaries like map_batches does
+    from ray.data._internal.logical.rules.operator_fusion import (
+        FuseOperators,
+        are_op_remote_args_compatible,
+    )
+
+    # Check if remote args (num_cpus, num_gpus, etc.) are compatible and that
+    # neither op specifies a `ray_remote_args_fn`.
+    if not are_op_remote_args_compatible(upstream_project, downstream_project):
+        # Resources don't match - cannot fuse
+        return downstream_project
+
+    # Check if compute strategies are compatible
+    fused_compute = FuseOperators._fuse_compute_strategy(
+        upstream_project.compute, downstream_project.compute
+    )
+    if fused_compute is None:
+        # Compute strategies incompatible - cannot fuse
+        return downstream_project
+
+    upstream_has_star: bool = upstream_project.has_star_expr()
+
+    # TODO add validations that
+    #   - exprs only depend on input attrs (ie no dep on output of other exprs)
+
+    # Analyze upstream
+    (
+        upstream_output_cols,
+        upstream_column_defs,
+        upstream_input_cols_removed,
+    ) = _analyze_upstream_project(upstream_project)
+
+    # Validate fusion possibility
+    is_valid, missing_columns = _validate_fusion(
+        downstream_project,
+        upstream_has_star,
+        upstream_output_cols,
+        upstream_input_cols_removed,
+    )
+
+    if not is_valid:
+        # Raise KeyError to match expected error type in tests
+        raise KeyError(
+            f"Column(s) {sorted(missing_columns)} not found. "
+            f"Available columns: {sorted(upstream_output_cols) if not upstream_has_star else 'all columns (has star)'}"
+        )
+
+    if _would_duplicate_nonidempotent_expr(
+        upstream_project, downstream_project, upstream_column_defs
+    ):
+        # Fusing would inline a non-idempotent expression (random/uuid/
+        # monotonically_increasing_id) into multiple references, changing its
+        # evaluation count. Leave the two Projects unfused so the upstream evaluates
+        # it exactly once and downstream reads the materialized column.
+        return downstream_project
+
+    # Following invariants are upheld for each ``Project`` logical op:
+    #
+    #   1. ``Project``s list of expressions are bound to op's input columns **only**
+    #   (ie there could be no inter-dependency b/w expressions themselves)
+    #
+    #   2. `Each of expressions on the `Project``s list constitutes an output
+    #   column definition, where column's name is derived from ``expr.name`` and
+    #   column itself is derived by executing that expression against the op's
+    #   input block.
+    #
+    # Therefore to abide by and satisfy aforementioned invariants, when fusing
+    # 2 ``Project`` operators, following scenarios are considered:
+    #
+    #   1. Composition: downstream including (and potentially renaming) upstream
+    #      output columns (this is the case when downstream holds ``StarExpr``).
+    #
+    #   2. Projection: downstream projecting upstream output columns (by for ex,
+    #      only selecting & transforming some of the upstream output columns).
+    #
+
+    # Upstream output column refs inside downstream expressions need to be bound
+    # to upstream output column definitions to satisfy invariant #1 (common for both
+    # composition/projection cases)
+    v = _ColumnSubstitutionVisitor(upstream_column_defs)
+
+    rebound_downstream_exprs = [
+        v.visit(e) for e in _filter_out_star(downstream_project.exprs)
+    ]
+
+    if not downstream_project.has_star_expr():
+        # Projection case: this is when downstream is a *selection* (ie, not including
+        # the upstream columns with ``StarExpr``). With eager expansion of
+        # ``StarExpr`` in ``Project.__post_init__`` this is the common case
+        # for typed chains (no ``StarExpr`` reaches the optimizer).
+        #
+        # Example:
+        #   Upstream: Project([col("a").alias("b")])
+        #   Downstream: Project([col("b").alias("c")])
+        #
+        #   Result: Project([col("a").alias("c")])
+        new_exprs = rebound_downstream_exprs
+    else:
+        # Composition case: downstream has ``StarExpr`` (entailing that downstream
+        # output will be including all of the upstream output columns). This
+        # is the UDF-fallback path; for typed chains
+        # ``Project.__post_init__`` would have replaced the ``StarExpr``
+        # with explicit ``col()`` refs already.
+        #
+        # Example 1:
+        #   Upstream: [star(), col("a").alias("b")],
+        #   Downstream: [star(), col("b").alias("c")]
+        #
+        #   Result: [star(), col("a").alias("b"), col("a").alias("c")]
+        #
+        # Example 2:
+        #   Input (columns): ["a", "b"]
+        #   Upstream: [star({"b": "z"}), col("a").alias("x")],
+        #   Downstream: [star({"x": "y"}), col("z")]
+        #
+        #   Result: [star(), col("a").alias("y"), col("b").alias("z")]
+
+        # Extract downstream's input column rename map (downstream inputs are
+        # upstream's outputs)
+        downstream_input_column_rename_map = _extract_input_columns_renaming_mapping(
+            downstream_project.exprs
+        )
+        # Collect upstream output column expression "projected" to become
+        # downstream expressions
+        projected_upstream_output_col_exprs = []
+
+        # When fusing 2 projections
+        for e in upstream_project.exprs:
+            # NOTE: We have to filter out upstream output columns that are
+            #       being *renamed* by downstream expression
+            if e.name not in downstream_input_column_rename_map:
+                projected_upstream_output_col_exprs.append(e)
+
+        new_exprs = projected_upstream_output_col_exprs + rebound_downstream_exprs
+
+    return Project(
+        exprs=new_exprs,
+        input_dependencies=[upstream_project.input_dependencies[0]],
+        compute=fused_compute,
+        ray_remote_args=downstream_project.ray_remote_args,
+    )
+
+
+def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
+    return [e for e in exprs if not isinstance(e, StarExpr)]
+
+
+class ProjectionPushdown(Rule):
+    """
+    Optimization rule that pushes projections (column selections) down the query plan.
+
+    This rule performs two optimizations:
+    1. Fuses consecutive Project operations to eliminate redundant projections
+    2. Pushes projections into data sources (e.g., Read operations) to enable
+       column pruning at the storage layer
+    """
+
+    def apply(self, plan: LogicalPlan) -> LogicalPlan:
+        """Apply projection pushdown optimization to the entire plan."""
+        dag = plan.dag
+        # Insert a pruning projection below consuming ops (e.g. ``Aggregate``)
+        # first, so the fuse/push steps can carry the narrowed columns into the
+        # read.
+        new_dag = dag._apply_transform(self._prune_aggregate_input)
+        new_dag = new_dag._apply_transform(self._try_fuse_projects)
+        new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
+        return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @classmethod
+    def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
+        """Insert a ``Project`` below an ``Aggregate`` that keeps only the
+        columns it consumes (group keys + each aggregation's target column).
+
+        The aggregation drops every other column anyway, so pruning them before
+        the shuffle avoids dragging unused (often wide) columns through it --
+        which otherwise inflates both the aggregator's memory reservation and
+        the bytes shuffled. The inserted projection is fused/pushed toward the
+        read by the steps in ``apply``.
+        """
+        from dataclasses import replace
+
+        from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
+        from ray.data.aggregate import AggregateFnV2
+        from ray.data.expressions import col
+
+        if not isinstance(op, Aggregate):
+            return op
+
+        keys = op.key if isinstance(op.key, list) else ([op.key] if op.key else [])
+        required: List[str] = list(keys)
+        for agg in op.aggs:
+            # A generic ``AggregateFn`` may read arbitrary columns, so only
+            # prune when every aggregation declares the column it reads.
+            if not isinstance(agg, AggregateFnV2):
+                return op
+            target = agg.get_target_column()
+            if target is not None:
+                required.append(target)
+
+        # Order-preserving dedup; empty means nothing safe to prune to (e.g. a
+        # global count reading no columns).
+        required = list(dict.fromkeys(required))
+        if not required:
+            return op
+
+        input_op = op.input_dependencies[0]
+        schema = input_op.infer_schema()
+        if schema is None or not hasattr(schema, "names"):
+            return op  # unknown schema: can't prove pruning helps
+
+        # Insert only when ``required`` is a strict subset of the input columns:
+        # this guarantees there's something to drop and keeps the rule
+        # idempotent (once the input yields exactly ``required`` nothing more is
+        # inserted, so the fixed-point optimizer terminates).
+        if not set(required) < set(schema.names):
+            return op
+
+        prune = Project(exprs=[col(c) for c in required], input_dependencies=[input_op])
+        return replace(op, input_dependencies=[prune])
+
+    @classmethod
+    def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:
+        """
+        Optimize a single Project operator.
+
+        Steps:
+        1. Iteratively fuse with upstream Project operations
+        2. Push the resulting projection into the data source if possible
+        """
+        if not isinstance(op, Project):
+            return op
+
+        # Step 1: Iteratively fuse with upstream Project operations
+        current_project: Project = op
+
+        upstream_op = current_project.input_dependencies[0]
+        if not isinstance(upstream_op, Project):
+            return op
+
+        fused = _try_fuse(upstream_op, current_project)
+
+        return fused
+
+    @classmethod
+    def _push_projection_into_read_op(cls, op: LogicalOperator) -> LogicalOperator:
+
+        if not isinstance(op, Project):
+            return op
+
+        current_project: Project = op
+
+        # Step 2: Push projection into the data source if supported
+        input_op = current_project.input_dependencies[0]
+        if (
+            isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
+            and input_op.supports_projection_pushdown()
+        ):
+            # Collect the set of input columns this ``Project`` reads.
+            # ``None`` means "all columns" (a ``StarExpr`` is present, so
+            # we can't enumerate). Renames are NOT pushed into the read:
+            # column renaming always stays as an ``AliasExpr`` in a
+            # ``Project`` on top of the read. This keeps the read stage
+            # in a single column namespace (the scanner's on-disk names)
+            # and avoids the predicate-pushdown rebinding dance.
+            if current_project.has_star_expr():
+                # UDF-fallback path: if ``StarExpr`` survives to this rule
+                # the input schema was unknown at construction time, so
+                # we can't enumerate columns and have to push "all".
+                required_columns = None
+            else:
+                # Otherwise, collect required columns to push projection down
+                # into the reader. (``Project.__post_init__`` expands
+                # ``StarExpr`` to explicit ``col()`` refs when the input
+                # schema is known, so this is the common path.)
+                required_columns = _collect_referenced_columns(current_project.exprs)
+
+            # Build a pure-prune projection map (identity, no renames).
+            projection_map = (
+                None
+                if required_columns is None
+                else {name: name for name in required_columns}
+            )
+            projected_input_op = input_op.apply_projection(projection_map)
+
+            # If the ``Project`` is a pure-prune (only ``col()`` refs,
+            # no renames, no computed expressions), the projection
+            # pushdown into the read op fully subsumes it — discard it.
+            # Otherwise (renames or computed expressions present), keep
+            # the ``Project`` on top so it runs above the (pruned) read.
+            # Physical operator fusion later merges the kept ``Project``
+            # into the same ``MapOperator`` as the read, so the
+            # runtime cost is the same either way.
+            has_renames = any(isinstance(e, AliasExpr) for e in current_project.exprs)
+            all_col_refs = all(
+                _is_col_expr(e) for e in _filter_out_star(current_project.exprs)
+            )
+            is_pure_prune = not has_renames and all_col_refs
+            if is_pure_prune:
+                return projected_input_op
+
+            return Project(
+                exprs=current_project.exprs,
+                input_dependencies=[projected_input_op],
+                compute=current_project.compute,
+                ray_remote_args=current_project.ray_remote_args,
+            )
+
+        return current_project
+
+
+def _extract_input_columns_renaming_mapping(
+    projection_exprs: List[Expr],
+) -> Dict[str, str]:
+    """Fetches renaming mapping of all input columns names being renamed (replaced).
+    Format is source column name -> new column name.
+    """
+
+    return dict(
+        [
+            _get_renaming_mapping(expr)
+            for expr in _filter_out_star(projection_exprs)
+            if is_rename_expr(expr)
+        ]
+    )
+
+
+def _get_renaming_mapping(expr: Expr) -> Tuple[str, str]:
+    assert is_rename_expr(expr)
+
+    alias: AliasExpr = expr
+
+    return alias.expr.name, alias.name

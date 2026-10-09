@@ -1,0 +1,21 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 2000
+
+head_node:
+    instance_type: r5.8xlarge
+    resources:
+        CPU: 8
+
+worker_nodes:
+    - instance_type: r5.8xlarge
+      min_nodes: 32
+      max_nodes: 32
+      market_type: ON_DEMAND
+      resources:
+          CPU: 8

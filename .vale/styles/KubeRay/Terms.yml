@@ -1,0 +1,39 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#kubernetes-docs-style'
+level: warning
+ignorecase: false
+# A Vocab accept entry otherwise shadows its token for every rule, case-insensitively,
+# which would silently disable the swaps below whose target appears in an accept list.
+# `autoscaler` in config/vocabularies/Data/accept.txt is the one that bites: without
+# this, the "Ray Autoscaler" swap never fires and nothing warns you.
+vocab: false
+swap:
+  # Project and product names. `Kuberay` and `Yunikorn` aren't here, and neither are
+  # the flat-camel custom resources such as `Raycluster`: the accept list already
+  # drives `Vale.Terms` for those, and duplicating them here made a single token
+  # alert up to three times.
+  'Ray serve': Ray Serve
+  # Custom resource versus the concept it creates. These two-word lowercase forms
+  # don't match an accept entry, so they do need swaps.
+  'ray cluster': Ray cluster
+  'ray job': Ray job
+  'ray service': Ray service
+  # Generic nouns stay lowercase next to a capitalized product name.
+  'Worker Group': worker group
+  'Ray Autoscaler': Ray autoscaler
+  'Ray Dashboard': Ray dashboard
+  'KubeRay Dashboard': KubeRay dashboard
+  # A Pod hosts a Ray node; it isn't a Ray-owned object. Plurals need their own
+  # entries because Vale's word boundary stops 'Ray Pod' matching inside 'Ray Pods'.
+  'Ray Pods': Pods
+  'Ray pods': Pods
+  'Ray Pod': Pod
+  'Ray pod': Pod
+  # Kubernetes API object casing.
+  'head pod': head Pod
+  'head pods': head Pods
+  'worker pod': worker Pod
+  'worker pods': worker Pods
+  # Spell out the acronym, then use the full phrase.
+  'GCS FT': GCS fault tolerance

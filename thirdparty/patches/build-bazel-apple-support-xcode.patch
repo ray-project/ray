@@ -1,0 +1,11 @@
+--- a/lib/xcode_support.bzl
++++ b/lib/xcode_support.bzl
+@@ -33,7 +33,6 @@
+     current_version = xcode_config.xcode_version()
+     if not current_version:
+-        fail("Could not determine Xcode version at all. This likely means Xcode isn't available; " +
+-             "if you think this is a mistake, please file an issue.")
++        return False
+
+     desired_version = apple_common.dotted_version(version)
+     return current_version >= desired_version

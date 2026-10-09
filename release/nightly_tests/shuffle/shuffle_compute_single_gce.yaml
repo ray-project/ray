@@ -1,0 +1,17 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones: [us-west1-c]
+
+advanced_instance_config:
+    instance_properties:
+        disks:
+            - boot: true
+              auto_delete: true
+              initialize_params:
+                  disk_size_gb: 500
+
+head_node:
+    instance_type: n2-highmem-16
+    resources:
+        object_store_memory: 21474836480
+
+worker_nodes: []

@@ -1,0 +1,19 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.2xlarge
+    resources:
+        CPU: 8
+
+worker_nodes:
+    - instance_type: m5.2xlarge
+      min_nodes: 3
+      max_nodes: 3
+      market_type: ON_DEMAND
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '48'

@@ -1,0 +1,860 @@
+import os
+import shlex
+import shutil
+import sys
+import tempfile
+import time
+from importlib import import_module
+from pathlib import Path
+from unittest import mock
+
+import pytest
+
+import ray
+from ray._private.client_mode_hook import disable_client_hook
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.packaging import (
+    get_uri_for_directory,
+    upload_package_if_needed,
+)
+from ray._private.runtime_env.working_dir import (
+    WorkingDirPlugin,
+    set_pythonpath_in_context,
+)
+from ray._private.utils import get_directory_size_bytes
+
+# This test requires you have AWS credentials set up (any AWS credentials will
+# do, this test only accesses a public bucket).
+
+# This package contains a subdirectory called `test_module`.
+# Calling `test_module.one()` should return `2`.
+# If you find that confusing, take it up with @jiaodong...
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a885b80879665a49d5cd4c3ebd33bb6f865644e5.zip"
+TEST_IMPORT_DIR = "test_import_dir"
+
+
+def using_ray_client():
+    return ray._private.client_mode_hook.is_client_mode_enabled
+
+
+# Set scope to "module" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="module")
+def insert_test_dir_in_pythonpath():
+    with mock.patch.dict(
+        os.environ,
+        {"PYTHONPATH": TEST_IMPORT_DIR + os.pathsep + os.environ.get("PYTHONPATH", "")},
+    ):
+        yield
+
+
+@pytest.mark.asyncio
+async def test_working_dir_cleanup(tmpdir, ray_start_regular):
+    gcs_client = ray.worker.global_worker.gcs_client
+
+    plugin = WorkingDirPlugin(tmpdir, gcs_client)
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    # Iterate over the files and storing creation metadata.
+    creation_metadata = {}
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time = file_metadata.st_ctime
+        creation_metadata[file] = creation_time
+
+    time.sleep(1)
+
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+    files = os.listdir(f"{tmpdir}/working_dir_files")
+
+    for file in files:
+        file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")
+        creation_time_after = file_metadata.st_ctime
+        assert creation_metadata[file] != creation_time_after
+
+
+@pytest.mark.skipif(
+    ray._private.client_mode_hook.is_client_mode_enabled, reason="Fails w/ Ray Client."
+)
+@pytest.mark.asyncio
+async def test_create_delete_size_equal(tmpdir, ray_start_regular):
+    """Tests that `create` and `delete_uri` return the same size for a URI."""
+    gcs_client = ray.worker.global_worker.gcs_client
+    # Create an arbitrary nonempty directory to upload.
+    path = Path(tmpdir)
+    dir_to_upload = path / "dir_to_upload"
+    dir_to_upload.mkdir(parents=True)
+    filepath = dir_to_upload / "file"
+    with filepath.open("w") as file:
+        file.write("F" * 100)
+
+    uri = get_uri_for_directory(dir_to_upload, include_gitignore=True)
+    assert get_directory_size_bytes(dir_to_upload) > 0
+
+    uploaded = upload_package_if_needed(
+        uri, tmpdir, dir_to_upload, include_gitignore=True
+    )
+    assert uploaded
+
+    manager = WorkingDirPlugin(tmpdir, gcs_client)
+
+    created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
+    deleted_size_bytes = manager.delete_uri(uri)
+    assert created_size_bytes == deleted_size_bytes
+
+
+def test_inherit_cluster_env_pythonpath(monkeypatch):
+    monkeypatch.setenv(
+        "PYTHONPATH", "last" + os.pathsep + os.environ.get("PYTHONPATH", "")
+    )
+    context = RuntimeEnvContext(env_vars={"PYTHONPATH": "middle"})
+
+    set_pythonpath_in_context("first", context)
+
+    assert context.env_vars["PYTHONPATH"].startswith(
+        os.pathsep.join(["first", "middle", "last"])
+    )
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        "failure",
+        "working_dir",
+        "working_dir_zip",
+        "working_dir_tar_xz",
+        "py_modules",
+        "py_modules_tar_xz",
+        "working_dir_and_py_modules",
+    ],
+)
+def test_lazy_reads(
+    insert_test_dir_in_pythonpath,
+    start_cluster,
+    tmp_path,
+    tmp_working_dir,
+    option: str,
+):
+    """Tests the case where we lazily read files or import inside a task/actor.
+
+    This tests both that this fails *without* the working_dir and that it
+    passes with it.  Also tests that the existing PYTHONPATH is preserved,
+    so packages preinstalled on the cluster are still importable when using
+    py_modules or working_dir.
+    """
+    cluster, address = start_cluster
+
+    def call_ray_init():
+        if option == "failure":
+            # Don't pass the files at all, so it should fail!
+            ray.init(address)
+        elif option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        elif option == "working_dir_zip":
+            # Create a temp dir to place the zipped package
+            # from tmp_working_dir
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                zip_dir = Path(tmp_working_dir)
+                package = shutil.make_archive(
+                    os.path.join(tmp_dir, "test"), "zip", zip_dir
+                )
+                ray.init(address, runtime_env={"working_dir": package})
+        elif option in {"working_dir_tar_xz", "py_modules_tar_xz"}:
+            package = shutil.make_archive(
+                str(tmp_path / "test"), "xztar", tmp_working_dir
+            )
+            if option == "working_dir_tar_xz":
+                runtime_env = {"working_dir": package}
+            else:
+                runtime_env = {"py_modules": [Path(package).as_uri()]}
+            ray.init(address, runtime_env=runtime_env)
+        elif option == "py_modules":
+            ray.init(
+                address,
+                runtime_env={
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        str(Path(tmp_working_dir) / "file_module.py"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ]
+                },
+            )
+        elif option == "working_dir_and_py_modules":
+            ray.init(
+                address,
+                runtime_env={
+                    "working_dir": tmp_working_dir,
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        str(Path(tmp_working_dir) / "file_module.py"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ],
+                },
+            )
+        else:
+            raise ValueError(f"unexpected pytest parameter {option}")
+
+    call_ray_init()
+
+    def reinit():
+        ray.shutdown()
+        # TODO(SongGuyang): Currently, reinit the driver will generate the same
+        # job id. And if we reinit immediately after shutdown, raylet may
+        # process new job started before old job finished in some cases. This
+        # inconsistency could disorder the URI reference and delete a valid
+        # runtime env. We sleep here to walk around this issue.
+        time.sleep(5)
+        call_ray_init()
+
+    @ray.remote
+    def test_import():
+        import file_module
+        import test_module
+
+        assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
+        return test_module.one(), file_module.hello()
+
+    if option == "failure":
+        with pytest.raises(ImportError):
+            ray.get(test_import.remote())
+    else:
+        assert ray.get(test_import.remote()) == (1, "hello")
+
+    if option in {"py_modules", "working_dir_and_py_modules"}:
+
+        @ray.remote
+        def test_py_modules_whl():
+            import pip_install_test  # noqa: F401
+
+            return True
+
+        assert ray.get(test_py_modules_whl.remote())
+
+    if option in {
+        "py_modules",
+        "py_modules_tar_xz",
+        "working_dir_zip",
+        "working_dir_tar_xz",
+    }:
+        # These options are not tested beyond this point, so return to save time.
+        return
+
+    reinit()
+
+    @ray.remote
+    def test_read():
+        return open("hello").read()
+
+    if option == "failure":
+        with pytest.raises(FileNotFoundError):
+            ray.get(test_read.remote())
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
+        assert ray.get(test_read.remote()) == "world"
+
+    reinit()
+
+    @ray.remote
+    class Actor:
+        def test_import(self):
+            import file_module
+            import test_module
+
+            assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
+            return test_module.one(), file_module.hello()
+
+        def test_read(self):
+            assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
+            return open("hello").read()
+
+    a = Actor.remote()
+    if option == "failure":
+        with pytest.raises(ImportError):
+            assert ray.get(a.test_import.remote()) == (1, "hello")
+        with pytest.raises(FileNotFoundError):
+            assert ray.get(a.test_read.remote()) == "world"
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
+        assert ray.get(a.test_import.remote()) == (1, "hello")
+        assert ray.get(a.test_read.remote()) == "world"
+
+
+@pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
+def test_captured_import(start_cluster, tmp_working_dir, option: str):
+    """Tests importing a module in the driver and capturing it in a task/actor.
+
+    This tests both that this fails *without* the working_dir and that it
+    passes with it.
+    """
+    cluster, address = start_cluster
+
+    def call_ray_init():
+        if option == "failure":
+            # Don't pass the files at all, so it should fail!
+            ray.init(address)
+        elif option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        elif option == "py_modules":
+            ray.init(
+                address,
+                runtime_env={
+                    "py_modules": [
+                        os.path.join(tmp_working_dir, "test_module"),
+                        os.path.join(tmp_working_dir, "file_module.py"),
+                    ]
+                },
+            )
+
+    call_ray_init()
+
+    def reinit():
+        ray.shutdown()
+        # TODO(SongGuyang): Currently, reinit the driver will generate the same
+        # job id. And if we reinit immediately after shutdown, raylet may
+        # process new job started before old job finished in some cases. This
+        # inconsistency could disorder the URI reference and delete a valid
+        # runtime env. We sleep here to walk around this issue.
+        time.sleep(5)
+        call_ray_init()
+
+    # Import in the driver.
+    sys.path.insert(0, tmp_working_dir)
+    import file_module
+    import test_module
+
+    @ray.remote
+    def test_import():
+        return test_module.one(), file_module.hello()
+
+    if option == "failure":
+        with pytest.raises(Exception):
+            ray.get(test_import.remote())
+    else:
+        assert ray.get(test_import.remote()) == (1, "hello")
+
+    reinit()
+
+    @ray.remote
+    class Actor:
+        def test_import(self):
+            return test_module.one(), file_module.hello()
+
+    if option == "failure":
+        with pytest.raises(Exception):
+            a = Actor.remote()
+            assert ray.get(a.test_import.remote()) == (1, "hello")
+    else:
+        a = Actor.remote()
+        assert ray.get(a.test_import.remote()) == (1, "hello")
+
+
+def test_empty_working_dir(start_cluster):
+    """Tests the case where we pass an empty directory as the working_dir."""
+    cluster, address = start_cluster
+    with tempfile.TemporaryDirectory() as working_dir:
+        ray.init(address, runtime_env={"working_dir": working_dir})
+
+        @ray.remote
+        def listdir():
+            return os.listdir()
+
+        assert len(ray.get(listdir.remote())) == 0
+
+        @ray.remote
+        class A:
+            def listdir(self):
+                return os.listdir()
+                pass
+
+        a = A.remote()
+        assert len(ray.get(a.listdir.remote())) == 0
+
+        # Test that we can reconnect with no errors
+        ray.shutdown()
+        ray.init(address, runtime_env={"working_dir": working_dir})
+
+
+@pytest.mark.skipif(
+    using_ray_client(),
+    reason="Ray Client doesn't clean up global state properly on ray.init() failure.",
+)
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+def test_input_validation(start_cluster, option: str):
+    """Tests input validation for working_dir and py_modules."""
+    cluster, address = start_cluster
+
+    with pytest.raises(TypeError):
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": 10})
+        else:
+            ray.init(address, runtime_env={"py_modules": [10]})
+
+    ray.shutdown()
+
+    with pytest.raises(ValueError):
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": "/does/not/exist"})
+        else:
+            ray.init(address, runtime_env={"py_modules": ["/does/not/exist"]})
+
+    ray.shutdown()
+
+    with pytest.raises(ValueError):
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": "does_not_exist"})
+        else:
+            ray.init(address, runtime_env={"py_modules": ["does_not_exist"]})
+
+    ray.shutdown()
+
+    for uri in ["https://no_dot_zip", "s3://no_dot_zip", "gs://no_dot_zip"]:
+        with pytest.raises(ValueError):
+            if option == "working_dir":
+                ray.init(address, runtime_env={"working_dir": uri})
+            else:
+                ray.init(address, runtime_env={"py_modules": [uri]})
+
+        ray.shutdown()
+
+    if option == "py_modules":
+        with pytest.raises(TypeError):
+            # Must be in a list.
+            ray.init(address, runtime_env={"py_modules": "."})
+
+
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+def test_exclusion(start_cluster, tmp_working_dir, option):
+    """Tests various forms of the 'excludes' parameter."""
+    cluster, address = start_cluster
+
+    def create_file(p, empty=False):
+        if not p.parent.exists():
+            p.parent.mkdir(parents=True)
+        with p.open("w") as f:
+            if not empty:
+                f.write("Test")
+
+    working_path = Path(tmp_working_dir)
+    create_file(working_path / "__init__.py", empty=True)
+    create_file(working_path / "test1")
+    create_file(working_path / "test2")
+    create_file(working_path / "test3")
+    create_file(working_path / "tmp_dir" / "test_1")
+    create_file(working_path / "tmp_dir" / "test_2")
+    create_file(working_path / "tmp_dir" / "test_3")
+    create_file(working_path / "tmp_dir" / "sub_dir" / "test_1")
+    create_file(working_path / "tmp_dir" / "sub_dir" / "test_2")
+    create_file(working_path / "cache" / "test_1")
+    create_file(working_path / "tmp_dir" / "cache" / "test_1")
+    create_file(working_path / "another_dir" / "cache" / "test_1")
+
+    module_name = Path(tmp_working_dir).name
+
+    # Test that all files are present without excluding.
+    if option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    else:
+        ray.init(address, runtime_env={"py_modules": [tmp_working_dir]})
+
+    @ray.remote
+    def check_file(name):
+        if option == "py_modules":
+            try:
+                module = import_module(module_name)
+            except ImportError:
+                return "FAILED"
+            name = os.path.join(module.__path__[0], name)
+        try:
+            with open(name) as f:
+                return f.read()
+        except Exception:
+            return "FAILED"
+
+    def get_all():
+        return ray.get(
+            [
+                check_file.remote("test1"),
+                check_file.remote("test2"),
+                check_file.remote("test3"),
+                check_file.remote(os.path.join("tmp_dir", "test_1")),
+                check_file.remote(os.path.join("tmp_dir", "test_2")),
+                check_file.remote(os.path.join("tmp_dir", "test_3")),
+                check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_1")),
+                check_file.remote(os.path.join("tmp_dir", "sub_dir", "test_2")),
+                check_file.remote(os.path.join("cache", "test_1")),
+                check_file.remote(os.path.join("tmp_dir", "cache", "test_1")),
+                check_file.remote(os.path.join("another_dir", "cache", "test_1")),
+            ]
+        )
+
+    assert get_all() == [
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+        "Test",
+    ]
+
+    ray.shutdown()
+
+    # Test various exclusion methods.
+    excludes = [
+        # exclude by relative path
+        "test2",
+        # exclude by dir
+        str((Path("tmp_dir") / "sub_dir").as_posix()),
+        # exclude part of the dir
+        str((Path("tmp_dir") / "test_1").as_posix()),
+        # exclude part of the dir
+        str((Path("tmp_dir") / "test_2").as_posix()),
+    ]
+
+    if option == "working_dir":
+        ray.init(
+            address, runtime_env={"working_dir": tmp_working_dir, "excludes": excludes}
+        )
+    else:
+        ray.init(
+            address, runtime_env={"py_modules": [tmp_working_dir], "excludes": excludes}
+        )
+
+    assert get_all() == [
+        "Test",
+        "FAILED",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "Test",
+        "Test",
+        "Test",
+    ]
+
+    ray.shutdown()
+
+    # Test excluding all files using gitignore pattern matching syntax
+    excludes = ["*"]
+    if option == "working_dir":
+        ray.init(
+            address, runtime_env={"working_dir": tmp_working_dir, "excludes": excludes}
+        )
+    else:
+        module_name = Path(tmp_working_dir).name
+        ray.init(
+            address, runtime_env={"py_modules": [tmp_working_dir], "excludes": excludes}
+        )
+
+    assert get_all() == [
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+    ]
+
+    ray.shutdown()
+
+    # Test excluding with a .gitignore file.
+    with open(f"{tmp_working_dir}/.gitignore", "w") as f:
+        f.write(
+            """
+# Comment
+test_[12]
+/test1
+!/tmp_dir/sub_dir/test_1
+cache/
+"""
+        )
+
+    if option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    else:
+        module_name = Path(tmp_working_dir).name
+        ray.init(address, runtime_env={"py_modules": [tmp_working_dir]})
+
+    assert get_all() == [
+        "FAILED",
+        "Test",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "Test",
+        "Test",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+        "FAILED",
+    ]
+
+
+def test_override_failure(shutdown_only):
+    """Tests invalid override behaviors."""
+    ray.init()
+
+    with pytest.raises(ValueError):
+
+        @ray.remote(runtime_env={"working_dir": "."})
+        def f():
+            pass
+
+    @ray.remote
+    def g():
+        pass
+
+    with pytest.raises(ValueError):
+        g.options(runtime_env={"working_dir": "."})
+
+    with pytest.raises(ValueError):
+
+        @ray.remote(runtime_env={"working_dir": "."})
+        class A:
+            pass
+
+    @ray.remote
+    class B:
+        pass
+
+    with pytest.raises(ValueError):
+        B.options(runtime_env={"working_dir": "."})
+
+
+def test_default_excludes(start_cluster, monkeypatch):
+    """Tests that default excludes (.git, .venv, etc.) are applied."""
+    cluster, address = start_cluster
+    monkeypatch.delenv("RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES", raising=False)
+
+    excluded_dirs = [".git", ".venv", "venv", "__pycache__"]
+
+    with tempfile.TemporaryDirectory() as tmp_working_dir:
+        # Create excluded directories with a marker file
+        for d in excluded_dirs:
+            os.makedirs(os.path.join(tmp_working_dir, d))
+            Path(tmp_working_dir, d, "to_exclude").write_text("x")
+
+        # Create a file that should be included
+        Path(tmp_working_dir, "included.txt").write_text("x")
+
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+
+        @ray.remote
+        def check_dirs(dirs):
+            return {d: os.path.exists(d) for d in dirs + ["included.txt"]}
+
+        result = ray.get(check_dirs.remote(excluded_dirs))
+
+        assert result["included.txt"], "included.txt should be present"
+        for d in excluded_dirs:
+            assert not result[d], f"{d} should be excluded by default"
+
+
+def test_default_excludes_disabled_via_env_var(start_cluster, monkeypatch):
+    """Tests that RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES='' disables defaults."""
+    cluster, address = start_cluster
+    monkeypatch.setenv("RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES", "")
+
+    with tempfile.TemporaryDirectory() as tmp_working_dir:
+        os.makedirs(os.path.join(tmp_working_dir, ".git"))
+        Path(tmp_working_dir, ".git", "to_exclude").write_text("x")
+
+        ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+
+        @ray.remote
+        def check_git():
+            return os.path.exists(".git")
+
+        assert ray.get(
+            check_git.remote()
+        ), ".git should be included when defaults disabled"
+
+
+def test_working_dir_does_not_propagate_driver_paths(start_cluster):
+    """Tests that `runtime_env.working_dir` suppresses driver-local sys.path
+    propagation.
+
+    When a driver `ray.init`s with a `runtime_env.working_dir`, neither
+    `script_directory` (the driver's `sys.argv[0]` dir) nor the current
+    directory should end up in `py_driver_sys_path`. Otherwise an actor
+    later created with a *different* `runtime_env.working_dir` will still
+    have the driver's working_dir inserted at `sys.path[0]` by
+    `maybe_initialize_job_config`, silently shadowing its own working_dir
+    on `import` (the symptom is replicas serving stale code on redeploy
+    without `serve.shutdown()`).
+    """
+    cluster, address = start_cluster
+    with tempfile.TemporaryDirectory() as working_dir:
+        Path(working_dir, "noop.py").write_text("")
+        ray.init(address, runtime_env={"working_dir": working_dir})
+        try:
+            paths = list(
+                ray._private.worker.global_worker.core_worker.get_job_config().py_driver_sys_path
+            )
+            assert paths == [], paths
+        finally:
+            ray.shutdown()
+
+
+def _local_uri(path) -> str:
+    """Builds a `local://` URI for a path on this machine, POSIX or Windows."""
+    posix = Path(path).as_posix()
+    return f"local://{posix}" if posix.startswith("/") else f"local:///{posix}"
+
+
+def _expected_cd_prefix(local_dir) -> list:
+    """The command_prefix WorkingDirPlugin emits to enter `local_dir`.
+
+    On POSIX the prefix is joined into one `bash -c` string, so the path is shell
+    quoted. On Windows it is handed to `subprocess.Popen(shell=True)` as a list,
+    which applies its own quoting, so the raw path is expected.
+    """
+    if sys.platform == "win32":
+        return ["cd", "/d", str(local_dir), "&&"]
+    return ["cd", shlex.quote(str(local_dir)), "&&"]
+
+
+@pytest.fixture
+def undeletable_working_dir(tmp_path):
+    """A working_dir laid out like `tmp_working_dir`, but never deleted.
+
+    A `local://` working_dir becomes the worker's cwd, and Windows refuses to
+    remove a directory a live process sits in. Cluster teardown does not wait
+    for workers: `Node.all_processes` has no worker entry, so `kill_all_processes`
+    never waits on one. Build the directory under `tmp_path`, which pytest leaves
+    on disk, so teardown never has to remove it.
+    """
+    path = tmp_path / "working_dir"
+    module_path = path / "test_module"
+    module_path.mkdir(parents=True)
+
+    (path / "hello").write_text("world")
+    (path / "file_module.py").write_text("def hello():\n    return 'hello'\n")
+    (module_path / "test.py").write_text("def one():\n    return 1\n")
+    (module_path / "__init__.py").write_text("from test_module.test import one\n")
+
+    return str(path)
+
+
+class TestLocalWorkingDir:
+    """`local://` working_dirs: already on the node, used in place."""
+
+    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+    def test_used_in_place_without_upload(
+        self, start_cluster, undeletable_working_dir, option: str
+    ):
+        """cwd, imports and relative file IO all resolve against the directory."""
+        _, address = start_cluster
+        uri = _local_uri(undeletable_working_dir)
+        if option == "working_dir":
+            runtime_env = {"working_dir": uri}
+        else:
+            runtime_env = {"py_modules": [uri]}
+        ray.init(address, runtime_env=runtime_env)
+
+        @ray.remote
+        def get_cwd_and_import():
+            import test_module
+
+            return os.getcwd(), test_module.one()
+
+        cwd, imported = ray.get(get_cwd_and_import.remote())
+        assert imported == 1
+        if option == "working_dir":
+            # working_dir also sets the process cwd, so relative reads work.
+            assert Path(cwd).resolve() == Path(undeletable_working_dir).resolve()
+
+            @ray.remote
+            def read_relative_file():
+                with open("hello") as f:
+                    return f.read()
+
+            assert ray.get(read_relative_file.remote()) == "world"
+
+    def test_missing_directory_raises_clear_error(self, start_cluster):
+        _, address = start_cluster
+        ray.init(address, runtime_env={"working_dir": "local:///not/in/the/image"})
+
+        @ray.remote
+        def f():
+            return True
+
+        with pytest.raises(Exception, match="must already exist on every node"):
+            ray.get(f.remote())
+
+    def test_relative_path_rejected_on_the_client(self, start_cluster):
+        _, address = start_cluster
+        try:
+            with pytest.raises(ValueError, match="the path must be absolute"):
+                ray.init(address, runtime_env={"working_dir": "local://relative/path"})
+        finally:
+            # `connect` sets the driver's node before it validates the runtime_env,
+            # so the failed `ray.init` leaves the driver attached to the head node
+            # and `Cluster.remove_node` then refuses to tear that node down. Detach
+            # it here. Under RAY_CLIENT_MODE the fixture's own `ray.shutdown` is
+            # redirected to the Ray Client and never clears `worker.node`, so bypass
+            # the hook to reach the real one. This runs in a `finally` so that a
+            # real assertion failure is not masked by the teardown error.
+            with disable_client_hook():
+                ray.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_directory_is_never_deleted(self, tmpdir, tmp_working_dir):
+        """Ray must not garbage collect a directory it does not own."""
+        plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
+        uri = _local_uri(tmp_working_dir)
+
+        # Nothing is fetched, and nothing is charged to the URI cache.
+        assert await plugin.create(uri, {}, RuntimeEnvContext()) == 0
+
+        assert plugin.delete_uri(uri) == 0
+        assert Path(tmp_working_dir).is_dir()
+        assert (Path(tmp_working_dir) / "hello").is_file()
+
+    @pytest.mark.asyncio
+    async def test_modify_context_sets_cwd_and_pythonpath(
+        self, tmpdir, tmp_working_dir
+    ):
+        plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
+        uri = _local_uri(tmp_working_dir)
+        context = RuntimeEnvContext()
+
+        plugin.modify_context([uri], {"working_dir": uri}, context)
+
+        expected = _expected_cd_prefix(tmp_working_dir)
+        assert context.command_prefix[: len(expected)] == expected
+        assert context.env_vars["PYTHONPATH"].split(os.pathsep)[0] == str(
+            tmp_working_dir
+        )
+
+    @pytest.mark.asyncio
+    async def test_modify_context_quotes_whitespace_in_path(self, tmpdir):
+        """The cd runs through a shell, so a path with spaces must be quoted."""
+        local_dir = Path(tmpdir) / "my working dir"
+        local_dir.mkdir()
+        plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
+        uri = _local_uri(local_dir)
+        context = RuntimeEnvContext()
+
+        plugin.modify_context([uri], {"working_dir": uri}, context)
+
+        expected = _expected_cd_prefix(local_dir)
+        assert context.command_prefix[: len(expected)] == expected
+        assert context.env_vars["PYTHONPATH"].split(os.pathsep)[0] == str(local_dir)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -1,0 +1,15 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+enable_cross_zone_scaling: true
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+  instance_type: g6.xlarge
+
+worker_nodes:
+  - instance_type: g6.xlarge
+    min_nodes: 8
+    max_nodes: 8
+    market_type: ON_DEMAND

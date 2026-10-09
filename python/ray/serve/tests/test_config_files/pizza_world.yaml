@@ -1,0 +1,16 @@
+applications:
+  - name: "app1"
+    route_prefix: "/app1"
+    import_path: ray.serve.tests.test_config_files.world.DagNode
+
+  - name: "app2"
+    route_prefix: "/app2"
+    import_path: ray.serve.tests.test_config_files.pizza.serve_dag
+    deployments:
+      - name: Multiplier
+        user_config:
+          factor: 10
+
+      - name: Adder
+        user_config:
+          increment: 10

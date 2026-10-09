@@ -1,0 +1,656 @@
+import asyncio
+import binascii
+import errno
+import importlib
+import inspect
+import logging
+import os
+import random
+import string
+import sys
+import tempfile
+import time
+from abc import ABC, abstractmethod
+from inspect import signature
+from types import ModuleType
+from typing import Any, Coroutine, Dict, Optional, Tuple
+
+import ray
+from ray._raylet import GcsClient, NodeID
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+
+import psutil
+
+logger = logging.getLogger(__name__)
+
+
+def env_integer(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return int(value)
+        except ValueError:
+            logger.warning(
+                f"Found {key} in environment, but value must "
+                f"be an integer. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
+def env_float(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return float(value)
+        except ValueError:
+            logger.warning(
+                f"Found {key} in environment, but value must "
+                f"be a float. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
+def env_bool(key, default):
+    if key in os.environ:
+        val = os.environ[key].lower()
+        return val == "true" or val == "1"
+    return default
+
+
+def import_module_and_attr(
+    full_path: str, *, reload_module: bool = False
+) -> Tuple[ModuleType, Any]:
+    """Given a full import path to a module attr, return the imported module and attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
+
+    Args:
+        full_path: The full import path to the module and attr.
+        reload_module: Whether to reload the module.
+
+    Returns:
+        A tuple of the imported module and attr.
+    """
+    if ":" in full_path:
+        if full_path.count(":") > 1:
+            raise ValueError(
+                f'Got invalid import path "{full_path}". An '
+                "import path may have at most one colon."
+            )
+        module_name, attr_name = full_path.split(":")
+    else:
+        last_period_idx = full_path.rfind(".")
+        module_name = full_path[:last_period_idx]
+        attr_name = full_path[last_period_idx + 1 :]
+    module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
+    return module, getattr(module, attr_name)
+
+
+def import_attr(full_path: str, *, reload_module: bool = False) -> Any:
+    """Given a full import path to a module attr, return the imported attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
+
+    For example, the following are equivalent:
+        MyClass = import_attr("module.submodule:MyClass")
+        MyClass = import_attr("module.submodule.MyClass")
+        from module.submodule import MyClass
+
+    Args:
+        full_path: The full import path to the module and attr.
+        reload_module: Whether to reload the module.
+
+    Returns:
+        Imported attr
+    """
+    return import_module_and_attr(full_path, reload_module=reload_module)[1]
+
+
+def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
+    """Get a running async event loop if one exists, otherwise create one.
+
+    This function serves as a proxy for the deprecating get_event_loop().
+    It tries to get the running loop first, and if no running loop
+    could be retrieved:
+    - For python version <3.10: it falls back to the get_event_loop
+        call.
+    - For python version >= 3.10: it uses the same python implementation
+        of _get_event_loop() at asyncio/events.py.
+
+    Ideally, one should use high level APIs like asyncio.run() with python
+    version >= 3.7, if not possible, one should create and manage the event
+    loops explicitly.
+    """
+    vers_info = sys.version_info
+    if vers_info.major >= 3 and vers_info.minor >= 10:
+        # This follows the implementation of the deprecating `get_event_loop`
+        # in python3.10's asyncio. See python3.10/asyncio/events.py
+        # _get_event_loop()
+        try:
+            loop = asyncio.get_running_loop()
+            assert loop is not None
+            return loop
+        except RuntimeError as e:
+            # No running loop, relying on the error message as for now to
+            # differentiate runtime errors.
+            assert "no running event loop" in str(e)
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+                return loop
+            except RuntimeError:
+                # Python 3.14+: get_event_loop() no longer creates a loop automatically
+                # See: https://docs.python.org/3.14/library/asyncio-eventloop.html
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                return loop
+
+    return asyncio.get_event_loop()
+
+
+_BACKGROUND_TASKS = set()
+
+
+def run_background_task(coroutine: Coroutine) -> asyncio.Task:
+    """Schedule a task reliably to the event loop.
+
+    This API is used when you don't want to cache the reference of `asyncio.Task`.
+    For example,
+
+    ```
+    get_event_loop().create_task(coroutine(*args))
+    ```
+
+    The above code doesn't guarantee to schedule the coroutine to the event loops
+
+    When using create_task in a  "fire and forget" way, we should keep the references
+    alive for the reliable execution. This API is used to fire and forget
+    asynchronous execution.
+
+    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
+    """
+    task = get_or_create_event_loop().create_task(coroutine)
+    # Add task to the set. This creates a strong reference.
+    _BACKGROUND_TASKS.add(task)
+
+    # To prevent keeping references to finished tasks forever,
+    # make each task remove its own reference from the set after
+    # completion:
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return task
+
+
+# Used in gpu detection
+RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
+PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
+
+
+def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Determine a task's resource requirements.
+
+    Args:
+        options_dict: The dictionary that contains resources requirements.
+
+    Returns:
+        A dictionary of the resource requirements for the task.
+    """
+    resources = (options_dict.get("resources") or {}).copy()
+
+    if "CPU" in resources or "GPU" in resources:
+        raise ValueError(
+            "The resources dictionary must not contain the key 'CPU' or 'GPU'"
+        )
+    elif "memory" in resources or "object_store_memory" in resources:
+        raise ValueError(
+            "The resources dictionary must not "
+            "contain the key 'memory' or 'object_store_memory'"
+        )
+    elif PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
+        raise ValueError(
+            "The resource should not include `bundle` which "
+            f"is reserved for Ray. resources: {resources}"
+        )
+
+    num_cpus = options_dict.get("num_cpus")
+    num_gpus = options_dict.get("num_gpus")
+    memory = options_dict.get("memory")
+    object_store_memory = options_dict.get("object_store_memory")
+    accelerator_type = options_dict.get("accelerator_type")
+
+    if num_cpus is not None:
+        resources["CPU"] = num_cpus
+    if num_gpus is not None:
+        resources["GPU"] = num_gpus
+    if memory is not None:
+        resources["memory"] = int(memory)
+    if object_store_memory is not None:
+        resources["object_store_memory"] = object_store_memory
+    if accelerator_type is not None:
+        resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 0.001
+
+    return resources
+
+
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
+
+
+def get_random_alphanumeric_string(length: int):
+    """Generates random string of length consisting exclusively of
+    - Lower-case ASCII chars
+    - Digits
+    """
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
+
+
+_PRINTED_WARNING = set()
+
+
+def get_call_location(back: int = 1):
+    """
+    Get the location (filename and line number) of a function caller, `back`
+    frames up the stack.
+
+    Args:
+        back: The number of frames to go up the stack, not including this
+            function.
+
+    Returns:
+        A string with the filename and line number of the caller.
+        For example, "myfile.py:123".
+    """
+    stack = inspect.stack()
+    try:
+        frame = stack[back + 1]
+        return f"{frame.filename}:{frame.lineno}"
+    except IndexError:
+        return "UNKNOWN"
+
+
+def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
+    """
+    Get the ray temp directory.
+
+    If a temp dir was specified for this node, this function will
+    retrieve the information from GCS. Otherwise, it will fallback to the
+    default ray temp directory.
+
+    Args:
+        gcs_client: The GCS client.
+        node_id: The ID of the node to fetch the temp dir for.
+                 E.g.: "1a9904d8aa3de65367830e2aef6313a5b2e9d4b0e3725e0dceeacb1b"
+                        (hex string representation of the node ID)
+
+    Returns:
+        The path to the ray temp directory.
+    """
+    # check if temp dir is available from runtime context
+    if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
+        return ray.get_runtime_context().get_temp_dir()
+
+    # Fetch temp dir as specified by --temp-dir at creation time.
+    try:
+        # Create node selector for node_id filter
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_id = NodeID.from_hex(node_id).binary()
+
+        node_infos = gcs_client.get_all_node_info(
+            node_selectors=[node_selector],
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+        ).values()
+    except Exception as e:
+        raise Exception(
+            f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
+        )
+    if not node_infos:
+        raise Exception(
+            f"No node info associated with ALIVE state found for node {node_id} in GCS"
+        )
+
+    node_info = next(iter(node_infos))
+    if node_info is not None:
+        temp_dir = getattr(node_info, "temp_dir", None)
+        if temp_dir is not None:
+            return temp_dir
+        else:
+            raise Exception(
+                "Node temp_dir was not found in NodeInfo. did the node's raylet start successfully?"
+            )
+
+
+def get_default_system_temp_dir():
+    if "RAY_TMPDIR" in os.environ:
+        return os.environ["RAY_TMPDIR"]
+    elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
+        return os.environ["TMPDIR"]
+    elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+        # Ideally we wouldn't need this fallback, but keep it for now for
+        # for compatibility
+        tempdir = os.path.join(os.sep, "tmp")
+    else:
+        tempdir = tempfile.gettempdir()
+
+    return tempdir
+
+
+def get_default_ray_temp_dir():
+    return os.path.join(get_default_system_temp_dir(), "ray")
+
+
+def get_ray_address_file(temp_dir: Optional[str]):
+    if temp_dir is None:
+        temp_dir = get_default_ray_temp_dir()
+    return os.path.join(temp_dir, "ray_current_cluster")
+
+
+def reset_ray_address(temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        try:
+            os.remove(address_file)
+        except OSError:
+            pass
+
+
+def load_class(path):
+    """Load a class at runtime given a full path.
+
+    Example of the path: mypkg.mysubpkg.myclass
+    """
+    class_data = path.split(".")
+    if len(class_data) < 2:
+        raise ValueError("You need to pass a valid path like mymodule.provider_class")
+    module_path = ".".join(class_data[:-1])
+    class_str = class_data[-1]
+    module = importlib.import_module(module_path)
+    return getattr(module, class_str)
+
+
+def get_system_memory(
+    # For cgroups v1:
+    memory_limit_filename: str = "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    # For cgroups v2:
+    memory_limit_filename_v2: str = "/sys/fs/cgroup/memory.max",
+):
+    """Return the total amount of system memory in bytes.
+
+    Args:
+        memory_limit_filename: The path to the file that contains the memory
+            limit for the Docker container. Defaults to
+            /sys/fs/cgroup/memory/memory.limit_in_bytes.
+        memory_limit_filename_v2: The path to the file that contains the memory
+            limit for the Docker container in cgroups v2. Defaults to
+            /sys/fs/cgroup/memory.max.
+
+    Returns:
+        The total amount of system memory in bytes.
+    """
+    # Try to accurately figure out the memory limit if we are in a docker
+    # container. Note that this file is not specific to Docker and its value is
+    # often much larger than the actual amount of memory.
+    docker_limit = None
+    if os.path.exists(memory_limit_filename):
+        with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read().strip())
+    elif os.path.exists(memory_limit_filename_v2):
+        with open(memory_limit_filename_v2, "r") as f:
+            # Don't forget to strip() the newline:
+            max_file = f.read().strip()
+            if max_file.isnumeric():
+                docker_limit = int(max_file)
+            else:
+                # max_file is "max", i.e. is unset.
+                docker_limit = None
+
+    # Use psutil if it is available.
+    psutil_memory_in_bytes = psutil.virtual_memory().total
+
+    if docker_limit is not None:
+        # We take the min because the cgroup limit is very large if we aren't
+        # in Docker.
+        return min(docker_limit, psutil_memory_in_bytes)
+
+    return psutil_memory_in_bytes
+
+
+# cgroup v2 swap-only counters (same paths the C++ memory monitor reads).
+_CGROUP_V2_SWAP_MAX = "/sys/fs/cgroup/memory.swap.max"
+_CGROUP_V2_SWAP_CURRENT = "/sys/fs/cgroup/memory.swap.current"
+# cgroup v1 RAM+swap combined counters.
+_CGROUP_V1_MEMSW_LIMIT = "/sys/fs/cgroup/memory/memory.memsw.limit_in_bytes"
+_CGROUP_V1_MEMSW_USAGE = "/sys/fs/cgroup/memory/memory.memsw.usage_in_bytes"
+_CGROUP_V1_MEM_LIMIT = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+_CGROUP_V1_MEM_USAGE = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+
+# C++ uses int64 for swap.max. All-digit values that overflow this are the
+# kernel's "unlimited" sentinel; the C++ monitor adds no swap for them.
+_INT64_MAX = 2**63 - 1
+
+
+def _read_cgroup_v2_swap_current() -> int:
+    """Return memory.swap.current as int, 0 on missing file or read error."""
+    if not os.path.exists(_CGROUP_V2_SWAP_CURRENT):
+        return 0
+    try:
+        with open(_CGROUP_V2_SWAP_CURRENT) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def get_cgroup_aware_swap_memory() -> Tuple[int, int]:
+    """Return (swap_total_bytes, swap_used_bytes) using cgroup-scoped limits.
+
+    Mirrors what the C++ memory monitor in src/ray/common/memory_monitor_utils.cc
+    counts as swap. When a cgroup branch is taken, *every* returned field is
+    cgroup-scoped — host-level psutil values are never mixed into a cgroup
+    result, which would otherwise let "used" exceed "total".
+
+    Note: this reads from the **root** cgroup (/sys/fs/cgroup/memory.swap.*).
+    Under --enable-resource-isolation the raylet's user-slice OOM threshold
+    reads memory.swap.max from the **same root cgroup** (see
+    GetMemoryThreshold in memory_monitor_utils.cc), so the advertised swap
+    budget and the OOM threshold agree. Per-tick usage on the OOM side still
+    comes from the user leaf's memory.swap.current, which is per-slice exact.
+
+      - cgroup v2 with numeric memory.swap.max
+            -> (swap.max, swap.current if present else 0); matches C++ which
+               does not clamp by host swap
+      - cgroup v2 with non-numeric memory.swap.max (e.g. "max") or numeric
+        value that overflows int64
+            -> host psutil swap (total, used); "unlimited" means the practical
+               cap is whatever the host actually has. C++ mirrors this.
+      - cgroup v2 with memory.swap.max == 0 (swap disabled)
+            -> (0, 0); kernel says "no swap for this cgroup", distinct from
+               "unlimited". C++ guards swap.current read on swap_max_bytes > 0.
+      - cgroup v1 memsw with RAM limit and usage readable
+            -> (memsw_limit - mem_limit, max(0, memsw_usage - mem_usage))
+      - cgroup v1 memsw without a readable RAM limit
+            -> (0, 0); swap-only cannot be derived from memsw alone
+      - Cgroup file present but read/parse fails
+            -> (0, 0); never leak host swap into a cgroup-scoped result
+      - No cgroup swap files
+            -> psutil host swap (total, used)
+    """
+    if os.path.exists(_CGROUP_V2_SWAP_MAX):
+        try:
+            with open(_CGROUP_V2_SWAP_MAX) as f:
+                val = f.read().strip()
+            # Mirror C++'s std::isdigit (ASCII 0-9) — str.isnumeric() would
+            # accept Unicode numeric characters (e.g. Arabic-Indic digits) that
+            # the C++ parser rejects, causing the two layers to disagree.
+            if not (val and val.isascii() and val.isdigit()):
+                # "max" / unparseable: cgroup imposes no swap cap, so the
+                # practical limit is host swap. Used still comes from
+                # per-cgroup memory.swap.current — host SwapTotal-SwapFree
+                # would include other workloads' swap and inflate Ray's view.
+                host_total, _ = _get_host_swap_memory()
+                return host_total, _read_cgroup_v2_swap_current()
+            cgroup_swap_max = int(val)
+            if cgroup_swap_max > _INT64_MAX:
+                # Overflows int64; kernel's "unlimited" sentinel — same as "max".
+                host_total, _ = _get_host_swap_memory()
+                return host_total, _read_cgroup_v2_swap_current()
+            if cgroup_swap_max == 0:
+                # Swap disabled. Mirror C++, which guards the swap.current
+                # read on swap_max_bytes > 0 — don't leak a stale or
+                # transitioning swap.current value into used bytes.
+                return 0, 0
+        except (OSError, ValueError):
+            # Committed to cgroup v2; do not leak host swap on read/parse error.
+            # Swap accounting was requested, so warn rather than silently
+            # advertising zero swap when the cgroup files can't be read.
+            logger.warning(
+                "Failed to read cgroup v2 swap counters (%s); reporting no swap "
+                "even though swap accounting is enabled.",
+                _CGROUP_V2_SWAP_MAX,
+                exc_info=True,
+            )
+            return 0, 0
+        # Match C++: trust the cgroup limit as-is. Clamping by host swap
+        # would silently under-report when cgroup_swap_max > host.total.
+        return cgroup_swap_max, _read_cgroup_v2_swap_current()
+
+    if os.path.exists(_CGROUP_V1_MEMSW_LIMIT) and os.path.exists(
+        _CGROUP_V1_MEMSW_USAGE
+    ):
+        try:
+            with open(_CGROUP_V1_MEMSW_LIMIT) as f:
+                memsw_limit = int(f.read().strip())
+            with open(_CGROUP_V1_MEMSW_USAGE) as f:
+                memsw_usage = int(f.read().strip())
+            ram_limit = None
+            ram_usage = None
+            if os.path.exists(_CGROUP_V1_MEM_LIMIT):
+                with open(_CGROUP_V1_MEM_LIMIT) as f:
+                    ram_limit = int(f.read().strip())
+            if os.path.exists(_CGROUP_V1_MEM_USAGE):
+                with open(_CGROUP_V1_MEM_USAGE) as f:
+                    ram_usage = int(f.read().strip())
+            # memsw is RAM+swap combined; subtract the RAM share to derive
+            # swap-only. When memory.limit_in_bytes is missing, approximate
+            # with host RAM — the scheduler's auto-computed memory uses
+            # psutil host total as the RAM portion in the same case, so
+            # (ram_capacity + swap_total) lands on memsw_limit, matching
+            # what C++ GetCGroupMemoryBytes does in this branch (it uses
+            # memsw_limit as the combined total directly).
+            host_ram_total = psutil.virtual_memory().total
+            if ram_limit is None:
+                ram_limit = host_ram_total
+            # An unset memsw limit reads as a huge near-int64 sentinel
+            # (page-rounded, so it passes the > _INT64_MAX check). Cap the
+            # combined limit with host RAM+swap — the same NullableMin the
+            # C++ monitor applies to the memsw total — so the sentinel can't
+            # inflate the scheduler memory resource and (ram + swap) stays
+            # equal to the OOM monitor's total.
+            host_swap_total, _ = _get_host_swap_memory()
+            memsw_limit = min(memsw_limit, host_ram_total + host_swap_total)
+            swap_total = max(0, memsw_limit - ram_limit)
+            swap_used = 0 if ram_usage is None else max(0, memsw_usage - ram_usage)
+            return swap_total, swap_used
+        except (OSError, ValueError):
+            # Committed to cgroup v1; do not leak host swap on read/parse error.
+            # Swap accounting was requested, so warn rather than silently
+            # advertising zero swap when the memsw files can't be read.
+            logger.warning(
+                "Failed to read cgroup v1 memsw counters (%s); reporting no swap "
+                "even though swap accounting is enabled.",
+                _CGROUP_V1_MEMSW_LIMIT,
+                exc_info=True,
+            )
+            return 0, 0
+
+    # No cgroup swap files. Fall back to host-level psutil swap.
+    return _get_host_swap_memory()
+
+
+def _get_host_swap_memory() -> Tuple[int, int]:
+    """Return (host_swap_total, host_swap_used) from psutil.
+
+    Lets psutil's native exception (RuntimeError / NotImplementedError /
+    OSError on stripped containers or unsupported kernels) propagate.
+    Callers on the startup path want this to fail loudly so a misconfigured
+    `RAY_count_swap_in_memory_monitor=1` doesn't silently degrade to
+    "no swap"; periodic callers (e.g. the dashboard reporter) should wrap
+    this with their own log-and-continue policy.
+    """
+    host = psutil.swap_memory()
+    return host.total, host.used
+
+
+def binary_to_hex(identifier):
+    hex_identifier = binascii.hexlify(identifier)
+    hex_identifier = hex_identifier.decode()
+    return hex_identifier
+
+
+def hex_to_binary(hex_identifier):
+    return binascii.unhexlify(hex_identifier)
+
+
+def try_make_directory_shared(directory_path):
+    try:
+        os.chmod(directory_path, 0o0777)
+    except OSError as e:
+        # Silently suppress the PermissionError that is thrown by the chmod.
+        # This is done because the user attempting to change the permissions
+        # on a directory may not own it. The chmod is attempted whether the
+        # directory is new or not to avoid race conditions.
+        # ray-project/ray/#3591
+        if e.errno in [errno.EACCES, errno.EPERM]:
+            pass
+        else:
+            raise
+
+
+def try_to_create_directory(directory_path):
+    # Attempt to create a directory that is globally readable/writable.
+    directory_path = os.path.expanduser(directory_path)
+    os.makedirs(directory_path, exist_ok=True)
+    # Change the log directory permissions so others can use it. This is
+    # important when multiple people are using the same machine.
+    try_make_directory_shared(directory_path)
+
+
+def get_function_args(callable):
+    all_parameters = frozenset(signature(callable).parameters)
+    return list(all_parameters)
+
+
+def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
+    """Make this unicode in Python 3, otherwise leave it as bytes.
+
+    Args:
+        byte_str: The byte string to decode.
+        allow_none: If true, then we will allow byte_str to be None in which
+            case we will return an empty string. TODO(rkn): Remove this flag.
+            This is only here to simplify upgrading to flatbuffers 1.10.0.
+        encode_type: The encoding type to use for decoding. Defaults to "utf-8".
+
+    Returns:
+        A byte string in Python 2 and a unicode string in Python 3.
+    """
+    if byte_str is None and allow_none:
+        return ""
+
+    if not isinstance(byte_str, bytes):
+        raise ValueError(f"The argument {byte_str} must be a bytes object.")
+    return byte_str.decode(encode_type)
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()

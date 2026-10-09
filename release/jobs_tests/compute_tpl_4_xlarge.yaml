@@ -1,0 +1,19 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+  # 4 cpus, x86, 32G mem, 10Gb NIC
+  instance_type: m5.xlarge
+
+worker_nodes:
+  - # 4 cpus, x86, 32G mem, 10Gb NIC
+    instance_type: m5.xlarge
+    min_nodes: 4
+    max_nodes: 4
+    market_type: ON_DEMAND
+
+advanced_instance_config:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
