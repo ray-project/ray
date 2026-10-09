@@ -3,15 +3,6 @@
 # dependency graphs stay separate, so none of Ray's repos change.
 common --enable_bzlmod
 common --enable_workspace
-# The proto toolchain flags default to @bazel_tools//tools/proto:*, which with
-# bzlmod on resolve to the module graph's protobuf (protobuf~, pulled in by
-# rules_rust), not WORKSPACE's. Its protoc then generates code that WORKSPACE
-# protobuf 29.6's headers reject ("gencode is built with an incompatible
-# version"). Name WORKSPACE's toolchains explicitly.
-common --proto_compiler=@com_google_protobuf//:protoc
-common --proto_toolchain_for_cc=@com_google_protobuf//:cc_toolchain
-common --proto_toolchain_for_java=@com_google_protobuf//:java_toolchain
-common --proto_toolchain_for_javalite=@com_google_protobuf//:javalite_toolchain
 # rules_python >= 1.0 can compile .pyc at build time; ci/ray_ci/automation lists
 # the same sources in a py_library and several py_binary targets, which then
 # produce conflicting __pycache__ outputs. rules_python 0.40 never precompiled.
