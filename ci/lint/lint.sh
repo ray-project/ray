@@ -156,4 +156,8 @@ ray_repo_links() {
   python ci/lint/check_ray_repo_links.py
 }
 
+docstring_only_scope() {
+  python ci/ray_ci/doc/check_docstring_only.py
+}
+
 "$@"

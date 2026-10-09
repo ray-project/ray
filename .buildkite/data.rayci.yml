@@ -67,6 +67,7 @@ steps:
 
   # tests
   - label: ":database: data: arrow v17 tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
     instance_type: large
@@ -80,6 +81,7 @@ steps:
     depends_on: data17build-multipy(python=3.10)
 
   - label: ":database: data: tensorflow-datasets tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     key: data_tensorflow_datasets_tests
     tags:
       - data
@@ -91,6 +93,7 @@ steps:
     depends_on: datatfdsbuild-multipy
 
   - label: ":database: data: arrow v17 tests (data_non_parallel)"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - data_non_parallel
@@ -221,6 +224,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.10)
 
   - label: ":database: data: dask tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - dask
@@ -232,6 +236,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: docs example tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - data_doc
@@ -253,7 +258,24 @@ steps:
         --skip-ray-installation
     depends_on: datalbuild-multipy(python=3.10)
 
+  # Runs instead of the steps above when the "docstring-only" label is
+  # present: the >>> examples in the docstrings of only the modules the PR
+  # changed, run as plain Python in this library's image with the PR's Ray
+  # (ci/ray_ci/doc/run_docstring_examples.sh). The label's scope guard
+  # (lint: validate docstring-only scope) fails the build unless the PR changes
+  # nothing but docstrings and comments.
+  - label: ":database: data: docstring examples"
+    if: build.pull_request.labels includes "docstring-only"
+    tags:
+      - data
+    instance_type: medium
+    commands:
+      - ./ci/ray_ci/doc/run_docstring_examples.sh python/ray/data data
+        datalbuild-py3.10 3.10
+    depends_on: datalbuild-multipy(python=3.10)
+
   - label: ":database: data: dask docs example tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - data_doc
@@ -267,6 +289,7 @@ steps:
     depends_on: datalbuild-multipy(python=3.12)
 
   - label: ":database: data: docs example gpu tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - data_doc
@@ -289,6 +312,7 @@ steps:
     depends_on: docgpubuild
 
   - label: ":database: data: cuDF batch format tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - gpu
@@ -303,6 +327,7 @@ steps:
     depends_on: docgpubuild-py312
 
   - label: ":database: data: integration tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
     instance_type: medium
@@ -316,6 +341,7 @@ steps:
     depends_on: datamongobuild-multipy
 
   - label: ":database: data: dashboard tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - dashboard
