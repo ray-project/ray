@@ -785,16 +785,17 @@ class NodeManagerDeadResourceSyncTest : public NodeManagerTest,
                                         public ::testing::WithParamInterface<bool> {};
 
 TEST_P(NodeManagerDeadResourceSyncTest, IgnoreResourceViewsAfterNodeDeath) {
-  rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness> on_node_change;
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
-              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
-      .WillOnce(
-          [&](const auto &subscribe, const auto &done) { on_node_change = subscribe; });
-  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
-              AsyncSubscribeToWorkerFailures(_, _));
-  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
   node_manager_->RegisterGcs();
+  auto &on_node_change =
+      fake_gcs_client_->fake_node_accessor->node_address_and_liveness_subscribe;
   ASSERT_TRUE(on_node_change);
+  EXPECT_EQ(fake_gcs_client_->fake_node_accessor
+                ->async_subscribe_to_node_address_and_liveness_change_call_count,
+            1);
+  EXPECT_EQ(fake_gcs_client_->fake_worker_accessor
+                ->async_subscribe_to_worker_failures_call_count,
+            1);
+  EXPECT_EQ(fake_gcs_client_->fake_job_accessor->async_subscribe_all_call_count, 1);
 
   auto &resources = cluster_resource_scheduler_->GetClusterResourceManager();
   const auto initial_node_count = resources.NumNodes();
@@ -816,12 +817,14 @@ TEST_P(NodeManagerDeadResourceSyncTest, IgnoreResourceViewsAfterNodeDeath) {
     node_manager_->ConsumeSyncMessage(msg);
     ASSERT_EQ(resources.NumNodes(), initial_node_count + 1);
   }
-  EXPECT_CALL(*mock_object_directory_, HandleNodeRemoved(node_id)).Times(1);
-  EXPECT_CALL(*mock_object_manager_, HandleNodeRemoved(node_id)).Times(1);
   rpc::GcsNodeAddressAndLiveness dead_node;
   dead_node.set_node_id(node_id.Binary());
   dead_node.set_state(GcsNodeInfo::DEAD);
-  on_node_change(node_id, std::move(dead_node));
+  on_node_change(node_id, dead_node);
+  ASSERT_EQ(fake_object_directory_->handle_node_removed_calls.size(), 1);
+  EXPECT_EQ(fake_object_directory_->handle_node_removed_calls.front(), node_id);
+  ASSERT_EQ(fake_object_manager_->handle_node_removed_calls.size(), 1);
+  EXPECT_EQ(fake_object_manager_->handle_node_removed_calls.front(), node_id);
   ASSERT_EQ(resources.NumNodes(), initial_node_count);
 
   for (int64_t version = 1; version <= 3; ++version) {
