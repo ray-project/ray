@@ -136,3 +136,18 @@ func ExtractErrorReturn(out []reflect.Value) (err error, rest []reflect.Value) {
 	}
 	return nil, out[:len(out)-1]
 }
+
+// NonErrorReturnCount returns the number of non-error return values of fnType,
+// following the same trailing-error convention as ExtractErrorReturn. It is
+// used by the driver (ActorHandleImpl.Task) to derive numReturns so the task
+// spec's return count matches what the worker will produce.
+func NonErrorReturnCount(fnType reflect.Type) int {
+	n := fnType.NumOut()
+	if n == 0 {
+		return 0
+	}
+	if fnType.Out(n - 1).Implements(errorType) {
+		return n - 1
+	}
+	return n
+}

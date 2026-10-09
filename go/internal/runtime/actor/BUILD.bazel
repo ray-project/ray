@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# actor package: cgo-free actor execution primitives shared by native (cluster) and local_mode
+go_library(
+    name = "actor",
+    srcs = [
+        "call.go",
+        "manager.go",
+        "parallel_actor_executor.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/actor",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/errors",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+    ],
+)
+
+go_test(
+    name = "actor_test",
+    srcs = [
+        "actor_test.go",
+        "parallel_actor_executor_test.go",
+    ],
+    embed = [":actor"],
+    deps = [
+        "//go/internal/runtime/serializer",
+        "//go/pkg/errors",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+    ],
+)

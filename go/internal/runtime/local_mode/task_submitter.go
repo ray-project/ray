@@ -15,17 +15,17 @@
 package local_mode
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 
 	"github.com/ray-project/ray/go/internal/runtime/base"
-	"github.com/ray-project/ray/go/internal/runtime/objectstore"
+	"github.com/ray-project/ray/go/internal/runtime/localstore"
 	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
 	"github.com/ray-project/ray/go/pkg/runtime/submitter"
@@ -40,18 +40,23 @@ import (
 // 3. Supports actor creation tasks and actor tasks
 // 4. Uses ActorConcurrencyGroupManager for actor task scheduling
 type LocalModeTaskSubmitter struct {
-	objectStore              *objectstore.LocalModeObjectStore
+	objectStore              *localstore.LocalModeObjectStore
 	workerContext            *LocalModeWorkerContext
 	taskExecutor             *LocalModeTaskExecutor
 	functionMgr              *function.FunctionManager
 	actorConcurrencyGroupMgr *ActorConcurrencyGroupManager
 
 	// lastSyncedVersion is the function registry version at the last
-	// FunctionManager sync. Submission re-synchronizes only when the registry
-	// version advances (a new function was registered), avoiding a full
-	// re-registration on every submission. Atomic because submissions may come
-	// from multiple goroutines.
+	// FunctionManager sync. SubmitTask re-synchronizes only when the registry
+	// version advances (a new function was registered), avoiding per-submission
+	// full re-registration. Atomic because SubmitTask may be called from
+	// multiple goroutines.
 	lastSyncedVersion atomic.Uint64
+
+	// syncMu serializes the FunctionManager re-sync so that concurrent
+	// Submits that observe a stale version do not each run the full (idempotent
+	// but wasteful) re-registration; only the first observer syncs.
+	syncMu sync.Mutex
 
 	// waitingTasks maps object IDs to tasks waiting for them
 	waitingTasks      sync.Map // map[ids.ObjectID][]*taskSpec
@@ -59,9 +64,6 @@ type LocalModeTaskSubmitter struct {
 
 	// namedActors stores named actors
 	namedActors sync.Map // map[string]*namedActorInfo
-
-	// actorMaxConcurrency tracks max concurrency for actors
-	actorMaxConcurrency sync.Map // map[ids.ActorID]int
 }
 
 // namedActorInfo holds information about a named actor
@@ -72,29 +74,72 @@ type namedActorInfo struct {
 
 // taskSpec holds task specification for local mode
 type taskSpec struct {
-	taskType           base.TaskType
-	functionDescriptor function.FunctionDescriptor
-	args               []function.FunctionArg
-	numReturns         int
-	actorID            ids.ActorID
-	taskID             ids.TaskID
-	jobID              ids.JobID
+	taskType             base.TaskType
+	functionDescriptor   function.FunctionDescriptor
+	args                 []function.FunctionArg
+	numReturns           int
+	actorID              ids.ActorID
+	taskID               ids.TaskID
+	jobID                ids.JobID
+	name                 string
+	concurrencyGroupName string
 }
 
 // NewLocalModeTaskSubmitter creates a new LocalModeTaskSubmitter.
+// functionMgr, when non-nil, enables re-synchronizing late-registered
+// functions on each submission (see SubmitTask). Tests may pass nil to
+// disable that behavior.
 func NewLocalModeTaskSubmitter(
-	objectStore *objectstore.LocalModeObjectStore,
+	objectStore *localstore.LocalModeObjectStore,
 	workerContext *LocalModeWorkerContext,
 	taskExecutor *LocalModeTaskExecutor,
 	functionMgr *function.FunctionManager,
+	actorConcurrencyGroupMgr *ActorConcurrencyGroupManager,
 ) *LocalModeTaskSubmitter {
 	return &LocalModeTaskSubmitter{
 		objectStore:              objectStore,
 		workerContext:            workerContext,
 		taskExecutor:             taskExecutor,
 		functionMgr:              functionMgr,
-		actorConcurrencyGroupMgr: NewActorConcurrencyGroupManager(),
+		actorConcurrencyGroupMgr: actorConcurrencyGroupMgr,
 	}
+}
+
+// syncUserFunctions re-synchronizes functions registered since the last sync
+// into the local FunctionManager. api.Remote / api.RegisterActorClass register
+// lazily at call time, so a function or actor constructor registered after the
+// runtime Start()ed must become visible before a task that needs it executes.
+// The registry version only advances when a function is actually (re)registered,
+// so the sync is skipped on the common path (no new registrations) instead of
+// re-wrapping every function on every submission.
+//
+// It is a no-op when functionMgr is nil (e.g. unit tests that construct the
+// submitter directly).
+func (s *LocalModeTaskSubmitter) syncUserFunctions() error {
+	if s.functionMgr == nil {
+		return nil
+	}
+	current := api.GetRegisteredFunctionsVersion()
+	if current == s.lastSyncedVersion.Load() {
+		return nil
+	}
+	// Double-check under the lock: only the first caller that observed the stale
+	// version runs the full sync; concurrent callers block here, see the updated
+	// version, and skip. This avoids N concurrent submissions each re-registering
+	// every function.
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	if current == s.lastSyncedVersion.Load() {
+		return nil
+	}
+	if err := registerUserFunctions(s.taskExecutor); err != nil {
+		return err
+	}
+	// Record the version captured before the sync. If a function is registered
+	// concurrently while we sync, the version advances and the next submission
+	// re-syncs (idempotent), so no registration is ever missed.
+	s.lastSyncedVersion.Store(current)
+	return nil
 }
 
 // SubmitTask submits a normal task to be executed.
@@ -104,10 +149,15 @@ func (s *LocalModeTaskSubmitter) SubmitTask(
 	numReturns int,
 	options *submitter.TaskOptions,
 ) ([]ids.ObjectID, error) {
+	if err := s.syncUserFunctions(); err != nil {
+		return nil, err
+	}
+
 	jobID := s.workerContext.GetCurrentJobID()
 	parentTaskID := ids.NilTaskID()
 	taskID := ids.TaskIDForNormalTask(jobID, parentTaskID, rand.Uint64())
 
+	name, _ := taskOptionsFields(options)
 	spec := &taskSpec{
 		taskType:           base.TaskTypeNormal,
 		functionDescriptor: functionDescriptor,
@@ -115,6 +165,7 @@ func (s *LocalModeTaskSubmitter) SubmitTask(
 		numReturns:         numReturns,
 		taskID:             taskID,
 		jobID:              jobID,
+		name:               name,
 	}
 
 	returnIds := s.getReturnIds(taskID, numReturns)
@@ -129,6 +180,26 @@ func (s *LocalModeTaskSubmitter) CreateActor(
 	args []function.FunctionArg,
 	options *submitter.ActorCreationOptions,
 ) (ids.ActorID, error) {
+	// Validate new actor creation options (aligned with Java LocalMode).
+	// Shared boundary rule + error message with the native backend and the api
+	// layer via submitter.ActorCreationOptions.ValidateMaxPendingCalls.
+	// NormalizeMaxPendingCalls resolves the "unset" zero value to unlimited so a
+	// zero-value ActorCreationOptions is valid.
+	if options != nil {
+		if err := options.ValidateMaxPendingCalls(); err != nil {
+			return ids.NilActorID(), err
+		}
+		options.NormalizeMaxPendingCalls()
+	}
+
+	// The actor constructor may have been registered after the runtime
+	// Start()ed (api.RegisterActorClass is lazy, like api.Remote). Sync it into
+	// the local FunctionManager so the ACTOR_CREATION_TASK can resolve it;
+	// otherwise creation fails and dependent actor tasks wait forever.
+	if err := s.syncUserFunctions(); err != nil {
+		return ids.NilActorID(), err
+	}
+
 	if options == nil {
 		options = &submitter.ActorCreationOptions{}
 	}
@@ -156,7 +227,18 @@ func (s *LocalModeTaskSubmitter) CreateActor(
 
 	// Register actor with concurrency group manager
 	s.actorConcurrencyGroupMgr.GetOrCreateGroup(actorID, maxConcurrency)
-	s.actorMaxConcurrency.Store(actorID, maxConcurrency)
+
+	// Pre-register the actor's declared concurrency groups so a later
+	// WithConcurrencyGroup routes to a group that honors the declared
+	// concurrency (aligned with Java, which pre-registers declared groups at
+	// actor creation). MaxCalls <= 0 resolves to the actor's max concurrency.
+	for _, cg := range options.ConcurrencyGroups {
+		maxCalls := cg.MaxCalls
+		if maxCalls <= 0 {
+			maxCalls = maxConcurrency
+		}
+		s.actorConcurrencyGroupMgr.GetOrCreateNamedGroup(actorID, cg.Name, maxCalls)
+	}
 
 	// Submit actor creation task
 	s.submitTaskSpec(spec)
@@ -187,20 +269,32 @@ func (s *LocalModeTaskSubmitter) SubmitActorTask(
 	parentTaskID := ids.NilTaskID()
 	taskID := ids.TaskIDForActorTask(jobID, parentTaskID, rand.Uint64(), actorID)
 
+	name, concurrencyGroupName := taskOptionsFields(options)
 	spec := &taskSpec{
-		taskType:           base.TaskTypeActorTask,
-		functionDescriptor: functionDescriptor,
-		args:               args,
-		numReturns:         numReturns,
-		actorID:            actorID,
-		taskID:             taskID,
-		jobID:              jobID,
+		taskType:             base.TaskTypeActorTask,
+		functionDescriptor:   functionDescriptor,
+		args:                 args,
+		numReturns:           numReturns,
+		actorID:              actorID,
+		taskID:               taskID,
+		jobID:                jobID,
+		name:                 name,
+		concurrencyGroupName: concurrencyGroupName,
 	}
 
 	returnIds := s.getReturnIds(taskID, numReturns)
 	s.submitTaskSpec(spec)
 
 	return returnIds, nil
+}
+
+// taskOptionsFields extracts the task name and concurrency group name from
+// options, returning "" for fields that are nil/unset.
+func taskOptionsFields(options *submitter.TaskOptions) (name, concurrencyGroupName string) {
+	if options == nil {
+		return "", ""
+	}
+	return options.Name, options.ConcurrencyGroupName
 }
 
 // GetActor retrieves a named actor by its name and namespace.
@@ -214,22 +308,46 @@ func (s *LocalModeTaskSubmitter) GetActor(name string, namespace string) (submit
 	if info, ok := s.namedActors.Load(key); ok {
 		actorInfo := info.(*namedActorInfo)
 		// Return a NativeActorHandle as the ActorHandle implementation
-		return &object.NativeActorHandle{
-			ActorID: actorInfo.actorID,
-		}, nil
+		return object.NewNativeActorHandle(actorInfo.actorID, object.LanguageGo), nil
 	}
 	return nil, fmt.Errorf("actor not found: name=%s, namespace=%s", name, namespace)
+}
+
+// GetActorHandle retrieves an actor handle by its actor ID.
+// It resolves the live actor instance stored in the executor's actor manager:
+// only actors that were successfully constructed (and not yet killed/exited)
+// can be resolved, which also avoids reporting failed creations as available.
+// Local mode only hosts Go actors, so the returned handle always carries
+// LanguageGo.
+//
+// Semantics note: unlike the cluster path (which keeps a never-removed
+// by-creation registry and still resolves a killed actor), local mode drops
+// the instance on KillActor/intentional exit, so a killed actor is NOT
+// resolvable here. This matches AC7 (a killed actor returns an error) and is
+// an intentional difference between the two runtimes.
+func (s *LocalModeTaskSubmitter) GetActorHandle(actorID ids.ActorID) (submitter.ActorHandle, error) {
+	if actorID.IsNil() {
+		return nil, fmt.Errorf("get actor handle: actor ID is nil")
+	}
+	if _, ok := s.taskExecutor.GetActorInstance(actorID); ok {
+		return object.NewNativeActorHandle(actorID, object.LanguageGo), nil
+	}
+	return nil, fmt.Errorf("get actor handle: actor %s not found", actorID.Hex())
 }
 
 // KillActor kills an actor from the driver side.
 //
 // Local mode has no C++ CoreWorker or GCS, so there is no automatic restart:
-// the kill is always final (equivalent to Java's noRestart=true semantics).
-// The actor's concurrency groups and task context are torn down, and any
-// named-actor registration is removed, so later submissions and GetActor
-// lookups report the actor as unavailable. The noRestart parameter is accepted
-// for API compatibility but has no effect (Java's local mode, RayDevRuntime,
-// does not support kill at all).
+// the kill is always final (equivalent to Java's noRestart=true semantics),
+// mirroring the intentional-exit cleanup path. The actor's concurrency groups
+// and task context are torn down, and any named-actor registration is removed,
+// so later submissions and GetActor lookups report the actor as unavailable.
+// The noRestart parameter is accepted for API compatibility but has no effect
+// (Java's local mode, RayDevRuntime, does not support kill at all).
+//
+// Note: like every local-mode actor call (executeInGroup waits synchronously),
+// killing an actor that is currently stuck in a task blocks until that task
+// finishes; local mode cannot force-kill a hung task.
 func (s *LocalModeTaskSubmitter) KillActor(actorID ids.ActorID, noRestart bool) error {
 	s.removeActorState(actorID)
 	log.Log.Info("local-mode actor killed",
@@ -251,12 +369,15 @@ func (s *LocalModeTaskSubmitter) removeActorState(actorID ids.ActorID) {
 		}
 		return true
 	})
+
+	// Release the live actor instance so a killed/exited actor is garbage
+	// collected; GetActorHandle resolves only live instances, so removing the
+	// instance also makes it unresolvable.
+	s.taskExecutor.RemoveActorInstance(actorID)
 }
 
 // submitTaskSpec submits a task specification for execution.
 func (s *LocalModeTaskSubmitter) submitTaskSpec(spec *taskSpec) {
-	s.syncFunctionsFromRegistry()
-
 	// Check if all dependencies are ready and, if so, mark the task to be
 	// executed outside the lock. executeTaskSpec puts return objects into the
 	// object store, which triggers the onObjectPut callback (checkWaitingTasks)
@@ -302,13 +423,29 @@ func (s *LocalModeTaskSubmitter) executeTaskSpec(spec *taskSpec) {
 	var returnObjects []function.SerializedObject
 	var err error
 
+	// Log at debug level only when enabled so the hex encoding of taskID is
+	// not eagerly evaluated on every task.
+	if log.Log.V(2).Enabled() {
+		log.Log.V(2).Info("executing task", "taskID", spec.taskID.Hex(),
+			"taskType", spec.taskType, "name", spec.name)
+	}
+
 	switch spec.taskType {
 	case base.TaskTypeActorCreation:
-		// Execute actor creation
-		returnObjects, err = s.taskExecutor.Execute(spec.functionDescriptor, spec.args, spec.numReturns)
-		if err != nil {
-			// Handle actor creation error
-			return
+		// Construct the actor instance and store it under the actor ID. The
+		// instance stays in-process (not serialized), mirroring Java's
+		// LocalModeTaskExecutor where the constructor runs and the instance is
+		// kept in the actor context. On failure the error falls through to the
+		// common error-object path below: it is Put into the dummy object ID (the
+		// creation task's sole return ID), so dependent actor tasks are released
+		// and their Get surfaces the failure instead of hanging forever.
+		goDesc, descErr := function.FromBaseFunctionDescriptor(spec.functionDescriptor)
+		if descErr != nil {
+			err = descErr
+			break
+		}
+		if err = s.taskExecutor.ExecuteActorCreation(spec.actorID, goDesc, spec.args); err != nil {
+			break
 		}
 
 		// Register actor context
@@ -323,8 +460,20 @@ func (s *LocalModeTaskSubmitter) executeTaskSpec(spec *taskSpec) {
 		}, &dummyOID)
 
 	case base.TaskTypeActorTask:
-		// Execute actor task through concurrency group
-		returnObjects, err = s.taskExecutor.ExecuteActorTask(spec.actorID, spec.functionDescriptor, spec.args, spec.numReturns)
+		// Route through the executor: a non-empty concurrencyGroupName selects
+		// the named group, otherwise the actor's default group is used.
+		returnObjects, err = s.taskExecutor.ExecuteActorTaskInGroup(
+			spec.actorID, spec.concurrencyGroupName, spec.functionDescriptor, spec.args)
+		if err != nil {
+			if rayerrors.IsActorExitError(err) {
+				// Intentional exit: tear down the actor's concurrency group,
+				// context, and named-actor registration so later calls report
+				// the actor as unavailable.
+				s.removeActorState(spec.actorID)
+				log.Log.Info("local-mode actor removed on intentional exit",
+					"actorID", spec.actorID.Hex())
+			}
+		}
 
 	case base.TaskTypeNormal:
 		// Execute normal task
@@ -342,12 +491,11 @@ func (s *LocalModeTaskSubmitter) executeTaskSpec(spec *taskSpec) {
 		// forever in waitForObjects. Putting error objects lets the driver's Get
 		// surface the failure (ErrorObjectFromNative) instead of deadlocking.
 		//
-		// An intentional actor exit (api.ExitActor) is not a task failure and is
-		// excluded, matching the cluster-mode worker's IsActorExitError check.
-		var actorExit *rayerrors.ActorExitError
-		if !errors.As(err, &actorExit) {
+		// ActorExitError is an intentional exit and is excluded: its actor state
+		// was already removed above.
+		if !rayerrors.IsActorExitError(err) {
 			log.Log.Error(err, "local-mode task failed", "taskID", spec.taskID.Hex(),
-				"taskType", int32(spec.taskType))
+				"taskType", spec.taskType, "name", spec.name)
 			s.putErrorObjects(spec, err)
 		}
 		s.checkWaitingTasks()

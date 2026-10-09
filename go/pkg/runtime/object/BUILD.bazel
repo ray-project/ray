@@ -45,7 +45,7 @@ go_library(
 )
 
 # Unit tests for object serialization (internal test)
-# Note: local_mode_object_store_test.go was moved to internal/runtime/objectstore
+# Note: local_mode_object_store_test.go was moved to internal/runtime/localstore
 go_test(
     name = "object_test",
     srcs = [

@@ -31,6 +31,7 @@ go_library(
         "//go/internal/common",
         "//go/internal/errors",
         "//go/internal/gcs/native",
+        "//go/internal/runtime/actor",
         "//go/internal/runtime/base",
         "//go/internal/runtime/native",
         "//go/internal/runtime/serializer",

@@ -24,6 +24,7 @@ import (
 	"github.com/ray-project/ray/go/cmd/raygo/log_monitor"
 	"github.com/ray-project/ray/go/cmd/raygo/runtime_env_agent"
 	"github.com/ray-project/ray/go/cmd/raygo/setup_worker"
+	"github.com/ray-project/ray/go/cmd/raygo/version"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/log/zap"
 	"github.com/spf13/cobra"
@@ -53,6 +54,8 @@ func init() {
 	rootCmd.AddCommand(dashboard_agent.GetDashboardAgentCmd())
 	// Register monitor subcommand (the Go autoscaler v2 monitor).
 	rootCmd.AddCommand(monitor.GetMonitorCmd())
+	// Register version subcommand.
+	rootCmd.AddCommand(version.GetVersionCmd())
 }
 
 func main() {

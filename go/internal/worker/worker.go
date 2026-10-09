@@ -36,8 +36,9 @@ import (
 
 	rayerrors "github.com/ray-project/ray/go/internal/errors"
 	"github.com/ray-project/ray/go/internal/gcs/native"
+	"github.com/ray-project/ray/go/internal/runtime/actor"
 	"github.com/ray-project/ray/go/internal/runtime/base"
-	nativeRuntime "github.com/ray-project/ray/go/internal/runtime/native" // Register Runtime factory + actor constructor registration
+	_ "github.com/ray-project/ray/go/internal/runtime/native" // Register Runtime factory via init()
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
@@ -290,7 +291,7 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 		// ACTOR_CREATION_TASK can build a live instance on the worker.
 		if regFn.Descriptor().MethodName() == function.ConstructorName {
 			if actorRegistrar != nil {
-				ctor := nativeRuntime.WrapActorConstructor(regFn.Function())
+				ctor := actor.WrapActorConstructor(regFn.Function())
 				actorRegistrar.RegisterActorConstructor(regFn.Descriptor().String(), ctor)
 				log.Log.Info("registered actor constructor", "descriptor", regFn.Descriptor().String())
 			} else {

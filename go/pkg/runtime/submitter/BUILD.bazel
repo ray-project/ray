@@ -25,6 +25,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//go/pkg/ids",
+        "//go/pkg/log",
         "//go/pkg/runtime/function",
     ],
 )

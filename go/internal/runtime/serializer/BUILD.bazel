@@ -32,6 +32,7 @@ go_library(
     visibility = [
         "//go:__pkg__",  # For test_args_main.go
         "//go/cmd/plugin:__pkg__",
+        "//go/internal/runtime/actor:__pkg__",
         "//go/internal/runtime/local_mode:__pkg__",
         "//go/internal/runtime/native:__pkg__",
         "//go/internal/worker:__pkg__",  # For wrapGoFunction to access serializer

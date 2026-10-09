@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/ray-project/ray/go/internal/runtime/base"
-	"github.com/ray-project/ray/go/internal/runtime/objectstore"
+	"github.com/ray-project/ray/go/internal/runtime/localstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -153,8 +153,8 @@ func TestLocalModeRuntime(t *testing.T) {
 		store := runtime.GetObjectStore()
 		assert.NotNil(t, store)
 
-		// Should be LocalModeObjectStore from objectstore package
-		_, ok := store.(*objectstore.LocalModeObjectStore)
+		// Should be LocalModeObjectStore from the localstore package
+		_, ok := store.(*localstore.LocalModeObjectStore)
 		assert.True(t, ok)
 	})
 

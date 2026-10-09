@@ -182,6 +182,69 @@ func TestActorConcurrencyGroupManager(t *testing.T) {
 		assert.Empty(t, mgr.groups)
 	})
 
+	t.Run("GetOrCreateNamedGroup", func(t *testing.T) {
+		mgr := NewActorConcurrencyGroupManager()
+
+		actorID := ids.OfActorID(ids.NilJobID(), ids.NilTaskID(), 20)
+		group1 := mgr.GetOrCreateNamedGroup(actorID, "cg1", 2)
+		require.NotNil(t, group1)
+
+		// Same name returns the same group
+		group2 := mgr.GetOrCreateNamedGroup(actorID, "cg1", 4)
+		assert.Equal(t, group1, group2)
+
+		// Different name returns a different group
+		group3 := mgr.GetOrCreateNamedGroup(actorID, "cg2", 1)
+		assert.NotEqual(t, group1, group3)
+
+		// Empty name resolves to the default group (distinct from named groups)
+		defaultGroup := mgr.GetOrCreateNamedGroup(actorID, "", 1)
+		assert.NotEqual(t, group1, defaultGroup)
+		assert.Equal(t, defaultGroup, mgr.GetGroup(actorID))
+
+		mgr.Shutdown()
+	})
+
+	t.Run("RemoveGroupRemovesNamedGroups", func(t *testing.T) {
+		mgr := NewActorConcurrencyGroupManager()
+
+		actorID := ids.OfActorID(ids.NilJobID(), ids.NilTaskID(), 21)
+		mgr.GetOrCreateGroup(actorID, 1)
+		mgr.GetOrCreateNamedGroup(actorID, "cg1", 1)
+
+		mgr.RemoveGroup(actorID)
+
+		mgr.mu.RLock()
+		assert.Empty(t, mgr.groups)
+		mgr.mu.RUnlock()
+
+		mgr.Shutdown()
+	})
+
+	t.Run("SubmitRejectedAfterShutdown", func(t *testing.T) {
+		actorID := ids.OfActorID(ids.NilJobID(), ids.NilTaskID(), 22)
+		group := NewActorConcurrencyGroup(actorID, 1)
+
+		// An accepted task is executed before the group shuts down.
+		executed := make(chan struct{})
+		if !group.Submit(func() { close(executed) }) {
+			t.Fatal("Submit before Shutdown should be accepted")
+		}
+		select {
+		case <-executed:
+		case <-time.After(time.Second):
+			t.Fatal("task was not executed")
+		}
+
+		group.Shutdown()
+
+		// After Shutdown, Submit must be rejected rather than dropping the task
+		// silently (which would hang a caller waiting on completion).
+		if group.Submit(func() {}) {
+			t.Fatal("Submit after Shutdown should be rejected")
+		}
+	})
+
 	t.Run("ConcurrentAccess", func(t *testing.T) {
 		mgr := NewActorConcurrencyGroupManager()
 

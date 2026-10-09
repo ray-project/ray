@@ -25,10 +25,12 @@ go_library(
         "factory.go",
         "gcs_client.go",  # NEW: GCS client interface and factory
         "handle.go",
+        "internal.go",
         "method_extractor.go",
         "object.go",
         "object_id_generator.go",
         "options.go",
+        "parallel_actor.go",
         "ray.go",
         "runtime.go",
     ],
@@ -63,6 +65,7 @@ go_test(
         "method_extractor_test.go",
         "object_id_generator_test.go",
         "object_ref_test.go",
+        "parallel_actor_test.go",
         "python_call_test.go",
         "task_return_ref_test.go",
     ],
@@ -75,6 +78,7 @@ go_test(
         "//go/pkg/runtime/object",
         "//go/pkg/runtime/submitter",
         "@com_github_stretchr_testify//assert",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
     ],
 )
 

@@ -22,6 +22,7 @@ go_library(
         "args.go",
         "descriptor.go",
         "manager.go",
+        "parallel_actor.go",
         "registry.go",
         "types.go",
         "util.go",

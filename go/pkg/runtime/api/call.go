@@ -23,6 +23,7 @@ import (
 
 	"github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
@@ -179,44 +180,10 @@ func (c *TaskCaller[T]) WithName(name string) *TaskCaller[T] {
 //   - *ObjectRef[T]: A reference to the task result.
 //   - error: Any error encountered during submission.
 func (c *TaskCaller[T]) Call(args ...interface{}) (*ObjectRef[T], error) {
-	// Convert arguments to FunctionArg format
-	functionArgs := make([]function.FunctionArg, len(args))
-	for i, arg := range args {
-		functionArgs[i] = convertArgToFunctionArg(arg)
-	}
-	// Release the PutWithID local reference of internal pass-by-reference
-	// arguments on every exit path (successful submit, submit failure, or an
-	// unavailable submitter): once submitted, the C++ reference counter tracks
-	// the argument object; otherwise it would stay pinned in the object store.
-	defer releaseInternalByRefArgRefs(functionArgs)
-
-	// Get task submitter
-	submitter := getTaskSubmitter()
-	if submitter == nil {
-		// Task submitter is nil even though runtime may be initialized.
-		// This indicates an internal inconsistency rather than "runtime not initialized".
-		return nil, errors.NewRuntimeError("submit_task", "submitter_not_available")
-	}
-
-	// Submit task
-	returnIDs, err := submitter.SubmitTask(
-		c.functionDescriptor,
-		functionArgs,
-		c.numReturns,
-		c.options,
-	)
-
-	if err != nil {
-		// Convert internal error to public error
-		return nil, errors.ConvertToPublic(err)
-	}
-
-	// Create ObjectRef for the first return value
-	if len(returnIDs) > 0 {
-		return createObjectRefWithFinalizer[T](returnIDs[0], "")
-	}
-
-	return nil, nil
+	functionArgs := convertArgs(args...)
+	return submitTaskRef[T]("submit_task", functionArgs, func(s submitter.TaskSubmitter) ([]ids.ObjectID, error) {
+		return s.SubmitTask(c.functionDescriptor, functionArgs, c.numReturns, c.options)
+	})
 }
 
 // releaseInternalByRefArgRefs releases the local reference that PutWithID added
@@ -245,6 +212,157 @@ func releaseInternalByRefArgRefs(args []function.FunctionArg) {
 }
 
 // ============================================================================
+// Actor Options Builder
+// ============================================================================
+
+// actorOptions encapsulates the actor creation option state shared by
+// ActorCreator and PythonActorCreator so that the builder methods are
+// implemented once instead of being duplicated across the creator types.
+//
+// Type parameter T is the concrete creator type; builder methods return T so
+// chained calls keep their concrete type.
+//
+// Note: three builder methods of the shared actor options builder --
+// WithPlacementGroup, WithLifetime and WithAsync -- are intentionally not
+// ported here. They depend on the api.PlacementGroup type and the
+// submitter.ActorLifetime / ActorCreationOptions.Lifetime / IsAsync fields,
+// which this tree does not have yet; they are deferred to the placement-group
+// and actor-lifetime alignment work rather than dropped.
+type actorOptions[T any] struct {
+	// options are the actor creation options.
+	options *submitter.ActorCreationOptions
+	// self points to the owning creator so builder methods can return the
+	// concrete creator type for chaining.
+	self T
+}
+
+// newActorOptions creates actor options with a default empty ActorCreationOptions
+// and a pointer back to the owning creator.
+func newActorOptions[T any](self T) actorOptions[T] {
+	return actorOptions[T]{
+		// MaxPendingCalls defaults to unlimited (MaxPendingCallsUnlimited),
+		// matching ActorCreationOptionsBuilder's default.
+		options: &submitter.ActorCreationOptions{MaxPendingCalls: submitter.MaxPendingCallsUnlimited},
+		self:    self,
+	}
+}
+
+// WithName sets the name for the actor.
+//
+// Parameters:
+//   - name: The actor name.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithName(name string) T {
+	o.options.Name = name
+	return o.self
+}
+
+// WithNamespace sets the namespace for the actor.
+//
+// Parameters:
+//   - namespace: The actor namespace.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithNamespace(namespace string) T {
+	o.options.Namespace = namespace
+	return o.self
+}
+
+// WithResources sets the resource requirements for the actor.
+//
+// Parameters:
+//   - resources: A map of resource name to quantity (e.g., {"CPU": 1.0, "GPU": 0.5}).
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithResources(resources map[string]float64) T {
+	o.options.Resources = resources
+	return o.self
+}
+
+// WithMaxRestarts sets the maximum number of restarts for the actor.
+//
+// Parameters:
+//   - maxRestarts: The maximum number of restarts.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithMaxRestarts(maxRestarts int) T {
+	o.options.MaxRestarts = maxRestarts
+	return o.self
+}
+
+// WithMaxTaskRetries sets the maximum number of task retries for the actor.
+//
+// Parameters:
+//   - maxTaskRetries: The maximum number of task retries.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithMaxTaskRetries(maxTaskRetries int) T {
+	o.options.MaxTaskRetries = maxTaskRetries
+	return o.self
+}
+
+// WithRuntimeEnv sets the runtime environment for the actor.
+//
+// Parameters:
+//   - runtimeEnv: The runtime environment JSON string.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithRuntimeEnv(runtimeEnv string) T {
+	o.options.RuntimeEnv = runtimeEnv
+	return o.self
+}
+
+// WithMaxPendingCalls sets the maximum pending calls (-1 means unlimited).
+//
+// Parameters:
+//   - maxPendingCalls: The maximum number of pending calls.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithMaxPendingCalls(maxPendingCalls int) T {
+	o.options.MaxPendingCalls = maxPendingCalls
+	return o.self
+}
+
+// WithConcurrencyGroups sets the actor's concurrency groups.
+// Can be called multiple times to append groups. Each group is validated
+// (non-empty name, MaxCalls >= -1) and an invalid group panics, mirroring the
+// other builder methods' fail-fast behavior (e.g. SetParallelism).
+func (o *actorOptions[T]) WithConcurrencyGroups(groups ...ConcurrencyGroup) T {
+	for _, g := range groups {
+		if err := g.Validate(); err != nil {
+			panic(fmt.Sprintf("invalid concurrency group %q: %v", g.Name, err))
+		}
+		o.options.ConcurrencyGroups = append(o.options.ConcurrencyGroups, submitter.ConcurrencyGroup{
+			Name:     g.Name,
+			MaxCalls: g.MaxCalls,
+			Methods:  g.Methods,
+		})
+	}
+	return o.self
+}
+
+// WithDefaultConcurrencyGroup sets the default concurrency group.
+// The default group contains all methods not explicitly assigned to other
+// groups. It is registered as a NAMED group "default" (key=actorID/"default"),
+// distinct from the actor's implicit empty-name default group (key=actorID),
+// matching Java and local_mode's existing behavior.
+func (o *actorOptions[T]) WithDefaultConcurrencyGroup(maxCalls int) T {
+	return o.WithConcurrencyGroups(ConcurrencyGroup{
+		Name:     "default",
+		MaxCalls: maxCalls,
+		Methods:  []string{},
+	})
+}
+
+// ============================================================================
 // Actor Creator Builder
 // ============================================================================
 
@@ -257,8 +375,8 @@ type ActorCreator[T any] struct {
 	functionDescriptor *function.GoFunctionDescriptor
 	// args are the constructor arguments.
 	args []function.FunctionArg
-	// options are the actor creation options.
-	options *submitter.ActorCreationOptions
+	// actorOptions are the shared actor creation options and builder state.
+	actorOptions[*ActorCreator[T]]
 }
 
 // Actor sets an actor class to be created.
@@ -273,83 +391,12 @@ func Actor[T any](actorClass interface{}) *ActorCreator[T] {
 	// Extract function descriptor from the actor class
 	funcDesc := extractActorFunctionDescriptor(actorClass)
 
-	return &ActorCreator[T]{
+	creator := &ActorCreator[T]{
 		functionDescriptor: funcDesc,
 		args:               make([]function.FunctionArg, 0),
-		options:            &submitter.ActorCreationOptions{},
 	}
-}
-
-// WithName sets the name for the actor.
-//
-// Parameters:
-//   - name: The actor name.
-//
-// Returns:
-//   - *ActorCreator[T]: The same actor creator for chaining.
-func (c *ActorCreator[T]) WithName(name string) *ActorCreator[T] {
-	c.options.Name = name
-	return c
-}
-
-// WithNamespace sets the namespace for the actor.
-//
-// Parameters:
-//   - namespace: The actor namespace.
-//
-// Returns:
-//   - *ActorCreator[T]: The same actor creator for chaining.
-func (c *ActorCreator[T]) WithNamespace(namespace string) *ActorCreator[T] {
-	c.options.Namespace = namespace
-	return c
-}
-
-// WithResources sets the resource requirements for the actor.
-//
-// Parameters:
-//   - resources: A map of resource name to quantity (e.g., {"CPU": 1.0, "GPU": 0.5}).
-//
-// Returns:
-//   - *ActorCreator[T]: The same actor creator for chaining.
-func (c *ActorCreator[T]) WithResources(resources map[string]float64) *ActorCreator[T] {
-	c.options.Resources = resources
-	return c
-}
-
-// WithMaxRestarts sets the maximum number of restarts for the actor.
-//
-// Parameters:
-//   - maxRestarts: The maximum number of restarts.
-//
-// Returns:
-//   - *ActorCreator[T]: The same actor creator for chaining.
-func (c *ActorCreator[T]) WithMaxRestarts(maxRestarts int) *ActorCreator[T] {
-	c.options.MaxRestarts = maxRestarts
-	return c
-}
-
-// WithMaxTaskRetries sets the maximum number of task retries for the actor.
-//
-// Parameters:
-//   - maxTaskRetries: The maximum number of task retries.
-//
-// Returns:
-//   - *ActorCreator[T]: The same actor creator for chaining.
-func (c *ActorCreator[T]) WithMaxTaskRetries(maxTaskRetries int) *ActorCreator[T] {
-	c.options.MaxTaskRetries = maxTaskRetries
-	return c
-}
-
-// WithRuntimeEnv sets the runtime environment for the actor.
-//
-// Parameters:
-//   - runtimeEnv: The runtime environment JSON string.
-//
-// Returns:
-//   - *ActorCreator[T]: The same actor creator for chaining.
-func (c *ActorCreator[T]) WithRuntimeEnv(runtimeEnv string) *ActorCreator[T] {
-	c.options.RuntimeEnv = runtimeEnv
-	return c
+	creator.actorOptions = newActorOptions[*ActorCreator[T]](creator)
+	return creator
 }
 
 // WithMaxConcurrency sets the maximum number of concurrent calls for the actor.
@@ -373,35 +420,15 @@ func (c *ActorCreator[T]) WithMaxConcurrency(maxConcurrency int) *ActorCreator[T
 //   - *ActorHandleImpl[T]: A handle to the created actor.
 //   - error: Any error encountered during actor creation.
 func (c *ActorCreator[T]) Create(args ...interface{}) (*ActorHandleImpl[T], error) {
-	// Convert arguments to FunctionArg format
-	functionArgs := make([]function.FunctionArg, len(args))
-	for i, arg := range args {
-		functionArgs[i] = convertArgToFunctionArg(arg)
-	}
-	// Release the PutWithID local reference of internal pass-by-reference
-	// arguments on every exit path (see releaseInternalByRefArgRefs).
-	defer releaseInternalByRefArgRefs(functionArgs)
+	functionArgs := convertArgs(args...)
 
-	// Get task submitter
-	submitter := getTaskSubmitter()
-	if submitter == nil {
-		// Task submitter is nil even though runtime may be initialized.
-		// This indicates an internal inconsistency rather than "runtime not initialized".
-		return nil, errors.NewRuntimeError("create_actor", "submitter_not_available")
-	}
-
-	// Create actor
-	actorID, err := submitter.CreateActor(
-		c.functionDescriptor,
-		functionArgs,
-		c.options,
-	)
+	actorID, err := createActorWithSubmitter("create_actor", functionArgs, func(s submitter.TaskSubmitter) (ids.ActorID, error) {
+		return s.CreateActor(c.functionDescriptor, functionArgs, c.options)
+	})
 	if err != nil {
-		// Convert internal error to public error
-		return nil, errors.ConvertToPublic(err)
+		return nil, err
 	}
 
-	// Create actor handle
 	return NewActorHandleImpl[T](actorID), nil
 }
 
@@ -573,33 +600,9 @@ func (c *PythonTaskCaller[T]) Call(args ...interface{}) (*ObjectRef[T], error) {
 	}
 
 	functionArgs := wrapPythonArgs(args)
-	// Release the PutWithID local reference of internal pass-by-reference
-	// arguments on every exit path (see releaseInternalByRefArgRefs).
-	defer releaseInternalByRefArgRefs(functionArgs)
-
-	taskSubmitter := getTaskSubmitter()
-	if taskSubmitter == nil {
-		// Task submitter is nil even though runtime may be initialized.
-		// This indicates an internal inconsistency rather than "runtime not initialized".
-		return nil, errors.NewRuntimeError("submit_task", "submitter_not_available")
-	}
-
-	returnIDs, err := taskSubmitter.SubmitTask(
-		c.functionDescriptor,
-		functionArgs,
-		c.numReturns,
-		c.options,
-	)
-	if err != nil {
-		// Convert internal error to public error
-		return nil, errors.ConvertToPublic(err)
-	}
-
-	if len(returnIDs) > 0 {
-		return createObjectRefWithFinalizer[T](returnIDs[0], "")
-	}
-
-	return nil, nil
+	return submitTaskRef[T]("submit_task", functionArgs, func(s submitter.TaskSubmitter) ([]ids.ObjectID, error) {
+		return s.SubmitTask(c.functionDescriptor, functionArgs, c.numReturns, c.options)
+	})
 }
 
 // ============================================================================
@@ -736,25 +739,12 @@ func (c *PythonActorCreator) Create(args ...interface{}) (*PythonActorHandle, er
 	}
 
 	functionArgs := wrapPythonArgs(args)
-	// Release the PutWithID local reference of internal pass-by-reference
-	// arguments on every exit path (see releaseInternalByRefArgRefs).
-	defer releaseInternalByRefArgRefs(functionArgs)
 
-	taskSubmitter := getTaskSubmitter()
-	if taskSubmitter == nil {
-		// Task submitter is nil even though runtime may be initialized.
-		// This indicates an internal inconsistency rather than "runtime not initialized".
-		return nil, errors.NewRuntimeError("create_actor", "submitter_not_available")
-	}
-
-	actorID, err := taskSubmitter.CreateActor(
-		c.functionDescriptor,
-		functionArgs,
-		c.options,
-	)
+	actorID, err := createActorWithSubmitter("create_actor", functionArgs, func(s submitter.TaskSubmitter) (ids.ActorID, error) {
+		return s.CreateActor(c.functionDescriptor, functionArgs, c.options)
+	})
 	if err != nil {
-		// Convert internal error to public error
-		return nil, errors.ConvertToPublic(err)
+		return nil, err
 	}
 
 	return &PythonActorHandle{
@@ -829,34 +819,9 @@ func (c *PythonActorTaskCaller[T]) Remote() (*ObjectRef[T], error) {
 		return nil, c.err
 	}
 
-	// Release the PutWithID local reference of internal pass-by-reference
-	// arguments on every exit path (see releaseInternalByRefArgRefs).
-	defer releaseInternalByRefArgRefs(c.args)
-
-	taskSubmitter := getTaskSubmitter()
-	if taskSubmitter == nil {
-		// Task submitter is nil even though runtime may be initialized.
-		// This indicates an internal inconsistency rather than "runtime not initialized".
-		return nil, errors.NewRuntimeError("submit_actor_task", "submitter_not_available")
-	}
-
-	returnIDs, err := taskSubmitter.SubmitActorTask(
-		c.actorID,
-		c.methodDescriptor,
-		c.args,
-		c.numReturns,
-		c.options,
-	)
-	if err != nil {
-		// Convert internal error to public error
-		return nil, errors.ConvertToPublic(err)
-	}
-
-	if len(returnIDs) > 0 {
-		return createObjectRefWithFinalizer[T](returnIDs[0], "")
-	}
-
-	return nil, nil
+	return submitTaskRef[T]("submit_actor_task", c.args, func(s submitter.TaskSubmitter) ([]ids.ObjectID, error) {
+		return s.SubmitActorTask(c.actorID, c.methodDescriptor, c.args, c.numReturns, c.options)
+	})
 }
 
 // WithResources sets the resource requirements for the Python actor method call.
@@ -927,6 +892,94 @@ func (c *PythonActorTaskCaller[T]) WithNumReturns(numReturns int) *PythonActorTa
 // have been moved to object.go as they are ObjectRef lifecycle management functions,
 // not specific to task calling. They are still accessible from call.go since both
 // files are in the same package.
+
+// registerActorConstructor registers the actor's "<init>" constructor with the
+// global registry so that a Go worker can construct actor instances when it
+// receives an ACTOR_CREATION_TASK.
+//
+// If actorClass is a function, it is treated as the constructor factory and
+// registered as-is (any reflection-visible type info is derived from it). If it
+// is a type (pointer/instance), a zero-value constructor returning a fresh
+// instance is registered.
+func registerActorConstructor[T any](actorClass interface{}) {
+	if actorClass == nil {
+		return
+	}
+
+	// Factory-function form: a func (of any arity) is the constructor factory.
+	// The actor type is derived from T's zero value rather than from the factory
+	// (a func value carries no reflect-visible actor type) so RegisterActorClass
+	// can reach the underlying struct type.
+	if reflect.TypeOf(actorClass).Kind() == reflect.Func {
+		var zero T
+		if err := RegisterActorClass(zero, actorClass); err != nil {
+			log.Log.Error(err, "failed to register actor class for factory constructor")
+		}
+		return
+	}
+
+	// Type form: actorClass is a pointer/instance of the actor type. Register a
+	// zero-value constructor returning a fresh instance, UNLESS the class's
+	// "<init>" constructor was already registered explicitly via
+	// api.RegisterActorClass. A class has a single declared constructor (Java:
+	// Ray.actor(Counter.class) never redefines the class's constructor), so the
+	// explicit registration wins. Overwriting it with a zero-arg fallback would
+	// silently break actors that need constructor arguments whenever the type
+	// form is used in the same process as an explicit registration (e.g. a
+	// driver that both registers a class and creates it in local mode).
+	actorType := reflect.TypeOf(actorClass)
+	if actorType == nil {
+		return
+	}
+	if actorType.Kind() == reflect.Ptr {
+		actorType = actorType.Elem()
+	}
+	typeName, moduleName, packagePath := function.DescriptorPartsFromType(actorType)
+	ctorDesc, descErr := function.NewGoActorMethodDescriptor(
+		moduleName, packagePath, typeName, function.ConstructorName,
+	)
+	if descErr != nil {
+		// Log rather than silently skipping registration: the type form used to
+		// always register a zero-value constructor, and a descriptor that fails
+		// to build would otherwise leave the actor class silently unregistered.
+		log.Log.Error(descErr, "failed to build actor constructor descriptor for type form",
+			"type", actorType.String())
+		return
+	}
+	if _, err := function.Registry.Get(ctorDesc); err == nil {
+		// An explicit constructor registration already exists; keep it.
+		return
+	}
+	constructor := func() T {
+		v := reflect.New(actorType)
+		return v.Interface().(T)
+	}
+	if err := RegisterActorClass(actorClass, constructor); err != nil {
+		log.Log.Error(err, "failed to register actor class")
+	}
+}
+
+// extractActorTypeDescriptor builds the "<init>" descriptor for the actor type
+// identified by the type parameter T.
+//
+// T is conventionally a pointer to the actor struct type (e.g. *MyActor), so the
+// pointer layers are dereferenced to reach the struct type whose Name()/PkgPath()
+// identify the actor class. Without the dereference the module/package/type name
+// would degrade to "unknown".
+//
+// The returned descriptor carries the special "<init>" method name, matching
+// Java's FunctionManager.CONSTRUCTOR_NAME, so the worker's actor execution path can
+// distinguish actor construction from regular actor method calls.
+func extractActorTypeDescriptor[T any]() *function.GoFunctionDescriptor {
+	actorType := reflect.TypeOf((*T)(nil))
+	if actorType == nil {
+		return function.NewGoActorMethodDescriptorOrUnknown("unknown", "unknown", "unknown", function.ConstructorName)
+	}
+
+	typeName, modulePath, packagePath := function.DescriptorPartsFromType(actorType)
+
+	return function.NewGoActorMethodDescriptorOrUnknown(modulePath, packagePath, typeName, function.ConstructorName)
+}
 
 // extractActorFunctionDescriptor extracts a FunctionDescriptor from an actor class.
 func extractActorFunctionDescriptor(actorClass interface{}) *function.GoFunctionDescriptor {
@@ -1019,6 +1072,16 @@ func convertArgToFunctionArg(arg interface{}) function.FunctionArg {
 	}
 }
 
+// convertArgs converts raw interface{} arguments to a FunctionArg slice.
+// Shared by TaskCaller.Call, ActorCreator.Create and ActorHandleImpl.Task.
+func convertArgs(args ...interface{}) []function.FunctionArg {
+	functionArgs := make([]function.FunctionArg, len(args))
+	for i, arg := range args {
+		functionArgs[i] = convertArgToFunctionArg(arg)
+	}
+	return functionArgs
+}
+
 // functionArgByValue deep-copies the serialized payload out of a NativeRayObject
 // and returns a pass-by-value FunctionArg. The copy is required because the
 // NativeRayObject may be returned to the buffer pool (Close) after the caller
@@ -1046,11 +1109,74 @@ func getCurrentWorkerRpcAddress(runtime contract.Runtime) []byte {
 	return wc.GetRpcAddress()
 }
 
-// getTaskSubmitter returns the current task submitter.
-// Deprecated: Use tryGetTaskSubmitter() instead, which returns (submitter, ok).
+// submitTaskRef submits any task-like operation that returns a list of ObjectIDs
+// (a normal task or an actor task) and wraps the first return ID into an
+// ObjectRef[T]. It centralizes the pass-by-reference argument release, the
+// submitter availability check, the error translation and the result wrapping
+// that used to be duplicated across TaskCaller/PythonTaskCaller/ActorTaskCaller.
+//
+// Parameters:
+//   - action: The operation name used in the runtime error when the submitter is
+//     unavailable (e.g. "submit_task", "submit_actor_task").
+//   - args: The FunctionArg list of the call. Pass-by-reference arguments marked
+//     ReleaseAfterSubmit are released on every exit path.
+//   - submit: The actual submission closure.
+func submitTaskRef[T any](action string, args []function.FunctionArg,
+	submit func(submitter.TaskSubmitter) ([]ids.ObjectID, error)) (*ObjectRef[T], error) {
+	// Release the PutWithID local reference of internal pass-by-reference
+	// arguments on every exit path (see releaseInternalByRefArgRefs).
+	defer releaseInternalByRefArgRefs(args)
+
+	taskSubmitter := getTaskSubmitter()
+	if taskSubmitter == nil {
+		return nil, errors.NewRuntimeError(action, submitterNotAvailable)
+	}
+	returnIDs, err := submit(taskSubmitter)
+	if err != nil {
+		return nil, errors.ConvertToPublic(err)
+	}
+	if len(returnIDs) > 0 {
+		return createObjectRefWithFinalizer[T](returnIDs[0], "")
+	}
+	return nil, nil
+}
+
+// createActorWithSubmitter creates an actor through the current task submitter
+// and returns its ActorID. It centralizes the pass-by-reference argument
+// release, the submitter availability check and the error translation shared
+// by ActorCreator and PythonActorCreator.
+//
+// Parameters:
+//   - action: The operation name used in the runtime error when the submitter is
+//     unavailable (e.g. "create_actor").
+//   - args: The constructor FunctionArg list. Pass-by-reference arguments marked
+//     ReleaseAfterSubmit are released on every exit path.
+//   - create: The actual actor creation closure.
+func createActorWithSubmitter(action string, args []function.FunctionArg,
+	create func(submitter.TaskSubmitter) (ids.ActorID, error)) (ids.ActorID, error) {
+	defer releaseInternalByRefArgRefs(args)
+
+	taskSubmitter := getTaskSubmitter()
+	if taskSubmitter == nil {
+		return ids.NilActorID(), errors.NewRuntimeError(action, submitterNotAvailable)
+	}
+	actorID, err := create(taskSubmitter)
+	if err != nil {
+		return ids.NilActorID(), errors.ConvertToPublic(err)
+	}
+	return actorID, nil
+}
+
+// getTaskSubmitter returns the current task submitter via the internal()
+// single entry point. It returns nil when the runtime is not initialized or
+// has no submitter; callers (submitTaskRef / createActorWithSubmitter) map
+// nil to the submitter_not_available runtime error.
 func getTaskSubmitter() submitter.TaskSubmitter {
-	submitter, _ := tryGetTaskSubmitter()
-	return submitter
+	rt, err := internal()
+	if err != nil {
+		return nil
+	}
+	return rt.GetTaskSubmitter()
 }
 
 // ============================================================================
@@ -1150,37 +1276,9 @@ func (c *ActorTaskCaller[T]) Remote() (*ObjectRef[T], error) {
 		return nil, c.err
 	}
 
-	// Release the PutWithID local reference of internal pass-by-reference
-	// arguments on every exit path (successful submit, submit failure, or an
-	// unavailable submitter): once submitted, the C++ reference counter tracks
-	// the argument object; otherwise it would stay pinned in the object store.
-	defer releaseInternalByRefArgRefs(c.args)
-
-	submitter := getTaskSubmitter()
-	if submitter == nil {
-		// Task submitter is nil even though runtime may be initialized.
-		// This indicates an internal inconsistency rather than "runtime not initialized".
-		return nil, errors.NewRuntimeError("submit_actor_task", "submitter_not_available")
-	}
-
-	// Submit actor task
-	returnIDs, err := submitter.SubmitActorTask(
-		c.actorID,
-		c.methodDescriptor,
-		c.args,
-		c.numReturns,
-		c.options,
-	)
-	if err != nil {
-		// Convert internal error to public error
-		return nil, errors.ConvertToPublic(err)
-	}
-
-	if len(returnIDs) > 0 {
-		return createObjectRefWithFinalizer[T](returnIDs[0], "")
-	}
-
-	return nil, nil
+	return submitTaskRef[T]("submit_actor_task", c.args, func(s submitter.TaskSubmitter) ([]ids.ObjectID, error) {
+		return s.SubmitActorTask(c.actorID, c.methodDescriptor, c.args, c.numReturns, c.options)
+	})
 }
 
 // RemoteVoid submits the actor method call without returning a result.

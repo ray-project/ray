@@ -1,0 +1,45 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# localstore package: the pure-Go in-memory object store for local mode.
+#
+# Split out of the cgo objectstore package: LocalModeObjectStore is used only
+# by the local_mode runtime, and keeping it in objectstore forced local_mode to
+# statically link the C++ core worker. This package has no cgo dependencies.
+go_library(
+    name = "localstore",
+    srcs = ["local_mode_object_store.go"],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/localstore",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/object",
+    ],
+)
+
+# Unit tests for the pure-Go local-mode object store (no running cluster
+# required).
+go_test(
+    name = "localstore_test",
+    srcs = ["local_mode_object_store_test.go"],
+    embed = [":localstore"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/object",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

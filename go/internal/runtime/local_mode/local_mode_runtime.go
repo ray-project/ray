@@ -20,8 +20,9 @@ import (
 
 	rayerrors "github.com/ray-project/ray/go/internal/errors"
 	"github.com/ray-project/ray/go/internal/runtime/base"
-	"github.com/ray-project/ray/go/internal/runtime/objectstore"
+	"github.com/ray-project/ray/go/internal/runtime/localstore"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
@@ -39,7 +40,7 @@ import (
 type LocalModeRuntime struct {
 	opts          base.InitializeOptions
 	initialized   atomic.Bool
-	objectStore   *objectstore.LocalModeObjectStore
+	objectStore   *localstore.LocalModeObjectStore
 	taskSubmitter *LocalModeTaskSubmitter
 	workerContext *LocalModeWorkerContext
 	functionMgr   *function.FunctionManager
@@ -53,7 +54,7 @@ type LocalModeRuntime struct {
 
 // NewLocalModeRuntime creates a new LocalModeRuntime instance.
 func NewLocalModeRuntime(opts base.InitializeOptions) (*LocalModeRuntime, error) {
-	store := objectstore.NewLocalModeObjectStore()
+	store := localstore.NewLocalModeObjectStore()
 	return &LocalModeRuntime{
 		opts:          opts,
 		objectStore:   store,
@@ -72,21 +73,27 @@ func (lr *LocalModeRuntime) Start() error {
 	lr.shutdownLock.Lock()
 	defer lr.shutdownLock.Unlock()
 
+	// Create the shared actor concurrency group manager and inject it into
+	// both the task executor (execution/routing) and the task submitter
+	// (actor creation pre-registration and cleanup).
+	actorConcurrencyGroupMgr := NewActorConcurrencyGroupManager()
+
 	// Create task executor
 	lr.taskExecutor = NewLocalModeTaskExecutor(
 		lr.functionMgr,
-		NewActorConcurrencyGroupManager(),
+		actorConcurrencyGroupMgr,
 		lr.objectStore,
 	)
 
 	// Create task submitter with executor. The submitter shares the runtime's
-	// FunctionManager, so functions registered after Start are picked up when a
-	// task is submitted (see syncFunctionsFromRegistry).
+	// FunctionManager, so it can re-synchronize functions registered after
+	// Start (see SubmitTask).
 	lr.taskSubmitter = NewLocalModeTaskSubmitter(
 		lr.objectStore,
 		lr.workerContext,
 		lr.taskExecutor,
 		lr.functionMgr,
+		actorConcurrencyGroupMgr,
 	)
 
 	// Register object put callback to trigger waiting tasks
@@ -96,26 +103,26 @@ func (lr *LocalModeRuntime) Start() error {
 		}
 	})
 
-	// Enable local mode serialization thresholds (100KB by-value threshold,
-	// aligned with Java's RayDevRuntime). Set once the runtime is assembled so
-	// the serializer picks the local-mode configuration on first use.
-	object.SetLocalMode(true)
-
 	// Register user functions already in the global registry so the first task
 	// submission does not re-sync an empty registry. Functions registered after
-	// Start (via api.Remote at call time) are picked up by task submission,
-	// which re-syncs only when the registry version advances.
+	// Start (via api.Remote at call time) are picked up by SubmitTask, which
+	// re-syncs only when the registry version advances.
 	//
 	// The version is captured before the sync and stored after it succeeds,
-	// mirroring syncFunctionsFromRegistry: if a function is registered
-	// concurrently while we sync, the stored version stays stale and the next
-	// submission re-syncs (idempotent) instead of permanently skipping the new
-	// function.
-	version := function.Registry.Version()
-	if err := registerUserFunctions(lr.functionMgr); err != nil {
+	// mirroring SubmitTask: if a function is registered concurrently while we
+	// sync, the stored version stays stale and the next submission re-syncs
+	// (idempotent) instead of permanently skipping the new function.
+	version := api.GetRegisteredFunctionsVersion()
+	if err := registerUserFunctions(lr.taskExecutor); err != nil {
 		return err
 	}
 	lr.taskSubmitter.lastSyncedVersion.Store(version)
+
+	// Enable local mode serialization thresholds (100KB by-value threshold,
+	// aligned with Java's RayDevRuntime). Set only after the sync succeeded so a
+	// failed Start does not leave the process-wide local-mode flag permanently
+	// enabled (it is a global singleton that cannot be rolled back).
+	object.SetLocalMode(true)
 
 	return nil
 }

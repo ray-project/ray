@@ -1,10 +1,10 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//  http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package native
+package actor
 
 import (
 	"errors"
@@ -81,8 +81,8 @@ func newTestActor(initial int) *testActor {
 func newActorDesc(t *testing.T, methodName string) *function.GoFunctionDescriptor {
 	t.Helper()
 	desc, err := function.NewGoActorMethodDescriptor(
-		"github.com/ray-project/ray/go/internal/runtime/native",
-		"internal/runtime/native",
+		"github.com/ray-project/ray/go/internal/runtime/actor",
+		"internal/runtime/actor",
 		"testActor",
 		methodName,
 	)
@@ -213,8 +213,8 @@ func TestCallActorMethod_VoidAndGetter(t *testing.T) {
 
 func TestCallActorMethod_MissingMethod(t *testing.T) {
 	desc, err := function.NewGoActorMethodDescriptor(
-		"github.com/ray-project/ray/go/internal/runtime/native",
-		"internal/runtime/native",
+		"github.com/ray-project/ray/go/internal/runtime/actor",
+		"internal/runtime/actor",
 		"testActor",
 		"DoesNotExist",
 	)
@@ -266,7 +266,7 @@ func TestCallActorMethod_TooManyArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected argument count error, got nil")
 	}
-	if got, want := err.Error(), "actor method Add on *native.testActor expects 1 argument(s), got 2"; got != want {
+	if got, want := err.Error(), "actor method Add on *actor.testActor expects 1 argument(s), got 2"; got != want {
 		t.Fatalf("unexpected error: got %q, want %q", got, want)
 	}
 }
@@ -278,7 +278,7 @@ func TestCallActorMethod_TooFewArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected argument count error, got nil")
 	}
-	if got, want := err.Error(), "actor method Add on *native.testActor expects 1 argument(s), got 0"; got != want {
+	if got, want := err.Error(), "actor method Add on *actor.testActor expects 1 argument(s), got 0"; got != want {
 		t.Fatalf("unexpected error: got %q, want %q", got, want)
 	}
 }
@@ -357,8 +357,8 @@ func (a *concurrentActor) Enter() {
 }
 
 func TestActorManager_ConcurrentMethodExecution(t *testing.T) {
-	// With no per-actor lock, two methods of the same actor must be able to run
-	// concurrently (the C++ side controls actual serialization).
+	// With the per-actor lock removed, two methods of the same actor must be
+	// able to run concurrently (the C++ side controls actual serialization).
 	manager := NewActorManager()
 	actorID := ids.OfActorID(ids.NilJobID(), ids.NilTaskID(), 50)
 	actor := &concurrentActor{}

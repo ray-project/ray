@@ -27,6 +27,7 @@ go_library(
         "//go/cmd/raygo/log_monitor",
         "//go/cmd/raygo/runtime_env_agent",
         "//go/cmd/raygo/setup_worker",
+        "//go/cmd/raygo/version",
         "//go/pkg/log",
         "//go/pkg/log/zap",
         "@com_github_spf13_cobra//:cobra",

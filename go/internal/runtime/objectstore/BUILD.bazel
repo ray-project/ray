@@ -15,15 +15,12 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 # Object store implementations.
-# This package contains concrete implementations of the ObjectStore interface:
-# - NativeObjectStore: CGO-based implementation using the C++ Ray core worker.
-# - LocalModeObjectStore: Pure Go in-memory implementation for local mode.
+# This package contains the CGO-based NativeObjectStore implementation.
+# LocalModeObjectStore (pure Go) lives in //go/internal/runtime/localstore so
+# that the local-mode runtime does not statically link the C++ core worker.
 go_library(
     name = "objectstore",
-    srcs = [
-        "local_mode_object_store.go",
-        "native_object_store.go",
-    ],
+    srcs = ["native_object_store.go"],
     cdeps = [
         "//src/ray/core_worker/lib/go:native_runtime",
         "//src/ray/core_worker/lib/go:native_runtime_go_headers",
@@ -40,15 +37,13 @@ go_library(
     ],
 )
 
-# Unit tests for the object store implementations: the pure-Go local-mode store
-# and the CGO-based native store (the latter covers constructor wiring and the
-# empty-input paths of the native calls, so no running cluster is required).
+# Unit tests for the CGO-based native store (they cover constructor wiring and
+# the empty-input paths of the native calls, so no running cluster is
+# required). The pure-Go local-mode store tests live in
+# //go/internal/runtime/localstore.
 go_test(
     name = "objectstore_test",
-    srcs = [
-        "local_mode_object_store_test.go",
-        "native_object_store_test.go",
-    ],
+    srcs = ["native_object_store_test.go"],
     embed = [":objectstore"],
     deps = [
         "//go/pkg/ids",

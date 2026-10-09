@@ -17,7 +17,7 @@ package local_mode
 import (
 	"testing"
 
-	"github.com/ray-project/ray/go/internal/runtime/objectstore"
+	"github.com/ray-project/ray/go/internal/runtime/localstore"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
@@ -38,7 +38,7 @@ func TestLocalModeTaskExecutor(t *testing.T) {
 	t.Run("CreateExecutor", func(t *testing.T) {
 		functionMgr := function.NewFunctionManager(nil)
 		actorMgr := NewActorConcurrencyGroupManager()
-		objectStore := objectstore.NewLocalModeObjectStore()
+		objectStore := localstore.NewLocalModeObjectStore()
 
 		executor := NewLocalModeTaskExecutor(functionMgr, actorMgr, objectStore)
 		require.NotNil(t, executor)
@@ -47,7 +47,7 @@ func TestLocalModeTaskExecutor(t *testing.T) {
 	t.Run("SetAndGetActorContext", func(t *testing.T) {
 		functionMgr := function.NewFunctionManager(nil)
 		actorMgr := NewActorConcurrencyGroupManager()
-		objectStore := objectstore.NewLocalModeObjectStore()
+		objectStore := localstore.NewLocalModeObjectStore()
 
 		executor := NewLocalModeTaskExecutor(functionMgr, actorMgr, objectStore)
 
@@ -63,7 +63,7 @@ func TestLocalModeTaskExecutor(t *testing.T) {
 	t.Run("RegisterAndGetActorContext", func(t *testing.T) {
 		functionMgr := function.NewFunctionManager(nil)
 		actorMgr := NewActorConcurrencyGroupManager()
-		objectStore := objectstore.NewLocalModeObjectStore()
+		objectStore := localstore.NewLocalModeObjectStore()
 
 		executor := NewLocalModeTaskExecutor(functionMgr, actorMgr, objectStore)
 
@@ -91,7 +91,7 @@ func TestLocalModeTaskExecutor(t *testing.T) {
 func TestResolveByRefArgs(t *testing.T) {
 	functionMgr := function.NewFunctionManager(nil)
 	actorMgr := NewActorConcurrencyGroupManager()
-	store := objectstore.NewLocalModeObjectStore()
+	store := localstore.NewLocalModeObjectStore()
 	executor := NewLocalModeTaskExecutor(functionMgr, actorMgr, store)
 
 	payload := []byte("payload-larger-than-the-by-value-threshold")

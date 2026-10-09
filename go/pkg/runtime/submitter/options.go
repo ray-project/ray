@@ -14,7 +14,12 @@
 
 package submitter
 
-import "github.com/ray-project/ray/go/pkg/ids"
+import (
+	"fmt"
+
+	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/log"
+)
 
 // TaskOptions contains options for task submission.
 // Corresponds to Java's io.ray.api.options.CallOptions.
@@ -89,6 +94,44 @@ type ActorCreationOptions struct {
 
 	// RuntimeEnv is the runtime environment for this actor.
 	RuntimeEnv string
+
+	// MaxPendingCalls is the maximum number of pending calls for the actor.
+	// -1 means unlimited. Consistent with Java's ActorCreationOptions.setMaxPendingCalls.
+	// A zero value (0) means "unset" and is resolved to MaxPendingCallsUnlimited by
+	// NormalizeMaxPendingCalls before reaching a backend.
+	MaxPendingCalls int
+}
+
+// MaxPendingCallsUnlimited is the sentinel value meaning unlimited pending calls.
+const MaxPendingCallsUnlimited = -1
+
+// ValidateMaxPendingCallsValue validates a MaxPendingCalls value.
+// Valid values are -1 (unlimited), 0 (unset, resolved to unlimited) or any
+// positive number. Only values less than -1 are rejected. This is the single
+// source of truth for the boundary rule and error message, shared by local_mode,
+// the native backend, and api.ActorCreationOptions.Validate().
+func ValidateMaxPendingCallsValue(maxPendingCalls int) error {
+	if maxPendingCalls < MaxPendingCallsUnlimited {
+		return fmt.Errorf("maxPendingCalls must be -1 (unlimited), 0 (unset) or a positive value, got %d", maxPendingCalls)
+	}
+	return nil
+}
+
+// ValidateMaxPendingCalls validates the MaxPendingCalls field.
+func (o *ActorCreationOptions) ValidateMaxPendingCalls() error {
+	return ValidateMaxPendingCallsValue(o.MaxPendingCalls)
+}
+
+// NormalizeMaxPendingCalls resolves the "unset" zero value to the unlimited
+// sentinel so a zero-value ActorCreationOptions is valid and behaves as
+// unlimited, consistent with the builder default. It must be called by backends
+// after validation and before the value is used.
+func (o *ActorCreationOptions) NormalizeMaxPendingCalls() {
+	if o.MaxPendingCalls == 0 {
+		o.MaxPendingCalls = MaxPendingCallsUnlimited
+		log.Log.Info("maxPendingCalls=0 treated as unlimited (unset)",
+			"maxPendingCalls", o.MaxPendingCalls)
+	}
 }
 
 // ConcurrencyGroup represents a concurrency group for an actor.

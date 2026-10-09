@@ -27,8 +27,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Note: newTestObject and newObjectID are shared with the local-mode object
-// store tests in this package (local_mode_object_store_test.go).
+// newTestObject constructs a test object. Shared by the native and local-mode
+// object store tests (the latter now live in the pure-Go localstore package).
+func newTestObject(data, metadata string, contained [][]byte) *object.NativeRayObject {
+	return &object.NativeRayObject{
+		Data:               []byte(data),
+		Metadata:           []byte(metadata),
+		ContainedObjectIds: contained,
+	}
+}
+
+// newObjectID generates a random ObjectID pointer.
+func newObjectID() *ids.ObjectID {
+	id := ids.NewObjectID()
+	return &id
+}
 
 func TestNewNativeObjectStore(t *testing.T) {
 	lock := &sync.RWMutex{}

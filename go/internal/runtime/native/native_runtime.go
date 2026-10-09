@@ -32,6 +32,7 @@ import (
 
 	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/gcs/native"
+	"github.com/ray-project/ray/go/internal/runtime/actor"
 	"github.com/ray-project/ray/go/internal/runtime/base"
 	cgoboundary "github.com/ray-project/ray/go/internal/runtime/cgo"
 	cgocallback "github.com/ray-project/ray/go/internal/runtime/cgo"
@@ -82,7 +83,7 @@ type NativeRuntime struct {
 	executor        *cgointerfaces.NativeTaskExecutor
 	functionManager *function.FunctionManager
 	resourceManager resource.ResourceManager
-	actorManager    *ActorManager
+	actorManager    *actor.ActorManager
 }
 
 // NewNativeRuntime creates a new NativeRuntime instance.
@@ -92,7 +93,7 @@ func NewNativeRuntime(opts base.InitializeOptions) (*NativeRuntime, error) {
 		handle:          nil,
 		workerContext:   globalWorkerContext, // Use package-level singleton
 		resourceManager: resource.NewResourceManager(),
-		actorManager:    NewActorManager(),
+		actorManager:    actor.NewActorManager(),
 	}, nil
 }
 
