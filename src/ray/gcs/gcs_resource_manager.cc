@@ -155,11 +155,6 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 
-const absl::flat_hash_map<NodeID, rpc::ResourcesData>
-    &GcsResourceManager::NodeResourceReportView() const {
-  return node_resource_usages_;
-}
-
 void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::GetAllResourceUsageRequest request,
     rpc::GetAllResourceUsageReply *reply,
@@ -288,20 +283,6 @@ std::string GcsResourceManager::DebugString() const {
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();
-}
-
-std::string GcsResourceManager::ToString() const {
-  std::ostringstream ostr;
-  const int indent = 0;
-  std::string indent_0(indent + 0 * 2, ' ');
-  std::string indent_1(indent + 1 * 2, ' ');
-  ostr << "{\n";
-  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    ostr << indent_1 << entry.first << " : " << entry.second.GetLocalView().DebugString()
-         << ",\n";
-  }
-  ostr << indent_0 << "}\n";
-  return ostr.str();
 }
 
 }  // namespace gcs
