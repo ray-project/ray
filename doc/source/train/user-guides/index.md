@@ -6,7 +6,7 @@ myst:
 
 (train-user-guides)=
 
-# Ray Train User Guides
+# Ray Train user guides
 
 ```{toctree}
 :maxdepth: 2
@@ -24,5 +24,5 @@ elastic-training
 monitor-your-application
 local-mode
 reproducibility
-Hyperparameter Optimization <hyperparameter-optimization>
+Hyperparameter optimization <hyperparameter-optimization>
 ```
