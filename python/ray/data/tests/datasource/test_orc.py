@@ -1,4 +1,7 @@
+import json
 import os
+from dataclasses import fields
+from decimal import Decimal
 
 import pandas as pd
 import pyarrow as pa
@@ -12,6 +15,7 @@ from ray.data._internal.datasource.orc_datasource import ORCDatasource
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
+from ray.data.expressions import col
 
 
 @pytest.fixture(params=[False, True], ids=["v1", "v2"])
@@ -479,6 +483,281 @@ def test_read_orc_rejects_partition_conflict_before_filter(
     )
     with pytest.raises(expected_exceptions, match="Partition column year"):
         ds.filter(expr=col("year") == "from-file").select_columns(["id"]).take_all()
+
+
+@pytest.mark.parametrize("operation", ["projection", "partition_filter", "data_filter"])
+def test_read_orc_v2_partitioned_scan_optimizations(
+    ray_start_regular_shared, tmp_path, monkeypatch, operation
+):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+    from ray.data.expressions import col
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    trace_path = str(tmp_path / "scan-requests.jsonl")
+    original_create_scanner = OrcDatasourceV2.create_scanner
+
+    class TracingScanner(OrcScanner):
+        def create_reader(self):
+            reader = super().create_reader()
+            original_iter = reader._iter_fragment_tables
+
+            class Fragment:
+                def __init__(self, fragment):
+                    self._fragment = fragment
+
+                def __getattr__(self, name):
+                    return getattr(self._fragment, name)
+
+                def scanner(self, **kwargs):
+                    import inspect
+
+                    from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import (
+                        OrcFileReader,
+                    )
+
+                    with open(trace_path, "a") as trace:
+                        trace.write(
+                            json.dumps(
+                                {
+                                    "path": self._fragment.path,
+                                    "columns": kwargs["columns"],
+                                    "filter": str(kwargs["filter"]),
+                                    "source": inspect.getfile(OrcFileReader),
+                                }
+                            )
+                            + "\n"
+                        )
+                    return self._fragment.scanner(**kwargs)
+
+            def traced_iter(fragment, scanner_kwargs):
+                yield from original_iter(Fragment(fragment), scanner_kwargs)
+
+            reader._iter_fragment_tables = traced_iter
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return TracingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
+    for year, ids in [("2023", [1, 2]), ("2024", [3, 4])]:
+        directory = tmp_path / f"year={year}"
+        directory.mkdir()
+        _write_orc(
+            str(directory / "data.orc"),
+            pa.table({"id": ids, "payload": ["wide" * 1024] * 2}),
+        )
+    ds = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+        override_num_blocks=2,
+    )
+    if operation == "partition_filter":
+        ds = ds.filter(expr=col("year") == "2024")
+    elif operation == "data_filter":
+        ds = ds.filter(expr=col("id") > 2)
+    ds = ds.select_columns(["id"])
+    assert sorted(row["id"] for row in ds.take_all()) == (
+        [1, 2, 3, 4] if operation == "projection" else [3, 4]
+    )
+    with open(trace_path) as trace:
+        requests = [json.loads(line) for line in trace]
+    assert len(requests) == (1 if operation == "partition_filter" else 2)
+    assert all(request["columns"] == ["id"] for request in requests)
+    assert all(
+        request["source"].endswith(
+            "python/ray/data/_internal/datasource_v2/formats/orc/orc_file_reader.py"
+        )
+        for request in requests
+    )
+    if operation == "partition_filter":
+        assert all("year=2024" in request["path"] for request in requests)
+    assert all(
+        (request["filter"] != "None") == (operation == "data_filter")
+        for request in requests
+    )
+
+
+@pytest.mark.parametrize("stored_partition", [False, True])
+@pytest.mark.parametrize(
+    "predicate,expected_ids",
+    [
+        ((col("year") == "2024") & (col("id") > 2), [3, 4]),
+        ((col("year") == "2024") | (col("id") == 1), [1, 3, 4]),
+        (~(col("year") == "2024"), [1, 2]),
+        ("id > 2", [3, 4]),
+        ("id == 2", [2]),
+    ],
+)
+def test_read_orc_v2_partitioned_predicates_and_limit(
+    ray_start_regular_shared,
+    tmp_path,
+    monkeypatch,
+    stored_partition,
+    predicate,
+    expected_ids,
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    for year, ids in [("2023", [1, 2]), ("2024", [3, 4])]:
+        directory = tmp_path / f"year={year}"
+        directory.mkdir()
+        data: dict[str, list[int] | list[str] | pa.Array] = {
+            "id": ids,
+            "payload": ["unused"] * 2,
+        }
+        if stored_partition:
+            data["year"] = pa.array([year, None], type=pa.string())
+        _write_orc(str(directory / "data.orc"), pa.table(data))
+    ds = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+        override_num_blocks=2,
+    ).filter(expr=predicate)
+    assert (
+        sorted(row["id"] for row in ds.select_columns(["id"]).take_all())
+        == expected_ids
+    )
+    limited = ds.select_columns(["year"]).limit(1).take_all()
+    assert len(limited) == 1
+    assert limited[0]["year"] in {
+        "2023" if value < 3 else "2024" for value in expected_ids
+    }
+
+
+@pytest.mark.parametrize("predicate", ["id > 100", "year == '2025'"])
+def test_read_orc_v2_conflicting_partition_cannot_be_filtered_out(
+    ray_start_regular_shared, tmp_path, monkeypatch, predicate
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+    from ray.exceptions import RayTaskError
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    directory = tmp_path / "year=2024"
+    directory.mkdir()
+    _write_orc(str(directory / "data.orc"), pa.table({"id": [1], "year": ["wrong"]}))
+    ds = (
+        ray.data.read_orc(
+            str(tmp_path),
+            partitioning=Partitioning(PartitionStyle.HIVE),
+            override_num_blocks=1,
+        )
+        .filter(expr=predicate)
+        .select_columns(["id"])
+    )
+    expected_exceptions: tuple[type[Exception], ...] = (ValueError, RayTaskError)
+    with pytest.raises(expected_exceptions, match="Partition column year"):
+        ds.take_all()
+
+
+@pytest.mark.parametrize("operation", ["full", "project", "filter", "filter_only"])
+@pytest.mark.parametrize(
+    "physical_type,logical_type,path_value,stored_value,root_value,expected",
+    [
+        pytest.param(
+            pa.float32(),
+            pa.float64(),
+            "0.1",
+            0.1,
+            0.2,
+            0.1,
+            id="inferred-float-widening",
+        ),
+        pytest.param(
+            pa.int32(),
+            pa.int64(),
+            "2147483647",
+            2147483647,
+            2147483648,
+            2147483647,
+            id="inferred-integer-widening",
+        ),
+        pytest.param(
+            pa.decimal128(6, 2),
+            pa.decimal128(10, 4),
+            "1.2300",
+            Decimal("1.23"),
+            Decimal("2.3400"),
+            Decimal("1.2300"),
+            id="inferred-decimal-scale",
+        ),
+        pytest.param(
+            pa.bool_(),
+            pa.bool_(),
+            "true",
+            True,
+            False,
+            True,
+            id="bool",
+        ),
+    ],
+)
+def test_read_orc_v2_stored_partition_logical_types(
+    ray_start_regular_shared,
+    tmp_path,
+    monkeypatch,
+    operation,
+    physical_type,
+    logical_type,
+    path_value,
+    stored_value,
+    root_value,
+    expected,
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    root = tmp_path / "root.orc"
+    directory = tmp_path / f"key={path_value}"
+    directory.mkdir()
+    partition = directory / "data.orc"
+    _write_orc(
+        str(root),
+        pa.table({"id": [0], "key": pa.array([root_value], type=logical_type)}),
+    )
+    _write_orc(
+        str(partition),
+        pa.table(
+            {
+                "id": [1, 2, 3],
+                "key": pa.array([stored_value, None, stored_value], type=physical_type),
+            }
+        ),
+    )
+    # Sampling the root first leaves field_names unresolved. Projection must
+    # still return the same logical path values as an unprojected read.
+    ds = ray.data.read_orc(
+        [str(root), str(partition)],
+        partitioning=Partitioning(PartitionStyle.HIVE),
+        override_num_blocks=1,
+    )
+    assert ds.schema().base_schema.field("key").type == logical_type
+    if operation in {"filter", "filter_only"}:
+        ds = ds.filter(expr=(col("key") == expected) | (col("id") < 0)).limit(2)
+    if operation == "project":
+        ds = ds.select_columns(["key", "id"])
+    elif operation == "filter_only":
+        ds = ds.select_columns(["id"])
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    if operation == "filter_only":
+        assert rows == [{"id": 1}, {"id": 2}]
+    elif operation == "filter":
+        assert rows == [{"id": 1, "key": expected}, {"id": 2, "key": expected}]
+    else:
+        assert rows == [{"id": 0, "key": root_value}] + [
+            {"id": value, "key": expected} for value in [1, 2, 3]
+        ]
 
 
 def test_read_orc_v1_fallback_preserves_columns_outside_v2_sample(
