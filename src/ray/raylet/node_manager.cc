@@ -83,11 +83,7 @@ bool UsesPlacementGroupBundle(
     return bundle_indices.contains(bundle_id.second);
   }
   if (allocated_instances == nullptr) {
-    // A wildcard lease is not tied to a concrete bundle until resources are
-    // allocated. Conservatively cancel it when any bundle in its placement
-    // group is removed so it cannot remain queued for a bundle that no longer
-    // exists.
-    return true;
+    return false;
   }
 
   for (const auto &resource_id : allocated_instances->ResourceIds()) {
@@ -2092,11 +2088,16 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   local_lease_manager_.CancelLeases(
       [&placement_group_id = pg_id,
        &bundle_indices](const std::shared_ptr<internal::Work> &work) {
+        const auto bundle_id =
+            work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
+        if (bundle_id.first == placement_group_id && bundle_id.second < 0 &&
+            work->allocated_instances_ == nullptr) {
+          // A queued wildcard lease is not tied to a concrete bundle yet. Cancel it
+          // conservatively so it cannot remain queued after placement group cleanup.
+          return true;
+        }
         return UsesPlacementGroupBundle(
-            work->lease_.GetLeaseSpecification().PlacementGroupBundleId(),
-            work->allocated_instances_,
-            placement_group_id,
-            bundle_indices);
+            bundle_id, work->allocated_instances_, placement_group_id, bundle_indices);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
       absl::StrCat("Required placement group bundle is removed from placement group ",

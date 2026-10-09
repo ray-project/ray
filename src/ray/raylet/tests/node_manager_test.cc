@@ -1578,7 +1578,19 @@ TEST_F(NodeManagerTest, RemovePlacementGroupBundlesOnlyStopsRequestedBundleWorke
           wildcard_bundle0_resources, wildcard_bundle0_allocation));
   wildcard_worker->SetLifetimeAllocatedInstances(wildcard_bundle0_allocation);
 
-  fake_worker_pool_.registered_workers = {worker0, worker1, wildcard_worker};
+  const auto [remaining_wildcard_lease, remaining_wildcard_worker] =
+      make_worker(wildcard_bundle_id);
+  const absl::flat_hash_map<std::string, double> wildcard_bundle1_resources = {
+      {FormatPlacementGroupResource("CPU", placement_group_id, -1), 1},
+      {FormatPlacementGroupResource("CPU", placement_group_id, 1), 1}};
+  auto wildcard_bundle1_allocation = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          wildcard_bundle1_resources, wildcard_bundle1_allocation));
+  remaining_wildcard_worker->SetAllocatedInstances(wildcard_bundle1_allocation);
+
+  fake_worker_pool_.registered_workers = {
+      worker0, worker1, wildcard_worker, remaining_wildcard_worker};
 
   rpc::RemovePlacementGroupBundlesRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
@@ -1598,6 +1610,7 @@ TEST_F(NodeManagerTest, RemovePlacementGroupBundlesOnlyStopsRequestedBundleWorke
   EXPECT_FALSE(leased_workers_.contains(lease0));
   EXPECT_FALSE(leased_workers_.contains(wildcard_lease));
   EXPECT_TRUE(leased_workers_.contains(lease1));
+  EXPECT_TRUE(leased_workers_.contains(remaining_wildcard_lease));
 }
 
 TEST_F(NodeManagerTest, RemovePlacementGroupBundlesCancelsUnallocatedWildcardLease) {
