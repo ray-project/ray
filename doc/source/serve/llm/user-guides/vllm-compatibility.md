@@ -99,7 +99,7 @@ You can generate audio transcriptions using Speech-to-Text (STT) models trained 
 :::{tab-item} Server
 :sync: server
 
-```{literalinclude} ../../../llm/doc_code/serve/transcription/transcription_example.py
+```{literalinclude} ../doc_code/transcription/transcription_example.py
 :language: python
 :start-after: __transcription_example_start__
 :end-before: __transcription_example_end__

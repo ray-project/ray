@@ -354,28 +354,28 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
-# Test all doc/source/llm/doc_code/serve code included in rst/md files.
+# Test all doc/source/serve/llm/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
 filegroup(
     name = "serve_llm_examples",
-    srcs = glob(["source/llm/doc_code/serve/**/*.py"]),
+    srcs = glob(["source/serve/llm/doc_code/**/*.py"]),
     visibility = ["//doc:__subpackages__"],
 )
 
 # GPU Tests (standard GPU tests)
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/llm/doc_code/serve/**/*.py"],
-    data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
+    include = ["source/serve/llm/doc_code/**/*.py"],
+    data = ["source/serve/llm/doc_code/qwen/llm_config_example.yaml"],
     exclude = [
-        "source/llm/doc_code/serve/direct_streaming/**/*.py",
-        "source/llm/doc_code/serve/multi_gpu/**/*.py",
-        "source/llm/doc_code/serve/sglang/**/*.py",
+        "source/serve/llm/doc_code/direct_streaming/**/*.py",
+        "source/serve/llm/doc_code/multi_gpu/**/*.py",
+        "source/serve/llm/doc_code/sglang/**/*.py",
         # TODO (jeffreywang): Enable TPU example tests once CI sets up TPU.
-        "source/llm/doc_code/serve/tpu/**/*.py",
+        "source/serve/llm/doc_code/tpu/**/*.py",
         # custom_vllm runs in its own direct-streaming target below.
-        "source/llm/doc_code/serve/custom_vllm/**/*.py",
+        "source/serve/llm/doc_code/custom_vllm/**/*.py",
     ],
     extra_srcs = [],
     tags = [
@@ -388,16 +388,16 @@ py_test_run_all_subdirectory(
 # Custom vLLM model (Qwen3 reward model) GPU tests
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/llm/doc_code/serve/custom_vllm/**/*.py"],
-    data = ["source/llm/doc_code/serve/custom_vllm/custom_vllm_config.yaml"],
+    include = ["source/serve/llm/doc_code/custom_vllm/**/*.py"],
+    data = ["source/serve/llm/doc_code/custom_vllm/custom_vllm_config.yaml"],
     env = {
         "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
     },
     exclude = [
-        "source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/**/*.py",
+        "source/serve/llm/doc_code/custom_vllm/qwen3_reward_plugin/**/*.py",
         # setup.py packages the plugin; it is not a runnable example.
-        "source/llm/doc_code/serve/custom_vllm/setup.py",
+        "source/serve/llm/doc_code/custom_vllm/setup.py",
     ],
     extra_srcs = [],
     tags = [
@@ -415,8 +415,8 @@ py_test_run_all_subdirectory(
 # rejects multi-config apps (such as the qwen example) under direct streaming.
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/llm/doc_code/serve/direct_streaming/**/*.py"],
-    data = ["source/llm/doc_code/serve/direct_streaming/direct_streaming_config.yaml"],
+    include = ["source/serve/llm/doc_code/direct_streaming/**/*.py"],
+    data = ["source/serve/llm/doc_code/direct_streaming/direct_streaming_config.yaml"],
     env = {
         "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
         # Direct streaming wires LLMRouter as the ingress_request_router,
@@ -435,7 +435,7 @@ py_test_run_all_subdirectory(
 # Multi-GPU Tests (4+ GPUs)
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
+    include = ["source/serve/llm/doc_code/multi_gpu/**/*.py"],
     exclude = [],
     extra_srcs = [],
     tags = [

@@ -7,4 +7,4 @@ FROM $DOCKER_IMAGE_BASE
 COPY . .
 
 # The plugin's entry point registers Qwen3CustomRewardModel in every vLLM process.
-RUN pip install --no-deps doc/source/llm/doc_code/serve/custom_vllm
+RUN pip install --no-deps doc/source/serve/llm/doc_code/custom_vllm

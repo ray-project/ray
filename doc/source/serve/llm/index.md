@@ -35,7 +35,7 @@ This pulls in vLLM and the OpenAI-compatible server stack. You need a GPU to run
 
 Define an {class}`~ray.serve.llm.LLMConfig`, build an OpenAI-compatible app, and run it:
 
-```{literalinclude} ../../llm/doc_code/serve/qwen/qwen_example.py
+```{literalinclude} doc_code/qwen/qwen_example.py
 :language: python
 :start-after: __qwen_example_start__
 :end-before: __qwen_example_end__

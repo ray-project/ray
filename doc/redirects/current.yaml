@@ -990,3 +990,6 @@ redirects:
 - from: /ray-observability/*
   to: /ray-observability/index.html
   type: page
+- from: /llm/examples/batch/*
+  to: /data/examples/llm/:splat
+  type: page

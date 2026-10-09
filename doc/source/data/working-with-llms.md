@@ -552,7 +552,7 @@ Configure multi-LoRA batch inference as follows:
 :end-before: __lora_config_example_end__
 ```
 
-For details, see {doc}`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>`.
+For details, see {doc}`the vLLM with LoRA example</data/examples/llm/vllm-with-lora>`.
 
 (accelerated-model-loading-with-runai-streamer)=
 

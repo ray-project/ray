@@ -42,7 +42,7 @@ Deploy a single-node SGLang model with autoscaling. The `server_cls` parameter t
 :::{tab-item} Server
 :sync: server
 
-```{literalinclude} ../../../llm/doc_code/serve/sglang/sglang_serving_example.py
+```{literalinclude} ../doc_code/sglang/sglang_serving_example.py
 :language: python
 :start-after: __sglang_single_node_start__
 :end-before: __sglang_single_node_end__
@@ -52,7 +52,7 @@ Deploy a single-node SGLang model with autoscaling. The `server_cls` parameter t
 :::{tab-item} Python Client
 :sync: client
 
-```{literalinclude} ../../../llm/doc_code/serve/sglang/sglang_query_example.py
+```{literalinclude} ../doc_code/sglang/sglang_query_example.py
 :language: python
 :start-after: __sglang_query_start__
 :end-before: __sglang_query_end__
@@ -106,7 +106,7 @@ For multi-node deployments, you **must** supply `placement_group_config` explici
 :::{tab-item} Python
 :sync: python
 
-```{literalinclude} ../../../llm/doc_code/serve/sglang/sglang_multinode_example.py
+```{literalinclude} ../doc_code/sglang/sglang_multinode_example.py
 :language: python
 :start-after: __sglang_multinode_start__
 :end-before: __sglang_multinode_end__

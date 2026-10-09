@@ -94,7 +94,7 @@ In each bundle dict, `CPU` and `GPU` are numeric amounts. If you omit either key
 :::{tab-item} Python
 :sync: python
 
-```{literalinclude} ../../../llm/doc_code/serve/multi_gpu/bundle_per_worker_example.py
+```{literalinclude} ../doc_code/multi_gpu/bundle_per_worker_example.py
 :language: python
 :start-after: __bundle_per_worker_example_start__
 :end-before: __bundle_per_worker_example_end__

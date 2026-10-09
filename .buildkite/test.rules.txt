@@ -114,7 +114,8 @@ python/deplocks/llm/*.lock
 ;
 
 python/ray/llm/
-doc/source/llm/
+doc/source/data/examples/llm/
+doc/source/serve/llm/doc_code/
 doc/source/data/doc_code/working-with-llms/
 ci/docker/llm.build.Dockerfile
 @ llm
