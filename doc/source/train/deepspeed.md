@@ -24,6 +24,7 @@ Use your existing DeepSpeed training code with the Ray Train `TorchTrainer`. The
 :skipif: True
 
 import deepspeed
+import ray
 from deepspeed.accelerator import get_accelerator
 
 def train_func():
@@ -32,12 +33,14 @@ def train_func():
     train_dataset = ...
     eval_dataset = ...
     deepspeed_config = {...} # Your DeepSpeed config
+    collate_fn = ...
+    num_epochs = ...
 
     # Prepare everything for distributed training
     model, optimizer, train_dataloader, lr_scheduler = deepspeed.initialize(
         model=model,
         model_parameters=model.parameters(),
-        training_data=tokenized_datasets["train"],
+        training_data=train_dataset,
         collate_fn=collate_fn,
         config=deepspeed_config,
     )
@@ -47,7 +50,7 @@ def train_func():
 
     # Start training
     for epoch in range(num_epochs):
-        # Training logic
+        # Training logic that computes `loss`
         ...
 
         # Report metrics to Ray Train
