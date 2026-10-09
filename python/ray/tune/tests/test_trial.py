@@ -194,5 +194,19 @@ def test_should_stop(caplog, propagate_logs):  # noqa
     ) in caplog.text
 
 
+def test_metric_avg_is_mean_of_reported_values(trial: Trial):
+    """Test that a metric's "avg" is the mean of its reported values, also when
+    it is only reported every few iterations (e.g. validation)."""
+    for i in range(1, 13):
+        result = {"training_iteration": i}
+        if i % 4 == 0:
+            result["val"] = i // 4  # 1, 2, 3 at iterations 4, 8, 12
+        trial.update_last_result(result)
+
+    assert trial.metric_analysis["val"]["avg"] == pytest.approx((1 + 2 + 3) / 3)
+    # Reported on every iteration: the mean of 1..12.
+    assert trial.metric_analysis["training_iteration"]["avg"] == pytest.approx(6.5)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

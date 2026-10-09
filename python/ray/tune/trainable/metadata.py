@@ -38,6 +38,7 @@ class _TrainingRunMetadata:
         self.metric_analysis = {}
         self._n_steps = n_steps
         self.metric_n_steps = {}
+        self.metric_n_reports = {}
 
         # Checkpoints
         self.checkpoint_manager: Optional[_CheckpointManager] = None
@@ -55,6 +56,7 @@ class _TrainingRunMetadata:
                 "avg": value,
                 "last": value,
             }
+            self.metric_n_reports[metric] = 1
             self.metric_n_steps[metric] = {}
             for n in self._n_steps:
                 key = "last-{:d}-avg".format(n)
@@ -62,7 +64,9 @@ class _TrainingRunMetadata:
                 # Store n as string for correct restore.
                 self.metric_n_steps[metric][str(n)] = deque([value], maxlen=n)
         else:
-            step = step or 1
+            # Metadata saved by older versions has no count, so use the step.
+            count = self.metric_n_reports.get(metric, (step or 1) - 1) + 1
+            self.metric_n_reports[metric] = count
             self.metric_analysis[metric]["max"] = max(
                 value, self.metric_analysis[metric]["max"]
             )
@@ -70,7 +74,7 @@ class _TrainingRunMetadata:
                 value, self.metric_analysis[metric]["min"]
             )
             self.metric_analysis[metric]["avg"] = (
-                1 / step * (value + (step - 1) * self.metric_analysis[metric]["avg"])
+                1 / count * (value + (count - 1) * self.metric_analysis[metric]["avg"])
             )
             self.metric_analysis[metric]["last"] = value
 
