@@ -628,10 +628,8 @@ def create_two_op_report(allgather):
 # A frozen, mismatched communicator: confirmed after the baseline + 2 polls.
 _FROZEN = create_single_comm_report({1: 5, 2: 4})
 
-# Each case is a confirm count and the polls fed to the callback, each paired
-# with the expected ``comm_deadlock_count`` after it or, for the final poll
-# of a hang, the text the NCCLHangError must contain. The first poll of every
-# case is a baseline: there is nothing to diff it against.
+# Each case is the expected number of confirm counts and simulated NCCL RAS polls.
+# The first poll of every case is a baseline: there is nothing to diff it against.
 _STREAK_CASES = [
     pytest.param(
         3,
@@ -824,9 +822,7 @@ _MESSAGE_CASES = [
 @pytest.mark.parametrize("diagnostics", _MESSAGE_CASES)
 def test_confirmed_hang_message(monkeypatch, diagnostics):
     # The error points the user at exactly the diagnostics that produced a
-    # directory. A diagnostic that uploads nothing or fails must neither stop
-    # the others nor suppress the hang, and a real hang must not be misread as
-    # a detector bug.
+    # directory.
     callback, calls = make_nccl_ras_callback(
         monkeypatch,
         NCCL_RAS_ACTION_FAIL,
@@ -1310,7 +1306,7 @@ def test_flight_recorder_dump_decodes_bytes(fake_c10d):
     # files, so the bytes have to be decoded before they get there.
     fake_c10d._dump_fr_trace_json = lambda *args, **kwargs: b'{"entries": []}'
 
-    assert dump_flight_recorder() == {"ok": True, "trace_json": '{"entries": []}'}
+    assert dump_flight_recorder() == DiagnosticResult(value='{"entries": []}')
 
 
 def _raise_dump_failed(*args, **kwargs):
@@ -1318,15 +1314,16 @@ def _raise_dump_failed(*args, **kwargs):
 
 
 @pytest.mark.parametrize(
-    "torch_c,dump_fn,expected_reason",
+    "torch_c,dump_fn,expected_type,expected_message",
     [
-        (None, None, "c10d"),  # a None module makes the import fail
-        ("fake", _raise_dump_failed, "dump failed"),
+        # A None module makes the import fail.
+        (None, None, ImportError, "torch._C"),
+        ("fake", _raise_dump_failed, RuntimeError, "dump failed"),
     ],
     ids=["no_torch", "dump_raises"],
 )
 def test_flight_recorder_dump_failures(
-    monkeypatch, fake_c10d, torch_c, dump_fn, expected_reason
+    monkeypatch, fake_c10d, torch_c, dump_fn, expected_type, expected_message
 ):
     if torch_c is None:
         monkeypatch.setitem(sys.modules, "torch._C", None)
@@ -1335,7 +1332,9 @@ def test_flight_recorder_dump_failures(
 
     result = dump_flight_recorder()
 
-    assert result["ok"] is False and expected_reason in result["reason"]
+    assert result.value is None
+    assert isinstance(result.error, expected_type)
+    assert expected_message in str(result.error)
 
 
 # ---------------------------------------------------------------------------
@@ -1445,8 +1444,7 @@ def test_fan_out_records_per_rank_failures(
     expected_log,
 ):
     # One unreachable rank (the hung one is the interesting one) must not cost
-    # us the ranks that did answer: it gets an error saying why, which is what
-    # ends up in that rank's file, and the failure is logged.
+    # us the ranks that did answer and the failure is logged.
     workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
 
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
@@ -1527,10 +1525,6 @@ class FanOutDiagnostic:
         fn_args: The arguments ``fn`` is fanned out with.
         timeout_s: The fan-out's budget.
         ok: The worker's return value for a successful dump of ``contents``.
-        failed: The worker's return value when it reports a failure with
-            ``reason`` inside its value, or ``None`` if the worker-side function
-            never does (or reports it as a ``DiagnosticResult`` error, which is
-            indistinguishable from a fan-out error).
         filename: The file a rank's dump lands in (nvidia-smi: its node's).
         placeholder: What is written in place of a dump that failed with
             ``reason``.
@@ -1542,7 +1536,6 @@ class FanOutDiagnostic:
     fn_args: tuple
     timeout_s: float
     ok: Callable[[str], Any]
-    failed: Optional[Callable[[str], Any]]
     filename: Callable[[int], str]
     placeholder: Callable[[str], str]
 
@@ -1556,7 +1549,6 @@ _FAN_OUT_DIAGNOSTICS = [
         fn_args=(nccl_ras._STACK_DUMP_TIMEOUT_S - 1,),
         timeout_s=nccl_ras._STACK_DUMP_TIMEOUT_S,
         ok=lambda contents: contents,
-        failed=None,  # dump_stack_trace always returns a (fallback) trace
         filename=lambda rank: f"rank_{rank}.log",
         placeholder=lambda reason: reason,
     ),
@@ -1567,7 +1559,6 @@ _FAN_OUT_DIAGNOSTICS = [
         fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 1,),
         timeout_s=nccl_ras._NVIDIA_SMI_TIMEOUT_S,
         ok=lambda contents: contents,
-        failed=None,  # run_nvidia_smi returns a DiagnosticResult error
         filename=lambda rank: f"node_10.0.0.{rank}.log",
         placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}",
     ),
@@ -1577,11 +1568,10 @@ _FAN_OUT_DIAGNOSTICS = [
         fn=nccl_ras.dump_flight_recorder,
         fn_args=(),
         timeout_s=nccl_ras._FLIGHT_RECORDER_DUMP_TIMEOUT_S,
-        ok=lambda contents: {"ok": True, "trace_json": contents},
-        failed=lambda reason: {"ok": False, "reason": reason},
+        ok=lambda contents: contents,
         filename=lambda rank: f"rank_{rank}.json",
         # Still valid JSON, so every file in the directory parses.
-        placeholder=lambda reason: json.dumps({"ray_train_dump_error": reason}),
+        placeholder=lambda reason: json.dumps({"dump_error": reason}),
     ),
 ]
 
@@ -1612,29 +1602,15 @@ def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic
     assert calls == [(workers, diagnostic.fn, diagnostic.fn_args, diagnostic.timeout_s)]
 
 
-_PLACEHOLDER_CASES = [
-    pytest.param(diagnostic, source, id=f"{diagnostic.tool}-{source}")
-    for diagnostic in _FAN_OUT_DIAGNOSTICS
-    for source in ("fan_out_error", "worker_reported_failure")
-    if source == "fan_out_error" or diagnostic.failed is not None
-]
-
-
-@pytest.mark.parametrize("diagnostic,source", _PLACEHOLDER_CASES)
-def test_diagnostic_failed_target_gets_placeholder(
-    monkeypatch, uploads, diagnostic, source
-):
-    # A rank or node with no dump -- the fan-out couldn't reach it, or the tool
-    # itself failed there (e.g. `nvidia-smi` missing on that node) -- still gets
-    # a file saying why, so a gap is never silent, and the targets that did
-    # answer are still uploaded.
+@pytest.mark.parametrize(
+    "diagnostic", _FAN_OUT_DIAGNOSTICS, ids=lambda diagnostic: diagnostic.tool
+)
+def test_diagnostic_failed_target_gets_placeholder(monkeypatch, uploads, diagnostic):
+    # A rank or node with no dump gets a file saying why
     monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
     callback = make_diagnostics_callback()
     reason = "it went wrong"
-    if source == "fan_out_error":
-        bad_dump = DiagnosticResult(error=RuntimeError(reason))
-    else:
-        bad_dump = DiagnosticResult(value=diagnostic.failed(reason))
+    bad_dump = DiagnosticResult(error=RuntimeError(reason))
 
     scripted_fan_out(
         monkeypatch, {0: bad_dump, 1: DiagnosticResult(value=diagnostic.ok("dump 1"))}
@@ -1701,9 +1677,7 @@ def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
         ("dump_workers_stack_traces", False, True),
         ("dump_nodes_nvidia_smi", False, True),
         ("dump_workers_flight_recorder", False, True),
-        # The ring buffer has to be armed before the process group is created,
-        # so unarmed there is nothing to dump and the fan-out isn't worth the
-        # hung job's time.
+        # The ring buffer has to be armed so unarmed dumps nothing
         ("dump_workers_flight_recorder", True, False),
         # Nothing polled yet: the history has nothing to write.
         ("dump_ras_query_history", True, True),
@@ -1736,9 +1710,7 @@ def test_diagnostic_skipped(monkeypatch, uploads, method, has_workers, fr_armed)
 
 
 def test_ras_history_buffer(monkeypatch):
-    # Every successful poll is recorded, healthy or not, and the buffer reaches
-    # back past the confirmation window (otherwise the saved history only ever
-    # shows the communicator already stalled), evicting the oldest beyond that.
+    # Every successful poll is recorded, healthy or not, evicting the oldest beyond.
     confirm_count = 3
     maxlen = confirm_count + nccl_ras._RAS_HISTORY_MARGIN_POLLS
     reports = [create_single_comm_report({1: count}) for count in range(maxlen + 5)]
@@ -1757,10 +1729,7 @@ def test_ras_history_buffer(monkeypatch):
     "text_report", ["human readable report", None], ids=["with_text", "without_text"]
 )
 def test_ras_history_upload(uploads, text_report):
-    # Each retained poll is written verbatim -- the raw `ncclras` output, so
-    # hosts, pids and missing ranks survive -- under a filename made from its
-    # RAS timestamp. The text report is a separate query that can fail while
-    # the history is still worth writing.
+    # Each retained poll is written verbatim
     callback = make_diagnostics_callback()
     callback.ras_history.extend(
         parse_ras_schema(ras_json)

@@ -491,7 +491,6 @@ class RASPoller:
             RASQueryError: The query timed out, errored, exited non-zero, or
                 produced output that could not be used.
         """
-        ref = None
         try:
             ref = worker.execute_async(
                 run_ncclras, self._binary_path, _NCCL_RAS_QUERY_TIMEOUT_S, fmt
@@ -674,7 +673,7 @@ def run_nvidia_smi(timeout_s: float) -> DiagnosticResult:
     return DiagnosticResult(value=proc.stdout)
 
 
-def dump_flight_recorder() -> Dict[str, Any]:
+def dump_flight_recorder() -> DiagnosticResult:
     """Dump the PyTorch Flight Recorder buffer of the current (worker) process.
 
     The buffer has to be armed *before* the process group is created (see
@@ -682,23 +681,22 @@ def dump_flight_recorder() -> Dict[str, Any]:
     process, in which case the dump holds no collectives.
 
     Returns:
-        A dict ``{"ok": bool, ...}``. On success ``trace_json`` holds the dump
-        as a JSON string. On failure ``reason`` says why there is no dump, which
-        is written into the rank's file so a gap is never silent.
+        The dump as a JSON string, or the error saying why there is no dump,
+        which is written into the rank's file so a gap is never silent.
     """
     try:
         from torch._C import _distributed_c10d as c10d
     except ImportError as e:
-        return {"ok": False, "reason": f"torch c10d is unavailable ({e})"}
+        return DiagnosticResult(error=e)
 
     try:
         # The default dumps every collective on this rank (no timeout available on torch side)
         trace_bytes = c10d._dump_fr_trace_json()
         trace_json = trace_bytes.decode("utf-8", errors="replace")
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "reason": f"exception: {e}"}
+        return DiagnosticResult(error=e)
 
-    return {"ok": True, "trace_json": trace_json}
+    return DiagnosticResult(value=trace_json)
 
 
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
@@ -1150,16 +1148,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         for rank, diagnostic_result in dumps.items():
             error = diagnostic_result.error
             if error is not None:
-                error = str(error)
-            elif not diagnostic_result.value["ok"]:
-                error = diagnostic_result.value["reason"]
-
-            if error is not None:
                 logger.info("No Flight Recorder dump from rank %d: %s", rank, error)
-                files[f"rank_{rank}.json"] = json.dumps({"ray_train_dump_error": error})
+                files[f"rank_{rank}.json"] = json.dumps({"dump_error": str(error)})
                 continue
 
-            files[f"rank_{rank}.json"] = diagnostic_result.value["trace_json"]
+            files[f"rank_{rank}.json"] = str(diagnostic_result.value)
 
         return self.upload_diagnostics(_FLIGHT_RECORDER_TOOL, files)
 
