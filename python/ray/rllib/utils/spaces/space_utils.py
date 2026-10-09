@@ -5,6 +5,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.typing import SpaceStruct, TensorStructType
 
 
 @DeveloperAPI
@@ -101,7 +102,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
 
 
 @DeveloperAPI
-def get_base_struct_from_space(space):
+def get_base_struct_from_space(space: gym.Space) -> SpaceStruct:
     """Returns a Tuple/Dict Space as native (equally structured) py tuple/dict.
 
     Args:
@@ -240,12 +241,13 @@ def get_dummy_batch_for_space(
 
 
 @DeveloperAPI
-def flatten_to_single_ndarray(input_):
+def flatten_to_single_ndarray(
+    input_: Union[List[np.ndarray], np.ndarray],
+) -> np.ndarray:
     """Returns a single np.ndarray given a list/tuple of np.ndarrays.
 
     Args:
-        input_ (Union[List[np.ndarray], np.ndarray]): The list of ndarrays or
-            a single ndarray.
+        input_: The list of ndarrays or a single ndarray.
 
     Returns:
         np.ndarray: The result after concatenating all single arrays in input_.
@@ -362,7 +364,7 @@ def batch(
 
 
 @DeveloperAPI
-def unbatch(batches_struct):
+def unbatch(batches_struct: TensorStructType) -> List[TensorStructType]:
     """Converts input from (nested) struct of batches to batch of structs.
 
     Input: Struct of different batches (each batch has size=3):
@@ -403,7 +405,7 @@ def unbatch(batches_struct):
 
 
 @DeveloperAPI
-def clip_action(action, action_space):
+def clip_action(action: TensorStructType, action_space: SpaceStruct) -> Any:
     """Clips all components in `action` according to the given Space.
 
     Only applies to Box components within the action space.
@@ -428,7 +430,7 @@ def clip_action(action, action_space):
 
 
 @DeveloperAPI
-def unsquash_action(action, action_space_struct):
+def unsquash_action(action: TensorStructType, action_space_struct: SpaceStruct) -> Any:
     """Unsquashes all components in `action` according to the given Space.
 
     Inverse of `normalize_action()`. Useful for mapping policy action
@@ -472,7 +474,7 @@ def unsquash_action(action, action_space_struct):
 
 
 @DeveloperAPI
-def normalize_action(action, action_space_struct):
+def normalize_action(action: TensorStructType, action_space_struct: SpaceStruct) -> Any:
     """Normalizes all (Box) components in `action` to be in [-1.0, 1.0].
 
     Inverse of `unsquash_action()`. Useful for mapping an env's action

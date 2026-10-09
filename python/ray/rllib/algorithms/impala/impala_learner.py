@@ -197,21 +197,35 @@ class IMPALALearner(Learner):
         return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
-        """
+        """Enqueues the given training data for the asynchronous learner thread.
+
+        Unlike the synchronous `Learner.update()`, this method does not block until
+        the gradient update has been performed. It only resolves the incoming data,
+        pushes the resulting batch into the GPU-loader- or learner queue, and
+        (every `BATCHES_PER_AGGREGATION` calls) collects whatever results the learner
+        thread has produced so far.
 
         Args:
-            batch:
-            timesteps:
+            training_data: The `TrainingData` object (batch(es), episode(s), or object
+                references thereof) to perform the update with. Any contained object
+                references are resolved before the data is enqueued.
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`. It is enqueued alongside the batch
+                and used by the learner thread's update call.
             return_state: Whether to include one of the Learner worker's state from
                 after the update step in the returned results dict (under the
                 `_rl_module_state_after_update` key). Note that after an update, all
                 Learner workers' states should be identical, so we use the first
                 Learner's state here. Useful for avoiding an extra `get_weights()` call,
                 e.g. for synchronizing EnvRunner weights.
-            **kwargs:
+            **kwargs: Additional update kwargs, stored and passed on to the
+                `Learner.update()` call performed inside the learner thread.
 
         Returns:
-
+            A `ResultDict` with the metrics of those updates that the learner thread
+            has already finished, or an empty dict if no results are available yet.
+            If `return_state` is True and a Learner state is available, the returned
+            dict also contains the `_rl_module_state_after_update` key.
         """
         # Set the update kwargs passed in the main thread for use in the learner thread.
         self._update_kwargs = kwargs

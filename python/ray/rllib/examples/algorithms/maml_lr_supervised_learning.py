@@ -90,6 +90,8 @@ Few shot loss: 0.7845061421394348
 Few shot loss: 0.5579453110694885
 Few shot loss: 0.4087105393409729
 """
+from typing import Any, Tuple
+
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
@@ -120,7 +122,9 @@ from ray.rllib.utils.framework import try_import_torch
 torch, _ = try_import_torch()
 
 # Implement generation of data from sinusoid curves.
-def generate_sinusoid_task(batch_size, noise_std=0.1, return_params=False):
+def generate_sinusoid_task(
+    batch_size: int, noise_std: float = 0.1, return_params: bool = False
+) -> Tuple[Any, ...]:
     """Generate a sinusoid task with random amplitude and phase.
 
     Args:
@@ -164,7 +168,12 @@ def generate_sinusoid_task(batch_size, noise_std=0.1, return_params=False):
         )
 
 
-def sample_task(batch_size=10, noise_std=0.1, training_data=False, return_params=False):
+def sample_task(
+    batch_size: int = 10,
+    noise_std: float = 0.1,
+    training_data: bool = False,
+    return_params: bool = False,
+) -> Tuple[Any, ...]:
     """Samples training batches for meta learner and differentiable learner.
 
     Args:

@@ -11,6 +11,8 @@ mocking Ray Core's drain state) is deliberate: the PreemptionWatcher polls
 cannot reach it; exercising a real GCS drain requires a multi-node cluster.
 """
 
+import time
+
 import pytest
 
 import ray
@@ -81,6 +83,7 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
     rank would make that rank enter `report()` while its peer ran another training
     step, and the two would deadlock against each other.
     """
+    deadline_ms = int((time.time() + 600) * 1000)
 
     def train_fn(config):
         import ray.train
@@ -91,7 +94,7 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
         rank = ray.train.get_context().get_world_rank()
         if rank == config["notified_rank"]:
             get_train_context().preemption_context.preemption_info = PreemptionInfo(
-                deadline_ms=1234,
+                deadline_ms=config["deadline_ms"],
                 preempted_node_to_ranks={"mock-node": [config["notified_rank"]]},
             )
 
@@ -104,7 +107,7 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
         if info is not None:
             assert info.preempted_ranks == [0]
             assert info.preempted_node_ids == ["mock-node"]
-            assert info.deadline_ms == 1234
+            assert info.deadline_ms == config["deadline_ms"]
 
         # Whatever the answer, it is the same on every rank, so branching into
         # another collective on it is safe.
@@ -114,7 +117,7 @@ def test_preemption_info_is_consistent_across_ranks(tmp_path, notified_rank):
 
     trainer = DataParallelTrainer(
         train_fn,
-        train_loop_config={"notified_rank": notified_rank},
+        train_loop_config={"notified_rank": notified_rank, "deadline_ms": deadline_ms},
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(
             storage_path=str(tmp_path),

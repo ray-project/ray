@@ -1,0 +1,10 @@
+# Windows-only torch pin.
+#
+# torch 2.8-2.10 Windows wheels are built without libuv, and gloo's TCP
+# transport is Linux-only, so torch.distributed's gloo backend cannot
+# initialize on Windows ("makeDeviceForHostname(): unsupported gloo device",
+# pytorch/pytorch#150381). torch 2.11 is the first release whose Windows wheel
+# ships the gloo libuv transport again. Delete this file and the windows torch
+# depsets in ci_windows.depsets.yaml once the repo-wide torch pin reaches >=2.11.
+torch==2.11.0
+torchvision==0.26.0

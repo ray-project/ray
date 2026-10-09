@@ -3,11 +3,14 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
+from typing import Tuple, Union
+
 import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -79,7 +82,12 @@ class ActorNetwork(nn.Module):
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
-    def forward(self, h, z, return_distr_params=False):
+    def forward(
+        self,
+        h: TensorType,
+        z: TensorType,
+        return_distr_params: bool = False,
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         """Performs a forward pass through this policy network.
 
         Args:
@@ -88,6 +96,11 @@ class ActorNetwork(nn.Module):
                 observation input. [B, num_categoricals, num_classes].
             return_distr_params: Whether to return (as a second tuple item) the action
                 distribution parameter tensor created by the policy.
+
+        Returns:
+            The sampled action tensor or, if `return_distr_params` is True, a tuple
+            consisting of the sampled action tensor and the action distribution
+            parameter tensor used to create the distribution to sample from.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
@@ -143,7 +156,7 @@ class ActorNetwork(nn.Module):
             return action, distr_params
         return action
 
-    def get_action_dist_object(self, action_dist_params_T_B):
+    def get_action_dist_object(self, action_dist_params_T_B: TensorType):
         """Helper method to create an action distribution object from (T, B, ..) params.
 
         Args:
