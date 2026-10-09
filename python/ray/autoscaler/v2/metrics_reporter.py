@@ -37,7 +37,7 @@ class AutoscalerMetricsReporter:
 
         # initialize the status count by type.
         for instance_type in node_type_configs:
-            status_count_by_type[instance_type]
+            status_count_by_type[instance_type] = status_count_by_type.default_factory()
 
         for instance in instances:
             status_count = status_count_by_type[instance.instance_type]
