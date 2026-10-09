@@ -118,8 +118,8 @@ doc/.claude/agents/reviewer.md:
 # tests in premerge or microcheck, so llm doc assets emit nothing. Neither
 # reaches the raw `llm` tag, which would start the llm library suites.
 doc/source/serve/llm/doc_code/example.py:
+doc/source/data/llm/doc_code/example.py:
 doc/source/data/examples/llm/vllm-with-lora.ipynb:
-doc/source/data/doc_code/working-with-llms/example.py:
 # Unowned doc dirs and doc-root executables go to the opt-in step too.
 doc/source/cluster/example.py: doc_example
 doc/code.py: doc_example
