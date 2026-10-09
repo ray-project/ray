@@ -112,7 +112,7 @@ The step never falls back to the library's whole docs example suite. Instead, it
 
 * **The file feeds only a shared doctest target.** Prose pages outside the library directories share one doctest target, `//doc:doctest`, so the label doesn't run them.
 * **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
-* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/data/examples/llm/` and `doc/source/serve/llm/doc_code/` don't start the opt-in step. The post-merge build runs the GPU examples.
+* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes in an `llm/` directory under a library's docs, such as `doc/source/serve/llm/`, don't start the opt-in step. The post-merge build runs the GPU examples.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
 
 To see what the label would run before you push, run the selector locally:
