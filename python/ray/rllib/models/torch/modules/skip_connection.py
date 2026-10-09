@@ -21,10 +21,11 @@ class SkipConnection(nn.Module):
         """Initializes a SkipConnection nn Module object.
 
         Args:
-            layer (nn.Module): Any layer processing inputs.
-            fan_in_layer (Optional[nn.Module]): An optional
+            layer: Any layer processing inputs.
+            fan_in_layer: An optional
                 layer taking two inputs: The original input and the output
                 of `layer`.
+            **kwargs: Forwarded to the `nn.Module` constructor.
         """
         super().__init__(**kwargs)
         self._layer = layer

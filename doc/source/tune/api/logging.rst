@@ -32,7 +32,6 @@ LoggerCallback Interface (tune.logger.LoggerCallback)
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~tune.logger.LoggerCallback.log_trial_start
     ~tune.logger.LoggerCallback.log_trial_restore

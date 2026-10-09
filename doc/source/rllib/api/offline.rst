@@ -12,7 +12,6 @@ Configuring Offline RL
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     AlgorithmConfig.offline_data
     AlgorithmConfig.learners
@@ -22,7 +21,6 @@ Configuring Offline Recording EnvRunners
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     AlgorithmConfig.env_runners
 
@@ -57,6 +55,10 @@ Sampling from Offline Data
     :toctree: doc/
 
     OfflineData.sample
+
+.. autosummary::
+    :nosignatures:
+
     OfflineData.default_map_batches_kwargs
     OfflineData.default_iter_batches_kwargs
 

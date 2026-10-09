@@ -7,13 +7,13 @@ myst:
 (fault-tolerance-tasks)=
 (task-fault-tolerance)=
 
-# Task Fault Tolerance
+# Task fault tolerance
 
-Tasks can fail due to application-level errors, e.g., Python-level exceptions, or system-level failures, e.g., a machine fails. Here, we describe the mechanisms that an application developer can use to recover from these errors.
+Tasks can fail because of application-level errors, such as Python-level exceptions, or system-level failures, such as a machine failure. This page describes the mechanisms you can use to recover from these errors.
 
 ## Catching application-level failures
 
-Ray surfaces application-level failures as Python-level exceptions. When a task on a remote worker or actor fails due to a Python-level exception, Ray wraps the original exception in a `RayTaskError` and stores this as the task's return value. This wrapped exception will be thrown to any worker that tries to get the result, either by calling `ray.get` or if the worker is executing another task that depends on the object. If the user's exception type can be subclassed, the raised exception is an instance of both `RayTaskError` and the user's exception type so the user can try-catch either of them. Otherwise, the wrapped exception is just `RayTaskError` and the actual user's exception type can be accessed via the `cause` field of the `RayTaskError`.
+Ray surfaces application-level failures as Python-level exceptions. When a task on a remote worker or actor fails because of a Python-level exception, Ray wraps the original exception in a `RayTaskError` and stores it as the task's return value. Ray throws this wrapped exception to any worker that tries to get the result, either by calling `ray.get` or by executing another task that depends on the object. If your exception type can be subclassed, the raised exception is an instance of both `RayTaskError` and your exception type, so you can catch either of them. Otherwise, the wrapped exception is only a `RayTaskError`, and you can access your original exception through the `cause` field of the `RayTaskError`.
 
 ```{literalinclude} ../doc_code/task_exceptions.py
 :language: python
@@ -21,7 +21,7 @@ Ray surfaces application-level failures as Python-level exceptions. When a task 
 :end-before: __task_exceptions_end__
 ```
 
-Example code of catching the user exception type when the exception type can be subclassed:
+The following example catches your exception type when the type can be subclassed:
 
 ```{literalinclude} ../doc_code/task_exceptions.py
 :language: python
@@ -29,7 +29,7 @@ Example code of catching the user exception type when the exception type can be 
 :end-before: __catch_user_exceptions_end__
 ```
 
-Example code of accessing the user exception type when the exception type can *not* be subclassed:
+The following example accesses your exception type when the type can't be subclassed:
 
 ```{literalinclude} ../doc_code/task_exceptions.py
 :language: python
@@ -37,7 +37,7 @@ Example code of accessing the user exception type when the exception type can *n
 :end-before: __catch_user_final_exceptions_end__
 ```
 
-If Ray can't serialize the user's exception, it converts the exception to a `RayError`.
+If Ray can't serialize your exception, it converts the exception to a `RayError`.
 
 ```{literalinclude} ../doc_code/task_exceptions.py
 :language: python
@@ -45,7 +45,7 @@ If Ray can't serialize the user's exception, it converts the exception to a `Ray
 :end-before: __unserializable_exceptions_end__
 ```
 
-Use `ray list tasks` from {ref}`State API CLI <state-api-overview-ref>` to query task exit details:
+Use `ray list tasks` from the {ref}`State API CLI <state-api-overview-ref>` to query task exit details:
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -70,9 +70,9 @@ Table:
 
 ## Retrying failed tasks
 
-When a worker is executing a task, if the worker dies unexpectedly, either because the process crashed or because the machine failed, Ray will rerun the task until either the task succeeds or the maximum number of retries is exceeded. The default number of retries is 3 and can be overridden by specifying `max_retries` in the `@ray.remote` decorator. Specifying -1 allows infinite retries, and 0 disables retries. To override the default number of retries for all tasks submitted, set the OS environment variable `RAY_TASK_MAX_RETRIES`. e.g., by passing this to your driver script or by using {ref}`runtime environments<runtime-environments>`.
+If a worker dies unexpectedly while executing a task, either because the process crashed or because the machine failed, Ray reruns the task until either the task succeeds or the maximum number of retries is exceeded. The default number of retries is 3. To override it, specify `max_retries` in the `@ray.remote` decorator. Specify -1 for infinite retries, or 0 to disable retries. To override the default number of retries for all submitted tasks, set the OS environment variable `RAY_TASK_MAX_RETRIES`, for example, by passing it to your driver script or by using {ref}`runtime environments<runtime-environments>`.
 
-You can experiment with this behavior by running the following code.
+To experiment with this behavior, run the following code:
 
 ```{literalinclude} ../doc_code/tasks_fault_tolerance.py
 :language: python
@@ -80,9 +80,9 @@ You can experiment with this behavior by running the following code.
 :end-before: __tasks_fault_tolerance_retries_end__
 ```
 
-When a task returns a result in the Ray object store, it is possible for the resulting object to be lost **after** the original task has already finished. In these cases, Ray will also try to automatically recover the object by re-executing the tasks that created the object. This can be configured through the same `max_retries` option described here. See {ref}`object fault tolerance <fault-tolerance-objects>` for more information.
+When a task returns a result in the Ray object store, the resulting object can be lost after the original task has already finished. In these cases, Ray also tries to automatically recover the object by re-executing the tasks that created it. You configure this recovery with the same `max_retries` option. For more information, see {ref}`object fault tolerance <fault-tolerance-objects>`.
 
-By default, Ray will **not** retry tasks upon exceptions thrown by application code. However, you may control whether application-level errors are retried, and even **which** application-level errors are retried, via the `retry_exceptions` argument. This is `False` by default. To enable retries upon application-level errors, set `retry_exceptions=True` to retry upon any exception, or pass a list of retryable exceptions. An example is shown below.
+By default, Ray doesn't retry tasks when application code throws an exception. To control whether Ray retries application-level errors, and which application-level errors it retries, use the `retry_exceptions` argument, which is `False` by default. To enable retries on application-level errors, set `retry_exceptions=True` to retry on any exception, or pass a list of retryable exceptions. The following example shows both approaches:
 
 ```{literalinclude} ../doc_code/tasks_fault_tolerance.py
 :language: python
@@ -91,7 +91,7 @@ By default, Ray will **not** retry tasks upon exceptions thrown by application c
 ```
 
 
-Use `ray list tasks -f task_id=<task_id>` from {ref}`State API CLI <state-api-overview-ref>` to see task attempts failures and retries:
+Use `ray list tasks -f task_id=<task_id>` from the {ref}`State API CLI <state-api-overview-ref>` to see failed task attempts and retries:
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -114,8 +114,8 @@ Table:
 
 ## Cancelling misbehaving tasks
 
-If a task is hanging, you may want to cancel the task to continue to make progress. You can do this by calling `ray.cancel` on an `ObjectRef` returned by the task. By default, this will send a KeyboardInterrupt to the task's worker if it is mid-execution.  Passing `force=True` to `ray.cancel` will force-exit the worker. See {func}`the API reference <ray.cancel>` for `ray.cancel` for more details.
+If a task is hanging, cancel it so your program can continue to make progress. To cancel a task, call `ray.cancel` on an object ref that the task returned. By default, if the task is mid-execution, this call sends a `KeyboardInterrupt` to the task's worker. Passing `force=True` to `ray.cancel` force-exits the worker. For more details, see {func}`the API reference <ray.cancel>` for `ray.cancel`.
 
-Note that currently, Ray will not automatically retry tasks that have been cancelled.
+Ray currently doesn't automatically retry cancelled tasks.
 
-Sometimes, application-level code may cause memory leaks on a worker after repeated task executions, e.g., due to bugs in third-party libraries. To make progress in these cases, you can set the `max_calls` option in a task's `@ray.remote` decorator. Once a worker has executed this many invocations of the given remote function, it will automatically exit. By default, `max_calls` is set to infinite for CPU tasks and 1 for GPU.
+Sometimes application-level code might cause memory leaks on a worker after repeated task executions, for example, because of bugs in third-party libraries. To make progress in these cases, set the `max_calls` option in a task's `@ray.remote` decorator. Once a worker has executed this many invocations of the given remote function, it automatically exits. By default, `max_calls` is infinite for CPU tasks and 1 for GPU tasks.

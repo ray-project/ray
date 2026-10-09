@@ -6,9 +6,9 @@ myst:
 
 # Anti-pattern: Redefining the same remote function or class harms performance
 
-**TLDR:** Avoid redefining the same remote function or class.
+Avoid redefining the same remote function or class.
 
-Decorating the same function or class multiple times using the {func}`ray.remote <ray.remote>` decorator leads to slow performance in Ray. For each Ray remote function or class, Ray will pickle it and upload to GCS. Later on, the worker that runs the task or actor will download and unpickle it. Each decoration of the same function or class generates a new remote function or class from Ray's perspective. As a result, the pickle, upload, download and unpickle work will happen every time we redefine and run the remote function or class.
+Decorating the same function or class multiple times with the {func}`ray.remote <ray.remote>` decorator leads to slow performance in Ray. For each remote function or class, Ray pickles it and uploads it to GCS. Later, the worker that runs the task or actor downloads and unpickles it. From Ray's perspective, each decoration of the same function or class generates a new remote function or class. As a result, the pickle, upload, download, and unpickle work happens every time you redefine and run the remote function or class.
 
 ## Code example
 
@@ -28,4 +28,4 @@ Decorating the same function or class multiple times using the {func}`ray.remote
 :end-before: __better_approach_end__
 ```
 
-We should define the same remote function or class outside of the loop instead of multiple times inside a loop so that it's pickled and uploaded only once.
+Define the remote function or class once outside the loop, instead of multiple times inside it, so that Ray pickles and uploads it only once.

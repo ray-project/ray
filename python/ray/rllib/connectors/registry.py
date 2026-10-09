@@ -8,7 +8,7 @@ ALL_CONNECTORS = dict()
 
 
 @OldAPIStack
-def register_connector(name: str, cls: Connector):
+def register_connector(name: str, cls: Connector) -> None:
     """Register a connector for use with RLlib.
 
     Args:

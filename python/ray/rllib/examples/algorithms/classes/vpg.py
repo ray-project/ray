@@ -1,3 +1,5 @@
+from typing import Optional
+
 import tree  # pip install dm_tree
 from typing_extensions import Self
 
@@ -41,7 +43,12 @@ class VPGConfig(AlgorithmConfig):
         self.num_env_runners = 1
 
     @override(AlgorithmConfig)
-    def training(self, *, num_episodes_per_train_batch=NotProvided, **kwargs) -> Self:
+    def training(
+        self,
+        *,
+        num_episodes_per_train_batch: Optional[int] = NotProvided,
+        **kwargs,
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -51,6 +58,7 @@ class VPGConfig(AlgorithmConfig):
                 batch sizes (in timesteps) as well possibly causing slight learning
                 instabilities. However, for simplicity reasons, we stick to collecting
                 always exactly n episodes per training update.
+            **kwargs: Forwarded to the parent `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

@@ -22,7 +22,7 @@ class MinibatchBuffer:
         """Initialize a minibatch buffer.
 
         Args:
-           inqueue (queue.Queue): Queue to populate the internal ring buffer
+           inqueue: Queue to populate the internal ring buffer
               from.
            size: Max number of data items to buffer.
            timeout: Queue timeout

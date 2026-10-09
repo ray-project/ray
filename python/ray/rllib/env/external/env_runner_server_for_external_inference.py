@@ -3,7 +3,7 @@ import socket
 import threading
 import time
 from collections import defaultdict
-from typing import Collection, DefaultDict, List, Optional, Union
+from typing import TYPE_CHECKING, Collection, DefaultDict, List, Optional, Union
 
 import ray
 from ray.rllib.core import (
@@ -39,6 +39,9 @@ from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.typing import EpisodeID, StateDict
 from ray.util.annotations import DeveloperAPI
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
 torch, _ = try_import_torch()
 
 
@@ -61,12 +64,14 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
     """
 
     @override(EnvRunner)
-    def __init__(self, *, config, **kwargs):
+    def __init__(self, *, config: "AlgorithmConfig", **kwargs):
         """
         Initializes an EnvRunnerServerForExternalInference instance.
 
         Args:
             config: The AlgorithmConfig to use for setup.
+            **kwargs: Forwarded to the `EnvRunner` base class constructor. Also used
+                to read this EnvRunner's `worker_index`.
 
         Keyword Args:
             port: The base port number. The server socket is then actually bound to

@@ -388,6 +388,11 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
             the Box was nested under two Repeated spaces.
         space: The original space prior to flattening
         tensorlib: The library used to unflatten (reshape) the array/tensor
+
+    Returns:
+        The unflattened observation, matching the structure of `space`: a dict
+        for Dict spaces, a tuple for Tuple spaces, a `RepeatedValues` object for
+        Repeated spaces, and the (unchanged) input tensor otherwise.
     """
 
     if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):

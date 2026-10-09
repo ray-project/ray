@@ -8,9 +8,9 @@ myst:
 
 # Anti-pattern: Fetching too many objects at once with ray.get causes failure
 
-**TLDR:** Avoid calling {func}`ray.get() <ray.get>` on too many objects since this will lead to heap out-of-memory or object store out-of-space. Instead fetch and process one batch at a time.
+Avoid calling {func}`ray.get() <ray.get>` on too many objects, because this can lead to a heap out-of-memory or object store out-of-space failure. Instead, fetch and process one batch at a time.
 
-If you have a large number of tasks that you want to run in parallel, trying to do `ray.get()` on all of them at once could lead to failure with heap out-of-memory or object store out-of-space since Ray needs to fetch all the objects to the caller at the same time. Instead you should get and process the results one batch at a time. Once a batch is processed, Ray will evict objects in that batch to make space for future batches.
+If you have many tasks that you want to run in parallel, calling `ray.get()` on all of them at once could fail with a heap out-of-memory or object store out-of-space error, because Ray needs to fetch all the objects to the caller at the same time. Instead, get and process the results one batch at a time. After you process a batch, Ray evicts the objects in that batch to make space for later batches.
 
 ```{figure} ../images/ray-get-too-many-objects.svg
 Fetching too many objects at once with `ray.get()`
@@ -34,4 +34,4 @@ Fetching too many objects at once with `ray.get()`
 :end-before: __better_approach_end__
 ```
 
-Here besides getting one batch at a time to avoid failure, we are also using `ray.wait()` to process results in the finish order instead of the submission order to reduce the runtime. See {doc}`ray-get-submission-order` for more details.
+Besides getting one batch at a time to avoid failure, this example also uses `ray.wait()` to reduce the runtime by processing results in the order they finish instead of the order you submitted them. For more details, see {doc}`ray-get-submission-order`.

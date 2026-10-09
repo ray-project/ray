@@ -1,7 +1,7 @@
 import logging
 import re
 from collections import OrderedDict, namedtuple
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -96,7 +96,7 @@ class DynamicTFPolicy(TFPolicy):
         existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
         existing_model: Optional[ModelV2] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        obs_include_prev_action_reward=DEPRECATED_VALUE,
+        obs_include_prev_action_reward: Any = DEPRECATED_VALUE,
     ):
         """Initializes a DynamicTFPolicy instance.
 
@@ -111,7 +111,7 @@ class DynamicTFPolicy(TFPolicy):
         placeholders.
 
         Args:
-            observation_space: Observation space of the policy.
+            obs_space: Observation space of the policy.
             action_space: Action space of the policy.
             config: Policy-specific configuration data.
             loss_fn: Function that returns a loss tensor for the policy graph.
@@ -176,6 +176,8 @@ class DynamicTFPolicy(TFPolicy):
             get_batch_divisibility_req: Optional callable that returns the
                 divisibility requirement for sample batches. If None, will
                 assume a value of 1.
+            obs_include_prev_action_reward: Deprecated. Raises an error if
+                set to anything other than DEPRECATED_VALUE.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
             deprecation_warning(old="obs_include_prev_action_reward", error=True)
@@ -647,7 +649,11 @@ class DynamicTFPolicy(TFPolicy):
 
         return results
 
-    def _get_input_dict_and_dummy_batch(self, view_requirements, existing_inputs):
+    def _get_input_dict_and_dummy_batch(
+        self,
+        view_requirements: Dict[str, ViewRequirement],
+        existing_inputs: Dict[str, "tf1.placeholder"],
+    ) -> Tuple[SampleBatch, SampleBatch]:
         """Creates input_dict and dummy_batch for loss initialization.
 
         Used for managing the Policy's input placeholders and for loss
@@ -656,8 +662,7 @@ class DynamicTFPolicy(TFPolicy):
 
         Args:
             view_requirements: The view requirements dict.
-            existing_inputs (Dict[str, tf.placeholder]): A dict of already
-                existing placeholders.
+            existing_inputs: A dict of already existing placeholders.
 
         Returns:
             Tuple[Dict[str, tf.placeholder], Dict[str, np.ndarray]]: The
@@ -940,19 +945,33 @@ class TFMultiGPUTowerStack:
     def __init__(
         self,
         # Deprecated.
-        optimizer=None,
-        devices=None,
-        input_placeholders=None,
-        rnn_inputs=None,
-        max_per_device_batch_size=None,
-        build_graph=None,
-        grad_norm_clipping=None,
+        optimizer: Optional[List[LocalOptimizer]] = None,
+        devices: Optional[List[str]] = None,
+        input_placeholders: Optional[List["tf1.placeholder"]] = None,
+        rnn_inputs: Optional[List["tf1.placeholder"]] = None,
+        max_per_device_batch_size: Optional[int] = None,
+        build_graph: Optional[Callable[[], TFPolicy]] = None,
+        grad_norm_clipping: Optional[float] = None,
         # Use only `policy` argument from here on.
         policy: TFPolicy = None,
     ):
         """Initializes a TFMultiGPUTowerStack instance.
 
         Args:
+            optimizer: Deprecated. The optimizers to compute and apply
+                gradients with.
+            devices: Deprecated. The list of device strings (e.g. "/gpu:0") to
+                place the towers on.
+            input_placeholders: Deprecated. The non-RNN loss input
+                placeholders to split across the devices.
+            rnn_inputs: Deprecated. The RNN state-in placeholders (plus the
+                seq-lens placeholder) to split across the devices.
+            max_per_device_batch_size: Deprecated. The maximum number of
+                samples to load onto each device.
+            build_graph: Deprecated. Callable creating a copy of the policy
+                (one tower) sharing the same variables.
+            grad_norm_clipping: Deprecated. The value to clip the global
+                gradient norm to (None for no clipping).
             policy: The TFPolicy object that this tower stack
                 belongs to.
         """
@@ -1087,7 +1106,13 @@ class TFMultiGPUTowerStack:
         # undergone.
         self.num_grad_updates = 0
 
-    def load_data(self, sess, inputs, state_inputs, num_grad_updates=None):
+    def load_data(
+        self,
+        sess: "tf1.Session",
+        inputs: List[TensorType],
+        state_inputs: List[TensorType],
+        num_grad_updates: Optional[int] = None,
+    ) -> int:
         """Bulk loads the specified inputs into device memory.
 
         The shape of the inputs must conform to the shapes of the input
@@ -1224,7 +1249,7 @@ class TFMultiGPUTowerStack:
         # Return loaded samples per-device.
         return samples_per_device
 
-    def optimize(self, sess, batch_index):
+    def optimize(self, sess: "tf1.Session", batch_index: int) -> Dict[str, Any]:
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -1310,7 +1335,7 @@ def _make_divisible_by(a, n):
     return a[0 : a.shape[0] - a.shape[0] % n]
 
 
-def _average_gradients(tower_grads):
+def _average_gradients(tower_grads: List[ModelGradients]) -> ModelGradients:
     """Averages gradients across towers.
 
     Calculate the average gradient for each shared variable across all towers.

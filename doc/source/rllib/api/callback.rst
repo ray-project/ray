@@ -93,7 +93,6 @@ The main Algorithm process always executes the following callback methods:
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~RLlibCallback.on_algorithm_init
     ~RLlibCallback.on_sample_end
@@ -113,10 +112,24 @@ The EnvRunner actors always execute the following callback methods:
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~RLlibCallback.on_environment_created
     ~RLlibCallback.on_episode_created
     ~RLlibCallback.on_episode_start
     ~RLlibCallback.on_episode_step
     ~RLlibCallback.on_episode_end
+
+
+.. _rllib-callback-reference-built-in:
+
+Built-in callback classes
+-------------------------
+
+.. currentmodule:: ray.rllib.callbacks.callbacks
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
+
+    MemoryTrackingCallbacks
