@@ -30,7 +30,9 @@ swap:
   'Ray Train Trainer': Ray Train trainer
   'Training Functions': training functions
   'Training Function': training function
+  'Training Loops': training loops
   'Training Loop': training loop
+  'Scaling Configurations': scaling configurations
   'Scaling Configuration': scaling configuration
   'Worker Groups': worker groups
   'Worker Group': worker group

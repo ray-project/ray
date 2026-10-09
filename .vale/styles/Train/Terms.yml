@@ -33,10 +33,15 @@ swap:
   'scaling config': scaling configuration
   'scaling configs': scaling configurations
   'Scaling config': Scaling configuration
+  'Scaling configs': Scaling configurations
   'run config': run configuration
+  'run configs': run configurations
   'Run config': Run configuration
+  'Run configs': Run configurations
   'checkpoint config': checkpoint configuration
+  'checkpoint configs': checkpoint configurations
   'Checkpoint config': Checkpoint configuration
+  'Checkpoint configs': Checkpoint configurations
   # Hyphenate the verb and its forms. Model and file names that contain "finetune"
   # belong in code style, where Vale doesn't look.
   finetune: fine-tune
