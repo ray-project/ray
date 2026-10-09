@@ -619,7 +619,27 @@ applications:
 
 The TLS endpoint in front of the facade must accept HTTP/2 from a client that doesn't negotiate it. The client SDK's command-router connection, which carries commands and file operations, offers no ALPN in its TLS handshake (releases through 1.6.1) and then speaks HTTP/2 anyway. Envoy accepts that connection, because it detects HTTP/2 from the client's connection preface. ingress-nginx doesn't: behind it, creating and terminating sandboxes works, but running commands and file operations fail. On Anyscale, deploy the service to a Kubernetes cloud whose operator routes services through an Envoy Gateway (`networking.gateway` in the operator's Helm values) rather than ingress-nginx.
 
-A proxy in front of the facade also limits each HTTP/2 stream. The client SDK sends a file write as one request stream, and it reads a command's output on a stream that stays quiet until the command exits. ingress-nginx, for example, defaults to 1 MiB per request (`proxy-body-size`) and 60 seconds without data from the backend (`proxy-read-timeout`). Behind those defaults, file writes larger than about 7.5 MiB fail, and so do output reads that wait on a running command for more than about 11 minutes, once the SDK's retries run out. Envoy doesn't limit request size by default, but its default route timeout ends any response that takes longer than 15 seconds, a command's output stream included. Raise or turn off these limits on the proxy for the facade's routes, such as with an Envoy Gateway `BackendTrafficPolicy` that sets `timeout.http.requestTimeout` to `0s`.
+A proxy in front of the facade also limits each HTTP/2 stream. The client SDK sends a file write as one request stream, and it reads a command's output on a stream that stays quiet until the command exits. Envoy doesn't limit request size by default, but its default route timeout ends any response that takes longer than 15 seconds, a command's output stream included. With Envoy Gateway, turn that timeout off on the Gateway that serves the facade. On Anyscale, that's the Gateway named in the operator's `networking.gateway` values:
+
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: sandbox-facade-streams
+  namespace: <the Gateway's namespace>
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: <the Gateway's name>
+  timeout:
+    http:
+      requestTimeout: 0s
+      maxStreamDuration: 0s
+      connectionIdleTimeout: 1h
+```
+
+ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the backend, which cap file writes at about 7.5 MiB and output reads on a running command at about 11 minutes, once the SDK's retries run out. The annotations `nginx.ingress.kubernetes.io/proxy-body-size: "0"`, `nginx.ingress.kubernetes.io/proxy-read-timeout`, and `nginx.ingress.kubernetes.io/proxy-send-timeout` on the facade's Ingress raise those limits, but no ingress-nginx setting lets it serve the client SDK's command-router connection.
 
 ## API reference
 
