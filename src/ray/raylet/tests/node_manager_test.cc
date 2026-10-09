@@ -1566,7 +1566,19 @@ TEST_F(NodeManagerTest, RemovePlacementGroupBundlesOnlyStopsRequestedBundleWorke
   };
   const auto [lease0, worker0] = make_worker(bundle0->BundleId());
   const auto [lease1, worker1] = make_worker(bundle1->BundleId());
-  fake_worker_pool_.registered_workers = {worker0, worker1};
+
+  const auto wildcard_bundle_id = BundleID(placement_group_id, -1);
+  const auto [wildcard_lease, wildcard_worker] = make_worker(wildcard_bundle_id);
+  const absl::flat_hash_map<std::string, double> wildcard_bundle0_resources = {
+      {FormatPlacementGroupResource("CPU", placement_group_id, -1), 1},
+      {FormatPlacementGroupResource("CPU", placement_group_id, 0), 1}};
+  auto wildcard_bundle0_allocation = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          wildcard_bundle0_resources, wildcard_bundle0_allocation));
+  wildcard_worker->SetLifetimeAllocatedInstances(wildcard_bundle0_allocation);
+
+  fake_worker_pool_.registered_workers = {worker0, worker1, wildcard_worker};
 
   rpc::RemovePlacementGroupBundlesRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
@@ -1584,7 +1596,51 @@ TEST_F(NodeManagerTest, RemovePlacementGroupBundlesOnlyStopsRequestedBundleWorke
 
   EXPECT_TRUE(replied);
   EXPECT_FALSE(leased_workers_.contains(lease0));
+  EXPECT_FALSE(leased_workers_.contains(wildcard_lease));
   EXPECT_TRUE(leased_workers_.contains(lease1));
+}
+
+TEST_F(NodeManagerTest, RemovePlacementGroupBundlesReturnsRetryableFailure) {
+  const auto placement_group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  rpc::Bundle bundle;
+  bundle.mutable_bundle_id()->set_placement_group_id(placement_group_id.Binary());
+  bundle.mutable_bundle_id()->set_bundle_index(0);
+  (*bundle.mutable_unit_resources())["CPU"] = 1;
+  auto bundle_spec = std::make_shared<BundleSpecification>(std::move(bundle));
+  ASSERT_TRUE(placement_group_resource_manager_->PrepareBundles({bundle_spec}));
+  placement_group_resource_manager_->CommitBundles({bundle_spec});
+
+  auto allocation = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          bundle_spec->GetFormattedResources(), allocation));
+
+  rpc::RemovePlacementGroupBundlesRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  request.add_bundle_specs()->CopyFrom(bundle_spec->GetMessage());
+  rpc::RemovePlacementGroupBundlesReply reply;
+  rpc::NodeManagerServiceHandler *handler = node_manager_.get();
+  Status first_status;
+  handler->HandleRemovePlacementGroupBundles(
+      request,
+      &reply,
+      [&first_status](Status status, std::function<void()>, std::function<void()>) {
+        first_status = status;
+      });
+  EXPECT_TRUE(first_status.IsInvalid());
+  EXPECT_TRUE(
+      IsBundleRegistered(*placement_group_resource_manager_, bundle_spec->BundleId()));
+
+  cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+      allocation);
+  Status retry_status;
+  handler->HandleRemovePlacementGroupBundles(
+      request,
+      &reply,
+      [&retry_status](Status status, std::function<void()>, std::function<void()>) {
+        retry_status = status;
+      });
+  EXPECT_TRUE(retry_status.ok());
 }
 
 class ReleaseUnusedBundlesRetriesTest : public NodeManagerTest,
