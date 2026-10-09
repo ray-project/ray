@@ -223,22 +223,46 @@ class StagedCheckpoint:
             json.dump(manifest, f, indent=2)
 
     def harden_permissions(self, rootless: bool = False) -> None:
-        """Ensure bundle files are accessible only to the owner (0700/go-rwx)."""
+        """Ensure bundle outer directory and memory dumps are accessible only to owner (0700/go-rwx),
+        while preserving guest file mode permissions inside fs/ intact.
+        """
+        paths_to_harden = [self.staging_path, self.state_dir]
+        for top_file in ("manifest.json", "config.json", "resolv.conf", "hosts"):
+            p = os.path.join(self.staging_path, top_file)
+            if os.path.isfile(p):
+                paths_to_harden.append(p)
+
         if not rootless and os.geteuid() != 0 and shutil.which("sudo"):
             uid = os.getuid()
             gid = os.getgid()
             subprocess.run(
-                ["sudo", "chown", "-R", f"{uid}:{gid}", self.staging_path],
+                ["sudo", "chown", f"{uid}:{gid}", self.staging_path, self.state_dir],
                 capture_output=True,
             )
+            for path in paths_to_harden:
+                if os.path.isdir(path):
+                    subprocess.run(
+                        ["sudo", "chmod", "0700", path],
+                        capture_output=True,
+                    )
+                elif os.path.isfile(path):
+                    subprocess.run(
+                        ["sudo", "chmod", "0600", path],
+                        capture_output=True,
+                    )
             subprocess.run(
-                ["sudo", "chmod", "-R", "u+rwX,go-rwx", self.staging_path],
+                ["sudo", "chmod", "-R", "u+rwX,go-rwx", self.state_dir],
                 capture_output=True,
             )
         else:
             try:
+                for path in paths_to_harden:
+                    if os.path.isdir(path):
+                        os.chmod(path, 0o700)
+                    elif os.path.isfile(path):
+                        os.chmod(path, 0o600)
                 subprocess.run(
-                    ["chmod", "-R", "u+rwX,go-rwx", self.staging_path],
+                    ["chmod", "-R", "u+rwX,go-rwx", self.state_dir],
                     capture_output=True,
                 )
             except OSError:

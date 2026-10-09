@@ -129,6 +129,34 @@ class TestCheckpointUtils(unittest.TestCase):
         assert os.path.exists(os.path.join(dst, "file.txt"))
         assert not os.path.exists(os.path.join(dst, "ignore.me"))
 
+    def test_harden_permissions_preserves_guest_file_modes(self):
+        target_dir = os.path.join(self.temp_dir, "perm_bundle")
+        workdir = os.path.join(self.temp_dir, "workdir")
+        os.makedirs(workdir, exist_ok=True)
+
+        guest_file = os.path.join(workdir, "readable.txt")
+        with open(guest_file, "w") as f:
+            f.write("public content")
+        os.chmod(guest_file, 0o644)
+
+        with StagedCheckpoint(target_dir) as stage:
+            stage.copy_bundle_filesystems(
+                root_dir=self.temp_dir,
+                workdir=workdir,
+                sandbox_id="test-sb-perm",
+            )
+            stage.harden_permissions(rootless=True)
+
+        staged_guest_file = os.path.join(target_dir, "fs", "workdir", "readable.txt")
+        assert os.path.exists(staged_guest_file)
+        # Verify that guest file mode 0644 was preserved inside fs/workdir
+        mode = os.stat(staged_guest_file).st_mode & 0o777
+        assert mode == 0o644
+
+        # Verify outer target_dir is strictly restricted to owner (0700)
+        target_mode = os.stat(target_dir).st_mode & 0o777
+        assert target_mode == 0o700
+
 
 if __name__ == "__main__":
     import sys
