@@ -725,19 +725,20 @@ def _reconstruct_lost_object(
 
     seed_task_ids = sorted(traced_seed_ids)
 
-    # Resolve each seed id back to the operator that retained its input. The seed's
-    # own operator is the one holding it, so no id parsing is needed.
+    # Get each seed's retained input from the tracker, and the operator that ran the
+    # seed, which is where the input is re-injected.
     resubmissions = []
     for seed_id in seed_task_ids:
-        seed_op, seed_input = None, None
-        for op in topology:
-            seed_input = op.retained_seed_input(seed_id)
-            if seed_input is not None:
-                seed_op = op
-                break
-        if seed_input is None:
+        try:
+            seed_input = lineage_tracker.get_seed_input(seed_id)
+        except ValueError as err:
             raise LineageReconstructionError(
-                lost_error, f"no retained input for seed task {seed_id}."
+                lost_error, f"no retained input for seed task {seed_id} ({err})."
+            ) from lost_error
+        seed_op = next((op for op in topology if op.owns_data_task(seed_id)), None)
+        if seed_op is None:
+            raise LineageReconstructionError(
+                lost_error, f"no operator owns seed task {seed_id}."
             ) from lost_error
         resubmissions.append((seed_id, seed_op, seed_input))
 

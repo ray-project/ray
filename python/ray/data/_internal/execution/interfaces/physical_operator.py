@@ -683,14 +683,6 @@ class PhysicalOperator(Operator):
         """
         return False
 
-    def retained_seed_input(self, seed_task_id: str) -> Optional[RefBundle]:
-        """The input retained for seed task ``seed_task_id``, or None.
-
-        Lineage reconstruction re-injects this. Only the operator that ran the seed
-        holds it, so the operator that answers is the seed's owner.
-        """
-        return None
-
     @property
     def data_context(self) -> DataContext:
         return self._data_context

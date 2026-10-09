@@ -281,10 +281,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
-        # Seed tasks' input bundles, kept so reconstruction can re-inject them: the
-        # tracker stores ids, not bundles. No extra memory -- the source operator
-        # holds these same bundles for the whole run anyway.
-        self._seed_task_inputs: Dict[LineageTaskId, RefBundle] = {}
         # For lineage reconstruction:
         # Mapping of reconstruction plan ID -> blocks withheld (expressed as a mapping of parent block output to actual RefBundle) until every parent of a reconstruction
         # child has produced the required blocks, and the reconstruction child task(s) can be scheduled with
@@ -661,10 +657,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def owns_data_task(self, lineage_task_id: str) -> bool:
         return lineage_task_id.rsplit(":", 1)[0] == self.id
 
-    @override
-    def retained_seed_input(self, seed_task_id: str) -> Optional[RefBundle]:
-        return self._seed_task_inputs.get(seed_task_id)
-
     def _lineage_for_submission(
         self,
         lineage_tracker: "LineageTracker",
@@ -809,14 +801,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             lineage_tracker.register_task_submission(
                 lineage_task_id, dependencies, reconstruction_plan_id
             )
-            # If this is a seed operator and this is a fresh task, store the input bundle.
+            # If the task is a seed task (and this is not a reconstruction attempt), register the inputs of the task as seed inputs
             if self._is_seed_operator() and reconstruction_plan_id is None:
-                # A seed consumes straight from an `InputDataBuffer`, so its input is
-                # durable and resubmittable. `register_task_failed` hands back seed
-                # *ids* and the tracker stores no `RefBundle`s, so keep it here. Only
-                # the first attempt's input is kept. A re-execution's input is the
-                # same bundle with a `reconstruction_stamp` attached.
-                self._seed_task_inputs[lineage_task_id] = inputs
+                lineage_tracker.register_seed_input(lineage_task_id, inputs)
 
         # This task's next output_index. A per-task closure local, so it is scoped
         # exactly right and resets naturally on a re-execution.

@@ -1,7 +1,10 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import RefBundle
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +91,10 @@ class TaskNode:
     # This is only incremented by fresh tasks and tasks that are the reconstruction plan target,
     # which are the only tasks that explicitly add outputs to the operator queue
     num_queued_outputs: int = 0
+
+    # The input of a seed task (a task with no parent tasks), kept so lineage
+    # reconstruction can resubmit it. ``None`` for every non-seed task.
+    seed_input: Optional["RefBundle"] = None
 
     def __repr__(self) -> str:
         parent_ids = [task.lineage_task_id for task in self.parent_tasks]
@@ -504,6 +511,64 @@ class LineageTracker:
         _trace_parent_for_reconstruction(task_node)
         # Sort to keep the order of the seed task IDs deterministic.
         return sorted(seed_task_ids), reconstruction_plan_id_to_attach
+
+    def register_seed_input(
+        self, seed_task_id: LineageTaskId, seed_input: "RefBundle"
+    ) -> None:
+        """
+        Store the input of a seed task, so that lineage reconstruction can resubmit it when trying to reconstruct a lost block.
+
+        Only call this for a seed task's first attempt.
+
+        Args:
+            seed_task_id: The ID of the seed task.
+            seed_input: The input the seed task was submitted with.
+
+        Raises:
+            ValueError: If the task is not registered, or has parent tasks.
+                Invariant: The task must be a seed task only (one with no parent tasks).
+        """
+        task_node = self._lineage_task_id_to_task_node.get(seed_task_id)
+        if task_node is None:
+            raise ValueError(
+                f"Expected seed task {seed_task_id} to be registered before "
+                "registering its input but was not."
+            )
+        if task_node.parent_tasks:
+            parent_ids = [task.lineage_task_id for task in task_node.parent_tasks]
+            raise ValueError(
+                f"Task {seed_task_id} was registered with a seed input but has "
+                f"parent tasks {parent_ids}."
+            )
+        task_node.seed_input = seed_input
+
+    def get_seed_input(self, seed_task_id: LineageTaskId) -> "RefBundle":
+        """
+        Get the input retained for the given seed task.
+
+        Args:
+            seed_task_id: The ID of a seed task, as returned by
+                ``register_task_failed``.
+
+        Returns:
+            The input registered with ``register_seed_input``.
+
+        Raises:
+            ValueError: If the task is not registered, or is not a seed task with a
+                retained input.
+        """
+        task_node = self._lineage_task_id_to_task_node.get(seed_task_id)
+        if task_node is None:
+            raise ValueError(
+                f"Expected seed task {seed_task_id} to be registered before getting "
+                "its input but was not."
+            )
+        if task_node.seed_input is None:
+            raise ValueError(
+                f"Task {seed_task_id} has no retained seed input. Either it is not a "
+                "seed task, or its input was never registered."
+            )
+        return task_node.seed_input
 
     def get_pending_children(
         self,
