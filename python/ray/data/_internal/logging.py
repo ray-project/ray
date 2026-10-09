@@ -84,13 +84,11 @@ class HiddenRecordFilter:
     are printed by default, and you don't want to print a specific error, you can set
     the "hide" attribute to avoid printing the message.
 
-    .. testcode::
-
-        import logging
-        logger = logging.getLogger("ray.data.spam")
-
-        # This warning won't be printed to the console.
-        logger.warning("ham", extra={"hide": True})
+    Examples:
+        >>> import logging
+        >>> logger = logging.getLogger("ray.data.spam")
+        >>> # This warning won't be printed to the console.
+        >>> logger.warning("ham", extra={"hide": True})
     """
 
     def filter(self, record):

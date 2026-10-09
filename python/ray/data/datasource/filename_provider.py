@@ -31,31 +31,24 @@ class FilenameProvider:
     are automatically derived by appending ``_{block_index:06}_{row_index:06}`` to the
     task filename.
 
-    Example:
-
+    Examples:
         This snippet shows you how to customize filenames with a prefix. For example,
         a file might be named ``images_abc123_000000.png``.
 
-        .. testcode::
-
-            import ray
-            from ray.data.datasource import FilenameProvider
-
-            class ImageFilenameProvider(FilenameProvider):
-
-                def __init__(self, prefix: str, file_format: str):
-                    super().__init__(file_format=file_format)
-                    self.prefix = prefix
-
-                def get_filename_for_task(self, write_uuid, task_index):
-                    return f"{self.prefix}_{write_uuid}_{task_index:06}.{self.file_format}"
-
-            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/images.parquet")
-            ds.write_images(
-                "/tmp/results",
-                column="image",
-                filename_provider=ImageFilenameProvider("images", "png")
-            )
+        >>> import ray
+        >>> from ray.data.datasource import FilenameProvider
+        >>> class ImageFilenameProvider(FilenameProvider):
+        ...     def __init__(self, prefix: str, file_format: str):
+        ...         super().__init__(file_format=file_format)
+        ...         self.prefix = prefix
+        ...     def get_filename_for_task(self, write_uuid, task_index):
+        ...         return f"{self.prefix}_{write_uuid}_{task_index:06}.{self.file_format}"
+        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/images.parquet")
+        >>> ds.write_images(
+        ...     "/tmp/results",
+        ...     column="image",
+        ...     filename_provider=ImageFilenameProvider("images", "png")
+        ... )
     """  # noqa: E501
 
     def __init__(

@@ -1356,21 +1356,16 @@ class DataContext:
         Changes to `DataContext.get_current()` will not impact existing Datasets.
 
         Examples:
-
-            .. testcode::
-                import ray
-
-                context = ray.data.DataContext.get_current()
-
-                context.target_max_block_size = 100 * 1024 ** 2
-                ds1 = ray.data.range(1)
-                context.target_max_block_size = 1 * 1024 ** 2
-                ds2 = ray.data.range(1)
-
-                # ds1's target_max_block_size will be 100MB
-                ds1.take_all()
-                # ds2's target_max_block_size will be 1MB
-                ds2.take_all()
+            >>> import ray
+            >>> context = ray.data.DataContext.get_current()
+            >>> context.target_max_block_size = 100 * 1024 ** 2
+            >>> ds1 = ray.data.range(1)
+            >>> context.target_max_block_size = 1 * 1024 ** 2
+            >>> ds2 = ray.data.range(1)
+            >>> # ds1's target_max_block_size will be 100MB
+            >>> _ = ds1.take_all()
+            >>> # ds2's target_max_block_size will be 1MB
+            >>> _ = ds2.take_all()
 
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the
