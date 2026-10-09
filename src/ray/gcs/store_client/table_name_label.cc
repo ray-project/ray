@@ -14,22 +14,18 @@
 
 #include "ray/gcs/store_client/table_name_label.h"
 
-#include <string_view>
+#include <string>
 
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray::gcs {
 
-std::string_view NormalizeTableNameLabel(std::string_view table_name) {
+std::string NormalizeTableNameLabel(const std::string &table_name) {
   rpc::TablePrefix prefix;
   if (!rpc::TablePrefix_Parse(table_name, &prefix)) {
-    return kUnknownTable;
+    return std::string(kUnknownTable);
   }
-  // Deliberately not `table_name`: that view would dangle once the caller's
-  // string goes out of scope, and the latency label is read from a completion
-  // callback. TablePrefix_Name returns a reference into the generated
-  // descriptor's name storage, which lives for the whole process.
-  return rpc::TablePrefix_Name(prefix);
+  return table_name;
 }
 
 }  // namespace ray::gcs

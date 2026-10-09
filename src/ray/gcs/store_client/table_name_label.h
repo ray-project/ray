@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <string>
 #include <string_view>
 
 namespace ray::gcs {
@@ -33,27 +34,14 @@ inline constexpr std::string_view kJobCounterTable = "JobCounter";
 /// Maps a GCS table name onto a closed label domain: the names of the
 /// rpc::TablePrefix enum, plus kUnknownTable.
 ///
-/// Every table name a StoreClient sees today is produced by TablePrefix_Name
-/// at its definition site -- the six GcsTable subclasses in gcs_table_storage.h
-/// and StoreClientInternalKV -- so this normally returns its argument's
-/// spelling unchanged. What it adds is that the domain is bounded by
-/// construction rather than by convention: StoreClient takes an arbitrary
-/// std::string, so without this a future caller could turn a job or actor id
-/// into unbounded label cardinality.
-///
-/// The round trip through the enum is also what makes the result safe to
-/// capture. Parsing proves the name is a TablePrefix constant; re-deriving the
-/// name from the parsed value returns protobuf's generated static string
-/// rather than a view into the caller's argument, so the result outlives the
-/// call and can be held by a completion callback without copying a std::string
-/// into it.
-///
-/// Self-maintaining: adding a TablePrefix value makes it a valid label with no
-/// change here, and the domain can only grow by editing gcs.proto.
+/// Every table name a StoreClient sees today is produced by TablePrefix_Name,
+/// so this normally returns its argument unchanged. What it adds is that the
+/// domain is bounded by construction rather than by convention: StoreClient
+/// takes an arbitrary std::string, so without this a future caller could turn a
+/// job or actor id into unbounded label cardinality.
 ///
 /// \param table_name The table name a StoreClient method was called with.
-/// \return The matching enum name, or kUnknownTable. Points into static
-/// storage, so it outlives the argument.
-std::string_view NormalizeTableNameLabel(std::string_view table_name);
+/// \return The matching enum name, or kUnknownTable.
+std::string NormalizeTableNameLabel(const std::string &table_name);
 
 }  // namespace ray::gcs

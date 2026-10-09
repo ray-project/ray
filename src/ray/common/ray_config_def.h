@@ -443,15 +443,6 @@ RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
 /// keepalive is enabled.
 RAY_CONFIG(int64_t, redis_tcp_keepalive_probes, 3)
 
-/// Whether the GCS wraps its Redis store client in ObservableStoreClient, which
-/// is what makes gcs_storage_operation_count and
-/// gcs_storage_operation_latency_ms exist on the external-Redis backend at all.
-/// Costs two ray::stats::Metric::Record calls per storage operation on a path
-/// that previously had none. Set to false to restore the pre-change behavior;
-/// the in-memory and RocksDB backends are unaffected either way, because they
-/// have always been wrapped.
-RAY_CONFIG(bool, gcs_redis_storage_metrics_enabled, true)
-
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 

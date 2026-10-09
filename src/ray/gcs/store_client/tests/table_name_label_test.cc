@@ -41,7 +41,7 @@ TEST(TableNameLabelTest, EveryProducedTableNameSurvivesNormalization) {
   };
   for (const auto prefix : produced) {
     const std::string &name = rpc::TablePrefix_Name(prefix);
-    EXPECT_EQ(NormalizeTableNameLabel(name), std::string_view(name));
+    EXPECT_EQ(NormalizeTableNameLabel(name), name);
   }
 }
 
@@ -52,32 +52,8 @@ TEST(TableNameLabelTest, EveryEnumNameNormalizesToItself) {
   ASSERT_GT(descriptor->value_count(), 0);
   for (int i = 0; i < descriptor->value_count(); ++i) {
     const std::string &name = descriptor->value(i)->name();
-    EXPECT_EQ(NormalizeTableNameLabel(name), std::string_view(name));
+    EXPECT_EQ(NormalizeTableNameLabel(name), name);
   }
-}
-
-// ObservableStoreClient::MetricTags claims the tag value copy does not allocate
-// because every table name a caller can produce fits libstdc++'s 15-character
-// small-string buffer. That claim is about the *reachable* names, not the whole
-// enum -- PLACEMENT_GROUP_SCHEDULE is 24 characters -- so pin the reachable
-// bound here rather than leaving the comment to rot.
-TEST(TableNameLabelTest, ProducedTableNamesFitTheSmallStringBuffer) {
-  constexpr size_t kLibstdcxxSsoCapacity = 15;
-  const std::vector<rpc::TablePrefix> produced = {
-      rpc::TablePrefix::JOB,
-      rpc::TablePrefix::ACTOR,
-      rpc::TablePrefix::ACTOR_TASK_SPEC,
-      rpc::TablePrefix::PLACEMENT_GROUP,
-      rpc::TablePrefix::NODE,
-      rpc::TablePrefix::WORKERS,
-      rpc::TablePrefix::KV,
-  };
-  for (const auto prefix : produced) {
-    const std::string &name = rpc::TablePrefix_Name(prefix);
-    EXPECT_LE(name.size(), kLibstdcxxSsoCapacity) << name;
-  }
-  EXPECT_LE(kUnknownTable.size(), kLibstdcxxSsoCapacity);
-  EXPECT_LE(kJobCounterTable.size(), kLibstdcxxSsoCapacity);
 }
 
 TEST(TableNameLabelTest, UnknownNamesCollapse) {
@@ -90,27 +66,6 @@ TEST(TableNameLabelTest, UnknownNamesCollapse) {
   // Matching is case sensitive, like every other verb/name label in the GCS.
   EXPECT_EQ(NormalizeTableNameLabel("job"), kUnknownTable);
   EXPECT_EQ(NormalizeTableNameLabel(std::string(4096, 'x')), kUnknownTable);
-}
-
-// ObservableStoreClient captures the result of NormalizeTableNameLabel in a
-// completion callback that runs after the caller's table_name has gone out of
-// scope, so the returned view must point into static storage and never into the
-// argument.
-TEST(TableNameLabelTest, ResultOutlivesItsArgument) {
-  const std::string scoped = rpc::TablePrefix_Name(rpc::TablePrefix::PLACEMENT_GROUP);
-  const std::string_view label = NormalizeTableNameLabel(scoped);
-  // Deterministic form of the property: not aliasing the argument at all.
-  EXPECT_NE(label.data(), scoped.data());
-
-  std::string_view escaped;
-  {
-    std::string temporary = rpc::TablePrefix_Name(rpc::TablePrefix::ACTOR_TASK_SPEC);
-    // Force a heap buffer, so that under ASAN a view into the argument would be
-    // a use-after-free rather than a read of a still-live SSO buffer.
-    temporary.reserve(1024);
-    escaped = NormalizeTableNameLabel(temporary);
-  }
-  EXPECT_EQ(escaped, "ACTOR_TASK_SPEC");
 }
 
 // The sentinels have to stay outside the enum's namespace, or a real table

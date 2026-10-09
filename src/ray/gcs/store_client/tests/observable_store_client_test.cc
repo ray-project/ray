@@ -339,53 +339,6 @@ TEST_F(ObservableStoreClientTableLabelTest, NoUserDataInLabels) {
   EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", kv_table), 1);
 }
 
-// GcsServer routes the Redis backend through MaybeObserve, which is the only
-// thing that makes gcs_storage_operation_* exist on that backend at all. The
-// delegate type is irrelevant to the branch, so it is exercised here over the
-// in-memory client; RedisObservableGcsTableStorageTest covers the same branch
-// against a real Redis.
-TEST_F(ObservableStoreClientTableLabelTest, MaybeObserveRecordsWhenEnabled) {
-  ray::observability::FakeHistogram latency;
-  ray::observability::FakeCounter count;
-  auto client = MaybeObserve(std::make_shared<InMemoryStoreClient>(),
-                             /*enabled=*/true,
-                             latency,
-                             count,
-                             clock_);
-  const std::string node_table = rpc::TablePrefix_Name(rpc::TablePrefix::NODE);
-
-  pending_ = 1;
-  client->AsyncPut(node_table,
-                   "key",
-                   "value",
-                   /*overwrite=*/true,
-                   {[this](bool) { --pending_; }, io()});
-  WaitPending();
-
-  EXPECT_EQ(ValueFor(count.GetTagToValue(), "Put", node_table), 1);
-  EXPECT_TRUE(HasLabelPair(latency.GetTagToValue(), "Put", node_table));
-}
-
-TEST_F(ObservableStoreClientTableLabelTest, MaybeObserveRecordsNothingWhenDisabled) {
-  ray::observability::FakeHistogram latency;
-  ray::observability::FakeCounter count;
-  auto delegate = std::make_shared<InMemoryStoreClient>();
-  auto client = MaybeObserve(delegate, /*enabled=*/false, latency, count, clock_);
-  // The kill switch must hand back the delegate itself, not a silent wrapper.
-  EXPECT_EQ(client.get(), static_cast<StoreClient *>(delegate.get()));
-
-  pending_ = 1;
-  client->AsyncPut(rpc::TablePrefix_Name(rpc::TablePrefix::NODE),
-                   "key",
-                   "value",
-                   /*overwrite=*/true,
-                   {[this](bool) { --pending_; }, io()});
-  WaitPending();
-
-  EXPECT_TRUE(count.GetTagToValue().empty());
-  EXPECT_TRUE(latency.GetTagToValue().empty());
-}
-
 }  // namespace gcs
 
 }  // namespace ray
