@@ -450,6 +450,10 @@ SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id"
 # returned by /internal/route.
 SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
+# Marks a router-application response that HAProxy should return directly to
+# the client instead of interpreting as an application/replica decision.
+SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER = "x-serve-router-direct-response"
+
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
