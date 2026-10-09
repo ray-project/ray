@@ -299,7 +299,10 @@ def get_all_reported_checkpoints(
 
 @PublicAPI(stability="stable")
 @requires_train_worker()
-def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataIterator"]:
+def get_dataset_shard(
+    dataset_name: Optional[str] = None,
+    state_dict: Optional[Dict[str, Any]] = None,
+) -> Optional["DataIterator"]:
     """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
     Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
@@ -330,6 +333,10 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then
             specifies which dataset shard to return.
+        state_dict: [Experimental] Optional state dict to restore the dataset iterator.
+            This requires data iterator checkpointing to be enabled via
+            ``ray.train.DataConfig(dataset_checkpoint_configs=...)``, and the state
+            dict must be one that was saved with ``DataIterator.state_dict()``.
 
     Returns:
         The ``DataIterator`` shard to use for this worker.
@@ -340,5 +347,6 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
         DatasetShardMetadata(
             dataset_name=dataset_name,
             world_rank=train_fn_utils.get_context().get_world_rank(),
+            state_dict=state_dict,
         )
     )
