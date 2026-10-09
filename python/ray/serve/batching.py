@@ -986,7 +986,7 @@ def batch(
                     raise TypeError(
                         "When using `batch_size_fn`, pass the handler's first input "
                         "parameter as the first argument, positionally or by "
-                        "keyword. `batch_size_fn` can't size `**kwargs` or `*args` "
+                        "keyword. `batch_size_fn` cannot size `**kwargs` or `*args` "
                         "with more than one value."
                     )
 

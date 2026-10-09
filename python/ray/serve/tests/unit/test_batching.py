@@ -1027,7 +1027,7 @@ async def test_batch_size_fn_rejects_var_positional_with_many_values() -> None:
     assert await asyncio.wait_for(func("ab"), timeout=1) == "ab"
 
     calls_before_invalid_request = len(batch_size_fn_calls)
-    with pytest.raises(TypeError, match=r"can't size `\*\*kwargs` or `\*args`"):
+    with pytest.raises(TypeError, match=r"cannot size `\*\*kwargs` or `\*args`"):
         await asyncio.wait_for(func("ab", "cdefgh"), timeout=1)
 
     assert len(batch_size_fn_calls) == calls_before_invalid_request
@@ -1068,7 +1068,7 @@ async def test_batch_size_fn_rejects_variadic_keyword_handler(
         func = batch_decorator(unary_func)
 
     assert await func._is_batching_task_alive()
-    with pytest.raises(TypeError, match=r"can't size `\*\*kwargs` or `\*args`"):
+    with pytest.raises(TypeError, match=r"cannot size `\*\*kwargs` or `\*args`"):
         await asyncio.wait_for(func(**kwargs), timeout=1)
 
     assert batch_size_fn_calls == []

@@ -62,15 +62,11 @@ By default, Ray Serve measures batch size as the number of items in the batch (`
 - **Natural Language Processing (NLP)**: Transformer models batch by total token count, not the number of sequences
 - **Variable-resolution images**: Memory usage depends on total pixels, not the number of images
 
-Use the `batch_size_fn` parameter to define a custom metric for batch size.
+Use the `batch_size_fn` parameter to define a custom metric for batch size. Serve calls `batch_size_fn` with a list that holds each request's value for the method's first parameter after `self`. Pass that value as the first argument of each call, either positionally or by keyword. For example, with `async def predict(self, items, *, tag)`, both `await self.predict(text, tag="t")` and `await self.predict(items=text, tag="t")` pass `text` to `batch_size_fn`.
 
-The sizing function receives a list with each request's value for the handler's
-first input parameter. Pass that value as the first argument, positionally or by
-keyword. For example, with `async def handler(self, items, *, tag)`, both
-`await handler(text, tag="t")` and `await handler(items=text, tag="t")` pass
-`text` to the sizing function. Serve rejects a call that omits the first input
-or passes another keyword argument before it. A first input parameter of
-`**kwargs`, or of `*args` with more than one value, isn't supported.
+:::{note}
+Serve raises a `TypeError` for a call that leaves out the method's first parameter or passes another keyword argument before it. It raises the same error when that parameter is `**kwargs`, or is `*args` and the call passes more than one value.
+:::
 
 ### Graph Neural Network example
 
