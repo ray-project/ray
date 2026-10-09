@@ -1,12 +1,13 @@
 from typing import Dict, List, Optional, Set, Tuple
 
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsProjectionPushdown,
     LogicalPlan,
     Rule,
 )
-from ray.data._internal.logical.operators import Project
+from ray.data._internal.logical.operators import Project, Union
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnSubstitutionVisitor,
@@ -340,9 +341,10 @@ class ProjectionPushdown(Rule):
     """
     Optimization rule that pushes projections (column selections) down the query plan.
 
-    This rule performs two optimizations:
+    This rule performs three optimizations:
     1. Fuses consecutive Project operations to eliminate redundant projections
-    2. Pushes projections into data sources (e.g., Read operations) to enable
+    2. Pushes column selections through Union into each branch
+    3. Pushes projections into data sources (e.g., Read operations) to enable
        column pruning at the storage layer
     """
 
@@ -353,9 +355,49 @@ class ProjectionPushdown(Rule):
         # first, so the fuse/push steps can carry the narrowed columns into the
         # read.
         new_dag = dag._apply_transform(self._prune_aggregate_input)
+        new_dag = new_dag._apply_transform(self._push_projection_through_union)
         new_dag = new_dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
+
+    @classmethod
+    def _push_projection_through_union(cls, op: LogicalOperator) -> LogicalOperator:
+        """Push a plain column selection into each branch of a Union."""
+        if not isinstance(op, Project):
+            return op
+
+        union = op.input_dependencies[0]
+        if not isinstance(union, Union) or not union.input_dependencies:
+            return op
+
+        # Keep this rewrite to pure column selections. Moving computed
+        # expressions or UDFs can change evaluation semantics.
+        if op.has_star_expr() or op._common_sub_exprs:
+            return op
+        if not all(_is_col_expr(expr) for expr in op.exprs):
+            return op
+
+        # A bounded task pool or custom worker resources would be applied
+        # independently to every branch, changing the aggregate resource
+        # limits of the original Project.
+        if not isinstance(op.compute, TaskPoolStrategy) or op.compute.size is not None:
+            return op
+        if (
+            op.ray_remote_args
+            or op.ray_remote_args_fn is not None
+            or op.min_rows_per_bundled_input is not None
+            or op.per_block_limit is not None
+        ):
+            return op
+
+        from dataclasses import replace
+
+        return Union(
+            [
+                replace(op, input_dependencies=[branch])
+                for branch in union.input_dependencies
+            ]
+        )
 
     @classmethod
     def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
