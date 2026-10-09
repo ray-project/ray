@@ -148,6 +148,17 @@ def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_pa
 
     assert path.as_posix() in str(exc_info.value)
 
+def test_json_read_invalid_utf8_includes_path(ray_start_regular_shared, tmp_path):
+    path = tmp_path / "malformed_encoding.json"
+    path.write_bytes(b'[{"name": "\xff"}]')
+
+    with pytest.raises(UnicodeDecodeError) as exc_info:
+        ray.data.read_json(str(path)).materialize()
+
+    error_message = str(exc_info.value)
+    assert path.as_posix() in error_message
+    assert "utf-8" in error_message.lower()
+
 
 @pytest.mark.parametrize(
     "content",

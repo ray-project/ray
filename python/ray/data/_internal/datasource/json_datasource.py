@@ -172,6 +172,18 @@ class ArrowJSONDatasource(FileBasedDatasource):
                     json_error.doc,
                     json_error.pos,
                 ) from json_error
+            except UnicodeDecodeError as decode_error:
+                raise UnicodeDecodeError(
+                    decode_error.encoding,
+                    decode_error.object,
+                    decode_error.start,
+                    decode_error.end,
+                    (
+                        f"{decode_error.reason}. "
+                        f"Failed to read JSON file: {path}. "
+                        "Please check that the file uses a valid text encoding."
+                    ),
+                ) from decode_error
 
 
 class PandasJSONDatasource(FileBasedDatasource):
