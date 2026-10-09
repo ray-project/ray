@@ -16,6 +16,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.http_util import _matches_session_id_header
@@ -88,7 +89,9 @@ class LLMRouter:
     Request:
         POST /internal/route
         Content-Type: application/json
-        Body: the target ChatCompletions or Completions request payload.
+        x-serve-router-request-path: the original client API path.
+        Body: the target ChatCompletions, Completions, or Anthropic Messages
+            request payload.
             Wrapped in a namespace by ``_parse_routing_payload`` and passed to
             ``choose_replica`` positionally, exposing the request fields the way
             the parsed request does. Body-aware policies then score replicas the
@@ -115,8 +118,9 @@ class LLMRouter:
             router-derived multiplexed model ID for the direct replica. Its
             ``"x-serve-router-kv-token-key"`` entry is present only when prompt
             token IDs were enqueued to the selected replica's best-effort ZMQ
-            side channel; the engine falls back to tokenization when it is
-            absent or missing at consume time.
+            side channel (text-only requests with a known API path); the engine
+            falls back to tokenization when it is absent or missing at consume
+            time.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure. When using KV aware routing,
             a pre-routing ``/tokenize`` rejection is surfaced here.
@@ -196,17 +200,25 @@ class LLMRouter:
         # Tokenize only a parseable, routable body; a truncated or unparseable
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
+        stage_token_ids = False
         if self._tokenizer is not None and routing_payload is not None:
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (  # noqa: E501
+                is_text_only_chat,
+            )
             from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
                 TokenizeError,
             )
 
+            payload = vars(routing_payload)
+            request_path = request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
             try:
                 request_token_ids = await self._tokenizer.tokenize(
-                    vars(routing_payload)
+                    payload, request_path=request_path
                 )
             except TokenizeError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.message)
+            # Media needs engine preprocessing, not just prompt token IDs.
+            stage_token_ids = is_text_only_chat(payload.get("messages", []))
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
         # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
@@ -234,7 +246,7 @@ class LLMRouter:
         request_headers = {}
         if multiplexed_model_id:
             request_headers[SERVE_MULTIPLEXED_MODEL_ID] = multiplexed_model_id
-        if request_token_ids:
+        if request_token_ids and stage_token_ids:
             token_key = self._push_prompt_tokens(
                 token_endpoint=token_endpoint,
                 replica_id=replica_id,

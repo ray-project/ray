@@ -27,6 +27,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forward
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
 )
 
 
@@ -240,6 +241,7 @@ def test_token_store_skips_chat_tokenization():
     request.build_chat_params = lambda *args: ChatParams()
     renderer = online_renderer.OnlineRenderer.__new__(online_renderer.OnlineRenderer)
     renderer.renderer = Renderer()
+    renderer.trust_request_mm_kwargs = False
     renderer.model_config = SimpleNamespace(
         multimodal_config=None, enable_prompt_embeds=False
     )
@@ -355,7 +357,9 @@ async def test_routes_tokens_to_replica():
 
     request = MagicMock()
     request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hello"}')
-    request.headers = Headers({})
+    request.headers = Headers(
+        {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/completions"}
+    )
 
     try:
         await _push_until(sender, selected_endpoint, "warmup", [0])

@@ -172,7 +172,7 @@ Serve enables you to rapidly prototype, develop, and deploy scalable LLM applica
 
 Ray Serve is *framework-agnostic*, so you can use it alongside any other Python framework or library. We believe data scientists should not be bound to a particular machine learning framework. They should be empowered to use the best tool available for the job.
 
-Compared to these framework-specific solutions, Ray Serve doesn't perform any model-specific optimizations to make your ML model run faster. However, you can still optimize the models yourself and run them in Ray Serve. For example, you can run a model compiled by [PyTorch JIT](https://pytorch.org/docs/stable/jit.html) or [ONNXRuntime](https://onnxruntime.ai/).
+Compared to these framework-specific solutions, Ray Serve doesn't perform any model-specific optimizations to make your ML model run faster. However, you can still optimize the models yourself and run them in Ray Serve. For example, you can run a model compiled by [PyTorch JIT](https://docs.pytorch.org/docs/stable/jit.html) or [ONNXRuntime](https://onnxruntime.ai/).
 :::
 
 :::{dropdown} AWS SageMaker, Azure ML, Google Vertex AI

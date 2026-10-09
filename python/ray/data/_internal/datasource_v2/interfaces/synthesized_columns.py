@@ -60,8 +60,16 @@ class SynthesizedColumn(ABC):
     The reader owns the plumbing: it advertises :attr:`name`/:attr:`type` in
     the schema, excludes the name from what pyarrow reads, skips the column
     when a projection dropped it, and replaces any same-named column that
-    the file happens to contain. An implementation sets the three class
-    attributes and says how to build the column.
+    the file happens to contain. ``PathColumn`` and ``RowHashColumn`` are
+    the built-in columns.
+
+    Subclass this to add a column that is computed rather than decoded, such
+    as a file modification time. Your subclass should:
+
+        1. Set :attr:`name` and :attr:`type`.
+        2. Set :attr:`requires_read_unit_boundaries` to ``True`` if a value
+           depends on the row's position within its read unit.
+        3. Implement :meth:`compute`.
 
     Attributes:
         name: Column name as it appears in the output schema.

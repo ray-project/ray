@@ -861,10 +861,11 @@ def _backfill_missing_fields(
             # If the field is missing, fill with nulls
             aligned_fields.append(pa.nulls(block_length, type=field_type))
 
-    # Reconstruct the struct column with aligned fields
+    # Preserve parent nulls independently of the aligned child values.
     return pa.StructArray.from_arrays(
         aligned_fields,
         fields=unified_struct_type,
+        mask=column.is_null(),
     )
 
 
@@ -1480,6 +1481,29 @@ def try_combine_chunked_columns(
         new_column_values_arrays.append(new_col)
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
+
+
+def deepcopy_array(
+    array: Union["pyarrow.ChunkedArray", "pyarrow.Array"],
+) -> "pyarrow.Array":
+    """Deepcopy an Arrow array.
+
+    `pa.concat_arrays` copies the input arrays into a new array buffer.
+
+    This utility can be used to sever references to the original buffers
+    and allows them to be freed. See https://github.com/apache/arrow/issues/38806.
+
+    For example, consider a pyarrow table in shared memory that contains many columns.
+    If we keep a column view of the table around as metadata, even though all
+    other columns are no longer referenced, the table would not be freed.
+    If we deepcopy the column instead, the original table can be freed earlier.
+    """
+    chunks = array.chunks if isinstance(array, pyarrow.ChunkedArray) else [array]
+
+    if len(chunks) == 0:
+        return pyarrow.array([], type=array.type)
+
+    return pyarrow.concat_arrays(chunks)
 
 
 def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table":

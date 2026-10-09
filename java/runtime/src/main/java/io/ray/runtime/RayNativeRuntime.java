@@ -71,6 +71,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         // instead of getting session dir from redis.
         String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
         JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+        if (startRayHead) {
+          nativeMaybeEnableTokenAuthIfTokenAvailable();
+        }
 
         GcsNodeInfo nodeInfo = getGcsClient().getNodeToConnectForDriver(rayConfig.nodeIp);
 
@@ -259,6 +262,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       byte[] serializedJobConfig,
       byte[] workerId,
       int runtimeEnvHash);
+
+  private static native void nativeMaybeEnableTokenAuthIfTokenAvailable();
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 

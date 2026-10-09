@@ -638,20 +638,31 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         results = []
         pending = list(refs)
         _LOG_INTERVAL = max(1, len(refs) // 10)  # log ~10 times total
-        while pending:
-            done, pending = ray.wait(
-                pending,
-                num_returns=min(_LOG_INTERVAL, len(pending)),
-                timeout=_REWRITE_STALL_TIMEOUT_S,
-                fetch_local=True,
-            )
-            results.extend(ray.get(done))
-            logger.debug(
-                "[scan-merge] rewrite progress: %d/%d file(s) done (%.1fs elapsed)",
-                len(results),
-                len(refs),
-                time.perf_counter() - t0,
-            )
+        try:
+            while pending:
+                done, pending = ray.wait(
+                    pending,
+                    num_returns=min(_LOG_INTERVAL, len(pending)),
+                    timeout=_REWRITE_STALL_TIMEOUT_S,
+                    fetch_local=True,
+                )
+                if not done:
+                    raise TimeoutError(
+                        f"No Iceberg upsert rewrite task finished in "
+                        f"{_REWRITE_STALL_TIMEOUT_S}s; {len(pending)}/{len(refs)} "
+                        "still pending."
+                    )
+                results.extend(ray.get(done))
+                logger.debug(
+                    "[scan-merge] rewrite progress: %d/%d file(s) done (%.1fs elapsed)",
+                    len(results),
+                    len(refs),
+                    time.perf_counter() - t0,
+                )
+        finally:
+            # Results are discarded if we exit early, so don't leave rewrites running.
+            for ref in pending:
+                ray.cancel(ref)
 
         logger.info(
             "[scan-merge] all %d file(s) rewritten in %.2fs",
