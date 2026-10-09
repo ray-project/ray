@@ -221,7 +221,7 @@ To start the next training step while the checkpoint uploads, use `ray.train.Che
 
 Each `report` call blocks until the previous call's checkpoint upload completes, then starts a new checkpoint upload thread. Ray Train does this to avoid accumulating too many upload threads and potentially running out of memory.
 
-Because `report` returns without waiting for the checkpoint upload to complete, you must keep the local checkpoint directory alive until the checkpoint upload completes. You can't use a temporary directory that Ray Train may delete before the upload finishes, for example from `tempfile.TemporaryDirectory`. `report` also has a `delete_local_checkpoint_after_upload` parameter, which defaults to `True` if `checkpoint_upload_mode` is `ray.train.CheckpointUploadMode.ASYNC`.
+Because `report` returns without waiting for the checkpoint upload to complete, you must keep the local checkpoint directory alive until the checkpoint upload completes. You can't use a directory that's deleted before the upload finishes, such as a `tempfile.TemporaryDirectory`, which Python deletes when its `with` block exits. The following example uses `tempfile.mkdtemp` instead. `report` also has a `delete_local_checkpoint_after_upload` parameter, which defaults to `True` if `checkpoint_upload_mode` is `ray.train.CheckpointUploadMode.ASYNC`, so Ray Train deletes the local checkpoint directory after the upload completes.
 
 ```{literalinclude} ../doc_code/checkpoints.py
 :language: python

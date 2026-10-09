@@ -11,7 +11,7 @@ myst:
 The Ray Train API reference documents Ray Train's public Python API. Each page below covers one group of APIs, such as a framework integration or the configuration classes.
 
 :::{important}
-These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43 by enabling the environment variable `RAY_TRAIN_V2_ENABLED=1`. These APIs assume that the environment variable has been enabled.
+These API references are for the revamped Ray Train V2 implementation, which is the default starting in Ray 2.51. In Ray 2.43 through 2.50, enable it by setting the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 
 See {ref}`train-deprecated-api` for the old API references and the [Ray Train V2 Migration Guide](https://github.com/ray-project/ray/issues/49454).
 :::

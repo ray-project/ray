@@ -92,14 +92,15 @@ Ray Train always requests `max_workers` workers. If it can't get all of them, it
 
 ### What happens when a failure occurs?
 
-When a failure happens, such as a worker crash or a node preemption, Ray Train restarts with fewer workers. It then tries again to bring the worker group back up to `max_workers`. Without a retry limit, the run exits on the first such failure. To retry the run when worker failures occur, configure {attr}`~ray.train.RunConfig.failure_config` with {attr}`~ray.train.FailureConfig.max_failures`:
+When a failure happens, such as a worker crash or a node preemption, Ray Train restarts with fewer workers. It then tries again to bring the worker group back up to `max_workers`. By default, `max_failures` is 0, so the run exits on the first worker failure. Node preemptions count against a separate budget, `max_preemption_failures`, which retries without a limit by default. To retry the run when worker failures occur, configure {attr}`~ray.train.RunConfig.failure_config` with {attr}`~ray.train.FailureConfig.max_failures`:
 
 ```{code-block} python
-:emphasize-lines: 4
+:emphasize-lines: 5
 
 from ray.train import RunConfig, FailureConfig
 
-# Retry up to 3 times on worker failures (e.g. preemption, node loss)
+# Retry up to 3 times on worker failures, such as a worker crash or node loss.
+# Preemptions count separately against max_preemption_failures.
 run_config = RunConfig(failure_config=FailureConfig(max_failures=3))
 
 trainer = TorchTrainer(

@@ -260,7 +260,7 @@ Report metrics and checkpoints to Ray Train to integrate with Ray Tune and suppo
 
 ### Prepare a Transformers `Trainer`
 
-Pass your Transformers `Trainer` to {meth}`~ray.train.huggingface.transformers.prepare_trainer` to validate its configurations and integrate it with Ray Data:
+Pass your Transformers `Trainer` to {meth}`~ray.train.huggingface.transformers.prepare_trainer` to integrate it with Ray Data:
 
 
 ```diff
