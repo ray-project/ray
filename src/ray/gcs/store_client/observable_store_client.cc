@@ -14,6 +14,7 @@
 
 #include "ray/gcs/store_client/observable_store_client.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +23,22 @@
 
 namespace ray {
 namespace gcs {
+
+std::shared_ptr<StoreClient> MaybeObserve(
+    std::shared_ptr<StoreClient> delegate,
+    bool enabled,
+    ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
+    ray::observability::MetricInterface &storage_operation_count_counter,
+    ClockInterface &clock) {
+  if (!enabled) {
+    return delegate;
+  }
+  return std::make_shared<ObservableStoreClient>(
+      std::move(delegate),
+      storage_operation_latency_in_ms_histogram,
+      storage_operation_count_counter,
+      clock);
+}
 
 void ObservableStoreClient::AsyncPut(const std::string &table_name,
                                      const std::string &key,

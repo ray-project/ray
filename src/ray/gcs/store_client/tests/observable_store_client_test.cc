@@ -14,9 +14,15 @@
 
 #include "ray/gcs/store_client/observable_store_client.h"
 
+#include <atomic>
 #include <memory>
+#include <optional>
+#include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest.h"
+#include "ray/asio/io_service_pool.h"
+#include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
 #include "ray/util/clock.h"
@@ -75,6 +81,80 @@ TEST_F(ObservableStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyn
 
 TEST_F(ObservableStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
+}
+
+// GcsServer routes the Redis backend through MaybeObserve, which is the only
+// thing that makes gcs_storage_operation_* exist on that backend at all. The
+// delegate type is irrelevant to the branch, so it is exercised here over the
+// in-memory client; RedisObservableGcsTableStorageTest covers the same branch
+// against a real Redis.
+class MaybeObserveTest : public ::testing::Test {
+ public:
+  void SetUp() override {
+    io_service_pool_ = std::make_shared<IOServicePool>(1);
+    io_service_pool_->Run();
+  }
+
+  void TearDown() override { io_service_pool_->Stop(); }
+
+ protected:
+  // Issues one Put and waits for it to complete, so the latency observer has
+  // fired by the time the test asserts.
+  void PutAndWait(StoreClient &client) {
+    std::atomic<bool> done{false};
+    client.AsyncPut("table",
+                    "key",
+                    "value",
+                    /*overwrite=*/true,
+                    {[&done](bool) { done = true; }, *io_service_pool_->Get()});
+    ASSERT_TRUE(WaitForCondition([&done] { return done.load(); }, 5000));
+  }
+
+  using Recorded =
+      absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>;
+
+  // Matches on Operation alone rather than on the whole tag set, so the test
+  // does not depend on which other tags the wrapper records.
+  static std::optional<double> ValueFor(const Recorded &recorded,
+                                        const std::string &operation) {
+    for (const auto &[tags, value] : recorded) {
+      auto op = tags.find("Operation");
+      if (op != tags.end() && op->second == operation) {
+        return value;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::shared_ptr<IOServicePool> io_service_pool_;
+  ray::FakeClock clock_;
+  ray::observability::FakeHistogram latency_;
+  ray::observability::FakeCounter count_;
+};
+
+TEST_F(MaybeObserveTest, RecordsWhenEnabled) {
+  auto client = MaybeObserve(std::make_shared<InMemoryStoreClient>(),
+                             /*enabled=*/true,
+                             latency_,
+                             count_,
+                             clock_);
+  PutAndWait(*client);
+
+  EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put").value_or(0), 1);
+  // FakeHistogram keeps the last observation, so only its presence is stable.
+  EXPECT_TRUE(ValueFor(latency_.GetTagToValue(), "Put").has_value());
+}
+
+TEST_F(MaybeObserveTest, RecordsNothingWhenDisabled) {
+  auto delegate = std::make_shared<InMemoryStoreClient>();
+  auto client = MaybeObserve(delegate, /*enabled=*/false, latency_, count_, clock_);
+  // The kill switch must hand back the delegate itself, not a silent wrapper.
+  EXPECT_EQ(client.get(), static_cast<StoreClient *>(delegate.get()));
+
+  PutAndWait(*client);
+
+  EXPECT_TRUE(count_.GetTagToValue().empty());
+  EXPECT_TRUE(latency_.GetTagToValue().empty());
 }
 
 }  // namespace gcs
