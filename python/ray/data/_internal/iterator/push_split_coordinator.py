@@ -154,6 +154,9 @@ class _SplitFlow:
             self.target_rows = 0
 
     def in_flight_bytes(self) -> int:
+        # Consumed never exceeds pushed: senders record a push before sending
+        # it, and consumers only report blocks they received. The max() is
+        # only a guard.
         with self.cond:
             return max(0, self.bytes_pushed - self.bytes_consumed)
 
@@ -192,6 +195,9 @@ class PushSplitCoordinator:
         self._teardown_complete_for: Optional[int] = None
         self._finished_splits: Set[int] = set()
         self._gen_epoch_error: Optional[Exception] = None
+        # Set if tearing down the previous epoch failed; the next epoch then
+        # fails for every split, as SplitCoordinator does.
+        self._teardown_error: Optional[Exception] = None
 
         # split_idx -> (handle, key); see register().
         self._consumers: Dict[int, Tuple[ray.actor.ActorHandle, str]] = {}
@@ -360,19 +366,19 @@ class PushSplitCoordinator:
         if is_last_arrival:
             # The last arrival tears down the previous epoch before the
             # barrier releases; done outside self._lock so exiting pushers
-            # can still take it. The barrier is released even if teardown
-            # fails: otherwise the other splits would wait forever, and a
-            # retry would push the arrival count below zero.
+            # can still take it. A teardown failure is raised to every split
+            # (see _try_start_new_epoch), but the barrier is still released:
+            # otherwise the other splits would wait forever, and a retry
+            # would push the arrival count below zero.
+            teardown_error = None
             try:
                 self._teardown_epoch()
-            except Exception:
-                logger.warning(
-                    f"Failed to tear down epoch {starting_epoch}; starting the "
-                    "next epoch anyway.",
-                    exc_info=True,
-                )
+            except Exception as e:
+                logger.warning(f"Failed to tear down epoch {starting_epoch}: {e}")
+                teardown_error = e
             finally:
                 with self._barrier_cond:
+                    self._teardown_error = teardown_error
                     self._teardown_complete_for = starting_epoch
                     self._barrier_cond.notify_all()
 
@@ -434,6 +440,8 @@ class PushSplitCoordinator:
                 self._cur_epoch += 1
                 self._reset_state()
                 try:
+                    if self._teardown_error is not None:
+                        raise self._teardown_error
                     if len(self._consumers) != self._n:
                         raise RuntimeError(
                             f"Expected {self._n} registered consumers, got "
@@ -453,10 +461,10 @@ class PushSplitCoordinator:
                         "clients synced)."
                     )
                 except Exception as e:
-                    logger.warning(
-                        f"Error creating executor for epoch {self._cur_epoch}: {e}"
-                    )
+                    logger.warning(f"Error starting epoch {self._cur_epoch}: {e}")
                     self._gen_epoch_error = e
+                finally:
+                    self._teardown_error = None
 
         if self._gen_epoch_error is not None:
             raise self._gen_epoch_error

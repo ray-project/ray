@@ -134,14 +134,14 @@ def test_start_epoch_rejects_out_of_range_split(ray_start_regular_shared, split_
         _get(coordinator.start_epoch.remote(split_idx))
 
 
-def test_barrier_releases_when_teardown_fails(ray_start_regular_shared):
+def test_teardown_failure_fails_epoch_for_all_splits(ray_start_regular_shared):
     coordinator = _make_coordinator()
     assert ray.get([coordinator.start_epoch.remote(i) for i in range(2)]) == [0, 0]
 
     def _failing_teardown(self):
         raise RuntimeError("teardown failed")
 
-    # Make the previous epoch's teardown fail for the next barrier.
+    # Make the previous epoch's teardown fail at the next barrier.
     ray.get(
         coordinator.__ray_call__.remote(
             lambda self: setattr(
@@ -149,9 +149,18 @@ def test_barrier_releases_when_teardown_fails(ray_start_regular_shared):
             )
         )
     )
-    # Every split still gets the next epoch instead of hanging.
+    # Every split gets the error instead of hanging.
     refs = [coordinator.start_epoch.remote(i) for i in range(2)]
-    assert ray.get(refs, timeout=60) == [1, 1]
+    for ref in refs:
+        with pytest.raises(Exception, match="teardown failed"):
+            ray.get(ref, timeout=60)
+
+    # Once teardown works again, the next epoch starts for every split.
+    ray.get(
+        coordinator.__ray_call__.remote(lambda self: delattr(self, "_teardown_epoch"))
+    )
+    epochs = ray.get([coordinator.start_epoch.remote(i) for i in range(2)], timeout=60)
+    assert epochs[0] == epochs[1]
 
 
 def test_register_rejects_out_of_range_split(ray_start_regular_shared):
