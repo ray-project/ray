@@ -134,7 +134,11 @@ def _is_first_input_value(
     if first_parameter.kind == Parameter.VAR_KEYWORD:
         return False
     if flattened_args[0] != DUMMY_TYPE:
-        return flattened_args[0] == first_parameter.name
+        # Other kinds don't take keywords, so a matching name lands in `**kwargs`.
+        return flattened_args[0] == first_parameter.name and first_parameter.kind in (
+            Parameter.POSITIONAL_OR_KEYWORD,
+            Parameter.KEYWORD_ONLY,
+        )
     if first_parameter.kind == Parameter.VAR_POSITIONAL:
         # `*args` holds every positional value, so it must get exactly one.
         args, _ = recover_args(flattened_args)

@@ -1035,6 +1035,39 @@ async def test_batch_size_fn_rejects_var_positional_with_many_values() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("positional_only", [False, True])
+async def test_batch_size_fn_rejects_keyword_that_lands_in_var_keyword(
+    positional_only: bool,
+) -> None:
+    batch_size_fn_calls = []
+    batch_decorator = serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=lambda items: batch_size_fn_calls.append(items) or len(items),
+    )
+
+    if positional_only:
+
+        @batch_decorator
+        async def func(items: List[str] = "d", /, **extra: List[str]) -> List[str]:
+            return extra["items"]
+
+    else:
+
+        @batch_decorator
+        async def func(*items: List[str], **extra: List[str]) -> List[str]:
+            return extra["items"]
+
+    # `items="x"` binds to `**extra`, not the first parameter. Python 3.11 and
+    # earlier reject the positional only call before it reaches the gate.
+    with pytest.raises(TypeError):
+        await asyncio.wait_for(func(items="x"), timeout=1)
+
+    assert batch_size_fn_calls == []
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [False, True])
 @pytest.mark.parametrize(
     "kwargs",
