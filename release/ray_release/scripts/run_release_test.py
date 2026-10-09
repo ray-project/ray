@@ -131,13 +131,8 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
 
-    # Set for the automatic master runs only, in
-    # .buildkite/release/custom-image-build-and-test-init.sh: the agent costs a
-    # debug session and a minute or two per failure. Compared against "1" rather
-    # than tested for truthiness, so that setting it to 0 turns the agent off,
-    # which is the whole point of having a flag for it.
-    # Reported last so that the analysis is written after the result has been
-    # recorded; where it is printed is decided by run_release_test.sh.
+    # Against "1", so that setting the flag to 0 turns the agent off. Appended
+    # last so the analysis is written after the result has been recorded.
     if os.environ.get("TRIGGER_OBSERVABILITY_AGENT") == "1":
         reporters.append(ObservabilityAgentReporter())
 
