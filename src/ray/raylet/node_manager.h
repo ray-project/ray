@@ -331,6 +331,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                   rpc::ReleaseUnusedBundlesReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ReleaseUnusedActorWorkers` request.
+  // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
+  // still wants (that it keeps tracks of); and the raylet destroys all other actor
+  // workers.
+  void HandleReleaseUnusedActorWorkers(
+      rpc::ReleaseUnusedActorWorkersRequest request,
+      rpc::ReleaseUnusedActorWorkersReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
@@ -643,15 +652,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                         rpc::SendReplyCallback send_reply_callback,
                                         WorkerPoolInterface &worker_pool,
                                         LocalLeaseManagerInterface &local_lease_manager);
-
-  /// Handle a `ReleaseUnusedActorWorkers` request.
-  // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
-  // still wants (that it keeps tracks of); and the raylet destroys all other actor
-  // workers.
-  void HandleReleaseUnusedActorWorkers(
-      rpc::ReleaseUnusedActorWorkersRequest request,
-      rpc::ReleaseUnusedActorWorkersReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ShutdownRaylet` request.
   void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,

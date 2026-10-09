@@ -2330,10 +2330,16 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
 
   std::vector<std::shared_ptr<WorkerInterface>> unused_actor_workers;
   for (auto &iter : leased_workers_) {
-    // We only kill *actor* workers.
-    if (!iter.second->GetActorId().IsNil() &&
-        !in_use_worker_ids.contains(iter.second->WorkerId())) {
-      unused_actor_workers.push_back(iter.second);
+    const auto &worker = iter.second;
+    // We only kill *actor* workers. This includes workers leased for an actor creation
+    // task that hasn't finished yet: they get an actor ID only in ConvertWorkerToActor,
+    // so a lease granted to the previous GCS whose reply was lost would otherwise keep
+    // its worker and resources forever.
+    const bool is_actor_worker =
+        !worker->GetActorId().IsNil() ||
+        worker->GetGrantedLease().GetLeaseSpecification().IsActorCreationTask();
+    if (is_actor_worker && !in_use_worker_ids.contains(worker->WorkerId())) {
+      unused_actor_workers.push_back(worker);
     }
   }
 
