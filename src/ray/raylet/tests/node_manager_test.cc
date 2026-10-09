@@ -1537,6 +1537,56 @@ bool IsBundleRegistered(const PlacementGroupResourceManager &manager,
   return manager.bundle_spec_map_.contains(bundle_id);
 }
 
+TEST_F(NodeManagerTest, RemovePlacementGroupBundlesOnlyStopsRequestedBundleWorkers) {
+  const auto placement_group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  auto make_bundle = [&placement_group_id](int64_t bundle_index) {
+    rpc::Bundle bundle;
+    bundle.mutable_bundle_id()->set_placement_group_id(placement_group_id.Binary());
+    bundle.mutable_bundle_id()->set_bundle_index(bundle_index);
+    (*bundle.mutable_unit_resources())["CPU"] = 1;
+    return std::make_shared<BundleSpecification>(std::move(bundle));
+  };
+  auto bundle0 = make_bundle(0);
+  auto bundle1 = make_bundle(1);
+  ASSERT_TRUE(placement_group_resource_manager_->PrepareBundles({bundle0, bundle1}));
+  placement_group_resource_manager_->CommitBundles({bundle0, bundle1});
+
+  auto make_worker = [this](const BundleID &bundle_id) {
+    const auto lease_id = LeaseID::FromRandom();
+    auto worker =
+        std::make_shared<raylet::FakeWorker>(WorkerID::FromRandom(), 0, io_service_);
+    worker->SetBundleId(bundle_id);
+    rpc::LeaseSpec lease_spec;
+    lease_spec.set_lease_id(lease_id.Binary());
+    lease_spec.set_type(rpc::TaskType::NORMAL_TASK);
+    worker->GrantLease(RayLease(std::move(lease_spec)));
+    worker->GrantLeaseId(lease_id);
+    leased_workers_.emplace(lease_id, worker);
+    return std::make_pair(lease_id, worker);
+  };
+  const auto [lease0, worker0] = make_worker(bundle0->BundleId());
+  const auto [lease1, worker1] = make_worker(bundle1->BundleId());
+  fake_worker_pool_.registered_workers = {worker0, worker1};
+
+  rpc::RemovePlacementGroupBundlesRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  request.add_bundle_specs()->CopyFrom(bundle0->GetMessage());
+  rpc::RemovePlacementGroupBundlesReply reply;
+  bool replied = false;
+  rpc::NodeManagerServiceHandler *handler = node_manager_.get();
+  handler->HandleRemovePlacementGroupBundles(
+      request,
+      &reply,
+      [&replied](Status status, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(status.ok());
+        replied = true;
+      });
+
+  EXPECT_TRUE(replied);
+  EXPECT_FALSE(leased_workers_.contains(lease0));
+  EXPECT_TRUE(leased_workers_.contains(lease1));
+}
+
 class ReleaseUnusedBundlesRetriesTest : public NodeManagerTest,
                                         public ::testing::WithParamInterface<bool> {};
 

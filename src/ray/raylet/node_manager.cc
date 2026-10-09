@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "ray/asio/asio_util.h"
@@ -2043,31 +2044,45 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   RAY_LOG(INFO) << "Got request to remove " << request.bundle_specs_size()
                 << " bundle(s) for placement group " << pg_id;
 
-  // Cancel all lease requests for the placement group removal.
+  std::vector<BundleSpecification> bundle_specs;
+  bundle_specs.reserve(request.bundle_specs_size());
+  absl::flat_hash_set<BundleID> bundle_ids;
+  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
+    bundle_specs.emplace_back(rpc_bundle_spec);
+    const auto &bundle_spec = bundle_specs.back();
+    RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
+        << "Bundles in RemovePlacementGroupBundles must all be in the same placement "
+           "group.";
+    bundle_ids.insert(bundle_spec.BundleId());
+  }
+
+  // Cancel lease requests that use the bundles being removed.
   local_lease_manager_.CancelLeases(
-      [&](const std::shared_ptr<internal::Work> &work) {
+      [&bundle_ids](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id =
             work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
-        return bundle_id.first == pg_id;
+        return bundle_ids.contains(bundle_id);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
+      absl::StrCat("Required placement group bundle is removed from placement group ",
+                   pg_id.Hex(),
+                   "."));
 
-  // Kill all workers that are currently associated with the placement group.
+  // Kill workers that are currently associated with the bundles being removed.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
   // will delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_pg` separately.
-  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
+  // `workers_associated_with_bundles` separately.
+  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_bundles;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (worker->GetBundleId().first == pg_id) {
-      workers_associated_with_pg.emplace_back(worker);
+    if (bundle_ids.contains(worker->GetBundleId())) {
+      workers_associated_with_bundles.emplace_back(worker);
     }
   }
-  for (const auto &worker : workers_associated_with_pg) {
+  for (const auto &worker : workers_associated_with_bundles) {
     std::ostringstream stream;
-    stream << "Destroying worker since its placement group was removed. Placement "
-              "group id: "
+    stream << "Destroying worker since its placement group bundle was removed. "
+              "Placement group id: "
            << worker->GetBundleId().first
            << ", bundle index: " << worker->GetBundleId().second
            << ", lease id: " << worker->GetGrantedLeaseId()
@@ -2079,11 +2094,7 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   }
 
   // Return resources for the placement group bundles.
-  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
-    BundleSpecification bundle_spec(rpc_bundle_spec);
-    RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
-        << "Bundles in RemovePlacementGroupBundles must be all be in the same placement "
-           "group.";
+  for (const auto &bundle_spec : bundle_specs) {
     RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
   }
 
