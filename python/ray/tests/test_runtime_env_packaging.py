@@ -23,6 +23,7 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
 )
 from ray._private.runtime_env import packaging as packaging_module
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
     MAC_OS_ZIP_HIDDEN_DIR_NAME,
@@ -50,8 +51,10 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
     upload_package_to_gcs,
 )
+from ray._private.runtime_env.plugin import create_for_plugin_if_needed
 from ray._private.runtime_env.protocol import ProtocolsProvider
 from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -1889,6 +1892,50 @@ async def test_py_modules_plugin_downloads_whl_from_runtime_env_uri(
     )
 
     assert downloaded_uri == "s3://bucket/path2/package-0.1-py3-none-any.whl"
+
+
+@pytest.mark.asyncio
+async def test_py_modules_plugin_reuses_whl_across_runtime_envs(tmp_path, monkeypatch):
+    wheel_filename = "package-0.1-py3-none-any.whl"
+    runtime_envs = [
+        RuntimeEnv(py_modules=[f"s3://bucket/path{path}/{wheel_filename}"])
+        for path in (1, 2)
+    ]
+    plugin = PyModulesPlugin(str(tmp_path), gcs_client=None)
+    uri_cache = URICache()
+    download_uris = []
+    install_calls = 0
+
+    async def fake_download(uri, *args, **kwargs):
+        download_uris.append(uri)
+        wheel_path = tmp_path / wheel_filename
+        wheel_path.touch()
+        return str(wheel_path)
+
+    async def fake_install(wheel_uri, target_dir, logger):
+        nonlocal install_calls
+        install_calls += 1
+        Path(target_dir).mkdir()
+
+    monkeypatch.setattr(
+        "ray._private.runtime_env.py_modules.download_and_unpack_package",
+        fake_download,
+    )
+    monkeypatch.setattr(
+        "ray._private.runtime_env.py_modules.install_wheel_package", fake_install
+    )
+
+    contexts = [RuntimeEnvContext(), RuntimeEnvContext()]
+    for runtime_env, context in zip(runtime_envs, contexts):
+        await create_for_plugin_if_needed(runtime_env, plugin, uri_cache, context)
+
+    assert download_uris == [runtime_envs[0].py_modules()[0]]
+    assert install_calls == 1
+    expected_module_dir = str(plugin._get_local_dir_from_uri(f"gcs://{wheel_filename}"))
+    python_paths = [
+        context.env_vars["PYTHONPATH"].split(os.pathsep)[0] for context in contexts
+    ]
+    assert python_paths == [expected_module_dir, expected_module_dir]
 
 
 if __name__ == "__main__":

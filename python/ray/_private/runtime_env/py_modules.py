@@ -216,6 +216,10 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         for uri in runtime_env.py_modules():
             if is_whl_uri(uri):
                 _, wheel_filename = parse_uri(uri)
+                # Wheel filenames are treated as package identity by
+                # get_uri_for_package. Different builds with the same filename
+                # therefore share a cache entry, and the first one installed
+                # on a node is reused.
                 if wheel_filename in seen_wheel_filenames:
                     continue
                 seen_wheel_filenames.add(wheel_filename)
