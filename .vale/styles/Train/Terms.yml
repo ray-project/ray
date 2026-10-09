@@ -1,0 +1,49 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-train-docs-style'
+level: warning
+ignorecase: false
+# Ray Train terminology. The forms follow the four concepts doc/source/train/overview.md
+# defines: training function, worker, scaling configuration, and trainer. General prose
+# rules live in the shared Ray/ style package, and Ray Core terms such as "worker
+# process" live in Core/.
+#
+# Terms whose only wrong form is a casing variant, such as `JAX` and `TensorBoard`,
+# live in config/vocabularies/Train/accept.txt instead of here. The accept list drives
+# `Vale.Terms`, which already flags `Jax` and `Tensorboard`, so a swap would alert twice.
+#
+# `vocab: false` so an accept-list entry can't silently shadow a swap. Vocabularies are
+# registered globally, so an entry another library adds would reach these swaps too.
+# See .vale/styles/KubeRay/Terms.yml.
+vocab: false
+# `action: replace` makes Vale's JSON output carry the replacement text, so a tool
+# can apply these swaps from Vale's own alerts. Every swap here must be safe to
+# apply without judgment. A swap that needs a human decision belongs in a rule
+# without the action, such as Train/Capitalization.yml.
+action:
+  name: replace
+swap:
+  # overview.md names the user-defined function "the training function". `train_func`
+  # keeps code style. The swaps are case-sensitive, so "Ray Train function" doesn't
+  # match.
+  'train function': training function
+  'train functions': training functions
+  # Spell out the configuration objects in prose. The classes, such as `ScalingConfig`
+  # and `RunConfig`, keep code style.
+  'scaling config': scaling configuration
+  'scaling configs': scaling configurations
+  'Scaling config': Scaling configuration
+  'run config': run configuration
+  'Run config': Run configuration
+  'checkpoint config': checkpoint configuration
+  'Checkpoint config': Checkpoint configuration
+  # Hyphenate the verb and its forms. Model and file names that contain "finetune"
+  # belong in code style, where Vale doesn't look.
+  finetune: fine-tune
+  finetunes: fine-tunes
+  finetuned: fine-tuned
+  finetuning: fine-tuning
+  Finetune: Fine-tune
+  Finetuning: Fine-tuning
+  # Ray Train V2 is the name of the current Ray Train API.
+  'Train v2': Train V2

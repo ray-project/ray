@@ -1,0 +1,41 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-train-docs-style'
+level: warning
+ignorecase: false
+# Ray Train generic nouns written in title case. These are the companion to
+# Train/Terms.yml, split out because a fix here needs judgment, so this rule carries no
+# `action: replace`, and a tool applying swaps from Vale's JSON output skips it.
+#
+# Two kinds of judgment:
+#
+# - Heading and sentence starts. The swaps lowercase the whole phrase, but when the
+#   phrase opens a heading or a sentence, its first word keeps its capital, such as
+#   "## Training function". The swaps are case-sensitive, so a sentence-initial
+#   "Training function" doesn't match.
+# - "Trainer". Write "trainer" in prose for the Ray Train concept, and put a class name
+#   in code style, such as `TorchTrainer`. The swaps carry a preceding word because a
+#   bare "Trainer" is often a third-party class name in prose, such as "the Lightning
+#   Trainer" or "the HF Trainer". Those need code style, not lowercase, so a human
+#   decides each one.
+#
+# `vocab: false` for the same reason as Train/Terms.yml.
+vocab: false
+swap:
+  'the Trainer': the trainer
+  "the Trainer's": "the trainer's"
+  'a Trainer': a trainer
+  'your Trainer': your trainer
+  'Ray Train Trainers': Ray Train trainers
+  'Ray Train Trainer': Ray Train trainer
+  'Training Functions': training functions
+  'Training Function': training function
+  'Training Loop': training loop
+  'Scaling Configuration': scaling configuration
+  'Worker Groups': worker groups
+  'Worker Group': worker group
+  'Train Workers': training workers
+  'Train Worker': training worker
+  'Local Mode': local mode
+  'Elastic Training': elastic training
+  'Fault Tolerance': fault tolerance
