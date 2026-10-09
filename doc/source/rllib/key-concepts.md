@@ -190,7 +190,7 @@ The {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class des
 Both `Episode` classes store the entire trajectory data generated while stepping through an {ref}`RL environment <rllib-key-concepts-environments>`. This data includes the observations, info dicts, actions, rewards, termination signals, and any model computations along the way, such as recurrent states, action logits, or action log probabilities.
 
 :::{tip}
-See [RLlib's standardized column names](https://github.com/ray-project/ray/blob/master/rllib/core/columns.py).
+See [RLlib's standardized column names](https://github.com/ray-project/ray/blob/master/python/ray/rllib/core/columns.py).
 
 Episodes don't store any `next obs` information, because it always overlaps with the information under `obs`. This design saves almost 50% of memory, because observations are often the largest piece in a trajectory. The same is true for `state_in` and `state_out` information for stateful networks. RLlib keeps only the `state_out` key in the episodes.
 :::
