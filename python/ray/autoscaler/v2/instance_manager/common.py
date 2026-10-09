@@ -2,7 +2,17 @@ import time
 import uuid
 from typing import Dict, List, Optional, Set
 
+from ray._private.ray_constants import env_integer
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
+
+# Upper bound on retained status-history entries per instance. The history is
+# append-only and read only for the most recent transitions (e.g. latest
+# details, per-status timestamps), so trimming the oldest entries bounds the
+# memory a single long-lived or repeatedly-stuck instance can hold while
+# preserving every read done by the reconciler.
+MAX_STATUS_HISTORY_LENGTH = env_integer(
+    "RAY_AUTOSCALER_INSTANCE_MAX_STATUS_HISTORY_LENGTH", 200
+)
 
 
 class InstanceUtil:
@@ -165,6 +175,12 @@ class InstanceUtil:
                 details=details,
             )
         )
+        # Bound the append-only history so an instance that is repeatedly stuck
+        # or retried before reaching a terminal state cannot grow unboundedly.
+        # Only the most recent transitions are ever read, so drop the oldest.
+        overflow = len(instance.status_history) - MAX_STATUS_HISTORY_LENGTH
+        if overflow > 0:
+            del instance.status_history[:overflow]
 
     @staticmethod
     def has_timeout(instance: Instance, timeout_s: int) -> bool:

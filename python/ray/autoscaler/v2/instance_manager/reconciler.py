@@ -336,6 +336,16 @@ class Reconciler:
             autoscaling_config=autoscaling_config,
         )
 
+        # Reclaim long-TERMINATED instance records last, so this cycle's
+        # _fill_autoscaling_state still reports instances terminated earlier in
+        # the same cycle. TERMINATED is terminal and nothing else deletes these
+        # records, so without this the storage scanned every cycle grows without
+        # bound on churning clusters and the autoscaler eventually OOMs.
+        Reconciler._gc_terminated_instances(
+            instance_manager=instance_manager,
+            reconcile_config=autoscaling_config.get_instance_reconcile_config(),
+        )
+
     #######################################################
     # Utility methods for reconciling instance states.
     #######################################################
@@ -701,6 +711,57 @@ class Reconciler:
         assert (
             reply.status.code == StatusCode.OK
         ), f"Failed to update instance manager: {reply}"
+
+    @staticmethod
+    def _gc_terminated_instances(
+        instance_manager: InstanceManager,
+        reconcile_config: InstanceReconcileConfig,
+    ) -> None:
+        """Delete TERMINATED instance records retained past the GC window.
+
+        TERMINATED is a terminal status (no outgoing transitions) and no other
+        reconcile step removes these records, so the instance storage—read in
+        full every cycle and serialized into AutoscalingState—otherwise grows
+        without bound on instance-churning clusters until the autoscaler OOMs.
+        Records are kept for ``terminated_instance_gc_retention_s`` after they
+        enter TERMINATED so a just-terminated instance stays reportable for at
+        least one more cycle before being reclaimed.
+        """
+        retention_s = reconcile_config.terminated_instance_gc_retention_s
+        if retention_s < 0:
+            # Negative retention disables GC (escape hatch for debugging).
+            return
+
+        instances, version = Reconciler._get_im_instances(instance_manager)
+        now_ns = time.time_ns()
+        retention_ns = retention_s * 1_000_000_000
+        to_delete: List[str] = []
+        for instance in instances:
+            if instance.status != IMInstance.TERMINATED:
+                continue
+            terminated_times = InstanceUtil.get_status_transition_times_ns(
+                instance, IMInstance.TERMINATED
+            )
+            if not terminated_times:
+                continue
+            if now_ns - max(terminated_times) >= retention_ns:
+                to_delete.append(instance.instance_id)
+
+        if not to_delete:
+            return
+
+        success, _ = instance_manager._instance_storage.batch_delete_instances(
+            instance_ids=to_delete,
+            expected_storage_version=version,
+        )
+        # A version mismatch means another write landed first; the records are
+        # still TERMINATED and will be retried next cycle, so this is not fatal.
+        if not success:
+            logger.debug(
+                "Deferred GC of %d TERMINATED instances due to storage version "
+                "mismatch; will retry next reconcile.",
+                len(to_delete),
+            )
 
     @staticmethod
     def _handle_ray_status_transition(
