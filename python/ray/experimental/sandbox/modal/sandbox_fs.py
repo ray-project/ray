@@ -277,7 +277,9 @@ class _SandboxFilesystem:
         _fs.validate_absolute_remote_path(remote_path, "make_directory")
         with _fs.translate_exec_errors("make_directory", remote_path):
             result = await self._run(
-                _fs.make_make_directory_command(remote_path, create_parents)
+                _fs.make_make_directory_command(
+                    remote_path, create_parents, self._bucket_mounts
+                )
             )
         if result["returncode"] != 0:
             _fs.raise_make_directory_error(
@@ -302,7 +304,9 @@ class _SandboxFilesystem:
         """
         _fs.validate_absolute_remote_path(remote_path, "remove")
         with _fs.translate_exec_errors("remove", remote_path):
-            result = await self._run(_fs.make_remove_command(remote_path, recursive))
+            result = await self._run(
+                _fs.make_remove_command(remote_path, recursive, self._bucket_mounts)
+            )
         if result["returncode"] != 0:
             _fs.raise_remove_error(result["returncode"], result["stderr"], remote_path)
 
@@ -428,6 +432,11 @@ class _SandboxFilesystem:
     # -- internals ---------------------------------------------------------
 
     @property
+    def _bucket_mounts(self):
+        """The sandbox's bucket mounts, as ``(path, read_only)`` pairs."""
+        return getattr(self._sandbox, "_bucket_mounts", ())
+
+    @property
     def _actor(self):
         # This namespace can outlive detach() in a variable. On Modal its
         # calls then fail through their exec; here they would have kept
@@ -488,10 +497,16 @@ class _SandboxFilesystem:
         """
         actor = self._actor
         temp_path = _fs.make_temp_path(remote_path)
+        # Where the payload goes depends on whether the destination is in a
+        # bucket mount, which the script decides inside the sandbox; clean up
+        # either one on an abort.
+        temp_paths = [temp_path]
+        if self._bucket_mounts:
+            temp_paths.append(_fs.make_stage_path(temp_path))
         # client_released, as in _stream_file: the stderr a failure is reported
         # from must still be there when it is drained below.
         exec_id = await actor.exec_start.remote(
-            _fs.make_write_file_command(remote_path, temp_path),
+            _fs.make_write_file_command(remote_path, temp_path, self._bucket_mounts),
             stdout_devnull=True,
             client_released=True,
         )
@@ -544,19 +559,19 @@ class _SandboxFilesystem:
             # have left it behind. Cleaning up only after a failure in the
             # chunk loop missed the cancellations after it.
             if returncode is None or returncode >= 128:
-                await self._remove_quietly(actor, temp_path)
+                await self._remove_quietly(actor, *temp_paths)
 
     @staticmethod
-    async def _remove_quietly(actor, path: str) -> None:
-        """Delete an aborted upload's temporary file, never masking the error.
+    async def _remove_quietly(actor, *paths: str) -> None:
+        """Delete an aborted upload's temporary files, never masking the error.
 
         The killed command could not do it itself; left alone, the hidden
         partial file would sit beside its destination for good.
         """
         try:
-            await actor.exec_collect.remote(_fs.make_remove_temp_command(path))
+            await actor.exec_collect.remote(_fs.make_remove_temp_command(*paths))
         except Exception:
-            logger.debug("Failed to remove %s", path, exc_info=True)
+            logger.debug("Failed to remove %s", paths, exc_info=True)
 
     @staticmethod
     async def _release(actor, exec_id: str) -> None:

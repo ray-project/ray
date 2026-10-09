@@ -11,6 +11,7 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
+    BucketMount,
     parse_memory_bytes,
 )
 from ray.experimental.sandbox.exceptions import (
@@ -81,7 +82,10 @@ def create(
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
-        **kwargs: Additional options.
+        **kwargs: Additional options, such as ``bucket_mounts``: a list of
+            :class:`~ray.experimental.sandbox.config.BucketMount` public
+            buckets to mount (see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`).
 
     Returns:
         A Sandbox actor handle.
@@ -116,6 +120,7 @@ def create(
 
 __all__ = [
     "create",
+    "BucketMount",
     "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",

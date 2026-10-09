@@ -1,6 +1,10 @@
+import posixpath
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Union
+from urllib.parse import urlparse
+
+from ray.util.annotations import PublicAPI
 
 # Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
 # --network; "public" runs runsc with host networking inside a per-sandbox
@@ -34,6 +38,109 @@ DOCKER_DEFAULT_CAPABILITIES = [
     "CAP_SETUID",
     "CAP_SYS_CHROOT",
 ]
+
+
+# Paths the runtime itself mounts or generates in every sandbox. A bucket mount
+# may not land on, inside, or above any of them: a bucket at /etc would hide the
+# generated resolv.conf and hosts.
+RUNTIME_MANAGED_PATHS = ("/proc", "/dev", "/sys", "/etc/resolv.conf", "/etc/hosts")
+
+
+def _is_at_or_under(path: str, root: str) -> bool:
+    """Whether ``path`` is ``root`` or lies beneath it (both canonical)."""
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class BucketMount:
+    """A public S3-compatible bucket mounted into a sandbox.
+
+    The bucket is mounted on the node with AWS Mountpoint (``mount-s3``),
+    anonymously, and bind-mounted into the sandbox at ``mount_path``. Only
+    public buckets work: no credentials are ever loaded. Files follow
+    Mountpoint's semantics: sequential writes only, an existing file can be
+    replaced but not appended to, and renames are not supported. Files appear
+    owned by the sandbox's root user with modes 0755 (directories) and 0644
+    (files), the same as on Modal; commands run as another user (``exec(...,
+    user=...)``) can read them but not create or change files.
+
+    Attributes:
+        bucket_name: Name of the bucket.
+        mount_path: Absolute path inside the sandbox to mount it at.
+        endpoint_url: Endpoint of an S3-compatible service, e.g.
+            "https://storage.googleapis.com". None means AWS S3.
+        key_prefix: Only expose keys under this prefix, which must end in "/".
+        region: The bucket's region. None detects it, except for Cloudflare R2
+            endpoints, which use "auto".
+        read_only: Mount the bucket read-only (default).
+        force_path_style: Address the bucket as ``<endpoint>/<bucket>`` rather
+            than ``<bucket>.<endpoint>``, as some S3-compatible services need.
+    """
+
+    bucket_name: str
+    mount_path: str
+    endpoint_url: Optional[str] = None
+    key_prefix: Optional[str] = None
+    region: Optional[str] = None
+    read_only: bool = True
+    force_path_style: bool = False
+
+    def __post_init__(self):
+        path = self.mount_path
+        if (
+            not isinstance(path, str)
+            or not path.startswith("/")
+            or path.startswith("//")
+            or posixpath.normpath(path) != path
+        ):
+            raise ValueError(
+                f"Bucket mount path {path!r} must be a canonical, absolute path."
+            )
+        if path in ("/", "/tmp"):
+            raise ValueError(f"A bucket cannot be mounted at {path!r}.")
+        for managed in RUNTIME_MANAGED_PATHS:
+            if _is_at_or_under(path, managed) or _is_at_or_under(managed, path):
+                raise ValueError(
+                    f"A bucket cannot be mounted at {path!r}: it overlaps "
+                    f"{managed!r}, which the sandbox runtime manages."
+                )
+        # The name and region are passed to mount-s3 as arguments, so nothing
+        # in them may read as a flag or split into two arguments.
+        name = self.bucket_name
+        if (
+            not isinstance(name, str)
+            or not name
+            or name.startswith("-")
+            or "/" in name
+            or any(c.isspace() for c in name)
+        ):
+            raise ValueError(f"Invalid bucket name {name!r}.")
+        if self.region is not None and (
+            not self.region
+            or self.region.startswith("-")
+            or any(c.isspace() for c in self.region)
+        ):
+            raise ValueError(f"Invalid bucket region {self.region!r}.")
+        if self.key_prefix and not self.key_prefix.endswith("/"):
+            raise ValueError(
+                "key_prefix will be prefixed to all object paths, so it must "
+                "end in a '/'"
+            )
+        if self.endpoint_url is not None:
+            try:
+                parsed = urlparse(self.endpoint_url)
+            except ValueError:
+                parsed = None
+            if (
+                parsed is None
+                or parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+            ):
+                raise ValueError(
+                    "Bucket endpoint_url must be an http(s) URL with a host, got "
+                    f"{self.endpoint_url!r}."
+                )
 
 
 def parse_memory_bytes(memory: Optional[Union[str, int, float]]) -> Optional[int]:
@@ -129,6 +236,12 @@ class SandboxConfig:
             writable through the per-sandbox copy-on-write overlay: image
             content stays visible, sandboxes don't interfere with each
             other, and the base image is never modified.
+        bucket_mounts: Public cloud buckets to mount, as :class:`BucketMount`
+            values. Requires ``mount-s3`` and a usable ``/dev/fuse`` on the
+            node. Mount paths must be distinct and not nested inside one
+            another. On a readonly rootfs, the sandbox runs on a private
+            writable overlay instead, as with an explicit ``workdir``,
+            because runsc cannot create mount points in a read-only image.
     """
 
     image: str
@@ -144,6 +257,7 @@ class SandboxConfig:
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
     readonly: bool = True
+    bucket_mounts: List[BucketMount] = field(default_factory=list)
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
     )
@@ -170,6 +284,39 @@ class SandboxConfig:
                 "dns is only valid with network='public' or network='host'; "
                 f"network={self.network!r} does not mount a resolv.conf."
             )
+        self._validate_bucket_mounts()
+
+    def _validate_bucket_mounts(self) -> None:
+        if self.bucket_mounts is None:
+            self.bucket_mounts = []
+        paths = []
+        for mount in self.bucket_mounts:
+            if not isinstance(mount, BucketMount):
+                raise ValueError(
+                    "bucket_mounts must contain BucketMount values, got "
+                    f"{type(mount).__name__}."
+                )
+            paths.append(mount.mount_path)
+        for i, path in enumerate(paths):
+            for other in paths[i + 1 :]:
+                if path == other:
+                    raise ValueError(f"Two bucket mounts share the path {path!r}.")
+                # runsc would have to create the inner mount point inside the
+                # outer FUSE mount, which fails on a read-only bucket.
+                if _is_at_or_under(path, other) or _is_at_or_under(other, path):
+                    raise ValueError(
+                        f"Bucket mounts at {path!r} and {other!r} are nested; "
+                        "mount them at separate paths instead."
+                    )
+        if self.workdir and self.readonly:
+            workdir = posixpath.normpath(self.workdir)
+            for path in paths:
+                if _is_at_or_under(workdir, path):
+                    raise ValueError(
+                        f"workdir {self.workdir!r} lies in the bucket mounted at "
+                        f"{path!r}; on a readonly rootfs the workdir is a "
+                        "separate writable mount and would hide the bucket."
+                    )
 
 
 GVisorSandboxConfig = SandboxConfig

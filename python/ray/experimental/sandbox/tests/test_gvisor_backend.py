@@ -1,5 +1,7 @@
+import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -838,6 +840,317 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+class _RecordingImageManager:
+    """Just enough of an image manager for create_sandbox's bookkeeping,
+    failing at a chosen step."""
+
+    def __init__(self, fail_at=None, events=None, fail_release=False):
+        self.fail_at = fail_at
+        self.fail_release = fail_release
+        self.released = []
+        self.bundle_kwargs = None
+        self.events = events if events is not None else []
+
+    def pull_image(self, image, timeout_seconds=None, instance_id=None):
+        self.events.append("image pulled")
+        if self.fail_at == "pull":
+            raise RuntimeError("pull failed")
+        return "/nonexistent"
+
+    def get_image_config(self, image):
+        return {}
+
+    def get_workdir(self, image):
+        return None
+
+    def prepare_oci_bundle(self, **kwargs):
+        self.bundle_kwargs = kwargs
+        if self.fail_at == "bundle":
+            raise RuntimeError("bundle failed")
+
+    def release_image(self, image, instance_id):
+        self.released.append(instance_id)
+        if self.fail_release:
+            raise RuntimeError("release failed")
+
+
+class _RecordingMountSet:
+    def __init__(self, fail_start=False, events=None, detaches=True):
+        self.fail_start = fail_start
+        self.detaches = detaches
+        self.stopped = False
+        self.events = events if events is not None else []
+
+    def bind_mounts(self):
+        return [("/data", "/host/mounts/0", True)]
+
+    def start(self):
+        self.events.append("mounts started")
+        if self.fail_start:
+            raise SandboxCreationError("mount failed")
+
+    def detach(self):
+        self.events.append("mounts detached")
+        return self.detaches
+
+    def stop(self):
+        self.stopped = True
+
+
+class _RecordingSupervisor:
+    pid, start_time = 4242, 77
+
+    def __init__(self, events):
+        self.events = events
+        events.append("supervisor started")
+
+    def wait_ready(self):
+        self.events.append("supervisor ready")
+        return self.pid, self.start_time
+
+    def disarm(self):
+        self.events.append("supervisor disarmed")
+
+    def hand_over(self):
+        self.events.append("supervisor handed over")
+
+
+@pytest.fixture
+def isolated_backend(tmp_path, monkeypatch):
+    """A backend whose sandbox tree is in tmp, that never runs runsc, and whose
+    supervisors record what happens to them in ``events``."""
+    from ray.experimental.sandbox.backend import gvisor
+
+    events = []
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path / "sandbox"))
+    monkeypatch.setattr(gvisor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(gvisor.bucket_mount, "check_prerequisites", lambda: None)
+    monkeypatch.setattr(GVisorSandboxBackend, "_start_orphan_sweep", lambda self: None)
+    monkeypatch.setattr(
+        GVisorSandboxBackend,
+        "_start_supervisor",
+        lambda self, config, sandbox_id: _RecordingSupervisor(events),
+    )
+    return gvisor, tmp_path / "sandbox", events
+
+
+@pytest.fixture
+def fake_runsc(isolated_backend, monkeypatch):
+    """runsc stand-ins for a create and delete that go all the way through:
+    `runsc run` is a process with this test's pid, which is never signalled."""
+    gvisor, _, events = isolated_backend
+
+    class _Proc:
+        pid = os.getpid()
+
+    monkeypatch.setattr(
+        gvisor.subprocess,
+        "Popen",
+        lambda *a, **k: events.append("runsc started") or _Proc(),
+    )
+    monkeypatch.setattr(
+        GVisorSandboxBackend,
+        "_wait_until_running",
+        lambda self, *a: events.append("container running"),
+    )
+    monkeypatch.setattr(
+        gvisor.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a[0], 0, b"", b""),
+    )
+    monkeypatch.setattr(GVisorSandboxBackend, "_terminate_tree", lambda self, p: None)
+    return isolated_backend
+
+
+@pytest.mark.parametrize("fail_at", ["pull", "bundle"])
+def test_create_failure_removes_the_sandbox_tree(isolated_backend, fail_at):
+    """Both early failure paths used to release the image but leave root_dir.
+    Nothing is left, so the supervisor is dismissed."""
+    gvisor, sandbox_dir, events = isolated_backend
+    images = _RecordingImageManager(fail_at=fail_at)
+    backend = GVisorSandboxBackend(image_manager=images)
+    with pytest.raises(Exception):
+        backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    assert os.listdir(sandbox_dir) == []
+    assert len(images.released) == 1
+    assert events[-1] == "supervisor disarmed"
+    # A sandbox without bucket mounts never passes bind_mounts at all.
+    if fail_at == "bundle":
+        assert "bind_mounts" not in images.bundle_kwargs
+
+
+def test_bucket_mount_failure_stops_mounts_and_cleans_up(isolated_backend, monkeypatch):
+    from ray.experimental.sandbox.config import BucketMount
+
+    gvisor, sandbox_dir, _ = isolated_backend
+    mount_set = _RecordingMountSet(fail_start=True)
+    allocated = {}
+    monkeypatch.setattr(
+        gvisor.bucket_mount.BucketMountSet,
+        "allocate",
+        lambda sandbox_id, mounts, **kw: allocated.update(kw) or mount_set,
+    )
+    images = _RecordingImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
+    config = GVisorSandboxConfig(
+        image="busybox:latest", bucket_mounts=[BucketMount("b", "/data")]
+    )
+    with pytest.raises(SandboxCreationError, match="mount failed"):
+        backend.create_sandbox(config)
+    assert images.bundle_kwargs["bind_mounts"] == [("/data", "/host/mounts/0", True)]
+    # The mount directory names the supervisor, for the sweep's liveness check.
+    assert allocated == {"supervisor": (4242, 77)}
+    assert mount_set.stopped
+    assert os.listdir(sandbox_dir) == []
+    assert len(images.released) == 1
+
+
+def _bucket_config():
+    from ray.experimental.sandbox.config import BucketMount
+
+    return GVisorSandboxConfig(
+        image="busybox:latest", bucket_mounts=[BucketMount("b", "/data")]
+    )
+
+
+def test_bucket_mounts_are_detached_once_the_container_runs(fake_runsc, monkeypatch):
+    """The supervisor starts before anything of the sandbox exists, and is
+    ready before the mounts; the node's mountpoints go only after runsc
+    reports the container running, since the gofer binds them as the
+    container starts. A full delete dismisses the supervisor."""
+    gvisor, sandbox_dir, events = fake_runsc
+    mount_set = _RecordingMountSet(events=events)
+    monkeypatch.setattr(
+        gvisor.bucket_mount.BucketMountSet,
+        "allocate",
+        lambda sandbox_id, mounts, **kw: mount_set,
+    )
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager(events=events))
+    sandbox_id = backend.create_sandbox(_bucket_config())
+    assert events == [
+        "supervisor started",
+        "image pulled",
+        "supervisor ready",
+        "mounts started",
+        "runsc started",
+        "container running",
+        "mounts detached",
+    ]
+    assert backend._sandbox_metadata[sandbox_id]["bucket_mounts"] is mount_set
+    with open(sandbox_dir / sandbox_id / "owner.json") as f:
+        owner = json.load(f)
+    assert (owner["supervisor_pid"], owner["supervisor_start_time"]) == (4242, 77)
+    assert (owner["rootless"], owner["ignore_cgroups"]) == (True, True)
+
+    backend.delete_sandbox(sandbox_id)
+    assert mount_set.stopped
+    assert not (sandbox_dir / sandbox_id).exists()
+    assert events[-1] == "supervisor disarmed"
+
+
+def test_the_run_group_is_recorded(fake_runsc):
+    """Before runsc is waited on, so a worker that dies in the wait still
+    leaves the group's id for the supervisor."""
+    from ray.experimental.sandbox._internal import teardown
+
+    _, sandbox_dir, _ = fake_runsc
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    sandbox_id = backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    with open(sandbox_dir / sandbox_id / "run.pgid") as f:
+        assert json.load(f) == {
+            "pgid": os.getpid(),
+            "start_time": teardown._proc_start_time(os.getpid()),
+        }
+    backend.delete_sandbox(sandbox_id)
+
+
+def test_a_failed_detach_fails_the_create(fake_runsc, monkeypatch):
+    """A bucket still attached to the node would outlive its sandbox."""
+    gvisor, sandbox_dir, events = fake_runsc
+    mount_set = _RecordingMountSet(detaches=False)
+    monkeypatch.setattr(
+        gvisor.bucket_mount.BucketMountSet,
+        "allocate",
+        lambda sandbox_id, mounts, **kw: mount_set,
+    )
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    with pytest.raises(SandboxCreationError, match="Failed to detach"):
+        backend.create_sandbox(_bucket_config())
+    assert mount_set.stopped
+    assert os.listdir(sandbox_dir) == []
+    assert events[-1] == "supervisor disarmed"
+
+
+@pytest.mark.parametrize("path", ["create", "delete"])
+def test_a_teardown_that_fails_is_handed_over_to_the_supervisor(fake_runsc, path):
+    """The supervisor retries all of it: here the image pin, still in place."""
+    _, _, events = fake_runsc
+    if path == "create":
+        images = _RecordingImageManager(fail_at="bundle", fail_release=True)
+        backend = GVisorSandboxBackend(image_manager=images)
+        with pytest.raises(RuntimeError, match="bundle failed"):
+            backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    else:
+        images = _RecordingImageManager(fail_release=True)
+        backend = GVisorSandboxBackend(image_manager=images)
+        sandbox_id = backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+        with pytest.raises(RuntimeError, match="release failed"):
+            backend.delete_sandbox(sandbox_id)
+    assert len(images.released) == 1
+    assert events[-1] == "supervisor handed over"
+    assert "supervisor disarmed" not in events
+
+
+def test_a_supervisor_that_cannot_start_fails_the_create(isolated_backend, monkeypatch):
+    """Before anything of the sandbox exists, so nothing is left behind."""
+    _, sandbox_dir, _ = isolated_backend
+
+    def cannot_start(self, config, sandbox_id):
+        raise OSError(24, "Too many open files")
+
+    monkeypatch.setattr(GVisorSandboxBackend, "_start_supervisor", cannot_start)
+    images = _RecordingImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
+    with pytest.raises(SandboxCreationError, match="Too many open files"):
+        backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    assert not sandbox_dir.exists() or os.listdir(sandbox_dir) == []
+    assert images.events == []
+
+
+def test_host_requirements_are_checked_before_the_pull(monkeypatch):
+    """A node without mount-s3 fails before downloading the image."""
+    from ray.experimental.sandbox._internal import bucket_mount
+    from ray.experimental.sandbox.config import BucketMount
+
+    def missing():
+        raise SandboxCreationError("no mount-s3")
+
+    monkeypatch.setattr(bucket_mount, "check_prerequisites", missing)
+    runtime = SandboxRuntime()
+    monkeypatch.setattr(
+        runtime.image_manager,
+        "pull_image",
+        lambda *a, **k: pytest.fail("pulled before checking the host"),
+    )
+    with pytest.raises(SandboxCreationError, match="no mount-s3"):
+        runtime.create("busybox:latest", bucket_mounts=[BucketMount("b", "/data")])
+
+
+@pytest.mark.parametrize("network", ["none", "public", "host"])
+def test_bucket_sandboxes_keep_directfs(network):
+    """directfs off breaks mountpoint writes through the gofer: never pass it."""
+    from ray.experimental.sandbox.config import BucketMount
+
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        network=network,
+        bucket_mounts=[BucketMount("b", "/data")],
+    )
+    argv = " ".join(backend._build_run_command(cfg, "/tmp/rd", "sb-1"))
+    assert "directfs" not in argv
 
 
 if __name__ == "__main__":

@@ -95,7 +95,9 @@ class SandboxRuntime:
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             _ignore_cgroups: PRIVATE — testing only. If True, passes --ignore-cgroups to runsc.
-            **kwargs: Additional parameters.
+            **kwargs: Additional parameters. For example ``bucket_mounts``, a list of
+                :class:`~ray.experimental.sandbox.config.BucketMount` (see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`).
 
         Returns:
             A unique string identifier for the created sandbox.
@@ -117,6 +119,14 @@ class SandboxRuntime:
             _ignore_cgroups=_ignore_cgroups,
             **kwargs,
         )
+        # Before the pull: a node that lacks a host tool fails at once rather
+        # than after downloading the image. Looked up rather than called
+        # outright, so a backend written before the hook existed still works.
+        check_host_requirements = getattr(
+            self._backend, "check_host_requirements", None
+        )
+        if check_host_requirements is not None:
+            check_host_requirements(cfg)
         self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
         instance_id = self._backend.create_sandbox(cfg)
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:

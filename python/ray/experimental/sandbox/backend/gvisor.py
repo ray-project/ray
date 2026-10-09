@@ -5,10 +5,13 @@ import shlex
 import shutil
 import signal
 import subprocess
+import threading
 import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import bucket_mount, teardown
+from ray.experimental.sandbox._internal.image_utils import DEFAULT_IMAGES_DIR
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -36,6 +39,10 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
 # What runsc reports when the image cannot supply the container's init process.
 _MISSING_PAUSE_BINARY = 'error finding executable "sleep"'
+
+# One sweep for what dead workers left at a time, per process: a create while
+# one runs has nothing to add.
+_ORPHAN_SWEEP_LOCK = threading.Lock()
 
 
 def _startup_failure_hint(stderr: str) -> str:
@@ -115,6 +122,81 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def __init__(self, image_manager: Optional[BaseImageManager] = None):
         super().__init__(image_manager=image_manager)
         self._sandbox_metadata: Dict[str, Dict] = {}
+        self._start_orphan_sweep()
+
+    def _images_dir(self) -> str:
+        return getattr(self._image_manager, "images_dir", None) or DEFAULT_IMAGES_DIR
+
+    def _start_orphan_sweep(self) -> None:
+        """Reclaim, in the background, what dead workers left on this node.
+
+        Each sandbox's supervisor tears it down when its worker dies; this
+        covers the rare case that the supervisor died too, and bucket mounts
+        with no sandbox around them. Runs when a backend starts and on every
+        create, so a node reclaims whether or not it mounts buckets again.
+        """
+        if not _ORPHAN_SWEEP_LOCK.acquire(blocking=False):
+            return
+        images_dir = self._images_dir()
+
+        def sweep():
+            try:
+                # Sandboxes first: ending a container lets its mount-s3 exit
+                # by itself, where the mount sweep would kill it.
+                teardown.sweep_orphaned_sandboxes(
+                    _RAY_SANDBOX_DIR, bucket_mount.MOUNT_ROOT, images_dir, _RUNSC_ROOT
+                )
+                bucket_mount.sweep_leaked_mounts()
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to reclaim orphaned sandboxes", exc_info=True)
+            finally:
+                _ORPHAN_SWEEP_LOCK.release()
+
+        try:
+            threading.Thread(
+                target=sweep, name="ray-sandbox-orphan-sweep", daemon=True
+            ).start()
+        except BaseException:
+            _ORPHAN_SWEEP_LOCK.release()
+            raise
+
+    def _start_supervisor(
+        self, config: SandboxConfig, sandbox_id: str
+    ) -> teardown.SandboxSupervisor:
+        """Start the process that tears the sandbox down if this worker dies."""
+        return teardown.SandboxSupervisor.start(
+            sandbox_id,
+            runsc_args=self._runsc_base_args(config),
+            sandbox_dir=_RAY_SANDBOX_DIR,
+            mount_root=bucket_mount.MOUNT_ROOT,
+            images_dir=self._images_dir(),
+        )
+
+    def _write_owner(
+        self,
+        root_dir: str,
+        config: SandboxConfig,
+        supervisor: Optional[teardown.SandboxSupervisor] = None,
+    ) -> None:
+        teardown.write_owner(
+            root_dir,
+            rootless=config.rootless,
+            ignore_cgroups=self._ignore_cgroups(config),
+            supervisor=(supervisor.pid, supervisor.start_time) if supervisor else None,
+        )
+
+    def check_host_requirements(self, config: SandboxConfig) -> None:
+        """Raise if this node lacks a host tool ``config`` needs.
+
+        Args:
+            config: Configuration of the sandbox about to be created.
+
+        Raises:
+            SandboxCreationError: Bucket mounts were asked for and the node
+                lacks mount-s3, a usable /dev/fuse, or fusermount.
+        """
+        if config.bucket_mounts:
+            bucket_mount.check_prerequisites()
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
@@ -135,55 +217,96 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "and util-linux on the node image."
                 )
 
+        self.check_host_requirements(config)
+
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
 
+        # What _abort_create must undo if any step below fails.
+        supervisor: Optional[teardown.SandboxSupervisor] = None
+        mounts: Optional[bucket_mount.BucketMountSet] = None
+        proc: Optional[subprocess.Popen] = None
+        stderr_file = None
         try:
-            os.makedirs(root_dir, mode=0o777, exist_ok=True)
+            # Before anything of the sandbox exists, so that however this
+            # worker dies from here on, what it made is torn down. Its
+            # interpreter starts while the image is pulled.
+            try:
+                supervisor = self._start_supervisor(config, sandbox_id)
+            except Exception as err:
+                raise SandboxCreationError(
+                    f"Failed to start the supervisor of sandbox '{sandbox_id}': {err}"
+                ) from err
+            try:
+                os.makedirs(root_dir, mode=0o777, exist_ok=True)
+                self._write_owner(root_dir, config)
 
-            # The instance id pins the image in the cache while this sandbox
-            # lives (its EROFS image is the sandbox's root filesystem).
-            self._image_manager.pull_image(
-                config.image,
-                timeout_seconds=config.timeout_seconds,
-                instance_id=sandbox_id,
-            )
-            # Kept for the sandbox's lifetime: a later re-pull swaps the
-            # cached image, and reading its config by name would then describe
-            # the new image rather than the one this sandbox runs.
-            image_config = self._image_manager.get_image_config(config.image)
-            # The process cwd: an explicit workdir, else the image's WORKDIR.
-            container_cwd = (
-                config.workdir or self._image_manager.get_workdir(config.image) or "/"
-            )
-
-            # A host-backed scratch directory exists only for an *explicitly*
-            # requested workdir on a readonly rootfs — the sandbox's single
-            # writable path there. A writable rootfs needs none (the overlay
-            # covers writes), and an inherited image WORKDIR is never
-            # silently made writable.
-            workdir_path = None
-            if config.workdir and config.readonly:
-                workdir_path = os.path.abspath(
-                    os.path.join(root_dir, config.workdir.lstrip("/"))
+                # The instance id pins the image in the cache while this sandbox
+                # lives (its EROFS image is the sandbox's root filesystem).
+                self._image_manager.pull_image(
+                    config.image,
+                    timeout_seconds=config.timeout_seconds,
+                    instance_id=sandbox_id,
                 )
-                if not (
-                    workdir_path == os.path.abspath(root_dir)
-                    or workdir_path.startswith(os.path.abspath(root_dir) + os.sep)
-                ):
-                    raise SandboxCreationError(
-                        f"Invalid workdir '{config.workdir}': Path traversal detected."
-                    )
-                os.makedirs(workdir_path, mode=0o777, exist_ok=True)
-        except Exception as err:
-            self._image_manager.release_image(config.image, sandbox_id)
-            raise SandboxCreationError(
-                f"Failed to initialize local sandbox directory '{root_dir}': {err}"
-            ) from err
+                # Kept for the sandbox's lifetime: a later re-pull swaps the
+                # cached image, and reading its config by name would then
+                # describe the new image rather than the one this sandbox runs.
+                image_config = self._image_manager.get_image_config(config.image)
+                # The process cwd: an explicit workdir, else the image's WORKDIR.
+                container_cwd = (
+                    config.workdir
+                    or self._image_manager.get_workdir(config.image)
+                    or "/"
+                )
 
-        # Prepare OCI bundle config for long-running container process
-        try:
+                # A host-backed scratch directory exists only for an
+                # *explicitly* requested workdir on a readonly rootfs — the
+                # sandbox's single writable path there. A writable rootfs
+                # needs none (the overlay covers writes), and an inherited
+                # image WORKDIR is never silently made writable.
+                workdir_path = None
+                if config.workdir and config.readonly:
+                    workdir_path = os.path.abspath(
+                        os.path.join(root_dir, config.workdir.lstrip("/"))
+                    )
+                    if not (
+                        workdir_path == os.path.abspath(root_dir)
+                        or workdir_path.startswith(os.path.abspath(root_dir) + os.sep)
+                    ):
+                        raise SandboxCreationError(
+                            f"Invalid workdir '{config.workdir}': Path traversal detected."
+                        )
+                    os.makedirs(workdir_path, mode=0o777, exist_ok=True)
+            except Exception as err:
+                raise SandboxCreationError(
+                    f"Failed to initialize local sandbox directory '{root_dir}': {err}"
+                ) from err
+
+            try:
+                supervisor.wait_ready()
+            except RuntimeError as err:
+                raise SandboxCreationError(str(err)) from err
+            self._write_owner(root_dir, config, supervisor)
+
+            # What dead workers left is reclaimed on every create, not just
+            # the next one that mounts a bucket: that may never come.
+            self._start_orphan_sweep()
+            bundle_kwargs = {}
+            if config.bucket_mounts:
+                # Bucket mounts live outside root_dir (see
+                # _internal/bucket_mount), so the rmtree that ends a sandbox
+                # can never reach into a bucket.
+                mounts = bucket_mount.BucketMountSet.allocate(
+                    sandbox_id,
+                    config.bucket_mounts,
+                    supervisor=(supervisor.pid, supervisor.start_time),
+                )
+                # Passed only when there are any, so an image manager written
+                # before bind mounts existed keeps working for other sandboxes.
+                bundle_kwargs["bind_mounts"] = mounts.bind_mounts()
+
+            # Prepare OCI bundle config for long-running container process
             self._image_manager.prepare_oci_bundle(
                 root_dir=root_dir,
                 workdir_path=workdir_path,
@@ -197,75 +320,43 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 network=config.network,
                 dns=config.dns,
                 _oci_spec_transform_fn=config._oci_spec_transform_fn,
+                **bundle_kwargs,
             )
-        except Exception:
-            self._image_manager.release_image(config.image, sandbox_id)
-            raise
-        run_args = self._build_run_command(config, root_dir, sandbox_id)
+            # Mounted only once the bundle is written, and before runsc starts:
+            # the gofer binds each mount as it is when the container starts.
+            if mounts is not None:
+                mounts.start()
+            run_args = self._build_run_command(config, root_dir, sandbox_id)
 
-        stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
-        stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
-        # start_new_session puts the namespace holder, slirp4netns, and runsc run
-        # in one process group so cleanup can kill the whole tree; they share
-        # the stderr log so startup failures (missing /dev/net/tun, no
-        # uplink) surface through the SandboxCreationError path below.
-        proc = subprocess.Popen(
-            run_args,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=stderr_file,
-            start_new_session=True,
-        )
-        start_time = time.time()
-        timeout = config.timeout_seconds
-
-        try:
-            while True:
-                if proc.poll() is not None:
-                    stderr_file.seek(0)
-                    stderr_str = stderr_file.read()
-                    raise SandboxCreationError(
-                        f"gVisor container failed to start: {stderr_str}"
-                        f"{_startup_failure_hint(stderr_str)}"
-                    )
-
-                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
-                if res.returncode == 0:
-                    try:
-                        state_data = json.loads(res.stdout)
-                        status = state_data.get("status")
-                        if status == "running":
-                            break
-                        elif status in ("stopped", "error"):
-                            raise SandboxCreationError(
-                                f"gVisor container stopped unexpectedly during initialization (status: {status})."
-                            )
-                    except Exception as e:
-                        if isinstance(e, SandboxCreationError):
-                            raise
-                        pass
-
-                # Check the deadline only after polling state, so a sandbox
-                # that reached 'running' just as the deadline passed is
-                # observed and kept rather than torn down unpolled.
-                if time.time() - start_time > timeout:
-                    raise SandboxTimeoutError(
-                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
-                    )
-
-                time.sleep(0.1)
-        except Exception:
-            # Delete runsc's container state, then kill the whole group:
-            # under slirp4netns, a bare proc.kill() would orphan the namespace
-            # holder and slirp4netns.
-            self._delete_container_state(config, sandbox_id)
-            self._terminate_tree(proc)
-            stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
-            # The sandbox never registered, so delete_sandbox will not run
-            # for it: release the image here to keep it evictable.
-            self._image_manager.release_image(config.image, sandbox_id)
+            stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
+            stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
+            # start_new_session puts the namespace holder, slirp4netns, and runsc
+            # run in one process group so cleanup can kill the whole tree; they
+            # share the stderr log so startup failures (missing /dev/net/tun, no
+            # uplink) surface through the SandboxCreationError path below.
+            proc = subprocess.Popen(
+                run_args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+                start_new_session=True,
+            )
+            # The group's id, for the supervisor to end whatever of it
+            # outlives runsc run.
+            teardown.write_run_group(root_dir, proc.pid)
+            self._wait_until_running(config, sandbox_id, proc, stderr_file)
+            # The container now holds its buckets itself, so the node's
+            # mountpoints can go: the buckets then live exactly as long as the
+            # sandbox, however it ends (see BucketMountSet.detach).
+            if mounts is not None and not mounts.detach():
+                raise SandboxCreationError(
+                    f"Failed to detach the bucket mounts of sandbox '{sandbox_id}' "
+                    "from the node once it was running."
+                )
+        except BaseException:
+            self._abort_create(
+                config, sandbox_id, root_dir, proc, stderr_file, mounts, supervisor
+            )
             raise
 
         self._sandbox_metadata[sandbox_id] = {
@@ -279,8 +370,125 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
             "image_config": image_config,
+            "bucket_mounts": mounts,
+            "supervisor": supervisor,
         }
         return sandbox_id
+
+    def _wait_until_running(
+        self,
+        config: SandboxConfig,
+        sandbox_id: str,
+        proc: subprocess.Popen,
+        stderr_file,
+    ) -> None:
+        """Poll ``runsc state`` until the container runs, or raise."""
+        start_time = time.time()
+        timeout = config.timeout_seconds
+        while True:
+            if proc.poll() is not None:
+                stderr_file.seek(0)
+                stderr_str = stderr_file.read()
+                raise SandboxCreationError(
+                    f"gVisor container failed to start: {stderr_str}"
+                    f"{_startup_failure_hint(stderr_str)}"
+                )
+
+            state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+            res = subprocess.run(state_args, capture_output=True, text=True)
+            if res.returncode == 0:
+                try:
+                    state_data = json.loads(res.stdout)
+                    status = state_data.get("status")
+                    if status == "running":
+                        return
+                    elif status in ("stopped", "error"):
+                        raise SandboxCreationError(
+                            f"gVisor container stopped unexpectedly during initialization (status: {status})."
+                        )
+                except Exception as e:
+                    if isinstance(e, SandboxCreationError):
+                        raise
+                    pass
+
+            # Check the deadline only after polling state, so a sandbox
+            # that reached 'running' just as the deadline passed is
+            # observed and kept rather than torn down unpolled.
+            if time.time() - start_time > timeout:
+                raise SandboxTimeoutError(
+                    f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
+                )
+
+            time.sleep(0.1)
+
+    def _abort_create(
+        self,
+        config: SandboxConfig,
+        sandbox_id: str,
+        root_dir: str,
+        proc: Optional[subprocess.Popen],
+        stderr_file,
+        mounts: Optional["bucket_mount.BucketMountSet"],
+        supervisor: Optional[teardown.SandboxSupervisor] = None,
+    ) -> None:
+        """Undo a create that failed part-way.
+
+        Each step tolerates the ones before it never having run, and one that
+        fails does not skip the rest: an unstopped mount or a pinned image
+        outlives the failure otherwise. Whatever did fail is left to the
+        supervisor, which retries the whole teardown. Never raises, so the
+        caller's error is the one reported. The sandbox never registered, so
+        delete_sandbox will not run for it.
+        """
+        failed = []
+
+        def attempt(what: str, step: Callable[[], object]) -> None:
+            try:
+                step()
+            except Exception:
+                failed.append(what)
+                logger.warning(
+                    "Failed to %s while cleaning up sandbox %s",
+                    what,
+                    sandbox_id,
+                    exc_info=True,
+                )
+
+        if proc is not None:
+            # Delete runsc's container state, then kill the whole group:
+            # under slirp4netns, a bare proc.kill() would orphan the namespace
+            # holder and slirp4netns.
+            attempt(
+                "delete the container state",
+                lambda: self._delete_container_state(config, sandbox_id),
+            )
+            attempt("stop the container", lambda: self._terminate_tree(proc))
+        if stderr_file is not None:
+            attempt("close the runsc log", stderr_file.close)
+        if mounts is not None:
+            attempt("stop its bucket mounts", mounts.stop)
+        shutil.rmtree(root_dir, ignore_errors=True)
+        # Release the image here to keep it evictable.
+        attempt(
+            "release its image",
+            lambda: self._image_manager.release_image(config.image, sandbox_id),
+        )
+        if supervisor is not None:
+            self._dismiss_supervisor(
+                supervisor, done=not failed and not os.path.exists(root_dir)
+            )
+
+    @staticmethod
+    def _dismiss_supervisor(supervisor: teardown.SandboxSupervisor, done: bool):
+        """Disarm a sandbox's supervisor after a complete teardown, or hand an
+        incomplete one over to it."""
+        try:
+            if done:
+                supervisor.disarm()
+            else:
+                supervisor.hand_over()
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to dismiss a sandbox supervisor", exc_info=True)
 
     def image_config(self, sandbox_id: str) -> Optional[Dict]:
         """The config of the image the sandbox runs, as it was at creation.
@@ -296,14 +504,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return meta.get("image_config") if meta else None
 
     def delete_sandbox(self, sandbox_id: str) -> None:
-        """Terminate the sandbox and remove its local directory structure."""
-        meta = self._sandbox_metadata.pop(sandbox_id, None)
-        if meta:
-            root_dir = meta["root_dir"]
-            config: SandboxConfig = meta["config"]
-            proc = meta.get("proc")
-            stderr_file = meta.get("stderr_file")
+        """Terminate the sandbox and remove its local directory structure.
 
+        A teardown that does not finish -- a step raised, or the directory
+        could not be removed -- is handed over to the sandbox's supervisor,
+        which retries all of it; one that did dismisses the supervisor.
+        """
+        meta = self._sandbox_metadata.pop(sandbox_id, None)
+        if not meta:
+            return
+        root_dir = meta["root_dir"]
+        config: SandboxConfig = meta["config"]
+        proc = meta.get("proc")
+        stderr_file = meta.get("stderr_file")
+        supervisor = meta.get("supervisor")
+        done = False
+        try:
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
             try:
@@ -325,9 +541,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
+            # After the container, before the rmtree. The mounts live outside
+            # root_dir, so that order is for tidiness, not safety.
+            mounts = meta.get("bucket_mounts")
+            if mounts is not None:
+                mounts.stop()
+
             shutil.rmtree(root_dir, ignore_errors=True)
             # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
+            done = not os.path.exists(root_dir)
+        finally:
+            if supervisor is not None:
+                self._dismiss_supervisor(supervisor, done=done)
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
@@ -575,17 +801,21 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return SandboxStatus.TERMINATED
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
-        """Build the runsc global flags shared by run/exec/kill/delete."""
-        args = ["runsc"]
-        if config.rootless:
-            args.append("--rootless")
-        if (
+        """Build the runsc global flags shared by run/exec/kill/delete.
+
+        The same function builds them for the sandbox's supervisor, from the
+        flags in its ``owner.json``, so both always address the same container.
+        """
+        return teardown.runsc_base_args(
+            config.rootless, self._ignore_cgroups(config), _RUNSC_ROOT
+        )
+
+    @staticmethod
+    def _ignore_cgroups(config: SandboxConfig) -> bool:
+        return (
             getattr(config, "_ignore_cgroups", False)
             or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
-        ):
-            args.append("--ignore-cgroups")
-        args.extend(["--root", _RUNSC_ROOT])
-        return args
+        )
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.

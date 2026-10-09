@@ -58,6 +58,17 @@ class BaseSandboxBackend(ABC):
     def image_manager(self):
         return self._image_manager
 
+    def check_host_requirements(self, config: SandboxConfig) -> None:
+        """Raise if this node cannot run a sandbox with ``config``.
+
+        Called before the image is pulled, so a node missing a host tool fails
+        fast rather than after a long download. Checks nothing by default.
+
+        Args:
+            config: Configuration of the sandbox about to be created.
+        """
+        return None
+
     @abstractmethod
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Provision a new sandbox instance.

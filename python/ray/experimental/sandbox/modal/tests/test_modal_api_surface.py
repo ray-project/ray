@@ -197,7 +197,6 @@ def test_sandbox_has_no_public_constructor():
         lambda sb: sb.snapshot_directory("/tmp"),
         lambda sb: sb.mount_image("/mnt", object()),
         lambda sb: sb.unmount_image("/mnt"),
-        lambda sb: sb.reload_volumes(),
         lambda sb: sb.watch("/tmp"),
         lambda sb: sb.filesystem.watch("/tmp"),
     ],
@@ -224,7 +223,6 @@ def test_lookup_methods_are_refused(call):
     "kwargs",
     [
         {"secrets": ["s"]},
-        {"volumes": {"/v": object()}},
         {"network_file_systems": {"/n": object()}},
         {"idle_timeout": 30},
         {"cloud": "aws"},

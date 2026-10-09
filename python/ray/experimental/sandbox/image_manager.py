@@ -6,7 +6,7 @@ import os
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
@@ -196,6 +196,7 @@ class BaseImageManager(ABC):
         base_spec: Optional[Dict[str, Any]] = None,
         root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        bind_mounts: Optional[List[Tuple[str, str, bool]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -224,6 +225,11 @@ class BaseImageManager(ABC):
                 this directory only anchors the overlay's backing file.
                 Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
+            bind_mounts: Optional ``(destination, host_source, read_only)``
+                bind mounts to add after every other mount, such as the
+                node-side directories of bucket mounts. On a readonly
+                rootfs they make the sandbox use a private writable overlay,
+                as an explicit workdir does.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -245,6 +251,7 @@ class BaseImageManager(ABC):
         network: str = "none",
         dns: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        bind_mounts: Optional[List[Tuple[str, str, bool]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -263,6 +270,11 @@ class BaseImageManager(ABC):
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
             _oci_spec_transform_fn: Optional OCI spec transform function.
+            bind_mounts: Optional ``(destination, host_source, read_only)``
+                bind mounts to add after every other mount, such as the
+                node-side directories of bucket mounts. On a readonly
+                rootfs they make the sandbox use a private writable overlay,
+                as an explicit workdir does.
 
         Returns:
             Path to the written config.json file.
@@ -432,6 +444,7 @@ class ImageManager(BaseImageManager):
         base_spec: Optional[Dict[str, Any]] = None,
         root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        bind_mounts: Optional[List[Tuple[str, str, bool]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -460,6 +473,11 @@ class ImageManager(BaseImageManager):
                 this directory only anchors the overlay's backing file.
                 Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
+            bind_mounts: Optional ``(destination, host_source, read_only)``
+                bind mounts to add after every other mount, such as the
+                node-side directories of bucket mounts. On a readonly
+                rootfs they make the sandbox use a private writable overlay,
+                as an explicit workdir does.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -487,13 +505,16 @@ class ImageManager(BaseImageManager):
         annotations["dev.gvisor.spec.rootfs.source"] = erofs_image
         annotations["dev.gvisor.spec.rootfs.type"] = "erofs"
         # runsc applies no overlay to a read-only root, and an immutable image
-        # can't grow a mount point for an arbitrary workdir, so a readonly
-        # sandbox with an explicit workdir gets a private writable overlay
-        # instead (its writes are discarded with it).
-        if readonly and workdir_path is not None:
-            logger.warning(
-                "readonly=True with an explicit workdir: runsc cannot create "
-                "the workdir mount point in a read-only EROFS image, so this "
+        # can't grow a mount point for an arbitrary workdir or bucket, so a
+        # readonly sandbox with either gets a private writable overlay instead
+        # (its writes are discarded with it).
+        if readonly and (workdir_path is not None or bind_mounts):
+            # A warning for an explicit workdir, which may come as a surprise;
+            # only a note for bucket mounts, whose documentation says so.
+            log = logger.warning if workdir_path is not None else logger.info
+            log(
+                "readonly=True with an explicit workdir or bucket mounts: runsc "
+                "cannot create mount points in a read-only EROFS image, so this "
                 "sandbox runs on a private writable overlay (its writes are "
                 "discarded with it)."
             )
@@ -614,6 +635,31 @@ class ImageManager(BaseImageManager):
             )
             existing_dests.add("/tmp")
 
+        # Last, so nothing mounted after them can hide one; parents before
+        # children, so a mount under /tmp lands on the tmpfs, not beneath it.
+        for dest, source, bind_read_only in sorted(
+            bind_mounts or [], key=lambda bind: bind[0].count("/")
+        ):
+            if dest in existing_dests:
+                raise SandboxCreationError(
+                    f"Cannot bind-mount {source!r} at {dest!r}: the sandbox "
+                    "already has a mount there."
+                )
+            mounts.append(
+                {
+                    "destination": dest,
+                    "type": "bind",
+                    "source": source,
+                    "options": [
+                        "rbind",
+                        "ro" if bind_read_only else "rw",
+                        "nosuid",
+                        "nodev",
+                    ],
+                }
+            )
+            existing_dests.add(dest)
+
         spec["mounts"] = mounts
 
         # Configure OCI cgroup resource limits for CPU and memory
@@ -653,6 +699,7 @@ class ImageManager(BaseImageManager):
         network: str = "none",
         dns: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        bind_mounts: Optional[List[Tuple[str, str, bool]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -671,6 +718,11 @@ class ImageManager(BaseImageManager):
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
             _oci_spec_transform_fn: Optional OCI spec transform function.
+            bind_mounts: Optional ``(destination, host_source, read_only)``
+                bind mounts to add after every other mount, such as the
+                node-side directories of bucket mounts. On a readonly
+                rootfs they make the sandbox use a private writable overlay,
+                as an explicit workdir does.
 
         Returns:
             Path to the written config.json file.
@@ -723,6 +775,7 @@ class ImageManager(BaseImageManager):
             hosts_source=hosts_source,
             root_path=rootfs_dir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
+            bind_mounts=bind_mounts,
         )
 
         config_json_str = json.dumps(spec, indent=2)

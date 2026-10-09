@@ -2,13 +2,19 @@
 
 import asyncio
 import logging
+import posixpath
 import re
 import time
-from pathlib import PurePosixPath
+from pathlib import PurePath, PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import ray
-from ray.experimental.sandbox.config import DOCKER_DEFAULT_CAPABILITIES
+from ray.experimental.sandbox.config import (
+    DOCKER_DEFAULT_CAPABILITIES,
+    RUNTIME_MANAGED_PATHS,
+    BucketMount,
+)
+from ray.experimental.sandbox.modal import _fs_commands as _fs
 from ray.experimental.sandbox.modal._actor import (
     STDERR_FD,
     STDOUT_FD,
@@ -25,6 +31,7 @@ from ray.experimental.sandbox.modal._sync import (
     synchronize_api,
 )
 from ray.experimental.sandbox.modal.app import App
+from ray.experimental.sandbox.modal.cloud_bucket_mount import CloudBucketMount
 from ray.experimental.sandbox.modal.container_process import _ContainerProcess
 from ray.experimental.sandbox.modal.exception import (
     ClientClosed,
@@ -83,12 +90,112 @@ def _reject_unsupported(**kwargs) -> None:
             raise _unsupported(f"The '{name}' parameter")
 
 
+def _overlaps(path: str, other: str) -> bool:
+    """Whether either canonical path is the other or lies beneath it."""
+    return any(
+        a == b or a.startswith(b.rstrip("/") + "/")
+        for a, b in ((path, other), (other, path))
+    )
+
+
+def _validate_volumes(volumes: Optional[Dict[Any, Any]]) -> List[BucketMount]:
+    """Check ``Sandbox.create(volumes=...)`` the way Modal does.
+
+    Modal's own passes, with its messages and in its order: the mapping, then
+    every path, then every value, then each mount's own checks (see
+    ``modal/_utils/mount_utils.py`` and ``cloud_bucket_mounts_to_proto``).
+    What Modal accepts but this backend cannot mount comes after.
+
+    Args:
+        volumes: ``Sandbox.create``'s ``volumes`` argument.
+
+    Returns:
+        One BucketMount per path, in the mapping's order.
+
+    Raises:
+        InvalidError: What Modal rejects too.
+        ValueError: Modal's two CloudBucketMount checks.
+        NotSupportedError: What Modal accepts but this backend cannot do.
+    """
+    if volumes is None:
+        return []
+    if not isinstance(volumes, dict):
+        raise InvalidError(
+            "`volume_likes` should be a dict[str | PurePosixPath, Volume], got "
+            f"{type(volumes)} instead"
+        )
+    validated = []
+    for path, volume in volumes.items():
+        path = PurePath(path).as_posix()
+        abs_path = posixpath.abspath(path)
+        if path != abs_path:
+            raise InvalidError(f"Volume {path} must be a canonical, absolute path.")
+        elif abs_path == "/":
+            raise InvalidError(f"Volume {path} cannot be mounted into root directory.")
+        elif abs_path == "/root":
+            raise InvalidError(f"Volume {path} cannot be mounted at '/root'.")
+        elif abs_path == "/tmp":
+            raise InvalidError(f"Volume {path} cannot be mounted at '/tmp'.")
+        validated.append((path, volume))
+    for path, volume in validated:
+        if not isinstance(volume, CloudBucketMount):
+            raise InvalidError(
+                f"Object of type {type(volume)} mounted at '{path}' is not usable "
+                "as a volume."
+            )
+    for _, volume in validated:
+        volume._check()
+    mounts = []
+    for path, volume in validated:
+        # POSIX keeps a leading "//" distinct, so Modal accepts it; it names
+        # the same directory as "/".
+        if path.startswith("//"):
+            path = "/" + path.lstrip("/")
+        for managed in RUNTIME_MANAGED_PATHS:
+            if _overlaps(path, managed):
+                raise _unsupported(
+                    f"Mounting a volume at {path!r}",
+                    f"It overlaps {managed!r}, which the sandbox runtime manages.",
+                )
+        bucket = volume._to_bucket_mount(path)
+        for other in mounts:
+            if other.mount_path == path:
+                raise InvalidError(f"Volume {path} is mounted twice.")
+            if _overlaps(path, other.mount_path):
+                raise _unsupported(
+                    f"Mounting volumes at both {other.mount_path!r} and {path!r}",
+                    "Nested mount paths are not supported; use separate paths.",
+                )
+        mounts.append(bucket)
+    return mounts
+
+
 # How many startup files are pushed at once. Each is its own `runsc exec`, and
 # a spawn inside gVisor costs enough that pushing a source tree one file at a
 # time is dominated by waiting for the previous one. Bounded rather than
 # unlimited: `Image.add_local_dir` expands a tree into one entry per file, so
 # an unbounded gather would try to spawn a process per file in the tree.
 _STARTUP_PUSH_CONCURRENCY = 16
+
+
+async def _resolve_bucket_mounts(
+    actor, bucket_mounts: Sequence[BucketMount]
+) -> Tuple[Tuple[str, bool], ...]:
+    """``(path, read_only)`` of each bucket mount, with the path where the
+    mount really is inside the sandbox; see
+    :func:`~ray.experimental.sandbox.modal._fs_commands.make_resolve_paths_command`.
+
+    Asked once, before anything has run in the sandbox to change its links.
+    """
+    paths = [mount.mount_path for mount in bucket_mounts]
+    result = await actor.exec_collect.remote(_fs.make_resolve_paths_command(paths))
+    if result["returncode"] != 0:
+        resolved = paths
+    else:
+        resolved = _fs.parse_resolved_paths(result["stdout"], paths)
+    return tuple(
+        (path, mount.read_only) for path, mount in zip(resolved, bucket_mounts)
+    )
 
 
 async def _push_startup_files(sandbox, startup_files) -> None:
@@ -254,8 +361,12 @@ class _Sandbox:
         instance_id: str,
         main_exec_id: Optional[str],
         readiness_probe: Optional[Probe] = None,
+        bucket_mounts: Sequence[Tuple[str, bool]] = (),
     ):
         self._actor = actor
+        # (path, read_only) of each bucket mount, for the filesystem API: the
+        # path where the mount really is (_resolve_bucket_mounts).
+        self._bucket_mounts = tuple(bucket_mounts)
         self._object_id = instance_id
         self._main_exec_id = main_exec_id
         self._returncode: Optional[int] = None
@@ -383,7 +494,10 @@ class _Sandbox:
             tags: Unsupported.
             secrets: Unsupported.
             network_file_systems: Unsupported.
-            volumes: Unsupported.
+            volumes: Mount points for public cloud buckets, as
+                ``{path: CloudBucketMount(...)}``. ``modal.Volume`` has no
+                Ray equivalent. See :class:`CloudBucketMount` for what is
+                supported.
             idle_timeout: Unsupported.
             cloud: Unsupported.
             region: Unsupported.
@@ -447,7 +561,6 @@ class _Sandbox:
             tags=tags,
             secrets=secrets,
             network_file_systems=network_file_systems,
-            volumes=volumes,
             idle_timeout=idle_timeout,
             cloud=cloud,
             region=region,
@@ -510,6 +623,23 @@ class _Sandbox:
                 f"{type(readiness_probe).__name__}. Build one with "
                 "Probe.with_exec(...)."
             )
+        bucket_mounts = _validate_volumes(volumes)
+        if bucket_mounts:
+            # copy=False files are pushed through the filesystem API once the
+            # sandbox runs, so one bound for a bucket would be uploaded into it.
+            # On Modal they are part of the image and never touch the bucket.
+            startup = (
+                resolve_image(image) or resolve_image(DEFAULT_IMAGE)
+            ).startup_files
+            for item in startup:
+                for mount in bucket_mounts:
+                    if _overlaps(
+                        posixpath.normpath(item.remote_path), mount.mount_path
+                    ):
+                        raise _unsupported(
+                            f"Adding a local file at {item.remote_path!r} inside "
+                            f"the volume mounted at {mount.mount_path!r}"
+                        )
 
         # Note this is not restored: raising the level for one sandbox raises it
         # for every later one in the process. Logging a single extra line
@@ -560,6 +690,8 @@ class _Sandbox:
             "capabilities": DOCKER_DEFAULT_CAPABILITIES,
             "timeout_seconds": _CREATE_TIMEOUT_SECONDS,
         }
+        if bucket_mounts:
+            create_kwargs["bucket_mounts"] = bucket_mounts
         if resolved.shell:
             create_kwargs["shell"] = resolved.shell
         # The container's cgroup caps.
@@ -586,7 +718,13 @@ class _Sandbox:
 
         logger.info("Creating sandbox from image %s", resolved.reference)
         started = await actor.start.remote()
-        sandbox = _Sandbox(actor, started["instance_id"], None, readiness_probe)
+        sandbox = _Sandbox(
+            actor,
+            started["instance_id"],
+            None,
+            readiness_probe,
+            bucket_mounts=[(m.mount_path, m.read_only) for m in bucket_mounts],
+        )
 
         # Modal's precedence: create(*args) overrides the image's CMD, and the
         # image's ENTRYPOINT prefixes whichever wins -- with the *base image's*
@@ -601,6 +739,10 @@ class _Sandbox:
         # reclaiming the actor kills its process without running _teardown,
         # stranding the runsc container and its /tmp/ray/sandbox/<id> tree.
         try:
+            if bucket_mounts:
+                sandbox._bucket_mounts = await _resolve_bucket_mounts(
+                    actor, bucket_mounts
+                )
             # Files added with copy=False are pushed from the client, so they
             # never enter the image. They must land before the main process runs.
             await _push_startup_files(sandbox, resolved.startup_files)
@@ -1087,8 +1229,20 @@ class _Sandbox:
         raise _unsupported("Sandbox.unmount_image()")
 
     async def reload_volumes(self, *, timeout: int = 55) -> None:
-        """Unsupported. Sandboxes mount no volumes."""
-        raise _unsupported("Sandbox.reload_volumes()")
+        """Reload all Volumes mounted in the Sandbox.
+
+        A no-op: only cloud bucket mounts exist here, and those reflect the
+        bucket without reloading, as on Modal, which returns just the same for
+        a Sandbox with no Volumes.
+
+        Args:
+            timeout: Must be positive, as on Modal. Defaults to 55 seconds.
+        """
+        self._ensure_attached()
+        if timeout <= 0:
+            raise InvalidError(
+                "The `timeout` argument to `reload_volumes` must be positive."
+            )
 
     async def detach(self):
         """Disconnect this handle from the Sandbox, which keeps running.

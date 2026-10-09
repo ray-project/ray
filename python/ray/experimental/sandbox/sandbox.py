@@ -40,7 +40,9 @@ class Sandbox:
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
-        **kwargs: Additional parameters passed to runtime.
+        **kwargs: Additional parameters passed to runtime. For example ``bucket_mounts``, a list of
+            :class:`~ray.experimental.sandbox.config.BucketMount` (see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`).
     """
 
     def __init__(

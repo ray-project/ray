@@ -17,7 +17,7 @@ import logging
 import posixpath
 import random
 import string
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
 import ray
 from ray.experimental.sandbox.exceptions import SandboxError
@@ -60,6 +60,13 @@ EXIT_NOT_INLINE = 17
 # list_files on a path that is a file, which Modal words differently from a
 # file further up the path.
 EXIT_EXPECTED_A_DIRECTORY = 18
+# A write, directory creation, or removal a bucket mount refused (read-only,
+# or an upload the bucket rejected). Modal reports every such case as its
+# generic error with the message "I/O error", measured.
+EXIT_BUCKET_IO = 19
+# A recursive removal inside a writable bucket mount, or of a directory that
+# contains one, which Modal documents as unsupported for CloudBucketMounts.
+EXIT_BUCKET_UNSUPPORTED = 20
 
 # The largest file a single read returns, Modal's: its helper refuses anything
 # bigger, measured with a 6 GiB file.
@@ -135,6 +142,67 @@ def _classify_missing(var: str, otherwise: int) -> str:
 # demands a directory, so "/tmp/new/" names /tmp/new -- and the parent has to
 # be computed from that, or it came out as the path itself.
 _STRIP_TRAILING_SLASHES = 'case "$p" in */) q=${p%"${p##*[!/]}"}; p=${q:-/};; esac; '
+
+
+def bucket_mount_args(bucket_mounts: Sequence[Tuple[str, bool]]) -> List[str]:
+    """Encode ``(mount_path, read_only)`` pairs as the scripts' extra arguments.
+
+    Each path must be where the mount really is inside the sandbox
+    (:func:`make_resolve_paths_command`): the scripts compare it with resolved
+    paths.
+    """
+    return [
+        f"{'ro' if read_only else 'rw'}:{path}" for path, read_only in bucket_mounts
+    ]
+
+
+def make_resolve_paths_command(paths: Sequence[str]) -> List[str]:
+    """Build the command that prints where each path really is, NUL-separated.
+
+    A bucket mount configured under a symlink in the image -- /lib64/x on an
+    image where /lib64 is a link to /lib -- is placed where the link points.
+    The filesystem scripts compare resolved paths, so they need the mount's
+    real location, found once while the image's links are as it ships them:
+    resolving it per operation fails once the link is gone, and would then let
+    a recursive removal walk into the bucket. A path that cannot be resolved
+    is printed as it is.
+    """
+    return _sh(
+        'for p; do r=$(readlink -f "$p" 2>/dev/null) || r=$p; '
+        '[ -n "$r" ] || r=$p; printf "%s\\0" "$r"; done',
+        *paths,
+    )
+
+
+def parse_resolved_paths(stdout: bytes, paths: Sequence[str]) -> List[str]:
+    """The output of :func:`make_resolve_paths_command`, or ``paths`` as they
+    are if it does not hold one absolute path for each."""
+    resolved = [
+        p.decode("utf-8", errors="surrogateescape")
+        for p in (stdout or b"").split(b"\0")[: len(paths)]
+    ]
+    if len(resolved) != len(paths) or not all(p.startswith("/") for p in resolved):
+        return list(paths)
+    return resolved
+
+
+def _in_bucket(var: str) -> str:
+    """Shell that sets ``$b``, and ``$bw`` for a writable one, when ``$var``
+    lies in a bucket mount.
+
+    Decided inside the sandbox, on the nearest ancestor that exists, resolved
+    with ``readlink -f``: a symlink into a mount is in it, whatever its path
+    says. The mounts are the script's remaining positional parameters, each
+    ``ro:/path`` or ``rw:/path`` (:func:`bucket_mount_args`).
+    """
+    return (
+        'a="$' + var + '"; while [ -n "$a" ] && [ ! -e "$a" ]; do a=${a%/*}; done; '
+        '[ -n "$a" ] || a=/; '
+        'r=$(readlink -f "$a" 2>/dev/null) || r=$a; '
+        "b=; bw=; for m; do mp=${m#*:}; "
+        'case "$r" in "$mp"|"$mp"/*) b=1; [ "${m%%:*}" = rw ] && bw=1;; esac; '
+        "done; "
+    )
 
 
 # -- command builders ------------------------------------------------------
@@ -243,7 +311,9 @@ def make_read_file_command(
 
 
 def make_write_file_command(
-    remote_path: str, temp_path: Optional[str] = None
+    remote_path: str,
+    temp_path: Optional[str] = None,
+    bucket_mounts: Sequence[Tuple[str, bool]] = (),
 ) -> List[str]:
     """Build the command that writes stdin to a file, creating parents.
 
@@ -265,22 +335,46 @@ def make_write_file_command(
         temp_path: Scratch path in the same directory, so the move is a rename
             rather than a copy across filesystems. Defaults to one derived from
             ``remote_path``; pass it only to make a test deterministic.
+        bucket_mounts: The sandbox's bucket mounts as ``(path, read_only)``.
+            A destination inside one cannot land by rename (Mountpoint has
+            none), so the payload is staged at :func:`make_stage_path` instead
+            and copied over the destination in one sequential write once it
+            has all arrived. An interrupted transfer still leaves the
+            destination as it was, except during that final local copy.
 
     Returns:
         The argv that runs the write, reading the payload from its stdin.
     """
     if temp_path is None:
         temp_path = make_temp_path(remote_path)
+    bucket_branch = ""
+    if bucket_mounts:
+        bucket_branch = _in_bucket("d") + (
+            'if [ -n "$b" ]; then '
+            '  if [ ! -d "$d" ]; then [ -e "$d" ] && exit 11; '
+            f'    mkdir -p "$d" 2>/dev/null || exit {EXIT_BUCKET_IO}; fi; '
+            f'  [ -w "$d" ] || exit {EXIT_BUCKET_IO}; '
+            '  cat > "$s" || { rm -f "$s"; exit 1; }; '
+            # Truncate and write sequentially: the one way Mountpoint replaces
+            # an object. The old object stays until the upload completes, and
+            # fsync completes it and reports whether the bucket took it. A
+            # plain close() would too, but busybox ignores close errors, and
+            # an empty file's upload only happens then: `cat > "$p"` reported
+            # a refused upload as success.
+            f'  dd if="$s" of="$p" bs=1M conv=fsync 2>/dev/null || '
+            f'{{ rm -f "$s"; exit {EXIT_BUCKET_IO}; }}; '
+            '  rm -f "$s"; exit 0; '
+            "fi; "
+        )
     script = (
-        'p="$1"; t="$2"; '
+        ('p="$1"; t="$2"; s="$3"; shift 3; ' if bucket_mounts else 'p="$1"; t="$2"; ')
         # A trailing slash demands a directory, so writing a file there is
         # EISDIR -- which is what open(2) reports and what Modal surfaces.
         # Without this the path fell through to the parent check below and was
         # reported as a permission denial.
-        'case "$p" in */) exit 12;; esac; '
+        + 'case "$p" in */) exit 12;; esac; '
         '[ -d "$p" ] && exit 12; '
-        'd=${p%/*}; [ -n "$d" ] || d=/; '
-        'if [ ! -d "$d" ]; then '
+        'd=${p%/*}; [ -n "$d" ] || d=/; ' + bucket_branch + 'if [ ! -d "$d" ]; then '
         '  [ -e "$d" ] && exit 11; '
         f'  mkdir -p "$d" 2>/dev/null || {_classify_missing("d", 13)}; '
         "fi; "
@@ -293,12 +387,29 @@ def make_write_file_command(
         'cat >> "$t" || { rm -f "$t"; exit 1; }; '
         'mv -f "$t" "$p" 2>/dev/null || { rm -f "$t"; exit 13; }'
     )
+    if bucket_mounts:
+        return _sh(
+            script,
+            remote_path,
+            temp_path,
+            make_stage_path(temp_path),
+            *bucket_mount_args(bucket_mounts),
+        )
     return _sh(script, remote_path, temp_path)
 
 
-def make_remove_temp_command(temp_path: str) -> List[str]:
-    """Build the command that deletes a write's temporary file, if present."""
-    return _sh('rm -f "$1"', temp_path)
+def make_remove_temp_command(*temp_paths: str) -> List[str]:
+    """Build the command that deletes a write's temporary files, if present."""
+    return _sh('rm -f "$@"', *temp_paths)
+
+
+def make_stage_path(temp_path: str) -> str:
+    """Where a write into a bucket mount stages its payload.
+
+    In /tmp, which can never itself be a bucket mount, under the same random
+    name as ``temp_path``.
+    """
+    return f"/tmp/{posixpath.basename(temp_path)}"
 
 
 def temp_name() -> str:
@@ -323,12 +434,29 @@ def make_temp_path(remote_path: str) -> str:
     return f"{directory}/{temp_name()}"
 
 
-def make_make_directory_command(remote_path: str, create_parents: bool) -> List[str]:
-    """Build the command that creates a directory."""
+def make_make_directory_command(
+    remote_path: str,
+    create_parents: bool,
+    bucket_mounts: Sequence[Tuple[str, bool]] = (),
+) -> List[str]:
+    """Build the command that creates a directory.
+
+    Inside a bucket mount (``bucket_mounts`` as ``(path, read_only)``), a
+    refused creation is reported as Modal reports it there: "I/O error".
+    """
     script = (
-        'p="$1"; parents="$2"; '
-        f"{_STRIP_TRAILING_SLASHES}"
-        'if [ "$parents" = "1" ]; then '
+        (
+            'p="$1"; parents="$2"; shift 2; '
+            if bucket_mounts
+            else 'p="$1"; parents="$2"; '
+        )
+        + f"{_STRIP_TRAILING_SLASHES}"
+        + (
+            _in_bucket("p") + f'f=13; [ -n "$b" ] && f={EXIT_BUCKET_IO}; '
+            if bucket_mounts
+            else "f=13; "
+        )
+        + 'if [ "$parents" = "1" ]; then '
         '  [ -d "$p" ] && exit 0; '
         # A file already at the path: "already exists" in both modes, as
         # measured on Modal. A file further up the path is still "not a
@@ -339,22 +467,60 @@ def make_make_directory_command(remote_path: str, create_parents: bool) -> List[
         # =False branch below and what Modal reports; it used to fall through
         # to the mkdir and be misreported as a permission denial.
         '  [ -L "$p" ] && exit 15; '
-        f'  mkdir -p "$p" 2>/dev/null || {_classify_missing("p", 13)}; '
+        f'  mkdir -p "$p" 2>/dev/null || {_classify_missing("p", "$f")}; '
         "  exit 0; "
         "fi; "
         '{ [ -e "$p" ] || [ -L "$p" ]; } && exit 15; '
         'd=${p%/*}; [ -n "$d" ] || d=/; '
         f'[ -e "$d" ] || {_classify_missing("d", EXIT_NOT_FOUND)}; '
         '[ -d "$d" ] || exit 11; '
-        'mkdir "$p" 2>/dev/null || exit 13'
+        'mkdir "$p" 2>/dev/null || exit $f'
     )
-    return _sh(script, remote_path, "1" if create_parents else "0")
+    return _sh(
+        script,
+        remote_path,
+        "1" if create_parents else "0",
+        *bucket_mount_args(bucket_mounts),
+    )
 
 
-def make_remove_command(remote_path: str, recursive: bool) -> List[str]:
-    """Build the command that removes a file or directory."""
+def make_remove_command(
+    remote_path: str, recursive: bool, bucket_mounts: Sequence[Tuple[str, bool]] = ()
+) -> List[str]:
+    """Build the command that removes a file or directory.
+
+    With ``bucket_mounts`` (``(path, read_only)``), a refused removal inside a
+    bucket is reported as Modal reports it there: "I/O error". A recursive
+    removal of a directory inside a writable bucket, or of one containing any
+    bucket mount, is refused before anything is deleted: Modal documents it as
+    unsupported, and running ``rm -rf`` would delete objects before failing on
+    a directory the bucket cannot remove. A recursive removal of a single file
+    is just a removal, and one inside a read-only bucket runs, failing like any
+    other refused removal there.
+    """
+    bucket_check = ""
+    if bucket_mounts:
+        bucket_check = (
+            # The entry lives in its parent; a symlink is removed, not followed.
+            'pd=${p%/*}; [ -n "$pd" ] || pd=/; '
+            'rp=$(readlink -f "$pd" 2>/dev/null) || rp=$pd; rp=${rp%/}/${p##*/}; '
+            "b=; bw=; c=; for m; do mp=${m#*:}; "
+            'case "$rp" in "$mp"|"$mp"/*) b=1; [ "${m%%:*}" = rw ] && bw=1;; esac; '
+            'case "$mp" in "${rp%/}"/*) c=1;; esac; '
+            "done; "
+            'if [ "$recursive" = "1" ] && { [ -n "$c" ] || '
+            '{ [ -n "$bw" ] && [ -d "$p" ] && [ ! -L "$p" ]; }; }; then '
+            f"exit {EXIT_BUCKET_UNSUPPORTED}; fi; "
+            f'[ -n "$b" ] && f={EXIT_BUCKET_IO}; '
+        )
     script = (
-        'p="$1"; recursive="$2"; '
+        (
+            'p="$1"; recursive="$2"; shift 2; '
+            if bucket_mounts
+            else 'p="$1"; recursive="$2"; '
+        )
+        + "f=13; "
+        +
         # A trailing slash makes the shell's tests, and rm, resolve a symlink
         # to its target: "link/" passed [ ! -L ] as a directory, and GNU
         # `rm -rf link/` then emptied the directory the link points to and
@@ -365,9 +531,10 @@ def make_remove_command(remote_path: str, recursive: bool) -> List[str]:
         '[ -n "$q" ] && [ -L "$q" ] && p=$q;; esac; '
         '{ [ -e "$p" ] || [ -L "$p" ]; } || '
         f"{_classify_missing('p', EXIT_NOT_FOUND)}; "
-        'if [ -d "$p" ] && [ ! -L "$p" ]; then '
+        + bucket_check
+        + 'if [ -d "$p" ] && [ ! -L "$p" ]; then '
         '  if [ "$recursive" = "1" ]; then '
-        '    rm -rf "$p" 2>/dev/null || exit 13; '
+        '    rm -rf "$p" 2>/dev/null || exit $f; '
         "  else "
         # rmdir first, and only classify the failure if it fails: `ls -A`
         # forks a subshell and captures the whole directory listing into a
@@ -375,13 +542,18 @@ def make_remove_command(remote_path: str, recursive: bool) -> List[str]:
         # succeed anyway.
         '    rmdir "$p" 2>/dev/null && exit 0; '
         '    if [ -n "$(ls -A "$p" 2>/dev/null)" ]; then exit 14; fi; '
-        "    exit 13; "
+        "    exit $f; "
         "  fi; "
         "else "
-        '  rm -f "$p" 2>/dev/null || exit 13; '
+        '  rm -f "$p" 2>/dev/null || exit $f; '
         "fi"
     )
-    return _sh(script, remote_path, "1" if recursive else "0")
+    return _sh(
+        script,
+        remote_path,
+        "1" if recursive else "0",
+        *bucket_mount_args(bucket_mounts),
+    )
 
 
 # -- output parsing --------------------------------------------------------
@@ -494,6 +666,12 @@ def _raise_mapped(returncode, stderr, remote_path, mapping):
     if exc_class is SandboxFilesystemError:
         # Modal's generic error carries its message alone, without the path.
         raise exc_class(_MESSAGES[returncode])
+    if exc_class is InvalidError:
+        # Modal's wording for an operation a CloudBucketMount does not support.
+        raise exc_class(
+            f"{_MESSAGES[returncode]}: {remote_path} - this operation is not "
+            "supported for CloudBucketMounts"
+        )
     if exc_class is not None:
         raise exc_class(f"{_MESSAGES[returncode]}: {remote_path}")
     raise _fallback(returncode, stderr, remote_path)
@@ -519,6 +697,8 @@ _MESSAGES = {
     EXIT_DIRECTORY_NOT_EMPTY: "directory is not empty",
     EXIT_ALREADY_EXISTS: "path already exists",
     EXIT_EXPECTED_A_DIRECTORY: "expected a directory path",
+    EXIT_BUCKET_IO: "I/O error",
+    EXIT_BUCKET_UNSUPPORTED: "Operation not supported",
 }
 
 _STAT_MAP = {
@@ -545,12 +725,14 @@ _READ_MAP = {
 }
 
 _WRITE_MAP = {
+    EXIT_BUCKET_IO: SandboxFilesystemError,
     EXIT_NOT_A_DIRECTORY: SandboxFilesystemNotADirectoryError,
     EXIT_IS_A_DIRECTORY: SandboxFilesystemIsADirectoryError,
     EXIT_PERMISSION_DENIED: SandboxFilesystemPermissionError,
 }
 
 _MKDIR_MAP = {
+    EXIT_BUCKET_IO: SandboxFilesystemError,
     EXIT_NOT_FOUND: SandboxFilesystemNotFoundError,
     EXIT_NOT_A_DIRECTORY: SandboxFilesystemNotADirectoryError,
     EXIT_PERMISSION_DENIED: SandboxFilesystemPermissionError,
@@ -558,6 +740,8 @@ _MKDIR_MAP = {
 }
 
 _REMOVE_MAP = {
+    EXIT_BUCKET_IO: SandboxFilesystemError,
+    EXIT_BUCKET_UNSUPPORTED: InvalidError,
     EXIT_NOT_FOUND: SandboxFilesystemNotFoundError,
     EXIT_NOT_A_DIRECTORY: SandboxFilesystemError,
     EXIT_DIRECTORY_NOT_EMPTY: SandboxFilesystemDirectoryNotEmptyError,

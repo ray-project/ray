@@ -39,6 +39,7 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
 * **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
+* **AWS Mountpoint and FUSE (bucket mounts only)**: [`mount-s3`](https://github.com/awslabs/mountpoint-s3) 1.24 or later on the `$PATH`, read and write access to `/dev/fuse`, and `fusermount`. The `fuse` package provides `fusermount` and the `libfuse2` library that `mount-s3` needs. `fusermount3` from the `fuse3` package isn't enough unless Ray runs as root, because `libfuse2` mounts through `fusermount`. In a Kubernetes pod, expose `/dev/fuse` to the container. See [Mount a public cloud bucket](#mount-a-public-cloud-bucket).
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
 
@@ -276,12 +277,46 @@ print(result.stdout)
 ray.get(pool.close.remote())
 ```
 
+### Mount a public cloud bucket
+
+Pass `bucket_mounts` to mount public S3-compatible buckets into a sandbox. Each {class}`~ray.experimental.sandbox.BucketMount` names a bucket and the path to mount it at:
+
+```python
+import ray
+from ray.experimental import sandbox
+from ray.experimental.sandbox import BucketMount
+
+ray.init()
+
+sb = sandbox.create(
+    image="python:3.10-slim",
+    bucket_mounts=[BucketMount("noaa-ghcn-pds", "/data")],
+)
+print(ray.get(sb.exec.remote("head -c 200 /data/readme.txt")).stdout)
+ray.get(sb.delete.remote())
+```
+
+Ray mounts each bucket on the node with `mount-s3` from [AWS Mountpoint](https://github.com/awslabs/mountpoint-s3), outside the sandbox, and binds it into the sandbox. Modal mounts a `CloudBucketMount` the same way. Bucket mounts work as follows:
+
+* **Credentials**: Mounts are anonymous, so only public buckets work. Ray never passes the node's own cloud credentials to `mount-s3`. Cloudflare R2 always requires credentials, so you can't mount an R2 bucket.
+* **File semantics**: Reads work as on any filesystem. Writes must be sequential. You can create a file or replace an existing one, but you can't append to a file or write at an offset, and renames fail with "Function not implemented". A file appears in the bucket when the process writing it closes it. Listings are always current. Changes made to the bucket from elsewhere show up without a remount: new files at once, and overwritten or deleted files within about a second. Mountpoint's [semantics](https://github.com/awslabs/mountpoint-s3/blob/main/doc/SEMANTICS.md) page has the details.
+* **Read-only default**: A `BucketMount` is read-only unless you pass `read_only=False`. A read-only mount refuses every change with "Read-only file system".
+* **Configuration**: A bucket behaves the same in every sandbox configuration. Its traffic leaves through the node's network, so a sandbox with `network="none"` can still read its buckets. Files show as owned by the sandbox's root user, with mode 0755 for directories and 0644 for files, whatever the network mode or capabilities. Commands that run as another user through `exec(..., user=...)` can read a bucket but can't create or change files in it.
+* **Cleanup**: Once a sandbox is running, its buckets are mounted only inside it, not anywhere on the node, so they end when the sandbox ends. A sandbox ends however its Ray worker exits. If the worker is killed before it deletes the sandbox, for example by Ray's memory monitor, the sandbox's supervisor process removes the container, its buckets, and its files. If the supervisor is killed too, Ray cleans up the next time a sandbox starts on that node.
+* **Other S3-compatible services**: Set `endpoint_url` to reach another service, such as `"https://storage.googleapis.com"` for a public Google Cloud Storage bucket. Set `force_path_style=True` if the service needs path-style addresses. Set `key_prefix` to expose only the keys under a prefix.
+
+A sandbox can't mount a bucket at `/`, `/tmp`, or `/etc`, or anywhere under `/proc`, `/dev`, or `/sys`. Mount paths can't be nested inside one another. On a read-only root filesystem, a sandbox with bucket mounts runs on a private writable overlay instead, as it does with an explicit `workdir`, because `runsc` can't create mount points in a read-only image.
+
+:::{warning}
+`mount-s3` runs on the node as the Ray worker's user, outside the sandbox's cgroup, and serves file requests from code inside the sandbox. Run Ray as a non-root user on nodes that mount buckets. A sandbox with `network="none"` can still write to a writable bucket mount, so code can use a writable public bucket to move data out of the sandbox. `endpoint_url` makes requests from the node, so let only trusted callers choose it.
+:::
+
 ### Pass custom OCI configurations to gVisor
 
 For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [Open Container Initiative (OCI) runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
 
 :::{note}
-`_oci_spec_transform_fn` is an experimental hook for advanced use cases. The Ray project is designing first-class configuration APIs for Ray Sandboxes, such as higher-level volume mount and capability abstractions, and this hook is likely to change once those land. To help shape them, open an issue describing your use case.
+`_oci_spec_transform_fn` is an experimental hook for advanced use cases. The Ray project is designing first-class configuration APIs for Ray Sandboxes, such as higher-level volume mount and capability abstractions, and this hook is likely to change once those land. Public cloud buckets already have one, `bucket_mounts`. See [Mount a public cloud bucket](#mount-a-public-cloud-bucket). To help shape the others, open an issue describing your use case.
 :::
 
 The `_oci_spec_transform_fn` callable receives the fully generated OCI specification dictionary. It can mutate the dictionary in place or return a modified one. Common use cases include the following:
@@ -422,6 +457,22 @@ Failures raise typed errors — `SandboxFilesystemNotFoundError`, `SandboxFilesy
 
 Note that the write methods take the data first, matching Modal: `write_text(data, remote_path)`.
 
+### Cloud bucket mounts
+
+Mount a public bucket with `modal.CloudBucketMount`, as on Modal:
+
+```python
+sandbox = modal.Sandbox.create(
+    image="python:3.13-slim",
+    volumes={"/data": modal.CloudBucketMount("noaa-ghcn-pds", read_only=True)},
+)
+print(sandbox.filesystem.read_text("/data/ghcnd-states.txt")[:40])
+```
+
+Mounts behave as on Modal. File semantics, the owner, and the modes match, and the bucket stays readable with `block_network=True`. A write, directory creation, or removal that the bucket refuses raises `SandboxFilesystemError("I/O error")`, and `remove(path, recursive=True)` on a directory inside a writable bucket raises `InvalidError`, as Modal does. `reload_volumes()` returns at once, because a bucket mount shows changes made elsewhere without a reload.
+
+This API differs from Modal's in two ways. `secret=` and `oidc_auth_role_arn=` aren't supported, so you can mount only public buckets. A bucket that can't be mounted fails `Sandbox.create()` straight away, with Mountpoint's reason, where Modal fails the next call on the sandbox. For the node requirements and the paths you can't mount at, see [Mount a public cloud bucket](#mount-a-public-cloud-bucket).
+
 ### Async
 
 Every method blocks by default and also carries an `.aio` variant that runs on your own event loop:
@@ -473,7 +524,8 @@ A Ray sandbox is owned by the handle that created it and there's no hosted contr
 | `from_id`, `from_name`, `list`, `get_tags`, `set_tags` | Not supported — sandboxes aren't registered anywhere |
 | `tunnels`, `create_connect_token`, and the `*_ports` arguments | Not supported — the backend publishes no ports |
 | `snapshot_filesystem`, `snapshot_directory`, `mount_image`, `unmount_image` | Not supported |
-| `secrets`, `volumes`, `network_file_systems`, `proxy` | Not supported |
+| `volumes` with `CloudBucketMount` | Supported for public buckets. See [Cloud bucket mounts](#cloud-bucket-mounts). |
+| `secrets`, `modal.Volume`, `network_file_systems`, `proxy` | Not supported |
 | `cloud`, `region`, `idle_timeout`, `pty` | Not supported |
 | `gpu` | Not supported — no GPU device is passed into the sandbox, so a reservation would go unused |
 | `filesystem.watch()` | Not supported — needs inotify inside the sandbox |
@@ -563,6 +615,7 @@ The Ray Sandboxes subsystem has the following layers:
 * **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
 * **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
 * **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
+* **Sandbox supervisor**: A small process that Ray starts alongside each sandbox. If the Ray worker that owns the sandbox exits without deleting it, for example because Ray killed the worker, the supervisor removes the sandbox's container, processes, bucket mounts, and files.
 * **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray-<uid>/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
 ## Security and isolation model

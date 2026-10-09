@@ -840,5 +840,73 @@ def test_invalidate_image_of_an_uncached_image_is_a_no_op(tmp_path):
     assert not os.path.exists(str(tmp_path / "images"))
 
 
+def test_create_oci_spec_without_bind_mounts_is_unchanged(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    plain = mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+    empty = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), bind_mounts=[]
+    )
+    assert plain == empty
+
+
+def test_create_oci_spec_appends_bind_mounts_last(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=False,
+        network="public",
+        resolv_conf_source=str(tmp_path / "resolv.conf"),
+        hosts_source=str(tmp_path / "hosts"),
+        bind_mounts=[("/srv/deep/x", "/host/b", False), ("/data", "/host/a", True)],
+    )
+    binds = spec["mounts"][-2:]
+    # Last, after the runtime's own mounts, and parents before children.
+    assert [m["destination"] for m in spec["mounts"]].index("/etc/hosts") < len(
+        spec["mounts"]
+    ) - 2
+    assert binds == [
+        {
+            "destination": "/data",
+            "type": "bind",
+            "source": "/host/a",
+            "options": ["rbind", "ro", "nosuid", "nodev"],
+        },
+        {
+            "destination": "/srv/deep/x",
+            "type": "bind",
+            "source": "/host/b",
+            "options": ["rbind", "rw", "nosuid", "nodev"],
+        },
+    ]
+
+
+def test_create_oci_spec_bind_mounts_force_overlay_on_readonly_rootfs(tmp_path):
+    """runsc cannot create a mount point in a read-only EROFS image, so a
+    readonly sandbox with bind mounts runs on a private writable overlay, as
+    one with an explicit workdir does."""
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=True,
+        bind_mounts=[("/data", "/host/a", True)],
+    )
+    assert spec["root"]["readonly"] is False
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
+
+
+def test_create_oci_spec_bind_mount_collision_raises(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    with pytest.raises(SandboxCreationError, match="already has a mount"):
+        mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            readonly=False,
+            hosts_source=str(tmp_path / "hosts"),
+            bind_mounts=[("/etc/hosts", "/host/a", True)],
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

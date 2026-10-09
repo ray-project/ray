@@ -34,6 +34,7 @@ For an introduction and usage guides, see {ref}`ray-core-sandboxes`.
     :toctree: doc/
     :template: autosummary/class_without_autosummary.rst
 
+    ray.experimental.sandbox.BucketMount
     ray.experimental.sandbox.ExecResult
     ray.experimental.sandbox.SandboxStatus
 ```
@@ -80,6 +81,7 @@ An alternative surface that mirrors the [Modal Sandbox API](https://modal.com/do
     :template: autosummary/class_without_autosummary.rst
 
     ray.experimental.sandbox.modal.App
+    ray.experimental.sandbox.modal.CloudBucketMount
     ray.experimental.sandbox.modal.Image
     ray.experimental.sandbox.modal.StreamType
     ray.experimental.sandbox.modal.types.FileInfo

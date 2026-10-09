@@ -925,5 +925,258 @@ def test_a_write_that_fails_part_way_is_not_a_permission_error(tmp_path):
     assert os.listdir(tmp_path) == ["dest"]
 
 
+# -- bucket mounts -----------------------------------------------------------------
+#
+# A local directory stands in for a bucket mount: the scripts route by path, so
+# what matters is which branch runs and what each failure is reported as.
+
+
+def test_bucket_error_mapping_matches_modal():
+    # Measured on Modal: every refused write, mkdir and remove in a bucket mount
+    # is the generic error with this message, with no path in it.
+    for raise_error in (
+        fs.raise_write_file_error,
+        fs.raise_make_directory_error,
+        fs.raise_remove_error,
+    ):
+        with pytest.raises(SandboxFilesystemError) as err:
+            raise_error(fs.EXIT_BUCKET_IO, b"", "/data/x")
+        assert type(err.value) is SandboxFilesystemError
+        assert str(err.value) == "I/O error"
+    with pytest.raises(InvalidError) as err:
+        fs.raise_remove_error(fs.EXIT_BUCKET_UNSUPPORTED, b"", "/data/d")
+    assert str(err.value) == (
+        "Operation not supported: /data/d - this operation is not supported for "
+        "CloudBucketMounts"
+    )
+
+
+def test_scripts_without_bucket_mounts_take_no_extra_arguments():
+    assert fs.make_write_file_command("/a/b", "/a/.t")[3:] == ["sh", "/a/b", "/a/.t"]
+    assert fs.make_remove_command("/a/b", True)[3:] == ["sh", "/a/b", "1"]
+    assert fs.make_make_directory_command("/a/b", True)[3:] == ["sh", "/a/b", "1"]
+
+
+def test_stage_path_is_in_tmp_under_the_same_name():
+    assert (
+        fs.make_stage_path("/data/dir/.ray-sandbox-tmp-abc123")
+        == "/tmp/.ray-sandbox-tmp-abc123"
+    )
+
+
+@requires_posix_shell
+def test_write_into_a_bucket_overwrites_in_place(tmp_path):
+    """No temporary file beside the destination and no rename: the object is
+    replaced by one truncating write, the only way Mountpoint can."""
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    dest = bucket / "f.txt"
+    dest.write_text("old")
+    inode = dest.stat().st_ino
+    temp = str(bucket / fs.temp_name())
+    argv = fs.make_write_file_command(str(dest), temp, [(str(bucket), False)])
+    result = run_script(argv, stdin=b"new contents")
+    assert result.returncode == 0, result.stderr
+    assert dest.read_text() == "new contents"
+    assert dest.stat().st_ino == inode
+    assert sorted(os.listdir(bucket)) == ["f.txt"]
+    assert not os.path.exists(fs.make_stage_path(temp))
+
+
+@requires_posix_shell
+def test_write_outside_buckets_still_lands_by_rename(tmp_path):
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    dest = tmp_path / "f.txt"
+    dest.write_text("old")
+    inode = dest.stat().st_ino
+    argv = fs.make_write_file_command(
+        str(dest), str(tmp_path / fs.temp_name()), [(str(bucket), False)]
+    )
+    assert run_script(argv, stdin=b"new").returncode == 0
+    assert dest.read_text() == "new"
+    assert dest.stat().st_ino != inode
+
+
+@requires_posix_shell
+def test_write_through_a_symlink_into_a_bucket_takes_the_bucket_branch(tmp_path):
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    (bucket / "f.txt").write_text("old")
+    inode = (bucket / "f.txt").stat().st_ino
+    (tmp_path / "link").symlink_to(bucket)
+    dest = tmp_path / "link" / "f.txt"
+    argv = fs.make_write_file_command(
+        str(dest), str(tmp_path / "link" / fs.temp_name()), [(str(bucket), False)]
+    )
+    assert run_script(argv, stdin=b"via link").returncode == 0
+    assert (bucket / "f.txt").read_text() == "via link"
+    assert (bucket / "f.txt").stat().st_ino == inode
+
+
+@requires_posix_shell
+def test_resolve_paths_finds_where_a_mount_really_is(tmp_path):
+    """A mount configured under a link in the image (/lib64 -> lib) is placed
+    where the link points; resolved once, at creation."""
+    (tmp_path / "real" / "bucket").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    paths = [
+        str(tmp_path / "link" / "bucket"),
+        str(tmp_path / "real" / "bucket"),
+        str(tmp_path / "no" / "such" / "dir"),
+        "/a b",
+    ]
+    result = run_script(fs.make_resolve_paths_command(paths))
+    assert result.returncode == 0
+    resolved = fs.parse_resolved_paths(result.stdout, paths)
+    assert resolved[:2] == [str(tmp_path / "real" / "bucket")] * 2
+    assert resolved[2] in (paths[2], os.path.realpath(paths[2]))
+    assert resolved[3] == "/a b"
+
+
+def test_unparseable_resolved_paths_fall_back_to_the_configured_ones():
+    paths = ["/data", "/ro"]
+    assert fs.parse_resolved_paths(b"/x\0", paths) == paths
+    assert fs.parse_resolved_paths(b"relative\0/ro\0", paths) == paths
+    assert fs.parse_resolved_paths(b"/x\0/y\0", paths) == ["/x", "/y"]
+
+
+@requires_posix_shell
+def test_removing_the_link_to_a_mount_is_not_removing_the_mount(tmp_path):
+    """With the mount's real location: the link on the way to its configured
+    path is removed as a link, and its target as a directory holding a mount."""
+    (tmp_path / "real" / "bucket").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    mounts = [(str(tmp_path / "real" / "bucket"), False)]
+    argv = fs.make_remove_command(str(tmp_path / "link"), True, mounts)
+    assert run_script(argv).returncode == 0
+    assert not (tmp_path / "link").exists()
+    argv = fs.make_remove_command(str(tmp_path / "real"), True, mounts)
+    assert run_script(argv).returncode == fs.EXIT_BUCKET_UNSUPPORTED
+    assert (tmp_path / "real" / "bucket").is_dir()
+
+
+@requires_posix_shell
+def test_an_empty_write_into_a_bucket(tmp_path):
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    dest = bucket / "empty"
+    argv = fs.make_write_file_command(
+        str(dest), str(bucket / fs.temp_name()), [(str(bucket), False)]
+    )
+    assert run_script(argv, stdin=b"").returncode == 0
+    assert dest.read_bytes() == b""
+
+
+@requires_posix_shell
+def test_write_into_a_bucket_creates_parents(tmp_path):
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    dest = bucket / "a" / "b" / "f.txt"
+    argv = fs.make_write_file_command(
+        str(dest), str(dest.parent / fs.temp_name()), [(str(bucket), False)]
+    )
+    assert run_script(argv, stdin=b"deep").returncode == 0
+    assert dest.read_text() == "deep"
+
+
+@requires_posix_shell
+def test_a_refused_write_in_a_bucket_is_an_io_error():
+    # /dev/full refuses every write, as a bucket refuses an upload, for root too.
+    argv = fs.make_write_file_command(
+        "/dev/full", "/dev/" + fs.temp_name(), [("/dev", False)]
+    )
+    result = run_script(argv, stdin=b"x")
+    assert result.returncode == fs.EXIT_BUCKET_IO
+
+
+@requires_posix_shell
+@pytest.mark.parametrize("read_only", [False, True])
+def test_recursive_remove_in_a_bucket(tmp_path, read_only):
+    """Refused up front in a writable bucket, where rm -rf would delete objects
+    before failing; run as usual in a read-only one, where nothing can go."""
+    bucket = tmp_path / "bucket"
+    (bucket / "d").mkdir(parents=True)
+    (bucket / "d" / "f").write_text("x")
+    argv = fs.make_remove_command(str(bucket / "d"), True, [(str(bucket), read_only)])
+    result = run_script(argv)
+    if read_only:
+        # A local stand-in is not actually read-only, so the removal succeeds.
+        assert result.returncode == 0
+    else:
+        assert result.returncode == fs.EXIT_BUCKET_UNSUPPORTED
+        assert (bucket / "d" / "f").exists(), "nothing deleted"
+
+
+@requires_posix_shell
+@pytest.mark.parametrize("read_only", [False, True])
+def test_recursive_remove_of_a_directory_containing_a_bucket_is_refused(
+    tmp_path, read_only
+):
+    (tmp_path / "parent" / "bucket").mkdir(parents=True)
+    (tmp_path / "parent" / "other").write_text("x")
+    argv = fs.make_remove_command(
+        str(tmp_path / "parent"),
+        True,
+        [(str(tmp_path / "parent" / "bucket"), read_only)],
+    )
+    assert run_script(argv).returncode == fs.EXIT_BUCKET_UNSUPPORTED
+    assert (tmp_path / "parent" / "other").exists()
+
+
+@requires_posix_shell
+def test_recursive_remove_of_a_file_in_a_writable_bucket_is_a_remove(tmp_path):
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    (bucket / "f").write_text("x")
+    argv = fs.make_remove_command(str(bucket / "f"), True, [(str(bucket), False)])
+    assert run_script(argv).returncode == 0
+    assert not (bucket / "f").exists()
+
+
+@requires_posix_shell
+def test_plain_removes_in_a_bucket_still_work(tmp_path):
+    bucket = tmp_path / "bucket"
+    (bucket / "empty").mkdir(parents=True)
+    (bucket / "f").write_text("x")
+    mounts = [(str(bucket), False)]
+    assert (
+        run_script(fs.make_remove_command(str(bucket / "f"), False, mounts)).returncode
+        == 0
+    )
+    assert (
+        run_script(
+            fs.make_remove_command(str(bucket / "empty"), False, mounts)
+        ).returncode
+        == 0
+    )
+    assert (
+        run_script(
+            fs.make_remove_command(str(bucket / "gone"), False, mounts)
+        ).returncode
+        == fs.EXIT_NOT_FOUND
+    )
+
+
+@requires_posix_shell
+def test_a_refused_mkdir_in_a_bucket_is_an_io_error():
+    # sysfs refuses directory creation, for root too.
+    argv = fs.make_make_directory_command(
+        "/sys/ray-sandbox-test-dir", False, [("/sys", False)]
+    )
+    assert run_script(argv).returncode == fs.EXIT_BUCKET_IO
+
+
+@requires_posix_shell
+def test_mkdir_in_a_bucket(tmp_path):
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    argv = fs.make_make_directory_command(
+        str(bucket / "a" / "b"), True, [(str(bucket), False)]
+    )
+    assert run_script(argv).returncode == 0
+    assert (bucket / "a" / "b").is_dir()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -19,10 +19,10 @@ inside an event loop::
     async for line in process.stdout:
         print(line, end="")
 
-Modal features that depend on its hosted control plane -- tunnels, volumes,
+Modal features that depend on its hosted control plane -- tunnels, Volumes,
 secrets, snapshots, tags, and looking Sandboxes up by id or name -- raise
-``NotImplementedError``. A Sandbox here lives only as long as the handle that
-created it.
+``NotImplementedError``. Public cloud buckets mount with ``CloudBucketMount``.
+A Sandbox here lives only as long as the handle that created it.
 
 Divergences from Modal
 ----------------------
@@ -130,6 +130,21 @@ Network access is all-or-nothing, and the default is not Modal's isolation.
     Modal's CIDR and domain allowlists are rejected rather than approximated,
     because silently failing to enforce an egress restriction is worse than
     refusing it.
+
+Only public cloud buckets can be mounted.
+    ``CloudBucketMount`` behaves as on Modal -- AWS Mountpoint outside the
+    Sandbox, Modal's file semantics, owner and modes, reachable with
+    ``block_network=True`` -- but takes no credentials: ``secret=`` and
+    ``oidc_auth_role_arn=`` raise ``NotSupportedError``, so private buckets,
+    requester-pays and Cloudflare R2 cannot be used. The node running the
+    Sandbox needs ``mount-s3`` 1.24 or newer and a usable ``/dev/fuse``. Mount
+    paths that Modal accepts but this runtime cannot use are refused: nested
+    mounts, ``/etc`` and the other paths the runtime manages, and
+    ``add_local_*(copy=False)`` files bound for a mount, which would be
+    uploaded into the bucket. A bucket that cannot be mounted fails
+    ``Sandbox.create()`` at once with the reason, where Modal fails the next
+    call with ``ConflictError``. ``reload_volumes()`` does nothing: there are
+    no Volumes, and a bucket shows changes made elsewhere without a reload.
 
 ``copy_to_local()`` has no size limit.
     ``read_bytes()`` and ``read_text()`` refuse a file over 5 GiB with
@@ -263,6 +278,7 @@ Smaller argument-level differences.
 # ``modal.types.FileInfo`` and lists only ``types`` in its own ``__all__``.
 from ray.experimental.sandbox.modal import types  # noqa: F401
 from ray.experimental.sandbox.modal.app import App
+from ray.experimental.sandbox.modal.cloud_bucket_mount import CloudBucketMount
 from ray.experimental.sandbox.modal.container_process import ContainerProcess
 from ray.experimental.sandbox.modal.exception import (
     AlreadyExistsError,  # noqa: F401
@@ -310,6 +326,7 @@ __all__ = [
     "AlreadyExistsError",
     "App",
     "ClientClosed",
+    "CloudBucketMount",
     "ConflictError",
     "ConnectionError",
     "ContainerProcess",
