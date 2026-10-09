@@ -535,7 +535,7 @@ certifi==2026.4.22 \
     #   msrest
     #   requests
     #   sentry-sdk
-cffi==1.17.1 \
+cffi==1.17.1 ; python_full_version < '3.14' or platform_python_implementation != 'PyPy' \
     --hash=sha256:045d61c734659cc045141be4bae381a41d89b741f795af1dd018bfb532fd0df8 \
     --hash=sha256:0984a4925a435b1da406122d4d7968dd861c1385afe3b45ba82b750f229811e2 \
     --hash=sha256:0e2b1fac190ae3ebfe37b979cc1ce69c81f4e4fe5746bb401dca63a9062cdaf1 \
@@ -1089,7 +1089,7 @@ dm-tree==0.1.10 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
     #   tensorflow-probability
-dnspython==2.8.0 \
+dnspython==2.8.0 ; python_full_version < '3.14' \
     --hash=sha256:01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af \
     --hash=sha256:181d3c6996452cb1189c4046c61599b84a5a86e099562ffde77d26984ff26d0f
     # via
@@ -2464,7 +2464,7 @@ linkify-it-py==2.1.0 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   markdown-it-py
-llvmlite==0.44.0 \
+llvmlite==0.44.0 ; python_full_version < '3.14' \
     --hash=sha256:07667d66a5d150abed9157ab6c0b9393c9356f229784a4385c02f99e94fc94d4 \
     --hash=sha256:1d671a56acf725bf1b531d5ef76b86660a5ab8ef19bb6a46064a705c6ca80aad \
     --hash=sha256:2fb7c4f2fb86cbae6dca3db9ab203eeea0e22d73b99bc2341cdf9de93612e930 \
@@ -3364,7 +3364,7 @@ nodeenv==1.10.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pyright
-numba==0.61.2 \
+numba==0.61.2 ; python_full_version < '3.14' \
     --hash=sha256:34fba9406078bac7ab052efbf0d13939426c753ad72946baaa5bf9ae0ebb8dd2 \
     --hash=sha256:3945615cd73c2c7eba2a85ccc9c1730c21cd3958bfcf5a44302abae0fb07bb60 \
     --hash=sha256:3a10a8fc9afac40b1eac55717cece1b8b1ac0b946f5065c89e00bde646b5b154 \
@@ -4602,7 +4602,7 @@ pyasn1-modules==0.4.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-auth
-pycparser==3.0 \
+pycparser==3.0 ; python_full_version < '3.14' or platform_python_implementation != 'PyPy' \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
     # via
@@ -4761,7 +4761,7 @@ pydub==0.25.1 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
-pygame==2.5.2 \
+pygame==2.5.2 ; python_full_version < '3.14' \
     --hash=sha256:03879ec299c9f4ba23901b2649a96b2143f0a5d787f0b6c39469989e2320caf1 \
     --hash=sha256:074aa6c6e110c925f7f27f00c7733c6303407edc61d738882985091d1eb2ef17 \
     --hash=sha256:0e24d05184e4195fe5ebcdce8b18ecb086f00182b9ae460a86682d312ce8d31f \
@@ -4839,7 +4839,7 @@ pyjwt==2.12.1 \
     #   adal
     #   azure-cli-core
     #   msal
-pymongo==4.3.2 \
+pymongo==4.3.2 ; python_full_version < '3.14' \
     --hash=sha256:006799ddba1f2e73ce27689f016791ab80e51876c52ae2265d8c76016baaa10e \
     --hash=sha256:02140c1a9f2107a16c074c9e558a556faafb0dc3c2e9332c6685c5506823ab9d \
     --hash=sha256:04597a5d877a984b5e3059e942b02d68f8af9bb4328592abca27e82015560112 \
@@ -6074,7 +6074,7 @@ tensorboardx==2.6.5 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   ray
-tensordict==0.8.3 ; sys_platform != 'darwin' \
+tensordict==0.8.3 ; python_full_version < '3.14' and sys_platform != 'darwin' \
     --hash=sha256:0f9b56cf0d2a841369a2deefb4c9e553e55cef16bc7b207dd8f00f13ac40ba80 \
     --hash=sha256:10924b2ab549214000b392a23c622e2845b0fb1b4e073f2ef6325a882fbedb92 \
     --hash=sha256:22738b16ec44f30402bac400a7d6541eebdf00bfdb934df3e29e9db590cdae99 \

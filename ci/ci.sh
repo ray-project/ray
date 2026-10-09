@@ -13,6 +13,29 @@ suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
 }
 
+# Source requirements compiled into requirements_compiled*.txt.
+COMPILE_PIP_SOURCES=(
+  python/requirements.txt
+  python/requirements/lint-requirements.txt
+  python/requirements/test-requirements.txt
+  python/requirements/cloud-requirements.txt
+  python/requirements/serve/serve-test-requirements.txt
+  python/requirements/docker/ray-docker-requirements.txt
+  python/requirements/ml/core-requirements.txt
+  python/requirements/ml/data-requirements.txt
+  python/requirements/ml/data-test-requirements.txt
+  python/requirements/ml/dl-cpu-requirements.txt
+  python/requirements/ml/ml-requirements.txt
+  python/requirements/ml/third_party.txt
+  python/requirements/ml/rllib-requirements.txt
+  python/requirements/ml/rllib-test-requirements.txt
+  python/requirements/ml/train-requirements.txt
+  python/requirements/ml/train-test-requirements.txt
+  python/requirements/ml/tune-requirements.txt
+  python/requirements/ml/tune-test-requirements.txt
+  python/requirements/security-requirements.txt
+)
+
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -49,25 +72,7 @@ compile_pip_dependencies() {
       --unsafe-package pip \
       --unsafe-package setuptools \
       -o "python/$TARGET" \
-      python/requirements.txt \
-      python/requirements/lint-requirements.txt \
-      python/requirements/test-requirements.txt \
-      python/requirements/cloud-requirements.txt \
-      python/requirements/serve/serve-test-requirements.txt \
-      python/requirements/docker/ray-docker-requirements.txt \
-      python/requirements/ml/core-requirements.txt \
-      python/requirements/ml/data-requirements.txt \
-      python/requirements/ml/data-test-requirements.txt \
-      python/requirements/ml/dl-cpu-requirements.txt \
-      python/requirements/ml/ml-requirements.txt \
-      python/requirements/ml/third_party.txt \
-      python/requirements/ml/rllib-requirements.txt \
-      python/requirements/ml/rllib-test-requirements.txt \
-      python/requirements/ml/train-requirements.txt \
-      python/requirements/ml/train-test-requirements.txt \
-      python/requirements/ml/tune-requirements.txt \
-      python/requirements/ml/tune-test-requirements.txt \
-      python/requirements/security-requirements.txt
+      "${COMPILE_PIP_SOURCES[@]}"
 
     # Delete local installation
     sed -i "/@ file/d" "python/$TARGET"
@@ -90,6 +95,47 @@ compile_pip_dependencies() {
     if [[ "$HAS_TORCH" == "0" ]]; then
       pip uninstall -y torch
     fi
+  )
+}
+
+# Compiles python/requirements_compiled_py3.14.txt from the same sources as
+# compile_pip_dependencies. Where a shared pin has no cp314 wheel, the source
+# files gate it with a `python_version` marker.
+compile_pip_dependencies_py314() {
+  local target="python/requirements_compiled_py3.14.txt"
+
+  # These ship only an sdist, for every Python version, so building them is not
+  # a 3.14 regression. hyperopt is pinned to a git commit, so it is always built
+  # from source. Everything else must install from a wheel.
+  local sdist_only=(
+    crcmod deepspeed fairscale feather-format gcs-oauth2-boto-plugin gsutil halo
+    hyperopt promise pyspark pyu2f retry-decorator s3torchconnector
+  )
+  local no_binary_args=()
+  for pkg in "${sdist_only[@]}"; do
+    no_binary_args+=(--no-binary "${pkg}")
+  done
+
+  (
+    cd "${WORKSPACE_DIR}"
+    pip install "uv==0.9.26"
+
+    # Ray images are glibc 2.35 (Ubuntu 22.04), hence manylinux_2_35.
+    env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
+      -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
+      uv pip compile --python-version 3.14 --python-platform x86_64-manylinux_2_35 \
+      --no-header --strip-extras --emit-index-url --emit-find-links \
+      --index-strategy unsafe-best-match \
+      --only-binary :all: "${no_binary_args[@]}" \
+      --unsafe-package ray \
+      --unsafe-package pip \
+      --unsafe-package setuptools \
+      -o "${target}" \
+      "${COMPILE_PIP_SOURCES[@]}"
+
+    sed -i -e "/^--index-url /d" "${target}"
+    # Same local-version strip as compile_pip_dependencies.
+    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "${target}"
   )
 }
 
