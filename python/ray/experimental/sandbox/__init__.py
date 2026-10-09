@@ -7,6 +7,9 @@ from ray.experimental.sandbox.backend.base import (
     ExecutionResult,
     SandboxStatus,
 )
+from ray.experimental.sandbox.backend.checkpoint_utils import (
+    load_checkpoint_manifest,
+)
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_DNS,
@@ -143,11 +146,17 @@ def restore(
     Returns:
         A Sandbox actor handle.
     """
+    manifest, _ = load_checkpoint_manifest(checkpoint_path)
+    recorded_config = manifest.get("config", {})
+
+    effective_cpu = cpu if cpu is not None else recorded_config.get("cpu")
+    effective_memory = memory if memory is not None else recorded_config.get("memory")
+
     actor_opts = {}
-    if cpu is not None and cpu >= 0:
-        actor_opts["num_cpus"] = cpu
-    if memory is not None:
-        parsed_mem = parse_memory_bytes(memory)
+    if effective_cpu is not None and effective_cpu >= 0:
+        actor_opts["num_cpus"] = effective_cpu
+    if effective_memory is not None:
+        parsed_mem = parse_memory_bytes(effective_memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
     if resources:

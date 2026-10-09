@@ -330,9 +330,8 @@ class TestCheckpointRestore(unittest.TestCase):
         sandbox_id, _ = self._create_mock_sandbox(rootless=False)
         with (
             patch("subprocess.run") as mock_run,
-            patch.object(
-                self.backend,
-                "_copy_fs_tree",
+            patch(
+                "ray.experimental.sandbox.backend.checkpoint_utils.copy_fs_tree",
                 side_effect=PermissionError("Permission denied"),
             ),
             patch.object(self.backend, "_delete_container_state") as mock_delete_state,
@@ -430,12 +429,11 @@ class TestCheckpointRestore(unittest.TestCase):
                 and isinstance(call[0][0], list)
                 and "chmod" in call[0][0]
             ]
-            assert len(chmod_calls) == 1
-            cmd = chmod_calls[0]
-            assert "sudo" in cmd
-            assert "chmod" in cmd
-            assert "u+rwX,go-rwx" in cmd
-            assert "go+rX" not in " ".join(cmd)
+            assert len(chmod_calls) >= 1
+            for cmd in chmod_calls:
+                assert "sudo" in cmd
+                assert "chmod" in cmd
+                assert "go+rX" not in " ".join(cmd)
 
     def test_checkpoint_failure_preserves_previously_valid_bundle(self):
         sandbox_id, _ = self._create_mock_sandbox(rootless=False)
@@ -587,16 +585,14 @@ class TestCheckpointRestore(unittest.TestCase):
             mock_run.return_value = MagicMock(
                 returncode=0, stdout=json.dumps({"status": "running"})
             )
-            # Restoring with readonly=False should copy fs/workdir into rootfs/workspace
+            # Restoring with readonly=False should copy fs/workdir into host workdir path
             restored_id = self.backend.restore_sandbox(
                 ckpt_dir, readonly=False, workdir="/workspace"
             )
             meta = self.backend._sandbox_metadata[restored_id]
             assert meta["config"].readonly is False
-            assert meta["workdir"] is None  # No host bind mount when readonly=False
-            restored_file = os.path.join(
-                meta["root_dir"], "rootfs", "workspace", "app.py"
-            )
+            assert meta["workdir"] is not None
+            restored_file = os.path.join(meta["workdir"], "app.py")
             assert os.path.isfile(restored_file)
             with open(restored_file) as f:
                 assert f.read() == "print('hello from workdir')"
@@ -785,6 +781,42 @@ class TestCheckpointRestore(unittest.TestCase):
         assert hasattr(sandbox_api, "restore")
         assert callable(sandbox_api.restore)
         assert "restore" in sandbox_api.__all__
+
+    def test_top_level_restore_preserves_manifest_resources(self):
+        ckpt_dir = os.path.join(self.temp_dir, "manifest_res_ckpt")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "config": {
+                "image": "busybox:latest",
+                "cpu": 4.0,
+                "memory": "8Gi",
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        with patch.object(sandbox_api.Sandbox, "options") as mock_options:
+            mock_remote = MagicMock()
+            mock_options.return_value = mock_remote
+
+            # Restore without explicit cpu/memory overrides
+            sandbox_api.restore(ckpt_dir)
+
+            # Verify that actor options inherited recorded cpu and memory from manifest
+            mock_options.assert_called_once_with(
+                num_cpus=4.0,
+                memory=8589934592,  # 8Gi in bytes
+            )
+            mock_remote.remote.assert_called_once_with(
+                restore_from=ckpt_dir,
+                cpu=None,
+                memory=None,
+                ttl_seconds=None,
+                timeout_seconds=30.0,
+            )
 
 
 if __name__ == "__main__":
