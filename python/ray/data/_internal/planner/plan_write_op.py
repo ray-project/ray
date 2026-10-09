@@ -1,6 +1,5 @@
-import itertools
 import uuid
-from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator, List, Optional, Union
 
 from ray.data._internal.execution.bundle_queue import EstimateBytes, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -21,6 +20,53 @@ if TYPE_CHECKING:
 WRITE_UUID_KWARG_NAME = "write_uuid"
 # Key for storing pending checkpoint paths for commit phase
 PENDING_CHECKPOINTS_KWARG_NAME = "_pending_checkpoints"
+# Key for storing the write stats accumulator on `TaskContext.kwargs`
+WRITE_STATS_KWARG_NAME = "_write_stats"
+
+
+class _WriteStats:
+    """Row and byte totals for one write task's input.
+
+    This is all the output stats block needs from the input, so it is
+    accumulated while blocks are on their way to the sink rather than by
+    holding the blocks and measuring them afterwards.
+    """
+
+    __slots__ = ("num_rows", "size_bytes")
+
+    def __init__(self) -> None:
+        self.num_rows = 0
+        self.size_bytes = 0
+
+    def add(self, block: Block) -> None:
+        accessor = BlockAccessor.for_block(block)
+        self.num_rows += accessor.num_rows()
+        self.size_bytes += accessor.size_bytes()
+
+
+class _StatsCollectingBlocks(Iterator[Block]):
+    """Block pass-through that accumulates :class:`_WriteStats` as blocks flow.
+
+    ``itertools.tee`` used to give the write and the stats collection their own
+    view of the same blocks, but the two views are read one after the other:
+    the sink drains its copy first, so tee buffers the whole input for the
+    later reader. The stats are two integers, so count blocks on the way past
+    and hold none of them.
+    """
+
+    __slots__ = ("_blocks", "_stats")
+
+    def __init__(self, blocks: Iterable[Block], stats: _WriteStats) -> None:
+        self._blocks = iter(blocks)
+        self._stats = stats
+
+    def __iter__(self) -> "_StatsCollectingBlocks":
+        return self
+
+    def __next__(self) -> Block:
+        block = next(self._blocks)
+        self._stats.add(block)
+        return block
 
 
 def generate_write_fn(
@@ -29,17 +75,28 @@ def generate_write_fn(
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Writes the blocks to the given datasink or legacy datasource.
 
-        Outputs the original blocks to be written."""
-        # Create a copy of the iterator, so we can return the original blocks.
-        it1, it2 = itertools.tee(blocks, 2)
+        Outputs no blocks: the write stats accumulate on `ctx.kwargs`, and
+        `generate_collect_write_stats_fn` turns them into the operator's
+        single output block. Returning the written blocks would mean holding
+        every one of them until the stats stage read them."""
+        stats = _WriteStats()
+        ctx.kwargs[WRITE_STATS_KWARG_NAME] = stats
+        blocks = _StatsCollectingBlocks(blocks, stats)
+
         if isinstance(datasink_or_legacy_datasource, Datasink):
             ctx.kwargs["_datasink_write_return"] = datasink_or_legacy_datasource.write(
-                it1, ctx
+                blocks, ctx
             )
         else:
-            datasink_or_legacy_datasource.write(it1, ctx, **write_args)
+            datasink_or_legacy_datasource.write(blocks, ctx, **write_args)
 
-        return it2
+        # The stats cover the whole input, not just what the sink pulled: a
+        # sink may stop early, and the blocks it did not read still arrived at
+        # this task. Drain the rest through the counter, dropping each block.
+        for _ in blocks:
+            pass
+
+        return iter(())
 
     return fn
 
@@ -52,10 +109,15 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Handles stats collection for block writes."""
         # Drain before reading `ctx` below: consuming the input is what runs
-        # the write stage, and the write is what sets `_datasink_write_return`.
-        block_accessors = [BlockAccessor.for_block(block) for block in blocks]
-        total_num_rows = sum(ba.num_rows() for ba in block_accessors)
-        total_size_bytes = sum(ba.size_bytes() for ba in block_accessors)
+        # the write stage, and the write is what sets `_datasink_write_return`
+        # and the stats. Count the blocks as they drain, so callers that pass
+        # the blocks straight in (rather than driving this from
+        # `generate_write_fn`) still get their stats without holding them.
+        drained = _WriteStats()
+        for block in blocks:
+            drained.add(block)
+
+        stats = ctx.kwargs.pop(WRITE_STATS_KWARG_NAME, drained)
 
         # NOTE: Write tasks can return anything, so we need to wrap it in a valid block
         # type.
@@ -63,9 +125,9 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
 
         block = pd.DataFrame(
             {
-                "num_rows": [total_num_rows],
-                "size_bytes": [total_size_bytes],
-                "write_return": [ctx.kwargs.get("_datasink_write_return", None)],
+                "num_rows": [stats.num_rows],
+                "size_bytes": [stats.size_bytes],
+                "write_return": [ctx.kwargs.pop("_datasink_write_return", None)],
             }
         )
         return iter([block])
