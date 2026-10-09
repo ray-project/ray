@@ -139,6 +139,24 @@ class IcebergFileIndexer(FileIndexer):
         self._server_side_planning = server_side_planning
 
     @override
+    def as_whole_file_indexer(self) -> "IcebergFileIndexer":
+        """This indexer, unchanged -- it already emits each file exactly once.
+
+        The base class defaults to ``None`` because an indexer may emit one
+        manifest row per *chunk* of a file, which would over-count it: that is
+        the footer-based Parquet indexer, where one file's row groups become
+        several rows. An Iceberg scan task names a whole file and is never
+        split -- the manifest's chunk-metadata column is all null -- so one
+        file is always one row here. The other half of the default, "does no
+        per-file IO while listing", holds too: planning reads table metadata
+        only.
+
+        Returns:
+            ``self``.
+        """
+        return self
+
+    @override
     def list_files(
         self,
         paths: "BlockColumn",
