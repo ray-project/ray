@@ -30,5 +30,5 @@ the [Setting up your development environment](https://docs.ray.io/en/latest/ray-
 
 ### For contributors who are not in the ray-project organization:
 
-- Your PRs will have assignees shortly. Assignees or PRs will be actively engaging with contributors to merge the PR.
+- Your PRs will have assignees shortly. Assignees will be actively engaging with contributors to merge the PR.
 - Please actively ping assignees after you address your comments!
