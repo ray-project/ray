@@ -472,11 +472,6 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
 
-  // Clean up the leasing progress map.
-  auto it = placement_group_leasing_in_progress_.find(placement_group_id);
-  RAY_CHECK(it != placement_group_leasing_in_progress_.end());
-  placement_group_leasing_in_progress_.erase(it);
-
   // A node can die after its commit reply but before the last reply of this placement
   // group returns. GcsPlacementGroupManager::OnNodeDead only reschedules bundles in the
   // committed index, so bundles on dead nodes must be treated as uncommitted here.
@@ -503,6 +498,21 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   cluster_resource_scheduler_.GetClusterResourceManager()
       .GetBundleLocationIndex()
       .AddOrUpdateBundleLocations(committed_bundle_locations);
+
+  auto cleanup_failure_handler = [this,
+                                  placement_group_id,
+                                  placement_group,
+                                  schedule_failure_handler](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to clean up uncommitted placement group bundles: "
+                     << status;
+    }
+    auto it = placement_group_leasing_in_progress_.find(placement_group_id);
+    RAY_CHECK(it != placement_group_leasing_in_progress_.end());
+    placement_group_leasing_in_progress_.erase(it);
+    schedule_failure_handler(placement_group, /*is_feasible*/ true);
+  };
+
   // NOTE: If the placement group scheduling has been cancelled, we just need to destroy
   // the committed bundles. The reason is that only `RemovePlacementGroup` will mark the
   // state of placement group as `CANCELLED` and it will also destroy all prepared and
@@ -514,15 +524,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     // Cancel RPCs above release the bundle resources on each raylet; their
     // post-cancel ray-syncer broadcasts will reconcile GCS's view.
     DestroyPlacementGroupUncommittedBundleResources(
-        placement_group_id,
-        uncommitted_bundle_locations,
-        [placement_group, schedule_failure_handler](const Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to clean up uncommitted placement group bundles: "
-                           << status;
-          }
-          schedule_failure_handler(placement_group, /*is_feasible*/ true);
-        });
+        placement_group_id, *uncommitted_bundle_locations, cleanup_failure_handler);
     return;
   }
 
@@ -536,16 +538,11 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     // Uncommitted bundles' resources stay subtracted in GCS's view until the
     // next ray-syncer message from each raylet brings the actual state back.
     DestroyPlacementGroupUncommittedBundleResources(
-        placement_group_id,
-        uncommitted_bundle_locations,
-        [placement_group, schedule_failure_handler](const Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to clean up uncommitted placement group bundles: "
-                           << status;
-          }
-          schedule_failure_handler(placement_group, /*is_feasible*/ true);
-        });
+        placement_group_id, *uncommitted_bundle_locations, cleanup_failure_handler);
   } else {
+    auto it = placement_group_leasing_in_progress_.find(placement_group_id);
+    RAY_CHECK(it != placement_group_leasing_in_progress_.end());
+    placement_group_leasing_in_progress_.erase(it);
     schedule_success_handler(placement_group);
   }
 }
@@ -716,9 +713,9 @@ GroupBundlesByNode(const BundleLocations &bundle_locations) {
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupUncommittedBundleResources(
     const PlacementGroupID &placement_group_id,
-    const std::shared_ptr<BundleLocations> &bundle_locations,
+    const BundleLocations &bundle_locations,
     rpc::StatusCallback callback) {
-  auto bundles_per_node = GroupBundlesByNode(*bundle_locations);
+  auto bundles_per_node = GroupBundlesByNode(bundle_locations);
   if (bundles_per_node.empty()) {
     callback(Status::OK());
     return;

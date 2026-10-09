@@ -389,6 +389,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node The node that the bundles are being removed from.
   /// \param max_retry The maximum times the remove request can be retried.
   /// \param current_retry_count The number of times the remove request has been retried.
+  /// \param callback Called when the request succeeds or exhausts its retries.
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
@@ -438,7 +439,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param callback Called after every live node has replied or exhausted retries.
   void DestroyPlacementGroupUncommittedBundleResources(
       const PlacementGroupID &placement_group_id,
-      const std::shared_ptr<BundleLocations> &bundle_locations,
+      const BundleLocations &bundle_locations,
       rpc::StatusCallback callback);
 
   /// Destroy the committed bundle resources with this placement group.

@@ -1150,6 +1150,26 @@ TEST_F(GcsPlacementGroupSchedulerTest, FailedCommitIsCleanedBeforeRetry) {
   ASSERT_EQ(raylet_clients_[1]->num_bundles_removed, 1);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, FailedCommitCanBeCancelledDuringCleanup) {
+  AddNode(GenNodeInfo(0));
+
+  auto placement_group =
+      MakeStrictPackPlacementGroup(/*bundles_count=*/1, /*cpu_per_bundle=*/10);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 1);
+
+  // Removing a placement group while its failed commit is being cleaned up must still
+  // find the active lease tracker and mark it cancelled.
+  scheduler_->MarkScheduleCancelled(placement_group->GetPlacementGroupID());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+}
+
 TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadBeforeSuccessfulCommitReply) {
   auto node = GenNodeInfo(0);
   const auto node_id = NodeID::FromBinary(node->node_id());
