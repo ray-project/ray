@@ -6,20 +6,20 @@ myst:
 
 (train-pytorch-lightning)=
 
-# Get Started with Distributed Training using PyTorch Lightning
+# Get started with distributed training using PyTorch Lightning
 
-This tutorial walks through the process of converting an existing PyTorch Lightning script to use Ray Train.
+This tutorial shows how to convert an existing PyTorch Lightning script to use Ray Train.
 
-Learn how to:
+You learn how to do the following:
 
-1. Configure the Lightning Trainer so that it runs distributed with Ray and on the correct CPU or GPU device.
-2. Configure {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
-3. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
-4. Launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
+1. Configure the Lightning `Trainer` to run distributed with Ray on the correct CPU or GPU device.
+1. Configure the {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
+1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
+1. Launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
 
 ## Quickstart
 
-For reference, the final code is as follows:
+Here's the final code for reference:
 
 ```{testcode}
 :skipif: True
@@ -35,14 +35,16 @@ trainer = TorchTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the Python code that executes on each distributed training worker.
-2. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-3. {class}`~ray.train.torch.TorchTrainer` launches the distributed training job.
+The code has three parts:
+
+- `train_func` is the Python code that runs on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+- {class}`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a PyTorch Lightning training script with and without Ray Train.
 
 ::::{tab-set}
-:::{tab-item} PyTorch Lightning + Ray Train
+:::{tab-item} PyTorch Lightning with Ray Train
 ```{code-block} python
 :emphasize-lines: 11-12, 38, 52-57, 59, 63, 66-73
 
@@ -187,7 +189,7 @@ trainer.fit(model, train_dataloaders=train_dataloader)
 ```{include} common/torch-configure-train_func.md
 ```
 
-Ray Train sets up your distributed process group on each worker. You only need to make a few changes to your Lightning Trainer definition.
+Ray Train sets up your distributed process group on each worker. You only need to make a few changes to your Lightning `Trainer` definition.
 
 ```diff
  import lightning.pytorch as pl
@@ -218,7 +220,7 @@ The following sections discuss each change.
 
 ### Configure the distributed strategy
 
-Ray Train offers several sub-classed distributed strategies for Lightning. These strategies retain the same argument list as their base strategy classes. Internally, they configure the root device and the distributed sampler arguments.
+Ray Train offers several distributed strategies for Lightning, each a subclass of a Lightning base strategy. They accept the same arguments as their base strategy classes, and internally they configure the root device and the distributed sampler arguments. Choose from the following strategies:
 
 - {class}`~ray.train.lightning.RayDDPStrategy`
 - {class}`~ray.train.lightning.RayFSDPStrategy`
@@ -243,7 +245,7 @@ Ray Train offers several sub-classed distributed strategies for Lightning. These
 
 ### Configure the Ray cluster environment plugin
 
-Ray Train also provides a {class}`~ray.train.lightning.RayLightningEnvironment` class as a specification for the Ray Cluster. This utility class configures the worker's local, global, and node rank and world size.
+Ray Train also provides a {class}`~ray.train.lightning.RayLightningEnvironment` class as a specification for the Ray cluster. This utility class configures the worker's local, global, and node rank and world size.
 
 
 ```diff
@@ -265,7 +267,7 @@ Ray Train also provides a {class}`~ray.train.lightning.RayLightningEnvironment` 
 
 ### Configure parallel devices
 
-In addition, Ray TorchTrainer has already configured the correct `CUDA_VISIBLE_DEVICES` for you. One should always use all available GPUs by setting `devices="auto"` and `acelerator="auto"`.
+`TorchTrainer` already configures the correct `CUDA_VISIBLE_DEVICES` for you. To use all available GPUs, always set `devices="auto"` and `accelerator="auto"`.
 
 
 ```diff
@@ -287,7 +289,7 @@ In addition, Ray TorchTrainer has already configured the correct `CUDA_VISIBLE_D
 
 ### Report checkpoints and metrics
 
-To persist your checkpoints and monitor training progress, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Trainer.
+To persist your checkpoints and monitor training progress, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Lightning `Trainer`.
 
 
 ```diff
@@ -305,9 +307,9 @@ To persist your checkpoints and monitor training progress, add a {class}`ray.tra
 ```
 
 
-Reporting metrics and checkpoints to Ray Train enables you to support {ref}`fault-tolerant training <train-fault-tolerance>` and {ref}`hyperparameter optimization <train-tune>`.
+Report metrics and checkpoints to Ray Train to support {ref}`fault-tolerant training <train-fault-tolerance>` and {ref}`hyperparameter optimization <train-tune>`.
 
-You can also configure {ref}`asynchronous checkpointing <train-checkpoint-upload-mode-async>` and {ref}`asynchronous validation <train-validating-checkpoints>` through the callback. The `checkpoint_upload_mode` flag offloads checkpoint uploading to a Ray Train managed background thread instead of blocking the Lightning training loop. The `validation` flag launches an asynchronous Ray task to validate the checkpoint instead of running `validation_step` synchronously in the training workers. Note that this is incompatible with Lightning's [AsyncCheckpointIO](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.plugins.io.AsyncCheckpointIO.html) plugin because Ray Train needs to control the upload thread in order to wait for it to finish before committing the checkpoint.
+You can also configure {ref}`asynchronous checkpointing <train-checkpoint-upload-mode-async>` and {ref}`asynchronous validation <train-validating-checkpoints>` through the callback. The `checkpoint_upload_mode` flag offloads checkpoint uploading to a Ray Train-managed background thread instead of blocking the Lightning training loop. The `validation` flag launches an asynchronous Ray task to validate the checkpoint instead of running `validation_step` synchronously in the training workers. Asynchronous checkpoint uploading is incompatible with Lightning's [AsyncCheckpointIO](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.plugins.io.AsyncCheckpointIO.html) plugin, because Ray Train needs to control the upload thread so it can wait for the upload to finish before committing the checkpoint.
 
 ```diff
  import lightning.pytorch as pl
@@ -338,11 +340,11 @@ You can also configure {ref}`asynchronous checkpointing <train-checkpoint-upload
 +)
 ```
 
-Note that the {class}`ray.train.lightning.RayTrainReportCallback` class only provides a simple implementation, and can be {ref}`further customized <train-dl-saving-checkpoints>`.
+The {class}`ray.train.lightning.RayTrainReportCallback` class provides only a simple implementation. You can {ref}`customize it further <train-dl-saving-checkpoints>`.
 
-### Prepare your Lightning Trainer
+### Prepare your Lightning `Trainer`
 
-Finally, pass your Lightning Trainer into {meth}`~ray.train.lightning.prepare_trainer` to validate your configurations.
+Finally, pass your Lightning `Trainer` to {meth}`~ray.train.lightning.prepare_trainer` to validate your configurations.
 
 
 ```diff
@@ -364,35 +366,31 @@ Finally, pass your Lightning Trainer into {meth}`~ray.train.lightning.prepare_tr
 
 ## Next steps
 
-After you have converted your PyTorch Lightning training script to use Ray Train:
+After you convert your PyTorch Lightning training script to use Ray Train, explore the following resources:
 
-* See {ref}`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
-* Browse the {doc}`Examples <examples>` for end-to-end examples of how to use Ray Train.
-* Consult the {ref}`API Reference <train-api>` for more details on the classes and methods from this tutorial.
+* See the {ref}`user guides <train-user-guides>` to learn how to perform specific tasks.
+* Browse the {doc}`examples <examples>` for end-to-end examples of how to use Ray Train.
+* See the {ref}`API reference <train-api>` for details on the classes and methods in this tutorial.
 
-## Version Compatibility
+## Version compatibility
 
-Ray Train is tested with `pytorch_lightning` versions `1.6.5` and `2.1.2`. For full compatibility, use `pytorch_lightning>=1.6.5` . Earlier versions aren't prohibited but may result in unexpected issues. If you run into any compatibility issues, consider upgrading your PyTorch Lightning version or [file an issue](https://github.com/ray-project/ray/issues).
+The Ray project tests Ray Train with `pytorch_lightning` versions `1.6.5` and `2.1.2`. For full compatibility, use `pytorch_lightning>=1.6.5`. Earlier versions aren't prohibited but might cause unexpected issues. If you run into compatibility issues, upgrade your PyTorch Lightning version or [file an issue](https://github.com/ray-project/ray/issues).
 
 :::{note}
-If you are using Lightning 2.x, please use the import path `lightning.pytorch.xxx` instead of `pytorch_lightning.xxx`.
+If you're using Lightning 2.x, use the import path `lightning.pytorch.xxx` instead of `pytorch_lightning.xxx`.
 :::
 
 (lightning-trainer-migration-guide)=
 
-## LightningTrainer Migration Guide
+## `LightningTrainer` migration guide
 
-Ray 2.4 introduced the `LightningTrainer`, and exposed a `LightningConfigBuilder` to define configurations for `pl.LightningModule` and `pl.Trainer`.
+Ray 2.4 introduced `LightningTrainer`, which exposed a `LightningConfigBuilder` for defining configurations for `pl.LightningModule` and `pl.Trainer`. `LightningTrainer` then instantiated the model and trainer objects and ran a predefined training function in a black box. This design limited your control over the training code.
 
-It then instantiates the model and trainer objects and runs a pre-defined training function in a black box.
-
-This version of the LightningTrainer API was constraining and limited your ability to manage the training functionality.
-
-Ray 2.7 introduced the newly unified {class}`~ray.train.torch.TorchTrainer` API, which offers enhanced transparency, flexibility, and simplicity. This API is more aligned with standard PyTorch Lightning scripts, ensuring users have better control over their native Lightning code.
+Ray 2.7 introduced the unified {class}`~ray.train.torch.TorchTrainer` API, which aligns more closely with standard PyTorch Lightning scripts and gives you more control over your native Lightning code.
 
 
 ::::{tab-set}
-:::{tab-item} (Deprecating) LightningTrainer
+:::{tab-item} Deprecated `LightningTrainer`
 <!-- This snippet isn't tested because it raises a hard deprecation warning. -->
 
 ```{testcode}
@@ -440,7 +438,7 @@ model = lightning_checkpoint.get_model(MyLightningModule)
 
 
 
-:::{tab-item} (New API) TorchTrainer
+:::{tab-item} `TorchTrainer`
 <!-- This snippet isn't tested because it runs with 4 GPUs, and CI is only run with 1. -->
 
 ```{testcode}
@@ -466,7 +464,7 @@ def train_func():
     # [2] Report Checkpoint with callback
     ckpt_report_callback = RayTrainReportCallback()
 
-    # [3] Create a Lighting Trainer
+    # [3] Create a Lightning Trainer
     trainer = pl.Trainer(
         max_epochs=10,
         log_every_n_steps=100,
