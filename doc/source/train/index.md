@@ -18,7 +18,7 @@ Hugging Face Transformers Guide <getting-started-transformers>
 XGBoost Guide <getting-started-xgboost>
 JAX Guide <getting-started-jax>
 more-frameworks
-User Guides <user-guides>
+User Guides <user-guides/index>
 Tutorials </_collections/train/tutorials/README>
 Examples <examples>
 Benchmarks <benchmarks>
