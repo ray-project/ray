@@ -62,23 +62,13 @@ Both run when you change library code, and also when you change an API reference
 
 Each library runs the executable examples in its own documentation in a step named `<library>: docs example tests`. These execute the `doctest`, `testcode`, and `literalinclude` snippets described in [How to write code snippets](writing-code-snippets.md).
 
-The steps are path-scoped, so editing one library's docs runs only that library's examples:
+These steps run when library code changes, not when docs change. A change under `python/ray/data/`, for example, runs `data: docs example tests`, so a library change that breaks a documented example still fails the PR. They also run when a `BUILD.bazel` file that defines doc test targets changes. `doc/BUILD.bazel` runs every library's step, and an example `BUILD.bazel` under a library's doc directory runs that library's step. The post-merge build runs every docs example suite.
 
-| Path you change | Step that runs | Tag |
-| --- | --- | --- |
-| `doc/source/core/`, `doc/source/ray-observability/` | `core: docs example tests` | `core_doc` |
-| `doc/source/data/`, `doc/source/ray-more-libs/` | `data: docs example tests`, `data: dask docs example tests` | `data_doc` |
-| `doc/source/train/`, `doc/source/tune/`, `doc/source/ray-air/` | `ml: docs example tests` | `ml_doc` |
-| `doc/source/rllib/` | `rllib: docs example tests` | `rllib_doc` |
-| `doc/source/serve/` | `serve: docs example tests` | `serve_doc` |
-
-Ray Core owns the fallback: an executable doc asset that doesn't sit under one of these directories routes to `core: docs example tests`. Ray LLM is the exception to the pattern, because `doc/source/llm/` routes to the general `llm` tag rather than a dedicated docs example step.
-
-The `doc` tag itself no longer selects these steps. It now covers the documentation build and validation infrastructure, such as `.readthedocs.yaml` and the docs dependency locks.
+An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/source/`, runs no docs example tests by default. To run the tests for the files you changed, see [Running the tests for your doc changes](#running-the-tests-for-your-doc-changes).
 
 ### What a prose-only change runs
 
-Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Neither can change tested code, and the post-merge documentation build is the coverage for them. Executable assets such as `.py` and `.ipynb` still route to the owning library, and so do config assets that examples consume, such as `.yaml` and `.sh`, because those can change what a test does.
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for Ray Data pages, which have one test target per page.
 
 A prose-only change also skips most of the lint group. Three lint steps run: a README check, a ban on newly added `.rst` files, since new pages must be MyST Markdown, and a documentation style linter.
 
@@ -88,17 +78,33 @@ Skipping `pre_commit` costs prose nothing, which is worth knowing if you're wond
 
 The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for every file except prose and images. One non-prose file anywhere in your diff brings the whole lint group back, so a mixed PR loses no coverage. Post-merge builds run everything regardless, since rayci skips rule evaluation outside pull requests.
 
-### Skipping example tests with the `docs-go` label
+### Running the tests for your doc changes
 
-Adding the `docs-go` label skips the per-library docs example steps. It's optional. Reach for it on a content-only PR where executing the examples adds nothing and you don't want to wait on them. Like the `go` label, it requires write access, so an external contributor asks a reviewer to add it.
+Add the `docs-example-test` label to run the tests that your changed doc files feed, and nothing else. Like the `go` label, it requires write access, so an external contributor asks a reviewer to add it.
 
-A guard step, `lint: validate docs-go scope`, bounds what the label can skip. It runs whenever the label is present and fails unless every changed file is documentation content: anything under `doc/`, the Vale prose-lint configuration at the repository root (`.vale.ini` and `.vale/`), or the API-consistency checker's own source under `ci/ray_ci/doc/`. `BUILD` files are excluded everywhere, since they define test targets. So the label skips example tests on a documentation change but never on a library, build, or general CI change.
+With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel test targets that name one of your changed files directly. It runs them once, for every library, in a single Python 3.10 environment built from the docs test dependency set. It doesn't use each library's own images, so a test that depends on a library-specific environment can behave differently here than in post-merge:
 
-Each of the two paths outside `doc/` qualifies for its own reason. The Vale configuration defines no test target and holds no executable code, and `lint: documentation_style` runs on every PR regardless of the label, so a style-rule edit is still linted. The checker source is executable CI code, so it qualifies on tag routing instead: `test.rules.txt` sends `ci/ray_ci/doc/` to `doc_api` and `tools` only, and every step the label skips carries a library tag rather than either of those, so a change confined to that directory never selects a step the label could take away. The checks that do cover it, the API checks and the `tools` job running its own unit tests, ignore the label.
+| File you change | Test that runs |
+| --- | --- |
+| `doc_code/*.py` | The `py_test` built from that file |
+| `.ipynb` | The notebook test whose `--path` argument names it |
+| Ray Data `.md` or `.rst` page | That page's doctest target |
+| `.yaml` or another data file | Any test that lists the file in its `data` |
 
-The API surface checks ignore the label by design, since an API reference page edit is exactly the content-only change they need to cover.
+The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
-If the guard fails, removing the label isn't enough on its own: push a new commit afterwards. A Buildkite rebuild replays the label set from the build it was rebuilt from, and the pipeline skips label-change builds for a commit that already has a build, so only a new commit produces a build that reads the current labels.
+* **The file feeds only a library-wide doctest target.** Prose pages outside Ray Data share one doctest target per library, so the label doesn't run them. These pages also don't start the opt-in step, so on a PR that changes only prose outside Ray Data, the label has no effect and there's no step log. This line appears only when another changed file starts the step.
+* **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
+* **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The post-merge build runs the GPU examples.
+* **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
+
+To see what the label would run before you push, run the selector locally:
+
+```bash
+bazel run //ci/ray_ci/doc:cmd_doc_example_targets -- doc/source/data/doc_code/key_concepts.py
+```
+
+The opt-in step runs only on premerge builds, which the `go` label starts. Microcheck doesn't run it, so apply both `docs-example-test` and `go` to run the tests for your changes. Adding or removing either label takes effect only on the next commit you push. A Buildkite rebuild replays the label set from the build it was rebuilt from, and the pipeline skips label-change builds for a commit that already has a build.
 
 ### What doesn't run on your PR
 

@@ -39,6 +39,7 @@
 ! linux_wheels macos_wheels docker doc doc_api doc_redirects python_dependencies deplock_check min_build tools windows
 ! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
+! doc_example
 
 # Per-team API reference pages. Editing these can change the documented public
 # API surface, so they must be able to trigger the API-consistency checks
@@ -66,20 +67,31 @@ doc/source/ray-more-libs/api/
 @ doc_api
 ;
 
+# Data's prose pages are the only ones with a per-file doctest target
+# (`doctest_each` in doc/BUILD.bazel), so they're the only prose that the
+# "docs-example-test" opt-in can test file by file. Emit doc_example for
+# them, ahead of the prose skip rule below. Only the label-gated opt-in step
+# listens for that tag, so without the label this runs nothing. Add a library's
+# prose here when its doctest target moves to `doctest_each`.
+doc/source/data/*.md
+doc/source/data/*.rst
+@ doc_example
+;
+
 # Prose in Markdown (.md) and reStructuredText (.rst) does not block premerge,
 # wherever it lives in the repo. This is the narrative docs under doc/, but also
 # READMEs, CONTRIBUTING/SECURITY, agent and skill files, and design notes that
-# sit next to the code they describe. None of it can change tested code, so a
-# content-only prose change triggers no library test steps. The post-merge
-# documentation build is the coverage for the doc/ pages. A prose file next to
+# sit next to the code they describe. Prose under doc/ can carry doctests, but
+# doc example tests don't run by default for any doc-side edit (see the
+# per-library doc rules below), so a content-only prose change triggers no
+# library test steps. The post-merge build is the coverage for the doc/ pages. A prose file next to
 # source, such as a package README under python/ray/, used to match
 # that directory's rule below and fan out to the whole library suite. The two
 # global patterns here stop that.
 #
-# Executable and config assets are deliberately not skipped and still route to
-# the owning library below: .py and .ipynb doc assets that run as tests, and
-# .yaml or .sh assets a test consumes, can all change what a test does. Only
-# prose is skipped. The API reference pages above are the one prose exception:
+# Executable and config assets are deliberately not skipped here. They route
+# to the owning library's opt-in tag below, so the "docs-example-test" label
+# can run the tests that consume them. The API reference pages above are the one prose exception:
 # they emit doc_api and are matched by the earlier rule, before this one.
 #
 # Static images stay doc-scoped, not a repo-wide *.png, and are listed here
@@ -90,8 +102,7 @@ doc/source/ray-more-libs/api/
 # directories, not just their Markdown. Claude Code skills and agent files never
 # participate in the Sphinx build and define no test targets, and the directory
 # rule also covers non-prose such as .claude/settings.json. doc/.claude/ matches
-# the `:!doc/.claude/` exclude in .readthedocs.yaml, and skipping the repo-root
-# .claude/ lets the docs-go scope guard treat those files as content.
+# the `:!doc/.claude/` exclude in .readthedocs.yaml.
 doc/.claude/
 .claude/
 *.md
@@ -113,9 +124,20 @@ python/deplocks/llm/*.lock
 @ llm python_dependencies
 ;
 
-python/ray/llm/
+# The llm example BUILD file defines test targets, so it keeps the llm tag.
+# The llm doc assets themselves run nothing: every llm doc example test is a
+# GPU test, and docs examples never run GPU tests in premerge or microcheck.
+# The postmerge build covers them.
+doc/source/llm/*BUILD.bazel
+@ llm
+;
+
 doc/source/llm/
 doc/source/data/doc_code/working-with-llms/
+# pass
+;
+
+python/ray/llm/
 ci/docker/llm.build.Dockerfile
 @ llm
 ;
@@ -398,11 +420,10 @@ doc/source/serve/examples.yml
 doc/source/train/examples.yml
 # highly_parallel.ipynb is executed by no premerge step. Its `py_test` in
 # doc/BUILD.bazel carries a `highly_parallel` tag that the ml docs example
-# step excludes (`--except-tags ...,highly_parallel` in ml.rayci.yml), and
-# the notebook glob in doc/source/core/examples/BUILD.bazel excludes it
-# as well: it needs a live multi-node cluster and belongs in a release test.
-# Routing it to `ml_doc` alongside its four siblings would start the whole ml
-# example suite while skipping the one file that changed. The documentation
+# step and the docs-example-test opt-in step both exclude, and the notebook
+# glob in doc/source/core/examples/BUILD.bazel excludes it as well: it needs a
+# live multi-node cluster and belongs in a release test. Routing it to
+# `doc_example` would start the opt-in step for a file it can't run. The documentation
 # build renders it (`nb_execution_mode` is `off`, so render-and-lint only, no
 # execution), which is the only validation premerge actually offers here.
 doc/source/core/examples/highly_parallel.ipynb
@@ -437,62 +458,58 @@ doc/BUILD.bazel
 @ core_doc data_doc ml_doc rllib_doc serve_doc llm
 ;
 
-# Executable doc assets route to the owning library's docs example test step
-# via a dedicated <lib>_doc tag, so a one-library doc change runs only that
-# library's example tests instead of fanning out to every team. Prose
-# (.md/.rst) is skipped by the leading rule; the llm doc assets are routed to
-# `llm` earlier. Each directory rule also covers that library's example
-# BUILD.bazel files.
-doc/source/data/
-doc/source/ray-more-libs/
+# Example BUILD.bazel files define test targets rather than feed them, so an
+# edit still runs the owning library's docs example step by default, the same
+# as doc/BUILD.bazel above. `*` crosses `/`, so each pattern covers every
+# BUILD.bazel nested under that library's doc directory. These must precede the
+# per-library directory rules below, which route only to the opt-in tags.
+doc/source/data/*BUILD.bazel
+doc/source/ray-more-libs/*BUILD.bazel
 @ data_doc
 ;
 
-doc/source/serve/
+doc/source/serve/*BUILD.bazel
 @ serve_doc
 ;
 
-doc/source/rllib/
+doc/source/rllib/*BUILD.bazel
 @ rllib_doc
 ;
 
-doc/source/train/
-doc/source/tune/
-doc/source/ray-air/
+doc/source/train/*BUILD.bazel
+doc/source/tune/*BUILD.bazel
+doc/source/ray-air/*BUILD.bazel
 @ ml_doc
 ;
 
-# These four notebooks live under core/ but their targets in
-# doc/BUILD.bazel are tagged `team:ml`, and the team argument to
-# ci/ray_ci:test_in_docker filters targets by `team:<team>`
-# (ci/ray_ci/tester.py:372). So the core step would not execute them: routing
-# them to core_doc would run a step that tests everything under core/
-# except the file that changed. They route to ml_doc, the step that actually
-# owns the targets, and carry no tag the step excludes. Re-tagging the targets
-# `team:core` in doc/BUILD.bazel would be the alternative fix and would let
-# these lines go away. Their fifth sibling, highly_parallel.ipynb, is routed to
-# `doc` above: no step executes it at all.
-doc/source/core/examples/plot_hyperparameter.ipynb
-doc/source/core/examples/batch_prediction.ipynb
-doc/source/core/examples/plot_parameter_server.ipynb
-doc/source/core/examples/plot_pong_example.ipynb
-@ ml_doc
-;
-
-doc/source/core/
-doc/source/ray-observability/
+doc/source/core/*BUILD.bazel
+doc/source/ray-observability/*BUILD.bazel
 @ core_doc
 ;
 
+# Doc example assets run no tests by default. They emit `doc_example`, which
+# only the label-gated "docs-example-test" opt-in step in others.rayci.yml
+# listens for, so without the label a doc asset edit runs nothing. With it, that
+# step runs only the tests that name a changed file directly
+# (//ci/ray_ci/doc:cmd_doc_example_targets), never a library's whole docs
+# example suite, in the one doctestbuild environment. Library code changes still
+# run the default docs example steps through the library tags. The postmerge
+# build runs every docs example suite.
+#
 # doc/external/ holds a vendored PyTorch tutorial and the test that guards it
-# against upstream drift. The same cross-team miss applies: `test_external_hashes`
-# in doc/BUILD.bazel is tagged `team:ml`, so the core step would filter it out.
-# Route the whole directory rather than the test file alone, because the tutorial
-# script is the test's `data` and editing it is what the hash check exists to
-# catch. Without this rule both files fall through to the `doc/*.py` catch-all
-# below, since `*` in these patterns crosses `/`.
+# against upstream drift. Route the whole directory, because the tutorial script
+# is the test's `data` and editing it is what the hash check exists to catch.
+doc/source/data/
+doc/source/ray-more-libs/
+doc/source/serve/
+doc/source/rllib/
+doc/source/train/
+doc/source/tune/
+doc/source/ray-air/
+doc/source/core/
+doc/source/ray-observability/
 doc/external/
-@ ml_doc
+@ doc_example
 ;
 
 # Committed intersphinx inventory snapshots and the script that refreshes them.
@@ -537,22 +554,28 @@ doc/source/_templates/
 # pass
 ;
 
-# Any remaining executable doc asset (other unowned doc dirs, and any example
-# BUILD.bazel outside the library dirs above) falls to the core docs example
-# step as the catch-all owner.
+# Test harness and target definitions outside the library dirs above keep the
+# core docs example step as their default owner. These aren't doc assets, so
+# they run tests without the opt-in label.
 #
-# `doc/test_myst_doc.py` lands here too. It is the shared notebook runner behind
-# every library's example targets, so a change to it could in principle break
-# any of them, and routing it to all five `<lib>_doc` tags the way
-# `doc/BUILD.bazel` does would be the maximal-coverage choice. One library's
-# worth of execution is deliberately treated as a sufficient smoke signal
-# instead: the runner is shared, so a break shows up in core as readily as
-# anywhere, and the post-merge documentation build covers the rest. Widen this
-# only if a harness regression actually escapes core.
+# `doc/test_myst_doc.py` is the shared notebook runner behind every library's
+# example targets, so a change to it could in principle break any of them, and
+# routing it to all five `<lib>_doc` tags the way `doc/BUILD.bazel` does would
+# be the maximal-coverage choice. One library's worth of execution is
+# deliberately treated as a sufficient smoke signal instead: the runner is
+# shared, so a break shows up in core as readily as anywhere, and the
+# post-merge build covers the rest. Widen this only if a harness regression
+# actually escapes core.
+doc/test_myst_doc.py
+doc/*BUILD.bazel
+@ core_doc
+;
+
+# Any remaining executable doc asset, in the unowned doc dirs, goes to the
+# opt-in step too.
 doc/*.py
 doc/*.ipynb
-doc/*/BUILD.bazel
-@ core_doc
+@ doc_example
 ;
 
 ci/docker/doctest.build.Dockerfile
