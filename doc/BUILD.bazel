@@ -447,19 +447,19 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
-# Test all doc/source/data/doc_code/working-with-llms code included in rst/md files.
+# Test all doc/source/data/llm/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
 filegroup(
     name = "data_llm_examples",
-    srcs = glob(["source/data/doc_code/working-with-llms/**/*.py"]),
+    srcs = glob(["source/data/llm/doc_code/**/*.py"]),
     visibility = ["//doc:__subpackages__"],
 )
 
 # GPU Tests
 py_test_run_all_subdirectory(
     size = "large",
-    include = ["source/data/doc_code/working-with-llms/**/*.py"],
+    include = ["source/data/llm/doc_code/**/*.py"],
     exclude = [],
     extra_srcs = [],
     tags = [

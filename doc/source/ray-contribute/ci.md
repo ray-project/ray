@@ -72,7 +72,7 @@ The steps are path-scoped, so editing one library's docs runs only that library'
 | `doc/source/rllib/` | `rllib: docs example tests` | `rllib_doc` |
 | `doc/source/serve/` | `serve: docs example tests` | `serve_doc` |
 
-Ray Core owns the fallback: an executable doc asset that doesn't sit under one of these directories routes to `core: docs example tests`. Ray LLM is the exception to the pattern, because its doc assets under `doc/source/data/examples/llm/` and `doc/source/serve/llm/doc_code/` route to the general `llm` tag rather than a dedicated docs example step.
+Ray Core owns the fallback: an executable doc asset that doesn't sit under one of these directories routes to `core: docs example tests`. Ray LLM is the exception to the pattern, because its doc assets live in an `llm/` directory under a library's docs, such as `doc/source/serve/llm/`, and route to the general `llm` tag rather than a dedicated docs example step.
 
 The `doc` tag itself no longer selects these steps. It now covers the documentation build and validation infrastructure, such as `.readthedocs.yaml` and the docs dependency locks.
 

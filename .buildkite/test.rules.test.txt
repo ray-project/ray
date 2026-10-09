@@ -121,6 +121,7 @@ doc/.claude/agents/reviewer.md:
 .claude/skills/backport-docs/SKILL.md:
 .claude/settings.json:
 doc/source/data/examples/llm/example.ipynb: llm
+doc/source/data/llm/doc_code/example.py: llm
 doc/source/serve/llm/doc_code/example.py: llm
 # Unowned doc dirs and doc-root executables fall to the core docs example step.
 doc/source/cluster/example.py: core_doc
