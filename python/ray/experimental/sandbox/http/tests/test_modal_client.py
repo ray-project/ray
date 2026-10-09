@@ -26,7 +26,11 @@ from ray.experimental.sandbox.http.tests.conftest import (
 try:
     import modal
     from grpclib.server import Server
-    from modal.exception import InvalidError, SandboxFilesystemNotFoundError
+    from modal.exception import (
+        AuthError,
+        InvalidError,
+        SandboxFilesystemNotFoundError,
+    )
 
     from ray.experimental.sandbox.http.grpc_facade import build_servicers
 
@@ -78,7 +82,13 @@ class _FacadeThread:
     def __exit__(self, *exc_info: Any) -> None:
         async def _stop() -> None:
             self._server.close()
-            await self._server.wait_closed()
+            # From Python 3.12 this also waits for clients to disconnect, and
+            # the SDK keeps its idle connection open; the server has already
+            # stopped listening and cancelled its requests.
+            try:
+                await asyncio.wait_for(self._server.wait_closed(), timeout=1)
+            except asyncio.TimeoutError:
+                pass
 
         asyncio.run_coroutine_threadsafe(_stop(), self._loop).result(10)
         self._loop.call_soon_threadsafe(self._loop.stop)
@@ -171,6 +181,63 @@ def test_network_policies_map_onto_the_runtime(facade) -> None:
         _create(client, outbound_domain_allowlist=["pypi.org"])
     blocked.terminate()
     open_egress.terminate()
+
+
+_TOKEN = "facade-sdk-token"
+
+
+@pytest.fixture
+def token_facade(monkeypatch) -> Iterator[Tuple[FakeResolver, str]]:
+    """A facade that requires a token; yields its resolver and server URL."""
+    port = next(_next_port)
+    url = f"http://127.0.0.1:{port}"
+    resolver = FakeResolver()
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    monkeypatch.setenv("MODAL_SERVER_URL", url)
+    with _FacadeThread(resolver, port):
+        yield resolver, url
+
+
+def test_token_secret_authenticates_both_planes(token_facade) -> None:
+    """The SDK's token secret opens the control plane, and the command
+    router accepts the credential the facade hands out for it."""
+    resolver, _ = token_facade
+    runtime = FakeSandboxRuntime()
+    runtime.exec_results = [FakeExecResult(stdout="hello\n")]
+    runtime.readable_files["/work/in.txt"] = b"from the sandbox"
+    resolver.next_runtime = runtime
+
+    sandbox = _create(modal.Client.from_credentials("ak-test", _TOKEN))
+    process = sandbox.exec("echo", "hello")
+    assert process.wait() == 0
+    assert process.stdout.read() == "hello\n"
+    sandbox.filesystem.write_bytes(b"payload", "/work/data.bin")
+    assert runtime.written_files["/work/data.bin"] == b"payload"
+    assert sandbox.filesystem.read_bytes("/work/in.txt") == b"from the sandbox"
+    sandbox.terminate()
+    assert runtime.deleted == [runtime.instance_id]
+
+
+def test_wrong_or_missing_token_is_rejected(token_facade) -> None:
+    resolver, url = token_facade
+    with pytest.raises(AuthError):
+        _create(modal.Client.from_credentials("ak-test", "wrong"))
+    # The SDK's anonymous client sends no credentials at all.
+    with modal.Client.anonymous(url) as client:
+        with pytest.raises(AuthError):
+            _create(client)
+    assert resolver.create_options == []
+
+
+def test_bearer_header_authenticates(token_facade, monkeypatch) -> None:
+    """An SDK that sends custom headers can present the token as a bearer
+    token in place of its token secret."""
+    if "override_headers" not in modal.config._SETTINGS:
+        pytest.skip("this SDK version cannot send custom headers")
+    monkeypatch.setenv("MODAL_OVERRIDE_HEADERS", f"authorization:Bearer {_TOKEN}")
+    sandbox = _create(modal.Client.from_credentials("ak-test", "not-the-token"))
+    assert sandbox.exec("true").wait() == 0
+    sandbox.terminate()
 
 
 if __name__ == "__main__":
