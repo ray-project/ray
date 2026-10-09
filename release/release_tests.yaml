@@ -5415,7 +5415,7 @@
   frequency: weekly
   group: ray-examples
   team: ml
-  working_dir: //doc/source/train/examples/transformers/transformer_reinforcement_learning
+  working_dir: //doc/source/train/examples/transformers/transformer-reinforcement-learning
 
   cluster:
     byod:

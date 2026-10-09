@@ -211,8 +211,8 @@ llms_txt_exclude += [
     "train/api/transformers",
     "train/api/tune-integration",
     "train/api/xgboost",
-    "train/examples/pytorch/torch_regression_example",
-    "train/examples/tf/tensorflow_regression_example",
+    "train/examples/pytorch/torch-regression-example",
+    "train/examples/tf/tensorflow-regression-example",
     "tune/api/api",
     "tune/api/execution",
     "tune/api/integration",
@@ -705,7 +705,7 @@ def add_custom_assets(
     ]:
         return "examples.html"
 
-    if pagename == "train/train":
+    if pagename == "train/index":
         app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
