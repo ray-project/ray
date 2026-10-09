@@ -1,6 +1,6 @@
 ![](https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png)
 
-[![](https://readthedocs.org/projects/ray/badge/?version=master)](http://docs.ray.io/en/master/?badge=master)
+[![](https://readthedocs.org/projects/ray/badge/?version=master)](https://docs.ray.io/en/master/?badge=master)
 
 [![](https://img.shields.io/badge/Ray-Join%20Slack-blue)](https://www.ray.io/join-slack)
 
@@ -51,7 +51,7 @@ With Ray, you can seamlessly scale the same code from a laptop to a cluster. Ray
 
 ## More Information
 
-- [Documentation](http://docs.ray.io/en/latest/index.html)
+- [Documentation](https://docs.ray.io/en/latest/index.html)
 - [Ray Architecture whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
 - [Exoshuffle: large-scale data shuffle in Ray](https://arxiv.org/abs/2203.05072)
 - [Ownership: a distributed futures system for fine-grained tasks](https://www.usenix.org/system/files/nsdi21-wang.pdf)
