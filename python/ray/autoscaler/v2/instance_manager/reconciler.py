@@ -750,7 +750,7 @@ class Reconciler:
         if not to_delete:
             return
 
-        success, _ = instance_manager._instance_storage.batch_delete_instances(
+        success, _ = instance_manager.delete_instances(
             instance_ids=to_delete,
             expected_storage_version=version,
         )
