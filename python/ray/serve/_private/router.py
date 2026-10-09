@@ -645,6 +645,8 @@ class AsyncioRouter:
         # By default, deployment is available unless we receive news
         # otherwise through a long poll broadcast from the controller.
         self._deployment_available = True
+        # Set from the DEPLOYMENT_CONFIG long poll. None until that update.
+        self._deployment_config: Optional[DeploymentConfig] = None
 
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[RequestRouter] = request_router
@@ -836,6 +838,7 @@ class AsyncioRouter:
             self._running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
+        self._deployment_config = deployment_config
         self._request_router_class = (
             deployment_config.request_router_config.get_request_router_class()
         )
@@ -1589,6 +1592,74 @@ class AsyncioRouter:
         except Exception:
             logger.exception("Failed to release reserved replica slot.")
 
+    async def check_ingress_health(self) -> None:
+        """Call ``check_health`` on one running replica, outside admission.
+
+        Does not look at queue length and does not reserve a
+        ``max_ongoing_requests`` slot, so a saturated deployment can still
+        answer the built-in application health route.
+
+        Uses the first running replica by default. If that replica raises
+        ``ActorDiedError`` or ``ActorUnavailableError`` (same stale
+        membership cases as ``broadcast``), tries the next replica in
+        order. Other failures from the chosen replica are not retried.
+
+        When the deployment config is known, each call is bounded by
+        ``health_check_timeout_s`` (the same timeout the controller uses).
+        A timeout is not retried on another replica.
+        """
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        await self._request_router_initialized.wait()
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        replicas = list(self._active_request_router.curr_replicas.values())
+        if not replicas:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        timeout_s = (
+            self._deployment_config.health_check_timeout_s
+            if self._deployment_config is not None
+            else None
+        )
+
+        for replica in replicas:
+            try:
+                if timeout_s is None:
+                    await replica.check_health()
+                else:
+                    await asyncio.wait_for(replica.check_health(), timeout=timeout_s)
+                return
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Application health check timed out after {timeout_s}s."
+                )
+                raise TimeoutError(
+                    f"Application health check timed out after {timeout_s}s."
+                ) from None
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Skip this replica and try the next one, matching broadcast.
+                self._active_request_router.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                continue
+            except ActorUnavailableError:
+                # Replica is temporarily unavailable. Invalidate the cache entry
+                # and try the next replica, matching broadcast.
+                self._active_request_router.on_replica_actor_unavailable(
+                    replica.replica_id
+                )
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                continue
+
+        raise DeploymentUnavailableError(self.deployment_id)
+
     async def broadcast(
         self,
         request_meta: RequestMetadata,
@@ -1948,6 +2019,9 @@ class SingletonThreadRouter(Router):
         )
         return concurrent_future
 
+    async def check_ingress_health(self) -> None:
+        await self._asyncio_router.check_ingress_health()
+
     async def broadcast(
         self,
         request_meta: RequestMetadata,
@@ -2122,6 +2196,9 @@ class CurrentLoopRouter(Router):
                 selection, request_meta, *request_args, **request_kwargs
             )
         )
+
+    async def check_ingress_health(self) -> None:
+        await self._asyncio_router.check_ingress_health()
 
     async def broadcast(
         self,
