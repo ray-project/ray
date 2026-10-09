@@ -1,11 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Mapping, Union
+from typing import Mapping
 
-from ray.train.health.probe import ProbeResult
+from ray.train.health.probe import ProbeResult, ResultKey
 from ray.util.annotations import PublicAPI
-
-# A world rank, a node ID, or a key a ControllerProbe chose.
-ResultKey = Union[int, str]
 
 
 @PublicAPI(stability="alpha")

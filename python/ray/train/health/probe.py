@@ -1,10 +1,12 @@
 import abc
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from ray.util.annotations import PublicAPI
 
 NodeIdStr = str
+# A world rank, a node ID, or another key a ControllerProbe chose.
+ResultKey = Union[int, NodeIdStr]
 
 
 @PublicAPI(stability="alpha")
@@ -71,15 +73,15 @@ class NodeProbe(Probe):
 
 @PublicAPI(stability="alpha")
 class ControllerProbe(Probe):
-    """A probe that runs in the controller process. One reading covers several
-    keys the probe chooses, such as one per NCCL communicator."""
+    """A probe that runs in the controller process."""
 
     @abc.abstractmethod
-    def poll(self) -> Dict[str, ProbeResult]:
-        """Take one reading of each key.
+    def poll(self) -> Dict[ResultKey, ProbeResult]:
+        """Take one reading of each node, worker or other item the probe
+        observes.
 
         Returns:
-            ``{key: ProbeResult}``.
+            ``{node ID, world rank or key: ProbeResult}``.
         """
         raise NotImplementedError
 
