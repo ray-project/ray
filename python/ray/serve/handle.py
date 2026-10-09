@@ -13,6 +13,7 @@ from typing import (
     Generic,
     Iterator,
     List,
+    NamedTuple,
     Optional,
     Tuple,
     TypeVar,
@@ -44,7 +45,7 @@ from ray.serve._private.handle_options import (
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
-from ray.serve._private.router import Router
+from ray.serve._private.router import Router, _HandOffFuture
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -63,6 +64,14 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 T = TypeVar("T")
 # TypeVar for the response/result type in DeploymentResponse[R]
 R = TypeVar("R")
+
+
+class _PendingCall(NamedTuple):
+    """The handle, args and kwargs of a call that has not been routed yet."""
+
+    handle: "DeploymentHandle"
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
 
 
 class _DeploymentHandleBase(Generic[T]):
@@ -351,12 +360,33 @@ class _DeploymentResponseBase(Generic[R]):
         ],
         request_metadata: RequestMetadata,
         _is_router_running_in_separate_loop: bool = True,
+        _pending_call: Optional[_PendingCall] = None,
     ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
         self._request_metadata: RequestMetadata = request_metadata
         self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
+        self._pending_call = _pending_call
+
+    def _claim_pending_call(self) -> Optional[_PendingCall]:
+        """Take over this call before it is routed, so Serve can forward it instead.
+
+        A call made in a plain HTTP handler reaches the router after the handler's step.
+        """
+        future = self._replica_result_future
+        if self._pending_call is None or self._cancelled or future.done():
+            return None
+        if isinstance(future, _HandOffFuture):
+            if not future.claim():
+                return None
+        elif self._request_metadata._routing_started:
+            # Throughput-optimized mode: the routing task already took its first step.
+            return None
+        else:
+            future.cancel()
+        call, self._pending_call = self._pending_call, None
+        return call
 
     @property
     def request_id(self) -> str:
@@ -411,6 +441,9 @@ class _DeploymentResponseBase(Generic[R]):
                     "concurrent.futures.Future[ReplicaResult]",
                     self._replica_result_future,
                 )
+                if isinstance(concurrent_future, _HandOffFuture):
+                    # An awaited call can't be returned unawaited, so route it now.
+                    concurrent_future.hand_off()
                 result: ReplicaResult = await asyncio.wrap_future(concurrent_future)
                 self._replica_result = result
             else:
@@ -1167,17 +1200,26 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         """
 
         future, request_metadata = self._remote(args, kwargs)
+        pending_call = None
+        if ray.serve.context._get_serve_request_context()._forwardable:
+            pending_call = _PendingCall(self, args, kwargs)
+            for arg in (*args, *kwargs.values()):
+                if isinstance(arg, _DeploymentResponseBase):
+                    # This call consumes it, so it can no longer be forwarded.
+                    arg._pending_call = None
         if self.handle_options.stream:
             return DeploymentResponseGenerator(
                 future,
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+                _pending_call=pending_call,
             )
         else:
             return DeploymentResponse(
                 future,
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+                _pending_call=pending_call,
             )
 
     def choose_replica(
