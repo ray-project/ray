@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -8,6 +9,10 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
+from ray.dashboard.runtime_env_redaction import (
+    redact_runtime_env_deep,
+    should_redact_runtime_env,
+)
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import get_http_session_to_module
@@ -27,6 +32,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def _train_runs_response(req: Request, details) -> Response:
+    """Serialize a train runs response, redacting runtime envs for browsers.
+
+    A run embeds its job's `job_details.runtime_env`, and Train V2 runs also
+    carry `run_settings.run_config.worker_runtime_env`.
+    """
+    text = details.json()
+    if should_redact_runtime_env(req):
+        text = json.dumps(redact_runtime_env_deep(json.loads(text)))
+    return Response(text=text, content_type="application/json")
 
 
 class TrainHead(SubprocessModule):
@@ -92,10 +109,7 @@ class TrainHead(SubprocessModule):
                     ),
                 )
 
-        return Response(
-            text=details.json(),
-            content_type="application/json",
-        )
+        return _train_runs_response(req, details)
 
     async def _decorate_train_runs(
         self, train_runs: List["TrainRun"]
@@ -328,10 +342,7 @@ class TrainHead(SubprocessModule):
                     ),
                 )
 
-        return Response(
-            text=details.json(),
-            content_type="application/json",
-        )
+        return _train_runs_response(req, details)
 
     async def _get_actor_infos(self, actor_ids: List[str]):
         if self._node_head_http_session is None:
