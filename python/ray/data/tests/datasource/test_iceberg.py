@@ -2185,11 +2185,13 @@ class TestUpsertScanMerge:
         captured = []
         original_on_write_complete = IcebergDatasink.on_write_complete
 
-        def _capturing(self, write_result):
+        def _capturing_on_write_complete(self, write_result):
             captured.extend(r for r in write_result.write_returns if r)
             return original_on_write_complete(self, write_result)
 
-        monkeypatch.setattr(IcebergDatasink, "on_write_complete", _capturing)
+        monkeypatch.setattr(
+            IcebergDatasink, "on_write_complete", _capturing_on_write_complete
+        )
 
         _write_to_iceberg(
             _create_typed_dataframe(
@@ -2223,6 +2225,69 @@ class TestUpsertScanMerge:
         assert merged == {"col_a": (2, 4)}, merged
         assert sum(r.upsert_key_rows for r in captured) == 2
         assert sum(r.upsert_null_key_rows for r in captured) == 0
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["s1", "u2", "s3", "u4"],
+                "col_c": [1, 1, 1, 1],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_key_collection_reserves_memory_for_the_join_columns(
+        self, clean_table, monkeypatch
+    ):
+        """The key task reserves memory sized by the join columns, not whole files."""
+        from ray.data import SaveMode
+        from ray.data._internal.datasource import iceberg_datasink as datasink_module
+        from ray.data._internal.datasource.parquet_datasource import (
+            PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        )
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [1, 2, 3], "col_b": ["s1", "s2", "s3"], "col_c": [1, 1, 1]}
+            )
+        )
+
+        real_task = datasink_module._collect_upsert_keys
+        calls = []
+
+        class _RecordingRemoteFunction:
+            def __init__(self, options=None):
+                self._options = options or {}
+
+            def options(self, **options):
+                return _RecordingRemoteFunction(options)
+
+            def remote(self, *args):
+                calls.append((self._options, args))
+                return real_task.options(**self._options).remote(*args)
+
+        monkeypatch.setattr(
+            datasink_module, "_collect_upsert_keys", _RecordingRemoteFunction()
+        )
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [2, 4], "col_b": ["u2", "u4"], "col_c": [1, 1]}
+            ),
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        assert len(calls) == 1, f"the key task ran {len(calls)} time(s)"
+        options, (data_files, *_) = calls[0]
+        assert "memory" in options, "the key task was dispatched without a memory bound"
+        field_id = clean_table[1].schema().find_field("col_a").field_id
+        key_bytes = sum(data_file.column_sizes[field_id] for data_file in data_files)
+        file_bytes = sum(data_file.file_size_in_bytes for data_file in data_files)
+        assert options["memory"] == int(
+            key_bytes * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * 2
+        )
+        assert key_bytes < file_bytes
 
         result = _read_from_iceberg(sort_by="col_a")
         expected = _create_typed_dataframe(

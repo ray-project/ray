@@ -88,40 +88,43 @@ def _merge_key_bounds(
 
 @ray.remote
 def _collect_upsert_keys(
-    data_file_paths: List[str],
+    data_files: List["DataFile"],
     upsert_cols: List[str],
+    table_metadata: "TableMetadata",
     io: "FileIO",
 ) -> "pa.Table":
     """Read the join key columns out of the data files this write just produced.
 
     The keys are columns of the dataset that was written, so they are already in those
-    files and reading them here keeps them off the driver. This is a task return value
-    rather than a ``ray.put``, so Ray can rebuild it by re-running the task if the copy
-    is lost.
+    files and reading them here keeps them off the driver: the driver only holds a
+    reference to the result, which every rewrite task then shares.
 
     Rows with a NULL in any join column are dropped, and the result is deduplicated to
     keep the anti-join hash table in the rewrite tasks as small as possible.
     """
     import functools
 
-    import pyarrow as pa
     import pyarrow.compute as pc
-    import pyarrow.parquet as pq
-    from pyiceberg.utils.concurrent import ExecutorFactory
+    from pyiceberg.expressions import AlwaysTrue
+    from pyiceberg.io.pyarrow import ArrowScan
+    from pyiceberg.table import FileScanTask
 
-    def _read_keys(path: str) -> "pa.Table":
-        with io.new_input(path).open() as input_stream:
-            return pq.read_table(input_stream, columns=list(upsert_cols))
+    # ``DataFile.from_args`` keeps only the manifest struct fields, so the files
+    # ``_dataframe_to_data_files`` returns have no ``spec_id`` on PyIceberg 0.11, and
+    # ``ArrowScan`` needs one. They were written against the default spec, so restore
+    # that, leaving any spec_id a newer PyIceberg already carries untouched.
+    for data_file in data_files:
+        if not hasattr(data_file, "spec_id"):
+            data_file.spec_id = table_metadata.default_spec_id
 
-    # Read through PyIceberg's shared executor, the one its own scans use, so the
-    # per-file latency of object storage overlaps and PYICEBERG_MAX_WORKERS applies.
-    tables = list(ExecutorFactory.get_or_create().map(_read_keys, data_file_paths))
-
-    keys = (
-        pa.concat_tables(tables, promote_options="permissive")
-        if len(tables) > 1
-        else tables[0]
-    )
+    # ``ArrowScan`` reads the files concurrently on PyIceberg's shared executor and
+    # resolves columns by field ID, the same way the rewrite tasks read their files.
+    keys = ArrowScan(
+        table_metadata=table_metadata,
+        io=io,
+        projected_schema=table_metadata.schema().select(*upsert_cols),
+        row_filter=AlwaysTrue(),
+    ).to_table([FileScanTask(data_file) for data_file in data_files])
     masks = (pc.is_valid(keys[col]) for col in upsert_cols)
     keys = keys.filter(functools.reduce(pc.and_, masks))
     deduped = keys.group_by(list(upsert_cols)).aggregate([])
@@ -129,7 +132,7 @@ def _collect_upsert_keys(
         "[upsert] collected %d key row(s), %d after distinct, from %d data file(s)",
         len(keys),
         len(deduped),
-        len(data_file_paths),
+        len(data_files),
     )
     return deduped
 
@@ -502,6 +505,29 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         return expr if expr is not None else AlwaysTrue()
 
+    def _estimate_upsert_keys_memory(
+        self, data_files: List["DataFile"], upsert_cols: List[str]
+    ) -> int:
+        """Estimate the heap ``_collect_upsert_keys`` needs to hold the join keys.
+
+        The task only reads the join columns, so the estimate uses their on-disk sizes
+        from the file metrics, falling back to the whole file when a file has none.
+        """
+        schema = self._table_metadata.schema()
+        field_ids = [schema.find_field(col).field_id for col in upsert_cols]
+        key_bytes = 0
+        for data_file in data_files:
+            column_sizes = data_file.column_sizes or {}
+            if all(field_id in column_sizes for field_id in field_ids):
+                key_bytes += sum(column_sizes[field_id] for field_id in field_ids)
+            else:
+                key_bytes += data_file.file_size_in_bytes
+        return int(
+            key_bytes
+            * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+            * 2  # Bump memory estimate to account for the deduplicated copy of the keys
+        )
+
     def _commit_upsert_scan_merge(
         self,
         txn: "Table.transaction",
@@ -513,7 +539,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         ┌─────────────────────────────────────────────────────────────┐
         │  Stage 1: Build coarse filter (driver)                      │
-        │    per-task key bounds ──► coarse_filter                    │
+        │    per-task min, max key bounds ──► coarse_filter           │
         └─────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -590,9 +616,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         # The keys are columns of the data files this write just produced, so a single
         # task reads them and every rewrite task shares that one result. The reference is
         # passed on without being resolved, so the keys stay off the driver.
-        keys_ref = _collect_upsert_keys.remote(
-            [data_file.file_path for data_file in data_files], upsert_cols, self._io
-        )
+        keys_ref = _collect_upsert_keys.options(
+            memory=self._estimate_upsert_keys_memory(data_files, upsert_cols)
+        ).remote(data_files, upsert_cols, self._table_metadata, self._io)
 
         t0 = time.perf_counter()
         refs = [
