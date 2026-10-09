@@ -100,16 +100,11 @@ def download(tmp_path, uri=PACKAGE_URI):
         ("elsewhere.example.org", PACKAGE_URI, None),
         ("example.org", PACKAGE_URI, None),
         ("files.example.org.evil.org", PACKAGE_URI, None),
-        ("files.example.org", PACKAGE_URI.replace("https:", "http:"), None),
+        ("files.example.org:14000", PACKAGE_URI.replace("https:", "http:"), None),
         ("", PACKAGE_URI, "test-token"),
         ("elsewhere.example.org", PACKAGE_URI, "test-token"),
         ("https://elsewhere.example.org", PACKAGE_URI, None),
         ("elsewhere.example.org,*.example.org", PACKAGE_URI, "test-token"),
-        (
-            "files.example.org,*.example.org",
-            PACKAGE_URI.replace("https:", "http:"),
-            None,
-        ),
     ],
 )
 def test_download_without_kerberos(
@@ -128,15 +123,18 @@ def test_download_without_kerberos(
     )
 
 
+@pytest.mark.parametrize("scheme", ["https", "http"])
 @pytest.mark.parametrize(
     "host", ["files.example.org", "gateway.example.org", "vip.example.org"]
 )
-def test_configured_httpfs_host(tmp_path, monkeypatch, kerberos, http_transport, host):
+def test_configured_httpfs_host(
+    tmp_path, monkeypatch, kerberos, http_transport, host, scheme
+):
     hosts = " FILES.example.org, gateway.example.org "
     monkeypatch.setenv(
         KERBEROS_HOSTS, "vip.example.org" if host.startswith("vip.") else hosts
     )
-    uri = PACKAGE_URI.replace("files.example.org", host)
+    uri = PACKAGE_URI.replace("https:", scheme + ":").replace("files.example.org", host)
     routes, sent = http_transport
     routes[uri] = (200, {}, b"package")
 
@@ -159,10 +157,11 @@ def test_bearer_conflict(tmp_path, monkeypatch, kerberos, http_transport):
     assert http_transport[1] == []
 
 
-def test_missing_kerberos_dependency(tmp_path, monkeypatch, kerberos):
+@pytest.mark.parametrize("scheme", ["https", "http"])
+def test_missing_kerberos_dependency(tmp_path, monkeypatch, kerberos, scheme):
     monkeypatch.setitem(sys.modules, "requests_kerberos", None)
     with pytest.raises(ImportError, match="pip install requests-kerberos") as exc:
-        download(tmp_path)
+        download(tmp_path, PACKAGE_URI.replace("https:", scheme + ":"))
     assert "preinstalled" in str(exc.value)
 
 
@@ -252,6 +251,15 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
             with pytest.raises(requests.exceptions.SSLError):
                 download(tmp_path, server.url_for("/code.zip"))
             assert not server.log
+
+
+def test_local_http_download(tmp_path, monkeypatch, kerberos):
+    """Allowlisted hosts authenticate over plain HTTP, without TLS."""
+    monkeypatch.setenv(KERBEROS_HOSTS, "localhost")
+    with HTTPServer(host="localhost") as server:
+        server.expect_request("/code.zip").respond_with_data(b"package")
+        assert download(tmp_path, server.url_for("/code.zip")) == b"package"
+        assert server.log[0][0].headers["Authorization"] == "Negotiate localhost:1"
 
 
 @pytest.mark.asyncio

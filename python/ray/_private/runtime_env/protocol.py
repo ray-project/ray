@@ -251,7 +251,7 @@ class ProtocolsProvider:
             raise ValueError(
                 f"{RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR} requires DNS "
                 "hostnames, not IP addresses. Use the server's DNS name in "
-                "both the HTTPS URL and the host list."
+                "both the download URL and the host list."
             )
         return hosts
 
@@ -277,7 +277,7 @@ class ProtocolsProvider:
             parsed = urlparse(uri)
             hosts = (
                 cls._http_kerberos_hosts(parsed.hostname)
-                if parsed.scheme == "https"
+                if parsed.scheme in ("http", "https")
                 else set()
             )
             if hosts:
@@ -297,7 +297,7 @@ class ProtocolsProvider:
                 except ImportError as exc:
                     raise ImportError(
                         "You must `pip install requests-kerberos` to fetch "
-                        "Kerberos-protected HTTPS URIs. "
+                        "Kerberos-protected HTTP/HTTPS URIs. "
                         + cls._MISSING_DEPENDENCIES_WARNING
                     ) from exc
                 params["kerberos"] = True
