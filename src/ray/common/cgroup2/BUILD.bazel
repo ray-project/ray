@@ -16,7 +16,7 @@ ray_cc_library(
     hdrs = [
         "cgroup_manager_factory.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//src/ray/raylet:__pkg__"],
     deps = [
         ":cgroup_manager_interface",
         ":noop_cgroup_manager",
@@ -40,7 +40,10 @@ ray_cc_library(
     hdrs = [
         "cgroup_manager_interface.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/common/monitors:__pkg__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         ":cgroup_driver_interface",
         "//src/ray/common:status",
@@ -78,7 +81,6 @@ ray_cc_library(
         "noop_cgroup_manager.h",
     ],
     visibility = [
-        ":__subpackages__",
         "//src/ray/common/monitors/tests:__pkg__",
         "//src/ray/raylet/tests:__pkg__",
     ],
@@ -143,7 +145,6 @@ ray_cc_library(
     ],
     visibility = [
         ":__subpackages__",
-        "//src/ray/common:__pkg__",
         "//src/ray/common/monitors:__pkg__",
         "//src/ray/common/monitors/tests:__pkg__",
     ],
@@ -161,10 +162,7 @@ ray_cc_library(
     target_compatible_with = [
         "@platforms//os:linux",
     ],
-    visibility = [
-        ":__subpackages__",
-        "//src/ray/common/monitors/tests:__pkg__",
-    ],
+    visibility = ["//src/ray/common/monitors/tests:__pkg__"],
     deps = [
         ":cgroup_manager_interface",
         ":cgroup_test_utils",

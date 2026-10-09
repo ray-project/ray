@@ -26,10 +26,10 @@ from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     HandleMetricReport,
     NodeId,
+    ReplicaID,
     ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
@@ -407,6 +407,18 @@ class ServeController:
         if record_delay is not None:
             record_delay(delay_ms)
 
+    def record_replica_health(
+        self,
+        replica_id: ReplicaID,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ):
+        """Self-health heartbeat from a replica, standing in for a pull probe."""
+        self.deployment_state_manager.record_replica_health(
+            replica_id, checked_at, healthy, consecutive_failures
+        )
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
@@ -490,17 +502,6 @@ class ServeController:
         self._health_metrics_tracker.record_handle_ingest(
             (time.monotonic() - ingest_start) * 1000
         )
-
-    def record_autoscaling_metrics_from_async_inference_task_queue(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics pushed from QueueMonitor."""
-        self._record_metrics_delay(
-            report.timestamp_s,
-            report.deployment_id,
-            self.async_inference_task_queue_metrics_delay_gauge.set,
-        )
-        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
@@ -886,14 +887,6 @@ class ServeController:
                 "High values may indicate a busy controller."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "application"),
-        )
-        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
-            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
-            description=(
-                "Time taken for the async inference task queue metrics to be reported "
-                "to the controller. High values may indicate a busy controller."
-            ),
             tag_keys=("deployment", "application"),
         )
 
@@ -1525,6 +1518,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_router_fallback=False,
                     ingress_deployment_name="",
                 )
             )
@@ -1702,6 +1696,8 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        ingress_router_fallback = ingress_request_router_deployment_name is not None
+
         target_groups = []
 
         # Create targets for each protocol
@@ -1716,6 +1712,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )

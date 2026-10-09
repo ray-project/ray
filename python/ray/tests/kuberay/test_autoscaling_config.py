@@ -57,6 +57,7 @@ def get_basic_ray_cr() -> dict:
     tpu_group["maxReplicas"] = 4
     tpu_group["numOfHosts"] = 2
     config["spec"]["workerGroupSpecs"].append(tpu_group)
+    config["metadata"]["resourceVersion"] = "123456"
     return config
 
 

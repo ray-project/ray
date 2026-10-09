@@ -228,7 +228,7 @@ In the stateful case, expect the `STATE_IN` columns to be present too. Because o
 ```
 
 :::{hint}
-Design the internal states of your custom {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` classes however you like. Override the {py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule.get_initial_state` method and return a new state of any nested structure and shape from your `forward_..()` methods under the fixed `state_out` key. See [this example](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py) of an RLModule class with a custom LSTM layer.
+Design the internal states of your custom {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` classes however you like. Override the {py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule.get_initial_state` method and return a new state of any nested structure and shape from your `forward_..()` methods under the fixed `state_out` key. See [this example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/classes/lstm_containing_rlm.py) of an RLModule class with a custom LSTM layer.
 :::
 
 (writing_custom_env_to_module_connectors)=
@@ -419,7 +419,7 @@ In multi-agent setups, you have two options for preprocessing your agents' indiv
 
 1. Multi-agent preprocessor with access to the entire multi-agent observation dict: Alternatively, you can subclass the {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` API and override the same two methods, `recompute_output_observation_space` and `preprocess`.
 
-   See this [2-agent observation preprocessor example](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py), which shows how to enhance each agent's observations by adding information from the other agent.
+   See this [2-agent observation preprocessor example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/multi_agent_observation_preprocessor.py), which shows how to enhance each agent's observations by adding information from the other agent.
 
    Use {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` whenever you need to preprocess an agent's observations by looking up information from other agents, such as their observations, rewards, and previous actions.
 

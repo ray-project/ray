@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, T
 if TYPE_CHECKING:
     import pyarrow.fs
 
+    from ray.data.checkpoint import CheckpointConfig
+
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -140,7 +142,7 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
-_EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
+_DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
 def _plan_join_shuffle_v2(
@@ -188,10 +190,10 @@ def _plan_join_shuffle_v2(
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
     reduce_kwargs = {}
-    if data_context.use_external_hash_shuffle:
+    if data_context.use_disk_based_hash_shuffle:
         reduce_kwargs[
             "peak_memory_multiplier"
-        ] = _EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
     return reduce_cls(
         [left_map, right_map],
         data_context,
@@ -300,11 +302,35 @@ class Planner:
 
             callbacks.append(checkpoint_callback)
 
-            # Dynamically set the plan functions for checkpointing because they
-            # need to a reference to the checkpoint ref.
-            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                data_file_dir, data_file_fs
-            )
+            if not checkpoint_config._should_restore:
+                # Skip loading checkpoint data and filtering rows,
+                # but still enable the checkpoint writer.
+                self._plan_fns_for_checkpointing = {
+                    Write: plan_write_op_with_checkpoint_writer,
+                }
+            elif checkpoint_config.has_generated_id_column:
+                # Restoring from generated row IDs isn't wired up yet, and they
+                # can't go through the numpy-based ID filter that the
+                # ``id_column`` path plans. Until then, only write checkpoints:
+                # a rerun redoes every row. Clean up a crashed run's pending
+                # checkpoints first, which the ``id_column`` path does while
+                # loading its checkpoint.
+                if data_file_dir is not None:
+                    self._clean_pending_checkpoints(
+                        checkpoint_config,
+                        logical_plan.context,
+                        data_file_dir,
+                        data_file_fs,
+                    )
+                self._plan_fns_for_checkpointing = {
+                    Write: plan_write_op_with_checkpoint_writer
+                }
+            else:
+                # Dynamically set the plan functions for checkpointing because they
+                # need to a reference to the checkpoint ref.
+                self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
+                    data_file_dir, data_file_fs
+                )
 
         elif checkpoint_config is not None:
             assert not self._check_supports_checkpointing(logical_plan)
@@ -403,6 +429,20 @@ class Planner:
             if isinstance(datasink, _FileDatasink):
                 return datasink.unresolved_path, datasink.filesystem
         return None, None
+
+    @staticmethod
+    def _clean_pending_checkpoints(
+        checkpoint_config: "CheckpointConfig",
+        data_context: DataContext,
+        data_file_dir: str,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
+    ) -> None:
+        """Delete pending checkpoints and their partially written data files."""
+        # Lazy import: ``checkpoint_filter`` imports ``ray.data.context``.
+        from ray.data.checkpoint.checkpoint_filter import IdColumnCheckpointManager
+
+        manager = IdColumnCheckpointManager(checkpoint_config, data_context)
+        manager._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
 
     def _get_plan_fns_for_checkpointing(
         self,
