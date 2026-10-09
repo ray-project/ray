@@ -16,6 +16,8 @@ Deploying on Kubernetes <kubernetes>
 Deploying on VMs <vms/index>
 metrics
 configure-manage-dashboard
+configure
+head-node-memory-management
 Applications Guide <running-applications/index>
 faq
 package-overview

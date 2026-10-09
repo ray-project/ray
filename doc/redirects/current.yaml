@@ -954,6 +954,36 @@ redirects:
 - from: /core/fault_tolerance/*
   to: /core/fault-tolerance/:splat
   type: page
+- from: /ray-core/ray-generator.html
+  to: /core/tasks/ray-generator.html
+  type: page
+- from: /ray-core/namespaces.html
+  to: /core/actors/namespaces.html
+  type: page
+- from: /ray-core/ray-dag.html
+  to: /core/compiled-graph/ray-dag.html
+  type: page
+- from: /ray-core/configure.html
+  to: /cluster/configure.html
+  type: page
+- from: /ray-core/head-node-memory-management.html
+  to: /cluster/head-node-memory-management.html
+  type: page
+- from: /core/ray-generator.html
+  to: /core/tasks/ray-generator.html
+  type: page
+- from: /core/namespaces.html
+  to: /core/actors/namespaces.html
+  type: page
+- from: /core/ray-dag.html
+  to: /core/compiled-graph/ray-dag.html
+  type: page
+- from: /core/configure.html
+  to: /cluster/configure.html
+  type: page
+- from: /core/head-node-memory-management.html
+  to: /cluster/head-node-memory-management.html
+  type: page
 - from: /ray-observability/reference/api.html
   to: /core/api/state.html
   type: page

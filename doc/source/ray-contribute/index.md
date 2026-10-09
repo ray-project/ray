@@ -12,6 +12,5 @@ myst:
 stability
 api-policy
 getting-involved
-../core/configure
 whitepaper
 ```
