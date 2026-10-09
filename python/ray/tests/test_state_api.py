@@ -474,7 +474,11 @@ def clear_loggers():
     "event_routing_config", ["default", "aggregator"], indirect=True
 )
 @pytest.mark.usefixtures("event_routing_config")
-def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers):
+def test_state_api_client_periodic_warning(
+    shutdown_only, capsys, clear_loggers, monkeypatch
+):
+    # Registers the testing-only /api/v0/delay endpoint.
+    monkeypatch.setenv("RAY_DASHBOARD_MODULE_TEST", "true")
     ray.init()
     timeout = 10
     StateApiClient()._make_http_get_request("/api/v0/delay/5", {}, timeout, True)
