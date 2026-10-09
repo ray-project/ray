@@ -3,6 +3,15 @@
 # dependency graphs stay separate, so none of Ray's repos change.
 common --enable_bzlmod
 common --enable_workspace
+# The proto toolchain flags default to @bazel_tools//tools/proto:*, which with
+# bzlmod on resolve to the module graph's protobuf (protobuf~, pulled in by
+# rules_rust), not WORKSPACE's. Its protoc then generates code that WORKSPACE
+# protobuf 29.6's headers reject ("gencode is built with an incompatible
+# version"). Name WORKSPACE's toolchains explicitly.
+common --proto_compiler=@com_google_protobuf//:protoc
+common --proto_toolchain_for_cc=@com_google_protobuf//:cc_toolchain
+common --proto_toolchain_for_java=@com_google_protobuf//:java_toolchain
+common --proto_toolchain_for_javalite=@com_google_protobuf//:javalite_toolchain
 
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
