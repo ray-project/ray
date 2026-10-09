@@ -44,9 +44,12 @@ logger = logging.getLogger(__name__)
 
 _REWRITE_STALL_TIMEOUT_S = 600
 
+# A Python scalar from a join column, as returned by ``pa.Scalar.as_py()``.
+ColumnValue = Any
+
 
 def _merge_key_bounds(
-    bounds: Dict[str, Tuple[Any, Any]],
+    bounds: Dict[str, Tuple[ColumnValue, ColumnValue]],
     keys_table: "pa.Table",
     upsert_cols: List[str],
 ) -> Tuple[int, int]:
@@ -282,7 +285,7 @@ class IcebergWriteResult:
     """
 
     data_files: List["DataFile"] = field(default_factory=list)
-    upsert_key_bounds: Optional[Dict[str, Tuple[Any, Any]]] = None
+    upsert_key_bounds: Optional[Dict[str, Tuple[ColumnValue, ColumnValue]]] = None
     upsert_key_rows: int = 0
     upsert_null_key_rows: int = 0
     schemas: List["pa.Schema"] = field(default_factory=list)
@@ -476,7 +479,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
     def _coarse_filter_from_bounds(
         self,
-        key_bounds: Dict[str, Tuple[Any, Any]],
+        key_bounds: Dict[str, Tuple[ColumnValue, ColumnValue]],
         upsert_cols: List[str],
     ) -> "BooleanExpression":
         """Build an O(1) coarse range filter from the aggregated key bounds.
@@ -534,7 +537,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self,
         txn: "Table.transaction",
         data_files: List["DataFile"],
-        key_bounds: Dict[str, Tuple[Any, Any]],
+        key_bounds: Dict[str, Tuple[ColumnValue, ColumnValue]],
         upsert_cols: List[str],
     ) -> None:
         """Upsert commit using coarse range filter + per-file distributed anti-join.
@@ -737,7 +740,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self,
         txn: "Table.transaction",
         data_files: List["DataFile"],
-        key_bounds: Optional[Dict[str, Tuple[Any, Any]]],
+        key_bounds: Optional[Dict[str, Tuple[ColumnValue, ColumnValue]]],
     ) -> None:
         """
         Commit upsert transaction with copy-on-write strategy.
@@ -895,7 +898,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         all_data_files = []
         block_schemas = []
         use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
-        key_bounds: Dict[str, Tuple[Any, Any]] = {}
+        key_bounds: Dict[str, Tuple[ColumnValue, ColumnValue]] = {}
         key_rows = 0
         null_key_rows = 0
 
@@ -988,7 +991,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         # Collect all data files and schemas from all workers
         all_data_files: List["DataFile"] = []
         all_schemas: List["pa.Schema"] = []
-        key_bounds: Dict[str, Tuple[Any, Any]] = {}
+        key_bounds: Dict[str, Tuple[ColumnValue, ColumnValue]] = {}
         key_rows = 0
         null_key_rows = 0
 
