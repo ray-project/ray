@@ -6,24 +6,28 @@ myst:
 
 (train-local-mode)=
 
-# Local Mode
+# Local mode
 
 :::{important}
-This user guide shows how to use local mode with Ray Train V2 only. For information about migrating from Ray Train V1 to V2, see the Train V2 migration guide: <https://github.com/ray-project/ray/issues/49454>
+This user guide shows how to use local mode with Ray Train V2 only. To migrate from Ray Train V1 to V2, see the [Train V2 migration guide](https://github.com/ray-project/ray/issues/49454).
 :::
 
-## What is local mode?
+(what-is-local-mode)=
 
-Local mode in Ray Train runs your training function without launching Ray Train worker actors. Instead of distributing your training code across multiple Ray actors, local mode executes your training function directly in the current process. This provides a simplified debugging environment where you can iterate quickly on your training logic.
+## What's local mode?
+
+Local mode in Ray Train runs your training function directly in the current process instead of launching Ray Train worker actors and distributing your training code across them. This gives you a simplified debugging environment where you can iterate quickly on your training logic.
 
 Local mode supports two execution modes:
 
-* **Single-process mode**: Runs your training function in a single process, ideal for rapid iteration and debugging.
-* **Multi-process mode with torchrun**: Launches multiple processes for multi-GPU training, useful for debugging distributed training logic with familiar tools.
+* **Single-process mode**: Runs your training function in a single process. Use it for rapid iteration and debugging.
+* **Multi-process mode with `torchrun`**: Launches multiple processes for multi-GPU training. Use it to debug distributed training logic with familiar tools.
 
-## How to enable local mode
+(how-to-enable-local-mode)=
 
-You can enable local mode by setting `num_workers=0` in your {class}`~ray.train.ScalingConfig`:
+## Enable local mode
+
+To enable local mode, set `num_workers=0` in your {class}`~ray.train.ScalingConfig`:
 
 ```{testcode}
 :skipif: True
@@ -42,24 +46,24 @@ trainer = TorchTrainer(
 result = trainer.fit()
 ```
 
-Local mode provides the same `ray.train` APIs you use in distributed training, so your training code runs without any other modifications. This makes it simple to verify your training logic locally before scaling to distributed training.
+Local mode provides the same `ray.train` APIs you use in distributed training, so your training code runs without other changes. You can verify your training logic locally before you scale to distributed training.
 
 ## When to use local mode
 
-Use single-process local mode to:
+Use single-process local mode for the following tasks:
 
 * **Develop and iterate quickly**: Test changes to your training function locally.
-* **Write unit tests**: Verify your training logic works correctly in a simplified environment.
-* **Debug training logic**: Use standard Python debugging tools to step through your training code and identify issues.
+* **Write unit tests**: Verify that your training logic works correctly in a simplified environment.
+* **Debug training logic**: Step through your training code with standard Python debugging tools to find issues.
 
-Use multi-process local mode with `torchrun` to:
+Use multi-process local mode with `torchrun` for the following tasks:
 
-* **Test multi-GPU logic**: Verify your distributed training code works correctly across multiple GPUs using familiar `torchrun` commands.
-* **Migrate existing code**: Bring existing `torchrun` based training scripts into Ray Train while preserving your development workflow.
-* **Debug distributed behavior**: Isolate issues in your distributed training logic using `torchrun`'s process management.
+* **Test multi-GPU logic**: Verify that your distributed training code works correctly across multiple GPUs with familiar `torchrun` commands.
+* **Migrate existing code**: Bring existing `torchrun`-based training scripts into Ray Train and keep your development workflow.
+* **Debug distributed behavior**: Isolate issues in your distributed training logic with `torchrun` process management.
 
 :::{note}
-In local mode, Ray Train doesn't launch worker actors, but your training code can still use other Ray features such as Ray Data (in single-process mode) or launch Ray actors if needed.
+In local mode, Ray Train doesn't launch worker actors. Your training code can still launch Ray actors or use other Ray features, such as Ray Data in single-process mode.
 :::
 
 ## Single-process local mode
@@ -98,10 +102,12 @@ print(f"Final loss: {result.metrics['loss']}")
 ```
 
 :::{note}
-Local mode works with all Ray Train framework integrations, including PyTorch Lightning, Hugging Face Transformers, LightGBM, XGBoost, TensorFlow, and others.
+Local mode works with all Ray Train framework integrations, including PyTorch Lightning, Hugging Face Transformers, LightGBM, XGBoost, and TensorFlow.
 :::
 
-### Testing with local mode
+(testing-with-local-mode)=
+
+### Test with local mode
 
 The following example shows how to write a unit test with local mode:
 
@@ -128,9 +134,11 @@ def test_training_runs():
     assert result.metrics["loss"] == 0.5
 ```
 
-### Using local mode with Ray Data
+(using-local-mode-with-ray-data)=
 
-Single-process local mode works seamlessly with Ray Data for data loading and preprocessing. When you use Ray Data with local mode, Ray Data processes your data and provides it back to your training function in the local process.
+### Use local mode with Ray Data
+
+Single-process local mode works with Ray Data for data loading and preprocessing. Ray Data processes your data and returns it to your training function in the local process.
 
 The following example shows how to use Ray Data with single-process local mode:
 
@@ -162,18 +170,18 @@ result = trainer.fit()
 ```
 
 :::{warning}
-Ray Data isn't supported when using `torchrun` for multi-process training in local mode. For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader with DistributedSampler.
+Ray Data isn't supported when you use `torchrun` for multi-process training in local mode. For multi-process training, use standard PyTorch data loading, such as `DataLoader` with `DistributedSampler`.
 :::
 
 ## Multi-process local mode with `torchrun`
 
-Local mode supports multi-GPU training  through `torchrun`, allowing you to develop and debug using `torchrun`'s process management.
+Local mode supports multi-GPU training through `torchrun`, so you can develop and debug with `torchrun` process management.
 
 ### Single-node multi-GPU training
 
-The following example shows how to use `torchrun` with local mode for multi-GPU training on a single node. This approach is useful when migrating existing PyTorch training code or when you want to debug distributed training logic using `torchrun`'s familiar process management. The example uses standard PyTorch `DataLoader` for data loading, making it easy to adapt your existing PyTorch training code.
+The following example shows how to use `torchrun` with local mode for multi-GPU training on a single node. Use this approach to migrate existing PyTorch training code or to debug distributed training logic with the familiar `torchrun` process management. The example loads data with the standard PyTorch `DataLoader`, so you can adapt your existing PyTorch training code to it.
 
-First, create your training script (`train_script.py`):
+First, create your training script, `train_script.py`:
 
 ```{testcode}
 :skipif: True
@@ -273,7 +281,7 @@ Then, launch training with `torchrun`:
 torchrun --nproc-per-node=4 train_script.py
 ```
 
-Ray Train automatically detects the `torchrun` environment variables and configures the distributed training accordingly. You can access distributed training information through {func}`ray.train.get_context()`:
+Ray Train automatically detects the `torchrun` environment variables and configures distributed training accordingly. To access distributed training information, use {func}`ray.train.get_context()`:
 
 ```{testcode}
 :skipif: True
@@ -287,14 +295,14 @@ print(f"Local rank: {context.get_local_rank()}")
 ```
 
 :::{warning}
-Ray Data isn't supported when using `torchrun` for multi-process training in local mode. For multi-process training, use standard PyTorch data loading mechanisms such as DataLoader with DistributedSampler.
+Ray Data isn't supported when you use `torchrun` for multi-process training in local mode. For multi-process training, use standard PyTorch data loading, such as `DataLoader` with `DistributedSampler`.
 :::
 
 ### Multi-node multi-GPU training
 
-You can also use `torchrun` to launch multi-node training with local mode. The following example shows how to launch training across 2 nodes with 4 GPUs each:
+You can also use `torchrun` to launch multi-node training with local mode. The following example shows how to launch training across two nodes with four GPUs each.
 
-On the master node (`192.168.1.1`):
+On the master node at `192.168.1.1`, run the following command:
 
 ```bash
 RAY_TRAIN_V2_ENABLED=1 torchrun \
@@ -307,7 +315,7 @@ RAY_TRAIN_V2_ENABLED=1 torchrun \
     train_script.py
 ```
 
-On the worker node:
+On the worker node, run the following command:
 
 ```bash
 RAY_TRAIN_V2_ENABLED=1 torchrun \
@@ -320,9 +328,11 @@ RAY_TRAIN_V2_ENABLED=1 torchrun \
     train_script.py
 ```
 
-## Transitioning from local mode to distributed training
+(transitioning-from-local-mode-to-distributed-training)=
 
-When you're ready to scale from local mode to distributed training, simply change `num_workers` to a value greater than 0:
+## Transition from local mode to distributed training
+
+When you're ready to scale from local mode to distributed training, change `num_workers` to a value greater than 0:
 
 ```diff
  trainer = TorchTrainer(
@@ -333,19 +343,19 @@ When you're ready to scale from local mode to distributed training, simply chang
  )
 ```
 
-Your training function code remains the same, and Ray Train handles the distributed coordination automatically.
+Your training function stays the same, and Ray Train handles distributed coordination automatically.
 
 ## Limitations and API differences
 
-Local mode provides simplified implementations of Ray Train APIs to enable rapid debugging without distributed orchestration. However, this means some features behave differently or aren't available.
+Local mode provides simplified implementations of Ray Train APIs for rapid debugging without distributed orchestration. As a result, some features behave differently or aren't available.
 
 ### Features not available in local mode
 
 The following Ray Train features aren't available in local mode:
 
-* **Worker-level fault tolerance**: Ray Train's automatic fault tolerance features, such as worker restart on failure, aren't available. If you configured {class}`~ray.train.FailureConfig`, the settings don't apply in local mode.
-* **Callbacks**: User-defined callbacks specified in {class}`~ray.train.RunConfig` aren't invoked in local mode.
-* **Ray Data with multi-process training**: Ray Data isn't supported when using `torchrun` with local mode for multi-process training. Use standard PyTorch data loading mechanisms instead.
+* **Worker-level fault tolerance**: Ray Train's automatic fault tolerance features, such as restarting workers on failure, aren't available. If you configure {class}`~ray.train.FailureConfig`, its settings don't apply in local mode.
+* **Callbacks**: Local mode doesn't invoke callbacks that you specify in {class}`~ray.train.RunConfig`.
+* **Ray Data with multi-process training**: Ray Data isn't supported when you use `torchrun` with local mode for multi-process training. Use standard PyTorch data loading instead.
 
 ### API behavior differences
 
@@ -358,15 +368,15 @@ The following table summarizes how `ray.train` APIs behave differently in local 
 * - API
   - Behavior in local mode
 * - {func}`ray.train.report`
-  - Stores checkpoints in memory only (not persisted to storage). Ignores `checkpoint_upload_mode`, `checkpoint_upload_fn`, `validation`, and `delete_local_checkpoint_after_upload` parameters. Logs metrics locally instead of through the reporting pipeline. Doesn't invoke a synchronization barrier across workers.
+  - Stores checkpoints in memory only and doesn't persist them to storage. Ignores the `checkpoint_upload_mode`, `checkpoint_upload_fn`, `validation`, and `delete_local_checkpoint_after_upload` parameters. Logs metrics locally instead of through the reporting pipeline. Doesn't invoke a synchronization barrier across workers.
 * - {func}`ray.train.get_checkpoint`
   - Returns the last checkpoint from memory. Doesn't load checkpoints from persistent storage.
 * - {func}`ray.train.get_all_reported_checkpoints`
   - Always returns an empty list. Doesn't track checkpoint history.
 * - {func}`ray.train.collective.barrier`
-  -  No-op.
+  - No-op.
 * - {func}`ray.train.collective.broadcast_from_rank_zero`
   - Returns data as-is.
 * - {meth}`ray.train.get_context().get_storage() <ray.train.TrainContext.get_storage>`
-  - Raises `NotImplementedError`
+  - Raises `NotImplementedError`.
 ```
