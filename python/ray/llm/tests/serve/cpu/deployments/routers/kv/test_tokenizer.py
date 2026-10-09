@@ -1,3 +1,4 @@
+import json
 import sys
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
@@ -22,6 +23,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
     TokenizeError,
     build_tokenize_request,
+    is_anthropic_messages_payload,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
@@ -29,8 +31,248 @@ from ray.serve._private.constants import (
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm.request_router import KVAwareRouter
 
+_BASH_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"command": {"type": "string"}},
+    "required": ["command"],
+}
+
+# A Claude Code /v1/messages body: a system prompt led by the per-request
+# billing header, an inline system reminder, Anthropic tool definitions, and a
+# tool_use/tool_result turn.
+CLAUDE_CODE_BODY = {
+    "model": "m",
+    "max_tokens": 32000,
+    "stream": True,
+    "system": [
+        {"type": "text", "text": "x-anthropic-billing-header: cch=1a2b3;"},
+        {
+            "type": "text",
+            "text": "You are Claude Code.",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ],
+    "messages": [
+        {"role": "user", "content": [{"type": "text", "text": "List the files."}]},
+        {"role": "system", "content": "Plan mode is off."},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Listing them."},
+                {
+                    "type": "tool_use",
+                    "id": "toolu_01",
+                    "name": "Bash",
+                    "input": {"command": "ls"},
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01",
+                    "content": "a.py\nb.py",
+                }
+            ],
+        },
+    ],
+    "tools": [
+        {
+            "name": "Bash",
+            "description": "Run a shell command.",
+            "input_schema": _BASH_INPUT_SCHEMA,
+        }
+    ],
+    "metadata": {"user_id": "u"},
+}
+
+# OpenAI chat bodies with part types vLLM's chat parser accepts that share a
+# name with Anthropic content blocks.
+OPENAI_THINKING_BODY = {
+    "model": "m",
+    "messages": [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "Greet back."},
+                {"type": "text", "text": "Hello."},
+            ],
+        },
+        {"role": "user", "content": "Again."},
+    ],
+}
+OPENAI_TOOL_REFERENCE_BODY = {
+    "model": "m",
+    "messages": [
+        {"role": "user", "content": "Find a tool."},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "c",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": "{}"},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "c",
+            "content": [{"type": "tool_reference", "name": "f"}],
+        },
+    ],
+}
+
+
+class TestIsAnthropicMessagesPayload:
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            CLAUDE_CODE_BODY,
+            {"model": "m", "system": "Be terse.", "messages": []},
+            {
+                "model": "m",
+                "messages": [{"role": "user", "content": "hi"}],
+                "tools": [{"name": "f", "input_schema": {}}],
+            },
+            {
+                "model": "m",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": "t", "content": "x"}
+                        ],
+                    }
+                ],
+            },
+            {
+                "model": "m",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {"type": "url", "url": "https://x/y.png"},
+                            }
+                        ],
+                    }
+                ],
+            },
+        ],
+    )
+    def test_anthropic_bodies(self, payload):
+        assert is_anthropic_messages_payload(payload)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"model": "m", "prompt": "hello"},
+            {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+            {
+                "model": "m",
+                "messages": [
+                    {"role": "system", "content": "Be terse."},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "hi"},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "https://x/y.png"},
+                            },
+                        ],
+                    },
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "c",
+                                "type": "function",
+                                "function": {"name": "f", "arguments": "{}"},
+                            }
+                        ],
+                    },
+                    {"role": "tool", "tool_call_id": "c", "content": "x"},
+                ],
+                "tools": [
+                    {"type": "function", "function": {"name": "f", "parameters": {}}}
+                ],
+            },
+            OPENAI_THINKING_BODY,
+            OPENAI_TOOL_REFERENCE_BODY,
+        ],
+    )
+    def test_openai_bodies(self, payload):
+        assert not is_anthropic_messages_payload(payload)
+
 
 class TestBuildTokenizeRequest:
+    def test_converts_anthropic_messages_body(self):
+        """A Claude Code body converts the way vLLM's /v1/messages handler
+        converts it before rendering, instead of failing OpenAI validation on
+        its Anthropic tool definitions and falling back to token-less routing."""
+        request = build_tokenize_request(CLAUDE_CODE_BODY)
+        assert request is not None
+        # The billing header changes on every request, so it is dropped from
+        # the system prompt to keep the session's prefix stable. By default
+        # (no custom chat template) the inline system reminder is merged into
+        # the leading system message, as the engine's handler does.
+        assert [m["role"] for m in request.messages] == [
+            "system",
+            "user",
+            "assistant",
+            "tool",
+        ]
+        assert request.messages[0] == {
+            "role": "system",
+            "content": "You are Claude Code.Plan mode is off.",
+        }
+        assert request.messages[2]["tool_calls"][0]["function"] == {
+            "name": "Bash",
+            "arguments": json.dumps({"command": "ls"}),
+        }
+        assert request.messages[3] == {
+            "role": "tool",
+            "tool_call_id": "toolu_01",
+            "content": "a.py\nb.py",
+        }
+        assert request.tools[0].function.name == "Bash"
+        assert request.tools[0].function.parameters == _BASH_INPUT_SCHEMA
+        assert request.tool_choice == "auto"
+
+    def test_keeps_inline_system_messages_without_merge(self):
+        """A chat template that accepts system messages anywhere keeps the
+        inline system reminder in place, as the engine's handler does."""
+        request = build_tokenize_request(CLAUDE_CODE_BODY, merge_inline_system=False)
+        assert [m["role"] for m in request.messages] == [
+            "system",
+            "user",
+            "system",
+            "assistant",
+            "tool",
+        ]
+        assert request.messages[0]["content"] == "You are Claude Code."
+        assert request.messages[2]["content"] == "Plan mode is off."
+
+    @pytest.mark.parametrize(
+        "payload", [OPENAI_THINKING_BODY, OPENAI_TOOL_REFERENCE_BODY]
+    )
+    def test_openai_body_with_shared_part_types_builds_chat_request(self, payload):
+        """thinking and tool_reference parts are valid OpenAI chat parts in
+        vLLM, so these bodies still route on tokens through the chat path."""
+        assert isinstance(build_tokenize_request(payload), ChatCompletionRequest)
+
+    def test_anthropic_count_tokens_body_returns_none(self):
+        """A /v1/messages/count_tokens body (no max_tokens) runs no prefill,
+        so it is not routed on tokens."""
+        payload = {k: v for k, v in CLAUDE_CODE_BODY.items() if k != "max_tokens"}
+        assert build_tokenize_request(payload) is None
+
     @pytest.mark.parametrize("stream", [True, False])
     @pytest.mark.parametrize(
         "params",
@@ -184,6 +426,28 @@ class TestRoute:
             }
         else:
             assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
+
+    @pytest.mark.asyncio
+    async def test_anthropic_body_routes_on_tokens_without_staging(self):
+        # vLLM's /v1/messages handler never reads staged ids, so an Anthropic
+        # body is scored on its tokens but they are not pushed to the replica.
+        router = LLMRouter.__new__(LLMRouter)
+        router._handle = MagicMock()
+        router._tokenizer = MagicMock()
+        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._pick_replica = AsyncMock(
+            return_value=("h", 1, "rid", "tcp://127.0.0.1:7557")
+        )
+        router._push_prompt_tokens = MagicMock(return_value="key")
+
+        request = MagicMock()
+        request.body = AsyncMock(return_value=json.dumps(CLAUDE_CODE_BODY).encode())
+        request.headers = Headers({})
+        response = await router.route(request)
+
+        assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
+        router._push_prompt_tokens.assert_not_called()
+        assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
 
     @pytest.mark.asyncio
     async def test_unparseable_body_skips_tokenization(self):
