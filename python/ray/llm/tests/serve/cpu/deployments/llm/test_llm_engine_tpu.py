@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.core.configs.accelerators import (
+from ray.llm._internal.common.accelerators import (
     CPUAccelerator,
     CPUConfig,
     GPUAccelerator,
