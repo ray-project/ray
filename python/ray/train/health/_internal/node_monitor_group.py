@@ -6,7 +6,7 @@ from typing import Dict, List, NamedTuple, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.train.health._internal.node_monitor import NodeMonitor, NodeMonitorStatus
-from ray.train.health.probe import NodeIdStr, NodeProbe
+from ray.train.health.probe import NodeIdStr, PeriodicProbe
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -40,14 +40,15 @@ class NodeMonitorGroup:
     """One ``NodeMonitor`` actor on each of a set of nodes.
 
     Args:
-        probes: The ``NodeProbe``\\ s every monitor samples.
+        probes: The ``NodeProbe``\\ s every monitor samples, each wrapped in a
+            ``PeriodicProbe``.
         health_check_timeout_s: How long a monitor's ``poll_status()`` may stay
             unanswered before it is reported as an error.
     """
 
     def __init__(
         self,
-        probes: List[NodeProbe],
+        probes: List[PeriodicProbe],
         health_check_timeout_s: float = DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S,
     ):
         self._probes = list(probes)

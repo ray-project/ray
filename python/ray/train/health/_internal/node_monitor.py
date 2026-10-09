@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional
 
-from ray.train.health.probe import NodeProbe, ProbeResult
+from ray.train.health.probe import PeriodicProbe, ProbeResult
 
 logger = logging.getLogger(__name__)
 
@@ -32,22 +32,23 @@ class NodeMonitorStatus:
 class NodeMonitor:
     """Samples ``NodeProbe``\\ s on the node it runs on.
 
-    Each probe is sampled in its own thread every ``poll_interval_s``, and
-    ``poll_status()`` returns the latest sample of each.
+    Each probe is sampled in its own thread every ``poll_interval_s`` of its
+    ``PeriodicProbe``, and ``poll_status()`` returns the latest sample of each.
 
     Args:
-        probes: The probes to sample.
+        probes: The ``NodeProbe``\\ s to sample, each wrapped in a
+            ``PeriodicProbe``.
     """
 
-    def __init__(self, probes: List[NodeProbe]):
+    def __init__(self, probes: List[PeriodicProbe]):
         self._lock = threading.Lock()
         self._latest: Dict[str, ProbeResult] = {}
         self._errors: Dict[str, Exception] = {}
-        for probe in probes:
+        for periodic_probe in probes:
             threading.Thread(
                 target=self._sample,
-                args=(probe,),
-                name=f"NodeMonitor-{probe.probe_name()}",
+                args=(periodic_probe,),
+                name=f"NodeMonitor-{periodic_probe.probe.probe_name()}",
                 daemon=True,
             ).start()
 
@@ -62,12 +63,13 @@ class NodeMonitor:
                 probe_results=dict(self._latest), probe_errors=dict(self._errors)
             )
 
-    def _sample(self, probe: NodeProbe) -> None:
-        """Poll ``probe`` every ``poll_interval_s`` until the monitor is killed.
+    def _sample(self, periodic_probe: PeriodicProbe) -> None:
+        """Poll the probe every ``poll_interval_s`` until the monitor is killed.
         A result without a ``timestamp_s`` is stamped with the time its poll
         finished."""
+        probe = periodic_probe.probe
         name = probe.probe_name()
-        interval_s = max(probe.poll_interval_s, _MIN_POLL_INTERVAL_S)
+        interval_s = max(periodic_probe.poll_interval_s, _MIN_POLL_INTERVAL_S)
         while True:
             try:
                 result = probe.poll()

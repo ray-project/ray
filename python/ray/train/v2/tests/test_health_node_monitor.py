@@ -5,21 +5,17 @@ import time
 import pytest
 
 import ray
-from ray.train.health import NodeProbe, ProbeResult
+from ray.train.health import NodeProbe, PeriodicProbe, ProbeResult
 from ray.train.health._internal.node_monitor import NodeMonitor
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
 
 
 class Temp(NodeProbe):
-    poll_interval_s = 0.05
-
     def poll(self):
         return ProbeResult(metrics={"temp_c": 60.0})
 
 
 class Pid(NodeProbe):
-    poll_interval_s = 3600.0
-
     def poll(self):
         return ProbeResult(metrics={"pid": float(os.getpid())})
 
@@ -29,12 +25,20 @@ class Broken(NodeProbe):
         raise RuntimeError("sensor gone")
 
 
+def _temp():
+    return PeriodicProbe(Temp(), poll_interval_s=0.05)
+
+
+def _pid():
+    return PeriodicProbe(Pid(), poll_interval_s=3600.0)
+
+
 def _slow_probe(name, seconds):
     def poll(self):
         time.sleep(seconds)
         return ProbeResult(metrics={"seconds": seconds})
 
-    return type(name, (NodeProbe,), {"name": name, "poll": poll})()
+    return PeriodicProbe(type(name, (NodeProbe,), {"name": name, "poll": poll})())
 
 
 def _wait_for(fn, timeout_s=10.0):
@@ -48,7 +52,7 @@ def _wait_for(fn, timeout_s=10.0):
 
 
 def test_each_probe_is_sampled_on_its_own_interval():
-    monitor = NodeMonitor([Temp(), Pid()])
+    monitor = NodeMonitor([_temp(), _pid()])
     first = _wait_for(
         lambda: len(monitor.poll_status().probe_results) == 2 and monitor.poll_status()
     )
@@ -60,7 +64,7 @@ def test_each_probe_is_sampled_on_its_own_interval():
 
 
 def test_a_failing_probe_is_reported_and_the_others_keep_sampling():
-    monitor = NodeMonitor([Broken(), Temp()])
+    monitor = NodeMonitor([PeriodicProbe(Broken()), _temp()])
     status = _wait_for(
         lambda: "Broken" in monitor.poll_status().probe_errors
         and "Temp" in monitor.poll_status().probe_results
@@ -83,7 +87,7 @@ def _local_node_id():
 
 def test_monitors_sample_outside_the_driver_and_stop_on_shutdown(ray_start_4_cpus):
     node_id = _local_node_id()
-    group = NodeMonitorGroup([Temp(), Pid()])
+    group = NodeMonitorGroup([_temp(), _pid()])
     group.start([node_id])
 
     def results():
@@ -102,7 +106,7 @@ def test_start_adds_monitors_only_where_missing_and_shutdown_can_stop_some(
     ray_start_4_cpus,
 ):
     node_id = _local_node_id()
-    group = NodeMonitorGroup([Temp()])
+    group = NodeMonitorGroup([_temp()])
     group.start([node_id])
     monitor = group._monitors[node_id]
 
@@ -142,7 +146,7 @@ def test_an_unresponsive_monitor_is_reported_after_the_health_check_timeout(
 
 def test_a_dead_monitor_is_reported(ray_start_4_cpus):
     node_id = _local_node_id()
-    group = NodeMonitorGroup([Temp()])
+    group = NodeMonitorGroup([_temp()])
     group.start([node_id])
     group.poll_status(timeout=30)
 
