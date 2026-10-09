@@ -6,29 +6,27 @@ myst:
 
 (train-horovod)=
 
-# Get Started with Distributed Training using Horovod
+# Get started with distributed training using Horovod
 
-Ray Train configures the Horovod environment and Rendezvous server for you, allowing you to run your `DistributedOptimizer` training script. See the [Horovod documentation](https://horovod.readthedocs.io/en/stable/index.html) for more information.
+Ray Train configures the Horovod environment and rendezvous server for you, so you can run your `DistributedOptimizer` training script. For more information, see the [Horovod documentation](https://horovod.readthedocs.io/en/stable/index.html).
 
 ## Quickstart
+
 ```{literalinclude} ./doc_code/hvd_trainer.py
 :language: python
 ```
-
-
 
 ## Update your training function
 
 First, update your {ref}`training function <train-overview-training-function>` to support distributed training.
 
-If you have a training function that already runs with the [Horovod Ray Executor](https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor), you shouldn't need to make any additional changes.
+If your training function already runs with the [Horovod Ray Executor](https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor), you shouldn't need to change it.
 
-To onboard onto Horovod, visit the [Horovod guide](https://horovod.readthedocs.io/en/stable/index.html#get-started).
+If you're new to Horovod, see the [Horovod guide](https://horovod.readthedocs.io/en/stable/index.html#get-started).
 
+## Create a `HorovodTrainer`
 
-## Create a HorovodTrainer
-
-`Trainer`s are the primary Ray Train classes to use to manage state and execute training. For Horovod, use a {class}`~ray.train.horovod.HorovodTrainer` that you can setup like this:
+A trainer is the primary Ray Train class for managing state and running training. For Horovod, set up a {class}`~ray.train.horovod.HorovodTrainer` as in the following example:
 
 ```{testcode}
 :hide:
@@ -47,9 +45,9 @@ trainer = HorovodTrainer(
 )
 ```
 
-When training with Horovod, always use a HorovodTrainer, irrespective of the training framework, for example, PyTorch or TensorFlow.
+Always use a `HorovodTrainer` when you train with Horovod, regardless of the training framework, such as PyTorch or TensorFlow.
 
-To customize the backend setup, you can pass a {class}`~ray.train.horovod.HorovodConfig`:
+To customize the backend setup, pass a {class}`~ray.train.horovod.HorovodConfig`:
 
 ```{testcode}
 :skipif: True
@@ -64,11 +62,11 @@ trainer = HorovodTrainer(
 )
 ```
 
-For more configurability, see the {py:class}`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
+For more configuration options, see the {py:class}`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
 ## Run a training function
 
-With a distributed training function and a Ray Train `Trainer`, you are now ready to start training.
+After you have a distributed training function and a trainer, call `trainer.fit()` to start training:
 
 ```{testcode}
 :skipif: True
@@ -76,9 +74,8 @@ With a distributed training function and a Ray Train `Trainer`, you are now read
 trainer.fit()
 ```
 
-
 ## Further reading
 
-Ray Train's {class}`~ray.train.horovod.HorovodTrainer` replaces the distributed communication backend of the native libraries with its own implementation. Thus, the remaining integration points remain the same. If you're using Horovod with {ref}`PyTorch <train-pytorch>` or {ref}`Tensorflow <train-tensorflow-overview>`, refer to the respective guides for further configuration and information.
+The Ray Train {class}`~ray.train.horovod.HorovodTrainer` replaces the distributed communication backend of the native libraries with its own implementation, so the remaining integration points stay the same. If you use Horovod with {ref}`PyTorch <train-pytorch>` or {ref}`TensorFlow <train-tensorflow-overview>`, see the corresponding guide for configuration details.
 
-If you are implementing your own Horovod-based training routine without using any of the training libraries, read through the {ref}`User Guides <train-user-guides>`, as you can apply much of the content to generic use cases and adapt them easily.
+If you implement your own Horovod-based training routine without any of the training libraries, read the {ref}`Ray Train user guides <train-user-guides>`. You can adapt much of their content to generic use cases.

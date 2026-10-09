@@ -6,30 +6,28 @@ myst:
 
 (train-benchmarks)=
 
-# Ray Train Benchmarks
+# Ray Train benchmarks
 
-Below we document key performance benchmarks for common Ray Train tasks and workflows.
+This page lists key performance benchmarks for common Ray Train tasks and workflows.
 
 (pytorch_gpu_training_benchmark)=
 
 ## GPU image training
 
-This task uses the TorchTrainer module to train different amounts of data using a PyTorch ResNet model.
-
-We test out the performance across different cluster sizes and data sizes.
+This task uses `TorchTrainer` to train a PyTorch ResNet model on different amounts of data. It measures performance across different cluster sizes and data sizes.
 
 - [GPU image training script](https://github.com/ray-project/ray/blob/cec82a1ced631525a4d115e4dc0c283fa4275a7f/release/air_tests/air_benchmarks/workloads/pytorch_training_e2e.py#L95-L106)
 - [GPU training small cluster configuration](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_aws.yaml#L6-L24)
 - [GPU training large cluster configuration](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml#L5-L25)
 
 :::{note}
-For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC and all ports are open in the security group.
+For multi-host distributed training on AWS, make sure the EC2 instances are in the same VPC and all ports are open in the security group.
 :::
 
 
 ```{list-table}
-* - **Cluster Setup**
-  - **Data Size**
+* - **Cluster setup**
+  - **Data size**
   - **Performance**
   - **Command**
 * - 1 g3.8xlarge node (1 worker)
@@ -50,32 +48,32 @@ For multi-host distributed training, on AWS we need to ensure ec2 instances are 
 
 ## PyTorch training parity
 
-This task checks the performance parity between native PyTorch Distributed and Ray Train's distributed TorchTrainer.
+This task checks performance parity between native PyTorch Distributed and Ray Train's distributed `TorchTrainer`.
 
-We demonstrate that the performance is similar (within 2.5\%) between the two frameworks. Performance may vary greatly across different model, hardware, and cluster configurations.
+The two frameworks perform within 2.5\% of each other. Performance can vary greatly across model, hardware, and cluster configurations.
 
-The reported times are for the raw training times. There is an unreported constant setup overhead of a few seconds for both methods that is negligible for longer training runs.
+The reported times are raw training times. Both methods also have an unreported constant setup overhead of a few seconds, which is negligible for longer training runs.
 
 - [PyTorch comparison training script](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/torch_benchmark.py)
 - [PyTorch comparison CPU cluster configuration](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_cpu_4_aws.yaml)
 - [PyTorch comparison GPU cluster configuration](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml)
 
 ```{list-table}
-* - **Cluster Setup**
+* - **Cluster setup**
   - **Dataset**
   - **Performance**
   - **Command**
 * - 4 m5.2xlarge nodes (4 workers)
   - FashionMNIST
-  - 196.64 s (vs 194.90 s PyTorch)
+  - 196.64 s (versus 194.90 s PyTorch)
   - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
 * - 4 m5.2xlarge nodes (16 workers)
   - FashionMNIST
-  - 430.88 s (vs 475.97 s PyTorch)
+  - 430.88 s (versus 475.97 s PyTorch)
   - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
 * - 4 g4dn.12xlarge nodes (16 workers)
   - FashionMNIST
-  - 149.80 s (vs 146.46 s PyTorch)
+  - 149.80 s (versus 146.46 s PyTorch)
   - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
 ```
 
@@ -84,14 +82,14 @@ The reported times are for the raw training times. There is an unreported consta
 
 ## TensorFlow training parity
 
-This task checks the performance parity between native TensorFlow Distributed and Ray Train's distributed TensorflowTrainer.
+This task checks performance parity between native TensorFlow Distributed and Ray Train's distributed `TensorflowTrainer`.
 
-We demonstrate that the performance is similar (within 1\%) between the two frameworks. Performance may vary greatly across different model, hardware, and cluster configurations.
+The two frameworks perform within 1\% of each other. Performance can vary greatly across model, hardware, and cluster configurations.
 
-The reported times are for the raw training times. There is an unreported constant setup overhead of a few seconds for both methods that is negligible for longer training runs.
+The reported times are raw training times. Both methods also have an unreported constant setup overhead of a few seconds, which is negligible for longer training runs.
 
 :::{note}
-The batch size and number of epochs is different for the GPU benchmark, resulting in a longer runtime.
+The GPU benchmark uses a different batch size and number of epochs, which results in a longer runtime.
 :::
 
 - [TensorFlow comparison training script](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/tensorflow_benchmark.py)
@@ -99,7 +97,7 @@ The batch size and number of epochs is different for the GPU benchmark, resultin
 - [TensorFlow comparison GPU cluster configuration](https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml)
 
 ```{list-table}
-* - **Cluster Setup**
+* - **Cluster setup**
   - **Dataset**
   - **Performance**
   - **Command**
@@ -121,18 +119,18 @@ The batch size and number of epochs is different for the GPU benchmark, resultin
 
 ## XGBoost training
 
-This task uses the XGBoostTrainer module to train on different sizes of data with different amounts of parallelism to show near-linear scaling from distributed data parallelism.
+This task uses `XGBoostTrainer` to train on different data sizes with different amounts of parallelism to show near-linear scaling from distributed data parallelism.
 
-XGBoost parameters were kept as defaults for `xgboost==1.7.6` this task.
+This task uses the default XGBoost parameters for `xgboost==1.7.6`.
 
 
-- [XGBoost Training Script](https://github.com/ray-project/ray/blob/9ac58f4efc83253fe63e280106f959fe317b1104/release/train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py)
-- [XGBoost Cluster Configuration](https://github.com/ray-project/ray/tree/9ac58f4efc83253fe63e280106f959fe317b1104/release/train_tests/xgboost_lightgbm)
+- [XGBoost training script](https://github.com/ray-project/ray/blob/9ac58f4efc83253fe63e280106f959fe317b1104/release/train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py)
+- [XGBoost cluster configuration](https://github.com/ray-project/ray/tree/9ac58f4efc83253fe63e280106f959fe317b1104/release/train_tests/xgboost_lightgbm)
 
 ```{list-table}
-* - **Cluster Setup**
+* - **Cluster setup**
   - **Number of distributed training workers**
-  - **Data Size**
+  - **Data size**
   - **Performance**
   - **Command**
 * - 1 m5.4xlarge node with 16 CPUs

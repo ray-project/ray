@@ -6,16 +6,17 @@ myst:
 
 (train-tensorflow-overview)=
 
-# Get Started with Distributed Training using TensorFlow/Keras
+# Get started with distributed training using TensorFlow and Keras
 
-Ray Train's [TensorFlow](https://www.tensorflow.org/) integration enables you to scale your TensorFlow and Keras training functions to many machines and GPUs.
+Use Ray Train's [TensorFlow](https://www.tensorflow.org/) integration to scale your TensorFlow and Keras training functions to many machines and GPUs.
 
-On a technical level, Ray Train schedules your training workers and configures `TF_CONFIG` for you, allowing you to run your `MultiWorkerMirroredStrategy` training script. See [Distributed training with TensorFlow](https://www.tensorflow.org/guide/distributed_training) for more information.
+Ray Train schedules your training workers and configures `TF_CONFIG` for you, so you can run your `MultiWorkerMirroredStrategy` training script. For more information, see [Distributed training with TensorFlow](https://www.tensorflow.org/guide/distributed_training).
 
-Most of the examples in this guide use TensorFlow with Keras, but Ray Train also works with vanilla TensorFlow.
+Most of the examples in this guide use TensorFlow with Keras, but Ray Train also works with TensorFlow without Keras.
 
 
 ## Quickstart
+
 ```{literalinclude} ./doc_code/tf_starter.py
 :language: python
 :start-after: __tf_train_start__
@@ -29,14 +30,14 @@ First, update your {ref}`training function <train-overview-training-function>` t
 
 
 :::{note}
-The current TensorFlow implementation supports `MultiWorkerMirroredStrategy` (and `MirroredStrategy`). If there are other strategies you wish to see supported by Ray Train, submit a [feature request on GitHub](https://github.com/ray-project/ray/issues).
+The TensorFlow implementation currently supports `MultiWorkerMirroredStrategy` and `MirroredStrategy`. To request support for another strategy, submit a [feature request on GitHub](https://github.com/ray-project/ray/issues).
 :::
 
-These instructions closely follow TensorFlow's [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) tutorial. One key difference is that Ray Train handles the environment variable set up for you.
+These instructions closely follow TensorFlow's [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) tutorial. One key difference is that Ray Train handles the environment variable setup for you.
 
-**Step 1:** Wrap your model in `MultiWorkerMirroredStrategy`.
+### Step 1: Wrap your model in `MultiWorkerMirroredStrategy`
 
-The [MultiWorkerMirroredStrategy](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy) enables synchronous distributed training. You *must* build and compile the `Model` within the scope of the strategy.
+[`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy) provides synchronous distributed training. You must build and compile the `Model` inside the strategy's scope.
 
 ```{testcode}
 :skipif: True
@@ -46,9 +47,9 @@ with tf.distribute.MultiWorkerMirroredStrategy().scope():
     model.compile()
 ```
 
-**Step 2:** Update your `Dataset` batch size to the *global* batch size.
+### Step 2: Update your `Dataset` batch size to the global batch size
 
-Set `batch_size` appropriately because [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) splits evenly across worker processes.
+Because the [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#batch) splits evenly across worker processes, set `batch_size` to the per-worker batch size times the number of workers.
 
 ```diff
 -batch_size = worker_batch_size
@@ -57,12 +58,12 @@ Set `batch_size` appropriately because [batch](https://www.tensorflow.org/api_do
 
 
 :::{warning}
-Ray doesn't automatically set any environment variables or configuration related to local parallelism or threading {ref}`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`. If you want greater control over TensorFlow threading, use the `tf.config.threading` module (eg. `tf.config.threading.set_inter_op_parallelism_threads(num_cpus)`) at the beginning of your `train_loop_per_worker` function.
+Ray doesn't automatically set any environment variables or configuration related to local parallelism or threading {ref}`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`. For more control over TensorFlow threading, call functions from the `tf.config.threading` module, such as `tf.config.threading.set_inter_op_parallelism_threads(num_cpus)`, at the beginning of your `train_loop_per_worker` function.
 :::
 
-## Create a TensorflowTrainer
+## Create a `TensorflowTrainer`
 
-`Trainer`s are the primary Ray Train classes for managing state and execute training. For distributed TensorFlow, use a {class}`~ray.train.tensorflow.TensorflowTrainer` that you can setup like this:
+Trainers are the primary Ray Train classes for managing state and executing training. For distributed TensorFlow, set up a {class}`~ray.train.tensorflow.TensorflowTrainer` as follows:
 
 ```{testcode}
 :hide:
@@ -81,7 +82,7 @@ trainer = TensorflowTrainer(
 )
 ```
 
-To customize the backend setup, you can pass a {class}`~ray.train.tensorflow.TensorflowConfig`:
+To customize the backend setup, pass a {class}`~ray.train.tensorflow.TensorflowConfig`:
 
 ```{testcode}
 :skipif: True
@@ -97,12 +98,12 @@ trainer = TensorflowTrainer(
 ```
 
 
-For more configurability, see the {py:class}`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
+For more configuration options, see the {py:class}`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
 
 
 ## Run a training function
 
-With a distributed training function and a Ray Train `Trainer`, you are now ready to start training.
+With a distributed training function and a Ray Train trainer in place, call `fit()` to start training:
 
 ```{testcode}
 :skipif: True
@@ -112,13 +113,13 @@ trainer.fit()
 
 ## Load and preprocess data
 
-TensorFlow by default uses its own internal dataset sharding policy, as described [in the guide](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#dataset_sharding). If your TensorFlow dataset is compatible with distributed loading, you don't need to change anything.
+By default, TensorFlow uses its own internal dataset sharding policy, as the [dataset sharding section](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#dataset_sharding) of TensorFlow's multi-worker tutorial describes. If your TensorFlow dataset is compatible with distributed loading, you don't need to change anything.
 
-If you require more advanced preprocessing, you may want to consider using Ray Data for distributed data ingest. See {ref}`Ray Data with Ray Train <data-ingest-torch>`.
+For more advanced preprocessing, use Ray Data for distributed data ingest. See {ref}`Ray Data with Ray Train <data-ingest-torch>`.
 
-The main difference is that you may want to convert your Ray Data dataset shard to a TensorFlow dataset in your training function so that you can use the Keras API for model training.
+The main difference is that, to use the Keras API for model training, you convert your Ray Data dataset shard to a TensorFlow dataset in your training function.
 
-[See this example](https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tensorflow_autoencoder_example.py) for distributed data loading. The relevant parts are:
+For distributed data loading, see the [TensorFlow autoencoder example](https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tensorflow_autoencoder_example.py). The following code shows the relevant parts:
 
 ```{testcode}
 import tensorflow as tf
@@ -162,9 +163,10 @@ def train_func(config: dict):
 
 
 ## Report results
-During training, the training loop should report intermediate results and checkpoints to Ray Train. This reporting logs the results to the console output and appends them to local log files. The logging also triggers {ref}`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
 
-The easiest way to report your results with Keras is by using the {class}`~ray.train.tensorflow.keras.ReportCheckpointCallback`:
+During training, report intermediate results and checkpoints to Ray Train from the training loop. Reporting logs the results to the console output, appends them to local log files, and triggers {ref}`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
+
+The easiest way to report results with Keras is the {class}`~ray.train.tensorflow.keras.ReportCheckpointCallback`:
 
 ```{testcode}
 from ray.train.tensorflow.keras import ReportCheckpointCallback
@@ -181,16 +183,16 @@ This callback automatically forwards all results and checkpoints from the Keras 
 
 ### Aggregate results
 
-TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more control over that, consider implementing a [custom training loop](https://www.tensorflow.org/tutorials/distribute/custom_training).
+TensorFlow Keras automatically aggregates metrics from all workers. For more control over aggregation, implement a [custom training loop](https://www.tensorflow.org/tutorials/distribute/custom_training).
 
 
 ## Save and load checkpoints
 
-You can save {class}`Checkpoints <ray.train.Checkpoint>` by calling `train.report(metrics, checkpoint=Checkpoint(...))` in the training function. This call saves the checkpoint state from the distributed workers on the `Trainer`, where you executed your python script.
+Save {class}`checkpoints <ray.train.Checkpoint>` by calling `train.report(metrics, checkpoint=Checkpoint(...))` in the training function. This call saves the checkpoint state from the distributed workers on the trainer, where you ran your Python script.
 
-You can access the latest saved checkpoint through the `checkpoint` attribute of the {py:class}`~ray.train.Result`, and access the best saved checkpoints with the `best_checkpoints` attribute.
+Access the latest saved checkpoint through the `checkpoint` attribute of the {py:class}`~ray.train.Result`, and the best saved checkpoints through the `best_checkpoints` attribute.
 
-These concrete examples demonstrate how Ray Train appropriately saves checkpoints, model weights but not models, in distributed training.
+The following examples show how Ray Train saves checkpoints in distributed training, saving model weights but not models.
 
 
 ```{testcode}
@@ -246,6 +248,8 @@ print(result.checkpoint)
 By default, checkpoints persist to local disk in the {ref}`log directory <train-log-dir>` of each run.
 
 ### Load checkpoints
+
+To load a checkpoint, call `train.get_checkpoint()` in the training function. The following example loads the model from the checkpoint if one exists, and otherwise builds a new model:
 
 ```{testcode}
 import os
@@ -307,7 +311,8 @@ print(result.checkpoint)
 
 
 ## Further reading
-See {ref}`User Guides <train-user-guides>` to explore more topics:
+
+For more topics, see {ref}`User guides <train-user-guides>`, including the following:
 
 - {ref}`Experiment tracking <train-experiment-tracking-native>`
 - {ref}`Fault tolerance and training on spot instances <train-fault-tolerance>`
