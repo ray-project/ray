@@ -602,6 +602,109 @@ class TestReplicaLifecycleOnDeploymentTargetUpdate:
         token = await queue.acquire(timeout_s=1.0)
         assert token == "r1"
 
+    @pytest.mark.parametrize("new_capacity", [2, 10])
+    def test_update_existing_replica_capacity(self, new_capacity):
+        """A changed max_ongoing_requests for a still-running replica is applied.
+
+        Regression test: previously the queue only reconciled added/removed
+        replica IDs, so a decrease left stale (too-high) capacity and an
+        increase left the replica needlessly throttled.
+        """
+        queue = _create_queue()
+
+        queue._update_deployment_targets(self._make_target_info([("r1", 5)]))
+        assert queue.get_replica_in_flight()["r1"] == (0, 5)
+        assert queue.get_queue_length() == 5
+
+        # Same replica ID, different capacity.
+        queue._update_deployment_targets(self._make_target_info([("r1", new_capacity)]))
+        assert queue.get_replica_in_flight()["r1"] == (0, new_capacity)
+        assert queue.get_queue_length() == new_capacity
+
+    @pytest.mark.asyncio
+    async def test_capacity_reduction_preserves_in_flight(self):
+        """Lowering capacity below in-flight keeps the in-flight count intact.
+
+        `in_flight > max_capacity` is a legal temporary state; existing requests
+        must drain naturally rather than have their accounting rewritten.
+        """
+        queue = _create_queue()
+        queue._update_deployment_targets(self._make_target_info([("r1", 10)]))
+
+        tokens = [await queue.acquire() for _ in range(8)]
+        assert queue.get_replica_in_flight()["r1"] == (8, 10)
+
+        # Lower capacity to 2 while 8 requests are already in flight.
+        queue._update_deployment_targets(self._make_target_info([("r1", 2)]))
+        assert queue.get_replica_in_flight()["r1"] == (8, 2)
+        assert queue.get_queue_length() == 0  # available = max(0, 2 - 8)
+
+        # Drain down to the new limit — still no spare capacity at in_flight == 2.
+        for token in tokens[:6]:
+            queue.release(token)
+        assert queue.get_replica_in_flight()["r1"] == (2, 2)
+        assert queue.get_queue_length() == 0
+
+        # One more release drops below the limit and frees a slot.
+        queue.release(tokens[6])
+        assert queue.get_replica_in_flight()["r1"] == (1, 2)
+        assert queue.get_queue_length() == 1
+
+    @pytest.mark.asyncio
+    async def test_capacity_increase_wakes_waiter(self):
+        """Raising capacity fulfills a waiter that was blocked at the old limit."""
+        queue = _create_queue()
+        queue._update_deployment_targets(self._make_target_info([("r1", 1)]))
+
+        first = await queue.acquire()
+        assert first == "r1"
+
+        waiter = asyncio.create_task(queue.acquire(timeout_s=5))
+        await asyncio.sleep(0.01)
+        assert queue.get_num_waiters() == 1
+
+        # Same replica, larger capacity — the blocked waiter should be served.
+        queue._update_deployment_targets(self._make_target_info([("r1", 2)]))
+        assert await waiter == "r1"
+        assert queue.get_num_waiters() == 0
+
+    def test_mixed_update_add_remove_and_capacity_change(self):
+        """A single update can remove, add, and re-capacity replicas at once."""
+        queue = _create_queue()
+        queue._update_deployment_targets(self._make_target_info([("r1", 5), ("r2", 5)]))
+
+        # r2 removed, r3 added, r1 re-capacitied 5 -> 8.
+        queue._update_deployment_targets(self._make_target_info([("r1", 8), ("r3", 3)]))
+
+        assert set(queue.get_registered_replicas()) == {"r1", "r3"}
+        assert queue.get_replica_in_flight()["r1"] == (0, 8)
+        assert queue.get_replica_in_flight()["r3"] == (0, 3)
+        assert queue.get_queue_length() == 11
+
+    @pytest.mark.asyncio
+    async def test_update_replica_capacity_unchanged_is_noop(self):
+        """Updating to the same capacity leaves in-flight accounting untouched."""
+        queue = _create_queue()
+        queue.register_replica("r1", 5)
+        await queue.acquire()
+        assert queue.get_replica_in_flight()["r1"] == (1, 5)
+
+        queue.update_replica_capacity("r1", 5)
+
+        assert queue.get_replica_in_flight()["r1"] == (1, 5)
+        assert queue.get_queue_length() == 4
+
+    def test_update_replica_capacity_unregistered_is_noop(self):
+        """Updating a replica that is not registered is a safe no-op."""
+        queue = _create_queue()
+        queue.register_replica("r1", 5)
+
+        queue.update_replica_capacity("ghost", 3)
+
+        assert set(queue.get_registered_replicas()) == {"r1"}
+        assert queue.get_replica_in_flight()["r1"] == (0, 5)
+        assert queue.get_queue_length() == 5
+
 
 class TestTokenTTL:
     """Tests for the token TTL auto-reclaim feature."""

@@ -131,10 +131,15 @@ class CapacityQueue:
         info = self._replicas[replica_id]
         info.in_flight = max(0, info.in_flight - 1)
 
-    def register_replica(self, replica_id: str, capacity: int) -> None:
+    def register_replica(
+        self, replica_id: str, capacity: int, *, fulfill_waiters: bool = True
+    ) -> None:
         """Register a replica with its capacity.
 
-        If the replica is already registered, this is a no-op.
+        If the replica is already registered, this is a no-op. Pass
+        ``fulfill_waiters=False`` to skip waking waiters here when the caller
+        will fulfill them once after a batch of updates (see
+        ``_update_deployment_targets``).
         """
         if replica_id in self._replicas:
             return
@@ -147,7 +152,8 @@ class CapacityQueue:
             f"Registered replica {replica_id} with capacity {capacity}. "
             f"Total replicas: {len(self._replicas)}."
         )
-        self._fulfill_waiters()
+        if fulfill_waiters:
+            self._fulfill_waiters()
 
     def unregister_replica(self, replica_id: str) -> None:
         """Unregister a replica and remove its capacity."""
@@ -161,13 +167,38 @@ class CapacityQueue:
             f"Total replicas: {len(self._replicas)}."
         )
 
+    def update_replica_capacity(self, replica_id: str, capacity: int) -> None:
+        """Update the max capacity of an already-registered replica.
+
+        No-op if the replica is not registered or the capacity is unchanged.
+
+        The replica's ``in_flight`` count and issued-token timestamps are
+        intentionally left untouched: they track already-granted capacity that
+        must drain naturally, so ``in_flight > max_capacity`` is a legal
+        temporary state after a decrease (available capacity clamps at 0).
+        Callers should ``_fulfill_waiters()`` afterward so an increase can wake
+        any blocked waiters.
+        """
+        info = self._replicas.get(replica_id)
+        if info is None or info.max_capacity == capacity:
+            return
+        old_capacity = info.max_capacity
+        info.max_capacity = capacity
+        logger.debug(
+            f"Updated replica {replica_id} capacity {old_capacity} -> {capacity} "
+            f"(in-flight {info.in_flight})."
+        )
+
     def _update_deployment_targets(
         self, deployment_target_info: DeploymentTargetInfo
     ) -> None:
         """Handle deployment target updates from the controller (via long poll).
 
-        Automatically registers new replicas and unregisters removed ones so the
-        queue always reflects the set of live replicas.
+        Reconciles the queue to the desired state: unregisters removed replicas,
+        registers new ones, and updates the capacity of replicas that are still
+        running but whose ``max_ongoing_requests`` changed (e.g. after a
+        lightweight deployment config update, which reconfigures the replica in
+        place and keeps its ``ReplicaID``).
         """
         running_replicas = deployment_target_info.running_replicas
         current_ids: Set[str] = {r.replica_id.unique_id for r in running_replicas}
@@ -178,7 +209,21 @@ class CapacityQueue:
 
         replica_by_uid = {r.replica_id.unique_id: r for r in running_replicas}
         for uid in current_ids - registered_ids:
-            self.register_replica(uid, replica_by_uid[uid].max_ongoing_requests)
+            self.register_replica(
+                uid,
+                replica_by_uid[uid].max_ongoing_requests,
+                fulfill_waiters=False,
+            )
+
+        # Reconcile capacity for replicas present in both the incoming targets
+        # and the queue.
+        for uid in current_ids & registered_ids:
+            self.update_replica_capacity(uid, replica_by_uid[uid].max_ongoing_requests)
+
+        # A new replica or a capacity increase may free room for blocked
+        # waiters; fulfill once after all target changes rather than once per
+        # replica.
+        self._fulfill_waiters()
 
     def _get_least_loaded_replica(self) -> Optional[str]:
         """Find the replica with fewest in-flight requests that has capacity.
