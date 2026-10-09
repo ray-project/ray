@@ -311,6 +311,26 @@ def test_placement_group_wait_keeps_waiting_while_pinned_nodes_are_alive(
     assert pg_handle.wait_timeouts == [1.0, 1.0, 1.0]
 
 
+def test_placement_group_wait_keeps_waiting_when_the_liveness_check_fails(
+    monkeypatch,
+):
+    """A failed ``ray.nodes()`` call (e.g. the GCS is briefly unreachable)
+    should skip that liveness check, not abort the wait."""
+    from ray.train.v2._internal.execution.worker_group import worker_group as wg_mod
+
+    def _flaky_nodes():
+        raise RuntimeError("GCS unavailable")
+
+    monkeypatch.setattr(wg_mod.ray, "nodes", _flaky_nodes)
+    pg_handle = _FakePlacementGroupHandle(ready_on_call=3)
+    fake_self = types.SimpleNamespace(_worker_group_start_timeout_s=60)
+
+    assert WorkerGroup._wait_for_placement_group(
+        fake_self, pg_handle, _pins("node-a", "node-b")
+    )
+    assert pg_handle.wait_timeouts == [1.0, 1.0, 1.0]
+
+
 def test_placement_group_wait_without_pins_uses_the_full_timeout(monkeypatch):
     pg_handle = _FakePlacementGroupHandle()
 

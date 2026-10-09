@@ -287,7 +287,14 @@ class WorkerGroup(ExecutionGroup):
                 return True
             if time_monotonic() >= deadline:
                 return False
-            alive_node_ids = {node["NodeID"] for node in ray.nodes() if node["Alive"]}
+            try:
+                nodes = ray.nodes()
+            except Exception:
+                # A failed liveness check must not abort the wait
+                logger.debug("Failed to check liveness of pinned nodes.", exc_info=True)
+                continue
+
+            alive_node_ids = {node["NodeID"] for node in nodes if node["Alive"]}
             dead_node_ids = pinned_node_ids - alive_node_ids
             if dead_node_ids:
                 logger.info(
