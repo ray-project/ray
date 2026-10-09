@@ -332,7 +332,7 @@ RAY_TRAIN_V2_ENABLED=1 torchrun \
 
 ## Transition from local mode to distributed training
 
-When you're ready to scale from local mode to distributed training, change `num_workers` to a value greater than 0:
+When you're ready to scale from local mode to distributed training, change `num_workers` to a value greater than 0. To train on GPUs, also set `use_gpu=True`:
 
 ```diff
  trainer = TorchTrainer(

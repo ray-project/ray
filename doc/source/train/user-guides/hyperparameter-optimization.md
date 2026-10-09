@@ -117,7 +117,7 @@ One way to place the Train driver on safe nodes is to set custom resources on ce
 
 Ray Train and Ray Tune both provide utilities to upload and track checkpoints through the {func}`ray.train.report <ray.train.report>` and {func}`ray.tune.report <ray.tune.report>` APIs. For details, see the {ref}`train-checkpointing` user guide.
 
-If the Ray Train workers report checkpoints, you don't need to save another Ray Tune checkpoint at the Train driver level, because the driver doesn't hold any extra training state. The Ray Train driver process already snapshots its status periodically to the configured `storage_path`. The next section on fault tolerance describes this further.
+If the Ray Train workers report checkpoints, you don't need to save another Ray Tune checkpoint at the Train driver level, because the driver doesn't hold any extra training state. The Ray Train driver process already snapshots its status periodically to the configured `storage_path`. For details, see {ref}`train-job-driver-fault-tolerance`.
 
 To access the checkpoints from the Tuner output, append the checkpoint path as a metric. The provided {class}`~ray.tune.integration.ray_train.TuneReportCallback` does this. It propagates reported Ray Train results to Ray Tune, where the checkpoint path is attached as a separate metric.
 
