@@ -267,7 +267,7 @@ Ray Train also provides a {class}`~ray.train.lightning.RayLightningEnvironment` 
 
 ### Configure parallel devices
 
-`TorchTrainer` already configures the correct `CUDA_VISIBLE_DEVICES` for you. To use all available GPUs, always set `devices="auto"` and `accelerator="auto"`.
+`TorchTrainer` already configures the correct `CUDA_VISIBLE_DEVICES` for you. Always use all available GPUs by setting `devices="auto"` and `accelerator="auto"`.
 
 
 ```diff
@@ -309,7 +309,7 @@ To persist your checkpoints and monitor training progress, add a {class}`ray.tra
 
 Report metrics and checkpoints to Ray Train to support {ref}`fault-tolerant training <train-fault-tolerance>` and {ref}`hyperparameter optimization <train-tune>`.
 
-You can also configure {ref}`asynchronous checkpointing <train-checkpoint-upload-mode-async>` and {ref}`asynchronous validation <train-validating-checkpoints>` through the callback. The `checkpoint_upload_mode` flag offloads checkpoint uploading to a Ray Train-managed background thread instead of blocking the Lightning training loop. The `validation` flag launches an asynchronous Ray task to validate the checkpoint instead of running `validation_step` synchronously in the training workers. Asynchronous checkpoint uploading is incompatible with Lightning's [AsyncCheckpointIO](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.plugins.io.AsyncCheckpointIO.html) plugin, because Ray Train needs to control the upload thread so it can wait for the upload to finish before committing the checkpoint.
+You can also configure {ref}`asynchronous checkpointing <train-checkpoint-upload-mode-async>` and {ref}`asynchronous validation <train-validating-checkpoints>` through the callback. The `checkpoint_upload_mode` flag offloads checkpoint uploading to a Ray Train-managed background thread instead of blocking the Lightning training loop. The `validation` flag launches an asynchronous Ray task to validate the checkpoint instead of running `validation_step` synchronously in the training workers. This is incompatible with Lightning's [AsyncCheckpointIO](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.plugins.io.AsyncCheckpointIO.html) plugin, because Ray Train needs to control the upload thread so it can wait for the upload to finish before committing the checkpoint.
 
 ```diff
  import lightning.pytorch as pl
@@ -374,7 +374,7 @@ After you convert your PyTorch Lightning training script to use Ray Train, explo
 
 ## Version compatibility
 
-The Ray project tests Ray Train with `pytorch_lightning` versions `1.6.5` and `2.1.2`. For full compatibility, use `pytorch_lightning>=1.6.5`. Earlier versions aren't prohibited but might cause unexpected issues. If you run into compatibility issues, upgrade your PyTorch Lightning version or [file an issue](https://github.com/ray-project/ray/issues).
+The Ray project tests Ray Train with `pytorch_lightning` versions `1.6.5` and `2.1.2`. For full compatibility, use `pytorch_lightning>=1.6.5`. Earlier versions aren't prohibited but might cause unexpected issues. If you run into compatibility issues, consider upgrading your PyTorch Lightning version or [file an issue](https://github.com/ray-project/ray/issues).
 
 :::{note}
 If you're using Lightning 2.x, use the import path `lightning.pytorch.xxx` instead of `pytorch_lightning.xxx`.

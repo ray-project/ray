@@ -267,7 +267,7 @@ If you already set up your `DataLoader` with a `DistributedSampler`, {meth}`~ray
 :::
 
 :::{note}
-{class}`~torch.utils.data.distributed.DistributedSampler` doesn't work with a `DataLoader` that wraps {class}`~torch.utils.data.IterableDataset`. To work with a dataset iterator, use {ref}`Ray Data <data>` instead of a PyTorch `DataLoader`. Ray Data provides streaming data ingestion for large-scale datasets.
+{class}`~torch.utils.data.distributed.DistributedSampler` doesn't work with a `DataLoader` that wraps {class}`~torch.utils.data.IterableDataset`. To work with a dataset iterator, consider using {ref}`Ray Data <data>` instead of a PyTorch `DataLoader`. Ray Data provides performant streaming data ingestion for large-scale datasets.
 
 For details, see {ref}`data-ingest-torch`.
 :::
