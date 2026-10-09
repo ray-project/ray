@@ -110,9 +110,11 @@ def _collect_upsert_keys(
     from pyiceberg.table import FileScanTask
 
     # ``DataFile.from_args`` keeps only the manifest struct fields, so the files
-    # ``_dataframe_to_data_files`` returns have no ``spec_id`` on PyIceberg 0.11, and
+    # ``_dataframe_to_data_files`` returns have no ``spec_id`` on PyIceberg <= 0.12, and
     # ``ArrowScan`` needs one. They were written against the default spec, so restore
     # that, leaving any spec_id a newer PyIceberg already carries untouched.
+    # Remove this once the minimum supported PyIceberg includes
+    # https://github.com/apache/iceberg-python/pull/3954.
     for data_file in data_files:
         if not hasattr(data_file, "spec_id"):
             data_file.spec_id = table_metadata.default_spec_id
