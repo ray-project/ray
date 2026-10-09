@@ -6,13 +6,15 @@ myst:
 
 (train_scaling_config)=
 
-# Configuring Scale and Accelerators
-Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code. The main interface for this is the {class}`~ray.train.ScalingConfig`, which configures the number of workers and the resources they should use.
+# Configure scale and accelerators
+Scale a Ray Train training run with a few lines of code. The main interface is the {class}`~ray.train.ScalingConfig`, which configures the number of workers and the resources each worker uses.
 
-In this guide, a *worker* refers to a Ray Train distributed training worker, which is a {ref}`Ray Actor <actor-key-concept>` that runs your training function.
+In this guide, a *worker* means a Ray Train distributed training worker, which is a {ref}`Ray actor <actor-key-concept>` that runs your training function.
 
-## Increasing the number of workers
-The main interface to control parallelism in your training code is to set the number of workers. This can be done by passing the `num_workers` attribute to the {class}`~ray.train.ScalingConfig`:
+(increasing-the-number-of-workers)=
+
+## Increase the number of workers
+To control parallelism in your training code, set the number of workers. Pass the `num_workers` attribute to the {class}`~ray.train.ScalingConfig`:
 
 ```{testcode}
 from ray.train import ScalingConfig
@@ -22,12 +24,12 @@ scaling_config = ScalingConfig(
 )
 ```
 
-## Using accelerators
+## Use accelerators
 
 ::::{tab-set}
 :::{tab-item} GPU
 :sync: GPU
-To use GPUs, pass `use_gpu=True` to the {class}`~ray.train.ScalingConfig`. This requests one GPU per training worker. In the following example, training runs on 8 GPUs (8 workers, each using one GPU).
+To use GPUs, pass `use_gpu=True` to the {class}`~ray.train.ScalingConfig`. This requests one GPU per training worker. In the following example, training runs on 8 GPUs, with 8 workers that each use one GPU.
 
 ```{testcode}
 from ray.train import ScalingConfig
@@ -41,9 +43,9 @@ scaling_config = ScalingConfig(
 
 :::{tab-item} TPU
 :sync: TPU
-To use TPUs, pass `use_tpu=True` to the {class}`~ray.train.ScalingConfig`. You also need to specify `topology` and `accelerator_type`.
+To use TPUs, pass `use_tpu=True` to the {class}`~ray.train.ScalingConfig`. Also specify `topology` and `accelerator_type`.
 
-Each `num_workers` maps to one TPU VM host. The total number of workers must be a multiple of the number of hosts in a single slice. For example, a `v6e` TPU slice with a `4x4` topology has 4 hosts, so valid values include `num_workers=4` (one slice) or `num_workers=8` (two slices).
+Each worker maps to one TPU VM host. The total number of workers must be a multiple of the number of hosts in a single slice. For example, a `v6e` TPU slice with a `4x4` topology has 4 hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
 
 For details on how TPU topologies map to the number of hosts, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
@@ -72,14 +74,16 @@ scaling_config = ScalingConfig(
 ::::
 
 
-### Using accelerators in the training function
+(using-accelerators-in-the-training-function)=
+
+### Use accelerators in the training function
 
 ::::{tab-set}
 :::{tab-item} GPU
 :sync: GPU
-When `use_gpu=True` is set, Ray Train automatically sets up environment variables in your training function so that the GPUs can be detected and used (such as `CUDA_VISIBLE_DEVICES`).
+When you set `use_gpu=True`, Ray Train automatically sets up environment variables, such as `CUDA_VISIBLE_DEVICES`, in your training function so that your code can detect and use the GPUs.
 
-You can get the associated devices with {meth}`ray.train.torch.get_device`.
+Get the associated devices with {meth}`ray.train.torch.get_device`.
 
 ```{testcode}
 import torch
@@ -106,7 +110,7 @@ trainer.fit()
 
 :::{tab-item} TPU
 :sync: TPU
-When `use_tpu=True` is set, Ray Train configures the distributed environment for TPU execution on each worker. The specific initialization depends on the trainer you use (such as {class}`~ray.train.v2.jax.JaxTrainer`).
+When you set `use_tpu=True`, Ray Train configures the distributed environment for TPU execution on each worker. The specific initialization depends on the trainer you use, such as {class}`~ray.train.v2.jax.JaxTrainer`.
 
 The following example shows a basic TPU training setup with {class}`~ray.train.v2.jax.JaxTrainer`:
 
@@ -138,14 +142,16 @@ trainer.fit()
 ::::
 
 
-### Assigning multiple accelerators to a worker
+(assigning-multiple-accelerators-to-a-worker)=
+
+### Assign multiple accelerators to a worker
 
 ::::{tab-set}
 :::{tab-item} GPU
 :sync: GPU
-Sometimes you might want to allocate multiple GPUs for a worker. For example, you can specify `resources_per_worker={"GPU": 2}` in the `ScalingConfig` if you want to assign 2 GPUs for each worker.
+To allocate multiple GPUs to each worker, set `resources_per_worker` in the `ScalingConfig`. For example, `resources_per_worker={"GPU": 2}` assigns 2 GPUs to each worker.
 
-You can get a list of associated devices with {meth}`ray.train.torch.get_devices`.
+Get a list of the associated devices with {meth}`ray.train.torch.get_devices`.
 
 ```{testcode}
 import torch
@@ -175,7 +181,7 @@ trainer.fit()
 
 :::{tab-item} TPU
 :sync: TPU
-Each TPU VM host has multiple TPU chips. By default, when `topology` and `accelerator_type` are specified, Ray Train auto-detects the correct `resources_per_worker` for the given TPU slice configuration.
+Each TPU VM host has multiple TPU chips. By default, when you specify `topology` and `accelerator_type`, Ray Train auto-detects the correct `resources_per_worker` for the given TPU slice configuration.
 
 To override the default, specify the number of chips explicitly in `resources_per_worker`. Supported chip counts are 1, 2, 4, and 8. For example, to use only 2 of the 4 chips on a `ct6e-standard-4t` host:
 
@@ -196,16 +202,18 @@ scaling_config = ScalingConfig(
 ::::
 
 
-### Setting the accelerator type
-Ray Train allows you to specify the accelerator type for each worker. This is useful if you want to use a specific accelerator type for model training. In a heterogeneous Ray cluster, this means that your training workers are forced to run on the specified accelerator type, rather than on any arbitrary accelerator node. You can get a list of supported `accelerator_type` from {ref}`the available accelerator types <accelerator_types>`.
+(setting-the-accelerator-type)=
+
+### Set the accelerator type
+Specify the accelerator type for each worker when you want to train on a specific accelerator. In a heterogeneous Ray cluster, your training workers then must run on the specified accelerator type rather than on any arbitrary accelerator node. For the supported `accelerator_type` values, see {ref}`the available accelerator types <accelerator_types>`.
 
 :::::{tab-set}
 ::::{tab-item} GPU
 :sync: GPU
-The following example specifies `accelerator_type="A100"` to assign each worker a NVIDIA A100 GPU.
+The following example specifies `accelerator_type="A100"` to assign each worker an NVIDIA A100 GPU.
 
 :::{tip}
-Ensure that your cluster has instances with the specified accelerator type or is able to autoscale to fulfill the request.
+Make sure that your cluster has instances with the specified accelerator type or can autoscale to fulfill the request.
 :::
 
 ```{testcode}
@@ -219,7 +227,7 @@ ScalingConfig(
 
 :::{tab-item} TPU
 :sync: TPU
-For TPUs, `accelerator_type` specifies the TPU generation. See {ref}`the available accelerator types <accelerator_types>` for the full list of supported values.
+For TPUs, `accelerator_type` specifies the TPU generation. For the full list of supported values, see {ref}`the available accelerator types <accelerator_types>`.
 
 ```{testcode}
 :skipif: True
@@ -235,11 +243,13 @@ ScalingConfig(
 :::::
 
 
-### (PyTorch) Setting the communication backend
+(pytorch-setting-the-communication-backend)=
 
-PyTorch Distributed supports multiple [backends](https://docs.pytorch.org/docs/stable/distributed.html#backends) for communicating tensors across workers. By default Ray Train uses NCCL when `use_gpu=True` and Gloo otherwise.
+### PyTorch: Set the communication backend
 
-If you explicitly want to override this setting, you can configure a {class}`~ray.train.torch.TorchConfig` and pass it into the {class}`~ray.train.torch.TorchTrainer`.
+PyTorch Distributed supports multiple [backends](https://docs.pytorch.org/docs/stable/distributed.html#backends) for communicating tensors across workers. By default, Ray Train uses NCCL when `use_gpu=True` and Gloo otherwise.
+
+To override the default, configure a {class}`~ray.train.torch.TorchConfig` and pass it to the {class}`~ray.train.torch.TorchTrainer`.
 
 ```{testcode}
 :hide:
@@ -260,11 +270,13 @@ trainer = TorchTrainer(
 )
 ```
 
-### (NCCL) Setting the communication network interface
+(nccl-setting-the-communication-network-interface)=
 
-When using NCCL for distributed training, you can configure the network interface cards that are used for communicating between GPUs by setting the [NCCL_SOCKET_IFNAME](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname) environment variable.
+### NCCL: Set the communication network interface
 
-To ensure that the environment variable is set for all training workers, you can pass it in a {ref}`Ray runtime environment <runtime-environments>`:
+When you use NCCL for distributed training, configure which network interface cards the GPUs use to communicate by setting the [`NCCL_SOCKET_IFNAME`](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname) environment variable.
+
+To set the environment variable on all training workers, pass it in a {ref}`Ray runtime environment <runtime-environments>`:
 
 ```{testcode}
 :skipif: True
@@ -277,8 +289,10 @@ ray.init(runtime_env=runtime_env)
 trainer = TorchTrainer(...)
 ```
 
-## Setting the resources per worker
-If you want to allocate more than one CPU or accelerator per training worker, or if you defined {ref}`custom cluster resources <cluster-resources>`, set the `resources_per_worker` attribute:
+(setting-the-resources-per-worker)=
+
+## Set the resources per worker
+To allocate more than one CPU or accelerator per training worker, or to use {ref}`custom cluster resources <cluster-resources>` that you defined, set the `resources_per_worker` attribute:
 
 ```{testcode}
 from ray.train import ScalingConfig
@@ -298,7 +312,7 @@ scaling_config = ScalingConfig(
 If you specify GPUs in `resources_per_worker`, you also need to set `use_gpu=True`.
 :::
 
-You can also instruct Ray Train to use fractional GPUs. In that case, multiple workers are assigned the same CUDA device.
+You can also assign fractional GPUs to each worker. In that case, multiple workers share the same CUDA device.
 
 ```{testcode}
 from ray.train import ScalingConfig
@@ -314,16 +328,18 @@ scaling_config = ScalingConfig(
 ```
 
 
-## (Deprecated) Trainer resources
+(deprecated-trainer-resources)=
+
+## Deprecated: Set trainer resources
 
 :::{important}
-This API is deprecated. See [this migration guide](https://github.com/ray-project/ray/issues/49454) for more details.
+This API is deprecated. For details, see the [migration guide](https://github.com/ray-project/ray/issues/49454).
 :::
 
 
-So far we've configured resources for each training worker. Technically, each training worker is a {ref}`Ray Actor <actor-guide>`. Ray Train also schedules an actor for the trainer object when you call `trainer.fit()`.
+The preceding sections configure resources for each training worker. Each training worker is a {ref}`Ray actor <actor-guide>`. Ray Train also schedules an actor for the trainer object when you call `trainer.fit()`.
 
-This object often only manages lightweight communication between the training workers. By default, a trainer uses 1 CPU. If you have a cluster with 8 CPUs and want to start 4 training workers at 2 CPUs each, this won't work, as the total number of required CPUs is 9 (4 * 2 + 1). In that case, you can specify the trainer resources to use 0 CPUs:
+This object often manages only lightweight communication between the training workers. By default, a trainer uses 1 CPU. On a cluster with 8 CPUs, you can't start 4 training workers at 2 CPUs each, because the run requires 4 * 2 + 1 = 9 CPUs. In that case, set the trainer resources to 0 CPUs:
 
 ```{testcode}
 from ray.train import ScalingConfig
