@@ -1,4 +1,17 @@
-common --noenable_bzlmod
+# POC (not for merge): hybrid mode. Ray's dependencies still come from
+# WORKSPACE; MODULE.bazel adds only rules_rust and rules_rust_pyo3. The two
+# dependency graphs stay separate, so none of Ray's repos change.
+common --enable_bzlmod
+common --enable_workspace
+# The proto toolchain flags default to @bazel_tools//tools/proto:*, which with
+# bzlmod on resolve to the module graph's protobuf (protobuf~, pulled in by
+# rules_rust), not WORKSPACE's. Its protoc then generates code that WORKSPACE
+# protobuf 29.6's headers reject ("gencode is built with an incompatible
+# version"). Name WORKSPACE's toolchains explicitly.
+common --proto_compiler=@com_google_protobuf//:protoc
+common --proto_toolchain_for_cc=@com_google_protobuf//:cc_toolchain
+common --proto_toolchain_for_java=@com_google_protobuf//:java_toolchain
+common --proto_toolchain_for_javalite=@com_google_protobuf//:javalite_toolchain
 
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
@@ -50,6 +63,11 @@ build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
 build:windows --cxxopt="/utf-8"
+# Compile out protobuf's deprecated Arena::CreateMessage shim. GCC 10 (the
+# manylinux2014 devtoolset) warns on the shim's own body in every file that
+# includes arena.h, which -Werror turns into an error. Nothing calls it.
+build --cxxopt="-DPROTOBUF_FUTURE_REMOVE_CREATEMESSAGE"
+build --host_cxxopt="-DPROTOBUF_FUTURE_REMOVE_CREATEMESSAGE"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --copt="-fPIC"
 build:macos --copt="-fPIC"
@@ -261,7 +279,11 @@ build:ubsan --copt -fno-sanitize-recover=all
 build:ubsan --copt -g
 build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -fno-sanitize-recover=all
-build:ubsan --per_file_copt="-external/com_github_grpc_grpc/.*@-fsanitize=undefined"
+# GCC rejects abseil (>= 20240722) hash containers under the null,
+# nonnull-attribute and returns-nonnull-attribute checks: they make a
+# function-pointer comparison in a constexpr no longer a constant expression.
+# They have to follow -fsanitize=undefined, so they live in the same flag list.
+build:ubsan --per_file_copt="-external/com_github_grpc_grpc/.*@-fsanitize=undefined,-fno-sanitize=null,-fno-sanitize=nonnull-attribute,-fno-sanitize=returns-nonnull-attribute"
 
 build:cgroup --sandbox_writable_path=/sys/fs/cgroup --config=llvm
 
@@ -297,3 +319,6 @@ build:macos --host_copt=-mmacosx-version-min=12.0
 build:macos --host_linkopt=-mmacosx-version-min=12.0
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
+# Emit Java 8 bytecode. rules_java 7.x defaulted to 8; 8.x defaults to 11, which
+# breaks consumers on a Java 8 runtime (e.g. RayDP).
+build --java_language_version=8

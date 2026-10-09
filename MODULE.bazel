@@ -1,0 +1,23 @@
+# POC -- not for merge.
+# Minimal rust-only module graph. Deliberately declares nothing Ray already gets
+# from WORKSPACE, so no apparent name Ray's BUILD files use is introduced here.
+module(
+    name = "io_ray",
+    version = "3.0.0.dev0",
+)
+
+bazel_dep(name = "rules_rust", version = "0.74.0")
+bazel_dep(name = "rules_rust_pyo3", version = "0.74.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(edition = "2021")
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+# rules_rust_pyo3 registers these as dev_dependency in its own module, so a
+# consumer has to register them itself.
+register_toolchains(
+    "@rules_rust_pyo3//toolchains:toolchain",
+    "@rules_rust_pyo3//toolchains:rust_toolchain",
+)
