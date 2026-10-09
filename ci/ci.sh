@@ -105,10 +105,11 @@ compile_pip_dependencies_py314() {
   local target="python/requirements_compiled_py3.14.txt"
 
   # These ship only an sdist, for every Python version, so building them is not
-  # a 3.14 regression. Everything else must install from a wheel.
+  # a 3.14 regression. hyperopt is pinned to a git commit, so it is always built
+  # from source. Everything else must install from a wheel.
   local sdist_only=(
     crcmod deepspeed fairscale feather-format gcs-oauth2-boto-plugin gsutil halo
-    promise pyspark pyu2f retry-decorator s3torchconnector
+    hyperopt promise pyspark pyu2f retry-decorator s3torchconnector
   )
   local no_binary_args=()
   for pkg in "${sdist_only[@]}"; do
