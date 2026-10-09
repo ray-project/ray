@@ -59,7 +59,7 @@ _QUERY_XML = """<?xml version="1.1" encoding="UTF-8" standalone="no"?>
       <label value="//doc:source/core/doc_code/runtime_env_example.py"/>
     </list>
   </rule>
-  <rule class="py_test" name="//doc/source/llm/examples/batch:vllm">
+  <rule class="py_test" name="//doc/source/data/examples/llm:vllm">
     <list name="tags"><string value="gpu"/><string value="team:llm"/></list>
     <list name="args"><string value="--path"/><string value="vllm.ipynb"/></list>
   </rule>
@@ -114,10 +114,10 @@ def test_library_wide_doctest_is_reported_not_run(targets):
 
 
 def test_gpu_target_is_reported_not_run(targets):
-    path = "doc/source/llm/examples/batch/vllm.ipynb"
+    path = "doc/source/data/examples/llm/vllm.ipynb"
     selection = select([path], targets)
     assert selection.runnable == {}
-    assert selection.gpu == {path: ["//doc/source/llm/examples/batch:vllm"]}
+    assert selection.gpu == {path: ["//doc/source/data/examples/llm:vllm"]}
 
 
 def test_harness_and_build_files_are_ignored(targets):
