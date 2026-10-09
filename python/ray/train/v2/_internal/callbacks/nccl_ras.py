@@ -58,6 +58,7 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_ADDR_ENV_VAR,
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
+    TORCH_FR_BUFFER_SIZE_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
@@ -72,6 +73,7 @@ logger = logging.getLogger(__name__)
 # Query timeout lengths
 _STACK_DUMP_TIMEOUT_S: float = 30.0
 _NVIDIA_SMI_TIMEOUT_S: float = 30.0
+_FLIGHT_RECORDER_DUMP_TIMEOUT_S: float = 30.0
 _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
 
 # Every diagnostic is uploaded to
@@ -79,6 +81,7 @@ _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
 _STACK_TRACES_TOOL: str = "stack_traces"
 _NCCL_RAS_TOOL: str = "nccl_ras"
 _NVIDIA_SMI_TOOL: str = "nvidia_smi"
+_FLIGHT_RECORDER_TOOL: str = "flight_recorder"
 
 # Polls of RAS history kept on top of the ones a confirmation consumes, so the
 # saved history always starts before the communicator stalled.
@@ -152,14 +155,13 @@ def run_ncclras(
     if proc.returncode != 0:
         stderr = proc.stderr or ""
         if "invalid option -- 'f'" in stderr:
-            return {
-                "ok": False,
-                "reason": "unsupported_f_option",
-                "stderr": stderr[:500],
-            }
+            reason = "unsupported_f_option"
+        else:
+            reason = f"exit_{proc.returncode}"
+
         return {
             "ok": False,
-            "reason": f"exit_{proc.returncode}",
+            "reason": reason,
             "stderr": stderr[:500],
         }
 
@@ -489,7 +491,6 @@ class RASPoller:
             RASQueryError: The query timed out, errored, exited non-zero, or
                 produced output that could not be used.
         """
-        ref = None
         try:
             ref = worker.execute_async(
                 run_ncclras, self._binary_path, _NCCL_RAS_QUERY_TIMEOUT_S, fmt
@@ -670,6 +671,32 @@ def run_nvidia_smi(timeout_s: float) -> DiagnosticResult:
         )
 
     return DiagnosticResult(value=proc.stdout)
+
+
+def dump_flight_recorder() -> DiagnosticResult:
+    """Dump the PyTorch Flight Recorder buffer of the current (worker) process.
+
+    The buffer has to be armed *before* the process group is created (see
+    ``TORCH_FR_BUFFER_SIZE``); it cannot be switched on retroactively in a hung
+    process, in which case the dump holds no collectives.
+
+    Returns:
+        The dump as a JSON string, or the error saying why there is no dump,
+        which is written into the rank's file so a gap is never silent.
+    """
+    try:
+        from torch._C import _distributed_c10d as c10d
+    except ImportError as e:
+        return DiagnosticResult(error=e)
+
+    try:
+        # The default dumps every collective on this rank (no timeout available on torch side)
+        trace_bytes = c10d._dump_fr_trace_json()
+        trace_json = trace_bytes.decode("utf-8", errors="replace")
+    except Exception as e:  # noqa: BLE001
+        return DiagnosticResult(error=e)
+
+    return DiagnosticResult(value=trace_json)
 
 
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
@@ -892,6 +919,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if ras_human_output:
             logger.warning("%s", ras_human_output)
 
+        # Record first to prevent buffer being overwritten by other ranks
+        flight_recorder_dir = self.capture_diagnostic(
+            "Flight Recorder dumps", self.dump_workers_flight_recorder
+        )
         nvidia_smi_dir = self.capture_diagnostic(
             "nvidia-smi snapshots", self.dump_nodes_nvidia_smi
         )
@@ -932,6 +963,13 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 "temperature, clocks and ECC state at the moment of the hang, to "
                 f"rule hardware out issues ({nvidia_smi_dir})\n"
             )
+        if flight_recorder_dir:
+            message += (
+                "  - The per-rank PyTorch Flight Recorder dumps show the collective "
+                "in flight on each rank with its op type, shapes and call stack "
+                f"({flight_recorder_dir})\n"
+            )
+
         if self._action == NCCL_RAS_ACTION_FAIL:
             raise NCCLHangError(message, worker_failures={})
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
@@ -1085,6 +1123,39 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         }
         return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
 
+    def dump_workers_flight_recorder(self) -> Optional[str]:
+        """Fan out a Flight Recorder dump to every worker and write it to the log dir.
+
+        Every rank gets a ``rank_<world_rank>.json`` holding that rank's buffer:
+        the collectives still in the ring with their process group, sequence id,
+        state, input/output shapes and dtypes, and issuing call stack.
+
+        Returns:
+            The path to the folder with the dumps.
+        """
+        if TORCH_FR_BUFFER_SIZE_ENV_VAR not in os.environ:
+            return None
+
+        workers = list(self._worker_group.get_workers())
+        if not workers:
+            return None
+
+        dumps = fan_out_to_workers(
+            workers, dump_flight_recorder, timeout_s=_FLIGHT_RECORDER_DUMP_TIMEOUT_S
+        )
+
+        files: Dict[str, str] = {}
+        for rank, diagnostic_result in dumps.items():
+            error = diagnostic_result.error
+            if error is not None:
+                logger.info("No Flight Recorder dump from rank %d: %s", rank, error)
+                files[f"rank_{rank}.json"] = json.dumps({"dump_error": str(error)})
+                continue
+
+            files[f"rank_{rank}.json"] = str(diagnostic_result.value)
+
+        return self.upload_diagnostics(_FLIGHT_RECORDER_TOOL, files)
+
     def dump_nodes_nvidia_smi(self) -> Optional[str]:
         """Snapshot every node's GPUs and write the reports to the log dir.
 
@@ -1099,6 +1170,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         for worker in self._worker_group.get_workers():
             node_workers.setdefault(worker.metadata.node_ip, worker)
             node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
+        if not node_workers:
+            return None
 
         dumps = fan_out_to_workers(
             list(node_workers.values()),
