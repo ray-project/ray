@@ -1,4 +1,5 @@
 from libcpp.string cimport string as c_string
+from libcpp.vector cimport vector as c_vector
 from ray.includes.ray_config cimport RayConfig
 
 cdef class Config:
@@ -139,6 +140,13 @@ cdef class Config:
     @staticmethod
     def start_python_gc_manager_thread():
         return RayConfig.instance().start_python_gc_manager_thread()
+
+    @staticmethod
+    def external_ray_event_allowlist():
+        cdef c_vector[c_string] allowlist = (
+            RayConfig.instance().external_ray_event_allowlist()
+        )
+        return [allowlist[i].decode("utf-8") for i in range(allowlist.size())]
 
     @staticmethod
     def enable_task_events_to_dashboard_head():

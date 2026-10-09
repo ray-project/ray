@@ -1225,6 +1225,11 @@ RAY_CONFIG(bool, ENABLE_GCS_LEADER_ELECTION, false)
 // event aggregator.
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
 
+// Comma-separated list of RayEvent event types accepted by the dashboard head's
+// external event ingestion endpoint. Empty by default. Meaning that all types of events
+// are rejected by default.
+RAY_CONFIG(std::vector<std::string>, external_ray_event_allowlist, {})
+
 // Whether core-worker task events are sent to the event aggregator via the
 // RayTaskEventRecorder. When true (and enable_ray_event is also true),
 // the recorder is used.

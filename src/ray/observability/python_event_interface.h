@@ -160,5 +160,8 @@ class PythonEventRecorder {
   std::unique_ptr<RayEventRecorder> recorder_;
 };
 
+std::string SerializeEventsToRayEventsDataJson(
+    std::vector<std::unique_ptr<RayEventInterface>> &&events);
+
 }  // namespace observability
 }  // namespace ray

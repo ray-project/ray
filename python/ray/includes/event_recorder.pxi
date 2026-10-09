@@ -8,14 +8,17 @@ from ray.includes.event_recorder cimport (
     CRayEventInterface,
     CPythonEventRecorder,
     CreatePythonRayEvent,
+    SerializeEventsToRayEventsDataJson,
 )
 from ray.includes.common cimport move
+from ray.includes.unique_ids cimport CUniqueID
 from libc.stdint cimport int64_t
 from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
 from libcpp.string cimport string as c_string
 
 import logging
+import os
 import threading
 
 logger = logging.getLogger(__name__)
@@ -78,7 +81,9 @@ cdef class RayEvent:
         self._session_name = session_name
         self._serialized_data = serialized_data
         self._nested_event_field_number = nested_event_field_number
-        self._event_id = event_id
+        # Assign the id at construction so re-serialization (e.g. publish
+        # retries) keeps a stable id that consumers can dedupe on.
+        self._event_id = event_id if event_id else CUniqueID.FromRandom().Binary()
         self._timestamp_ns = timestamp_ns
 
     cdef unique_ptr[CRayEventInterface] to_cpp_event(self):
@@ -237,3 +242,17 @@ cdef class EventRecorder:
                 rec._recorder.get().AddEvents(move(cpp_events))
 
             return True
+
+
+def serialize_events_to_ray_events_data_json(list events):
+    """Serialize RayEvent objects directly to a JSON array string."""
+    cdef c_vector[unique_ptr[CRayEventInterface]] cpp_events
+    cdef RayEvent ev
+    cdef c_string json_data
+
+    for ev in events:
+        cpp_events.push_back(move(ev.to_cpp_event()))
+
+    with nogil:
+        json_data = SerializeEventsToRayEventsDataJson(move(cpp_events))
+    return json_data
