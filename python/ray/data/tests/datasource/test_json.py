@@ -148,6 +148,7 @@ def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_pa
 
     assert path.as_posix() in str(exc_info.value)
 
+
 def test_json_read_invalid_utf8_includes_path(ray_start_regular_shared, tmp_path):
     path = tmp_path / "malformed_encoding.json"
     path.write_bytes(b'[{"name": "\xff"}]')

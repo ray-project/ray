@@ -212,14 +212,7 @@ class PandasJSONDatasource(FileBasedDatasource):
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         try:
             chunksize = self._estimate_chunksize(f)
-        except ValueError as e:
-            raise ValueError(
-                f"Failed to read JSON file: {path}. "
-                "Please check that the file contains valid line-delimited JSON."
-                f"Original error: {e}"
-            ) from e
 
-        try:
             with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
                 if chunksize is None:
                     # When chunksize=None, pandas returns DataFrame directly
