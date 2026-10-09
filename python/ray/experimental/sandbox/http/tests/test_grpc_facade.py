@@ -1,61 +1,44 @@
 """Wire-level tests for the gRPC facade.
 
 The facade is driven over gRPC with the vendored client stubs against the
-same fake resolver and runtime seams the REST app tests use. Skipped when
-the optional ``grpclib`` package is not installed.
+same fake resolver and runtime seams the REST app tests use.
 """
 
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
 import sys
+import types
 from typing import Any, Dict, List, Optional, Tuple
 
+import grpc
 import pytest
+from google.protobuf import empty_pb2
+from grpc import StatusCode
 
+from ray.experimental.sandbox.http import grpc_facade
+from ray.experimental.sandbox.http._proto import (
+    sandbox_control_pb2 as api_pb2,
+    sandbox_exec_pb2 as sr_pb2,
+)
+from ray.experimental.sandbox.http._proto.sandbox_control_pb2_grpc import (
+    ModalClientStub,
+)
+from ray.experimental.sandbox.http._proto.sandbox_exec_pb2_grpc import (
+    TaskCommandRouterStub,
+)
+from ray.experimental.sandbox.http.grpc_facade import (
+    _FS_TOOLS_PATH,
+    RaySandboxFacade,
+)
 from ray.experimental.sandbox.http.tests.conftest import (
     FakeExecResult,
     FakeResolver,
     FakeSandboxRuntime,
-)
-
-# Guarded import so the module collects (and skips) without grpclib; a
-# module-level importorskip would collect nothing and fail the bazel target.
-try:
-    from google.protobuf import empty_pb2
-    from grpclib.client import Channel
-    from grpclib.const import Status
-    from grpclib.events import SendRequest, listen
-    from grpclib.exceptions import GRPCError
-    from grpclib.server import Server
-
-    from ray.experimental.sandbox.http import grpc_facade
-    from ray.experimental.sandbox.http._proto import (
-        sandbox_control_pb2 as api_pb2,
-        sandbox_exec_pb2 as sr_pb2,
-    )
-    from ray.experimental.sandbox.http._proto.sandbox_control_grpc import (
-        ModalClientStub,
-    )
-    from ray.experimental.sandbox.http._proto.sandbox_exec_grpc import (
-        TaskCommandRouterBase,
-        TaskCommandRouterStub,
-    )
-    from ray.experimental.sandbox.http.grpc_facade import (
-        _FS_TOOLS_PATH,
-        build_servicers,
-    )
-
-    _HAVE_GRPCLIB = True
-except ImportError:
-    _HAVE_GRPCLIB = False
-
-pytestmark = pytest.mark.skipif(
-    not _HAVE_GRPCLIB,
-    reason="grpclib is not installed (optional; absent in the default CI image)",
 )
 
 # Each test gets its own port so a leftover HTTP/2 connection from a prior test
@@ -70,41 +53,71 @@ _BEARER = {"authorization": f"Bearer {_TOKEN}"}
 
 
 class _Facade:
-    """Run the facade servicers on a local gRPC server for the test."""
+    """Run the facade on a local ``grpc.aio`` server for the test."""
 
     def __init__(self, resolver: FakeResolver, port: int, settings: Any = None) -> None:
         self._resolver = resolver
         self._port = port
         self._settings = settings
-        self._server: Server = None
-        self.servicers: List[Any] = []
+        self._server: Any = None
+        self.servicer: Optional[RaySandboxFacade] = None
 
     async def __aenter__(self) -> "_Facade":
-        self.servicers = build_servicers(
+        self.servicer = RaySandboxFacade(
             self._settings,
             handle_resolver=self._resolver,
             advertise_url=f"http://127.0.0.1:{self._port}",
         )
-        self._server = Server(self.servicers)
-        await self._server.start("127.0.0.1", self._port)
+        self._server = grpc.aio.server(options=grpc_facade._SERVER_OPTIONS)
+        grpc_facade.add_servicers_to_server(self.servicer, self._server)
+        self._server.add_insecure_port(f"127.0.0.1:{self._port}")
+        await self._server.start()
         return self
 
     async def __aexit__(self, *exc_info: Any) -> None:
-        self._server.close()
-        await self._server.wait_closed()
+        await self._server.stop(None)
+
+
+class _Present:
+    """Present ``metadata`` on every call, as the client SDK does."""
+
+    def __init__(self, metadata: Dict[str, str]) -> None:
+        self._metadata = tuple(metadata.items())
+
+    async def _intercept(self, continuation: Any, details: Any, request: Any) -> Any:
+        metadata = tuple(details.metadata or ()) + self._metadata
+        return await continuation(details._replace(metadata=metadata), request)
+
+
+# One per call kind: a channel files an interceptor under one kind only.
+class _PresentUnaryUnary(_Present, grpc.aio.UnaryUnaryClientInterceptor):
+    intercept_unary_unary = _Present._intercept
+
+
+class _PresentUnaryStream(_Present, grpc.aio.UnaryStreamClientInterceptor):
+    intercept_unary_stream = _Present._intercept
+
+
+class _PresentStreamUnary(_Present, grpc.aio.StreamUnaryClientInterceptor):
+    intercept_stream_unary = _Present._intercept
 
 
 def _channel(
     port: int, metadata: Optional[Dict[str, str]] = None
-) -> Tuple[Channel, ModalClientStub, TaskCommandRouterStub]:
-    channel = Channel("127.0.0.1", port)
+) -> Tuple[Any, ModalClientStub, TaskCommandRouterStub]:
+    interceptors = None
     if metadata:
-        # Present these on every call, as the client SDK does.
-        async def present(event: SendRequest) -> None:
-            event.metadata.update(metadata)
-
-        listen(channel, SendRequest, present)
+        interceptors = [
+            kind(metadata)
+            for kind in (_PresentUnaryUnary, _PresentUnaryStream, _PresentStreamUnary)
+        ]
+    channel = grpc.aio.insecure_channel(f"127.0.0.1:{port}", interceptors=interceptors)
     return channel, ModalClientStub(channel), TaskCommandRouterStub(channel)
+
+
+async def _replies(call: Any) -> List[Any]:
+    """Every reply of a server-streaming call."""
+    return [reply async for reply in call]
 
 
 async def _make_sandbox(
@@ -153,32 +166,38 @@ async def _wait_running(control: ModalClientStub, sandbox_id: str) -> None:
 
 
 async def _read_stdout(router: TaskCommandRouterStub, exec_id: str) -> bytes:
-    chunks: List[bytes] = []
-    async with router.TaskExecStdioRead.open() as stream:
-        await stream.send_message(
+    replies = await _replies(
+        router.TaskExecStdioRead(
             sr_pb2.TaskExecStdioReadRequest(
                 exec_id=exec_id,
                 offset=0,
                 file_descriptor=sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT,
-            ),
-            end=True,
+            )
         )
-        async for msg in stream:
-            chunks.append(msg.data)
-    return b"".join(chunks)
+    )
+    return b"".join(reply.data for reply in replies)
 
 
 def test_wire_paths_match_contract() -> None:
-    """The vendored stubs route on the external service's exact method paths."""
-    mapping = {}
-    for servicer in build_servicers(
-        handle_resolver=FakeResolver(), advertise_url="http://x"
-    ):
-        mapping.update(servicer.__mapping__())
-    assert "/modal.client.ModalClient/SandboxCreate" in mapping
-    assert "/modal.client.ModalClient/SandboxGetTaskId" in mapping
-    assert "/modal.task_command_router.TaskCommandRouter/TaskExecStart" in mapping
-    assert "/modal.task_command_router.TaskCommandRouter/TaskExecWait" in mapping
+    """The facade registers the external service's exact method paths."""
+    handlers: List[Any] = []
+
+    class _Server:
+        def add_generic_rpc_handlers(self, generic_handlers: Any) -> None:
+            handlers.extend(generic_handlers)
+
+    facade = RaySandboxFacade(handle_resolver=FakeResolver(), advertise_url="http://x")
+    grpc_facade.add_servicers_to_server(facade, _Server())
+
+    def routed(path: str) -> bool:
+        call = types.SimpleNamespace(method=path)
+        return any(handler.service(call) is not None for handler in handlers)
+
+    assert routed("/modal.client.ModalClient/SandboxCreate")
+    assert routed("/modal.client.ModalClient/SandboxGetTaskId")
+    assert routed("/modal.task_command_router.TaskCommandRouter/TaskExecStart")
+    assert routed("/modal.task_command_router.TaskCommandRouter/TaskExecWait")
+    assert not routed("/ray_sandbox_facade.modal.client.ModalClient/SandboxCreate")
 
 
 def test_full_sandbox_lifecycle(tmp_path) -> None:
@@ -266,7 +285,7 @@ def test_full_sandbox_lifecycle(tmp_path) -> None:
                     "actor_killed": bool(resolver.killed),
                 }
             finally:
-                channel.close()
+                await channel.close()
 
     result = asyncio.run(scenario())
     assert result["sandbox_id"].startswith("sb-")
@@ -296,7 +315,7 @@ def test_named_create_is_idempotent() -> None:
                 second = await _make_sandbox(control, name="same-name")
                 return first, second
             finally:
-                channel.close()
+                await channel.close()
 
     first_id, second_id = asyncio.run(scenario())
     assert first_id == second_id
@@ -315,7 +334,7 @@ def test_named_sandboxes_are_scoped_to_app() -> None:
                 second = await _make_sandbox(control, name="shared", app_name="app-b")
                 return first, second
             finally:
-                channel.close()
+                await channel.close()
 
     first_id, second_id = asyncio.run(scenario())
     assert first_id != second_id
@@ -352,7 +371,7 @@ def test_named_create_replaces_dead_actor() -> None:
                 second = await _make_sandbox(control, name="same-name")
                 return first, second, resolver.killed, resolver.handles[second] is dead
             finally:
-                channel.close()
+                await channel.close()
 
     first_id, second_id, killed, still_dead = asyncio.run(scenario())
     assert first_id == second_id
@@ -378,7 +397,7 @@ def test_wait_with_zero_timeout_polls() -> None:
                 )
                 return resp.result.status, asyncio.get_running_loop().time() - started
             finally:
-                channel.close()
+                await channel.close()
 
     status, elapsed = asyncio.run(scenario())
     assert status == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED
@@ -410,7 +429,7 @@ def test_wait_with_zero_timeout_returns_while_actor_is_unscheduled() -> None:
                 )
                 return resp.result.status, asyncio.get_running_loop().time() - started
             finally:
-                channel.close()
+                await channel.close()
 
     status, elapsed = asyncio.run(scenario())
     assert status == api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED
@@ -444,7 +463,7 @@ def test_exec_start_retry_does_not_rerun_the_command() -> None:
                 )
                 return len(runtime.exec_calls)
             finally:
-                channel.close()
+                await channel.close()
 
     assert asyncio.run(scenario()) == 1
 
@@ -482,9 +501,9 @@ def test_exec_start_retry_joins_an_in_flight_start(monkeypatch) -> None:
                     exec_id="ex-inflight",
                     command_args=["bash", "-c", "cmd"],
                 )
-                with pytest.raises(GRPCError) as failed:
+                with pytest.raises(grpc.aio.AioRpcError) as failed:
                     await router.TaskExecStart(request)
-                assert failed.value.status == Status.UNAVAILABLE
+                assert failed.value.code() == StatusCode.UNAVAILABLE
                 retry = asyncio.ensure_future(router.TaskExecStart(request))
                 await asyncio.sleep(0.05)
                 assert not retry.done()  # joined the start, not answered anew
@@ -495,7 +514,7 @@ def test_exec_start_retry_joins_an_in_flight_start(monkeypatch) -> None:
                 )
                 return starts, len(runtime.exec_calls)
             finally:
-                channel.close()
+                await channel.close()
 
     assert asyncio.run(scenario()) == (1, 1)
 
@@ -518,7 +537,7 @@ def test_network_allowlist_is_refused() -> None:
                         image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
                     )
                 )
-                with pytest.raises(GRPCError) as failed:
+                with pytest.raises(grpc.aio.AioRpcError) as failed:
                     await control.SandboxCreate(
                         api_pb2.SandboxCreateRequest(
                             app_id=app.app_id,
@@ -530,11 +549,11 @@ def test_network_allowlist_is_refused() -> None:
                             ),
                         )
                     )
-                assert failed.value.status == Status.INVALID_ARGUMENT
-                assert "allowlist" in failed.value.message
+                assert failed.value.code() == StatusCode.INVALID_ARGUMENT
+                assert "allowlist" in failed.value.details()
                 return len(resolver.handles)
             finally:
-                channel.close()
+                await channel.close()
 
     assert asyncio.run(scenario()) == 0
 
@@ -551,15 +570,15 @@ def test_set_network_access_is_refused() -> None:
             try:
                 sandbox_id = await _make_sandbox(control)
                 await _wait_running(control, sandbox_id)
-                with pytest.raises(GRPCError) as failed:
+                with pytest.raises(grpc.aio.AioRpcError) as failed:
                     await router.TaskSetNetworkAccess(
                         sr_pb2.TaskSetNetworkAccessRequest()
                     )
-                return failed.value.status
+                return failed.value.code()
             finally:
-                channel.close()
+                await channel.close()
 
-    assert asyncio.run(scenario()) == Status.UNIMPLEMENTED
+    assert asyncio.run(scenario()) == StatusCode.UNIMPLEMENTED
 
 
 def test_exec_table_evicts_finished_records(monkeypatch) -> None:
@@ -601,26 +620,24 @@ def test_read_missing_file_is_typed() -> None:
                         ],
                     )
                 )
-                stderr_chunks: List[bytes] = []
-                async with router.TaskExecStdioRead.open() as stream:
-                    await stream.send_message(
+                stderr_replies = await _replies(
+                    router.TaskExecStdioRead(
                         sr_pb2.TaskExecStdioReadRequest(
                             exec_id="ex-miss",
                             offset=0,
                             file_descriptor=(
                                 sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR
                             ),
-                        ),
-                        end=True,
+                        )
                     )
-                    async for msg in stream:
-                        stderr_chunks.append(msg.data)
+                )
+                stderr_chunks = [reply.data for reply in stderr_replies]
                 code = await router.TaskExecWait(
                     sr_pb2.TaskExecWaitRequest(exec_id="ex-miss")
                 )
                 return code.code, b"".join(stderr_chunks)
             finally:
-                channel.close()
+                await channel.close()
 
     code, stderr = asyncio.run(scenario())
     assert code == 1
@@ -647,10 +664,10 @@ def test_build_step_images_are_rejected() -> None:
                     )
                 )
                 return ""
-            except GRPCError as exc:
-                return exc.message or ""
+            except grpc.aio.AioRpcError as exc:
+                return exc.details() or ""
             finally:
-                channel.close()
+                await channel.close()
 
     message = asyncio.run(scenario())
     assert "prebuilt registry images" in message
@@ -708,7 +725,7 @@ def test_terminate_timeout_leaves_the_host_to_finish(monkeypatch) -> None:
                     api_pb2.SandboxTerminateRequest(sandbox_id="sb-slowteardown")
                 )
             finally:
-                channel.close()
+                await channel.close()
         return resolver.killed
 
     assert asyncio.run(scenario()) == []
@@ -725,7 +742,7 @@ def test_only_named_creates_are_get_or_create() -> None:
                 await _make_sandbox(control, name="named")
                 await _make_sandbox(control, name="")
             finally:
-                channel.close()
+                await channel.close()
         return [options["get_if_exists"] for options in resolver.create_options]
 
     assert asyncio.run(scenario()) == [True, False]
@@ -747,8 +764,8 @@ def test_malformed_image_and_fs_commands_are_invalid() -> None:
                             image=api_pb2.Image(dockerfile_commands=["FROM"])
                         )
                     )
-                except GRPCError as exc:
-                    statuses.append(exc.status)
+                except grpc.aio.AioRpcError as exc:
+                    statuses.append(exc.code())
                 sandbox_id = await _make_sandbox(control)
                 await _wait_running(control, sandbox_id)
                 for i, op in enumerate(['["ReadFile"]', '{"ReadFile": "/etc"}']):
@@ -760,17 +777,17 @@ def test_malformed_image_and_fs_commands_are_invalid() -> None:
                                 command_args=[_FS_TOOLS_PATH, op],
                             )
                         )
-                    except GRPCError as exc:
-                        statuses.append(exc.status)
+                    except grpc.aio.AioRpcError as exc:
+                        statuses.append(exc.code())
             finally:
-                channel.close()
+                await channel.close()
         return statuses
 
-    assert asyncio.run(scenario()) == [Status.INVALID_ARGUMENT] * 3
+    assert asyncio.run(scenario()) == [StatusCode.INVALID_ARGUMENT] * 3
 
 
 def test_facade_imports_without_fastapi() -> None:
-    """The facade needs grpclib and ray[default], not the Serve extra."""
+    """The facade needs only ray[default], not the Serve extra."""
     import subprocess
 
     code = (
@@ -812,17 +829,17 @@ def test_write_file_stdin_is_capped() -> None:
                             exec_id="ex-big", offset=0, data=b"0123456789", eof=True
                         )
                     )
-                except GRPCError as exc:
-                    status = exc.status
+                except grpc.aio.AioRpcError as exc:
+                    status = exc.code()
                 code = await router.TaskExecWait(
                     sr_pb2.TaskExecWaitRequest(exec_id="ex-big")
                 )
                 return status, code.code
             finally:
-                channel.close()
+                await channel.close()
 
     status, code = asyncio.run(scenario())
-    assert status == Status.RESOURCE_EXHAUSTED
+    assert status == StatusCode.RESOURCE_EXHAUSTED
     assert code == 1
 
 
@@ -861,7 +878,7 @@ def test_named_create_retry_boots_a_stuck_sandbox() -> None:
                 assert await _make_sandbox(control, name="stuck") == sandbox_id
                 await _wait_running(control, sandbox_id)
             finally:
-                channel.close()
+                await channel.close()
 
     asyncio.run(scenario())
 
@@ -895,73 +912,81 @@ def test_carries_token(metadata: Any, accepted: bool) -> None:
 
 
 class _Reached(Exception):
-    """Raised by _FakeStream once a handler starts reading its request."""
+    """Raised by _Unread once a handler reads its request."""
 
 
-class _FakeStream:
-    def __init__(self, metadata: Optional[Dict[str, str]]) -> None:
-        self.metadata = metadata
-        self.reads = 0
+class _Unread:
+    """A request, or client stream of them, that no handler may read."""
 
-    async def recv_message(self) -> Any:
-        self.reads += 1
+    def __getattr__(self, name: str) -> Any:
         raise _Reached()
+
+    def __aiter__(self) -> "_Unread":
+        return self
+
+    async def __anext__(self) -> Any:
+        raise _Reached()
+
+
+class _Aborted(Exception):
+    def __init__(self, code: StatusCode, details: str) -> None:
+        super().__init__(code, details)
+        self.code = code
+        self.details = details
+
+
+class _Context:
+    """The parts of a ``grpc.aio`` servicer context the facade uses."""
+
+    def __init__(self, metadata: Optional[Dict[str, Any]] = None) -> None:
+        self._metadata = tuple((metadata or {}).items())
+
+    def invocation_metadata(self) -> Tuple[Tuple[str, Any], ...]:
+        return self._metadata
+
+    async def abort(self, code: StatusCode, details: str) -> None:
+        raise _Aborted(code, details)
+
+
+async def _call(facade: RaySandboxFacade, rpc: str, request: Any, context: Any) -> Any:
+    """Call ``rpc`` on ``facade`` as a server does; return its reply or replies."""
+    method = getattr(facade, rpc)
+    if inspect.isasyncgenfunction(method):
+        return [reply async for reply in method(request, context)]
+    return await method(request, context)
 
 
 def test_every_rpc_requires_the_token_before_reading_its_request(
     monkeypatch,
 ) -> None:
-    """The gate covers every RPC in the servicers' handler tables, filled-in
-    unimplemented ones included, and rejects a call before its handler
-    reads the request."""
+    """The gate covers every RPC of both services and rejects a call before
+    its handler reads the request."""
     monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
-    servicers = build_servicers(
-        handle_resolver=FakeResolver(), advertise_url="http://x"
-    )
+    facade = RaySandboxFacade(handle_resolver=FakeResolver(), advertise_url="http://x")
+    rpcs = [
+        method.name
+        for module, service in ((api_pb2, "ModalClient"), (sr_pb2, "TaskCommandRouter"))
+        for method in module.DESCRIPTOR.services_by_name[service].methods
+    ]
 
-    @grpc_facade._fill_unimplemented
-    class _Unimplemented(grpc_facade._TokenGate, TaskCommandRouterBase):
-        def __init__(self, state: Any) -> None:
-            self._state = state
-
-    servicers.append(_Unimplemented(servicers[0]._state))
-
-    async def call(func: Any, metadata: Optional[Dict[str, str]]) -> Tuple[Any, int]:
-        stream = _FakeStream(metadata)
+    async def outcome(rpc: str, metadata: Optional[Dict[str, str]]) -> Any:
         try:
-            await func(stream)
-        except GRPCError as exc:
-            return exc.status, stream.reads
+            await _call(facade, rpc, _Unread(), _Context(metadata))
+        except _Aborted as aborted:
+            return aborted.code
         except _Reached:
-            return "reached", stream.reads
-        raise AssertionError("the handler neither failed nor read its request")
+            return "read the request"
+        return "replied"
 
     async def scenario() -> None:
-        for servicer in servicers:
-            mapping = servicer.__mapping__()
-            assert mapping
-            for path, handler in mapping.items():
-                for metadata in (None, {}, {"authorization": "Bearer wrong"}):
-                    result = await call(handler.func, metadata)
-                    assert result == (Status.UNAUTHENTICATED, 0), path
-                for metadata in (_BEARER, _SECRET):
-                    assert await call(handler.func, metadata) == ("reached", 1), path
+        assert "TaskExecStdinWriteStream" in rpcs and "TaskExecStdioRead" in rpcs
+        for rpc in rpcs:
+            for metadata in (None, {}, {"authorization": "Bearer wrong"}):
+                assert await outcome(rpc, metadata) == StatusCode.UNAUTHENTICATED, rpc
+            for metadata in (_BEARER, _SECRET):
+                assert await outcome(rpc, metadata) != StatusCode.UNAUTHENTICATED, rpc
 
     asyncio.run(scenario())
-
-
-class _RouterAccessCall:
-    """A TaskGetCommandRouterAccess call presenting ``metadata``."""
-
-    def __init__(self, metadata: Optional[Dict[str, Any]]) -> None:
-        self.metadata = metadata
-        self.sent: List[Any] = []
-
-    async def recv_message(self) -> Any:
-        return api_pb2.TaskGetCommandRouterAccessRequest()
-
-    async def send_message(self, message: Any) -> None:
-        self.sent.append(message)
 
 
 @pytest.mark.parametrize(
@@ -977,12 +1002,14 @@ class _RouterAccessCall:
     ],
 )
 def test_router_url(advertise_url: Any, metadata: Any, url: Any) -> None:
-    control, _ = build_servicers(
+    facade = RaySandboxFacade(
         handle_resolver=FakeResolver(), advertise_url=advertise_url
     )
-    call = _RouterAccessCall(metadata)
-    asyncio.run(control.TaskGetCommandRouterAccess(call))
-    (access,) = call.sent
+    access = asyncio.run(
+        facade.TaskGetCommandRouterAccess(
+            api_pb2.TaskGetCommandRouterAccessRequest(), _Context(metadata)
+        )
+    )
     assert access.url == (url or advertise_url)
 
 
@@ -999,19 +1026,14 @@ def test_router_url(advertise_url: Any, metadata: Any, url: Any) -> None:
     ],
 )
 def test_router_url_needs_the_dialed_host(metadata: Any) -> None:
-    control, _ = build_servicers(handle_resolver=FakeResolver())
-    with pytest.raises(GRPCError) as info:
-        asyncio.run(control.TaskGetCommandRouterAccess(_RouterAccessCall(metadata)))
-    assert info.value.status == Status.FAILED_PRECONDITION
-
-
-def test_without_a_token_the_handlers_are_unchanged() -> None:
-    """Tokenless, the gate adds nothing: each table entry is the handler."""
-    for servicer in build_servicers(
-        handle_resolver=FakeResolver(), advertise_url="http://x"
-    ):
-        for path, handler in servicer.__mapping__().items():
-            assert handler.func == getattr(servicer, path.rsplit("/", 1)[1]), path
+    facade = RaySandboxFacade(handle_resolver=FakeResolver())
+    with pytest.raises(_Aborted) as info:
+        asyncio.run(
+            facade.TaskGetCommandRouterAccess(
+                api_pb2.TaskGetCommandRouterAccessRequest(), _Context(metadata)
+            )
+        )
+    assert info.value.code == StatusCode.FAILED_PRECONDITION
 
 
 def test_without_a_token_the_facade_stays_open() -> None:
@@ -1031,7 +1053,7 @@ def test_without_a_token_the_facade_stays_open() -> None:
                 )
                 return access.jwt
             finally:
-                channel.close()
+                await channel.close()
 
     assert asyncio.run(scenario()) == "ray-sandbox-facade"
 
@@ -1044,19 +1066,16 @@ def test_calls_without_the_token_are_rejected_on_the_wire(monkeypatch) -> None:
     port = next(_next_port)
 
     async def stdin_stream(router: TaskCommandRouterStub, metadata: Any) -> None:
-        async with router.TaskExecStdinWriteStream.open(metadata=metadata) as stream:
-            start = sr_pb2.TaskExecStdinWriteStreamStart(exec_id="ex")
-            await stream.send_message(
-                sr_pb2.TaskExecStdinWriteStreamRequest(start=start)
-            )
-            await stream.send_message(
-                sr_pb2.TaskExecStdinWriteStreamRequest(data=b"x" * 1024)
-            )
-            end = sr_pb2.TaskExecStdinWriteStreamEnd()
-            await stream.send_message(
-                sr_pb2.TaskExecStdinWriteStreamRequest(end=end), end=True
-            )
-            await stream.recv_message()
+        start = sr_pb2.TaskExecStdinWriteStreamStart(exec_id="ex")
+        end = sr_pb2.TaskExecStdinWriteStreamEnd()
+        await router.TaskExecStdinWriteStream(
+            [
+                sr_pb2.TaskExecStdinWriteStreamRequest(start=start),
+                sr_pb2.TaskExecStdinWriteStreamRequest(data=b"x" * 1024),
+                sr_pb2.TaskExecStdinWriteStreamRequest(end=end),
+            ],
+            metadata=metadata,
+        )
 
     async def scenario() -> List[Tuple[str, Any]]:
         async with _Facade(FakeResolver(), port):
@@ -1066,11 +1085,15 @@ def test_calls_without_the_token_are_rejected_on_the_wire(monkeypatch) -> None:
                     "ClientHello": lambda md: control.ClientHello(
                         empty_pb2.Empty(), metadata=md
                     ),
-                    "ImageJoinStreaming": lambda md: control.ImageJoinStreaming(
-                        api_pb2.ImageJoinStreamingRequest(), metadata=md
+                    "ImageJoinStreaming": lambda md: _replies(
+                        control.ImageJoinStreaming(
+                            api_pb2.ImageJoinStreamingRequest(), metadata=md
+                        )
                     ),
-                    "TaskExecStdioRead": lambda md: router.TaskExecStdioRead(
-                        sr_pb2.TaskExecStdioReadRequest(exec_id="ex"), metadata=md
+                    "TaskExecStdioRead": lambda md: _replies(
+                        router.TaskExecStdioRead(
+                            sr_pb2.TaskExecStdioReadRequest(exec_id="ex"), metadata=md
+                        )
                     ),
                     "TaskExecStdinWriteStream": lambda md: stdin_stream(router, md),
                     # Would fail as UNIMPLEMENTED if it reached its handler.
@@ -1090,23 +1113,28 @@ def test_calls_without_the_token_are_rejected_on_the_wire(monkeypatch) -> None:
                 for name, call in calls.items():
                     for metadata in (
                         None,
-                        {"authorization": "Bearer wrong"},
-                        {"x-modal-token-secret": "wrong"},
+                        (("authorization", "Bearer wrong"),),
+                        (("x-modal-token-secret", "wrong"),),
                     ):
-                        with pytest.raises(GRPCError) as failed:
+                        with pytest.raises(grpc.aio.AioRpcError) as failed:
                             await asyncio.wait_for(call(metadata), timeout=10)
-                        rejected.append((name, failed.value.status))
+                        assert failed.value.details() == (
+                            "invalid or missing API token"
+                        )
+                        rejected.append((name, failed.value.code()))
                 await asyncio.wait_for(
-                    control.ClientHello(empty_pb2.Empty(), metadata=_BEARER),
+                    control.ClientHello(
+                        empty_pb2.Empty(), metadata=tuple(_BEARER.items())
+                    ),
                     timeout=10,
                 )
                 return rejected
             finally:
-                channel.close()
+                await channel.close()
 
     rejected = asyncio.run(scenario())
     assert len(rejected) == 6 * 3
-    assert all(status == Status.UNAUTHENTICATED for _, status in rejected), rejected
+    assert all(status == StatusCode.UNAUTHENTICATED for _, status in rejected), rejected
 
 
 def test_the_token_authenticates_both_planes(monkeypatch) -> None:
@@ -1131,7 +1159,7 @@ def test_the_token_authenticates_both_planes(monkeypatch) -> None:
                     api_pb2.TaskGetCommandRouterAccessRequest()
                 )
             finally:
-                sdk_channel.close()
+                await sdk_channel.close()
 
             router_channel, bearer_control, router = _channel(
                 port, {"authorization": f"Bearer {access.jwt}"}
@@ -1159,21 +1187,18 @@ def test_the_token_authenticates_both_planes(monkeypatch) -> None:
                         ],
                     )
                 )
-                async with router.TaskExecStdinWriteStream.open() as stream:
-                    start = sr_pb2.TaskExecStdinWriteStreamStart(
-                        task_id=sandbox_id, exec_id="ex-write"
-                    )
-                    await stream.send_message(
-                        sr_pb2.TaskExecStdinWriteStreamRequest(start=start)
-                    )
-                    await stream.send_message(
-                        sr_pb2.TaskExecStdinWriteStreamRequest(data=payload)
-                    )
-                    end = sr_pb2.TaskExecStdinWriteStreamEnd()
-                    await stream.send_message(
-                        sr_pb2.TaskExecStdinWriteStreamRequest(end=end), end=True
-                    )
-                    await stream.recv_message()
+                start = sr_pb2.TaskExecStdinWriteStreamStart(
+                    task_id=sandbox_id, exec_id="ex-write"
+                )
+                await router.TaskExecStdinWriteStream(
+                    [
+                        sr_pb2.TaskExecStdinWriteStreamRequest(start=start),
+                        sr_pb2.TaskExecStdinWriteStreamRequest(data=payload),
+                        sr_pb2.TaskExecStdinWriteStreamRequest(
+                            end=sr_pb2.TaskExecStdinWriteStreamEnd()
+                        ),
+                    ]
+                )
                 write_code = await router.TaskExecWait(
                     sr_pb2.TaskExecWaitRequest(exec_id="ex-write")
                 )
@@ -1182,7 +1207,7 @@ def test_the_token_authenticates_both_planes(monkeypatch) -> None:
                     api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
                 )
             finally:
-                router_channel.close()
+                await router_channel.close()
 
             secret_channel, _, secret_router = _channel(port, _SECRET)
             try:
@@ -1190,7 +1215,7 @@ def test_the_token_authenticates_both_planes(monkeypatch) -> None:
                     sr_pb2.TaskExecPollRequest(exec_id="ex-echo")
                 )
             finally:
-                secret_channel.close()
+                await secret_channel.close()
         return {
             "jwt": access.jwt,
             "stdout": stdout,
@@ -1252,23 +1277,23 @@ def test_rejected_calls_have_no_side_effects(monkeypatch) -> None:
                 ]
                 statuses = []
                 for call in calls:
-                    with pytest.raises(GRPCError) as failed:
+                    with pytest.raises(grpc.aio.AioRpcError) as failed:
                         await call()
-                    statuses.append(failed.value.status)
+                    statuses.append(failed.value.code())
                 return {
                     "statuses": statuses,
                     "new_creates": len(resolver.create_options) - creates,
                     "new_execs": len(runtime.exec_calls) - execs,
-                    "exec_table": list(facade.servicers[0]._state.execs),
+                    "exec_table": list(facade.servicer._state.execs),
                     "killed": resolver.killed,
                     "deleted": runtime.deleted,
                 }
             finally:
-                authed.close()
-                anonymous.close()
+                await authed.close()
+                await anonymous.close()
 
     assert asyncio.run(scenario()) == {
-        "statuses": [Status.UNAUTHENTICATED] * 3,
+        "statuses": [StatusCode.UNAUTHENTICATED] * 3,
         "new_creates": 0,
         "new_execs": 0,
         "exec_table": [],
@@ -1277,14 +1302,14 @@ def test_rejected_calls_have_no_side_effects(monkeypatch) -> None:
     }
 
 
-def _record_serve(monkeypatch) -> List[Tuple[str, int, List[Any]]]:
+def _record_serve(monkeypatch) -> List[Tuple[str, int, RaySandboxFacade]]:
     """Stub out the cluster connection and the server; record serve()."""
     import ray
 
     calls = []
 
-    async def fake_serve(host: str, port: int, servicers: List[Any]) -> None:
-        calls.append((host, port, servicers))
+    async def fake_serve(host: str, port: int, facade: RaySandboxFacade) -> None:
+        calls.append((host, port, facade))
 
     monkeypatch.setattr(ray, "init", lambda *args, **kwargs: None)
     monkeypatch.setattr(grpc_facade, "serve", fake_serve)
@@ -1325,8 +1350,8 @@ def test_main_refuses_a_network_address_without_a_token(
 def test_main_serves_loopback_without_a_token(monkeypatch, host: str) -> None:
     calls = _record_serve(monkeypatch)
     grpc_facade.main([] if host is None else ["--host", host])
-    ((_, _, servicers),) = calls
-    assert servicers[0]._state.token is None
+    ((_, _, facade),) = calls
+    assert facade._state.token is None
 
 
 def test_main_serves_a_network_address_with_a_token(
@@ -1335,9 +1360,9 @@ def test_main_serves_a_network_address_with_a_token(
     monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
     calls = _record_serve(monkeypatch)
     grpc_facade.main(["--host", "0.0.0.0"])
-    ((host, _, servicers),) = calls
+    ((host, _, facade),) = calls
     assert host == "0.0.0.0"
-    assert servicers[0]._state.token == _TOKEN
+    assert facade._state.token == _TOKEN
     assert "RAY_SANDBOX_API_TOKEN" in facade_log.text
     captured = capsys.readouterr()
     assert _TOKEN not in facade_log.text + captured.out + captured.err
@@ -1348,9 +1373,9 @@ def test_main_allow_unauthenticated_serves_a_network_address(
 ) -> None:
     calls = _record_serve(monkeypatch)
     grpc_facade.main(["--host", "0.0.0.0", "--allow-unauthenticated"])
-    ((host, _, servicers),) = calls
+    ((host, _, facade),) = calls
     assert host == "0.0.0.0"
-    assert servicers[0]._state.token is None
+    assert facade._state.token is None
     assert "without authentication" in facade_log.text
 
 

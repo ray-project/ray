@@ -1,12 +1,12 @@
 """Tests of the gRPC facade served by Ray Serve (``grpc_app``).
 
-The unit tests check that Serve's proxy gets the same routes as the facade's
-own server, and how the ingress runs the facade's handlers: the token check,
-call statuses, and the command-router URL. The end-to-end tests run the
+The unit tests check what Serve's proxy needs from the facade: one service
+per registration, and an ingress method per RPC that takes the call's
+context and reports failures through it. The end-to-end tests run the
 application on a local Serve instance, with the sandbox runtime faked inside
 the Serve replica, and drive it through Serve's gRPC proxy with the
-unmodified client SDK. Skipped without grpclib; the end-to-end tests also
-need Ray Serve and ``modal``. None of them is in the default CI image.
+unmodified client SDK. They also need Ray Serve and ``modal``, which the
+default CI image lacks.
 """
 
 from __future__ import annotations
@@ -14,42 +14,27 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
+import pickle
 import socket
 import sys
 import urllib.error
 import urllib.request
 from collections import namedtuple
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Iterator, List, Optional, Tuple
 from unittest import mock
 
+import grpc
 import pytest
 
+from ray.experimental.sandbox.http import grpc_app, grpc_facade
+from ray.experimental.sandbox.http._proto import (
+    sandbox_control_pb2 as api_pb2,
+    sandbox_exec_pb2 as sr_pb2,
+)
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 from ray.experimental.sandbox.http.tests.conftest import (
     FakeResolver,
     LoopbackResolver,
-)
-
-# Guarded import so the module collects (and skips) without grpclib; a
-# module-level importorskip would collect nothing and fail the bazel target.
-try:
-    import grpc
-    from grpclib.exceptions import GRPCError
-
-    from ray.experimental.sandbox.http import grpc_app
-    from ray.experimental.sandbox.http._proto import (
-        sandbox_control_pb2 as api_pb2,
-        sandbox_exec_pb2 as sr_pb2,
-    )
-    from ray.experimental.sandbox.http.grpc_facade import build_servicers
-
-    _HAVE_GRPCLIB = True
-except ImportError:
-    _HAVE_GRPCLIB = False
-
-pytestmark = pytest.mark.skipif(
-    not _HAVE_GRPCLIB,
-    reason="grpclib is not installed (optional; absent in the default CI image)",
 )
 
 _TOKEN = "grpc-app-test-token"
@@ -71,7 +56,7 @@ class _CaptureServer:
 
 
 class _Context:
-    """The parts of Serve's gRPC context that the ingress uses."""
+    """The parts of Serve's gRPC context that the facade uses: no abort()."""
 
     def __init__(self, metadata: List[Tuple[str, str]] = ()) -> None:
         self._metadata = list(metadata)
@@ -88,13 +73,13 @@ class _Context:
         self.details = details
 
 
-def _facade_routes() -> Dict[str, Any]:
-    routes: Dict[str, Any] = {}
-    for servicer in build_servicers(
-        handle_resolver=FakeResolver(), advertise_url="http://x"
-    ):
-        routes.update(servicer.__mapping__())
-    return routes
+def _rpcs() -> Iterator[Tuple[str, str]]:
+    """Each RPC of the facade's services: its wire path and name."""
+    for module, service in ((api_pb2, "ModalClient"), (sr_pb2, "TaskCommandRouter")):
+        descriptor = module.DESCRIPTOR.services_by_name[service]
+        wire_service = descriptor.full_name.removeprefix("ray_sandbox_facade.")
+        for method in descriptor.methods:
+            yield f"/{wire_service}/{method.name}", method.name
 
 
 def _ingress(monkeypatch: Any, advertise_url: Optional[str] = "http://x") -> Any:
@@ -102,36 +87,21 @@ def _ingress(monkeypatch: Any, advertise_url: Optional[str] = "http://x") -> Any
     return grpc_app._FacadeIngress(SandboxAPISettings(), advertise_url, FakeResolver)
 
 
-def test_serve_routes_match_the_facade_server() -> None:
-    """Serve's proxy gets every RPC that the facade's own server routes, at
-    the same wire path, with the same streaming and message types."""
+def test_serve_routes_every_rpc_to_the_ingress() -> None:
+    """Each RPC reaches the ingress method named after it, which takes the
+    call's context and streams its replies exactly when the RPC does."""
     server = _CaptureServer()
-    grpc_app.add_servicers_to_server(mock.Mock(), server)
+    grpc_facade.add_servicers_to_server(mock.Mock(), server)
     # One service per call: Serve's proxy reads only the first handler.
     assert [len(handlers) for handlers in server.calls] == [1, 1]
     generic = [handlers[0] for handlers in server.calls]
-
-    routes = _facade_routes()
-    assert {path.split("/")[1] for path in routes} == {
-        "modal.client.ModalClient",
-        "modal.task_command_router.TaskCommandRouter",
-    }
-    for path, route in routes.items():
+    for path, name in _rpcs():
         found = [h.service(_CallDetails(path, ())) for h in generic]
         (handler,) = [h for h in found if h is not None]
-        assert handler.request_streaming == route.cardinality.client_streaming, path
-        assert handler.response_streaming == route.cardinality.server_streaming, path
-        request = handler.request_deserializer(route.request_type().SerializeToString())
-        assert isinstance(request, route.request_type), path
-        assert handler.response_serializer(route.reply_type()) == b"", path
-
-
-def test_ingress_has_a_method_per_rpc() -> None:
-    for path, route in _facade_routes().items():
-        method = getattr(grpc_app._FacadeIngress, path.rsplit("/", 1)[1])
+        method = getattr(grpc_app._FacadeIngress, name)
         # Serve passes a call's context only to a parameter of this name.
         assert "grpc_context" in inspect.signature(method).parameters, path
-        assert inspect.isasyncgenfunction(method) == route.cardinality.server_streaming
+        assert inspect.isasyncgenfunction(method) == handler.response_streaming, path
 
 
 def test_ingress_requires_the_token(monkeypatch) -> None:
@@ -141,9 +111,10 @@ def test_ingress_requires_the_token(monkeypatch) -> None:
     async def scenario() -> None:
         for metadata in ([], [("x-modal-token-secret", "wrong")]):
             context = _Context(metadata)
-            reply = await ingress.AppGetOrCreate(request, context)
+            with pytest.raises(grpc_facade._RpcError):
+                await ingress.AppGetOrCreate(request, context)
             assert context.code == grpc.StatusCode.UNAUTHENTICATED
-            assert reply == api_pb2.AppGetOrCreateResponse()
+            assert context.details == "invalid or missing API token"
         for metadata in (_SECRET, _BEARER):
             context = _Context(metadata)
             reply = await ingress.AppGetOrCreate(request, context)
@@ -154,8 +125,8 @@ def test_ingress_requires_the_token(monkeypatch) -> None:
 
 
 def test_streaming_errors_carry_their_status(monkeypatch) -> None:
-    """A streaming call's status travels with an exception: Serve ends a
-    generator that returns as OK."""
+    """A failed call sets its status on the context and raises: Serve ends a
+    streaming call whose generator returns as OK."""
     ingress = _ingress(monkeypatch)
     request = sr_pb2.TaskExecStdioReadRequest(
         exec_id="ex-missing",
@@ -168,12 +139,24 @@ def test_streaming_errors_carry_their_status(monkeypatch) -> None:
             (_BEARER, grpc.StatusCode.NOT_FOUND),
         ):
             context = _Context(metadata)
-            with pytest.raises(GRPCError):
+            with pytest.raises(grpc_facade._RpcError):
                 async for _ in ingress.TaskExecStdioRead(request, context):
                     pass
             assert context.code == code
 
     asyncio.run(scenario())
+
+
+def test_rpc_errors_survive_pickling() -> None:
+    """Serve sends a failed call's exception from its replica to its proxy."""
+    error = pickle.loads(
+        pickle.dumps(grpc_facade._RpcError(grpc.StatusCode.NOT_FOUND, "gone"))
+    )
+    assert (error.code, error.message, str(error)) == (
+        grpc.StatusCode.NOT_FOUND,
+        "gone",
+        "gone",
+    )
 
 
 def test_router_access_defaults_to_the_dialed_host(monkeypatch) -> None:
@@ -237,7 +220,7 @@ def serve_facade() -> Iterator[Tuple[str, int]]:
             grpc_options=gRPCOptions(
                 port=grpc_port,
                 grpc_servicer_functions=[
-                    "ray.experimental.sandbox.http.grpc_app.add_servicers_to_server"
+                    "ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server"
                 ],
             ),
             http_options={"host": "127.0.0.1", "port": http_port},

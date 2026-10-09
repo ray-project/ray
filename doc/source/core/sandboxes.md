@@ -555,10 +555,10 @@ docker run --privileged -p 8000:8000 \
 
 `ray.experimental.sandbox.http.grpc_facade` serves the same detached sandbox actors over gRPC. It implements the subset of a third-party sandbox SDK's control-plane and command-router services that the SDK's Sandbox API uses, so you can point an unmodified client at a Ray cluster to create sandboxes, run commands, and use the client's filesystem API.
 
-The facade requires `grpclib` and `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster, with a token that clients must present:
+The facade requires `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster, with a token that clients must present:
 
 ```bash
-pip install grpclib
+pip install "ray[default]"
 export RAY_SANDBOX_API_TOKEN=$(openssl rand -hex 32)
 python -m ray.experimental.sandbox.http.grpc_facade \
   --host 0.0.0.0 --port 50051 --advertise-url https://<facade-endpoint>
@@ -585,19 +585,19 @@ Keep these limits in mind:
 
 #### Serve the facade with Ray Serve
 
-`ray.experimental.sandbox.http.grpc_app` serves the facade through Ray Serve's gRPC proxy instead of the facade's own server, so you can deploy it as a Serve application, such as an Anyscale service. Name two of its functions in the Serve config: `add_servicers_to_server` registers the facade's gRPC services with the proxy, and `build_app` builds the application.
+`ray.experimental.sandbox.http.grpc_app` serves the facade through Ray Serve's gRPC proxy instead of the facade's own server, so you can deploy it as a Serve application, such as an Anyscale service. Name two functions in the Serve config: the facade's `add_servicers_to_server` registers its gRPC services with the proxy, and `grpc_app.build_app` builds the application.
 
 ```yaml
 grpc_options:
   grpc_servicer_functions:
-    - ray.experimental.sandbox.http.grpc_app.add_servicers_to_server
+    - ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server
 applications:
   - name: sandbox-facade
     route_prefix: /
     import_path: ray.experimental.sandbox.http.grpc_app:build_app
 ```
 
-The application needs `grpclib` and `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where sandboxes with network access can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
+The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where sandboxes with network access can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
 
 Clients use the address of Serve's gRPC proxy as their server URL. By default, the facade gives each client `https://` plus the host it dialed as its command-router URL, which suits a TLS endpoint on port 443 in front of the proxy. For any other setup, set `advertise_url` in the application's `args`, such as `http://127.0.0.1:9000` for clients of a local proxy.
 
@@ -610,7 +610,7 @@ grpc_options:
     - modal.client.ModalClient
     - modal.task_command_router.TaskCommandRouter
   grpc_servicer_functions:
-    - ray.experimental.sandbox.http.grpc_app.add_servicers_to_server
+    - ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server
 applications:
   - name: sandbox-facade
     route_prefix: /
