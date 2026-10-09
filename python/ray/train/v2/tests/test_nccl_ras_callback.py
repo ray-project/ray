@@ -19,11 +19,11 @@ from ray.train.v2._internal.callbacks.nccl_ras import (
     RASPoller,
     RASQueryError,
     RASReport,
+    run_nvidia_smi,
     dump_stack_trace,
     fan_out_to_workers,
     parse_ras_addr,
     parse_ras_schema,
-    run_nvidia_smi,
 )
 from ray.train.v2._internal.constants import (
     HANG_DETECTOR_DIRNAME,
@@ -1209,7 +1209,9 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
 
     text = caplog.text
     # New-suspicion announcement describes the stalled communicator.
-    assert "Possible NCCL hang detected!" in text
+    assert (
+        "Possible NCCL hang detected by the Ray Train hang detector callback!" in text
+    )
     assert f"Communicator {_COMM_A} over" in text
     # Periodic reminder uses the "still suspected" wording.
     assert "NCCL hang still suspected!" in text
@@ -1249,7 +1251,7 @@ def test_periodic_warning_never_precedes_the_first_suspicion(
         [],
         [],
         [],
-        ["Possible NCCL hang detected"],
+        ["Possible NCCL hang detected by the Ray Train hang detector callback"],
         [],
         ["NCCL hang still suspected"],
         [],
@@ -1272,6 +1274,90 @@ def test_ras_text_report_is_logged_again_for_a_new_hang(
     assert caplog.text.count(FakePoller.TEXT_REPORT) == 2
 
 
+# Per-poll states for the text report scenarios below: A and B are mismatched
+# and frozen at fixed counts; "A moved" is A mismatched but progressing.
+_A_STUCK = {_COMM_A: {1: 5, 2: 4}}
+_A_MOVED = {_COMM_A: {1: 6, 2: 5}}
+_B_IDLE = {_COMM_B: {1: 3, 2: 3}}
+_B_STUCK = {_COMM_B: {1: 4, 2: 3}}
+
+
+@pytest.mark.parametrize(
+    "polls,text_polls",
+    [
+        # A is suspected at poll 1 and B, a second communicator, at poll 3
+        # while A is still stalled: B's suspicion gets its own report.
+        (
+            [
+                {**_A_STUCK, **_B_IDLE},
+                {**_A_STUCK, **_B_IDLE},
+                {**_A_STUCK, **_B_STUCK},
+                {**_A_STUCK, **_B_STUCK},
+                {**_A_STUCK, **_B_STUCK},
+            ],
+            [1, 3],
+        ),
+        # A and B stall on the same poll: one report covers both.
+        ([{**_A_STUCK, **_B_STUCK}] * 4, [1]),
+        # A recovers with no fully healthy poll in between (it is still
+        # mismatched, just progressing), then stalls again: a new suspicion.
+        ([_A_STUCK, _A_STUCK, _A_MOVED, _A_MOVED, _A_MOVED], [1, 3]),
+        # A recovers through a healthy poll, then B stalls.
+        ([_A_STUCK, _A_STUCK, {}, _B_STUCK, _B_STUCK], [1, 4]),
+    ],
+    ids=[
+        "second_comm_later",
+        "two_comms_same_poll",
+        "recover_mismatched",
+        "recover_healthy",
+    ],
+)
+def test_ras_text_report_is_logged_once_per_suspicion(
+    monkeypatch, caplog, propagate_logs, polls, text_polls
+):
+    reports = [create_report(comms) for comms in polls]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=100,
+        reports=reports,
+        periodic_warn_every_polls=1,
+    )
+
+    logged_at = []
+    with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
+        for poll in range(len(reports)):
+            caplog.clear()
+            callback.after_worker_group_poll_status(MagicMock())
+            if FakePoller.TEXT_REPORT in caplog.text:
+                logged_at.append(poll)
+
+    assert logged_at == text_polls
+
+
+def test_ras_text_report_fetch_is_retried_while_suspected(
+    monkeypatch, caplog, propagate_logs
+):
+    # A failed fetch at the first suspicion is retried on the next warning
+    # rather than lost until the hang is confirmed.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 4
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=100,
+        reports=reports,
+        periodic_warn_every_polls=1,
+    )
+    fetches = iter([None, FakePoller.TEXT_REPORT, FakePoller.TEXT_REPORT])
+    callback.fetch_ras_human_report = lambda: next(fetches)
+
+    with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
+        for _ in reports:
+            callback.after_worker_group_poll_status(MagicMock())
+
+    assert caplog.text.count(FakePoller.TEXT_REPORT) == 1
+
+
 def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
     # Observe mode still surfaces the suspicion/periodic warnings but must never
     # threaten to raise an error, since it only observes.
@@ -1285,7 +1371,9 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
             callback.after_worker_group_poll_status(MagicMock())
 
     text = caplog.text
-    assert "Possible NCCL hang detected!" in text
+    assert (
+        "Possible NCCL hang detected by the Ray Train hang detector callback!" in text
+    )
     assert "NCCL hang still suspected!" in text
     assert "NCCLHangError will be raised" not in text
 
@@ -1902,40 +1990,42 @@ def make_train_worker(world_rank: int, node_ip: str, pid: int) -> MagicMock:
 
 
 @pytest.mark.parametrize(
-    "train_ranks,unmatched,expected",
+    "comm_ranks,train_rank_of,expected",
     [
-        ([2], [], "train rank 2"),
-        ([3, 0, 1], [], "train ranks 0-1, 3"),
-        (list(range(1000)), [], "train ranks 0-999"),
-        ([], [0, 1], "comm ranks 0-1 (no matching train worker)"),
-        ([1], [4], "train rank 1, comm rank 4 (no matching train worker)"),
+        ([0], {0: 2}, "train rank 2"),
+        ([0, 1, 2], {0: 3, 1: 0, 2: 1}, "train ranks 0-1, 3"),
+        (range(1000), {r: r for r in range(1000)}, "train ranks 0-999"),
+        ([0, 1], {}, "comm ranks 0-1 (no matching train worker)"),
+        ([0, 4], {0: 1}, "train rank 1, comm rank 4 (no matching train worker)"),
         # Past _MAX_RANKS_LOGGED runs the rest are counted, not named.
         (
-            list(range(0, 40, 2)),
-            [],
+            range(20),
+            {r: 2 * r for r in range(20)},
             "train ranks 0, 2, 4, 6, 8, 10, 12, 14, and 12 more",
         ),
     ],
 )
-def test_format_ranks(train_ranks, unmatched, expected):
-    assert nccl_ras.format_ranks(train_ranks, unmatched) == expected
+def test_format_ranks(comm_ranks, train_rank_of, expected):
+    assert nccl_ras.format_ranks(comm_ranks, train_rank_of) == expected
 
 
-def test_find_train_worker_matches_node_and_pid():
+def test_match_train_ranks_matches_node_and_pid():
     # Pids repeat across nodes, so the node IP decides which worker it is.
-    workers = {
-        ("10.0.0.1", 100): make_train_worker(0, "10.0.0.1", 100),
-        ("10.0.0.2", 100): make_train_worker(1, "10.0.0.2", 100),
-        ("10.0.0.2", 200): make_train_worker(2, "10.0.0.2", 200),
+    workers = [
+        make_train_worker(0, "10.0.0.1", 100),
+        make_train_worker(1, "10.0.0.2", 100),
+        make_train_worker(2, "10.0.0.2", 200),
+    ]
+    processes = {
+        0: ("10.0.0.2", 100),
+        # RAS on another interface: the pid alone is enough when it is unique...
+        1: ("192.168.0.2", 200),
+        # ...but not when two nodes have a worker with that pid.
+        2: ("192.168.0.2", 100),
+        3: ("10.0.0.3", 300),
     }
-    find = NCCLRASCallback.find_train_worker
 
-    assert find(workers, "10.0.0.2", 100) is workers[("10.0.0.2", 100)]
-    # RAS on another interface: the pid alone is enough when it is unique...
-    assert find(workers, "192.168.0.2", 200) is workers[("10.0.0.2", 200)]
-    # ...but not when two nodes have a worker with that pid.
-    assert find(workers, "192.168.0.2", 100) is None
-    assert find(workers, "10.0.0.3", 300) is None
+    assert nccl_ras.translate_ras_ranks_to_train(workers, processes) == {0: 1, 1: 2}
 
 
 def make_translating_callback(monkeypatch, action, reports, workers):
