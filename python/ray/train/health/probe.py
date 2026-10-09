@@ -34,10 +34,13 @@ class Probe(abc.ABC):
             class name. Set on the class.
         poll_interval_s: Seconds between polls when the probe is polled
             periodically. Not used when it is polled once.
+        window_size: How many of the latest readings to keep per worker, node
+            or key. At least 1.
     """
 
     name: Optional[str] = None
     poll_interval_s: float = 10.0
+    window_size: int = 1
 
     @classmethod
     def probe_name(cls) -> str:
