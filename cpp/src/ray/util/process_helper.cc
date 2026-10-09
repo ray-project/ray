@@ -18,6 +18,7 @@
 #include <string>
 
 #include "ray/common/ray_config.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process.h"
@@ -84,6 +85,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
     bootstrap_ip = ray::GetNodeIpAddressFromPerspective();
+    rpc::MaybeEnableTokenAuthIfTokenAvailable();
     StartRayNode(bootstrap_ip,
                  bootstrap_port,
                  ConfigInternal::Instance().redis_username,

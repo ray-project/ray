@@ -93,7 +93,7 @@ This table lists every algorithm available in RLlib. All algorithms support mult
 (ppo)=
 
 ### Proximal Policy Optimization (PPO)
-[[paper]](https://arxiv.org/abs/1707.06347) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py)
+[[paper]](https://arxiv.org/abs/1707.06347) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ppo/ppo.py)
 
 ```{figure} images/algos/ppo-architecture.svg
 :width: 750
@@ -107,21 +107,16 @@ PPO scales out on both axes, supporting multiple EnvRunners for sample collectio
 for updating the model.
 ```
 
-**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/atari_ppo.py), [CartPole-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/cartpole_ppo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/pendulum_ppo.py).
+**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/atari_ppo.py), [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/cartpole_ppo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/pendulum_ppo.py).
 
-**PPO-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.ppo.ppo.PPOConfig
-   :members: training
-```
+**PPO-specific configs**: {py:meth}`PPOConfig.training() <ray.rllib.algorithms.ppo.ppo.PPOConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## Off-policy
 
 (dqn)=
 
 ### Deep Q Networks (DQN, Rainbow, Parametric DQN)
-[[paper]](https://arxiv.org/abs/1312.5602) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py)
+[[paper]](https://arxiv.org/abs/1312.5602) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dqn/dqn.py)
 
 ```{figure} images/algos/dqn-architecture.svg
 :width: 650
@@ -135,25 +130,20 @@ DQN scales out on both axes, supporting multiple EnvRunners for sample collectio
 for updating the model.
 ```
 
-RLlib provides all the DQN improvements evaluated in [Rainbow](https://arxiv.org/abs/1710.02298), though it doesn't enable all of them by default. For parametric or variable-length action spaces on the new API stack, see the [action masking example](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/action_masking_rl_module.py). The example uses PPO.
+RLlib provides all the DQN improvements evaluated in [Rainbow](https://arxiv.org/abs/1710.02298), though it doesn't enable all of them by default. For parametric or variable-length action spaces on the new API stack, see the [action masking example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/action_masking_rl_module.py). The example uses PPO.
 
-**Tuned examples:** [PongDeterministic-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-dqn.yaml), [Rainbow configuration](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-rainbow.yaml), [{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dqn.yaml), [with Dueling and Double-Q](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-duel-ddqn.yaml), [with Distributional DQN](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dist-dqn.yaml).
+**Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/cartpole_dqn.py), [multi-agent CartPole](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/multi_agent_cartpole_dqn.py), [StatelessCartPole](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/stateless_cartpole_dqn.py), [Atari benchmark](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dqn/benchmark_dqn_atari.py).
 
 :::{hint}
 For a complete [rainbow](https://arxiv.org/pdf/1710.02298.pdf) setup, make the following changes to the default DQN config: `"n_step": [between 1 and 10], "noisy": True, "num_atoms": [more than 1], "v_min": -10.0, "v_max": 10.0` (set `v_min` and `v_max` according to your expected range of returns).
 :::
 
-**DQN-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.dqn.dqn.DQNConfig
-   :members: training
-```
+**DQN-specific configs**: {py:meth}`DQNConfig.training() <ray.rllib.algorithms.dqn.dqn.DQNConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (sac)=
 
 ### Soft Actor Critic (SAC)
-[[original paper]](https://arxiv.org/pdf/1801.01290), [[follow up paper]](https://arxiv.org/pdf/1812.05905.pdf), [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py).
+[[original paper]](https://arxiv.org/pdf/1801.01290), [[follow up paper]](https://arxiv.org/pdf/1812.05905.pdf), [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/sac/sac.py).
 
 ```{figure} images/algos/sac-architecture.svg
 :width: 750
@@ -167,14 +157,9 @@ SAC scales out on both axes, supporting multiple EnvRunners for sample collectio
 for updating the model.
 ```
 
-**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/pendulum-sac.yaml), [HalfCheetah-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/halfcheetah_sac.py).
+**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/sac/pendulum_sac.py), [HalfCheetah-v4](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/sac/halfcheetah_sac.py).
 
-**SAC-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.sac.sac.SACConfig
-   :members: training
-```
+**SAC-specific configs**: {py:meth}`SACConfig.training() <ray.rllib.algorithms.sac.sac.SACConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## High-throughput on- and off-policy
 
@@ -186,7 +171,7 @@ for updating the model.
 APPO was originally [published under the name "IMPACT"](https://arxiv.org/abs/1912.00167). RLlib's APPO exactly matches the algorithm described in the paper.
 :::
 
-[[paper]](https://arxiv.org/abs/1912.00167) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py)
+[[paper]](https://arxiv.org/abs/1912.00167) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/appo/appo.py)
 
 ```{figure} images/algos/appo-architecture.svg
 :width: 750
@@ -204,19 +189,14 @@ APPO scales out on both axes, supporting multiple EnvRunners for sample collecti
 for updating the model.
 ```
 
-**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pong_appo.py), [HalfCheetah-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/halfcheetah_appo.py).
+**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/appo/pong_appo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/appo/pendulum_appo.py).
 
-**APPO-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
-   :members: training
-```
+**APPO-specific configs**: {py:meth}`APPOConfig.training() <ray.rllib.algorithms.appo.appo.APPOConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (impala)=
 
 ### Importance Weighted Actor-Learner Architecture (IMPALA)
-[[paper]](https://arxiv.org/abs/1802.01561) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py)
+[[paper]](https://arxiv.org/abs/1802.01561) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/impala/impala.py)
 
 ```{figure} images/algos/impala-architecture.svg
 :width: 750
@@ -232,7 +212,7 @@ IMPALA scales out on both axes, supporting multiple EnvRunners for sample collec
 for updating the model.
 ```
 
-**Tuned examples:** [PongNoFrameskip-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala.yaml), [vectorized configuration](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-vectorized.yaml), [multi-GPU configuration](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-fast.yaml), [{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/atari-impala.yaml).
+**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/impala/pong_impala.py), [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/impala/cartpole_impala.py), [multi-agent TicTacToe](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/impala/tictactoe_impala.py).
 
 ```{figure} images/impala.png
 :width: 650
@@ -241,21 +221,16 @@ Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pai
 The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
 ```
 
-**IMPALA-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.impala.impala.IMPALAConfig
-   :members: training
-```
+**IMPALA-specific configs**: {py:meth}`IMPALAConfig.training() <ray.rllib.algorithms.impala.impala.IMPALAConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## Model-based RL
 
 (dreamerv3)=
 
 ### DreamerV3
-[[paper]](https://arxiv.org/pdf/2301.04104v1.pdf) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py) [[RLlib readme]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md)
+[[paper]](https://arxiv.org/pdf/2301.04104v1.pdf) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dreamerv3/dreamerv3.py) [[RLlib readme]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dreamerv3/README.md)
 
-See [the README for how to run experiments](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/README.md) with DreamerV3.
+See [the README for how to run experiments](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/dreamerv3/README.md) with DreamerV3.
 
 ```{figure} images/algos/dreamerv3-architecture.svg
 :width: 850
@@ -273,7 +248,7 @@ It can also be used in different environment types, including those with image-b
 observations, continuous or discrete actions, as well as sparse or dense reward functions.
 ```
 
-**Tuned examples:** [Atari 100k](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/atari_100k_dreamerv3.py), [Atari 200M](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/atari_200M_dreamerv3.py), [DeepMind Control Suite](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py).
+**Tuned examples:** [Atari 100k](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dreamerv3/atari_100k_dreamerv3.py), [Atari 200M](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dreamerv3/atari_200M_dreamerv3.py), [DeepMind Control Suite](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py).
 
 **Pong-v5 results (1, 2, and 4 GPUs)**:
 
@@ -308,7 +283,7 @@ Episode mean rewards for various DeepMind Control Suite tasks on one versus four
 (bc)=
 
 ### Behavior Cloning (BC)
-[[paper]](http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/bc.py)
+[[paper]](http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/bc/bc.py)
 
 ```{figure} images/algos/bc-architecture.svg
 :width: 750
@@ -324,19 +299,14 @@ The only difference is the `beta` parameter, set to 0.0. This makes
 BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
 ```
 
-**Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/cartpole_bc.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/pendulum_bc.py).
+**Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/cartpole_bc.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/bc/pendulum_bc.py).
 
-**BC-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
-   :members: training
-```
+**BC-specific configs**: {py:class}`~ray.rllib.algorithms.bc.bc.BCConfig` inherits its `training()` settings from {py:meth}`MARWILConfig.training() <ray.rllib.algorithms.marwil.marwil.MARWILConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (cql)=
 
 ### Conservative Q-Learning (CQL)
-[[paper]](https://arxiv.org/abs/2006.04779) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/cql/cql.py)
+[[paper]](https://arxiv.org/abs/2006.04779) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/cql/cql.py)
 
 ```{figure} images/algos/cql-architecture.svg
 :width: 750
@@ -348,19 +318,14 @@ Bellman update loss, ensuring that the critic doesn't output overly optimistic Q
 The `SACLearner` adds this conservative correction term to the TD-based Q-learning loss.
 ```
 
-**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/cql/pendulum_cql.py).
+**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/cql/pendulum_cql.py).
 
-**CQL-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
-   :members: training
-```
+**CQL-specific configs**: {py:meth}`CQLConfig.training() <ray.rllib.algorithms.cql.cql.CQLConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (iql)=
 
 ### Implicit Q-Learning (IQL)
-[[paper]](https://arxiv.org/abs/2110.06169) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/iql/iql.py)
+[[paper]](https://arxiv.org/abs/2110.06169) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/iql/iql.py)
 
 ```{eval-rst}
 
@@ -374,19 +339,14 @@ The `SACLearner` adds this conservative correction term to the TD-based Q-learni
     high-advantage actions to achieve substantial performance gains over the behavior policy using only in-dataset actions.
 ```
 
-**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/iql/pendulum_iql.py).
+**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/iql/pendulum_iql.py).
 
-**IQL-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.iql.iql.IQLConfig
-   :members: training
-```
+**IQL-specific configs**: {py:meth}`IQLConfig.training() <ray.rllib.algorithms.iql.iql.IQLConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 (marwil)=
 
 ### Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
-[[paper]](http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/marwil.py)
+[[paper]](http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/marwil/marwil.py)
 
 ```{figure} images/algos/marwil-architecture.svg
 :width: 750
@@ -400,21 +360,16 @@ for example [parquet](https://parquet.apache.org/), by the n DataWorkers. Connec
 episodes into train batches and send these as data iterators directly to the n Learners for updating the model.
 ```
 
-**Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/marwil/cartpole_marwil.py).
+**Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/marwil/cartpole_marwil.py).
 
-**MARWIL-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
-
-```{eval-rst}
-.. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
-   :members: training
-```
+**MARWIL-specific configs**: {py:meth}`MARWILConfig.training() <ray.rllib.algorithms.marwil.marwil.MARWILConfig.training>`. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`.
 
 ## Algorithm extensions and plugins
 
 (icm)=
 
 ### Curiosity-driven Exploration by Self-supervised Prediction
-[[paper]](https://arxiv.org/pdf/1705.05363.pdf) [[implementation]](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py)
+[[paper]](https://arxiv.org/pdf/1705.05363.pdf) [[implementation]](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py)
 
 ```{figure} images/algos/curiosity-architecture.svg
 :width: 850
@@ -428,11 +383,11 @@ regions of the environment that are relatively unknown, where the world model pr
 poorly what happens next, the artificial intrinsic reward is large, so the
 agent explores these unknown regions.
 RLlib's curiosity implementation works with any RLlib algorithm. See the example implementations on top of
-[PPO and DQN](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py).
+[PPO and DQN](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py).
 ICM uses the chosen Algorithm's `training_step()` as-is, but then executes the following additional steps during
 `LearnerGroup.update`: Duplicate the train batch of the "main" policy and use it for
 performing a self-supervised update of the ICM. Use the ICM to compute the intrinsic rewards
 and add these to the extrinsic environment rewards. Then continue updating the "main" policy.
 ```
 
-**Tuned examples:** [12x12 FrozenLake-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py).
+**Tuned examples:** [12x12 FrozenLake-v1](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py).

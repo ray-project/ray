@@ -20,6 +20,7 @@ import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
+from ray.data._internal.arrow_aggregation import is_boolean_arrow_type
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
@@ -54,6 +55,7 @@ logger = logging.getLogger(__name__)
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 _BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
+_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME = "__rd_internal_num_rows"
 
 
 def _is_user_visible_column(name: str) -> bool:
@@ -216,6 +218,30 @@ def _get_max_chunk_size(
         return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
+# Maps an Arrow type to the Arrow-backed pandas dtype it converts to, preserving
+# Arrow dtypes through the pandas round-trip:
+# - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
+#   can reconstruct them exactly without lossy numpy conversion.
+# - Extension types (Ray's ArrowTensorType / ArrowPythonObjectType and
+#   pyarrow's native FixedShapeTensorType) return None, falling back to
+#   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
+#   subclasses BaseExtensionType but not ExtensionType, so we check the
+#   broader BaseExtensionType.
+# - Arrow's null type carries no type information, and pandas cannot box a
+#   non-null value into a null[pyarrow] column, so fillna and masked
+#   assignment raise ArrowInvalid (and can abort the worker from Arrow
+#   C++). Fall back to pandas' default conversion; PandasBlockAccessor
+#   .to_arrow() coerces all-null columns back to pa.null(), so the
+#   round-trip is unchanged. A column that is all-null in every block
+#   therefore stays null-typed rather than being promoted.
+def _arrow_backed_pandas_dtype(t: "pyarrow.DataType") -> Optional["pd.ArrowDtype"]:
+    if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(t):
+        return None
+    if pyarrow.types.is_null(t):
+        return None
+    return pd.ArrowDtype(t)
+
+
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
@@ -279,37 +305,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
 
-        # types_mapper preserves Arrow dtypes through the pandas round-trip:
-        # - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
-        #   can reconstruct them exactly without lossy numpy conversion.
-        # - Extension types (Ray's ArrowTensorType / ArrowPythonObjectType and
-        #   pyarrow's native FixedShapeTensorType) return None, falling back to
-        #   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
-        #   subclasses BaseExtensionType but not ExtensionType, so we check the
-        #   broader BaseExtensionType.
-        # - Arrow's null type carries no type information, and pandas cannot box a
-        #   non-null value into a null[pyarrow] column, so fillna and masked
-        #   assignment raise ArrowInvalid (and can abort the worker from Arrow
-        #   C++). Fall back to pandas' default conversion; PandasBlockAccessor
-        #   .to_arrow() coerces all-null columns back to pa.null(), so the
-        #   round-trip is unchanged. A column that is all-null in every block
-        #   therefore stays null-typed rather than being promoted.
-        def _types_mapper(t):
-            if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(
-                t
-            ):
-                return None
-            if pyarrow.types.is_null(t):
-                return None
-            return pd.ArrowDtype(t)
-
         # Gated on enable_arrow_backed_pandas_conversion so callers can restore the
         # pre-2.56 numpy conversion (standard Arrow types -> numpy dtypes). See
         # https://github.com/ray-project/ray/issues/64765.
         df = self._table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
             types_mapper=(
-                _types_mapper if ctx.enable_arrow_backed_pandas_conversion else None
+                _arrow_backed_pandas_dtype
+                if ctx.enable_arrow_backed_pandas_conversion
+                else None
             ),
         )
         if ctx.enable_tensor_extension_casting:
@@ -500,6 +504,56 @@ class ArrowBlockAccessor(TableBlockAccessor):
             ret, block_exec_stats=stats.build()
         )
 
+    def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
+        """Compute group boundaries natively in Arrow.
+
+        Overrides the base implementation, which first converts the key columns
+        to NumPy. That conversion is free for fixed-width numeric columns, but
+        for string, binary and decimal columns it materializes one Python object
+        per row, and for any column holding nulls it copies the values and
+        promotes them to ``float64``.
+
+        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+        """
+        import pyarrow.compute as pac
+
+        if self.num_rows() == 0:
+            return np.array([], dtype=np.int32)
+        elif not keys:
+            # If no keys are specified, whole block is considered a single group
+            return np.array([0, self.num_rows()])
+
+        # This method computes offsets for individual groups with a
+        # following algorithm:
+        #
+        #   - Column with single int value of 1 (for every row) is appended
+        ones = np.ones(self._table.num_rows, dtype=np.int32)
+
+        extended_table = self._table.append_column(
+            _INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME, pyarrow.array(ones)
+        )
+
+        #   - Block is aggregated based on the target group-key, where
+        #       newly added column is summed up (computing the size of the group)
+        aggregated_extended_table = (
+            extended_table.group_by(keys).aggregate(
+                [(_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME, "sum")]
+            )
+            # NOTE: Arrow performs hash-based aggregations and hence returned
+            #       table could be out of order
+            .sort_by([(k, "ascending") for k in keys])
+        )
+
+        group_size_column = aggregated_extended_table[
+            f"{_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME}_sum"
+        ]
+
+        #   - Column with respective sizes of the group is transformed into
+        #       an array of offsets (by running cumulative sum on it)
+        offsets_col = pac.cumulative_sum(group_size_column)
+
+        return np.concatenate([[0], offsets_col.to_numpy()])
+
     def block_type(self) -> BlockType:
         return BlockType.ARROW
 
@@ -627,9 +681,12 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         if mean is None:
             return None
 
-        res = pac.sum(
-            pac.power(pac.subtract(self._column, mean), 2), skip_nulls=ignore_nulls
-        )
+        column = self._column
+        if is_boolean_arrow_type(column.type):
+            # Treat booleans as 0/1: `subtract` has no boolean kernel.
+            column = pac.cast(column, pyarrow.float64())
+
+        res = pac.sum(pac.power(pac.subtract(column, mean), 2), skip_nulls=ignore_nulls)
         return res.as_py() if as_py else res
 
     def quantile(

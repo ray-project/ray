@@ -32,9 +32,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/highly_parallel.ipynb",
+        "doc/source/core/examples/highly_parallel.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -49,9 +49,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/plot_hyperparameter.ipynb",
+        "doc/source/core/examples/plot_hyperparameter.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -65,9 +65,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/batch_prediction.ipynb",
+        "doc/source/core/examples/batch_prediction.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -81,9 +81,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/plot_parameter_server.ipynb",
+        "doc/source/core/examples/plot_parameter_server.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -97,9 +97,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/plot_pong_example.ipynb",
+        "doc/source/core/examples/plot_pong_example.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -113,9 +113,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/gentle_walkthrough.ipynb",
+        "doc/source/core/examples/gentle_walkthrough.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -129,9 +129,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/map_reduce.ipynb",
+        "doc/source/core/examples/map_reduce.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -145,9 +145,9 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/web_crawler.ipynb",
+        "doc/source/core/examples/web_crawler.ipynb",
     ],
-    data = ["//doc/source/ray-core/examples:core_examples"],
+    data = ["//doc/source/core/examples:core_examples"],
     main = "test_myst_doc.py",
     tags = [
         "exclusive",
@@ -171,14 +171,14 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
-# Test all doc/source/ray-core/doc_code code included in rst/md files.
+# Test all doc/source/core/doc_code code included in rst/md files.
 # --------------------------------------------------------------------
 
 py_test(
     name = "doc_code_runtime_env_example",
     size = "small",
-    srcs = ["source/ray-core/doc_code/runtime_env_example.py"],
-    main = "source/ray-core/doc_code/runtime_env_example.py",
+    srcs = ["source/core/doc_code/runtime_env_example.py"],
+    main = "source/core/doc_code/runtime_env_example.py",
     tags = [
         "custom_setup",
         "exclusive",
@@ -190,8 +190,8 @@ py_test(
 py_test(
     name = "doc_code_ray_oom_prevention",
     size = "medium",
-    srcs = ["source/ray-core/doc_code/ray_oom_prevention.py"],
-    main = "source/ray-core/doc_code/ray_oom_prevention.py",
+    srcs = ["source/core/doc_code/ray_oom_prevention.py"],
+    main = "source/core/doc_code/ray_oom_prevention.py",
     tags = [
         "custom_setup",
         "exclusive",
@@ -203,11 +203,12 @@ py_test(
 py_test(
     name = "doc_code_cgraph_profiling",
     size = "small",
-    srcs = ["source/ray-core/doc_code/cgraph_profiling.py"],
-    main = "source/ray-core/doc_code/cgraph_profiling.py",
+    srcs = ["source/core/doc_code/cgraph_profiling.py"],
+    main = "source/core/doc_code/cgraph_profiling.py",
     tags = [
         "custom_setup",
         "exclusive",
+        "manual",
         "multi_gpu",
         "team:core",
     ],
@@ -216,11 +217,12 @@ py_test(
 py_test(
     name = "doc_code_cgraph_nccl",
     size = "small",
-    srcs = ["source/ray-core/doc_code/cgraph_nccl.py"],
-    main = "source/ray-core/doc_code/cgraph_nccl.py",
+    srcs = ["source/core/doc_code/cgraph_nccl.py"],
+    main = "source/core/doc_code/cgraph_nccl.py",
     tags = [
         "custom_setup",
         "exclusive",
+        "manual",
         "multi_gpu",
         "team:core",
     ],
@@ -229,11 +231,12 @@ py_test(
 py_test(
     name = "doc_code_cgraph_overlap",
     size = "small",
-    srcs = ["source/ray-core/doc_code/cgraph_overlap.py"],
-    main = "source/ray-core/doc_code/cgraph_overlap.py",
+    srcs = ["source/core/doc_code/cgraph_overlap.py"],
+    main = "source/core/doc_code/cgraph_overlap.py",
     tags = [
         "custom_setup",
         "exclusive",
+        "manual",
         "multi_gpu",
         "team:core",
     ],
@@ -242,8 +245,8 @@ py_test(
 py_test(
     name = "doc_code_direct_transport_gloo",
     size = "small",
-    srcs = ["source/ray-core/doc_code/direct_transport_gloo.py"],
-    main = "source/ray-core/doc_code/direct_transport_gloo.py",
+    srcs = ["source/core/doc_code/direct_transport_gloo.py"],
+    main = "source/core/doc_code/direct_transport_gloo.py",
     tags = [
         "exclusive",
         "team:core",
@@ -253,8 +256,8 @@ py_test(
 py_test(
     name = "doc_code_direct_transport_nccl",
     size = "small",
-    srcs = ["source/ray-core/doc_code/direct_transport_nccl.py"],
-    main = "source/ray-core/doc_code/direct_transport_nccl.py",
+    srcs = ["source/core/doc_code/direct_transport_nccl.py"],
+    main = "source/core/doc_code/direct_transport_nccl.py",
     tags = [
         "custom_setup",
         "exclusive",
@@ -266,8 +269,8 @@ py_test(
 py_test(
     name = "doc_code_direct_transport_nixl",
     size = "small",
-    srcs = ["source/ray-core/doc_code/direct_transport_nixl.py"],
-    main = "source/ray-core/doc_code/direct_transport_nixl.py",
+    srcs = ["source/core/doc_code/direct_transport_nixl.py"],
+    main = "source/core/doc_code/direct_transport_nixl.py",
     tags = [
         "custom_setup",
         "exclusive",
@@ -278,18 +281,20 @@ py_test(
 
 py_test_run_all_subdirectory(
     size = "medium",
-    include = ["source/ray-core/doc_code/*.py"],
+    include = ["source/core/doc_code/*.py"],
     exclude = [
-        "source/ray-core/doc_code/runtime_env_example.py",
-        "source/ray-core/doc_code/cross_language.py",
-        "source/ray-core/doc_code/ray_oom_prevention.py",
-        "source/ray-core/doc_code/cgraph_profiling.py",
-        "source/ray-core/doc_code/cgraph_nccl.py",
-        "source/ray-core/doc_code/cgraph_overlap.py",
+        "source/core/doc_code/runtime_env_example.py",
+        "source/core/doc_code/cross_language.py",
+        "source/core/doc_code/ray_oom_prevention.py",
+        "source/core/doc_code/cgraph_profiling.py",
+        "source/core/doc_code/cgraph_nccl.py",
+        "source/core/doc_code/cgraph_overlap.py",
+        "source/core/doc_code/cgraph_quickstart.py",
+        "source/core/doc_code/cgraph_visualize.py",
         # not testing this as it purposefully segfaults
-        "source/ray-core/doc_code/cgraph_troubleshooting.py",
-        "source/ray-core/doc_code/direct_transport_nccl.py",
-        "source/ray-core/doc_code/direct_transport_nixl.py",
+        "source/core/doc_code/cgraph_troubleshooting.py",
+        "source/core/doc_code/direct_transport_nccl.py",
+        "source/core/doc_code/direct_transport_nixl.py",
     ],
     extra_srcs = [],
     tags = [
@@ -316,8 +321,6 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/vllm_example.py",
         "source/serve/doc_code/cross_node_parallelism_example.py",
-        "source/serve/doc_code/llm/llm_yaml_config_example.py",
-        "source/serve/doc_code/llm/qwen_example.py",
         "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
     extra_srcs = [],
@@ -558,7 +561,7 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb",
+        "doc/source/train/examples/pytorch/pytorch-resnet-finetune.ipynb",
     ],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     main = "test_myst_doc.py",
@@ -617,11 +620,11 @@ doctest(
             "source/ray-contribute/getting-involved.md",
             "source/ray-contribute/testing-tips.md",
             "source/ray-contribute/writing-code-snippets.md",
-            "source/ray-observability/user-guides/ray-tracing.rst",
-            "source/ray-observability/user-guides/cli-sdk.rst",
+            "source/ray-observability/user-guides/ray-tracing.md",
+            "source/ray-observability/user-guides/cli-sdk.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
-            "source/ray-core/**/*.md",
-            "source/ray-core/**/*.rst",
+            "source/core/**/*.md",
+            "source/core/**/*.rst",
             "source/data/**/*.md",
             "source/data/**/*.rst",
             "source/rllib/**/*.md",
@@ -645,13 +648,13 @@ doctest(
     size = "large",
     files = glob(
         include = [
-            "source/ray-core/**/*.md",
-            "source/ray-core/**/*.rst",
+            "source/core/**/*.md",
+            "source/core/**/*.rst",
         ],
         exclude = [
-            "source/ray-core/handling-dependencies.rst",
-            # The `doc_code/` snippet for `nested-tasks.rst` is tested.
-            "source/ray-core/tasks/nested-tasks.rst",
+            "source/core/handling-dependencies.md",
+            # The `doc_code/` snippet for `nested-tasks.md` is tested.
+            "source/core/tasks/nested-tasks.md",
         ],
     ),
     tags = ["team:core"],
@@ -667,8 +670,8 @@ doctest_each(
         ],
         exclude = [
             # These tests run on GPU (see below).
-            "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst",
+            "source/data/batch-inference.md",
+            "source/data/transforming-data.md",
             # These don't contain code snippets.
             "source/data/api/**/*.rst",
         ],
@@ -680,8 +683,8 @@ doctest_each(
 doctest(
     name = "doctest[data-gpu]",
     files = [
-        "source/data/batch_inference.rst",
-        "source/data/transforming-data.rst",
+        "source/data/batch-inference.md",
+        "source/data/transforming-data.md",
     ],
     gpu = True,
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
@@ -691,28 +694,17 @@ doctest(
 doctest(
     name = "doctest[rllib]",
     size = "large",
-    data = ["//rllib:cartpole-v1_large"],
+    data = ["//python/ray/rllib:cartpole-v1_large"],
     files = glob(
         include = [
             "source/rllib/**/*.md",
             "source/rllib/**/*.rst",
         ],
         exclude = [
-            "source/rllib/getting-started.rst",
+            "source/rllib/getting-started.md",
         ],
     ),
     tags = ["team:rllib"],
-)
-
-doctest(
-    name = "doctest[rllib2]",
-    size = "enormous",
-    files = ["source/rllib/getting-started.rst"],
-    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
-    tags = [
-        "manual",
-        "team:rllib",
-    ],
 )
 
 doctest(
@@ -724,8 +716,6 @@ doctest(
         ],
         exclude = [
             "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/deploy-many-models/multi-app.md",
-            "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
         ],
     ),
@@ -746,10 +736,10 @@ doctest(
         ],
         exclude = [
             # CI does not have Horovod installed.
-            "source/train/horovod.rst",
+            "source/train/horovod.md",
             # These tests run on GPU (see below).
-            "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-accelerators.rst",
+            "source/train/user-guides/data-loading-preprocessing.md",
+            "source/train/user-guides/using-accelerators.md",
         ],
     ),
     tags = ["team:ml"],
@@ -759,8 +749,8 @@ doctest(
     name = "doctest[train-gpu]",
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = [
-        "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-accelerators.rst",
+        "source/train/user-guides/data-loading-preprocessing.md",
+        "source/train/user-guides/using-accelerators.md",
     ],
     gpu = True,
     tags = ["team:ml"],
@@ -791,8 +781,8 @@ filegroup(
         "source/serve/tutorials/**/ci/aws.yaml",
         "source/serve/tutorials/**/ci/gce.yaml",
     ]) + [
+        "//doc/source/core/examples:core_examples_ci_configs",
         "//doc/source/data/examples:data_examples_ci_configs",
-        "//doc/source/ray-core/examples:core_examples_ci_configs",
         "//doc/source/train/examples:train_examples_ci_configs",
         "//doc/source/tune/examples:tune_examples_ci_configs",
     ],

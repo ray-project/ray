@@ -7,13 +7,13 @@
 - file: ray-overview/installation
   title: "Library"
   sections:
-    - file: ray-core/walkthrough
+    - file: core/index
       title: Ray Core
       caption: Scale general Python applications
     - file: data/data
       title: Ray Data
       caption: Scale data ingest and preprocessing
-    - file: train/train
+    - file: train/index
       title: Ray Train
       caption: Scale machine learning training
     - file: tune/index

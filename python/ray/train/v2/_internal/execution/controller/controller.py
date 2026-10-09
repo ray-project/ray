@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -157,7 +157,7 @@ class TrainController:
             )
         else:
             validation_manager = None
-        report_handler = ReportCallbackHandler(
+        self._report_handler = ReportCallbackHandler(
             report_callbacks=(
                 [self._checkpoint_manager]
                 + ([validation_manager] if validation_manager else [])
@@ -177,7 +177,7 @@ class TrainController:
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
-            [report_handler]
+            [self._report_handler]
             + ([validation_manager] if validation_manager else [])
             + [
                 c
@@ -314,6 +314,7 @@ class TrainController:
             self._start_worker_group(
                 num_workers=decision.num_workers,
                 resources_per_worker=decision.resources_per_worker,
+                reserved_label_selectors=decision.label_selectors,
             )
 
         return TrainControllerLoopIterationResult(
@@ -437,12 +438,19 @@ class TrainController:
         self._latest_poll_time = time_monotonic()
         return status
 
-    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> None:
+    def _start_worker_group(
+        self,
+        num_workers: int,
+        resources_per_worker: dict,
+        reserved_label_selectors: Optional[List[Dict[str, str]]] = None,
+    ) -> None:
         """Start the worker group and launch the train function.
 
         Args:
             num_workers: The number of workers to start.
             resources_per_worker: The resources per worker to start.
+            reserved_label_selectors: Per-worker pins to the
+                AutoscalingCoordinator reservation, from the scaling decision.
 
         Raises:
             Exception: If the worker group failed to start.
@@ -463,6 +471,25 @@ class TrainController:
                         f"with label_selector returned by user-specified callback {selector}"
                     )
                 label_selector = [selector.copy() for _ in range(num_workers)]
+
+        # Pin workers to AutoscalingCoordinator reservations, so that two
+        # concurrent runs aren't both scheduled onto the same capacity. The
+        # scaling policy builds the pins from the same reservation snapshot that
+        # chose `num_workers` (see `ScalingPolicy._should_pin_to_reservation`
+        # for when it skips pinning).
+        # A `label_selector` from a callback still wins: the coordinator picks
+        # nodes by resource fit and never matches `label_selectors` against node
+        # labels, so its pins can name a node that violates the selector.
+        # Combining the two would produce an unsatisfiable selector and a
+        # placement group that never becomes ready.
+        # TODO: Reconcile w/ ray core later
+        if reserved_label_selectors is not None and not label_selector:
+            assert len(reserved_label_selectors) == num_workers
+            # `placement_strategy` is deliberately left alone: the pins already
+            # determine the layout, and keeping the strategy lets the placement
+            # group reject a layout that contradicts it rather than silently
+            # downgrading e.g. STRICT_SPREAD to co-located workers.
+            label_selector = reserved_label_selectors
 
         # Calculate num_slices for the worker group if using TPU.
         num_slices = 1
@@ -667,6 +694,7 @@ class TrainController:
             # PreemptingState to wait out the grace window before restarting.
             preemption_info = worker_group_status.get_preemption_info()
             if preemption_info is not None:
+                self._relax_collectives_during_preemption(preemption_info)
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -732,18 +760,85 @@ class TrainController:
     def _is_preemption_deadline_exceeded(
         preemption_info: "PreemptionInfo",
         detected_at_s: float,
+        extra_grace_s: float = 0.0,
     ) -> bool:
-        """Whether the preemption deadline has passed.
+        """Whether the preemption deadline, plus any extra grace, has passed.
 
         `deadline_ms` is when the preempted node will be taken away (epoch ms),
         used as-is. When it is unknown (None), fall back to
         `DEFAULT_PREEMPTION_DEADLINE_S` after the preemption was first detected
         so we don't wait forever.
+
+        `extra_grace_s` keeps the surviving workers running past that point, so
+        a checkpoint that outlasts the drain window still has a chance to
+        finish. The preempted node is already gone by then, so this only
+        delays the restart.
         """
         deadline_ms = preemption_info.deadline_ms
         if deadline_ms is None:
             deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
-        return time_seconds() * 1000 >= deadline_ms
+        return time_seconds() * 1000 >= deadline_ms + extra_grace_s * 1000
+
+    def _relax_collectives_during_preemption(
+        self, preemption_info: "PreemptionInfo"
+    ) -> None:
+        """Let healthy ranks finish collectives without the preempted ones.
+
+        Narrows the `SynchronizationActor` and the `ReportCallbackHandler`
+        consolidation gate to the surviving ranks, so a worker reclaimed before
+        it reaches `report()` does not strand the rest. Only Ray Train's own
+        preemption and checkpoint collectives opt in; the public
+        `ray.train.collective` APIs stay strict.
+
+        """
+        if not self._run_config.failure_config.relax_collectives_on_preemption:
+            return
+
+        worker_group = self.get_worker_group()
+        if worker_group is None:
+            return
+
+        preempted = set(preemption_info.preempted_ranks)
+        surviving = sorted(set(range(len(worker_group))) - preempted)
+
+        # TODO(lehui): make rank 0 relaxable too. It is excluded because
+        # `SynchronizationActor` keeps a single `_reduced_data`, written by
+        # rank 0, so releasing without it broadcasts `None`. Lifting this means
+        # keeping each rank's payload and picking the lowest expected rank
+        # instead.
+        if 0 in preempted:
+            logger.info(
+                "Rank 0 is being preempted (preempted ranks: %s), so "
+                "`relax_collectives_during_preemption` is ignored.",
+                sorted(preempted),
+            )
+            return
+        if not surviving:
+            return
+
+        try:
+            applied = worker_group.set_required_barrier_ranks(surviving)
+        except Exception:
+            # Never let this wedge the control loop: without it the survivors
+            # just fall back to the last committed checkpoint, as before.
+            logger.warning(
+                "Failed to relax the synchronization barrier to ranks %s.",
+                surviving,
+                exc_info=True,
+            )
+            return
+
+        if not applied:
+            return
+
+        self._report_handler.set_required_ranks(surviving)
+        logger.info(
+            "Preemption detected on ranks %s. Relaxed the report barrier to "
+            "ranks %s so they can commit a just-in-time checkpoint without "
+            "them.",
+            sorted(preempted),
+            surviving,
+        )
 
     async def _handle_preempting_state(
         self, controller_state: PreemptingState
@@ -783,7 +878,9 @@ class TrainController:
         )
 
         deadline_exceeded = self._is_preemption_deadline_exceeded(
-            preemption_info, controller_state.detected_at_s
+            preemption_info,
+            controller_state.detected_at_s,
+            self._run_config.failure_config.preemption_grace_s,
         )
         if worker_group_status.finished or deadline_exceeded:
             preemption_error = PreemptionError(

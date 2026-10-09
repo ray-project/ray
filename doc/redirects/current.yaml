@@ -1,5 +1,62 @@
 schema_version: 1
 redirects:
+- from: /cluster/kubernetes/benchmarks.html
+  to: /kuberay/benchmarks/index.html
+  type: page
+- from: /cluster/kubernetes/examples.html
+  to: /kuberay/examples/index.html
+  type: page
+- from: /cluster/kubernetes/getting-started.html
+  to: /kuberay/getting-started/index.html
+  type: page
+- from: /cluster/kubernetes/references.html
+  to: /kuberay/references/index.html
+  type: page
+- from: /cluster/kubernetes/troubleshooting.html
+  to: /kuberay/troubleshooting/index.html
+  type: page
+- from: /cluster/kubernetes/user-guides.html
+  to: /kuberay/user-guides/index.html
+  type: page
+- from: /cluster/kubernetes/k8s-ecosystem.html
+  to: /kuberay/ecosystem/index.html
+  type: page
+- from: /cluster/kubernetes/k8s-ecosystem/*
+  to: /kuberay/ecosystem/:splat
+  type: page
+- from: /cluster/kubernetes/getting-started/kuberay-operator-installation.html
+  to: /kuberay/getting-started/operator-installation.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-auth.html
+  to: /kuberay/user-guides/auth.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-auth-rbac.html
+  to: /kuberay/user-guides/auth-rbac.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-dashboard.html
+  to: /kuberay/user-guides/dashboard.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-ft.html
+  to: /kuberay/user-guides/gcs-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-persistent-ft.html
+  to: /kuberay/user-guides/gcs-persistent-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-rocksdb-ft.html
+  to: /kuberay/user-guides/gcs-rocksdb-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-history-server.html
+  to: /kuberay/user-guides/history-server.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-mtls.html
+  to: /kuberay/user-guides/mtls.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-serve-high-throughput.html
+  to: /kuberay/user-guides/serve-high-throughput.html
+  type: page
+- from: /cluster/kubernetes/*
+  to: /kuberay/:splat
+  type: page
 - from: /train/user-guides/using-gpus.html
   to: /train/user-guides/using-accelerators.html
   type: page
@@ -10,7 +67,7 @@ redirects:
   to: /serve/llm/user-guides/prefill-decode.html
   type: page
 - from: /serve/llm/api.html
-  to: /serve/api/index.html#llm-api
+  to: /serve/api/llm.html
   type: page
 - from: /serve/tutorials/intel-habana-gaudi-inference.html
   to: /serve/tutorials/intel-gaudi-inference.html
@@ -37,6 +94,204 @@ redirects:
   type: page
 - from: /ray-observability/monitoring-debugging/monitoring-debugging.html
   to: /ray-observability/index.html
+  type: page
+- from: /data/data.html
+  to: /data/index.html
+  type: page
+- from: /data/batch_inference.html
+  to: /data/batch-inference.html
+  type: page
+- from: /data/data-internals.html
+  to: /data/internals.html
+  type: page
+- from: /data/examples/llm_batch_inference_text/content/README.html
+  to: /_collections/data/examples/llm_batch_inference_text/README.html
+  type: page
+- from: /data/examples/llm_batch_inference_vision/content/README.html
+  to: /_collections/data/examples/llm_batch_inference_vision/README.html
+  type: page
+- from: /data/examples/unstructured_data_ingestion/content/unstructured_data_ingestion.html
+  to: /_collections/data/examples/unstructured_data_ingestion/README.html
+  type: page
+- from: /ray-overview/examples/e2e-audio/README.html
+  to: /_collections/ray-overview/examples/e2e-audio/README.html
+  type: page
+- from: /ray-overview/examples/e2e-multimodal-ai-workloads/README.html
+  to: /_collections/ray-overview/examples/e2e-multimodal-ai-workloads/README.html
+  type: page
+- from: /ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/01-Batch-Inference.html
+  to: /_collections/ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/01-Batch-Inference.html
+  type: page
+- from: /ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/02-Distributed-Training.html
+  to: /_collections/ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/02-Distributed-Training.html
+  type: page
+- from: /ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/03-Online-Serving.html
+  to: /_collections/ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/03-Online-Serving.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/README.html
+  to: /_collections/ray-overview/examples/e2e-rag/README.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/notebooks/01_(Optional)_Regular_Document_Processing_Pipeline.html
+  to: /_collections/ray-overview/examples/e2e-rag/notebooks/01_(Optional)_Regular_Document_Processing_Pipeline.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/notebooks/02_Scalable_RAG_Data_Ingestion_with_Ray_Data.html
+  to: /_collections/ray-overview/examples/e2e-rag/notebooks/02_Scalable_RAG_Data_Ingestion_with_Ray_Data.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/notebooks/03_Deploy_LLM_with_Ray_Serve.html
+  to: /_collections/ray-overview/examples/e2e-rag/notebooks/03_Deploy_LLM_with_Ray_Serve.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/notebooks/04_Build_Basic_RAG_Chatbot.html
+  to: /_collections/ray-overview/examples/e2e-rag/notebooks/04_Build_Basic_RAG_Chatbot.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/notebooks/05_Improve_RAG_with_Prompt_Engineering.html
+  to: /_collections/ray-overview/examples/e2e-rag/notebooks/05_Improve_RAG_with_Prompt_Engineering.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/notebooks/06_(Optional)_Evaluate_RAG_with_Online_Inference.html
+  to: /_collections/ray-overview/examples/e2e-rag/notebooks/06_(Optional)_Evaluate_RAG_with_Online_Inference.html
+  type: page
+- from: /ray-overview/examples/e2e-rag/notebooks/07_Evaluate_RAG_with_Ray_Data_LLM_Batch_inference.html
+  to: /_collections/ray-overview/examples/e2e-rag/notebooks/07_Evaluate_RAG_with_Ray_Data_LLM_Batch_inference.html
+  type: page
+- from: /ray-overview/examples/e2e-timeseries/README.html
+  to: /_collections/ray-overview/examples/e2e-timeseries/README.html
+  type: page
+- from: /ray-overview/examples/e2e-timeseries/e2e_timeseries/01-Distributed-Training.html
+  to: /_collections/ray-overview/examples/e2e-timeseries/e2e_timeseries/01-Distributed-Training.html
+  type: page
+- from: /ray-overview/examples/e2e-timeseries/e2e_timeseries/02-Validation.html
+  to: /_collections/ray-overview/examples/e2e-timeseries/e2e_timeseries/02-Validation.html
+  type: page
+- from: /ray-overview/examples/e2e-timeseries/e2e_timeseries/03-Serving.html
+  to: /_collections/ray-overview/examples/e2e-timeseries/e2e_timeseries/03-Serving.html
+  type: page
+- from: /ray-overview/examples/e2e-xgboost/README.html
+  to: /_collections/ray-overview/examples/e2e-xgboost/README.html
+  type: page
+- from: /ray-overview/examples/e2e-xgboost/notebooks/01-Distributed_Training.html
+  to: /_collections/ray-overview/examples/e2e-xgboost/notebooks/01-Distributed_Training.html
+  type: page
+- from: /ray-overview/examples/e2e-xgboost/notebooks/02-Validation.html
+  to: /_collections/ray-overview/examples/e2e-xgboost/notebooks/02-Validation.html
+  type: page
+- from: /ray-overview/examples/e2e-xgboost/notebooks/03-Serving.html
+  to: /_collections/ray-overview/examples/e2e-xgboost/notebooks/03-Serving.html
+  type: page
+- from: /ray-overview/examples/entity-recognition-with-llms/README.html
+  to: /_collections/ray-overview/examples/entity-recognition-with-llms/README.html
+  type: page
+- from: /ray-overview/examples/langchain_agent_ray_serve/content/README.html
+  to: /_collections/ray-overview/examples/langchain_agent_ray_serve/content/README.html
+  type: page
+- from: /ray-overview/examples/mcp-ray-serve/01 Deploy_custom_mcp_in_streamable_http_with_ray_serve.html
+  to: /_collections/ray-overview/examples/mcp-ray-serve/01 Deploy_custom_mcp_in_streamable_http_with_ray_serve.html
+  type: page
+- from: /ray-overview/examples/mcp-ray-serve/02 Build_mcp_gateway_with_existing_ray_serve_apps.html
+  to: /_collections/ray-overview/examples/mcp-ray-serve/02 Build_mcp_gateway_with_existing_ray_serve_apps.html
+  type: page
+- from: /ray-overview/examples/mcp-ray-serve/03 Deploy_single_mcp_stdio_docker_image_with_ray_serve.html
+  to: /_collections/ray-overview/examples/mcp-ray-serve/03 Deploy_single_mcp_stdio_docker_image_with_ray_serve.html
+  type: page
+- from: /ray-overview/examples/mcp-ray-serve/04 Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.html
+  to: /_collections/ray-overview/examples/mcp-ray-serve/04 Deploy_multiple_mcp_stdio_docker_images_with_ray_serve.html
+  type: page
+- from: /ray-overview/examples/mcp-ray-serve/05 (Optional) Build_docker_image_for_mcp_server.html
+  to: /_collections/ray-overview/examples/mcp-ray-serve/05 (Optional) Build_docker_image_for_mcp_server.html
+  type: page
+- from: /ray-overview/examples/mcp-ray-serve/README.html
+  to: /_collections/ray-overview/examples/mcp-ray-serve/README.html
+  type: page
+- from: /ray-overview/examples/multi_agent_a2a/content/README.html
+  to: /_collections/ray-overview/examples/multi_agent_a2a/README.html
+  type: page
+- from: /ray-overview/examples/object-detection/1.object_detection_train.html
+  to: /_collections/ray-overview/examples/object-detection/1.object_detection_train.html
+  type: page
+- from: /ray-overview/examples/object-detection/2.object_detection_batch_inference_eval.html
+  to: /_collections/ray-overview/examples/object-detection/2.object_detection_batch_inference_eval.html
+  type: page
+- from: /ray-overview/examples/object-detection/3.video_processing_batch_inference.html
+  to: /_collections/ray-overview/examples/object-detection/3.video_processing_batch_inference.html
+  type: page
+- from: /ray-overview/examples/object-detection/4.object_detection_serve.html
+  to: /_collections/ray-overview/examples/object-detection/4.object_detection_serve.html
+  type: page
+- from: /ray-overview/examples/object-detection/README.html
+  to: /_collections/ray-overview/examples/object-detection/README.html
+  type: page
+- from: /serve/tutorials/asynchronous-inference/content/asynchronous-inference.html
+  to: /_collections/serve/tutorials/asynchronous-inference/asynchronous-inference.html
+  type: page
+- from: /serve/tutorials/deployment-serve-llm/content/gpt-oss/README.html
+  to: /_collections/serve/tutorials/deployment-serve-llm/gpt-oss/README.html
+  type: page
+- from: /serve/tutorials/deployment-serve-llm/content/hybrid-reasoning-llm/README.html
+  to: /_collections/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm/README.html
+  type: page
+- from: /serve/tutorials/deployment-serve-llm/content/large-size-llm/README.html
+  to: /_collections/serve/tutorials/deployment-serve-llm/large-size-llm/README.html
+  type: page
+- from: /serve/tutorials/deployment-serve-llm/content/medium-size-llm/README.html
+  to: /_collections/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html
+  type: page
+- from: /serve/tutorials/deployment-serve-llm/content/reasoning-llm/README.html
+  to: /_collections/serve/tutorials/deployment-serve-llm/reasoning-llm/README.html
+  type: page
+- from: /serve/tutorials/deployment-serve-llm/content/small-size-llm/README.html
+  to: /_collections/serve/tutorials/deployment-serve-llm/small-size-llm/README.html
+  type: page
+- from: /serve/tutorials/deployment-serve-llm/content/vision-llm/README.html
+  to: /_collections/serve/tutorials/deployment-serve-llm/vision-llm/README.html
+  type: page
+- from: /serve/tutorials/model_composition_recsys/content/README.html
+  to: /_collections/serve/tutorials/model-composition-recsys/README.html
+  type: page
+- from: /serve/tutorials/model_multiplexing_forecast/content/README.html
+  to: /_collections/serve/tutorials/model_multiplexing_forecast/README.html
+  type: page
+- from: /train/examples/pytorch/deepspeed_finetune/README.html
+  to: /_collections/train/examples/pytorch/deepspeed_finetune/README.html
+  type: page
+- from: /train/examples/pytorch/distributing-pytorch/README.html
+  to: /_collections/train/examples/pytorch/distributing-pytorch/README.html
+  type: page
+- from: /train/examples/pytorch/pytorch-fsdp/README.html
+  to: /_collections/train/examples/pytorch/pytorch-fsdp/README.html
+  type: page
+- from: /train/examples/pytorch/pytorch-profiling/README.html
+  to: /_collections/train/examples/pytorch/pytorch-profiling/README.html
+  type: page
+- from: /train/examples/pytorch/tensor_parallel_autotp/README.html
+  to: /_collections/train/examples/pytorch/tensor_parallel_autotp/README.html
+  type: page
+- from: /train/examples/pytorch/tensor_parallel_dtensor/README.html
+  to: /_collections/train/examples/pytorch/tensor_parallel_dtensor/README.html
+  type: page
+- from: /train/tutorials/content/README.html
+  to: /_collections/train/tutorials/README.html
+  type: page
+- from: /train/tutorials/content/getting-started/01_02_03_intro_to_ray_train.html
+  to: /_collections/train/tutorials/getting-started/01_02_03_intro_to_ray_train.html
+  type: page
+- from: /train/tutorials/content/workload-patterns/04a_vision_pattern.html
+  to: /_collections/train/tutorials/workload-patterns/04a_vision_pattern.html
+  type: page
+- from: /train/tutorials/content/workload-patterns/04b_tabular_workload_pattern.html
+  to: /_collections/train/tutorials/workload-patterns/04b_tabular_workload_pattern.html
+  type: page
+- from: /train/tutorials/content/workload-patterns/04c_time_series_workload_pattern.html
+  to: /_collections/train/tutorials/workload-patterns/04c_time_series_workload_pattern.html
+  type: page
+- from: /train/tutorials/content/workload-patterns/04d1_generative_cv_pattern.html
+  to: /_collections/train/tutorials/workload-patterns/04d1_generative_cv_pattern.html
+  type: page
+- from: /train/tutorials/content/workload-patterns/04d2_policy_learning_pattern.html
+  to: /_collections/train/tutorials/workload-patterns/04d2_policy_learning_pattern.html
+  type: page
+- from: /train/tutorials/content/workload-patterns/04e_rec_sys_workload_pattern.html
+  to: /_collections/train/tutorials/workload-patterns/04e_rec_sys_workload_pattern.html
+  type: page
+- from: /tune/examples/tune_pytorch_asha/content/tune_pytorch_asha.html
+  to: /_collections/tune/examples/tune_pytorch_asha/README.html
   type: page
 - from: /data/dataset.html
   to: /data/api/dataset.html
@@ -153,10 +408,10 @@ redirects:
   to: /rllib/getting-started.html
   type: page
 - from: /rllib-models.html
-  to: /rllib/rl-modules.html
+  to: /rllib/rllib-models.html
   type: page
 - from: /rllib-sample-collection.html
-  to: /rllib/examples.html
+  to: /rllib/rllib-examples.html
   type: page
 - from: /rllib-concepts.html
   to: /rllib/key-concepts.html
@@ -252,7 +507,7 @@ redirects:
   to: /rllib/index.html
   type: page
 - from: /placement-group.html
-  to: /en/master/ray-core/scheduling/placement-group.html
+  to: /en/master/core/scheduling/placement-group.html
   type: page
 - from: /joblib.html
   to: /ray-more-libs/joblib.html
@@ -261,7 +516,7 @@ redirects:
   to: /ray-contribute/development.html
   type: page
 - from: /rllib-env.html
-  to: /rllib/env.html
+  to: /rllib/rllib-env.html
   type: page
 - from: /fault-tolerance.html
   to: /ray-core/fault-tolerance.html
@@ -345,16 +600,16 @@ redirects:
   to: /ray-core/walkthrough.html
   type: page
 - from: /rllib-offline.html
-  to: /rllib/offline.html
+  to: /rllib/rllib-offline.html
   type: page
 - from: /package-ref.html
   to: /ray-core/api/index.html
   type: page
 - from: /rllib-dev.html
-  to: /rllib/dev.html
+  to: /rllib/rllib-dev.html
   type: page
 - from: /rllib-algorithms.html
-  to: /rllib/algorithms.html
+  to: /rllib/rllib-algorithms.html
   type: page
 - from: /ray-libraries.html
   to: /ray-overview/ray-libraries.html
@@ -387,7 +642,7 @@ redirects:
   to: /tune/index.html
   type: page
 - from: /rllib-examples.html
-  to: /rllib/examples.html
+  to: /rllib/rllib-examples.html
   type: page
 - from: /iter.html
   to: /index.html
@@ -564,6 +819,9 @@ redirects:
   to: /rllib/package_ref/env/doc/:splat
   type: page
 - from: /rllib/package_ref/*
+  to: /rllib/api/:splat
+  type: page
+- from: /rllib/api/*
   to: /rllib/package_ref/index.html
   type: page
 - from: /serve/api/*
@@ -575,6 +833,12 @@ redirects:
 - from: /ray-air/examples/*
   to: /ray-overview/examples.html
   type: page
+- from: /ray-air/getting-started.html
+  to: /ray-overview/ml-infrastructure.html
+  type: page
+- from: /ray-air/deployment.html
+  to: /ray-overview/ml-infrastructure.html#deploying-ray-for-ml-platforms
+  type: page
 - from: /ray-air/*
   to: /ray-air/getting-started.html
   type: page
@@ -583,6 +847,90 @@ redirects:
   type: page
 - from: /tune/api/*
   to: /tune/api/api.html
+  type: page
+- from: /train/train.html
+  to: /train/index.html
+  type: page
+- from: /train/user-guides.html
+  to: /train/user-guides/index.html
+  type: page
+- from: /train/examples/accelerate/accelerate_example.html
+  to: /train/examples/accelerate/accelerate-example.html
+  type: page
+- from: /train/examples/deepspeed/deepspeed_example.html
+  to: /train/examples/deepspeed/deepspeed-example.html
+  type: page
+- from: /train/examples/deepspeed/gptj_deepspeed_fine_tuning.html
+  to: /train/examples/deepspeed/gptj-deepspeed-fine-tuning.html
+  type: page
+- from: /train/examples/horovod/horovod_example.html
+  to: /train/examples/horovod/horovod-example.html
+  type: page
+- from: /train/examples/intel_gaudi/bert.html
+  to: /train/examples/intel-gaudi/bert.html
+  type: page
+- from: /train/examples/intel_gaudi/llama.html
+  to: /train/examples/intel-gaudi/llama.html
+  type: page
+- from: /train/examples/intel_gaudi/llama_pretrain.html
+  to: /train/examples/intel-gaudi/llama-pretrain.html
+  type: page
+- from: /train/examples/intel_gaudi/resnet.html
+  to: /train/examples/intel-gaudi/resnet.html
+  type: page
+- from: /train/examples/intel_gaudi/sd.html
+  to: /train/examples/intel-gaudi/sd.html
+  type: page
+- from: /train/examples/jax/intro_to_jax_trainer/README.html
+  to: /train/examples/jax/intro-to-jax-trainer/README.html
+  type: page
+- from: /train/examples/lightning/dolly_lightning_fsdp_finetuning.html
+  to: /train/examples/lightning/dolly-lightning-fsdp-finetuning.html
+  type: page
+- from: /train/examples/lightning/lightning_cola_advanced.html
+  to: /train/examples/lightning/lightning-cola-advanced.html
+  type: page
+- from: /train/examples/lightning/lightning_mnist_example.html
+  to: /train/examples/lightning/lightning-mnist-example.html
+  type: page
+- from: /train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune.html
+  to: /train/examples/lightning/vicuna-13b-lightning-deepspeed-finetune.html
+  type: page
+- from: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train.html
+  to: /train/examples/pytorch/convert-existing-pytorch-code-to-ray-train.html
+  type: page
+- from: /train/examples/pytorch/dreambooth_finetuning.html
+  to: /train/examples/pytorch/dreambooth-finetuning.html
+  type: page
+- from: /train/examples/pytorch/pytorch_resnet_finetune.html
+  to: /train/examples/pytorch/pytorch-resnet-finetune.html
+  type: page
+- from: /train/examples/pytorch/torch_detection.html
+  to: /train/examples/pytorch/torch-detection.html
+  type: page
+- from: /train/examples/pytorch/torch_fashion_mnist_example.html
+  to: /train/examples/pytorch/torch-fashion-mnist-example.html
+  type: page
+- from: /train/examples/pytorch/torch_regression_example.html
+  to: /train/examples/pytorch/torch-regression-example.html
+  type: page
+- from: /train/examples/tf/tensorflow_mnist_example.html
+  to: /train/examples/tf/tensorflow-mnist-example.html
+  type: page
+- from: /train/examples/tf/tensorflow_regression_example.html
+  to: /train/examples/tf/tensorflow-regression-example.html
+  type: page
+- from: /train/examples/transformers/huggingface_text_classification.html
+  to: /train/examples/transformers/huggingface-text-classification.html
+  type: page
+- from: /train/examples/transformers/transformer_reinforcement_learning/README.html
+  to: /train/examples/transformers/transformer-reinforcement-learning/README.html
+  type: page
+- from: /train/examples/transformers/transformers_torch_trainer_basic.html
+  to: /train/examples/transformers/transformers-torch-trainer-basic.html
+  type: page
+- from: /train/user-guides/local_mode.html
+  to: /train/user-guides/local-mode.html
   type: page
 - from: /train/api/*
   to: /train/api/api.html
@@ -600,16 +948,133 @@ redirects:
   to: https://github.com/ray-project/ray
   type: page
   description: Sphinx source-view pages have no docs equivalent so they land on the Ray source code
-- from: /cluster/kubernetes/*
+- from: /kuberay/*
   to: /cluster/kubernetes/index.html
   type: page
 - from: /serve/tutorials/*
   to: /serve/index.html
   type: page
-- from: /ray-core/examples/*
+- from: /ray-core/walkthrough.html
+  to: /core/index.html
+  type: page
+- from: /ray-core/runtime_env_auth.html
+  to: /core/runtime-env-auth.html
+  type: page
+- from: /ray-core/actors/async_api.html
+  to: /core/actors/async-api.html
+  type: page
+- from: /ray-core/actors/concurrency_group_api.html
+  to: /core/actors/concurrency-group-api.html
+  type: page
+- from: /ray-core/tasks/dynamic_generators.html
+  to: /core/tasks/dynamic-generators.html
+  type: page
+- from: /ray-core/examples/monte_carlo_pi.html
+  to: /core/examples/monte-carlo-pi.html
+  type: page
+- from: /ray-core/compiled-graph/ray-compiled-graph.html
+  to: /core/compiled-graph/index.html
+  type: page
+- from: /ray-core/direct-transport/direct-transport.html
+  to: /core/direct-transport/index.html
+  type: page
+- from: /ray-core/actors.html
+  to: /core/actors/index.html
+  type: page
+- from: /ray-core/objects.html
+  to: /core/objects/index.html
+  type: page
+- from: /ray-core/tasks.html
+  to: /core/tasks/index.html
+  type: page
+- from: /ray-core/fault-tolerance.html
+  to: /core/fault-tolerance/index.html
+  type: page
+- from: /ray-core/internals.html
+  to: /core/internals/index.html
+  type: page
+- from: /ray-core/examples/overview.html
+  to: /core/examples/index.html
+  type: page
+- from: /ray-core/fault_tolerance/*
+  to: /core/fault-tolerance/:splat
+  type: page
+- from: /core/walkthrough.html
+  to: /core/index.html
+  type: page
+- from: /core/runtime_env_auth.html
+  to: /core/runtime-env-auth.html
+  type: page
+- from: /core/actors/async_api.html
+  to: /core/actors/async-api.html
+  type: page
+- from: /core/actors/concurrency_group_api.html
+  to: /core/actors/concurrency-group-api.html
+  type: page
+- from: /core/tasks/dynamic_generators.html
+  to: /core/tasks/dynamic-generators.html
+  type: page
+- from: /core/examples/monte_carlo_pi.html
+  to: /core/examples/monte-carlo-pi.html
+  type: page
+- from: /core/compiled-graph/ray-compiled-graph.html
+  to: /core/compiled-graph/index.html
+  type: page
+- from: /core/direct-transport/direct-transport.html
+  to: /core/direct-transport/index.html
+  type: page
+- from: /core/actors.html
+  to: /core/actors/index.html
+  type: page
+- from: /core/objects.html
+  to: /core/objects/index.html
+  type: page
+- from: /core/tasks.html
+  to: /core/tasks/index.html
+  type: page
+- from: /core/fault-tolerance.html
+  to: /core/fault-tolerance/index.html
+  type: page
+- from: /core/internals.html
+  to: /core/internals/index.html
+  type: page
+- from: /core/examples/overview.html
+  to: /core/examples/index.html
+  type: page
+- from: /core/fault_tolerance/*
+  to: /core/fault-tolerance/:splat
+  type: page
+- from: /ray-observability/reference/api.html
+  to: /core/api/state.html
+  type: page
+- from: /ray-observability/reference/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /cluster/running-applications/job-submission/jobs-package-ref.html
+  to: /core/api/job-submission.html
+  type: page
+- from: /cluster/running-applications/job-submission/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /core/compiled-graph/compiled-graph-api.html
+  to: /core/api/compiled-graph.html
+  type: page
+- from: /core/compiled-graph/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /cluster/running-applications/autoscaling/reference.html
+  to: /core/api/autoscaler.html
+  type: page
+- from: /ray-more-libs/doc/*
+  to: /ray-more-libs/api/doc/:splat
+  type: page
+- from: /ray-core/*
+  to: /core/:splat
+  type: page
+- from: /core/examples/*
   to: /ray-overview/examples.html
   type: page
-- from: /ray-core/api/*
+- from: /core/api/*
   to: /ray-core/api/index.html
   type: page
 - from: /ray-observability/*

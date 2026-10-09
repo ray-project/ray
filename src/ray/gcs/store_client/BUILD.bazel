@@ -3,12 +3,30 @@ load("//bazel:ray.bzl", "ray_cc_library")
 ray_cc_library(
     name = "store_client",
     hdrs = ["store_client.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         "//src/ray/asio:io_service_pool",
         "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/gcs/postable",
         "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_store_client",
+    testonly = True,
+    hdrs = ["fake_store_client.h"],
+    visibility = [
+        "//src/ray/gcs/actor/tests:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+    ],
+    deps = [
+        ":store_client",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -23,6 +41,14 @@ ray_cc_library(
         "redis_async_context.h",
         "redis_context.h",
         "redis_store_client.h",
+        "redis_tcp_keepalive.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//:__pkg__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+        "//src/ray/gcs_rpc_client:__pkg__",
     ],
     deps = [
         ":store_client",
@@ -49,6 +75,12 @@ ray_cc_library(
     name = "in_memory_store_client",
     srcs = ["in_memory_store_client.cc"],
     hdrs = ["in_memory_store_client.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/actor/tests:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+    ],
     deps = [
         ":store_client",
         "//src/ray/util:concurrent_flat_map",
@@ -60,6 +92,10 @@ ray_cc_library(
     name = "observable_store_client",
     srcs = ["observable_store_client.cc"],
     hdrs = ["observable_store_client.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":store_client",
         "//src/ray/util:clock",
@@ -74,6 +110,10 @@ ray_cc_library(
     srcs = ["rocksdb_store_client.cc"],
     hdrs = ["rocksdb_store_client.h"],
     target_compatible_with = ["@platforms//os:linux"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         ":store_client",
         "//src/ray/asio:instrumented_io_context",

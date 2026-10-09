@@ -436,15 +436,13 @@ class _DatasetStatsBuilder:
 
 @ray.remote(num_cpus=0)
 class _StatsActor:
-    """Actor holding stats for blocks created by LazyBlockList.
+    """Actor holding execution stats and metadata for datasets.
 
     This actor is shared across all datasets created in the same cluster.
     In order to cap memory usage, we set a max number of stats to keep
     in the actor. When this limit is exceeded, the stats will be garbage
     collected in FIFO order.
-
-    TODO(ekl) we should consider refactoring LazyBlockList so stats can be
-    extracted without using an out-of-band actor."""
+    """
 
     def __init__(self, max_stats=1000):
         # Mapping from uuid -> (task_id -> list of blocks statistics).
@@ -1834,10 +1832,11 @@ class OperatorStatsSummary:
                     for acc, seconds in zip(stage_time_accs, es.stage_time_s):
                         acc.add(seconds)
                 tasks_per_node[es.node_id].add(es.task_idx)
-                if es.start_time_s is not None:
-                    earliest_start_time = min(earliest_start_time, es.start_time_s)
-                if es.end_time_s is not None:
-                    latest_end_time = max(latest_end_time, es.end_time_s)
+                if es.start_unix_time_s is not None and es.wall_time_s is not None:
+                    earliest_start_time = min(earliest_start_time, es.start_unix_time_s)
+                    latest_end_time = max(
+                        latest_end_time, es.start_unix_time_s + es.wall_time_s
+                    )
                 if block_meta.num_rows is not None:
                     rows_per_task[es.task_idx] += block_meta.num_rows
 

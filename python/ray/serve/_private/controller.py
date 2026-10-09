@@ -26,10 +26,10 @@ from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     HandleMetricReport,
     NodeId,
+    ReplicaID,
     ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
@@ -407,6 +407,18 @@ class ServeController:
         if record_delay is not None:
             record_delay(delay_ms)
 
+    def record_replica_health(
+        self,
+        replica_id: ReplicaID,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ):
+        """Self-health heartbeat from a replica, standing in for a pull probe."""
+        self.deployment_state_manager.record_replica_health(
+            replica_id, checked_at, healthy, consecutive_failures
+        )
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
@@ -438,11 +450,21 @@ class ServeController:
         ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
             if autoscaling_metrics_codec.is_columnar(handle_metric_report):
-                # Wire-detected on the frame magic, so a mixed fleet mid-rollout is
-                # read correctly whatever each sender chose to emit. Timed apart from
-                # decompress: separating the two codecs is the point of the metric.
+                # Wire-detected on the frame magic rather than assumed, so this
+                # path works whether or not routers emit columnar yet. Timed apart
+                # from decompress: separating the two codecs is the point of the
+                # metric.
                 decode_start = time.monotonic()
-                d = autoscaling_metrics_codec.decode_handle_flat(handle_metric_report)
+                try:
+                    d = autoscaling_metrics_codec.decode_handle_flat(
+                        handle_metric_report
+                    )
+                except Exception:
+                    # The sender never reads this call's ObjectRef, so an unparseable
+                    # report would otherwise vanish with no trace on either side. The
+                    # handle keeps its last good data until the drop path times it out.
+                    logger.exception("Dropping an undecodable columnar metric report.")
+                    return
                 self._health_metrics_tracker.record_columnar_decode(
                     (time.monotonic() - decode_start) * 1000
                 )
@@ -458,7 +480,11 @@ class ServeController:
                 )
                 return
             decompress_start = time.monotonic()
-            handle_metric_report = decompress_metric_report(handle_metric_report)
+            try:
+                handle_metric_report = decompress_metric_report(handle_metric_report)
+            except Exception:
+                logger.exception("Dropping an undecompressible handle metric report.")
+                return
             self._health_metrics_tracker.record_decompress(
                 (time.monotonic() - decompress_start) * 1000
             )
@@ -477,17 +503,6 @@ class ServeController:
             (time.monotonic() - ingest_start) * 1000
         )
 
-    def record_autoscaling_metrics_from_async_inference_task_queue(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics pushed from QueueMonitor."""
-        self._record_metrics_delay(
-            report.timestamp_s,
-            report.deployment_id,
-            self.async_inference_task_queue_metrics_delay_gauge.set,
-        )
-        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
-
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
     ):
@@ -497,6 +512,11 @@ class ServeController:
 
     def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
+
+    def _should_autoscale_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> bool:
+        return self.autoscaling_state_manager.should_autoscale_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._dump_replica_states_for_testing(
@@ -867,14 +887,6 @@ class ServeController:
                 "High values may indicate a busy controller."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "application"),
-        )
-        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
-            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
-            description=(
-                "Time taken for the async inference task queue metrics to be reported "
-                "to the controller. High values may indicate a busy controller."
-            ),
             tag_keys=("deployment", "application"),
         )
 
@@ -1487,6 +1499,8 @@ class ServeController:
             applications=applications,
             target_groups=self.get_target_groups(),
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
+            # Set this explicitly so exclude_unset includes it in the response.
+            restores_unset_config_options=True,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1504,6 +1518,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_router_fallback=False,
                     ingress_deployment_name="",
                 )
             )
@@ -1681,6 +1696,8 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        ingress_router_fallback = ingress_request_router_deployment_name is not None
+
         target_groups = []
 
         # Create targets for each protocol
@@ -1695,6 +1712,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )
