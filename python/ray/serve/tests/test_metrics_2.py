@@ -527,6 +527,67 @@ class TestRequestContextMetrics:
             "ray_my_histogram_sum", expected_metrics, timeseries
         )
 
+    def test_customer_metrics_route_tag_without_explicit_tags(
+        self, metrics_start_shutdown
+    ):
+        """Recording without a `tags` argument must still fill in the route tag.
+
+        `tags` defaults to None on the record methods, so a metric that declares
+        "route" in its tag_keys used to raise TypeError from
+        _add_serve_context_tag_values().
+        """
+
+        @serve.deployment
+        class Model:
+            def __init__(self):
+                self.counter = Counter(
+                    "my_route_counter",
+                    description="my counter metrics",
+                    tag_keys=("route",),
+                )
+                self.histogram = Histogram(
+                    "my_route_histogram",
+                    description=("my histogram "),
+                    boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                    tag_keys=("route",),
+                )
+                self.gauge = Gauge(
+                    "my_route_gauge",
+                    description=("my_gauge"),
+                    tag_keys=("route",),
+                )
+
+            def __call__(self):
+                # No `tags` argument: the route tag must be filled in from the
+                # request context.
+                self.counter.inc()
+                self.histogram.observe(200)
+                self.gauge.set(300)
+                return [
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_id.unique_id,
+                ]
+
+        timeseries = PrometheusTimeseries()
+        serve.run(Model.bind(), name="app", route_prefix="/app")
+        http_url = get_application_url("HTTP", "app")
+        resp = httpx.get(http_url)
+        assert resp.status_code == 200
+        deployment_name, replica_id = resp.json()
+
+        expected_metrics = {
+            "replica": replica_id,
+            "deployment": deployment_name,
+            "application": "app",
+            "route": "/app",
+        }
+        for metric_name in [
+            "ray_my_route_counter_total",
+            "ray_my_route_gauge",
+            "ray_my_route_histogram_sum",
+        ]:
+            self._wait_for_labeled_metric(metric_name, expected_metrics, timeseries)
+
     @pytest.mark.parametrize("use_actor", [False, True])
     def test_serve_metrics_outside_serve(self, use_actor, metrics_start_shutdown):
         """Make sure ray.serve.metrics work in ray actor"""

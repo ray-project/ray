@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from vllm.entrypoints.chat_utils import load_chat_template
 from vllm.entrypoints.launchers.cli_args import FrontendArgs
 from vllm.entrypoints.serve.engine.protocol import ErrorResponse
-from vllm.exceptions import VLLMClientError
+from vllm.exceptions import VLLMClientError, VLLMValidationError
 from vllm.renderers import renderer_from_config
 from vllm.renderers.inputs.preprocess import extract_prompt_components
 from vllm.renderers.online_renderer import OnlineRenderer
@@ -76,7 +76,10 @@ def build_tokenize_request(
             "falling back to token-less routing."
         )
         return None
-    except ValidationError as e:
+    except (ValidationError, VLLMValidationError) as e:
+        # vLLM's request validators can reject sampling params before prompt
+        # rendering. Route without tokens so the engine returns its normal
+        # client error; failing the router consultation would become a 500.
         logger.warning("Unsupported tokenize request, falling back: %s", e)
         return None
 
@@ -104,6 +107,7 @@ class Tokenizer:
             chat_template=load_chat_template(frontend_args.chat_template),
             chat_template_content_format=frontend_args.chat_template_content_format,
             trust_request_chat_template=frontend_args.trust_request_chat_template,
+            trust_request_mm_kwargs=frontend_args.trust_request_mm_kwargs,
             # Match the engine's tool config so render_chat handles tool requests
             # the same way (a no-op unless the deployment enables tool calling).
             enable_auto_tools=frontend_args.enable_auto_tool_choice,
@@ -111,6 +115,7 @@ class Tokenizer:
                 frontend_args.exclude_tools_when_tool_choice_none
             ),
             tool_parser=frontend_args.tool_call_parser,
+            tool_strict_level=frontend_args.tool_strict_level,
             default_chat_template_kwargs=frontend_args.default_chat_template_kwargs,
         )
         logger.info(
