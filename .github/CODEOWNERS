@@ -39,7 +39,7 @@
 /cpp/ @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
 /doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
-/doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
+/doc/source/core/ @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
 /doc/source/ray-observability/ @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
 /doc/source/ray-more-libs/ @ray-project/ray-core @ray-project/ray-docs @ray-project/ray-docs-reviewers
 

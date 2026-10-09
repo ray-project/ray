@@ -16,7 +16,7 @@ algorithms_and_configs = {
 
 @ray.remote
 def save_train_and_get_states(
-    algo_cfg: AlgorithmConfig, num_env_runners: int, env: str, tmpdir
+    algo_cfg: AlgorithmConfig, num_env_runners: int, env: str, tmpdir: str
 ):
     """Create an algo, train for 10 iterations, then checkpoint it.
 
@@ -63,7 +63,7 @@ def save_train_and_get_states(
 
 @ray.remote
 def load_and_get_states(
-    algo_cfg: AlgorithmConfig, num_env_runners: int, env: str, tmpdir
+    algo_cfg: AlgorithmConfig, num_env_runners: int, env: str, tmpdir: str
 ):
     """Loads the checkpoint saved by save_train_and_get_states and returns connector states.
 

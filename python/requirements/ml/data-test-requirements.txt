@@ -16,6 +16,12 @@ raydp==1.7.0b20250423.dev0
 pylance
 delta-sharing
 deltalake==1.5.0
+databricks-sdk
+# Mints the Azurite SAS that test_catalog_azure.py's emulator backend vends in
+# place of a Unity Catalog user-delegation SAS. Only the test needs it -- the
+# Azure read paths themselves go through pyarrow's and deltalake's own bundled
+# Azure clients, not this one.
+azure-storage-blob
 pytest-mock
 decord
 snowflake-connector-python>=3.15.0
@@ -26,7 +32,9 @@ pybase64
 hudi==0.4.0
 mcap
 datasketches
-testcontainers[kafka]
+# `azurite` powers the Azure emulator in test_catalog_azure.py, the same way
+# `kafka` powers test_kafka.py's broker.
+testcontainers[kafka,azurite]
 obstore
 pyarrow
 torch

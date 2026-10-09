@@ -33,6 +33,7 @@ class ReservoirReplayBuffer(ReplayBuffer):
                     dropped to make space for new ones.
             storage_unit: Either 'timesteps', 'sequences' or
                     'episodes'. Specifies how experiences are stored.
+            **kwargs: Forward compatibility kwargs.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit)
         self._num_add_calls = 0
@@ -49,7 +50,7 @@ class ReservoirReplayBuffer(ReplayBuffer):
 
         Args:
             item: The batch to be added.
-            ``**kwargs``: Forward compatibility kwargs.
+            **kwargs: Forward compatibility kwargs.
         """
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count

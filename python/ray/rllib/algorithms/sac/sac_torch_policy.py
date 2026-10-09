@@ -59,7 +59,7 @@ def _get_dist_class(
         policy: The policy for which to return the action
             dist class.
         config: The Algorithm's config dict.
-        action_space (gym.spaces.Space): The action space used.
+        action_space: The action space used.
 
     Returns:
         Type[TFActionDistribution]: A TF distribution class.
@@ -97,8 +97,8 @@ def build_sac_model_and_action_dist(
 
     Args:
         policy: The TFPolicy that will use the models.
-        obs_space (gym.spaces.Space): The observation space.
-        action_space (gym.spaces.Space): The action space.
+        obs_space: The observation space.
+        action_space: The action space.
         config: The SACConfig object.
 
     Returns:
@@ -119,7 +119,7 @@ def action_distribution_fn(
     state_batches: Optional[List[TensorType]] = None,
     seq_lens: Optional[TensorType] = None,
     prev_action_batch: Optional[TensorType] = None,
-    prev_reward_batch=None,
+    prev_reward_batch: Optional[TensorType] = None,
     explore: Optional[bool] = None,
     timestep: Optional[int] = None,
     is_training: Optional[bool] = None
@@ -135,23 +135,19 @@ def action_distribution_fn(
     Args:
         policy: The Policy being queried for actions and calling this
             function.
-        model (TorchModelV2): The SAC specific model to use to generate the
+        model: The SAC specific model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
             `get_action_model_outputs` method.
         input_dict: The input-dict to be used for the model
             call.
-        state_batches (Optional[List[TensorType]]): The list of internal state
-            tensor batches.
-        seq_lens (Optional[TensorType]): The tensor of sequence lengths used
-            in RNNs.
-        prev_action_batch (Optional[TensorType]): Optional batch of prev
-            actions used by the model.
-        prev_reward_batch (Optional[TensorType]): Optional batch of prev
-            rewards used by the model.
-        explore (Optional[bool]): Whether to activate exploration or not. If
+        state_batches: The list of internal state tensor batches.
+        seq_lens: The tensor of sequence lengths used in RNNs.
+        prev_action_batch: Optional batch of prev actions used by the model.
+        prev_reward_batch: Optional batch of prev rewards used by the model.
+        explore: Whether to activate exploration or not. If
             None, use value of `config.explore`.
-        timestep (Optional[int]): An optional timestep.
-        is_training (Optional[bool]): An optional is-training flag.
+        timestep: An optional timestep.
+        is_training: An optional is-training flag.
 
     Returns:
         Tuple[TensorType, Type[TorchDistributionWrapper], List[TensorType]]:
@@ -179,8 +175,8 @@ def actor_critic_loss(
 
     Args:
         policy: The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[TorchDistributionWrapper]: The action distr. class.
+        model: The Model to calculate the loss for.
+        dist_class: The action distr. class.
         train_batch: The training data.
 
     Returns:
@@ -489,8 +485,8 @@ def setup_late_mixins(
 
     Args:
         policy: The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
         config: The Policy's config.
     """
     ComputeTDErrorMixin.__init__(policy)
