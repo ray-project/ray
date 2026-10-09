@@ -2123,8 +2123,8 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   }
   for (const auto &worker : workers_associated_with_bundles) {
     std::ostringstream stream;
-    stream << "Destroying worker since its placement group bundle was removed. "
-              "Placement group id: "
+    stream << "Destroying worker since its placement group was removed or its assigned "
+              "bundle was removed. Placement group id: "
            << worker->GetBundleId().first
            << ", bundle index: " << worker->GetBundleId().second
            << ", lease id: " << worker->GetGrantedLeaseId()
