@@ -28,6 +28,7 @@ from ray.data._internal.utils.transform_pyarrow import (
     _is_multi_chunk_extension_column,
     _is_pa_extension_type,
 )
+from ray.util.annotations import PublicAPI
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
@@ -395,24 +396,37 @@ def _prepare_chunked_tensor_takes(
     return prepared_takes
 
 
+@PublicAPI(stability="alpha")
 def take_table(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
 ) -> "pyarrow.Table":
-    """Select rows from the table.
+    """Select rows from a PyArrow table.
 
-    This method is an alternative to pyarrow.Table.take(), which breaks for
-    extension arrays. Keeping the operation at table level also allows callers
-    to use it on intermediate tables without constructing an ArrowBlockAccessor.
+    Supports ordinary Arrow columns and Ray fixed-shape tensor, variable-shape
+    tensor, and Python object extension columns, including multi-chunk columns.
 
-    When the operational fast path is enabled, eligible multi-chunk tensor
-    columns are prepared once before the per-column loop. Indices are normalized
-    only if at least one preparation succeeds, and the normalized representation
-    is shared by all prepared columns. Preparation validates the exact request
-    size. Unexpected preparation or execution failures are logged with a
-    traceback and retried through the standard path outside the exception handler. If the feature
-    is disabled or preparation or normalization fails, the original ``indices``
-    object is passed unchanged to the standard Arrow fallback.
+    The result preserves the input schema and metadata and follows the order of
+    ``indices``. Repeated indices produce repeated rows. An empty integer array
+    produces an empty table.
+
+    Examples:
+        >>> import pyarrow as pa
+        >>> from ray.data.extensions import take_table
+        >>> table = pa.table({"value": [10, 20, 30]})
+        >>> take_table(table, [2, 0, 2]).to_pydict()
+        {'value': [30, 10, 30]}
+
+    Args:
+        table: Table to select rows from.
+        indices: Zero-based, non-negative row indices less than the number of
+            rows in ``table``. Accepts a list of integers, a one-dimensional
+            NumPy integer array, a PyArrow integer array, or a PyArrow chunked
+            integer array. For an empty selection, use an explicitly typed
+            integer array, such as ``np.array([], dtype=np.int64)``.
+
+    Returns:
+        A table containing the selected rows.
     """
     if any(_is_pa_extension_type(col.type) for col in table.columns):
         try:

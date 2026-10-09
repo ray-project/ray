@@ -22,6 +22,7 @@ checkpoint.rst
 aggregate.rst
 grouped_data.rst
 expressions.rst
+extensions.md
 datatype.rst
 data_context.rst
 preprocessor.rst

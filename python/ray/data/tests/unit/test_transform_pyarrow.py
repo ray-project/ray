@@ -36,7 +36,47 @@ from ray.data.extensions import (
     ArrowTensorType,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    take_table,
 )
+
+
+@pytest.mark.parametrize(
+    "indices",
+    [
+        [5, 0, 5, 2],
+        np.array([5, 0, 5, 2], dtype=np.int64),
+        pa.array([5, 0, 5, 2], type=pa.int32()),
+        pa.chunked_array([[5, 0], [5, 2]]),
+        np.array([], dtype=np.int64),
+    ],
+)
+def test_take_table(tensor_format_context, indices):
+    arrays = [
+        pa.array(range(6)),
+        ArrowTensorArray.from_numpy(np.arange(24).reshape(6, 2, 2)),
+        ArrowVariableShapedTensorArray.from_numpy(
+            [np.arange(2 * (i + 1)).reshape(i + 1, 2) for i in range(6)]
+        ),
+        ArrowPythonObjectArray.from_objects([{i, i + 1} for i in range(6)]),
+    ]
+    schema = pa.schema(
+        [
+            pa.field(name, array.type, metadata={b"field": b"value"})
+            for name, array in zip(["id", "fixed", "variable", "object"], arrays)
+        ],
+        metadata={b"table": b"value"},
+    )
+    table = pa.Table.from_arrays(
+        [pa.chunked_array([array.slice(0, 3), array.slice(3)]) for array in arrays],
+        schema=schema,
+    )
+    expected = pa.Table.from_arrays(
+        [array.take(indices) for array in arrays], schema=schema
+    )
+
+    result = take_table(table, indices)
+
+    assert result.equals(expected, check_metadata=True)
 
 
 def test_try_defragment_table():
