@@ -22,8 +22,8 @@ The following table lists the Prometheus metrics emitted by Ray Train:
   - Labels
   - Description
 * - `ray_train_controller_state`
-  - `ray_train_run_name`, `ray_train_run_id`, `ray_train_controller_state`
-  - Current state of the Ray Train controller.
+  - `ray_train_run_name`, `ray_train_run_id`
+  - Current state of the Ray Train controller, encoded as a number: 1=`INITIALIZING`, 2=`SCHEDULING`, 3=`RESCHEDULING`, 4=`RUNNING`, 5=`PREEMPTING`, 6=`RESTARTING`, 7=`RESIZING`, 8=`SHUTTING_DOWN`, 9=`ERRORED`, 10=`FINISHED`, 11=`ABORTED`. 0 means the controller isn't reporting a state.
 * - `ray_train_worker_group_start_total_time_s`
   - `ray_train_run_name`, `ray_train_run_id`
   - Total time taken to start the worker group.

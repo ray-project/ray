@@ -513,6 +513,36 @@ TABLE_PANEL_TEMPLATE = {
     "transformations": [{"id": "organize", "options": {}}],
 }
 
+STATE_TIMELINE_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {
+            # Not "thresholds": with mergeValues, Grafana buckets numeric values by
+            # threshold step before applying value mappings, so every value would
+            # render as the single base step ("-∞+").
+            "color": {"mode": "fixed", "fixedColor": "text"},
+            "custom": {"fillOpacity": 80, "lineWidth": 0, "spanNulls": False},
+            "mappings": [],
+        },
+        "overrides": [],
+    },
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 26,
+    "options": {
+        "alignValue": "left",
+        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": True},
+        "mergeValues": True,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": {"mode": "single", "sort": "none"},
+    },
+    "pluginVersion": "11.2.0",
+    "targets": [],
+    "title": "<Title>",
+    "type": "state-timeline",
+}
+
 
 @DeveloperAPI
 class PanelTemplate(Enum):
@@ -523,6 +553,9 @@ class PanelTemplate(Enum):
     GAUGE = GAUGE_PANEL_TEMPLATE
     BAR_CHART = BAR_CHART_PANEL_TEMPLATE
     TABLE = TABLE_PANEL_TEMPLATE
+    # One row per series, colored by value. Use `value_mappings` to name and
+    # color each value.
+    STATE_TIMELINE = STATE_TIMELINE_PANEL_TEMPLATE
 
 
 @DeveloperAPI
@@ -552,7 +585,7 @@ class Panel:
                 {"color": "red", "value": 90}
             ]
         value_mappings: Value mappings for displaying text instead of numbers.
-            Used for status panels.
+            Used for status and state timeline panels.
         color_mode: Color mode for stat panels ("value", "background", "none").
         legend_mode: Legend display mode ("list", "table", "hidden").
         min_val: Minimum value for gauge/graph y-axis.
