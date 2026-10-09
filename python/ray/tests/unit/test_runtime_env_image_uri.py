@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import Optional
 
 import pytest
 
@@ -22,8 +23,8 @@ def auth_env(monkeypatch, tmp_path):
     reset_auth_token_state()
 
 
-def _container_command() -> str:
-    context = RuntimeEnvContext()
+def _container_command(context: Optional[RuntimeEnvContext] = None) -> str:
+    context = context or RuntimeEnvContext()
     _modify_context_impl(
         "fake-image",
         "/fake/default_worker.py",
@@ -86,6 +87,23 @@ def test_no_mount_when_auth_disabled(auth_env, tmp_path):
 
     assert ":ro" not in command
     assert "RAY_AUTH_TOKEN_PATH" not in command
+
+
+def test_log_redacts_env_var_values(auth_env, caplog):
+    auth_env.setenv("RAY_SECRET_FROM_HOST", "host-secret")
+    context = RuntimeEnvContext(env_vars={"API_KEY": "user-secret"})
+
+    with caplog.at_level(logging.INFO):
+        command = _container_command(context)
+
+    # The real command still carries the values; only the log is masked.
+    assert "--env API_KEY='user-secret'" in command
+    assert "--env RAY_SECRET_FROM_HOST='host-secret'" in command
+    assert "--env API_KEY='<redacted>'" in caplog.text
+    assert "--env RAY_JOB_ID=$RAY_JOB_ID" in caplog.text
+    assert "--entrypoint python fake-image" in caplog.text
+    assert "user-secret" not in caplog.text
+    assert "host-secret" not in caplog.text
 
 
 if __name__ == "__main__":
