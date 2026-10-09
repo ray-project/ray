@@ -746,7 +746,7 @@ class AzureNodeProvider(NodeProvider):
                 client=self.resource_client.resources,
                 function_name="get_by_id",
             )
-            existing_msi = get_identity(msi_id, "2023-01-31")
+            existing_msi = get_identity(resource_id=msi_id, api_version="2023-01-31")
             msi_principal_id = getattr(existing_msi, "properties", {}).get(
                 "principalId"
             )

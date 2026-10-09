@@ -402,6 +402,53 @@ class TestAzureAvailabilityZonePrecedence(unittest.TestCase):
         self.assertEqual(source, "node config availability_zone")
 
 
+class FakeResources:
+    """Models the strict keyword-only contract of azure-mgmt-resource>=26.
+
+    Only the operations Ray calls are modelled. Optional and query parameters are
+    keyword-only, so a call that passes them positionally raises TypeError from
+    the signature itself. That form is still legal on azure-mgmt-resource 24/25,
+    which is why a bare Mock or an autospec of the pinned 24.x client cannot
+    catch it. Each call is recorded from inside the method body, so it is only
+    recorded when the call is valid; callers that swallow exceptions therefore
+    cannot hide a bad call from a test assertion.
+    """
+
+    def __init__(self, existing=None, vnet_resources=None, role_assignments=None):
+        self.list_calls = []
+        self.get_by_id_calls = []
+        self.delete_by_id_calls = []
+        self._existing = existing or {}
+        self._vnet_resources = vnet_resources or []
+        self._role_assignments = role_assignments or []
+
+    def list_by_resource_group(
+        self, resource_group_name, *, filter=None, expand=None, top=None
+    ):
+        self.list_calls.append(
+            {"resource_group_name": resource_group_name, "filter": filter}
+        )
+        if filter and "virtualNetworks" in filter:
+            return iter(self._vnet_resources)
+        if filter and "roleAssignments" in filter:
+            return iter(self._role_assignments)
+        return iter([])
+
+    def get_by_id(self, resource_id, *, api_version):
+        self.get_by_id_calls.append(
+            {"resource_id": resource_id, "api_version": api_version}
+        )
+        if resource_id in self._existing:
+            return self._existing[resource_id]
+        raise ResourceNotFoundError("not found")
+
+    def delete_by_id(self, resource_id, *, api_version):
+        self.delete_by_id_calls.append(
+            {"resource_id": resource_id, "api_version": api_version}
+        )
+        return Mock()
+
+
 class TestAzureDeploymentsClient(unittest.TestCase):
     """ARM deployments moved to azure-mgmt-resource-deployments in
     azure-mgmt-resource 25.0.0. Ray uses the split client when it is installed
@@ -422,12 +469,11 @@ class TestAzureDeploymentsClient(unittest.TestCase):
                 "subscription_id": "test-sub-id",
             },
         }
-        resource_client.resources.list_by_resource_group.return_value = []
-        resource_client.resources.get_by_id.side_effect = ResourceNotFoundError("nf")
+        self.resource_client_cls = Mock(return_value=resource_client)
         with (
-            patch.object(azure_config, "AzureCliCredential"),
+            patch.object(azure_config, "AzureCliCredential", side_effect=object),
             patch.object(
-                azure_config, "ResourceManagementClient", return_value=resource_client
+                azure_config, "ResourceManagementClient", self.resource_client_cls
             ),
         ):
             return azure_config._configure_resource_group(config)
@@ -475,6 +521,7 @@ class TestAzureDeploymentsClient(unittest.TestCase):
     def test_bootstrap_uses_deployments_client(self):
         # The resource client has no `.deployments`, as in azure-mgmt-resource>=25.
         resource_client = Mock(spec=["resources", "resource_groups", "providers"])
+        resource_client.resources = FakeResources()
         deployments_client = Mock(spec=["deployments"])
         deployments_client.deployments = Mock(spec=["begin_create_or_update"])
         begin_create = deployments_client.deployments.begin_create_or_update
@@ -485,6 +532,10 @@ class TestAzureDeploymentsClient(unittest.TestCase):
             result = self._bootstrap(resource_client)
 
         self.assertEqual(client_cls.call_args.args[1], "test-sub-id")
+        # The credential is shared between the resource and deployments clients.
+        self.assertIs(
+            self.resource_client_cls.call_args.args[0], client_cls.call_args.args[0]
+        )
         begin_create.assert_called_once()
         kwargs = begin_create.call_args.kwargs
         self.assertEqual(kwargs["resource_group_name"], "test-rg")
@@ -499,6 +550,7 @@ class TestAzureDeploymentsClient(unittest.TestCase):
         # azure-mgmt-resource<25 without azure-mgmt-resource-deployments: the
         # deployment operations live on the resource client itself.
         resource_client = Mock(spec=["resources", "resource_groups", "providers"])
+        resource_client.resources = FakeResources()
         resource_client.deployments = Mock(spec=["create_or_update"])
         create = resource_client.deployments.create_or_update
         create.return_value.result.return_value.properties.outputs = self.OUTPUTS
@@ -513,6 +565,134 @@ class TestAzureDeploymentsClient(unittest.TestCase):
         create.assert_called_once()
         self.assertEqual(create.call_args.kwargs["resource_group_name"], "test-rg")
         self.assertEqual(result["provider"]["nsg"], "test-nsg")
+
+    def test_fake_rejects_positional_optional_arguments(self):
+        # The strict fake is what makes the Ray-path tests below meaningful: the
+        # positional forms below are accepted by azure-mgmt-resource 24/25 but
+        # raise TypeError from the signature on 26.
+        resources = FakeResources()
+        with self.assertRaises(TypeError):
+            resources.get_by_id("/subscriptions/s/resourceGroups/rg", "2024-10-01")
+        with self.assertRaises(TypeError):
+            resources.list_by_resource_group("rg", "resourceType eq 'x'")
+        with self.assertRaises(TypeError):
+            resources.delete_by_id("/subscriptions/s/resourceGroups/rg", "2022-04-01")
+
+    def test_bootstrap_resource_calls_use_keyword_arguments(self):
+        # Exercises list-by-resource-group, get-by-id (vnet, MSI, role assignment)
+        # and the vnet API-version lookup against the strict-signature fake.
+        resources = FakeResources(
+            vnet_resources=[Mock(id="/subscriptions/test-sub-id/vnet-id")],
+            existing={
+                "/subscriptions/test-sub-id/vnet-id": Mock(
+                    properties={"subnets": [{"properties": {"addressPrefix": "x"}}]}
+                )
+            },
+        )
+        resource_client = Mock(spec=["resources", "resource_groups", "providers"])
+        resource_client.resources = resources
+        vnet_provider = Mock(
+            resource_type="virtualNetworks", api_versions=["2024-05-01"]
+        )
+        resource_client.providers.get.return_value = Mock(
+            resource_types=[vnet_provider]
+        )
+        deployments_client = Mock(spec=["deployments"])
+        deployments_client.deployments = Mock(spec=["begin_create_or_update"])
+        deployments_client.deployments.begin_create_or_update.return_value.result.return_value.properties.outputs = (
+            self.OUTPUTS
+        )
+
+        with patch.object(
+            azure_config, "DeploymentsMgmtClient", Mock(return_value=deployments_client)
+        ):
+            result = self._bootstrap(resource_client)
+
+        self.assertEqual(result["provider"]["subnet"], "test-subnet")
+        self.assertIn("virtualNetworks", resources.list_calls[0]["filter"])
+        looked_up = {
+            c["resource_id"]: c["api_version"] for c in resources.get_by_id_calls
+        }
+        # vnet lookup uses the API version reported by the provider.
+        self.assertEqual(looked_up["/subscriptions/test-sub-id/vnet-id"], "2024-05-01")
+        # MSI lookup and role-assignment verification both reached the SDK, i.e.
+        # neither was swallowed by a surrounding `except Exception`.
+        self.assertEqual(
+            [v for k, v in looked_up.items() if "userAssignedIdentities" in k],
+            ["2023-01-31"],
+        )
+        self.assertEqual(
+            [v for k, v in looked_up.items() if "roleAssignments" in k], ["2022-04-01"]
+        )
+        # The lookup found no role assignment, so none was deleted. A lookup that
+        # raised TypeError would be treated as a failed query and fall through to
+        # a deletion attempt.
+        self.assertEqual(resources.delete_by_id_calls, [])
+
+    def test_role_assignment_cleanup_uses_keyword_arguments(self):
+        assignment = Mock(
+            id="/subscriptions/s/roleAssignments/a", properties={"principalId": "p"}
+        )
+        resources = FakeResources(role_assignments=[assignment])
+        resource_client = Mock(spec=["resources"])
+        resource_client.resources = resources
+
+        azure_config._delete_role_assignments_for_principal(
+            resource_client, "test-rg", "p"
+        )
+
+        self.assertEqual(
+            resources.list_calls[0]["filter"],
+            "resourceType eq 'Microsoft.Authorization/roleAssignments'",
+        )
+        self.assertEqual(
+            resources.delete_by_id_calls,
+            [{"resource_id": assignment.id, "api_version": "2022-04-01"}],
+        )
+
+    def test_wait_for_role_assignment_deletion_uses_keyword_arguments(self):
+        resources = FakeResources()
+        self.assertTrue(
+            azure_config._wait_for_role_assignment_deletion(
+                resources.get_by_id, "/subscriptions/s/roleAssignments/a", "a"
+            )
+        )
+        self.assertEqual(
+            resources.get_by_id_calls,
+            [
+                {
+                    "resource_id": "/subscriptions/s/roleAssignments/a",
+                    "api_version": "2022-04-01",
+                }
+            ],
+        )
+
+    def test_cleanup_managed_identity_uses_keyword_arguments(self):
+        msi_id = "/subscriptions/s/resourceGroups/rg/providers/x/identities/msi"
+        resources = FakeResources(
+            existing={msi_id: Mock(properties={"principalId": "p"})}
+        )
+        with patch.object(
+            AzureNodeProvider,
+            "__init__",
+            lambda self, provider_config, cluster_name: None,
+        ):
+            provider = AzureNodeProvider({}, "test-cluster")
+        provider.provider_config = {}
+        provider.resource_client = Mock(spec=["resources"])
+        provider.resource_client.resources = resources
+
+        principal_id = provider._cleanup_managed_identity("rg", msi_id)
+
+        self.assertEqual(principal_id, "p")
+        self.assertEqual(
+            resources.get_by_id_calls,
+            [{"resource_id": msi_id, "api_version": "2023-01-31"}],
+        )
+        self.assertEqual(
+            resources.delete_by_id_calls,
+            [{"resource_id": msi_id, "api_version": "2023-01-31"}],
+        )
 
     def test_incompatible_sdk_raises_actionable_error(self):
         # Neither the split package nor the legacy deployments models exist.
