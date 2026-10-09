@@ -21,6 +21,7 @@ from ray.data.preprocessors import (
     OneHotEncoder,
     OrdinalEncoder,
 )
+from ray.data.preprocessors.encoder import _EncoderUnique
 
 
 # Helper functions for parameterized OrdinalEncoder tests
@@ -1677,8 +1678,8 @@ def test_encoders_fit_via_aggregation():
     """Encoder fits register plan aggregators, not driver-side callable stats.
 
     This is what allows a `Dataset.aggregate()`-based fit (one distributed
-    query per preprocessor, batchable with others) instead of the legacy
-    `compute_unique_value_indices` map_batches + driver-side counter merge.
+    query per preprocessor, batchable with others) instead of the previous
+    map_batches + driver-side counter merge.
     """
     df = pd.DataFrame({"A": ["a", "b", "a"], "B": [["x"], ["y"], ["x", "y"]]})
     ds = ray.data.from_pandas(df)
@@ -1745,6 +1746,13 @@ def test_whole_list_categories_across_multiple_partial_aggregates(make_encoder):
             {(1, 2): 0},
             id="OneHotEncoder_max_categories",
         ),
+        # With list encoding on (the OrdinalEncoder default), arrays are split
+        # into their elements, as the previous fit path did.
+        pytest.param(
+            lambda: OrdinalEncoder(["t"]),
+            {1: 0, 2: 1, 3: 2, 4: 3},
+            id="OrdinalEncoder_flattens_arrays",
+        ),
     ],
 )
 def test_encoders_fit_tensor_columns(make_encoder, expected):
@@ -1764,7 +1772,31 @@ def test_encoders_fit_tensor_columns(make_encoder, expected):
         ctx.shuffle_input_batch_bytes = original
 
     stats = encoder.stats_["unique_values(t)"]
-    assert {tuple(int(x) for x in cat): idx for cat, idx in stats.items()} == expected
+    assert {_as_python_ints(cat): idx for cat, idx in stats.items()} == expected
+
+
+def _as_python_ints(category):
+    if isinstance(category, (tuple, list, np.ndarray)):
+        return tuple(int(x) for x in category)
+    return int(category)
+
+
+@pytest.mark.parametrize("polars_available", [True, False])
+def test_encoder_unique_merge_keeps_whole_categories(monkeypatch, polars_available):
+    """Merging per-block partials keeps array/list categories whole, both on the
+    vectorized path (which needs polars) and on the Python fallback."""
+    if polars_available:
+        pytest.importorskip("polars")
+    else:
+        monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
+    # One row per block, each a list of whole-array categories; a null row is an
+    # empty group.
+    partials = pa.chunked_array([pa.array([[(1, 2), (3, 4)], [(1, 2)], None])])
+
+    merged = _EncoderUnique(on="t", ignore_nulls=False)._combine_column(partials)
+
+    values = merged.to_pylist() if isinstance(merged, pa.Array) else merged
+    assert {tuple(value) for value in values} == {(1, 2), (3, 4)}
 
 
 def test_whole_list_encoders_fit_without_polars(monkeypatch):

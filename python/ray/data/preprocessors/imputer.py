@@ -1,7 +1,6 @@
 import logging
-from collections import Counter
 from numbers import Number
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -273,42 +272,3 @@ class SimpleImputer(SerializablePreprocessorBase):
                 ),  # _fill_value is optional
             },
         )
-
-
-def _get_most_frequent_values(
-    dataset: "Dataset",
-    columns: List[str],
-    key_gen: Callable[[str], str],
-) -> Dict[str, Union[str, Number]]:
-    """Legacy driver-side counter merge.
-
-    .. note::
-        No longer used by ``SimpleImputer``, which now fits via the distributed
-        :class:`~ray.data.aggregate.TopKUnique` aggregation. Kept for
-        backwards compatibility and may be removed in a future release.
-    """
-
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
-        return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
-
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                final_counters[col] += counter
-
-    def most_frequent_value(counter: Counter):
-        # A column with no observed values has no most frequent value, so report
-        # None. `_transform_pandas` turns that into the same "Column x has no
-        # fill value" error the `"mean"` strategy already raises; indexing
-        # `most_common(1)[0][0]` here instead would raise `IndexError: list
-        # index out of range` during `fit`, which says nothing about the column
-        # or the data.
-        ranked = counter.most_common(1)
-        return ranked[0][0] if ranked else None
-
-    return {
-        key_gen(column): most_frequent_value(final_counters[column])  # noqa
-        for column in columns
-    }

@@ -9,7 +9,6 @@ from typing import (
     Hashable,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
 )
@@ -1243,128 +1242,6 @@ def _validate_max_categories(
                 f"You set `max_categories` for {column}, which is not present in "
                 f"{columns}."
             )
-
-
-def compute_unique_value_indices(
-    *,
-    dataset: "Dataset",
-    columns: List[str],
-    key_gen: Callable,
-    encode_lists: bool = True,
-    max_categories: Optional[Dict[str, int]] = None,
-):
-    """Compute the set of unique values for each column across the full dataset.
-
-    .. note::
-        This helper is no longer used by the built-in encoders, which now fit
-        via distributed aggregations (:class:`~ray.data.aggregate.Unique` /
-        :class:`~ray.data.aggregate.TopKUnique`). It is kept for backwards
-        compatibility and may be removed in a future release.
-
-    Counts value frequencies globally (summed across all partitions) and then,
-    if ``max_categories`` is specified for a column, selects only the top-k most
-    frequent values. This ensures that a value appearing moderately in many
-    partitions is not missed — e.g. a value with count 3 in each of two
-    partitions (global count 6) is correctly preferred over a value with count 5
-    in a single partition.
-
-    Args:
-        dataset: The Ray Dataset to compute value counts over.
-        columns: Column names to compute unique values for.
-        key_gen: A callable that maps a column name to the key used in the
-            returned dictionary (e.g. ``lambda col: f"unique({col})"``).
-        encode_lists: If ``True``, list-type column elements are exploded so
-            that each list element is counted individually. If ``False``, entire
-            lists are treated as single categorical values (converted to tuples
-            for hashability).
-        max_categories: Optional mapping from column name to the maximum number
-            of unique values to keep. Only the most frequent values (by global
-            count) are retained. Columns not present in the mapping keep all
-            unique values.
-
-    Returns:
-        Dict[str, Set]: A mapping from ``key_gen(col)`` to the set of unique
-        values for that column (limited to top-k if ``max_categories`` applies).
-
-    Raises:
-        ValueError: If a column in ``max_categories`` is not in ``columns``.
-        ValueError: If a column listed in ``columns`` is missing from the
-            dataset.
-    """
-    if max_categories is None:
-        max_categories = {}
-    columns_set = set(columns)
-    for column in max_categories:
-        if column not in columns_set:
-            raise ValueError(
-                f"You set `max_categories` for {column}, which is not present in "
-                f"{columns}."
-            )
-
-    def get_pd_value_counts_per_column(col: pd.Series) -> Dict:
-
-        # special handling for lists
-        if _is_series_composed_of_lists(col):
-            if encode_lists:
-                counter = Counter()
-
-                def update_counter(element):
-                    # A missing row contributes no tokens. `Counter.update`
-                    # iterates its argument, and a missing value is not
-                    # iterable: `pd.NA` raises `TypeError: 'NAType' object is
-                    # not iterable`, and `None` fails the same way.
-                    if not _is_null(element):
-                        counter.update(element)
-                    return element
-
-                col.map(update_counter)
-                return counter
-            else:
-                # convert to tuples to make lists hashable. A missing row has no
-                # list to convert: `tuple(pd.NA)` raises `TypeError: 'NAType'
-                # object is not iterable` here in `fit`, so `na_action="ignore"`
-                # carries the null through to `unique_post_fn` instead, where it
-                # reaches the documented "consider imputing missing values
-                # first" `ValueError`. This mirrors the `encode_lists=True`
-                # branch above.
-                col = col.map(lambda x: tuple(x), na_action="ignore")
-        return Counter(col.value_counts(dropna=False).to_dict())
-
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Dict]]:
-
-        df_columns = df.columns.tolist()
-        result = {}
-        for col in columns:
-            if col in df_columns:
-                result[col] = [get_pd_value_counts_per_column(df[col])]
-            else:
-                raise ValueError(
-                    f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
-                )
-        return result
-
-    value_counts_ds = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    # Aggregate counters globally per column before applying max_categories,
-    # so that top-k is computed over the full dataset rather than per-partition.
-    global_counters: Dict[str, Counter] = {col: Counter() for col in columns}
-    for batch in value_counts_ds.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                filtered: Dict[Any, int] = {
-                    k: v for k, v in counter.items() if v is not None
-                }
-                global_counters[col].update(filtered)
-
-    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
-    for col in columns:
-        counter = global_counters[col]
-        if col in max_categories:
-            top_k_values = dict(counter.most_common(max_categories[col]))
-            unique_values_by_col[key_gen(col)].update(top_k_values.keys())
-        else:
-            unique_values_by_col[key_gen(col)].update(counter.keys())
-
-    return unique_values_by_col
 
 
 def _is_null(value: Any) -> bool:
