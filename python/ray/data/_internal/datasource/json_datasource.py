@@ -146,6 +146,7 @@ class ArrowJSONDatasource(FileBasedDatasource):
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         import pyarrow as pa
+        import json
 
         buffer: pa.lib.Buffer = f.read_buffer()
 
@@ -158,7 +159,18 @@ class ArrowJSONDatasource(FileBasedDatasource):
                 f"Falling back to native json.load(), which may be slower. "
                 f"PyArrow error was:\n{e}"
             )
-            yield from self._read_with_python_json(buffer)
+            try:
+                yield from self._read_with_python_json(buffer)
+            except json.JSONDecodeError as json_error:
+                raise json.JSONDecodeError(
+                    (
+                        f"Failed to read JSON file: {path}. "
+                        "Please check that the file contains valid JSON. "
+                        f"{json_error.msg}"
+                    ),
+                    json_error.doc,
+                    json_error.pos,
+                ) from json_error
 
 
 class PandasJSONDatasource(FileBasedDatasource):
@@ -185,20 +197,34 @@ class PandasJSONDatasource(FileBasedDatasource):
         self._target_output_size_bytes = target_output_size_bytes
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        chunksize = self._estimate_chunksize(f)
+        try:
+            chunksize = self._estimate_chunksize(f)
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to read JSON file: {path}. "
+                "Please check that the file contains valid line-delimited JSON."
+            ) from e
 
-        with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
-            if chunksize is None:
-                # When chunksize=None, pandas returns DataFrame directly
-                # (no context manager).
-                df = pd.read_json(stream, chunksize=chunksize, lines=True)
-                yield _cast_range_index_to_string(df)
-            else:
-                # When chunksize is a number, pandas returns JsonReader
-                # (supports context manager).
-                with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
-                    for df in reader:
-                        yield _cast_range_index_to_string(df)
+        try:
+            with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
+                if chunksize is None:
+                    # When chunksize=None, pandas returns DataFrame directly
+                    # (no context manager).
+                    df = pd.read_json(stream, chunksize=chunksize, lines=True)
+                    yield _cast_range_index_to_string(df)
+                else:
+                    # When chunksize is a number, pandas returns JsonReader
+                    # (supports context manager).
+                    with pd.read_json(
+                        stream, chunksize=chunksize, lines=True
+                    ) as reader:
+                        for df in reader:
+                            yield _cast_range_index_to_string(df)
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to read JSON file: {path}. "
+                "Please check that the file contains valid line-delimited JSON."
+            ) from e
 
     def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:
         """Estimate the chunksize by sampling the first row.

@@ -128,6 +128,48 @@ def test_json_read_with_parse_options(
     assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
 
+def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_path):
+    path = tmp_path / "malformed.json"
+    path.write_text(
+        """
+        [
+          {"name": "A", "value": 1},
+          {"name": "B", "value": }
+        ]
+        """
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Failed to read JSON file",
+    ) as exc_info:
+        ray.data.read_json(str(path)).materialize()
+
+    assert path.as_posix() in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        # Fails while estimating the chunk size.
+        '{"name": "A", "value":\n',
+
+        # Chunk-size estimation succeeds, then the actual read fails.
+        '{"name": "A", "value": 1}\n'
+        '{"name": "B", "value":\n',
+    ],
+)
+def test_jsonl_read_invalid_format_includes_path(ray_start_regular_shared, tmp_path, content):
+    path = tmp_path / "malformed.jsonl"
+    path.write_text(content)
+
+    with pytest.raises(
+        ValueError,
+        match="Failed to read JSON file",
+    ) as exc_info:
+        ray.data.read_json(str(path), lines=True).materialize()
+
+    assert path.as_posix() in str(exc_info.value)
 
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
 def test_jsonl_lists(
