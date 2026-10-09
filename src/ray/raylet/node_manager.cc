@@ -83,7 +83,11 @@ bool UsesPlacementGroupBundle(
     return bundle_indices.contains(bundle_id.second);
   }
   if (allocated_instances == nullptr) {
-    return false;
+    // A wildcard lease is not tied to a concrete bundle until resources are
+    // allocated. Conservatively cancel it when any bundle in its placement
+    // group is removed so it cannot remain queued for a bundle that no longer
+    // exists.
+    return true;
   }
 
   for (const auto &resource_id : allocated_instances->ResourceIds()) {

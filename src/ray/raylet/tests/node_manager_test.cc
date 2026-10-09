@@ -1600,6 +1600,66 @@ TEST_F(NodeManagerTest, RemovePlacementGroupBundlesOnlyStopsRequestedBundleWorke
   EXPECT_TRUE(leased_workers_.contains(lease1));
 }
 
+TEST_F(NodeManagerTest, RemovePlacementGroupBundlesCancelsUnallocatedWildcardLease) {
+  const auto placement_group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  rpc::Bundle bundle;
+  bundle.mutable_bundle_id()->set_placement_group_id(placement_group_id.Binary());
+  bundle.mutable_bundle_id()->set_bundle_index(0);
+  (*bundle.mutable_unit_resources())["CPU"] = 1;
+  auto bundle_spec = std::make_shared<BundleSpecification>(std::move(bundle));
+  ASSERT_TRUE(placement_group_resource_manager_->PrepareBundles({bundle_spec}));
+  placement_group_resource_manager_->CommitBundles({bundle_spec});
+
+  auto lease_message = BuildLeaseSpec({{"CPU", 1}}).GetMessage();
+  lease_message.set_lease_id(LeaseID::FromRandom().Binary());
+  auto *placement_group_strategy = lease_message.mutable_scheduling_strategy()
+                                       ->mutable_placement_group_scheduling_strategy();
+  placement_group_strategy->set_placement_group_id(placement_group_id.Binary());
+  placement_group_strategy->set_placement_group_bundle_index(-1);
+  lease_message.add_dependencies()->set_object_id(ObjectID::FromRandom().Binary());
+  LeaseSpecification lease_spec(std::move(lease_message));
+
+  rpc::RequestWorkerLeaseRequest lease_request;
+  lease_request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  lease_request.set_backlog_size(1);
+  lease_request.set_grant_or_reject(true);
+  lease_request.set_is_selected_based_on_locality(true);
+  rpc::RequestWorkerLeaseReply lease_reply;
+  bool lease_replied = false;
+  node_manager_->HandleRequestWorkerLease(
+      lease_request,
+      &lease_reply,
+      [&lease_replied](Status status, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(status.ok());
+        lease_replied = true;
+      });
+  ASSERT_FALSE(lease_replied);
+  ASSERT_TRUE(local_lease_manager_->IsLeaseQueued(lease_spec.GetSchedulingClass(),
+                                                  lease_spec.LeaseId()));
+
+  rpc::RemovePlacementGroupBundlesRequest remove_request;
+  remove_request.set_placement_group_id(placement_group_id.Binary());
+  remove_request.add_bundle_specs()->CopyFrom(bundle_spec->GetMessage());
+  rpc::RemovePlacementGroupBundlesReply remove_reply;
+  bool remove_replied = false;
+  rpc::NodeManagerServiceHandler *handler = node_manager_.get();
+  handler->HandleRemovePlacementGroupBundles(
+      remove_request,
+      &remove_reply,
+      [&remove_replied](Status status, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(status.ok());
+        remove_replied = true;
+      });
+
+  EXPECT_TRUE(remove_replied);
+  EXPECT_TRUE(lease_replied);
+  EXPECT_TRUE(lease_reply.canceled());
+  EXPECT_EQ(lease_reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED);
+  EXPECT_FALSE(local_lease_manager_->IsLeaseQueued(lease_spec.GetSchedulingClass(),
+                                                   lease_spec.LeaseId()));
+}
+
 TEST_F(NodeManagerTest, RemovePlacementGroupBundlesReturnsRetryableFailure) {
   const auto placement_group_id = PlacementGroupID::Of(JobID::FromInt(1));
   rpc::Bundle bundle;
