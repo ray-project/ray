@@ -51,7 +51,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
       std::function<void(const ObjectID &object_id,
-                         const absl::flat_hash_set<NodeID> &locations)>
+                         const absl::flat_hash_set<NodeID> &locations,
+                         int64_t object_size,
+                         bool urgent)>
           free_object_on_nodes_async,
       ray::observability::MetricInterface &owned_object_by_state_counter,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
@@ -788,7 +790,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Called to send free local object RPCs to all raylets that hold a copy of
   /// the object.
   const std::function<void(const ObjectID &object_id,
-                           const absl::flat_hash_set<NodeID> &locations)>
+                           const absl::flat_hash_set<NodeID> &locations,
+                           int64_t object_size,
+                           bool urgent)>
       free_object_on_nodes_async_;
 
   /// A buffer of the objects whose primary or spilled locations have been lost

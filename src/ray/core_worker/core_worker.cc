@@ -92,6 +92,9 @@ struct WaitAsyncRegistry {
 namespace {
 // Default capacity for serialization caches.
 constexpr size_t kDefaultSerializationCacheCap = 500;
+constexpr size_t kFreeLocalObjectsFlushCount = 100;
+constexpr int64_t kFreeLocalObjectsFlushBytes = 64 * 1024 * 1024;
+constexpr uint64_t kFreeLocalObjectsFlushIntervalMs = 20;
 
 /**
  * @brief Complete one WaitAsync request. No-op if ``handle`` is already gone.
@@ -626,6 +629,11 @@ CoreWorker::CoreWorker(
       },
       100,
       "CoreWorker.RecoverObjects");
+
+  periodical_runner_->RunFnPeriodically(
+      [this] { FlushAllFreeLocalObjects(); },
+      kFreeLocalObjectsFlushIntervalMs,
+      "CoreWorker.FlushFreeLocalObjects");
 
   periodical_runner_->RunFnPeriodically(
       [this] { InternalHeartbeat(); },
@@ -5166,24 +5174,67 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
+  FreeObjectOnNodesAsync(object_id, locations, /*object_size=*/-1, /*urgent=*/true);
+}
+
+void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
+                                        const absl::flat_hash_set<NodeID> &locations,
+                                        int64_t object_size,
+                                        bool urgent) {
   RAY_LOG(DEBUG) << absl::StrFormat("Freeing object %s asynchronously via request.",
                                     object_id.Hex());
 
   const size_t warn_backlog = static_cast<size_t>(
       RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
-  for (const auto &node_id : locations) {
+  for (const NodeID &node_id : locations) {
+    bool post_flush = false;
     {
       absl::MutexLock lock(&free_batch_mu_);
-      std::deque<ObjectID> &queue = free_pending_[node_id];
-      queue.push_back(object_id);
+      PendingFrees &pending = free_pending_[node_id];
+      pending.objects.emplace_back(object_id, object_size);
+      pending.bytes += std::max<int64_t>(object_size, 0);
+      pending.urgent = pending.urgent || urgent;
+      const size_t queued = pending.objects.size();
       // Warn on first crossing the threshold, then every 1024 objects. Keep
       // buffering; never drop.
-      if (queue.size() >= warn_backlog && (queue.size() - warn_backlog) % 1024 == 0) {
+      if (queued >= warn_backlog && (queued - warn_backlog) % 1024 == 0) {
         RAY_LOG(WARNING) << "FreeLocalObjects backlog for node " << node_id << " is "
-                         << queue.size()
+                         << queued
                          << " objects; it is draining slowly or is unreachable.";
       }
+      if (!urgent && (queued >= kFreeLocalObjectsFlushCount ||
+                      pending.bytes >= kFreeLocalObjectsFlushBytes)) {
+        post_flush = free_flush_posted_.insert(node_id).second;
+      }
     }
+    if (urgent) {
+      SendFreeLocalObjectsBatchIfNeeded(node_id);
+    } else if (post_flush) {
+      io_service_.post(
+          [this, node_id]() {
+            {
+              absl::MutexLock lock(&free_batch_mu_);
+              free_flush_posted_.erase(node_id);
+            }
+            SendFreeLocalObjectsBatchIfNeeded(node_id);
+          },
+          "CoreWorker.FlushFreeLocalObjects");
+    }
+  }
+}
+
+void CoreWorker::FlushAllFreeLocalObjects() {
+  std::vector<NodeID> node_ids;
+  {
+    absl::MutexLock lock(&free_batch_mu_);
+    node_ids.reserve(free_pending_.size());
+    for (const std::pair<const NodeID, PendingFrees> &entry : free_pending_) {
+      if (!free_in_flight_.contains(entry.first)) {
+        node_ids.push_back(entry.first);
+      }
+    }
+  }
+  for (const NodeID &node_id : node_ids) {
     SendFreeLocalObjectsBatchIfNeeded(node_id);
   }
 }
@@ -5197,21 +5248,21 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
       // is replied from the raylet.
       return;
     }
-    absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
-        free_pending_.find(node_id);
+    absl::flat_hash_map<NodeID, PendingFrees>::iterator it = free_pending_.find(node_id);
     if (it == free_pending_.end()) {
       // No queue for this node; an entry is erased as soon as its queue drains, so
       // a present entry is always non-empty.
       return;
     }
-    std::deque<ObjectID> &queue = it->second;
-    const size_t n = std::min(max_free_local_objects_batch_size_, queue.size());
+    PendingFrees &pending = it->second;
+    const size_t n = std::min(max_free_local_objects_batch_size_, pending.objects.size());
     request.mutable_object_ids()->Reserve(static_cast<int>(n));
     for (size_t i = 0; i < n; i++) {
-      request.add_object_ids(queue.front().Binary());
-      queue.pop_front();
+      request.add_object_ids(pending.objects.front().first.Binary());
+      pending.bytes -= std::max<int64_t>(pending.objects.front().second, 0);
+      pending.objects.pop_front();
     }
-    if (queue.empty()) {
+    if (pending.objects.empty()) {
       free_pending_.erase(it);
     }
     free_in_flight_.insert(node_id);
@@ -5229,15 +5280,17 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
   // before the CoreWorker is destroyed during shutdown.
   client->FreeLocalObjects(
       request, [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
+        bool send_next = false;
         {
           absl::MutexLock lock(&free_batch_mu_);
           free_in_flight_.erase(node_id);
+          absl::flat_hash_map<NodeID, PendingFrees>::iterator it =
+              free_pending_.find(node_id);
           if (!status.ok()) {
             // The retryable client only surfaces an error once the node is dead;
             // its copies died with it, so drop the queue instead of wedging.
-            absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
-                free_pending_.find(node_id);
-            const size_t dropped = (it == free_pending_.end()) ? 0 : it->second.size();
+            const size_t dropped =
+                (it == free_pending_.end()) ? 0 : it->second.objects.size();
             if (it != free_pending_.end()) {
               free_pending_.erase(it);
             }
@@ -5246,8 +5299,14 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
                 << " buffered free request(s) for this node, which is likely dead.";
             return;
           }
+          send_next = it != free_pending_.end() &&
+                      (it->second.urgent ||
+                       it->second.objects.size() >= kFreeLocalObjectsFlushCount ||
+                       it->second.bytes >= kFreeLocalObjectsFlushBytes);
         }
-        SendFreeLocalObjectsBatchIfNeeded(node_id);
+        if (send_next) {
+          SendFreeLocalObjectsBatchIfNeeded(node_id);
+        }
       });
 }
 
