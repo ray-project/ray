@@ -2376,14 +2376,23 @@ class DeploymentReplica:
             extra={"log_to_stderr": False},
         )
         self._shutdown_start_time = time.time()
-        timeout_s = self._actor.graceful_stop()
-        if not graceful:
+        if self._actor.node_id is None:
+            # Replica was never scheduled on a node, so skip
+            # the graceful shutdown entirely and let check_stopped()
+            # force kill it immediately on the next tick.
             timeout_s = 0
-        elif self._actor._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            # In direct ingress mode, ensure we wait at least
-            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external
-            # load balancers (e.g., ALB) time to deregister the replica.
-            timeout_s = max(timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
+        else:
+            timeout_s = self._actor.graceful_stop()
+            if not graceful:
+                timeout_s = 0
+            elif self._actor._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+                # In direct ingress mode, ensure we wait at least
+                # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give
+                # external load balancers (e.g., ALB) time to deregister
+                # the replica.
+                timeout_s = max(
+                    timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+                )
         self._shutdown_deadline = time.time() + timeout_s
 
     def check_stopped(self) -> bool:

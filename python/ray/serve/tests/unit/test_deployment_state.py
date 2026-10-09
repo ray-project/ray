@@ -4878,6 +4878,43 @@ def test_stop_one_running_replica_for_testing(mock_deployment_state_manager):
     assert len(ds._replicas.get([ReplicaState.STOPPING])) == 1
 
 
+def test_force_kill_unallocated_replica(mock_deployment_state_manager):
+    """Tests replicas that were never scheduled (PENDING_ALLOCATION) should be
+    force killed immediately without waiting for the graceful shutdown
+    timeout.
+    """
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    grace_period_s = 10
+    info_1, _ = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+
+    # Simulate a replica stuck in PENDING_ALLOCATION
+    replica = ds._replicas.get()[0]
+    replica._actor.set_unscheduled()
+
+    # Delete deployment.
+    ds.delete()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STOPPING, 1, None)])
+
+    # graceful_stop() should not have been called since the actor was
+    # never scheduled.
+    assert not replica._actor.stopped
+
+    # force_stop should be called immediately
+    # on the next update.
+    dsm.update()
+    assert replica._actor.force_stopped_counter == 1
+
+    replica._actor.set_done_stopping()
+    dsm.update()
+    check_counts(ds, total=0)
+
+
 class TestAutoscaling:
     def scale(
         self,

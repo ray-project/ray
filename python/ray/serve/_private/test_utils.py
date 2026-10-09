@@ -684,6 +684,11 @@ class MockReplicaActorWrapper:
         self._node_id = node_id
         self._node_id_is_set = True
 
+    def set_unscheduled(self):
+        """Simulate a replica that was never placed on a node"""
+        self._node_id = None
+        self._node_id_is_set = True
+
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
 
