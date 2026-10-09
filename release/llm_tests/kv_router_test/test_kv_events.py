@@ -329,7 +329,9 @@ class TestKvOffload:
                 kv_offloading_backend="native",
                 kv_offloading_size=1.0,
                 max_model_len=512,
-                num_gpu_blocks_override=32,
+                # Minimum capacity: 512 / 16 tokens per block + 1 reserved null
+                # block. A small GPU cache forces eviction to CPU.
+                num_gpu_blocks_override=33,
             ),
             experimental_configs={"KV_EVENTS_PORT_BASE": 21700},
             runtime_env=dict(

@@ -338,6 +338,16 @@ attrs==26.1.0 \
     #   dm-tree
     #   jsonschema
     #   referencing
+azure-core==1.35.1 \
+    --hash=sha256:12da0c9e08e48e198f9158b56ddbe33b421477e1dc98c2e1c8f9e254d92c468b \
+    --hash=sha256:435d05d6df0fff2f73fb3c15493bb4721ede14203f1ff1382aa6b6b2bdd7e562
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   azure-storage-blob
+azure-storage-blob==12.28.0 \
+    --hash=sha256:00fb1db28bf6a7b7ecaa48e3b1d5c83bfadacc5a678b77826081304bd87d6461 \
+    --hash=sha256:e7d98ea108258d29aa0efbfd591b2e2075fa1722a2fae8699f0b3c9de11eff41
+    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
 billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
     --hash=sha256:55f542c371209e03cd5862299b74e52e4fbcba8250ba611ad94276b369b6a85f
@@ -1060,6 +1070,7 @@ cryptography==44.0.3 \
     --hash=sha256:fe19d8bc5536a91a24a8133328880a41831b6c5df54599a8417b62fe015d3053
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   azure-storage-blob
     #   jwcrypto
     #   pyopenssl
     #   snowflake-connector-python
@@ -1094,6 +1105,10 @@ dask==2026.3.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   distributed
+databricks-sdk==0.72.0 \
+    --hash=sha256:54596db8f1f75330ddf5ec5527a9c0a6a98c4c4190870ed31449582797388d3b \
+    --hash=sha256:86f6a6c8ad5cc84a66d394f2151bfd326a207e11d83eb943cb8a447c762b905c
+    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
 datasets==4.0.0 \
     --hash=sha256:7ef95e62025fd122882dbce6cb904c8cd3fbc829de6669a5eb939c77d50e203d \
     --hash=sha256:9657e7140a9050db13443ba21cb5de185af8af944479b00e7ff1e00a61c8dbf1
@@ -1588,6 +1603,7 @@ google-auth==2.39.0 \
     --hash=sha256:73222d43cdc35a3aeacbfdcaf73142a97839f10de930550d89ebfe1d0a00cde7
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   databricks-sdk
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
@@ -1974,6 +1990,12 @@ iniconfig==2.3.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   pytest
+isodate==0.7.2 \
+    --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
+    --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   azure-storage-blob
 itsdangerous==2.2.0 \
     --hash=sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef \
     --hash=sha256:e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173
@@ -3509,6 +3531,7 @@ protobuf==5.27.5 \
     --hash=sha256:ff4e9db9a21c090f39a6ac91b89262ff1ce49c1fee589ae87c3386f4ad1b2e27
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   databricks-sdk
     #   google-api-core
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
@@ -4324,6 +4347,8 @@ requests==2.33.1 \
     --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   azure-core
+    #   databricks-sdk
     #   datasets
     #   delta-sharing
     #   docker
@@ -4574,6 +4599,7 @@ six==1.17.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   astunparse
+    #   azure-core
     #   google-pasta
     #   opencensus
     #   promise
@@ -4911,16 +4937,16 @@ torch-geometric==2.5.3 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
 torch-scatter==2.1.2+cpu.torch.2.10 ; sys_platform == 'linux' \
-    --hash=sha256:2d1da950a7ab923bd8d0670b94bb9b06dec4b4f10d845f56d141261b9131cbe1 \
-    --hash=sha256:3e8287cd22dafaa53afaa84a811d0d67989af940aac5a3bc7ac308db53f6b9a2 \
-    --hash=sha256:510ba66f9134ad76473eda54183dbe4714a72b9e9927a978beaa663dbb008b8f \
-    --hash=sha256:69de3f74d418d66bf4f00372026d8371c2d399ec331922a3a11721b3d0904eef \
-    --hash=sha256:6d7b93de758c63a2b9138f4a214211226f795d96d51ccd113d074727a035b1a2 \
-    --hash=sha256:74cf432ac1928230c944630bb1313b6ca7d55a345710f57e64ce562121702bef \
-    --hash=sha256:9aae2897043e2aa01c878683d15e4f573d0045445f8ed66ce6929a4d8742578f \
-    --hash=sha256:c821f8f1ad80f0bca8370824bd8dc0e36a619c02cb8a8f7a66e4354f6308ea77 \
-    --hash=sha256:f005d3ce561808347049410e8b4675e74b14a769c267034bdf26974e8d9a8599 \
-    --hash=sha256:f7d40ae7182fc818e1d0dcc0e3d35e1f21e903a2976d63130841646ede63a29e
+    --hash=sha256:0599a83015ae2a33fb1570413d2e3547391137c01639217b8259e71eae756f57 \
+    --hash=sha256:20174bb3310340ed08989727a728c11bb6152199112e81b1769721fdb39e5fee \
+    --hash=sha256:37dd8b4022ffed1592d3bcae5446e98a70c0d33373c50792943973813a2c08dc \
+    --hash=sha256:3a6ad91a84ed2113dc38c967c0df0388deb93cf69c09444257689df272abd70d \
+    --hash=sha256:4369407c5ab2c42b38cc939afe7886af339565b0233b45b070c32f623d2e3f23 \
+    --hash=sha256:51cb12ff2bfc4ee69e5d7c6534e76eabebaa789e4526e01fb6093786697b26e1 \
+    --hash=sha256:797af6a2af4e06b4010c97988ed86212f215ce1c632886168a378d54a75ea85e \
+    --hash=sha256:86add84be1421b5fbe5692f09ae2715546fe2c04294174ab3635cf46f1afb276 \
+    --hash=sha256:ce81c7a817937758753e1c7b3149d3c4f88702e438064920a2a0a7c7e162281f \
+    --hash=sha256:fc557cb75670b1926ddf7ced50a91c62a135abc67373432f2b5284c45d4c59be
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
 torch-sparse==0.6.18+pt210cpu ; sys_platform == 'linux' \
     --hash=sha256:231d5b46988ef1d1dc085a6e4fcaf7716e66c691b0805d01e00645225e4572a1
@@ -5007,6 +5033,8 @@ typing-extensions==4.15.0 \
     #   aiosignal
     #   anyio
     #   arro3-core
+    #   azure-core
+    #   azure-storage-blob
     #   confluent-kafka
     #   daft
     #   etils

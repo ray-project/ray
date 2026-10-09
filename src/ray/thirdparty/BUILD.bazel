@@ -4,15 +4,18 @@ ray_cc_library(
     name = "sha256",
     srcs = ["sha256.c"],
     hdrs = ["sha256.h"],
+    visibility = ["//src/ray/common:__pkg__"],
 )
 
 ray_cc_library(
     name = "aligned_alloc",
     srcs = ["aligned_alloc.c"],
     hdrs = ["aligned_alloc.h"],
+    visibility = ["//src/ray/common:__pkg__"],
 )
 
 ray_cc_library(
     name = "dlmalloc",
     hdrs = ["dlmalloc.c"],
+    visibility = ["//src/ray/object_manager/plasma:__pkg__"],
 )

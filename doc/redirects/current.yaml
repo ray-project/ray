@@ -1,5 +1,62 @@
 schema_version: 1
 redirects:
+- from: /cluster/kubernetes/benchmarks.html
+  to: /kuberay/benchmarks/index.html
+  type: page
+- from: /cluster/kubernetes/examples.html
+  to: /kuberay/examples/index.html
+  type: page
+- from: /cluster/kubernetes/getting-started.html
+  to: /kuberay/getting-started/index.html
+  type: page
+- from: /cluster/kubernetes/references.html
+  to: /kuberay/references/index.html
+  type: page
+- from: /cluster/kubernetes/troubleshooting.html
+  to: /kuberay/troubleshooting/index.html
+  type: page
+- from: /cluster/kubernetes/user-guides.html
+  to: /kuberay/user-guides/index.html
+  type: page
+- from: /cluster/kubernetes/k8s-ecosystem.html
+  to: /kuberay/ecosystem/index.html
+  type: page
+- from: /cluster/kubernetes/k8s-ecosystem/*
+  to: /kuberay/ecosystem/:splat
+  type: page
+- from: /cluster/kubernetes/getting-started/kuberay-operator-installation.html
+  to: /kuberay/getting-started/operator-installation.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-auth.html
+  to: /kuberay/user-guides/auth.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-auth-rbac.html
+  to: /kuberay/user-guides/auth-rbac.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-dashboard.html
+  to: /kuberay/user-guides/dashboard.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-ft.html
+  to: /kuberay/user-guides/gcs-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-persistent-ft.html
+  to: /kuberay/user-guides/gcs-persistent-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-gcs-rocksdb-ft.html
+  to: /kuberay/user-guides/gcs-rocksdb-ft.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-history-server.html
+  to: /kuberay/user-guides/history-server.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-mtls.html
+  to: /kuberay/user-guides/mtls.html
+  type: page
+- from: /cluster/kubernetes/user-guides/kuberay-serve-high-throughput.html
+  to: /kuberay/user-guides/serve-high-throughput.html
+  type: page
+- from: /cluster/kubernetes/*
+  to: /kuberay/:splat
+  type: page
 - from: /train/user-guides/using-gpus.html
   to: /train/user-guides/using-accelerators.html
   type: page
@@ -10,7 +67,7 @@ redirects:
   to: /serve/llm/user-guides/prefill-decode.html
   type: page
 - from: /serve/llm/api.html
-  to: /serve/api/index.html#llm-api
+  to: /serve/api/llm.html
   type: page
 - from: /serve/tutorials/intel-habana-gaudi-inference.html
   to: /serve/tutorials/intel-gaudi-inference.html
@@ -450,7 +507,7 @@ redirects:
   to: /rllib/index.html
   type: page
 - from: /placement-group.html
-  to: /en/master/ray-core/scheduling/placement-group.html
+  to: /en/master/core/scheduling/placement-group.html
   type: page
 - from: /joblib.html
   to: /ray-more-libs/joblib.html
@@ -762,6 +819,9 @@ redirects:
   to: /rllib/package_ref/env/doc/:splat
   type: page
 - from: /rllib/package_ref/*
+  to: /rllib/api/:splat
+  type: page
+- from: /rllib/api/*
   to: /rllib/package_ref/index.html
   type: page
 - from: /serve/api/*
@@ -798,16 +858,133 @@ redirects:
   to: https://github.com/ray-project/ray
   type: page
   description: Sphinx source-view pages have no docs equivalent so they land on the Ray source code
-- from: /cluster/kubernetes/*
+- from: /kuberay/*
   to: /cluster/kubernetes/index.html
   type: page
 - from: /serve/tutorials/*
   to: /serve/index.html
   type: page
-- from: /ray-core/examples/*
+- from: /ray-core/walkthrough.html
+  to: /core/index.html
+  type: page
+- from: /ray-core/runtime_env_auth.html
+  to: /core/runtime-env-auth.html
+  type: page
+- from: /ray-core/actors/async_api.html
+  to: /core/actors/async-api.html
+  type: page
+- from: /ray-core/actors/concurrency_group_api.html
+  to: /core/actors/concurrency-group-api.html
+  type: page
+- from: /ray-core/tasks/dynamic_generators.html
+  to: /core/tasks/dynamic-generators.html
+  type: page
+- from: /ray-core/examples/monte_carlo_pi.html
+  to: /core/examples/monte-carlo-pi.html
+  type: page
+- from: /ray-core/compiled-graph/ray-compiled-graph.html
+  to: /core/compiled-graph/index.html
+  type: page
+- from: /ray-core/direct-transport/direct-transport.html
+  to: /core/direct-transport/index.html
+  type: page
+- from: /ray-core/actors.html
+  to: /core/actors/index.html
+  type: page
+- from: /ray-core/objects.html
+  to: /core/objects/index.html
+  type: page
+- from: /ray-core/tasks.html
+  to: /core/tasks/index.html
+  type: page
+- from: /ray-core/fault-tolerance.html
+  to: /core/fault-tolerance/index.html
+  type: page
+- from: /ray-core/internals.html
+  to: /core/internals/index.html
+  type: page
+- from: /ray-core/examples/overview.html
+  to: /core/examples/index.html
+  type: page
+- from: /ray-core/fault_tolerance/*
+  to: /core/fault-tolerance/:splat
+  type: page
+- from: /core/walkthrough.html
+  to: /core/index.html
+  type: page
+- from: /core/runtime_env_auth.html
+  to: /core/runtime-env-auth.html
+  type: page
+- from: /core/actors/async_api.html
+  to: /core/actors/async-api.html
+  type: page
+- from: /core/actors/concurrency_group_api.html
+  to: /core/actors/concurrency-group-api.html
+  type: page
+- from: /core/tasks/dynamic_generators.html
+  to: /core/tasks/dynamic-generators.html
+  type: page
+- from: /core/examples/monte_carlo_pi.html
+  to: /core/examples/monte-carlo-pi.html
+  type: page
+- from: /core/compiled-graph/ray-compiled-graph.html
+  to: /core/compiled-graph/index.html
+  type: page
+- from: /core/direct-transport/direct-transport.html
+  to: /core/direct-transport/index.html
+  type: page
+- from: /core/actors.html
+  to: /core/actors/index.html
+  type: page
+- from: /core/objects.html
+  to: /core/objects/index.html
+  type: page
+- from: /core/tasks.html
+  to: /core/tasks/index.html
+  type: page
+- from: /core/fault-tolerance.html
+  to: /core/fault-tolerance/index.html
+  type: page
+- from: /core/internals.html
+  to: /core/internals/index.html
+  type: page
+- from: /core/examples/overview.html
+  to: /core/examples/index.html
+  type: page
+- from: /core/fault_tolerance/*
+  to: /core/fault-tolerance/:splat
+  type: page
+- from: /ray-observability/reference/api.html
+  to: /core/api/state.html
+  type: page
+- from: /ray-observability/reference/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /cluster/running-applications/job-submission/jobs-package-ref.html
+  to: /core/api/job-submission.html
+  type: page
+- from: /cluster/running-applications/job-submission/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /core/compiled-graph/compiled-graph-api.html
+  to: /core/api/compiled-graph.html
+  type: page
+- from: /core/compiled-graph/doc/*
+  to: /core/api/doc/:splat
+  type: page
+- from: /cluster/running-applications/autoscaling/reference.html
+  to: /core/api/autoscaler.html
+  type: page
+- from: /ray-more-libs/doc/*
+  to: /ray-more-libs/api/doc/:splat
+  type: page
+- from: /ray-core/*
+  to: /core/:splat
+  type: page
+- from: /core/examples/*
   to: /ray-overview/examples.html
   type: page
-- from: /ray-core/api/*
+- from: /core/api/*
   to: /ray-core/api/index.html
   type: page
 - from: /ray-observability/*
