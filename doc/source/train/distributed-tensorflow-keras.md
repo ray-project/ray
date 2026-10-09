@@ -35,6 +35,10 @@ The TensorFlow implementation currently supports `MultiWorkerMirroredStrategy` a
 
 These instructions closely follow TensorFlow's [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras) tutorial. One key difference is that Ray Train handles the environment variable setup for you.
 
+:::{warning}
+Ray doesn't automatically set any environment variables or configuration related to local parallelism or threading {ref}`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`. For more control over TensorFlow threading, call functions from the `tf.config.threading` module, such as `tf.config.threading.set_inter_op_parallelism_threads(num_cpus)`, at the beginning of your `train_loop_per_worker` function.
+:::
+
 ### Step 1: Wrap your model in `MultiWorkerMirroredStrategy`
 
 [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy) provides synchronous distributed training. You must build and compile the `Model` inside the strategy's scope.
@@ -55,11 +59,6 @@ Because the [batch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#b
 -batch_size = worker_batch_size
 +batch_size = worker_batch_size * train.get_context().get_world_size()
 ```
-
-
-:::{warning}
-Ray doesn't automatically set any environment variables or configuration related to local parallelism or threading {ref}`aside from "OMP_NUM_THREADS" <omp-num-thread-note>`. For more control over TensorFlow threading, call functions from the `tf.config.threading` module, such as `tf.config.threading.set_inter_op_parallelism_threads(num_cpus)`, at the beginning of your `train_loop_per_worker` function.
-:::
 
 ## Create a `TensorflowTrainer`
 
