@@ -270,7 +270,12 @@ def _assert_plan_claims_only_child(
     """
     assert tracker.get_pending_children(
         seed_task_id, reconstruction_plan_id=reconstruction_plan_id
-    ) == {child_task_id: {seed_task_id: list(child_output_indices)}}
+    ) == {
+        child_task_id: [
+            ParentBlockOutput(parent_lineage_task_id=seed_task_id, output_index=i)
+            for i in child_output_indices
+        ]
+    }
     _assert_reuse_statuses(
         tracker,
         seed_task_id,
@@ -982,7 +987,11 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     ):
         assert tracker.get_pending_children(
             parent_task_id, reconstruction_plan_id=reconstruction_plan_id
-        ) == {child_task_id: {parent_task_id: [0]}}
+        ) == {
+            child_task_id: [
+                ParentBlockOutput(parent_lineage_task_id=parent_task_id, output_index=0)
+            ]
+        }
         assert (
             tracker.get_object_reuse_status(
                 parent_task_id,
@@ -1027,7 +1036,11 @@ def test_fan_out_mid_graph_branch_leaf_fail_recovers_seed_and_failed_branch_only
     ):
         assert tracker.get_pending_children(
             parent_task_id, reconstruction_plan_id=reconstruction_plan_id
-        ) == {child_task_id: {parent_task_id: [0]}}
+        ) == {
+            child_task_id: [
+                ParentBlockOutput(parent_lineage_task_id=parent_task_id, output_index=0)
+            ]
+        }
         assert (
             tracker.get_object_reuse_status(
                 parent_task_id,

@@ -73,8 +73,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         )
 
     def _lineage_task_id_for(self, task_index: int) -> str:
-        """The lineage id of this operator's ``task_index``-th fresh task. This provides a logical ID (stable across task reconstruction attempts) for lineage tracking.
-        """
+        """The lineage id of this operator's ``task_index``-th fresh task. This provides a logical ID (stable across task reconstruction attempts) for lineage tracking."""
         return f"{self.id}:{task_index}"
 
     def owns_data_task(self, lineage_task_id: str) -> bool:
@@ -129,23 +128,14 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
 
         For a downstream reconstruction child task, the parent task that completes last holds the full input
         set of reconstruction blocks, and can release it to the operator's output queue.
-        TODO(ayushkum): Currently we support ordering within a task's blocks but not across tasks. Modify
-        lineage tracker to support ordering across tasks, if blocks interleaved from across parents.
         """
         held_blocks = self._reconstruction_outputs.get(reconstruction_plan_id, {})
-        for child_task_id, requirements in self._lineage_tracker.get_pending_children(
+        # Each child's blocks come back in its first attempt's input order, across all
+        # of its parents. Re-running the child on that exact order keeps every output
+        # index holding the rows it held originally, which output reuse relies on.
+        for child_task_id, slots in self._lineage_tracker.get_pending_children(
             lineage_task_id, reconstruction_plan_id
         ).items():
-            # Requirement order is the child's original input order: the map is built
-            # from `parent_tasks` / `child_task_block_dependencies` insertion order,
-            # which is the order the first attempt's dependencies were registered in.
-            slots = [
-                ParentBlockOutput(
-                    parent_lineage_task_id=parent_task_id, output_index=output_index
-                )
-                for parent_task_id, output_indices in requirements.items()
-                for output_index in output_indices
-            ]
             missing = [slot for slot in slots if slot not in held_blocks]
             if missing:
                 # Some parent of this child has not re-produced its share yet. Wait:

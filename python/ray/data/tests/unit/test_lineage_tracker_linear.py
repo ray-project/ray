@@ -56,13 +56,23 @@ def _assert_pending_children(
     reconstruction_plan_id: ReconstructionPlanId,
     expected: Dict[LineageTaskId, Dict[LineageTaskId, List[OutputIndex]]],
 ) -> None:
-    """Assert the pending children of ``parent_task_id`` within ``reconstruction_plan_id``."""
-    assert (
-        tracker.get_pending_children(
-            parent_task_id, reconstruction_plan_id=reconstruction_plan_id
-        )
-        == expected
-    )
+    """Assert the pending children of ``parent_task_id`` within ``reconstruction_plan_id``.
+
+    ``expected`` lists each child's dependencies parent by parent. In a linear
+    chain every child has one parent, so this is the child's exact input order.
+    """
+    assert tracker.get_pending_children(
+        parent_task_id, reconstruction_plan_id=reconstruction_plan_id
+    ) == {
+        child_task_id: [
+            ParentBlockOutput(
+                parent_lineage_task_id=parent_id, output_index=output_index
+            )
+            for parent_id, output_indices in dependencies_by_parent.items()
+            for output_index in output_indices
+        ]
+        for child_task_id, dependencies_by_parent in expected.items()
+    }
 
 
 def _assert_reuse_status(

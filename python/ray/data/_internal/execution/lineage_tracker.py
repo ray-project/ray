@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -86,6 +86,12 @@ class TaskNode:
     # Reconstruction plans that are currently in flight on this task.
     # Maps a reconstruction plan ID to the child block dependencies the plan must re-produce.
     plan_to_child_block_lineages: Dict[ReconstructionPlanId, Set[ChildBlockDependency]]
+
+    # The blocks this task consumes (tuples of parent task ID and output index), in order as they were
+    # consumed during the task's first attempt. A reconstruction re-runs the task on exactly this order,
+    ordered_parent_block_dependencies: List[ParentBlockOutput] = field(
+        default_factory=list
+    )
 
     # How many outputs this task added to this operators output queue.
     # This is only incremented by fresh tasks and tasks that are the reconstruction plan target,
@@ -368,6 +374,7 @@ class LineageTracker:
             child_tasks=[],
             child_task_block_dependencies={},
             plan_to_child_block_lineages={},
+            ordered_parent_block_dependencies=list(dependencies),
         )
         self._lineage_task_id_to_task_node[lineage_task_id] = task_node
 
@@ -574,7 +581,7 @@ class LineageTracker:
         self,
         lineage_task_id: LineageTaskId,
         reconstruction_plan_id: ReconstructionPlanId,
-    ) -> Dict[LineageTaskId, Dict[LineageTaskId, List[OutputIndex]]]:
+    ) -> Dict[LineageTaskId, List[ParentBlockOutput]]:
         """
         Get the children that must be reconstructed for the given data task.
 
@@ -586,9 +593,9 @@ class LineageTracker:
             reconstruction_plan_id: The ID of the plan to get the pending children for.
 
         Returns:
-            A mapping of each pending child task ID to a mapping of parent task
-            ID to the indices of the output blocks that parent produced and the
-            child task depends on.
+            A mapping of each pending child task ID to every block that child
+            depends on, across all of its parents, in the child's original input
+            order.
 
         Raises:
             ValueError: If the task is not already registered.
@@ -610,23 +617,14 @@ class LineageTracker:
             for child_block_lineage in child_block_lineages
         }
 
-        pending_children: Dict[
-            LineageTaskId, Dict[LineageTaskId, List[OutputIndex]]
-        ] = {}
+        pending_children: Dict[LineageTaskId, List[ParentBlockOutput]] = {}
         for child_task_node in task_node.child_tasks:
             # Only consider children that take an output produced by the plan.
             if child_task_node.lineage_task_id not in child_ids_in_plan:
                 continue
-
-            dependencies_by_parent: Dict[LineageTaskId, List[OutputIndex]] = {}
-            for parent_task_node in child_task_node.parent_tasks:
-                output_indices = parent_task_node.child_task_block_dependencies[
-                    child_task_node.lineage_task_id
-                ]
-                dependencies_by_parent[
-                    parent_task_node.lineage_task_id
-                ] = output_indices
-            pending_children[child_task_node.lineage_task_id] = dependencies_by_parent
+            pending_children[child_task_node.lineage_task_id] = list(
+                child_task_node.ordered_parent_block_dependencies
+            )
 
         logger.debug(
             "Pending children for task %s with plan: %s -> %s",

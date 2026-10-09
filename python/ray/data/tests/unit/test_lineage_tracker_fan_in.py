@@ -108,7 +108,9 @@ class ExpectPendingChildren(Action):
     lineage_task_id: LineageTaskId
     plan: PlanRef
     #: Each pending child task ID mapped to the output indices every one of its
-    #: parents produced for it.
+    #: parents produced for it, listed parent by parent in the child's input order.
+    #: None of these scenarios interleave parents within a child's input, so the
+    #: flattened mapping is the child's exact input order.
     expected: Mapping[LineageTaskId, Mapping[LineageTaskId, Sequence[OutputIndex]]]
 
     def apply(self, runner: "_ActionRunner") -> None:
@@ -116,10 +118,13 @@ class ExpectPendingChildren(Action):
             self.lineage_task_id, reconstruction_plan_id=runner.resolve(self.plan)
         )
         assert pending_children == {
-            child_task_id: {
-                parent_task_id: list(output_indices)
+            child_task_id: [
+                ParentBlockOutput(
+                    parent_lineage_task_id=parent_task_id, output_index=output_index
+                )
                 for parent_task_id, output_indices in dependencies_by_parent.items()
-            }
+                for output_index in output_indices
+            ]
             for child_task_id, dependencies_by_parent in self.expected.items()
         }
 
@@ -1020,7 +1025,9 @@ def test_retry_does_not_release_a_queued_sibling_again():
     assert tracker.register_task_failed(left, plan) == ([seed], plan)
     tracker.register_task_submission(seed, [], plan)
 
-    assert tracker.get_pending_children(seed, plan) == {left: {seed: [0]}}
+    assert tracker.get_pending_children(seed, plan) == {
+        left: [ParentBlockOutput(parent_lineage_task_id=seed, output_index=0)]
+    }
     assert (
         tracker.get_object_reuse_status(seed, 0, plan)
         == ObjectReuseStatus.OBJECT_REUSED
