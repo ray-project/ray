@@ -10,6 +10,7 @@ from pydantic import ValidationError
 import ray
 from ray import serve
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 from ray.serve._private.deploy_utils import get_app_code_version
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
@@ -1667,9 +1668,29 @@ class TestTracingConfig:
             TracingConfig(enabled=True, unknown_field="value")
 
     def test_enabled_with_empty_exporter(self):
-        """Test that enabled=True with empty exporter stays empty (no auto-fill)."""
+        """Enabled tracing with an empty exporter resolves to the default exporter."""
         config = TracingConfig(enabled=True, exporter_import_path="")
-        assert config.exporter_import_path == ""
+        assert config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+
+    def test_unset_fields_re_resolve_in_another_env(self, monkeypatch):
+        """Unset fields stay unset so another process can re-resolve them.
+
+        The controller rebuilds a config from its explicitly-set fields to
+        resolve defaults from its own env; a filled-in default exporter must not
+        count as explicitly set.
+        """
+        config = TracingConfig(enabled=True)
+        assert config.model_fields_set == {"enabled"}
+
+        env_var = "ray.serve.schema.RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH"
+        monkeypatch.setattr(env_var, "")
+        partial = TracingConfig(sampling_ratio=0.5)
+        assert partial.enabled is False
+        monkeypatch.setattr(env_var, "my.mod:exp")
+        resolved = TracingConfig(**partial.model_dump(exclude_unset=True))
+        assert resolved.enabled is True
+        assert resolved.exporter_import_path == "my.mod:exp"
+        assert resolved.sampling_ratio == 0.5
 
 
 if __name__ == "__main__":

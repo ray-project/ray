@@ -1,7 +1,10 @@
+import pickle
 from copy import deepcopy
 
 import pytest
 
+from ray.exceptions import ActorDiedError, RayTaskError
+from ray.serve._private.api import _get_actor_init_error
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
     applications_match,
@@ -11,6 +14,7 @@ from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
+from ray.serve._private.tracing_utils import InvalidTracingConfigError
 from ray.serve.schema import (
     ControllerHealthMetrics,
     DurationStats,
@@ -712,6 +716,25 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+def test_get_actor_init_error():
+    """Recover the exception raised by an actor's __init__ from its death error.
+
+    Pins the ActorDiedError(RayTaskError) -> RayTaskError.args[2] layout that
+    serve.start relies on to surface an invalid tracing config cleanly,
+    including after the pickling Ray does to ship the error to the caller.
+    """
+    original = InvalidTracingConfigError("Invalid tracing config: bad exporter")
+    died = ActorDiedError.from_task_error(RayTaskError("__init__", "tb", original))
+    died = pickle.loads(pickle.dumps(died))
+    assert died.actor_init_failed
+    recovered = _get_actor_init_error(died)
+    assert isinstance(recovered, InvalidTracingConfigError)
+    assert str(recovered) == str(original)
+
+    # A system-level death (not an __init__ failure) has no init error.
+    assert _get_actor_init_error(ActorDiedError()) is None
 
 
 if __name__ == "__main__":

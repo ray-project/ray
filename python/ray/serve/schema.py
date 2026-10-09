@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
@@ -236,6 +237,10 @@ class TracingConfig(BaseModel):
 
             # Enable tracing with default exporter
             serve.start(tracing_config=TracingConfig(enabled=True))
+
+    Unset fields default from the ``RAY_SERVE_TRACING_*`` environment variables
+    of the Serve controller (settable via
+    ``controller_options.runtime_env.env_vars``).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -270,6 +275,18 @@ class TracingConfig(BaseModel):
         if v < 0.0 or v > 1.0:
             raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
         return v
+
+    @model_validator(mode="after")
+    def resolve_exporter_import_path(self) -> "TracingConfig":
+        # Enabled with no exporter path: use the default file exporter.
+        if self.enabled and not self.exporter_import_path:
+            was_set = "exporter_import_path" in self.model_fields_set
+            self.exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+            # Keep a filled-in default "unset" so the controller can re-resolve
+            # it from its own env vars.
+            if not was_set:
+                self.model_fields_set.discard("exporter_import_path")
+        return self
 
 
 @PublicAPI(stability="stable")
