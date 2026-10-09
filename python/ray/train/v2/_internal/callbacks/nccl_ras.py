@@ -1151,9 +1151,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """
 
         try:
-            workers = (
-                self._worker_group.get_workers() if self._worker_group else []
-            )
+            workers = self._worker_group.get_workers() if self._worker_group else []
             described_stalls = []
             for comm_id in stalled_comm_ids:
                 train_rank_of = translate_ras_ranks_to_train(

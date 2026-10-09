@@ -19,11 +19,11 @@ from ray.train.v2._internal.callbacks.nccl_ras import (
     RASPoller,
     RASQueryError,
     RASReport,
-    run_nvidia_smi,
     dump_stack_trace,
     fan_out_to_workers,
     parse_ras_addr,
     parse_ras_schema,
+    run_nvidia_smi,
 )
 from ray.train.v2._internal.constants import (
     HANG_DETECTOR_DIRNAME,
