@@ -204,6 +204,7 @@ class PandasJSONDatasource(FileBasedDatasource):
             raise ValueError(
                 f"Failed to read JSON file: {path}. "
                 "Please check that the file contains valid line-delimited JSON."
+                f"Original error: {e}"
             ) from e
 
         try:
@@ -225,6 +226,7 @@ class PandasJSONDatasource(FileBasedDatasource):
             raise ValueError(
                 f"Failed to read JSON file: {path}. "
                 "Please check that the file contains valid line-delimited JSON."
+                f"Original error: {e}"
             ) from e
 
     def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:

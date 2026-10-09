@@ -171,6 +171,7 @@ def test_jsonl_read_invalid_format_includes_path(
         ray.data.read_json(str(path), lines=True).materialize()
 
     assert path.as_posix() in str(exc_info.value)
+    assert "Expected object or value" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
