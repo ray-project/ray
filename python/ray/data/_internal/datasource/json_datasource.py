@@ -145,8 +145,9 @@ class ArrowJSONDatasource(FileBasedDatasource):
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        import pyarrow as pa
         import json
+
+        import pyarrow as pa
 
         buffer: pa.lib.Buffer = f.read_buffer()
 
