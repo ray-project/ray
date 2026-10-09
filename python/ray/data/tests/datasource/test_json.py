@@ -18,6 +18,7 @@ from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 # Set the test timeout to 6 minutes
@@ -150,7 +151,6 @@ def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_pa
 
 
 def test_json_read_invalid_utf8_includes_path(ray_start_regular_shared, tmp_path):
-    from ray.exceptions import RayTaskError
     path = tmp_path / "malformed_encoding.json"
     path.write_bytes(b'[{"name": "\xff"}]')
 
