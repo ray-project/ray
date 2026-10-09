@@ -28,7 +28,7 @@ Persistent storage also supports post-experiment analysis, because it keeps data
 
 ## Cloud object storage
 
-Use cloud object storage, such as Amazon S3, Google Cloud Storage, or Azure Blob Storage, to persist Ray Train checkpoint files.
+The Ray team recommends cloud object storage, such as Amazon S3, Google Cloud Storage, or Azure Blob Storage, for persisting Ray Train checkpoint files.
 
 To use cloud object storage, set {class}`RunConfig(storage_path) <ray.train.RunConfig>` to a storage container URI:
 

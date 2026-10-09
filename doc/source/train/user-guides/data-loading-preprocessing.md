@@ -238,7 +238,7 @@ Ray Data splits all datasets across the training workers by default. {meth}`~ray
 Ray Data splits the data on the fly in a streaming fashion.
 
 :::{note}
-Because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers. Use [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) or similar utilities in other frameworks. For an example, see {doc}`Train with DeepSpeed ZeRO-3 and Ray Train <../examples/deepspeed/deepspeed-example>`.
+Because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might use [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) or similar utilities in other frameworks. For an example, see {doc}`Train with DeepSpeed ZeRO-3 and Ray Train <../examples/deepspeed/deepspeed-example>`.
 :::
 
 To override this behavior, pass the `dataset_config` argument. For details on configuring splitting logic, see {ref}`Split datasets <train-datasets-split>`.

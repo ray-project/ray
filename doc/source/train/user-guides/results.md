@@ -49,7 +49,7 @@ Use {attr}`Result.metrics_dataframe <ray.train.Result>` to retrieve a pandas Dat
 :end-before: __result_dataframe_end__
 ```
 
-(returned-data-from-training-function)=
+(returned-data-from-train-function)=
 
 ### Data returned from the training function
 

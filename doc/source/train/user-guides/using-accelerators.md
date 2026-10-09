@@ -274,7 +274,7 @@ trainer = TorchTrainer(
 
 ### NCCL: Set the communication network interface
 
-When you use NCCL for distributed training, configure which network interface cards the GPUs use to communicate by setting the [`NCCL_SOCKET_IFNAME`](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname) environment variable.
+When you use NCCL for distributed training, you can configure which network interface cards the GPUs use to communicate by setting the [`NCCL_SOCKET_IFNAME`](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html#nccl-socket-ifname) environment variable.
 
 To set the environment variable on all training workers, pass it in a {ref}`Ray runtime environment <runtime-environments>`:
 

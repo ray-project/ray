@@ -232,7 +232,7 @@ How Ray Train populates checkpoint metrics during training and how you access th
 
 In standard {ref}`experiment tracking with Ray Train <train-experiment-tracking-native>`, you create, log to, and finish the experiment tracking run from the rank 0 training worker. Asynchronous validation complicates this because a separate Ray task computes the validation metrics outside the training worker.
 
-Many experiment tracking configurations, such as [W&B distributed training](https://docs.wandb.ai/models/track/log/distributed-training#track-all-processes-to-a-single-run), support writing to the same run from different threads or processes. Others, such as the [MLflow fluent API](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html), might not.
+Most modern experiment tracking configurations, such as [W&B distributed training](https://docs.wandb.ai/models/track/log/distributed-training#track-all-processes-to-a-single-run), support writing to the same run from different threads or processes. Others, such as the [MLflow fluent API](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html), might not.
 
 (writing-to-the-same-run)=
 
