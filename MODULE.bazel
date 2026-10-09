@@ -1,0 +1,50 @@
+# POC -- not for merge.
+# Minimal rust-only module graph. Deliberately declares nothing Ray already gets
+# from WORKSPACE, so no apparent name Ray's BUILD files use is introduced here.
+module(
+    name = "io_ray",
+    version = "3.0.0.dev0",
+)
+
+bazel_dep(name = "rules_rust", version = "0.74.0")
+bazel_dep(name = "rules_rust_pyo3", version = "0.74.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(edition = "2021")
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+# rules_rust_pyo3 registers these as dev_dependency in its own module, so a
+# consumer has to register them itself.
+register_toolchains(
+    "@rules_rust_pyo3//toolchains:toolchain",
+    "@rules_rust_pyo3//toolchains:rust_toolchain",
+)
+
+# One protobuf, abseil and zlib for both dependency systems. rules_cc,
+# rules_python and stardoc pull protobuf into the module graph; declaring it
+# here under its WORKSPACE name makes the main repo and every WORKSPACE repo
+# (grpc, ...) resolve @com_google_protobuf to this module instead of a second
+# copy. That keeps Bazel 8's proto autoloads and the default proto toolchains
+# on the same protobuf as Ray's code. abseil and zlib come along because
+# protobuf links them; two copies of either in one binary is an ODR problem.
+bazel_dep(name = "protobuf", version = "29.5", repo_name = "com_google_protobuf")
+
+# BCR stops at 29.5; use the exact release WORKSPACE pinned.
+archive_override(
+    module_name = "protobuf",
+    integrity = "sha256-KvI1LZ6JmSrmNCV6Fs/0xRQ8hQTblyMH5J5h7RBHM04=",
+    strip_prefix = "protobuf-29.6",
+    urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v29.6.tar.gz"],
+)
+
+bazel_dep(name = "abseil-cpp", version = "20240722.2", repo_name = "com_google_absl")
+
+single_version_override(
+    module_name = "abseil-cpp",
+    patch_strip = 0,
+    patches = ["//thirdparty/patches:abseil-cpp-shadow.patch"],
+)
+
+bazel_dep(name = "zlib", version = "1.3.2.bcr.2", repo_name = "zlib")
