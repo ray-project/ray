@@ -32,12 +32,9 @@ class Probe(abc.ABC):
     Attributes:
         name: The probe's name, which identifies its readings. Defaults to the
             class name. Set on the class.
-        poll_interval_s: Seconds between polls when the probe is polled
-            periodically. Not used when it is polled once.
     """
 
     name: Optional[str] = None
-    poll_interval_s: float = 10.0
 
     @classmethod
     def probe_name(cls) -> str:
@@ -70,3 +67,51 @@ class NodeProbe(Probe):
             The reading.
         """
         raise NotImplementedError
+
+
+def _check_probe(probe: Probe) -> None:
+    if not isinstance(probe, Probe):
+        raise TypeError(f"Expected a Probe instance, got {probe!r}.")
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class PeriodicProbe:
+    """Wraps a probe to be polled every ``poll_interval_s`` seconds.
+
+    Attributes:
+        probe: The probe to poll.
+        poll_interval_s: Seconds between polls.
+
+    Raises:
+        TypeError: If ``probe`` is not a ``Probe`` instance.
+        ValueError: If ``poll_interval_s`` is not positive.
+    """
+
+    probe: Probe
+    poll_interval_s: float = 10.0
+
+    def __post_init__(self):
+        _check_probe(self.probe)
+        if self.poll_interval_s <= 0:
+            raise ValueError(
+                f"poll_interval_s must be positive, got {self.poll_interval_s}."
+            )
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class OnDemandProbe:
+    """Wraps a probe to be polled once, when requested.
+
+    Attributes:
+        probe: The probe to poll.
+
+    Raises:
+        TypeError: If ``probe`` is not a ``Probe`` instance.
+    """
+
+    probe: Probe
+
+    def __post_init__(self):
+        _check_probe(self.probe)

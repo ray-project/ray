@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, List
 
 from ray.util.annotations import PublicAPI
@@ -60,13 +60,8 @@ class Diagnose(HealthDecision):
     evaluators decide on the readings.
 
     Attributes:
-        checks: The checks to run.
-        target_ranks: World ranks to poll ``WorkerProbe``\\ s on. Empty means
-            all ranks.
-        target_nodes: IDs of the nodes to poll ``NodeProbe``\\ s on. Empty means
-            all nodes with workers.
+        checks: The checks to run. Their probes must be wrapped in
+            ``OnDemandProbe``.
     """
 
     checks: List["HealthCheck"]
-    target_ranks: List[int] = field(default_factory=list)
-    target_nodes: List["NodeIdStr"] = field(default_factory=list)

@@ -1,35 +1,11 @@
-import abc
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, List, Union
 
-from ray.train.health.decision import HealthDecision
-from ray.train.health.probe import Probe
-from ray.train.health.state import HealthState
+from ray.train.health.evaluator import Evaluator
+from ray.train.health.probe import OnDemandProbe, PeriodicProbe
 from ray.util.annotations import PublicAPI
 
-
-@PublicAPI(stability="alpha")
-class Evaluator(abc.ABC):
-    """Decides what the run should do from probe readings. Implement
-    ``evaluate()``."""
-
-    @abc.abstractmethod
-    def evaluate(self, state: HealthState) -> HealthDecision:
-        """Decide what the run should do.
-
-        Args:
-            state: The latest probe readings.
-
-        Returns:
-            A ``HealthDecision``. ``Noop()`` if no action is needed.
-        """
-        raise NotImplementedError
-
-    def on_worker_group_start(self) -> None:
-        """Called at the start of each attempt of the training run."""
-
-
-ProbeCreator = Callable[[], List[Probe]]
+ProbeCreator = Callable[[], List[Union[PeriodicProbe, OnDemandProbe]]]
 EvaluatorCreator = Callable[[], List[Evaluator]]
 
 
@@ -39,21 +15,13 @@ class HealthCheck:
     """A set of probes that collect data, and the evaluators that decide on it.
 
     Attributes:
-        probe_creator: Returns the check's probes.
-        evaluator_creator: Returns the check's evaluators.
-
-    Raises:
-        ValueError: If the check has neither probes nor evaluators.
+        probe_creator: Returns the check's probes, each wrapped in a
+            ``PeriodicProbe`` or an ``OnDemandProbe``. Defaults to none.
+        evaluator_creator: Returns the check's evaluators. Defaults to none.
     """
 
-    probe_creator: Optional[ProbeCreator] = None
-    evaluator_creator: Optional[EvaluatorCreator] = None
-
-    def __post_init__(self):
-        if self.probe_creator is None and self.evaluator_creator is None:
-            raise ValueError(
-                "A HealthCheck needs a probe_creator, an evaluator_creator, or both."
-            )
+    probe_creator: ProbeCreator = lambda: []
+    evaluator_creator: EvaluatorCreator = lambda: []
 
 
 @PublicAPI(stability="alpha")
@@ -62,10 +30,11 @@ class HealthConfig:
     """Health monitoring configuration for a run.
 
     Attributes:
-        mid_training_checks: Checks that run during training.
+        inflight_checks: Checks that run during training. Their probes must be
+            wrapped in ``PeriodicProbe``.
         preflight_checks: Checks that run once on each node before training
-            starts.
+            starts. Their probes must be wrapped in ``OnDemandProbe``.
     """
 
-    mid_training_checks: List[HealthCheck] = field(default_factory=list)
+    inflight_checks: List[HealthCheck] = field(default_factory=list)
     preflight_checks: List[HealthCheck] = field(default_factory=list)
