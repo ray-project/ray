@@ -299,23 +299,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   template <typename T>
   using TryInvokeOnce = std::function<void(SuccCallback<T>, FailCallback)>;
 
-  void ExitImmediately() {
-    RAY_LOG(ERROR)
-        << "The raylet exited immediately because the runtime env agent timed out when "
-           "Raylet try to connect to it. This can happen because the runtime env agent "
-           "was never started, or is listening to the wrong port. Read the log `cat "
-           "/tmp/ray/session_latest/logs/runtime_env_agent.log`. You can find the log "
-           "file structure here "
-           "https://docs.ray.io/en/master/ray-observability/user-guides/"
-           "configure-logging.html#logging-directory-structure.\n";
-    rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    node_death_info.set_reason_message("Raylet could not connect to Runtime Env Agent");
-    shutdown_raylet_gracefully_(node_death_info);
-    // If the process is not terminated within 10 seconds, forcefully kill itself.
-    delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
-  }
-
   /// @brief Invokes `try_invoke_once`. If it fails with a network error, retries every
   /// after `agent_manager_retry_interval_ms` up until `deadline` passed. After which,
   /// fail_callback is called with the NotFound error from `try_invoke_once`.
@@ -344,10 +327,14 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
       } else if (clock_.SteadyNowMillis() > deadline_ms) {
-        RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
-                       << "ms. Status: " << status << ", address: " << this->address_
-                       << ", port: " << this->port_str_ << ", exiting immediately...";
-        ExitImmediately();
+        RAY_LOG(ERROR)
+            << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
+            << "ms. Status: " << status << ", address: " << this->address_
+            << ", port: " << this->port_str_
+            << ". A raylet cannot start without a runtime env agent, and it fate shares "
+               "with the agent process, so reaching this means the agent is up but "
+               "this raylet could not reach it. Failing this request.";
+        fail_callback(status);
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
                       << ", the server may be still starting or is already failed. "
