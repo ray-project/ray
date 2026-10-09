@@ -1215,10 +1215,10 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
     assert "NCCL hang still suspected!" in text
     # Fail mode threatens to raise a NCCLHangError.
     assert "A NCCLHangError will be raised" in text
-    # The RAS report is logged verbatim, without a "NCCL RAS report" label,
-    # and only once for the whole suspected hang.
+    # The RAS report is introduced so users know where it comes from, and is
+    # logged only once for the whole suspected hang.
     assert text.count(FakePoller.TEXT_REPORT) == 1
-    assert "NCCL RAS report:" not in text
+    assert "NCCL's own `ncclras` report of the suspected hang" in text
 
 
 def test_periodic_warning_never_precedes_the_first_suspicion(
