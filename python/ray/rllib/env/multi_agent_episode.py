@@ -411,8 +411,9 @@ class MultiAgentEpisode:
             + [aid for aid in truncateds if truncateds[aid]]
         )
         # Case 2: Some agents are truncated and the others are terminated -> Declare
-        # this episode as terminated.
-        if all(aid in set(agents_done) for aid in self.agent_ids):
+        # this episode as terminated. Agents observed for the first time in this step
+        # count as well: they are only added to `self.agent_episodes` further below.
+        if all(aid in agents_done for aid in self.agent_ids | set(observations)):
             self.is_terminated = True
 
         # For all agents that are not stepping in this env step, but that are not done
