@@ -15,9 +15,12 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
 #include <string>
 #include <utility>
+
+#include "absl/strings/numbers.h"
 
 namespace ray {
 
@@ -41,6 +44,32 @@ ResourceRequest ResourceMapToResourceRequest(
     res.Set(entry.first, FixedPoint(entry.second));
   }
   return res;
+}
+
+std::optional<ResourceSet> ResolveGpuMemory(
+    const ResourceSet &resource_set,
+    const absl::flat_hash_map<std::string, std::string> &node_labels) {
+  if (!resource_set.Has(ResourceID::GPUMemory())) {
+    return resource_set;
+  }
+  int64_t per_device = 0;
+  auto it = node_labels.find(kLabelKeyGpuMemoryPerDevice);
+  if (it == node_labels.end() || !absl::SimpleAtoi(it->second, &per_device) ||
+      per_device <= 0) {
+    return std::nullopt;
+  }
+  auto requested =
+      static_cast<int64_t>(std::ceil(resource_set.Get(ResourceID::GPUMemory()).Double()));
+  if (requested > per_device) {
+    return std::nullopt;
+  }
+  int64_t units = (requested * kResourceUnitScaling + per_device - 1) / per_device;
+  ResourceSet resolved = resource_set;
+  resolved.Set(ResourceID::GPUMemory(), FixedPoint(0));
+  resolved.Set(
+      ResourceID::GPU(),
+      resolved.Get(ResourceID::GPU()) + FixedPoint((units + 0.5) / kResourceUnitScaling));
+  return resolved;
 }
 
 /// Convert a map of resources to a NodeResources data structure.
@@ -90,7 +119,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
-  return this->available >= resource_request.GetResourceSet();
+  return Covers(this->available, resource_request.GetResourceSet());
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
@@ -98,7 +127,16 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
   if (!HasRequiredLabels(label_selector)) {
     return false;
   }
-  return this->total >= resource_request.GetResourceSet();
+  return Covers(this->total, resource_request.GetResourceSet());
+}
+
+bool NodeResources::Covers(const NodeResourceSet &capacity,
+                           const ResourceSet &resource_set) const {
+  if (!resource_set.Has(ResourceID::GPUMemory())) {
+    return capacity >= resource_set;
+  }
+  auto resolved = ResolveGpuMemory(resource_set, labels);
+  return resolved.has_value() && capacity >= *resolved;
 }
 
 bool NodeResources::HasRequiredLabels(const LabelSelector &label_selector) const {

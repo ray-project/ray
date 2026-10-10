@@ -50,6 +50,7 @@ class LeaseSpecification : public MessageWrapper<rpc::LeaseSpec> {
 
   const ResourceSet &GetRequiredResources() const;
   const ResourceSet &GetRequiredPlacementResources() const;
+  bool RequiresGpu() const;
   const LabelSelector &GetLabelSelector() const;
   const std::vector<FallbackOption> &GetFallbackStrategy() const;
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
