@@ -23,6 +23,7 @@ from ray.util.tpu import get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
+    from ray.train.health import HealthConfig
 
 logger = logging.getLogger(__name__)
 
@@ -460,6 +461,10 @@ class RunConfig:
             for all Ray Train worker actors.
         logging_config: Configuration for Ray Train's logging behavior.
             See :class:`LoggingConfig` for details.
+        health_config: [DeveloperAPI, alpha] Health monitoring policies --
+            the probes to run and the evaluators that judge them. See
+            ``ray.train.health``. Off when unset: no probes run and training
+            behaves exactly as it does without it.
     """
 
     name: Optional[str] = None
@@ -470,6 +475,7 @@ class RunConfig:
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
     logging_config: Optional[LoggingConfig] = None
+    health_config: Optional["HealthConfig"] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED

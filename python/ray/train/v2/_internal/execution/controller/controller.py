@@ -10,6 +10,7 @@ import pandas as pd
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
+from ray.train.health.decision import Action, HealthDecision
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_ENABLE_PREEMPTION_WATCHER,
@@ -75,6 +76,7 @@ from ray.train.v2._internal.util import (
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    HealthDecisionError,
     PreemptionError,
     TrainingFailedError,
 )
@@ -83,6 +85,7 @@ from ray.train.v2.api.result import Result
 from ray.train.v2.api.validation_config import ValidationConfig
 
 if TYPE_CHECKING:
+    from ray.train.v2._internal.callbacks.health_callback import HealthCallback
     from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
@@ -144,6 +147,18 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
+
+        # Health monitoring: the callback collects signals and runs probes;
+        # this controller decides what to do with each HealthDecision.
+        self._health: Optional["HealthCallback"] = None
+        health_config = self._run_config.health_config
+        if health_config is not None and health_config.policies:
+            from ray.train.v2._internal.callbacks.health_callback import (
+                HealthCallback,
+            )
+
+            self._health = HealthCallback(health_config)
+            self._callbacks = self._callbacks + [self._health]
         self._storage_context = self._train_run_context.run_config.storage_context
 
         self._checkpoint_manager = CheckpointManager(
@@ -458,6 +473,15 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
 
+        # Pre-flight runs first, so the nodes it rejects are excluded below.
+        if self._health is not None:
+            preflight_decision = self._health.run_preflight(resources_per_worker)
+            if preflight_decision is not None:
+                self._log_health_decision(preflight_decision)
+                self._controller_callback_manager.invoke(
+                    "after_health_decision", preflight_decision
+                )
+
         # Check for `label_selector` to influence WorkerGroup scheduling.
         label_selector = scaling_config._label_selector_per_worker(num_workers)
         for callback in self._controller_callbacks:
@@ -713,6 +737,11 @@ class TrainController:
                     failure_decision, training_failed_error=worker_group_error
                 )
 
+            if self._health is not None:
+                health_decision = self._health.poll_decision(worker_group_status)
+                if health_decision is not None:
+                    return self._execute_health_decision(health_decision)
+
             scaling_decision = (
                 self._scaling_policy.make_decision_for_running_worker_group(
                     worker_group_state=self.get_worker_group().get_worker_group_state(),
@@ -748,6 +777,53 @@ class TrainController:
             return await self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
+
+    def _execute_health_decision(
+        self, decision: HealthDecision
+    ) -> TrainControllerLoopIterationResult:
+        """Act on a health decision from a running worker group.
+
+        - ``DIAGNOSE``: run the on-demand probes; keep running.
+        - ``REATTEMPT``: ask the failure policy, like any worker error, so
+          ``FailureConfig.max_failures`` applies.
+        - ``EVICT``: the evicted nodes are already excluded from scheduling;
+          hand off to the scaling policy to bring the worker group back up.
+          Does not count against ``max_failures``.
+        """
+        self._log_health_decision(decision)
+        failure_result = self._run_controller_hook("after_health_decision", decision)
+        if failure_result:
+            return failure_result
+
+        controller_state = self.get_state()
+        error = HealthDecisionError(decision.reason, decision=decision)
+        if decision.action is Action.REATTEMPT:
+            failure_decision = self._failure_policy.make_decision(
+                training_failed_error=error
+            )
+            return self._execute_failure_decision(
+                failure_decision, training_failed_error=error
+            )
+        if decision.action is Action.EVICT:
+            next_state = RestartingState(training_failed_error=error)
+        else:
+            if decision.action is Action.DIAGNOSE:
+                self._health.diagnose(decision)
+            next_state = RunningState()
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=controller_state,
+            next_state=next_state,
+        )
+
+    @staticmethod
+    def _log_health_decision(decision: HealthDecision) -> None:
+        logger.warning(
+            "[Health] %s (%s): %s",
+            decision.action.name,
+            decision.cause.name,
+            decision.reason,
+        )
 
     @staticmethod
     def _is_training_succeeded(
