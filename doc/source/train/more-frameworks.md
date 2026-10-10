@@ -1,21 +1,21 @@
 ---
 myst:
   html_meta:
-    description: "Index of Ray Train integration guides for additional frameworks: Hugging Face Accelerate, DeepSpeed, TensorFlow/Keras, LightGBM, and Horovod."
+    description: "Index of Ray Train integration guides for additional frameworks: Hugging Face Accelerate, DeepSpeed, TensorFlow and Keras, LightGBM, and Horovod."
 ---
 
 (train-more-frameworks)=
 
-# More Frameworks
+# More frameworks
 
 ```{toctree}
 :hidden:
 
-Hugging Face Accelerate Guide <huggingface-accelerate>
-DeepSpeed Guide <deepspeed>
-TensorFlow and Keras Guide <distributed-tensorflow-keras>
-LightGBM Guide <getting-started-lightgbm>
-Horovod Guide <horovod>
+Hugging Face Accelerate guide <huggingface-accelerate>
+DeepSpeed guide <deepspeed>
+TensorFlow and Keras guide <distributed-tensorflow-keras>
+LightGBM guide <getting-started-lightgbm>
+Horovod guide <horovod>
 ```
 
 ::::{grid} 1 2 3 4
