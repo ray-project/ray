@@ -241,8 +241,7 @@ class PandasJSONDatasource(FileBasedDatasource):
             ) from decode_error
         except ValueError as e:
             raise ValueError(
-                f"Failed to read JSON file: {path}. "
-                "Please check that the file contains valid line-delimited JSON. "
+                f"Failed to parse line-delimited JSON from file: {path}. "
                 f"Original error: {e}"
             ) from e
 

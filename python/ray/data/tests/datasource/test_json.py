@@ -142,7 +142,7 @@ def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_pa
     )
 
     with pytest.raises(
-        ValueError,
+        json.JSONDecodeError,
         match="Failed to read JSON file",
     ) as exc_info:
         ray.data.read_json(str(path)).materialize()
@@ -182,7 +182,7 @@ def test_jsonl_read_invalid_format_includes_path(
 
     with pytest.raises(
         ValueError,
-        match="Failed to read JSON file",
+        match="Failed to parse line-delimited JSON from file",
     ) as exc_info:
         ray.data.read_json(str(path), lines=True).materialize()
 
@@ -202,8 +202,6 @@ def test_jsonl_read_invalid_format_includes_path(
 def test_jsonl_read_invalid_utf8_includes_path(
     ray_start_regular_shared, tmp_path, content
 ):
-    from ray.exceptions import RayTaskError
-
     path = tmp_path / "malformed_encoding.jsonl"
     path.write_bytes(content)
 
