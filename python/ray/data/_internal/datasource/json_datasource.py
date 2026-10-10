@@ -227,6 +227,18 @@ class PandasJSONDatasource(FileBasedDatasource):
                     ) as reader:
                         for df in reader:
                             yield _cast_range_index_to_string(df)
+        except UnicodeDecodeError as decode_error:
+            raise UnicodeDecodeError(
+                decode_error.encoding,
+                decode_error.object,
+                decode_error.start,
+                decode_error.end,
+                (
+                    f"{decode_error.reason}. "
+                    f"Failed to read JSON file: {path}. "
+                    "Please check that the file uses a valid text encoding."
+                ),
+            ) from decode_error
         except ValueError as e:
             raise ValueError(
                 f"Failed to read JSON file: {path}. "

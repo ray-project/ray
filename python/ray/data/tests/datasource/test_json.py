@@ -190,6 +190,33 @@ def test_jsonl_read_invalid_format_includes_path(
     assert "Expected object or value" in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        # Invalid UTF-8 in the first row.
+        b'{"name": "\xff"}\n',
+        # Invalid UTF-8 in a later row.
+        b'{"name": "valid"}\n{"name": "\xff"}\n',
+    ],
+)
+def test_jsonl_read_invalid_utf8_includes_path(
+    ray_start_regular_shared, tmp_path, content
+):
+    from ray.exceptions import RayTaskError
+
+    path = tmp_path / "malformed_encoding.jsonl"
+    path.write_bytes(content)
+
+    with pytest.raises(UnicodeDecodeError) as exc_info:
+        ray.data.read_json(str(path), lines=True).materialize()
+
+    error = exc_info.value
+    assert isinstance(error, RayTaskError)
+    assert isinstance(error.cause, UnicodeDecodeError)
+    assert path.as_posix() in str(error)
+    assert "utf-8" in str(error).lower()
+
+
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])
 def test_jsonl_lists(
     ray_start_regular_shared,
