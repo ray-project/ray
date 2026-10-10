@@ -149,6 +149,7 @@ STATS_TEMPLATE = {
     },
     "gpus": [],
     "gpu_processes": {},
+    "npus": [],
     "tpus": [],
     "network": (13621160960, 11914936320),
     "network_speed": (8.435062128545095, 7.378462703142336),
@@ -798,6 +799,71 @@ def test_report_stats_gpu_power_and_temperature(tmp_path):
         assert "GpuIndex" in r.tags
         assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
         assert r.tags.get("GpuUuid") == expected_uuids[r.tags["GpuIndex"]]
+
+
+def test_report_stats_ascend_npu_metrics(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["npus"] = [
+        {
+            "index": 0,
+            "card_id": 2,
+            "device_id": 0,
+            "physical_id": 4,
+            "name": "Ascend910",
+            "utilization_aicore": 97,
+            "memory_used": 4270 * 1024 * 1024,
+            "memory_total": 65536 * 1024 * 1024,
+            "health_status": 0,
+            "power_mw": 940700,
+            "temperature_c": 71,
+        }
+    ]
+
+    records = agent._to_records(stats, {})
+    npu_records = {
+        record.gauge.name: record
+        for record in records
+        if record.gauge.name.startswith("node_npu")
+    }
+
+    assert set(npu_records) == {
+        "node_npus_available",
+        "node_npus_utilization",
+        "node_npu_hbm_used",
+        "node_npu_hbm_available",
+        "node_npu_power_milliwatts",
+        "node_npu_temperature_celsius",
+        "node_npu_health",
+    }
+    assert npu_records["node_npus_available"].value == 1
+    assert npu_records["node_npus_utilization"].value == 97
+    assert npu_records["node_npu_hbm_used"].value == 4270 * 1024 * 1024
+    assert npu_records["node_npu_hbm_available"].value == (65536 - 4270) * 1024 * 1024
+    assert npu_records["node_npu_power_milliwatts"].value == 940700
+    assert npu_records["node_npu_temperature_celsius"].value == 71
+    assert npu_records["node_npu_health"].value == 1
+    assert npu_records["node_npus_available"].tags == {
+        "ip": stats["ip"],
+        "NpuIndex": "0",
+        "NpuPhysicalId": "4",
+        "NpuCardId": "2",
+        "NpuDeviceId": "0",
+        "NpuDeviceName": "Ascend910",
+        "RayNodeType": "head",
+        "IsHeadNode": "true",
+    }
+
+    stats_payload = json.loads(agent._generate_stats_payload(stats))
+    assert stats_payload["npus"][0]["physicalId"] == 4
+    assert stats_payload["npus"][0]["memoryUsed"] == 4270 * 1024 * 1024
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):

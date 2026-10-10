@@ -61,6 +61,7 @@ from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     GPU_TAG_KEYS,
     NODE_TAG_KEYS,
+    NPU_TAG_KEYS,
     TPU_TAG_KEYS,
 )
 from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManager
@@ -70,6 +71,10 @@ from ray.dashboard.modules.reporter.gpu_providers import (
     TpuUtilizationInfo,
 )
 from ray.dashboard.modules.reporter.jax_profile_manager import JaxProfilingManager
+from ray.dashboard.modules.reporter.npu_providers import (
+    NpuMetricProvider,
+    NpuUtilizationInfo,
+)
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -249,6 +254,49 @@ METRICS_GAUGES = {
         "Current GPU temperature in Celsius",
         "celsius",
         GPU_TAG_KEYS,
+    ),
+    # Ascend NPU metrics
+    "node_npus_available": Gauge(
+        "node_npus_available",
+        "Ascend NPUs available on a Ray node",
+        "count",
+        NPU_TAG_KEYS,
+    ),
+    "node_npus_utilization": Gauge(
+        "node_npus_utilization",
+        "Ascend NPU AI Core utilization on a Ray node",
+        "percentage",
+        NPU_TAG_KEYS,
+    ),
+    "node_npu_hbm_used": Gauge(
+        "node_npu_hbm_used",
+        "Ascend NPU HBM usage on a Ray node",
+        "bytes",
+        NPU_TAG_KEYS,
+    ),
+    "node_npu_hbm_available": Gauge(
+        "node_npu_hbm_available",
+        "Ascend NPU HBM available on a Ray node",
+        "bytes",
+        NPU_TAG_KEYS,
+    ),
+    "node_npu_power_milliwatts": Gauge(
+        "node_npu_power_milliwatts",
+        "Current Ascend NPU power draw in milliwatts",
+        "milliwatts",
+        NPU_TAG_KEYS,
+    ),
+    "node_npu_temperature_celsius": Gauge(
+        "node_npu_temperature_celsius",
+        "Current Ascend NPU temperature in Celsius",
+        "celsius",
+        NPU_TAG_KEYS,
+    ),
+    "node_npu_health": Gauge(
+        "node_npu_health",
+        "Ascend NPU health (1 is healthy, 0 is unhealthy)",
+        "state",
+        NPU_TAG_KEYS,
     ),
     # TPU metrics
     "tpu_tensorcore_utilization": Gauge(
@@ -611,6 +659,7 @@ class ReporterAgent(
 
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
+        self._npu_metric_provider = NpuMetricProvider()
 
         if raylet_client:
             self._raylet_client = raylet_client
@@ -860,6 +909,10 @@ class ReporterAgent(
     def _get_gpu_usage(self):
         """Get GPU usage information using the GPU metric provider."""
         return self._gpu_metric_provider.get_gpu_usage()
+
+    def _get_npu_usage(self) -> List[NpuUtilizationInfo]:
+        """Get Ascend NPU usage information using DCMI."""
+        return self._npu_metric_provider.get_npu_usage()
 
     @staticmethod
     def _get_tpu_usage() -> List[TpuUtilizationInfo]:
@@ -1310,6 +1363,7 @@ class ReporterAgent(
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
         gpus = self._get_gpu_usage()
+        npus = self._get_npu_usage()
         raylet = self._get_raylet()
         stats = {
             "now": now,
@@ -1332,6 +1386,7 @@ class ReporterAgent(
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
+            "npus": npus,
             "tpus": self._get_tpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
@@ -1868,6 +1923,88 @@ class ReporterAgent(
                         )
                     records_reported.extend(gpu_records_to_add)
 
+        # -- Ascend NPU per node --
+        for npu in stats.get("npus", []):
+            npu_tags = {
+                **node_tags,
+                "NpuIndex": str(npu["index"]),
+                "NpuCardId": str(npu["card_id"]),
+                "NpuDeviceId": str(npu["device_id"]),
+            }
+            if npu.get("name"):
+                npu_tags["NpuDeviceName"] = npu["name"]
+            if npu.get("physical_id") is not None:
+                npu_tags["NpuPhysicalId"] = str(npu["physical_id"])
+
+            npu_records_to_add = [
+                Record(
+                    gauge=METRICS_GAUGES["node_npus_available"],
+                    value=1,
+                    tags=npu_tags,
+                )
+            ]
+
+            utilization = npu.get("utilization_aicore")
+            if utilization is not None:
+                npu_records_to_add.append(
+                    Record(
+                        gauge=METRICS_GAUGES["node_npus_utilization"],
+                        value=utilization,
+                        tags=npu_tags,
+                    )
+                )
+
+            memory_used = npu.get("memory_used")
+            memory_total = npu.get("memory_total")
+            if memory_used is not None:
+                npu_records_to_add.append(
+                    Record(
+                        gauge=METRICS_GAUGES["node_npu_hbm_used"],
+                        value=memory_used,
+                        tags=npu_tags,
+                    )
+                )
+            if memory_used is not None and memory_total is not None:
+                npu_records_to_add.append(
+                    Record(
+                        gauge=METRICS_GAUGES["node_npu_hbm_available"],
+                        value=max(memory_total - memory_used, 0),
+                        tags=npu_tags,
+                    )
+                )
+
+            power_mw = npu.get("power_mw")
+            if power_mw is not None:
+                npu_records_to_add.append(
+                    Record(
+                        gauge=METRICS_GAUGES["node_npu_power_milliwatts"],
+                        value=power_mw,
+                        tags=npu_tags,
+                    )
+                )
+
+            temperature_c = npu.get("temperature_c")
+            if temperature_c is not None:
+                npu_records_to_add.append(
+                    Record(
+                        gauge=METRICS_GAUGES["node_npu_temperature_celsius"],
+                        value=temperature_c,
+                        tags=npu_tags,
+                    )
+                )
+
+            health_status = npu.get("health_status")
+            if health_status is not None:
+                npu_records_to_add.append(
+                    Record(
+                        gauge=METRICS_GAUGES["node_npu_health"],
+                        value=1 if health_status == 0 else 0,
+                        tags=npu_tags,
+                    )
+                )
+
+            records_reported.extend(npu_records_to_add)
+
         # -- TPU per node --
         tpus = stats["tpus"]
 
@@ -2230,6 +2367,7 @@ class ReporterAgent(
 
         # Initialize GPU metric provider when the agent starts
         self._gpu_metric_provider.initialize()
+        self._npu_metric_provider.initialize()
 
         await self._run_loop()
 
