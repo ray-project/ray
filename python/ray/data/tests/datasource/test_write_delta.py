@@ -1348,7 +1348,8 @@ def test_write_timestamps_converted_to_microseconds(
 
 
 def test_write_nested_timestamps_converted_to_microseconds(temp_delta_path):
-    """Timestamps inside structs, lists, and maps are converted too."""
+    """Timestamps inside structs, lists, maps, and dictionary-encoded columns
+    are converted too."""
     import pyarrow as pa
     from deltalake import DeltaTable
 
@@ -1361,6 +1362,7 @@ def test_write_nested_timestamps_converted_to_microseconds(temp_delta_path):
             "ll": pa.array([[value]], type=pa.large_list(ns)),
             "fl": pa.array([[value]], type=pa.list_(ns, 1)),
             "m": pa.array([[("k", value)]], type=pa.map_(pa.string(), ns)),
+            "d": pa.array([value], type=ns).dictionary_encode(),
         }
     )
     ray.data.from_arrow(table).write_delta(temp_delta_path)
@@ -1371,6 +1373,7 @@ def test_write_nested_timestamps_converted_to_microseconds(temp_delta_path):
     for name in ["l", "ll", "fl"]:
         assert table_schema.field(name).type.value_type == us
     assert table_schema.field("m").type.item_type == us
+    assert table_schema.field("d").type == us
     expected = pa.scalar(1704110400_123456, type=us).as_py()
     assert _read_committed_parquet_rows(temp_delta_path) == [
         {
@@ -1379,6 +1382,7 @@ def test_write_nested_timestamps_converted_to_microseconds(temp_delta_path):
             "ll": [expected],
             "fl": [expected],
             "m": [("k", expected)],
+            "d": expected,
         }
     ]
 
