@@ -341,6 +341,21 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerDebuggerPort) {
     ASSERT_EQ(reply.total(), 1);
     ASSERT_EQ(reply.worker_table_data(0).debugger_port(), debugger_port);
   }
+
+  {
+    // An unknown worker, e.g. one whose row was evicted after it died.
+    rpc::UpdateWorkerDebuggerPortRequest request;
+    request.set_worker_id(WorkerID::FromRandom().Binary());
+    request.set_debugger_port(debugger_port);
+    rpc::UpdateWorkerDebuggerPortReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleUpdateWorkerDebuggerPort(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
+  }
 }
 
 TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
@@ -389,33 +404,12 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
     ASSERT_EQ(reply.total(), 1);
     ASSERT_EQ(reply.worker_table_data(0).num_paused_threads(), num_paused_threads_delta);
   }
-}
-
-// The worker table returns OK with an empty optional for an unknown worker_id
-// (e.g. the row was already evicted after the worker died). The update
-// handlers used to dereference the empty optional there, which is UB.
-TEST_F(GcsWorkerManagerTest, TestUpdateUnknownWorkerDoesNotCrash) {
-  auto worker_manager = GetWorkerManager();
-  auto unknown_worker_id = WorkerID::FromRandom().Binary();
 
   {
-    rpc::UpdateWorkerDebuggerPortRequest request;
-    request.set_worker_id(unknown_worker_id);
-    request.set_debugger_port(1000);
-    rpc::UpdateWorkerDebuggerPortReply reply;
-    std::promise<void> promise;
-    auto callback = [&promise](Status status,
-                               std::function<void()> success,
-                               std::function<void()> failure) { promise.set_value(); };
-    worker_manager->HandleUpdateWorkerDebuggerPort(request, &reply, callback);
-    promise.get_future().get();
-    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
-  }
-
-  {
+    // An unknown worker, e.g. one whose row was evicted after it died.
     rpc::UpdateWorkerNumPausedThreadsRequest request;
-    request.set_worker_id(unknown_worker_id);
-    request.set_num_paused_threads_delta(1);
+    request.set_worker_id(WorkerID::FromRandom().Binary());
+    request.set_num_paused_threads_delta(num_paused_threads_delta);
     rpc::UpdateWorkerNumPausedThreadsReply reply;
     std::promise<void> promise;
     auto callback = [&promise](Status status,
