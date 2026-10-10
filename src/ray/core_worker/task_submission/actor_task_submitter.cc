@@ -65,7 +65,7 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
 void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
                                                   int32_t max_pending_calls,
                                                   bool allow_out_of_order_execution,
-                                                  bool fail_if_actor_unreachable,
+                                                  bool /*fail_if_actor_unreachable*/,
                                                   bool owned) {
   bool inserted;
   {
@@ -74,13 +74,11 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
     // for this worker to have multiple references to the same actor.
     RAY_LOG(INFO).WithField(actor_id)
         << "Set actor max pending calls to " << max_pending_calls;
-    inserted = client_queues_
-                   .emplace(actor_id,
-                            ClientQueue(allow_out_of_order_execution,
-                                        max_pending_calls,
-                                        fail_if_actor_unreachable,
-                                        owned))
-                   .second;
+    inserted =
+        client_queues_
+            .emplace(actor_id,
+                     ClientQueue(allow_out_of_order_execution, max_pending_calls, owned))
+            .second;
   }
   if (owned && inserted) {
     // Actor owner is responsible for notifying GCS when the
@@ -230,6 +228,9 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                         fail_or_retry_task = true;
                         actor_submit_queue->MarkDependencyFailed(concurrency_group,
                                                                  send_pos);
+                        if (queue->second.state_ == rpc::ActorTableData::RESTARTING) {
+                          SendPendingTasks(actor_id);
+                        }
                       }
                     }
                   }
@@ -548,18 +549,11 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
     return;
   }
   if (!client_queue.client_address_.has_value()) {
-    if (client_queue.state_ == rpc::ActorTableData::RESTARTING &&
-        client_queue.fail_if_actor_unreachable_) {
-      // When `fail_if_actor_unreachable` is true, tasks submitted while the actor is in
-      // `RESTARTING` state fail immediately.
-      while (true) {
-        auto task = actor_submit_queue->PopNextTaskToSend();
-        if (!task.has_value()) {
-          break;
-        }
-
+    if (client_queue.state_ == rpc::ActorTableData::RESTARTING) {
+      auto tasks_to_fail = actor_submit_queue->PopTasksToFailOnActorRestart();
+      for (auto &task : tasks_to_fail) {
         io_service_.post(
-            [this, task_spec = std::move(task.value().first)] {
+            [this, task_spec = std::move(task)] {
               rpc::PushTaskReply reply;
               rpc::Address addr;
               HandlePushTaskReply(

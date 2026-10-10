@@ -71,6 +71,10 @@ class ActorSubmitQueueInterface {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   virtual std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() = 0;
+  /// Remove and return all dependency-ready initial-attempt tasks with no retries that
+  /// may safely fail while their actor is restarting. The queue implementation owns any
+  /// ordering constraints.
+  virtual std::vector<TaskSpecification> PopTasksToFailOnActorRestart() = 0;
   virtual bool Empty() const = 0;
 };
 }  // namespace core
