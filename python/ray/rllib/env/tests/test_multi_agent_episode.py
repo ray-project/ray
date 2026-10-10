@@ -523,6 +523,47 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode._hanging_rewards_end["agent_3"], 2.2)
         check(episode._hanging_rewards_begin["agent_5"], 1.0)
 
+    def test_add_env_step_new_agent_joining_as_last_agent_terminates(self):
+        # Regression test: A new agent's very first observation arriving on the
+        # same env step that terminates all previously known agents must NOT
+        # cause the episode to be declared terminated, as long as the env
+        # itself reports `terminateds["__all__"] = False` and the new agent is
+        # not itself terminated/truncated on this step.
+        episode = MultiAgentEpisode()
+        episode.add_env_reset(observations={"agent_1": 0})
+
+        episode.add_env_step(
+            observations={"agent_2": 0},
+            actions={},
+            rewards={},
+            infos={"agent_2": {}},
+            terminateds={"agent_1": True, "__all__": False},
+            truncateds={"__all__": False},
+        )
+        # The episode must still be considered alive: "agent_2" just joined and
+        # the env did not report `__all__` terminated.
+        self.assertFalse(episode.is_terminated)
+        self.assertFalse(episode.is_done)
+        self.assertEqual(episode.agent_ids, {"agent_1", "agent_2"})
+
+        # Sanity check: If the newly joining agent is ALSO already
+        # terminated/truncated on its very first observation (so it never
+        # really joins), and it was the only other agent, the episode should
+        # still be correctly declared terminated.
+        episode2 = MultiAgentEpisode()
+        episode2.add_env_reset(observations={"agent_1": 0})
+
+        episode2.add_env_step(
+            observations={"agent_2": 0},
+            actions={},
+            rewards={},
+            infos={"agent_2": {}},
+            terminateds={"agent_1": True, "agent_2": True, "__all__": True},
+            truncateds={"__all__": False},
+        )
+        self.assertTrue(episode2.is_terminated)
+        self.assertTrue(episode2.is_done)
+
     def test_get_observations(self):
         # Generate simple records for a multi agent environment.
         (
