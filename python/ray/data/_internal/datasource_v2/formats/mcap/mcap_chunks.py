@@ -7,7 +7,17 @@ only an earlier chunk declares is read back from that chunk.
 
 import heapq
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+)
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
@@ -74,35 +84,52 @@ class SelectedMessageReader:
         path: str,
         summary: "Summary",
         offsets: Optional[Set[int]],
+        *,
+        chunk_indexes: Optional[List["ChunkIndex"]] = None,
+        selected: Optional[Set[int]] = None,
+        time_bounds: Optional[Tuple[Optional[int], Optional[int]]] = None,
+        log_time_order: Optional[bool] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the owned chunks of an indexed file.
 
         Chunks are read in file order, or merged by log time with
-        ``log_time_order``.
+        ``log_time_order``. ``time_bounds`` overrides the selection's time
+        range. Coarse rows use it to read a window's lead-in, which lies before
+        the range.
         """
-        selected = self._selection.selected_channel_ids(
-            summary.channels, summary.schemas
-        )
-        chunk_indexes = [
-            c
-            for c in self.candidate_chunks(summary, selected)
-            if offsets is None or c.chunk_start_offset in offsets
-        ]
+        if selected is None:
+            selected = self._selection.selected_channel_ids(
+                summary.channels, summary.schemas
+            )
+        if chunk_indexes is None:
+            chunk_indexes = self.candidate_chunks(summary, selected)
+        if offsets is not None:
+            chunk_indexes = [
+                c for c in chunk_indexes if c.chunk_start_offset in offsets
+            ]
+        if time_bounds is None:
+            time_bounds = (self._selection.start_time, self._selection.end_time)
+        if log_time_order is None:
+            log_time_order = self._log_time_order
         declared = _Declared(dict(summary.channels), dict(summary.schemas), set())
-        if not self._log_time_order:
+        if not log_time_order:
             for chunk_index in chunk_indexes:
                 yield from self._read_chunk(
-                    f, path, summary, chunk_index, selected, declared
+                    f, path, summary, chunk_index, selected, declared, time_bounds
                 )
             return
         yield from self._merge_chunks_by_log_time(
-            f, path, summary, chunk_indexes, selected, declared
+            f, path, summary, chunk_indexes, selected, declared, time_bounds
         )
 
     def candidate_chunks(
         self, summary: "Summary", selected: Set[int]
     ) -> List["ChunkIndex"]:
-        """The file's chunks that may hold a selected message, in file order."""
+        """The file's chunks that may hold a selected message, in file order.
+
+        The indexer lists exactly these, so the indexer and the reader compute
+        a window's owner over the same chunks.
+        """
         # A summary that repeats no channel record says nothing about which
         # chunk holds a selected message. Every chunk in the time range is read,
         # and the channels declared inside them are filtered as they appear.
@@ -130,6 +157,7 @@ class SelectedMessageReader:
         chunk_indexes: List["ChunkIndex"],
         selected: Set[int],
         declared: _Declared,
+        time_bounds: Tuple[Optional[int], Optional[int]],
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the chunks in log-time order.
 
@@ -149,7 +177,14 @@ class SelectedMessageReader:
             _, kind, offset, _, item = heapq.heappop(heap)
             if kind == 0:
                 for index, selected_message in self._read_chunk(
-                    f, path, summary, item, selected, declared, with_index=True
+                    f,
+                    path,
+                    summary,
+                    item,
+                    selected,
+                    declared,
+                    time_bounds,
+                    with_index=True,
                 ):
                     heapq.heappush(
                         heap,
@@ -172,6 +207,7 @@ class SelectedMessageReader:
         chunk_index: "ChunkIndex",
         selected: Set[int],
         declared: "_Declared",
+        time_bounds: Tuple[Optional[int], Optional[int]],
         with_index: bool = False,
     ) -> Iterator[Any]:
         """Decompress one chunk and yield its selected messages in file order.
@@ -185,6 +221,7 @@ class SelectedMessageReader:
         from mcap.records import Channel, Chunk, Message, Schema
         from mcap.stream_reader import breakup_chunk
 
+        start_time, end_time = time_bounds
         # Skip the record's opcode (1 byte) and length (8 bytes).
         f.seek(chunk_index.chunk_start_offset + 1 + 8)
         chunk = Chunk.read(ReadDataStream(f))
@@ -197,7 +234,9 @@ class SelectedMessageReader:
                 )
                 if not self._channel_is_selected(channel, schema, summary, selected):
                     continue
-                if not self._selection.in_time_range(record.log_time):
+                if start_time is not None and record.log_time < start_time:
+                    continue
+                if end_time is not None and record.log_time >= end_time:
                     continue
                 row_id = message_row_id(path, chunk_index.chunk_start_offset, index)
                 item = (schema, channel, record, row_id)
@@ -301,15 +340,27 @@ class SelectedMessageReader:
         # Back to the chunk being read.
         f.seek(chunk_index.chunk_start_offset + 1 + 8)
 
-    def iter_unindexed(self, f: Any, path: str) -> Iterator[_Selected]:
+    def iter_unindexed(
+        self,
+        f: Any,
+        path: str,
+        time_bounds: Optional[Tuple[Optional[int], Optional[int]]] = None,
+        *,
+        on_message: Optional[Callable[["Message"], None]] = None,
+    ) -> Iterator[_Selected]:
         """Scan a file without a chunk index from the start, in file order.
 
-        ``log_time_order`` is not honoured here: ordering by log time would mean
-        holding the whole file in memory.
+        ``log_time_order`` is not honoured for message rows: ordering by log
+        time would mean holding the whole file in memory. Coarse rows sort what
+        they collect. ``on_message`` sees every message record, selected or not.
+        It stands in for the file-wide statistics an indexed file carries.
         """
         from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import StreamReader
 
+        if time_bounds is None:
+            time_bounds = (self._selection.start_time, self._selection.end_time)
+        start_time, end_time = time_bounds
         f.seek(0)
         schemas: Dict[int, "Schema"] = {}
         channels: Dict[int, "Channel"] = {}
@@ -321,6 +372,8 @@ class SelectedMessageReader:
                 channels[record.id] = record
             elif isinstance(record, Message):
                 ordinal += 1
+                if on_message is not None:
+                    on_message(record)
                 channel = channels.get(record.channel_id)
                 if channel is None:
                     raise ValueError(
@@ -330,6 +383,8 @@ class SelectedMessageReader:
                 schema = schemas.get(channel.schema_id) if channel.schema_id else None
                 if not self._selection.accepts_channel(channel, schema):
                     continue
-                if not self._selection.in_time_range(record.log_time):
+                if start_time is not None and record.log_time < start_time:
+                    continue
+                if end_time is not None and record.log_time >= end_time:
                     continue
                 yield schema, channel, record, unindexed_message_row_id(path, ordinal)

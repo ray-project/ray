@@ -1,15 +1,23 @@
 """The MCAP ``Scanner``: the read's options plus the optimizer's pushdowns."""
 
 from dataclasses import dataclass, replace
-from typing import List, Optional, Tuple
+from typing import FrozenSet, List, Optional, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
-from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
-from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import MCAPReader
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    DEFAULT_MAX_LEAD_IN_NS,
+    MESSAGE_GRANULARITY,
+    MCAPSelection,
+    WindowSpec,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
+    DEFAULT_MAX_ROW_BYTES,
+    MCAPReader,
+)
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
     SupportsLimitPushdown,
@@ -25,18 +33,22 @@ from ray.util.annotations import DeveloperAPI
 class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     """Scanner for MCAP files on Datasource V2.
 
-    Holds the message selection from ``read_mcap`` and the pushdowns the
+    Holds the message selection and row granularity from ``read_mcap``, the
+    topics it lists as video (``video_topics``), and the pushdowns the
     optimizer applies: column pruning and a per-task row limit. A pruned read
     neither builds nor JSON-decodes the columns it drops. Partition pruning
     comes from :class:`FileScanner`. Other filters are not pushed down.
 
-    The planned ``schema`` fixes what ``data`` holds in every block: decoded
-    JSON values when every selected channel of the sampled files is
-    JSON-encoded, and the payload bytes otherwise.
+    At ``message`` granularity, the planned ``schema`` fixes what ``data``
+    holds in every block: decoded JSON values when every selected channel of
+    the sampled files is JSON-encoded, and the payload bytes otherwise.
     """
 
     schema: pa.Schema
     selection: MCAPSelection = MCAPSelection()
+    granularity: str = MESSAGE_GRANULARITY
+    window: Optional[WindowSpec] = None
+    video_topics: FrozenSet[str] = frozenset()
     include_metadata: bool = True
     include_row_id: bool = False
     log_time_order: bool = True
@@ -45,6 +57,8 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     limit: Optional[int] = None
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
     target_block_size: Optional[int] = None
+    max_row_bytes: int = DEFAULT_MAX_ROW_BYTES
+    max_lead_in_ns: int = DEFAULT_MAX_LEAD_IN_NS
 
     def read_schema(self) -> pa.Schema:
         """Return the dataset schema after column pruning.
@@ -93,6 +107,9 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     def create_reader(self) -> MCAPReader:
         return MCAPReader(
             selection=self.selection,
+            granularity=self.granularity,
+            window=self.window,
+            video_topics=self.video_topics,
             include_metadata=self.include_metadata,
             include_row_id=self.include_row_id,
             log_time_order=self.log_time_order,
@@ -104,4 +121,6 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
             target_block_size=self.target_block_size,
             schema=self.schema,
             decode_json=self.decodes_json,
+            max_row_bytes=self.max_row_bytes,
+            max_lead_in_ns=self.max_lead_in_ns,
         )

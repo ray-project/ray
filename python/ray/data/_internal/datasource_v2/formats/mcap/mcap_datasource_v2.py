@@ -9,6 +9,11 @@ selection, and emits one row per chunk (``MCAPSummaryIndexer``).
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
 
+``read_granularity`` picks what one row is. ``message`` gives one row per
+message. ``window``, ``topic`` and ``file`` pack the messages of a time window,
+a topic or a whole file into one row of parallel lists. Each such row decodes
+and checkpoints on its own. ``mcap_coarse_layout`` defines the layouts.
+
 Format specification: https://mcap.dev/spec
 """
 
@@ -18,6 +23,7 @@ import copy
 from typing import (
     TYPE_CHECKING,
     Any,
+    FrozenSet,
     Iterable,
     Iterator,
     List,
@@ -31,6 +37,9 @@ from typing_extensions import override
 
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
+from ray.data._internal.datasource_v2.formats.mcap.mcap_coarse_layout import (
+    coarse_row_schema,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_data_column import (
     infer_data_type,
 )
@@ -41,8 +50,18 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     message_schema,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    FILE_GRANULARITY,
+    GRANULARITIES,
+    MESSAGE_GRANULARITY,
+    TOPIC_GRANULARITY,
+    WINDOW_GRANULARITY,
     MCAPSelection,
     TimeRange,
+    WindowSpec,
+    max_lead_in_ns,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
+    DEFAULT_MAX_ROW_BYTES,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
@@ -93,6 +112,9 @@ class MCAPDatasourceV2(FileDataSourceV2):
         log_time_order: bool = True,
         include_row_id: bool = False,
         include_paths: bool = False,
+        read_granularity: str = MESSAGE_GRANULARITY,
+        window: Optional[WindowSpec] = None,
+        video_topics: Optional[Iterable[str]] = None,
         filesystem: Optional["FileSystem"] = None,
         partitioning: Optional[Partitioning] = None,
         partition_filter: Optional[PathPartitionFilter] = None,
@@ -102,6 +124,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
     ):
         super().__init__(name="MCAP", category=DatasourceCategory.FILE_BASED)
         _check_import(self, module="mcap", package="mcap")
+        _validate_granularity(read_granularity, window)
 
         # Captured against the original paths: resolution below strips the
         # ``local://`` scheme (see ``ParquetDatasourceV2``).
@@ -112,9 +135,12 @@ class MCAPDatasourceV2(FileDataSourceV2):
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem
         self._selection = MCAPSelection.create(topics, time_range, message_types)
+        self._video_topics = _listed_video_topics(video_topics, self._selection)
         self._include_metadata = include_metadata
         self._log_time_order = log_time_order
         self._include_row_id = include_row_id
+        self._granularity = read_granularity
+        self._window = window
         self._partitioning = partitioning
         self._partition_filter = partition_filter
         self._file_extensions = (
@@ -123,7 +149,8 @@ class MCAPDatasourceV2(FileDataSourceV2):
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
         synthesized: List[SynthesizedColumn] = []
-        if include_paths:
+        # Coarse rows carry ``path`` natively; only message rows synthesize it.
+        if include_paths and read_granularity == MESSAGE_GRANULARITY:
             synthesized.append(PathColumn())
         self._synthesized_columns = tuple(synthesized)
 
@@ -147,13 +174,23 @@ class MCAPDatasourceV2(FileDataSourceV2):
     def selection(self) -> MCAPSelection:
         return self._selection
 
+    @property
+    def granularity(self) -> str:
+        return self._granularity
+
     def _get_file_indexer(self) -> FileIndexer:
         return MCAPSummaryIndexer(
             selection=self._selection,
+            granularity=self._granularity,
             ignore_missing_paths=self._ignore_missing_paths,
         )
 
     def get_file_partitioner(self, **kwargs):
+        if self._granularity in (TOPIC_GRANULARITY, FILE_GRANULARITY):
+            # Each listing block is already one read task: one (file, topic)
+            # or one file.
+            return None
+
         # Each listing row is one chunk with its exact uncompressed size, so
         # chunks are packed into read tasks by bytes.
         #
@@ -200,30 +237,38 @@ class MCAPDatasourceV2(FileDataSourceV2):
         )
 
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        """The schema of message rows, plus partition and synthesized columns.
+        """The schema of the rows, plus partition and synthesized columns.
 
-        Every column but ``data`` has a fixed type. ``data`` holds decoded JSON
-        values when every selected channel of the sampled files is JSON-encoded,
-        and the raw payload bytes (``binary``) otherwise. The reader follows this
-        one decision for every file, so a selection that mixes encodings keeps
-        every payload as bytes.
+        At ``message`` granularity every column but ``data`` has a fixed type.
+        ``data`` holds decoded JSON values when every selected channel of the
+        sampled files is JSON-encoded, and the raw payload bytes (``binary``)
+        otherwise. The reader follows this one decision for every file, so a
+        selection that mixes encodings keeps every payload as bytes. Coarse rows
+        have a fixed schema.
         """
         assert sample is not None, "MCAP always receives a sample"
-        data_type = (
-            infer_data_type(
-                self._selection,
-                self._filesystem,
-                sample.paths.tolist(),
-                self._listed_paths,
+        if self._granularity == MESSAGE_GRANULARITY:
+            data_type = (
+                infer_data_type(
+                    self._selection,
+                    self._filesystem,
+                    sample.paths.tolist(),
+                    self._listed_paths,
+                )
+                if len(sample) > 0
+                else None
             )
-            if len(sample) > 0
-            else None
-        )
-        schema = message_schema(
-            include_metadata=self._include_metadata,
-            include_row_id=self._include_row_id,
-            data_type=data_type,
-        )
+            schema = message_schema(
+                include_metadata=self._include_metadata,
+                include_row_id=self._include_row_id,
+                data_type=data_type,
+            )
+        else:
+            schema = coarse_row_schema(
+                self._granularity,
+                include_metadata=self._include_metadata,
+                include_row_id=self._include_row_id,
+            )
         partitioning = self.resolve_partitioning(sample)
         if partitioning is not None and len(sample) > 0:
             partition_kv = PathPartitionParser(partitioning)(sample.paths.tolist()[0])
@@ -267,6 +312,9 @@ class MCAPDatasourceV2(FileDataSourceV2):
         return MCAPScanner(
             schema=schema,
             selection=self._selection,
+            granularity=self._granularity,
+            window=self._window,
+            video_topics=self._video_topics,
             include_metadata=self._include_metadata,
             include_row_id=self._include_row_id,
             log_time_order=self._log_time_order,
@@ -275,4 +323,44 @@ class MCAPDatasourceV2(FileDataSourceV2):
             synthesized_columns=self._synthesized_columns,
             shuffle=self._shuffle,
             target_block_size=DataContext.get_current().target_max_block_size,
+            max_row_bytes=env_integer(
+                "RAY_DATA_MCAP_MAX_ROW_BYTES", DEFAULT_MAX_ROW_BYTES
+            ),
+            max_lead_in_ns=max_lead_in_ns(),
+        )
+
+
+def _listed_video_topics(
+    video_topics: Optional[Iterable[str]], selection: MCAPSelection
+) -> FrozenSet[str]:
+    """``video_topics`` as a set, each entry checked to be a selected topic.
+
+    An empty list means none. With ``topics``, every entry must be one of them.
+    """
+    listed = frozenset(video_topics or ())
+    if selection.topics is not None:
+        unselected = sorted(listed - selection.topics)
+        if unselected:
+            raise ValueError(
+                f"video_topics lists topics that topics does not select: "
+                f"{unselected}. Add them to topics, or drop them from video_topics."
+            )
+    return listed
+
+
+def _validate_granularity(granularity: str, window: Optional[WindowSpec]) -> None:
+    """Reject option combinations that cannot mean anything."""
+    if granularity not in GRANULARITIES:
+        raise ValueError(
+            f"read_granularity must be one of {list(GRANULARITIES)}, got "
+            f"{granularity!r}"
+        )
+    if granularity == WINDOW_GRANULARITY and window is None:
+        raise ValueError(
+            "read_granularity='window' needs a WindowSpec: pass "
+            "window=WindowSpec(length_s=...)"
+        )
+    if granularity != WINDOW_GRANULARITY and window is not None:
+        raise ValueError(
+            f"window applies to read_granularity='window', not {granularity!r}"
         )
