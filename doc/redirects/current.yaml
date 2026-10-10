@@ -81,7 +81,7 @@ redirects:
   to: /ray-observability/user-guides/configure-logging.html
   type: page
 - from: /ray-air/examples/convert_existing_pytorch_code_to_ray_air.html
-  to: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train.html
+  to: /_collections/train/examples/pytorch/distributing-pytorch/README.html
   type: page
 - from: /ray-observability/ray-logging.html#logging-directory-structure
   to: /ray-observability/user-guides/configure-logging.html#logging-directory-structure
@@ -855,25 +855,40 @@ redirects:
   to: /train/user-guides/index.html
   type: page
 - from: /train/examples/accelerate/accelerate_example.html
-  to: /train/examples/accelerate/accelerate-example.html
+  to: /train/huggingface-accelerate.html
+  type: page
+- from: /train/examples/accelerate/accelerate-example.html
+  to: /train/huggingface-accelerate.html
   type: page
 - from: /train/examples/deepspeed/deepspeed_example.html
-  to: /train/examples/deepspeed/deepspeed-example.html
+  to: /train/deepspeed.html
+  type: page
+- from: /train/examples/deepspeed/deepspeed-example.html
+  to: /train/deepspeed.html
   type: page
 - from: /train/examples/deepspeed/gptj_deepspeed_fine_tuning.html
   to: /train/examples/deepspeed/gptj-deepspeed-fine-tuning.html
   type: page
 - from: /train/examples/horovod/horovod_example.html
-  to: /train/examples/horovod/horovod-example.html
+  to: /train/getting-started-pytorch.html
+  type: page
+- from: /train/examples/horovod/horovod-example.html
+  to: /train/getting-started-pytorch.html
   type: page
 - from: /train/examples/intel_gaudi/bert.html
-  to: /train/examples/intel-gaudi/bert.html
+  to: /train/examples/intel-gaudi/resnet.html
+  type: page
+- from: /train/examples/intel-gaudi/bert.html
+  to: /train/examples/intel-gaudi/resnet.html
   type: page
 - from: /train/examples/intel_gaudi/llama.html
   to: /train/examples/intel-gaudi/llama.html
   type: page
 - from: /train/examples/intel_gaudi/llama_pretrain.html
-  to: /train/examples/intel-gaudi/llama-pretrain.html
+  to: /train/examples/intel-gaudi/llama.html
+  type: page
+- from: /train/examples/intel-gaudi/llama-pretrain.html
+  to: /train/examples/intel-gaudi/llama.html
   type: page
 - from: /train/examples/intel_gaudi/resnet.html
   to: /train/examples/intel-gaudi/resnet.html
@@ -897,7 +912,10 @@ redirects:
   to: /train/examples/lightning/vicuna-13b-lightning-deepspeed-finetune.html
   type: page
 - from: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train.html
-  to: /train/examples/pytorch/convert-existing-pytorch-code-to-ray-train.html
+  to: /_collections/train/examples/pytorch/distributing-pytorch/README.html
+  type: page
+- from: /train/examples/pytorch/convert-existing-pytorch-code-to-ray-train.html
+  to: /_collections/train/examples/pytorch/distributing-pytorch/README.html
   type: page
 - from: /train/examples/pytorch/dreambooth_finetuning.html
   to: /train/examples/pytorch/dreambooth-finetuning.html
@@ -909,16 +927,25 @@ redirects:
   to: /train/examples/pytorch/torch-detection.html
   type: page
 - from: /train/examples/pytorch/torch_fashion_mnist_example.html
-  to: /train/examples/pytorch/torch-fashion-mnist-example.html
+  to: /train/getting-started-pytorch.html
+  type: page
+- from: /train/examples/pytorch/torch-fashion-mnist-example.html
+  to: /train/getting-started-pytorch.html
   type: page
 - from: /train/examples/pytorch/torch_regression_example.html
-  to: /train/examples/pytorch/torch-regression-example.html
+  to: /train/user-guides/data-loading-preprocessing.html
+  type: page
+- from: /train/examples/pytorch/torch-regression-example.html
+  to: /train/user-guides/data-loading-preprocessing.html
   type: page
 - from: /train/examples/tf/tensorflow_mnist_example.html
   to: /train/examples/tf/tensorflow-mnist-example.html
   type: page
 - from: /train/examples/tf/tensorflow_regression_example.html
-  to: /train/examples/tf/tensorflow-regression-example.html
+  to: /train/distributed-tensorflow-keras.html
+  type: page
+- from: /train/examples/tf/tensorflow-regression-example.html
+  to: /train/distributed-tensorflow-keras.html
   type: page
 - from: /train/examples/transformers/huggingface_text_classification.html
   to: /train/examples/transformers/huggingface-text-classification.html
@@ -927,7 +954,10 @@ redirects:
   to: /train/examples/transformers/transformer-reinforcement-learning/README.html
   type: page
 - from: /train/examples/transformers/transformers_torch_trainer_basic.html
-  to: /train/examples/transformers/transformers-torch-trainer-basic.html
+  to: /train/getting-started-transformers.html
+  type: page
+- from: /train/examples/transformers/transformers-torch-trainer-basic.html
+  to: /train/getting-started-transformers.html
   type: page
 - from: /train/user-guides/local_mode.html
   to: /train/user-guides/local-mode.html

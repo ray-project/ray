@@ -211,8 +211,6 @@ llms_txt_exclude += [
     "train/api/transformers",
     "train/api/tune-integration",
     "train/api/xgboost",
-    "train/examples/pytorch/torch-regression-example",
-    "train/examples/tf/tensorflow-regression-example",
     "tune/api/api",
     "tune/api/execution",
     "tune/api/integration",

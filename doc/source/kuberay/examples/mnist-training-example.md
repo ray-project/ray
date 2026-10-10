@@ -8,7 +8,7 @@ myst:
 
 # Train a PyTorch model on Fashion MNIST with CPUs on Kubernetes
 
-This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train. See [Train a PyTorch model on Fashion MNIST](train-pytorch-fashion-mnist) for more details.
+This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train. See [Get Started with Distributed Training using PyTorch](train-pytorch) for more details.
 
 ## Step 1: Create a Kubernetes cluster
 

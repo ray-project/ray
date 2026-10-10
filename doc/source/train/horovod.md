@@ -8,6 +8,10 @@ myst:
 
 # Get started with distributed training using Horovod
 
+:::{warning}
+`HorovodTrainer` is deprecated and scheduled for removal. Ray Train V2, the default, doesn't support it, and constructing a `HorovodTrainer` raises a `DeprecationWarning`. Use {class}`TorchTrainer <ray.train.torch.TorchTrainer>` or {class}`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>` instead. To keep running existing Horovod code, set `RAY_TRAIN_V2_ENABLED=0` to fall back to the previous implementation.
+:::
+
 Ray Train configures the Horovod environment and rendezvous server for you, so you can run your `DistributedOptimizer` training script. For more information, see the [Horovod documentation](https://horovod.readthedocs.io/en/stable/index.html).
 
 ## Quickstart
