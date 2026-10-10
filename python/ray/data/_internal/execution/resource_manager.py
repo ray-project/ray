@@ -284,7 +284,8 @@ class ResourceManager:
         """
         usage = self.get_global_usage()
         for op in reversed(self._topology):
-            if not self.is_op_eligible(op):
+            # An ineligible op running tasks isn't blocked.
+            if not self.is_op_eligible(op) and op.num_active_tasks() == 0:
                 continue
             if not self._is_blocked_on_downstream(op):
                 return usage

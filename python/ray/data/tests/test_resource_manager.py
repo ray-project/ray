@@ -621,6 +621,10 @@ class TestResourceManager:
         gpu_op.mark_execution_finished()
         assert usage() == (0, 0, 0)
 
+        # An ineligible op running tasks, like sort sampling, stops the walk.
+        limit_op.num_active_tasks = MagicMock(return_value=1)
+        assert usage() == (4, 2, 350)
+
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
