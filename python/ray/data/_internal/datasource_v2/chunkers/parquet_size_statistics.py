@@ -46,7 +46,18 @@ particular should not be trusted without it.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Iterator, List, NamedTuple, Optional, Tuple
+import struct
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    FrozenSet,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,25 +84,60 @@ _DOUBLE, _BINARY, _LIST, _SET, _MAP, _STRUCT = 7, 8, 9, 10, 11, 12
 _FILE_META_ROW_GROUPS = 4
 _ROW_GROUP_COLUMNS = 1
 _COLUMN_CHUNK_META_DATA = 3
+_COLUMN_META_ENCODING_STATS = 13
 _COLUMN_META_SIZE_STATISTICS = 16
 _SIZE_STATS_UNENCODED_BYTES = 1
 _SIZE_STATS_REPETITION_HISTOGRAM = 2
 _SIZE_STATS_DEFINITION_HISTOGRAM = 3
+_PAGE_ENCODING_STATS_PAGE_TYPE = 1
+_PAGE_ENCODING_STATS_ENCODING = 2
+_PAGE_ENCODING_STATS_COUNT = 3
+# ``struct PageHeader`` and ``struct DictionaryPageHeader``.
+_PAGE_HEADER_TYPE = 1
+_PAGE_HEADER_UNCOMPRESSED_SIZE = 2
+_PAGE_HEADER_COMPRESSED_SIZE = 3
+_PAGE_HEADER_DICTIONARY_PAGE_HEADER = 7
+_DICTIONARY_PAGE_HEADER_NUM_VALUES = 1
+# ``enum PageType``.
+_DATA_PAGE, _DICTIONARY_PAGE, _DATA_PAGE_V2 = 0, 2, 3
 
 
 class LeafSizeStats(NamedTuple):
-    """One leaf column chunk's ``SizeStatistics``.
+    """One leaf column chunk's ``SizeStatistics``, plus its data-page encodings.
 
     ``unencoded_byte_array_data_bytes`` is ``None`` for every non-``BYTE_ARRAY``
     leaf: the spec restricts the field to that physical type, and fixed-width
     leaves get their width from the schema instead. Both histograms may be empty,
     which the spec permits when ``max_repetition_level`` is 0 or
-    ``max_definition_level`` is at most 1.
+    ``max_definition_level`` is at most 1. A chunk with ``encoding_stats`` but
+    no ``SizeStatistics`` at all has every field empty but the last.
     """
 
     unencoded_byte_array_data_bytes: Optional[int]
     repetition_level_histogram: Tuple[int, ...]
     definition_level_histogram: Tuple[int, ...]
+    # The ``enum Encoding`` values of the chunk's data pages, from
+    # ``ColumnMetaData.encoding_stats``; ``None`` when the writer omitted it.
+    # Unlike ``ColumnMetaData.encodings``, it tells a dictionary page's own PLAIN
+    # encoding apart from PLAIN data pages written after a dictionary fallback.
+    data_page_encodings: Optional[FrozenSet[int]] = None
+
+
+class DictionaryPage(NamedTuple):
+    """The facts of a dictionary page the estimator needs.
+
+    The two counts come from the page header. ``value_lengths`` -- how many of
+    the page's values have each byte length -- needs the values themselves, so
+    it is ``None`` unless the whole page was read. ``decoded_dictionary_bytes``
+    is the Arrow dictionary a read builds from the whole column chunk, which
+    outgrows the page when PLAIN pages follow it; it is ``None`` unless the
+    chunk was decoded.
+    """
+
+    num_values: int
+    uncompressed_page_size: int
+    value_lengths: Optional[Dict[int, int]] = None
+    decoded_dictionary_bytes: Optional[int] = None
 
 
 class _ThriftDesync(Exception):
@@ -382,6 +428,42 @@ class _CompactReader:
                 self._skip(field_type)
         return LeafSizeStats(unencoded, repetition, definition)
 
+    def _encoding_stats(self) -> FrozenSet[int]:
+        """The encodings of the data pages listed in a ``list<PageEncodingStats>``."""
+        size, element_type = self._list_header()
+        if size and element_type != _STRUCT:
+            raise _ThriftDesync(
+                f"ColumnMetaData field 13 is a list of type {element_type}, "
+                "expected struct"
+            )
+        encodings = set()
+        for _ in range(size):
+            values = {}
+            for field_id, field_type in self._fields():
+                if field_id in (
+                    _PAGE_ENCODING_STATS_PAGE_TYPE,
+                    _PAGE_ENCODING_STATS_ENCODING,
+                    _PAGE_ENCODING_STATS_COUNT,
+                ):
+                    if field_type != _I32:
+                        raise _ThriftDesync(
+                            f"PageEncodingStats field {field_id} has type "
+                            f"{field_type}, expected i32"
+                        )
+                    values[field_id] = self._zigzag()
+                else:
+                    self._skip(field_type)
+            # All three fields are required, so a missing one means the cursor
+            # is not where it thinks it is.
+            if len(values) != 3:
+                raise _ThriftDesync("PageEncodingStats lacks a required field")
+            if (
+                values[_PAGE_ENCODING_STATS_PAGE_TYPE] in (_DATA_PAGE, _DATA_PAGE_V2)
+                and values[_PAGE_ENCODING_STATS_COUNT]
+            ):
+                encodings.add(values[_PAGE_ENCODING_STATS_ENCODING])
+        return frozenset(encodings)
+
     def _column_metadata(self) -> Optional[LeafSizeStats]:
         """Read field 16 out of one ``ColumnMetaData``, or ``None`` if absent.
 
@@ -393,6 +475,7 @@ class _CompactReader:
         the colder ones declarative, for the same reason.
         """
         size_stats: Optional[LeafSizeStats] = None
+        data_page_encodings: Optional[FrozenSet[int]] = None
         buf = self._buf
         last_id = 0
         while True:
@@ -412,10 +495,26 @@ class _CompactReader:
                         "expected struct"
                     )
                 size_stats = self._size_statistics()
+            elif last_id == _COLUMN_META_ENCODING_STATS:
+                if field_type != _LIST:
+                    raise _ThriftDesync(
+                        f"ColumnMetaData field 13 has type {field_type}, "
+                        "expected list"
+                    )
+                data_page_encodings = self._encoding_stats()
             elif field_type in (_I16, _I32, _I64):
                 self._skip_varint()
             else:
                 self._skip(field_type)
+        if size_stats is None:
+            # No SizeStatistics -- a writer that predates them (PyArrow 17 is
+            # one) or left them out -- but the data pages' encodings still say
+            # how the estimator's footer rules size a BYTE_ARRAY leaf.
+            if data_page_encodings is None:
+                return None
+            return LeafSizeStats(None, (), (), data_page_encodings)
+        if data_page_encodings is not None:
+            size_stats = size_stats._replace(data_page_encodings=data_page_encodings)
         return size_stats
 
     def _column_chunk(self) -> Optional[LeafSizeStats]:
@@ -513,3 +612,105 @@ def read_size_statistics(
     if any(len(columns) != num_columns for columns in row_groups):
         return None
     return row_groups
+
+
+# A dictionary page header is at most ~35 bytes: five small varint fields, an
+# optional CRC, and the nested DictionaryPageHeader.
+DICTIONARY_PAGE_HEADER_READ_BYTES = 64
+
+
+def read_dictionary_page(
+    buf, decompress: Optional[Callable[[memoryview, int], bytes]] = None
+) -> Optional[DictionaryPage]:
+    """Decode the page at a column chunk's ``dictionary_page_offset``.
+
+    The footer records a chunk's total size but not its dictionary page's, which
+    is the only way to size a decoded Arrow dictionary without over-counting the
+    index pages that follow it. ``buf`` holds at least the first
+    :data:`DICTIONARY_PAGE_HEADER_READ_BYTES` of the chunk.
+
+    When ``buf`` runs past the header to the page's end and ``decompress`` is
+    given -- called as ``decompress(compressed_values, uncompressed_size)`` --
+    the values are walked for :attr:`DictionaryPage.value_lengths`. A page whose
+    values do not decode keeps its header facts.
+
+    ``None`` when ``buf`` does not hold a whole dictionary page header -- a short
+    read, another page type, or a field of the wrong type -- so the caller keeps
+    its footer-only bound.
+    """
+    reader = _CompactReader(buf)
+    page_type = uncompressed = compressed = num_values = None
+    try:
+        for field_id, field_type in reader._fields():
+            if field_id == _PAGE_HEADER_TYPE and field_type == _I32:
+                page_type = reader._zigzag()
+            elif field_id == _PAGE_HEADER_UNCOMPRESSED_SIZE and field_type == _I32:
+                uncompressed = reader._zigzag()
+            elif field_id == _PAGE_HEADER_COMPRESSED_SIZE and field_type == _I32:
+                compressed = reader._zigzag()
+            elif (
+                field_id == _PAGE_HEADER_DICTIONARY_PAGE_HEADER
+                and field_type == _STRUCT
+            ):
+                for sub_id, sub_type in reader._fields():
+                    if (
+                        sub_id == _DICTIONARY_PAGE_HEADER_NUM_VALUES
+                        and sub_type == _I32
+                    ):
+                        num_values = reader._zigzag()
+                    else:
+                        reader._skip(sub_type)
+            else:
+                reader._skip(field_type)
+    except (IndexError, _ThriftDesync):
+        return None
+    if (
+        page_type != _DICTIONARY_PAGE
+        or uncompressed is None
+        or num_values is None
+        or num_values < 0
+        or uncompressed < 0
+    ):
+        return None
+    page = DictionaryPage(num_values, uncompressed)
+    start = reader._pos
+    if (
+        decompress is None
+        or compressed is None
+        or compressed < 0
+        or len(buf) < start + compressed
+    ):
+        return page
+    try:
+        values = decompress(memoryview(buf)[start : start + compressed], uncompressed)
+    except Exception:
+        return page
+    return page._replace(value_lengths=_byte_array_lengths(values, num_values))
+
+
+_I32_LE = struct.Struct("<i")
+
+
+def _byte_array_lengths(values, count: int) -> Optional[Dict[int, int]]:
+    """How many of ``count`` PLAIN ``BYTE_ARRAY`` values have each byte length.
+
+    Each value is a 4-byte little-endian length followed by that many bytes, so
+    finding the next length means stepping over the current value -- a walk, at
+    about 4 ms per 1 MiB page. ``None`` unless ``values`` holds exactly ``count``
+    of them, which also rejects a page of another physical type.
+    """
+    unpack = _I32_LE.unpack_from
+    end = len(values)
+    pos = 0
+    lengths: Dict[int, int] = {}
+    seen = lengths.get
+    try:
+        for _ in range(count):
+            (length,) = unpack(values, pos)
+            if length < 0:
+                return None
+            lengths[length] = seen(length, 0) + 1
+            pos += 4 + length
+    except struct.error:
+        return None
+    return lengths if pos == end else None

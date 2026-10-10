@@ -22,20 +22,49 @@ length times a per-slot width, and every input comes from the footer:
 * The character bytes of ``BYTE_ARRAY`` leaves come from
   ``unencoded_byte_array_data_bytes``.
 
+Two inputs are not in the footer, and both live in a chunk's dictionary page.
+An Arrow dictionary column's decoded dictionary is that page, whose size the
+footer folds into the whole chunk's. A view column's size turns on how many of
+its bytes sit in values too long to fit inside their views, which the footer's
+byte total cannot say and the page's value lengths mostly can. The caller may
+read the page -- just its header for a dictionary column, all of it for a view
+column -- and pass it in (:func:`dictionary_page_read_size` says which chunks
+are worth it and how many bytes); without it both fall back to a bound.
+
+One case needs the whole chunk. When the writer gives up on the dictionary
+partway through a chunk, the Arrow dictionary a read builds is the page's values
+plus every new value in the PLAIN pages after it, and only the values can say
+which are new. :func:`dictionary_decode_size` names those chunks; the caller may
+decode them and pass the dictionary's bytes in on the page.
+
+A chunk without ``SizeStatistics`` -- from a writer that predates them, PyArrow
+17 among them -- is sized by footer rules instead. Array lengths and null
+counts come from the chunk's level-entry count and its ``Statistics`` null
+count: exact outside any list, an upper bound inside one. A ``BYTE_ARRAY``
+leaf's bytes come from its uncompressed size less each value's length prefix,
+or, where the data pages hold dictionary indices, from the dictionary page's
+mean value length -- exact for values of one length, approximate otherwise
+(:func:`_footer_byte_array_bytes`).
+
 :mod:`.parquet_size_statistics` recovers ``SizeStatistics`` from the footer
-bytes. Every function here returns ``None`` rather than guessing when the inputs
-cannot support an answer, which is the caller's signal to keep its existing
-uncompressed-size behavior.
+bytes. A leaf the footer cannot size even so -- DELTA_BYTE_ARRAY values, or a
+dictionary page that could not be read -- keeps the pre-existing estimate, its
+uncompressed size times a fixed ratio, without taking the rest of its row
+group with it. ``None`` is left for a schema this module does not model, the
+caller's signal to keep that estimate for the whole file.
 """
 
 from __future__ import annotations
 
-from typing import Iterable, List, NamedTuple, Optional, Sequence, Tuple
+import math
+from typing import Iterable, List, Mapping, NamedTuple, Optional, Sequence, Tuple
 
 import pyarrow as pa
 from pyarrow.parquet import ColumnChunkMetaData, ParquetSchema, RowGroupMetaData
 
 from ray.data._internal.datasource_v2.chunkers.parquet_size_statistics import (
+    DICTIONARY_PAGE_HEADER_READ_BYTES,
+    DictionaryPage,
     LeafSizeStats,
 )
 
@@ -56,6 +85,12 @@ _FIXED_WIDTH = "fixed_width"
 _BOOLEAN = "boolean"
 _BINARY = "binary"
 _DICTIONARY = "dictionary"
+# string_view / binary_view: a 16-byte view per slot, plus the bytes of every
+# value too long to fit inside its view.
+_VIEW = "view"
+_VIEW_WIDTH = 16
+# The longest value a view holds inline, in the 12 bytes after its length.
+_VIEW_INLINE_BYTES = 12
 # Arrow's null type allocates no buffers at all.
 _NULL = "null"
 
@@ -63,8 +98,21 @@ _NULL = "null"
 # offset is included. The large_* variants use 64-bit offsets.
 _OFFSET_WIDTH = 4
 _LARGE_OFFSET_WIDTH = 8
+# A dictionary leaf with no slots in a row group -- every enclosing list empty or
+# null -- decodes to 8 bytes whatever its index width, value type or dictionary
+# page: the reader never reads that page, leaving a 4-byte indices buffer and an
+# empty dictionary whose offsets and data share one 4-byte allocation. Measured
+# on PyArrow 24.
+_EMPTY_DICTIONARY_BYTES = 8
 
 _BYTE_ARRAY = "BYTE_ARRAY"
+_DELTA_BYTE_ARRAY = "DELTA_BYTE_ARRAY"
+_DELTA_LENGTH_BYTE_ARRAY = "DELTA_LENGTH_BYTE_ARRAY"
+_RLE_DICTIONARY = "RLE_DICTIONARY"
+_PLAIN_DICTIONARY = "PLAIN_DICTIONARY"
+# The same two as ``enum Encoding`` values, which is how ``encoding_stats``
+# carries them.
+_DICTIONARY_ENCODING_IDS = frozenset({2, 8})
 
 # PyArrow hands these leaf types to Arrow zero-copy from the decoder's buffers,
 # and that path keeps the validity bitmap the decoder allocated for an optional
@@ -155,6 +203,8 @@ def _leaf_layout(arrow_type: pa.DataType) -> Tuple[str, int, int]:
         return _BINARY, _OFFSET_WIDTH, 0
     if pa.types.is_large_string(arrow_type) or pa.types.is_large_binary(arrow_type):
         return _BINARY, _LARGE_OFFSET_WIDTH, 0
+    if pa.types.is_string_view(arrow_type) or pa.types.is_binary_view(arrow_type):
+        return _VIEW, 0, _VIEW_WIDTH
     if pa.types.is_dictionary(arrow_type):
         # The reader restores a dictionary type only over BYTE_ARRAY values; a
         # dictionary of anything else round-trips as its value type.
@@ -165,8 +215,7 @@ def _leaf_layout(arrow_type: pa.DataType) -> Tuple[str, int, int]:
     try:
         bit_width = arrow_type.bit_width
     except ValueError:
-        # Not fixed-width: view types and anything else this module does not
-        # model.
+        # Not fixed-width: anything else this module does not model.
         raise _UnsupportedLayout(arrow_type) from None
     if bit_width % 8:
         raise _UnsupportedLayout(arrow_type)
@@ -201,7 +250,7 @@ class _SchemaWalk:
         pos: _Position,
         chain: Tuple[_ArrowNode, ...],
     ) -> None:
-        if isinstance(arrow_type, pa.ExtensionType):
+        if isinstance(arrow_type, pa.BaseExtensionType):
             arrow_type = arrow_type.storage_type
         # An optional Parquet node adds one definition level, a required one none.
         def_level = pos.parent_def + int(nullable)
@@ -296,7 +345,7 @@ def build_leaf_profiles(parquet_schema: ParquetSchema) -> Optional[List[LeafProf
         ):
             return None
         physical_type = column.physical_type
-        if leaf.kind in (_BINARY, _DICTIONARY) and physical_type != _BYTE_ARRAY:
+        if leaf.kind in (_BINARY, _DICTIONARY, _VIEW) and physical_type != _BYTE_ARRAY:
             return None
         if leaf.zero_copy and physical_type not in _ZERO_COPY_PHYSICAL_TYPES:
             chain = chain[:-1] + (leaf._replace(zero_copy=False),)
@@ -310,14 +359,169 @@ def build_leaf_profiles(parquet_schema: ParquetSchema) -> Optional[List[LeafProf
     return profiles
 
 
+# A dictionary page is capped at 1 MiB by default in parquet-cpp, parquet-mr and
+# arrow-rs, and runs past the cap by at most one write batch. A view chunk whose
+# page spans more than this is left at its bound rather than fetched.
+_DICTIONARY_PAGE_READ_LIMIT = 2 * 1024 * 1024
+
+
+def dictionary_page_read_size(
+    profile: LeafProfile,
+    chunk: ColumnChunkMetaData,
+    stats: Optional[LeafSizeStats],
+) -> int:
+    """Bytes at ``chunk.dictionary_page_offset`` that
+    :func:`estimate_row_group_decoded_size` wants read, or 0 for none.
+
+    An Arrow dictionary leaf wants its dictionary page's header. A view leaf
+    wants the whole page, header and values, when some data page indexes it:
+    the values' lengths say how many bytes fall outside their views (see
+    :func:`_view_out_of_line_bytes`). The page spans up to the first data page.
+    Any other ``BYTE_ARRAY`` leaf whose footer lacks its character bytes wants
+    the header too, which :func:`_footer_byte_array_bytes` sizes them from.
+    Every other chunk is sized from the footer alone.
+    """
+    if not chunk.has_dictionary_page:
+        return 0
+    kind = profile.nodes[-1].kind
+    if kind == _DICTIONARY:
+        return DICTIONARY_PAGE_HEADER_READ_BYTES
+    encodings = None if stats is None else stats.data_page_encodings
+    if kind == _VIEW and encodings and encodings & _DICTIONARY_ENCODING_IDS:
+        page_bytes = chunk.data_page_offset - chunk.dictionary_page_offset
+        if 0 < page_bytes <= _DICTIONARY_PAGE_READ_LIMIT:
+            return page_bytes
+    if (
+        kind in (_BINARY, _VIEW)
+        and (stats is None or stats.unencoded_byte_array_data_bytes is None)
+        and _DELTA_BYTE_ARRAY not in chunk.encodings
+    ):
+        return DICTIONARY_PAGE_HEADER_READ_BYTES
+    return 0
+
+
+# A PyArrow-written row group holds at most 1Mi rows by default, which for a
+# categorical column of values up to 100 bytes compresses to under 9 MiB. A chunk
+# past this keeps its bound rather than be decoded at planning time.
+_DICTIONARY_DECODE_LIMIT = 16 * 1024 * 1024
+
+
+def dictionary_decode_size(
+    profile: LeafProfile,
+    chunk: ColumnChunkMetaData,
+    stats: Optional[LeafSizeStats],
+) -> int:
+    """Compressed bytes of a chunk :func:`estimate_row_group_decoded_size` wants
+    decoded whole, or 0 for none.
+
+    That is an Arrow dictionary leaf whose writer gave up on the dictionary
+    partway: some data pages index the dictionary page and the rest hold their
+    values. A read decodes it to the page's values plus each new value in those
+    other pages, which the footer cannot tell from the repeats, so the bound can
+    run 50x over. PyArrow writes this when an Arrow column's chunks carry
+    different dictionaries -- ``pq.write_table`` of concatenated or compacted
+    tables, though not Ray Data's ``write_parquet``. A chunk over
+    :data:`_DICTIONARY_DECODE_LIMIT` keeps the bound.
+    """
+    if (
+        not chunk.has_dictionary_page
+        or profile.nodes[-1].kind != _DICTIONARY
+        or stats is None
+        or not stats.data_page_encodings
+    ):
+        return 0
+    encodings = stats.data_page_encodings
+    if not (
+        encodings & _DICTIONARY_ENCODING_IDS and encodings - _DICTIONARY_ENCODING_IDS
+    ):
+        return 0
+    compressed = chunk.total_compressed_size
+    return compressed if 0 < compressed <= _DICTIONARY_DECODE_LIMIT else 0
+
+
+def _dictionaries(array) -> Iterable[pa.Array]:
+    if isinstance(array, pa.ChunkedArray):
+        for chunk in array.chunks:
+            yield from _dictionaries(chunk)
+    elif isinstance(array, pa.ExtensionArray):
+        yield from _dictionaries(array.storage)
+    elif isinstance(array, pa.DictionaryArray):
+        yield array.dictionary
+    elif isinstance(array, pa.StructArray):
+        for i in range(array.type.num_fields):
+            yield from _dictionaries(array.field(i))
+    elif isinstance(array, (pa.ListArray, pa.LargeListArray, pa.FixedSizeListArray)):
+        # A MapArray is a ListArray of key-value structs.
+        yield from _dictionaries(array.values)
+
+
+def arrow_dictionary_bytes(column) -> Optional[int]:
+    """Buffer bytes of the Arrow dictionaries in a decoded column, or ``None``
+    if it holds none -- a read that ignored the dictionary type, which must not
+    pass for an empty dictionary."""
+    dictionaries = list(_dictionaries(column))
+    if not dictionaries:
+        return None
+    return sum(dictionary.get_total_buffer_size() for dictionary in dictionaries)
+
+
 class _Levels(NamedTuple):
-    """One leaf chunk's level histograms, answering slot and null counts."""
+    """One leaf chunk's level counts, answering slot and null counts.
+
+    The ``SizeStatistics`` histograms answer them exactly. Without them the
+    footer still records how many level entries the chunk holds and, in its
+    ``Statistics``, how many of those entries hold no value: enough outside
+    any list, and inside one an upper bound, so the estimate errs high.
+    """
 
     num_rows: int
     repetition: Tuple[int, ...]
     definition: Tuple[int, ...]
     unencoded_bytes: Optional[int]
     chunk: ColumnChunkMetaData
+    data_page_encodings: Optional[frozenset] = None
+    dictionary_page: Optional[DictionaryPage] = None
+    max_definition_level: int = 0
+    # The ``Statistics`` null count -- entries below the max definition level
+    # -- looked up only when there is no definition histogram to count them.
+    null_count: Optional[int] = None
+
+    def _opened(self, depth: int) -> int:
+        """Entries at repetition level ``depth`` or less, or an upper bound."""
+        if self.repetition:
+            return sum(self.repetition[: depth + 1])
+        # At the max repetition level that is every entry, and short of it no
+        # more than every entry.
+        return self.chunk.num_values
+
+    def _below(self, def_level: int) -> Optional[int]:
+        """Entries whose definition level is under ``def_level``, or ``None``.
+
+        Without a definition histogram the null count stands in for the
+        entries under the max definition level. It can run low inside a list:
+        PyArrow reports 0 for the ``int64`` leaf of a ``list<struct<int64>>``
+        whose lists are a quarter empty. A low count only raises the slots and
+        values it is subtracted from, and the 4 bytes per empty list it takes
+        from a ``BYTE_ARRAY`` leaf's bytes come back as the extra slots'
+        offsets.
+        """
+        if self.definition:
+            return sum(self.definition[:def_level])
+        if def_level <= 0 or self.null_count == 0:
+            return 0
+        if def_level >= self.max_definition_level:
+            return self.null_count
+        return None
+
+    def dictionary_live(self) -> bool:
+        """Whether some data page references the chunk's dictionary page."""
+        if self.data_page_encodings is not None:
+            return bool(self.data_page_encodings & _DICTIONARY_ENCODING_IDS)
+        # Without ``encoding_stats`` only the chunk-wide list is left. Format 1.0
+        # files name the dictionary page PLAIN_DICTIONARY too, so a dead page
+        # reads as live here: the safe direction.
+        encodings = self.chunk.encodings
+        return _RLE_DICTIONARY in encodings or _PLAIN_DICTIONARY in encodings
 
     def slots(self, depth: int, slot_def: int) -> int:
         """Slots at repetition ``depth`` whose definition level reaches ``slot_def``.
@@ -328,11 +532,12 @@ class _Levels(NamedTuple):
         and non-null). An entry that stops short of that group has a repetition
         level below ``k`` -- it cannot repeat a list it never entered -- so the
         two marginal histograms suffice: entries at repetition level ``<= k``,
-        minus entries below ``slot_def``.
+        minus entries below ``slot_def``. Either count unknown, its bound keeps
+        the result an upper bound: every entry, minus none.
         """
         if depth == 0:
             return self.num_rows
-        return sum(self.repetition[: depth + 1]) - sum(self.definition[:slot_def])
+        return self._opened(depth) - (self._below(slot_def) or 0)
 
     def nulls(self, slot_def: int, def_level: int) -> Optional[int]:
         """Slots that exist (level ``>= slot_def``) but are null (``< def_level``).
@@ -341,17 +546,51 @@ class _Levels(NamedTuple):
         is, and PyArrow marks it null in this array's own bitmap either way.
         ``None`` when unknown.
         """
-        if self.definition:
-            return sum(self.definition[slot_def:def_level])
-        # Reached only at max definition level 1, where the spec lets writers
-        # omit the histogram: the one nullable level's count is the chunk's null
-        # count. Cold for PyArrow-written files, which emit the histogram even
-        # then -- worth knowing because building a ``Statistics`` per leaf
-        # measured at roughly two thirds of this module's total cost.
-        statistics = self.chunk.statistics
-        if statistics is not None and statistics.has_null_count:
-            return statistics.null_count
-        return None
+        below = self._below(def_level)
+        if below == 0:
+            return 0
+        above = self._below(slot_def)
+        if below is None or above is None:
+            return None
+        return below - above
+
+    def values(self) -> int:
+        """Non-null leaf values, or every level entry when that is unknown."""
+        return self.chunk.num_values - (self._below(self.max_definition_level) or 0)
+
+    def fewest_values(self) -> int:
+        """Non-null leaf values, or none when that is unknown."""
+        below = self._below(self.max_definition_level)
+        return 0 if below is None else self.chunk.num_values - below
+
+
+def _histograms_agree(
+    stats: LeafSizeStats,
+    chunk: ColumnChunkMetaData,
+    num_rows: int,
+    max_def: int,
+    max_rep: int,
+) -> bool:
+    """Whether the histograms the writer recorded fit the footer's own counts.
+
+    Cheap, and the last line of defense against a cursor that drifted into a
+    plausible-looking struct. Level 0 may exceed the row count: PyArrow 24 adds
+    one level-0 entry, taken from level 1, per 16,384 values of a single record
+    at max repetition level 1, so one 128x1024 tensor row reports (8, 131064).
+    Slot counts sum level 0 with the levels above it, so a surplus there can
+    only raise them.
+    """
+    repetition = stats.repetition_level_histogram
+    definition = stats.definition_level_histogram
+    if repetition and (
+        len(repetition) != max_rep + 1
+        or repetition[0] < num_rows
+        or sum(repetition) != chunk.num_values
+    ):
+        return False
+    return not definition or (
+        len(definition) == max_def + 1 and sum(definition) == chunk.num_values
+    )
 
 
 def _levels(
@@ -359,39 +598,121 @@ def _levels(
     chunk: ColumnChunkMetaData,
     stats: Optional[LeafSizeStats],
     num_rows: int,
-) -> Optional[_Levels]:
-    """The leaf chunk's histograms, or ``None`` if the ones it needs are absent."""
+    dictionary_page: Optional[DictionaryPage] = None,
+) -> _Levels:
+    """The leaf chunk's level counts and character bytes.
+
+    From its ``SizeStatistics`` where the writer recorded them, and from the
+    rest of the footer where it did not: the spec lets a writer omit the
+    repetition histogram at max repetition level 0 and the definition histogram
+    at max definition level <= 1, PyArrow writes no ``SizeStatistics`` at all
+    for a required, unrepeated leaf that is not ``BYTE_ARRAY``, and writers
+    that predate them write none anywhere. Histograms that disagree with the
+    footer mean the walk drifted, so nothing else it read for the chunk is used
+    either.
+    """
     max_def = profile.max_definition_level
     max_rep = profile.max_repetition_level
-    if stats is None:
-        # PyArrow writes no SizeStatistics at all for a required, unrepeated
-        # leaf that is not BYTE_ARRAY: every count it would hold is the row
-        # count. Anywhere else a missing entry means the writer or the walk gave
-        # up, which must not turn into a number.
-        if max_def or max_rep:
-            return None
-        return _Levels(num_rows, (), (), None, chunk)
-
-    repetition = stats.repetition_level_histogram
-    definition = stats.definition_level_histogram
-    # The spec lets a writer omit the repetition histogram at max repetition
-    # level 0 and the definition histogram at max definition level <= 1. Beyond
-    # that, slot and null counts have nothing to come from.
-    if max_rep and not repetition:
-        return None
-    if (max_rep or max_def > 1) and not definition:
-        return None
-    # Shape and totals against the footer's own counts: cheap, and the last line
-    # of defense against a cursor that drifted into a plausible-looking struct.
-    if repetition and (len(repetition) != max_rep + 1 or repetition[0] != num_rows):
-        return None
-    if definition and (
-        len(definition) != max_def + 1 or sum(definition) != chunk.num_values
+    if stats is not None and not _histograms_agree(
+        stats, chunk, num_rows, max_def, max_rep
     ):
-        return None
-    return _Levels(
-        num_rows, repetition, definition, stats.unencoded_byte_array_data_bytes, chunk
+        stats = None
+    repetition = definition = ()
+    unencoded_bytes = data_page_encodings = None
+    if stats is not None:
+        repetition = stats.repetition_level_histogram
+        definition = stats.definition_level_histogram
+        unencoded_bytes = stats.unencoded_byte_array_data_bytes
+        data_page_encodings = stats.data_page_encodings
+    # PyArrow 24's DELTA_BYTE_ARRAY encoder leaves out of this count every value
+    # whose suffix is empty -- one equal to, or a prefix of, the value before it
+    # -- so 1,000 copies of an 8-byte string report 8 bytes.
+    if unencoded_bytes is not None and _DELTA_BYTE_ARRAY in chunk.encodings:
+        unencoded_bytes = None
+    null_count = None
+    if max_def and not definition:
+        # Building a ``Statistics`` measured at roughly two thirds of this
+        # module's cost per leaf, so only the leaves that need it pay: none in a
+        # file with histograms.
+        statistics = chunk.statistics
+        if (
+            statistics is not None
+            and statistics.has_null_count
+            and 0 <= statistics.null_count <= chunk.num_values
+        ):
+            null_count = statistics.null_count
+    levels = _Levels(
+        num_rows,
+        repetition,
+        definition,
+        unencoded_bytes,
+        chunk,
+        data_page_encodings,
+        dictionary_page,
+        max_def,
+        null_count,
     )
+    if unencoded_bytes is None and profile.nodes[-1].kind in (
+        _BINARY,
+        _DICTIONARY,
+        _VIEW,
+    ):
+        levels = levels._replace(unencoded_bytes=_footer_byte_array_bytes(levels))
+    return levels
+
+
+def _footer_byte_array_bytes(levels: _Levels) -> Optional[int]:
+    """Character bytes of a ``BYTE_ARRAY`` chunk whose footer does not record them.
+
+    The chunk's uncompressed size holds them, along with each PLAIN value's
+    4-byte length prefix, which the value count sizes, and the pages' headers
+    and level runs, which are small and only push the result up. A dictionary
+    adds its page, whose header (see :func:`dictionary_page_read_size`) gives
+    its size, and the index pages, which say which values the rows hold but
+    not, from the footer, how long those are: each indexed value is taken at
+    the dictionary's mean length. That is exact for values of one length, and
+    otherwise off by however far the common values' mean strays from the
+    dictionary's -- in either direction.
+
+    When the writer gave up on the dictionary partway, the footer says neither
+    how many values went to the PLAIN pages after it nor how long those are, so
+    every value is still taken at the dictionary's mean length -- but at no
+    less than the data pages hold when read as PLAIN values.
+
+    ``None`` when the footer cannot bound them: a dictionary page whose header
+    was not read, or DELTA_BYTE_ARRAY, which stores each value as the suffix
+    that differs from the one before it.
+    """
+    chunk = levels.chunk
+    encodings = chunk.encodings
+    if _DELTA_BYTE_ARRAY in encodings:
+        return None
+    # DELTA_LENGTH_BYTE_ARRAY packs the lengths apart from the bytes, in as
+    # little as nothing.
+    prefix = 0 if _DELTA_LENGTH_BYTE_ARRAY in encodings else _OFFSET_WIDTH
+    data = chunk.total_uncompressed_size
+    if not chunk.has_dictionary_page:
+        return max(data - prefix * levels.fewest_values(), 0)
+    page = levels.dictionary_page
+    if page is None:
+        return None
+    # The data pages, plus the dictionary page's header.
+    rest = max(data - page.uncompressed_page_size, 0)
+    page_encodings = levels.data_page_encodings
+    if page_encodings is not None and not page_encodings & _DICTIONARY_ENCODING_IDS:
+        # No data page indexes the dictionary: every value is in them, PLAIN.
+        return max(rest - prefix * levels.fewest_values(), 0)
+    entries = page.num_values
+    mean = (
+        max(page.uncompressed_page_size - _OFFSET_WIDTH * entries, 0) / entries
+        if entries
+        else 0
+    )
+    values = levels.values()
+    at_mean = math.ceil(mean * values)
+    if page_encodings is not None and not page_encodings - _DICTIONARY_ENCODING_IDS:
+        return at_mean
+    return max(at_mean, rest - prefix * values)
 
 
 def _bitmap_size(length: int) -> int:
@@ -422,30 +743,152 @@ def _node_size(node: _ArrowNode, levels: _Levels) -> Optional[int]:
         size += node.value_width * length
     elif kind == _BOOLEAN:
         size += _bitmap_size(length)
-    elif kind in (_BINARY, _DICTIONARY):
-        # A BYTE_ARRAY leaf's character bytes exist nowhere else in the footer.
-        # The spec defines them as exclusive of each value's length prefix.
+    elif kind == _DICTIONARY:
+        if not length:
+            size += _EMPTY_DICTIONARY_BYTES
+        else:
+            size += node.value_width * length + _dictionary_size(
+                levels, node.offset_width
+            )
+    elif kind in (_BINARY, _VIEW):
+        # The spec defines a BYTE_ARRAY leaf's character bytes as exclusive of
+        # each value's length prefix.
         if levels.unencoded_bytes is None:
             return None
-        hydrated = levels.unencoded_bytes + node.offset_width * (length + 1)
-        if kind == _BINARY:
-            size += hydrated
-        else:
-            # The dictionary holds each distinct value once, so it is at most
-            # the hydrated size. It is also at most the chunk's uncompressed
-            # size, which contains the dictionary page: the same values, PLAIN
-            # encoded with a 4-byte length prefix where Arrow keeps an offset
-            # (twice that for large offsets). The bound overshoots by the index
-            # pages, which are small next to the values whenever the dictionary
-            # matters.
-            bound = (
-                levels.chunk.total_uncompressed_size
-                * node.offset_width
-                // _OFFSET_WIDTH
-                + node.offset_width
-            )
-            size += node.value_width * length + min(hydrated, bound)
+        if kind == _VIEW:
+            return size + node.value_width * length + _view_out_of_line_bytes(levels)
+        size += levels.unencoded_bytes + node.offset_width * (length + 1)
     return size
+
+
+def _view_out_of_line_bytes(levels: _Levels) -> int:
+    """Bytes a view chunk's values add outside their views.
+
+    Values of up to 12 bytes live inside their views; each longer one adds its
+    bytes to a data buffer, copied again for every repeat. The footer has the
+    values' total bytes but not how they split, and counting all of them out of
+    line is the bound: exact once every value passes 12 bytes, 1.75x at worst
+    (all exactly 12).
+
+    The dictionary page splits them when some data page indexes it. Its values
+    are the chunk's distinct values -- or, when the dictionary filled up and the
+    writer fell back to PLAIN for the rest of the chunk, its first distinct
+    values -- and each is used at least once: its long values count once, its
+    short ones not at all. The other uses -- repeats, and after a fallback the
+    PLAIN values -- hold the remaining bytes. When the dictionary's values all
+    fall on one side of 12 bytes, so do the repeats of a chunk whose every data
+    page indexes it, which makes the size exact.
+
+    Otherwise how the remaining bytes split turns on how often each value is
+    used, which neither the footer nor the page records, so the page stands in
+    as a sample, read two ways. *Proportional* gives the other uses the
+    dictionary's share of bytes in long values. *Two-class* gives their short
+    and long values the dictionary's mean short and long lengths, and lets their
+    byte total settle how many are long. Proportional runs high when frequent
+    values are shorter than the dictionary's average and low when they are
+    longer; two-class the reverse. Taking the larger errs high when they
+    disagree.
+
+    After a fallback the PLAIN values need not resemble the page. When their
+    bytes average more than its longest value they cannot all be short, and all
+    of them count out of line.
+
+    Only the sample can make the estimate undershoot, by at most 12 bytes per
+    use beyond each value's first, so a column estimates no lower than 16/28 of
+    its decoded size.
+    """
+    unencoded = levels.unencoded_bytes
+    page = levels.dictionary_page
+    encodings = levels.data_page_encodings
+    if (
+        page is None
+        or not page.value_lengths
+        or not encodings
+        or not encodings & _DICTIONARY_ENCODING_IDS
+    ):
+        return unencoded
+    lengths = page.value_lengths
+    dictionary_values = dictionary_bytes = long_values = long_bytes = 0
+    for value_length, count in lengths.items():
+        dictionary_values += count
+        dictionary_bytes += value_length * count
+        if value_length > _VIEW_INLINE_BYTES:
+            long_values += count
+            long_bytes += value_length * count
+    # The uses beyond each dictionary value's first, and their bytes.
+    rest = levels.values() - dictionary_values
+    rest_bytes = unencoded - dictionary_bytes
+    if rest < 0 or rest_bytes < 0:
+        return unencoded
+    if rest_bytes > max(lengths) * rest:
+        return long_bytes + rest_bytes
+    short_values = dictionary_values - long_values
+    if not long_values:
+        return 0
+    if not short_values:
+        return long_bytes + rest_bytes
+    proportional = rest_bytes * long_bytes / dictionary_bytes
+    short_mean = (dictionary_bytes - long_bytes) / short_values
+    long_mean = long_bytes / long_values
+    rest_long = (rest_bytes - short_mean * rest) / (long_mean - short_mean)
+    rest_long = min(max(rest_long, 0), rest)
+    two_class = min(max(rest_bytes - short_mean * (rest - rest_long), 0), rest_bytes)
+    return long_bytes + math.ceil(max(proportional, two_class))
+
+
+def _dictionary_size(levels: _Levels, offset_width: int) -> int:
+    """Bytes of the decoded Arrow dictionary of one column chunk.
+
+    When a data page references the dictionary page, the decoded dictionary is
+    that page whole: PyArrow writes an Arrow dictionary used or not, so a 1-row
+    group can decode a 100-entry dictionary, well past the hydrated size. The page
+    is the values PLAIN encoded, each behind a 4-byte length prefix where Arrow
+    keeps an offset, so its header makes the size exact. Pages written PLAIN after
+    the writer gave up on the dictionary add their new values to it, which the
+    footer cannot separate from the repeats: the chunk decoded whole says (see
+    :func:`dictionary_decode_size`), and without that the case takes every
+    value's bytes on top, a bound.
+
+    When no data page references it -- the writer fell back to PLAIN before the
+    first data page, as PyArrow does when the Arrow dictionary holds a duplicate
+    value -- the reader builds the dictionary from the values themselves, one
+    entry per distinct non-null value. Every non-null value bounds that, and so
+    does the unused page: PyArrow writes there the Arrow dictionary with its
+    duplicates dropped, which holds every value the column uses, so the page is
+    exact when each entry is used.
+
+    Without the header, the chunk's uncompressed size bounds every case: it holds
+    the dictionary page and, beyond it, the index pages. The hydrated size is
+    an estimate itself where the footer lacks the values' bytes (see
+    :func:`_footer_byte_array_bytes`), and is left out where it cannot say.
+    """
+    bound = (
+        levels.chunk.total_uncompressed_size * offset_width // _OFFSET_WIDTH
+        + offset_width
+    )
+    hydrated = (
+        None
+        if levels.unencoded_bytes is None
+        else levels.unencoded_bytes + offset_width * (levels.values() + 1)
+    )
+    page = levels.dictionary_page
+    dictionary = (
+        None
+        if page is None
+        else page.uncompressed_page_size
+        - _OFFSET_WIDTH * page.num_values
+        + offset_width * (page.num_values + 1)
+    )
+    if not levels.dictionary_live():
+        return min(size for size in (hydrated, bound, dictionary) if size is not None)
+    encodings = levels.data_page_encodings
+    if dictionary is None or encodings is None:
+        return bound
+    if encodings - _DICTIONARY_ENCODING_IDS:
+        if page.decoded_dictionary_bytes is not None:
+            return page.decoded_dictionary_bytes
+        dictionary = bound if hydrated is None else min(bound, dictionary + hydrated)
+    return dictionary
 
 
 def estimate_row_group_decoded_size(
@@ -453,49 +896,56 @@ def estimate_row_group_decoded_size(
     leaf_profiles: Optional[List[LeafProfile]],
     leaf_indices: Optional[Sequence[int]],
     size_stats: Optional[List[Optional[LeafSizeStats]]],
+    dictionary_pages: Optional[Mapping[int, DictionaryPage]] = None,
 ) -> Optional[int]:
     """Decoded Arrow size of one row group's read set, or ``None`` to fall back.
 
-    The decision is all-or-nothing per row group: mixing exact and fallback
-    sizing within one group produces a number that is hard to reason about, and
-    the mixed case only arises with writers that partially emit size statistics.
-
-    ``None`` when a ``BYTE_ARRAY`` leaf lacks ``unencoded_byte_array_data_bytes``,
-    or when a leaf lacks a level histogram its nesting needs. Fixed-width leaves
-    legitimately omit the former -- the spec restricts it to ``BYTE_ARRAY`` --
-    and a required, unrepeated, fixed-width leaf needs no ``SizeStatistics`` at
-    all, so requiring either everywhere would silently disable exact sizing for
-    the commonest schemas while still paying the decode cost.
+    Each leaf is sized from its ``SizeStatistics`` where the writer recorded
+    them and by footer rules where it did not (see :func:`_levels`). A leaf
+    whose values even the rules cannot size -- DELTA_BYTE_ARRAY, or a
+    dictionary page that was not read -- takes the pre-existing estimate, its
+    uncompressed size times :data:`PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT`,
+    and the rest of the row group keeps its own sizes.
 
     Args:
         row_group: The ``RowGroupMetaData`` to size.
         leaf_profiles: The file's per-leaf profiles from
-            :func:`build_leaf_profiles`, or ``None`` when no size statistics
-            were recovered for the file or its schema is not modeled (in which
-            case the answer is ``None`` regardless).
+            :func:`build_leaf_profiles`, or ``None`` when its schema is not
+            modeled (in which case the answer is ``None`` regardless).
         leaf_indices: Leaf-column indices the read task will decode, or ``None``
             for all of them.
         size_stats: This row group's per-leaf ``SizeStatistics``, as returned by
-            :func:`~.parquet_size_statistics.read_size_statistics`, or ``None``.
+            :func:`~.parquet_size_statistics.read_size_statistics`, or ``None``
+            when none were recovered, which sizes every leaf by the rules.
+        dictionary_pages: This row group's dictionary pages by leaf index, for
+            the leaves :func:`dictionary_page_read_size` names, carrying the
+            decoded dictionary's bytes for those :func:`dictionary_decode_size`
+            names. A missing one sizes that leaf by its bound instead.
 
     Returns:
         The summed decoded size in bytes, or ``None`` if it cannot be determined.
     """
-    if size_stats is None or leaf_profiles is None:
+    if leaf_profiles is None:
         return None
     indices = range(row_group.num_columns) if leaf_indices is None else leaf_indices
     num_rows = row_group.num_rows
+    dictionary_pages = dictionary_pages or {}
     counted = set()
     total = 0
     for leaf_idx in indices:
-        if leaf_idx >= len(size_stats) or leaf_idx >= len(leaf_profiles):
+        if leaf_idx >= len(leaf_profiles):
             return None
         profile = leaf_profiles[leaf_idx]
+        chunk = row_group.column(leaf_idx)
         levels = _levels(
-            profile, row_group.column(leaf_idx), size_stats[leaf_idx], num_rows
+            profile,
+            chunk,
+            size_stats[leaf_idx]
+            if size_stats is not None and leaf_idx < len(size_stats)
+            else None,
+            num_rows,
+            dictionary_pages.get(leaf_idx),
         )
-        if levels is None:
-            return None
         # Any leaf below an array sees the same counts for it, so whichever leaf
         # reaches a shared ancestor first sizes it.
         for node in profile.nodes:
@@ -504,7 +954,11 @@ def estimate_row_group_decoded_size(
             counted.add(node.node_id)
             node_size = _node_size(node, levels)
             if node_size is None:
-                return None
+                # Only a BYTE_ARRAY leaf, the last node, can be unsizable.
+                node_size = (
+                    chunk.total_uncompressed_size
+                    * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+                )
             total += node_size
     return total
 
@@ -530,10 +984,10 @@ def decoded_size_or_fallback(
 ) -> int:
     """A chunk's decoded size, or the pre-existing estimate when unavailable.
 
-    ``None`` means the footer could not yield an exact answer, so this reproduces
-    exactly what shipped before: uncompressed bytes scaled by the fixed encoding
-    ratio. Shared by the bin packer and the reader's batch sizing so the two
-    cannot drift.
+    ``None`` means the footer could not yield an answer -- a schema the
+    estimator does not model -- so this reproduces exactly what shipped before:
+    uncompressed bytes scaled by the fixed encoding ratio. Shared by the bin
+    packer and the reader's batch sizing so the two cannot drift.
     """
     if decoded_size is not None:
         return decoded_size

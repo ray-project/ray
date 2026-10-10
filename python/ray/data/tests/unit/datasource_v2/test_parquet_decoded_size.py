@@ -14,11 +14,17 @@ import numpy as np
 import pytest
 
 from ray.data._internal.datasource_v2.chunkers.parquet_decoded_size import (
+    _leaf_layout,
+    _UnsupportedLayout,
     build_leaf_profiles,
     decoded_size_or_fallback,
+    dictionary_decode_size,
+    dictionary_page_read_size,
     estimate_row_group_decoded_size,
+    sum_exact,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_size_statistics import (
+    DICTIONARY_PAGE_HEADER_READ_BYTES,
     LeafSizeStats,
     read_size_statistics,
 )
@@ -289,10 +295,10 @@ def test_multiple_row_groups_sum_to_whole_file(tmp_path):
 def test_arrow_dictionary_is_bounded_not_hydrated(tmp_path):
     """A dictionary column decodes to indices plus one copy of each value.
 
-    The footer has no distinct-value count, so the dictionary is bounded by the
-    chunk's uncompressed size, which holds the dictionary page. That overshoots
-    by the index pages; sizing it fully hydrated overshoots by orders of
-    magnitude.
+    The footer has no distinct-value count, so without the dictionary page
+    header the dictionary is bounded by the chunk's uncompressed size, which
+    holds the dictionary page. That overshoots by the index pages; sizing it
+    fully hydrated overshoots by orders of magnitude.
     """
     values = pa.array([f"{i % 50:0200d}" for i in range(N)]).dictionary_encode()
     path = _write(pa.table({"a": values}), tmp_path / "dictionary.parquet")
@@ -331,22 +337,34 @@ def test_null_free_optional_leaf_bitmap_follows_pyarrow(
 
 
 # ---------------------------------------------------------------------------
-# Falling back
+# Partial footers: each leaf takes whatever its footer records
 # ---------------------------------------------------------------------------
 
 
-def test_returns_none_without_size_statistics(tmp_path):
-    path = _write(_cases()["string-high-cardinality"], tmp_path / "flat.parquet")
+def _without_size_statistics(stats):
+    """``stats`` as a writer without SizeStatistics leaves them: PyArrow 17
+    records only which encodings the data pages use."""
+    if stats is None:
+        return None
+    return LeafSizeStats(None, (), (), stats.data_page_encodings)
 
-    assert _estimate_row_group_0(path, None) is None
 
+def test_unread_dictionary_page_header_costs_only_its_own_leaf(tmp_path):
+    """Without SizeStatistics a dictionary-encoded string's bytes come from its
+    dictionary page header, which the footer reader fetches (see "Without
+    SizeStatistics" below). Unread, that leaf takes the fixed ratio and the
+    int64 beside it stays exact."""
+    path = _write(_cases()["mixed-int-string"], tmp_path / "mixed.parquet")
+    strings = pq.read_metadata(str(path)).row_group(0).column(1)
+    expected = (
+        _allocated(path, columns=["i"])
+        + strings.total_uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+    )
 
-def test_returns_none_when_byte_array_leaf_lacks_unencoded_bytes(tmp_path):
-    """A BYTE_ARRAY leaf's character bytes exist nowhere else in the footer."""
-    path = _write(_cases()["string-high-cardinality"], tmp_path / "strings.parquet")
-    stripped = [LeafSizeStats(None, (), (0, N))]
-
-    assert _estimate_row_group_0(path, stripped) is None
+    assert strings.has_dictionary_page
+    assert _estimate_row_group_0(path, None) == expected
+    # One entry for two leaves: the string, past its end, has none.
+    assert _estimate_row_group_0(path, [LeafSizeStats(None, (), (0, N))]) == expected
 
 
 def test_fixed_width_leaf_needs_no_unencoded_bytes(tmp_path):
@@ -366,66 +384,84 @@ def test_fixed_width_leaf_needs_no_unencoded_bytes(tmp_path):
 def test_required_leaf_needs_no_size_statistics(tmp_path):
     """PyArrow writes no SizeStatistics for a required fixed-width leaf.
 
-    Its size is the row count times its width, so a missing entry there must
-    not send the whole row group -- strings beside it included -- to fallback.
+    Its size is the row count times its width, so their absence there must not
+    loosen the strings beside it.
     """
     path = _write(_cases()["required-columns"], tmp_path / "required.parquet")
     size_stats = read_size_statistics(pq.read_metadata(str(path)))[0]
 
-    assert size_stats[0] is None
+    # Only the data pages' encodings, from ``ColumnMetaData.encoding_stats``.
+    assert size_stats[0][:3] == (None, (), ())
     assert _estimate_row_group_0(path, size_stats) == _allocated(path)
 
 
-def test_missing_entry_for_optional_leaf_returns_none(tmp_path):
-    """Anywhere but a required flat leaf, a missing entry is a fallback.
-
-    A writer always has histograms to record for an optional leaf, so ``None``
-    there means the walk gave up -- and must not turn into a number.
-    """
-    path = _write(_cases()["int64-plain"], tmp_path / "ints.parquet")
-
-    assert _estimate_row_group_0(path, [None]) is None
-
-
-def test_missing_entry_returns_none(tmp_path):
-    path = _write(_cases()["mixed-int-string"], tmp_path / "mixed.parquet")
-
-    # Two leaves in the read set, only one entry available.
-    assert _estimate_row_group_0(path, [LeafSizeStats(None, (), (0, N))]) is None
-
-
-def test_list_leaf_without_repetition_histogram_returns_none(tmp_path):
-    """Without it there is no list length to size offsets or children from."""
-    path = _write(_cases()["list-int64"], tmp_path / "list.parquet")
+@pytest.mark.parametrize(
+    "label, exact",
+    [("list-int64", True), ("list-empty-and-null", True), ("list-of-list", False)],
+)
+def test_list_leaf_without_repetition_histogram(tmp_path, label, exact):
+    """Each level entry under a list is a child slot unless its definition level
+    says the list was empty or null, so the definition histogram alone sizes
+    one level of list. A list in a list also needs the repetition histogram, to
+    say which entries start an inner list; without it every entry is taken to,
+    which bounds the inner lists from above."""
+    path = _write(_cases()[label], tmp_path / "list.parquet")
     (stats,) = read_size_statistics(pq.read_metadata(str(path)))[0]
     stripped = stats._replace(repetition_level_histogram=())
+    estimate = _estimate_row_group_0(path, [stripped])
+    actual = _allocated(path)
 
-    assert _estimate_row_group_0(path, [stats]) is not None
-    assert _estimate_row_group_0(path, [stripped]) is None
+    if exact:
+        assert estimate == actual
+    else:
+        assert actual < estimate
 
 
-def test_histogram_disagreeing_with_footer_returns_none(tmp_path):
-    """Histogram totals must match the footer's own value and row counts."""
-    path = _write(_cases()["list-int64"], tmp_path / "list.parquet")
+def test_histogram_disagreeing_with_footer_is_ignored(tmp_path):
+    """Histogram totals must match the footer's own value and row counts. Ones
+    that do not mean the walk drifted, so the leaf is sized as if its writer
+    had recorded no SizeStatistics."""
+    path = _write(_cases()["list-of-list"], tmp_path / "list.parquet")
     (stats,) = read_size_statistics(pq.read_metadata(str(path)))[0]
     definition = stats.definition_level_histogram
     off_by_one = stats._replace(
         definition_level_histogram=definition[:-1] + (definition[-1] + 1,)
     )
 
-    assert _estimate_row_group_0(path, [off_by_one]) is None
-
-
-def test_unmodeled_arrow_type_returns_none(tmp_path):
-    """A type whose layout is not modeled sends the whole file to fallback."""
-    path = _write(
-        pa.table({"a": pa.array(["a", "b"] * 10, pa.string_view())}),
-        tmp_path / "view.parquet",
+    assert _estimate_row_group_0(path, [stats]) == _allocated(path)
+    assert _estimate_row_group_0(path, [off_by_one]) == _estimate_row_group_0(
+        path, None
     )
-    metadata = pq.read_metadata(str(path))
 
-    assert build_leaf_profiles(metadata.schema) is None
-    assert _estimate_row_group_0(path, read_size_statistics(metadata)[0]) is None
+
+def test_unmodeled_arrow_type_is_rejected():
+    """A layout this module does not model raises, which ``build_leaf_profiles``
+    turns into ``None`` and so a fallback for the whole file. Every type PyArrow
+    can write is modeled, so the check is on the layout itself."""
+    with pytest.raises(_UnsupportedLayout):
+        _leaf_layout(pa.list_view(pa.int32()))
+
+
+@pytest.mark.parametrize("arrow_type", [pa.string_view(), pa.binary_view()])
+@pytest.mark.parametrize(
+    "length, max_ratio", [(0, 1), (1, 1.0625), (12, 1.75), (13, 1), (60, 1)]
+)
+def test_view_types_never_undershoot(tmp_path, arrow_type, length, max_ratio):
+    """A view holds a value of up to 12 bytes inline and points at a longer one.
+
+    The footer alone has the values' total bytes but not how they split around
+    12, so the estimate puts them all out of line: exact for empty values and
+    past 12 bytes, at most 1.75x when every value is exactly 12 (16 + 12 bytes
+    estimated for 16 allocated). The dictionary page closes most of that gap;
+    see the footer-reader tests below.
+    """
+    table = pa.table({"a": pa.array(["x" * length] * N, arrow_type)})
+    path = _write(table, tmp_path / "view.parquet")
+
+    estimate = _estimate_whole_file(path)
+    actual = _allocated(path)
+
+    assert actual <= estimate <= max_ratio * actual
 
 
 def test_decoded_size_or_fallback_reproduces_the_old_math():
@@ -434,6 +470,611 @@ def test_decoded_size_or_fallback_reproduces_the_old_math():
         decoded_size_or_fallback(None, 999)
         == 999 * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
     )
+
+
+# ---------------------------------------------------------------------------
+# Through the footer reader, which reads Arrow dictionaries' page headers and
+# view columns' whole dictionary pages
+# ---------------------------------------------------------------------------
+
+
+def _estimate_through_footer_reader(path):
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.listing.footer_reader import FooterReader
+
+    chunks = FooterReader(LocalFileSystem())._read_and_chunk(
+        str(path), os.path.getsize(path)
+    )
+    return sum_exact(row_group.decoded_size for row_group in chunks.row_groups)
+
+
+def _arrow_dictionary(distinct, length, n=N, value_type=None, null_every=0):
+    values = pa.array([f"{i:0{length}d}" for i in range(distinct)], value_type)
+    indices = pa.array(
+        [
+            None if null_every and i % null_every == 0 else i % distinct
+            for i in range(n)
+        ],
+        pa.int32(),
+    )
+    return pa.DictionaryArray.from_arrays(indices, values)
+
+
+def _duplicated_dictionary(rows):
+    """An Arrow dictionary of 100 entries plus a duplicate of the first, with
+    one row per index in ``rows``."""
+    values = pa.array([f"{i:012d}" for i in range(100)] + [f"{0:012d}"])
+    indices = pa.array([i % 101 for i in rows], pa.int32())
+    return pa.DictionaryArray.from_arrays(indices, values)
+
+
+@pytest.mark.parametrize(
+    "table, write_kwargs",
+    [
+        (pa.table({"a": _arrow_dictionary(50, 200)}), {}),
+        (pa.table({"a": _arrow_dictionary(50, 200, value_type=pa.large_string())}), {}),
+        (pa.table({"a": _arrow_dictionary(50, 12, null_every=3)}), {}),
+        # PyArrow writes the Arrow dictionary whole, so one row decodes all 1000.
+        (pa.table({"a": _arrow_dictionary(1000, 12, n=1)}), {}),
+        (pa.table({"a": _arrow_dictionary(50, 60)}), {"compression": "zstd"}),
+        (pa.table({"a": _arrow_dictionary(50, 12)}), {"version": "1.0"}),
+        (pa.table({"a": _arrow_dictionary(500, 12)}), {"row_group_size": N // 4}),
+        (
+            pa.table(
+                {"s": pa.StructArray.from_arrays([_arrow_dictionary(50, 12)], ["d"])}
+            ),
+            {},
+        ),
+        # A duplicate entry makes PyArrow write every page PLAIN, leaving the
+        # dictionary page unused; it still lists every value, once each.
+        (pa.table({"a": _duplicated_dictionary(range(N))}), {}),
+    ],
+    ids=[
+        "string",
+        "large-string",
+        "nulls",
+        "one-row-whole-dictionary",
+        "zstd",
+        "format-1.0",
+        "row-groups",
+        "in-struct",
+        "unused-dictionary-page",
+    ],
+)
+def test_arrow_dictionary_is_exact_with_its_page_header(tmp_path, table, write_kwargs):
+    path = tmp_path / "dictionary.parquet"
+    pq.write_table(table, path, **write_kwargs)
+
+    assert _estimate_through_footer_reader(path) == _allocated(path)
+
+
+def test_arrow_dictionary_page_with_unused_entries_is_bounded(tmp_path):
+    """An unused dictionary page lists entries the column never uses, which the
+    reader's rebuilt dictionary leaves out. The footer cannot say which, so this
+    stays an upper bound."""
+    table = pa.table({"a": _duplicated_dictionary(range(0, 3 * N, 3))})
+    path = _write(table, tmp_path / "dictionary.parquet")
+
+    assert _allocated(path) <= _estimate_through_footer_reader(path)
+
+
+def _reversed(array):
+    """The same dictionary values, listed in reverse."""
+    return pa.DictionaryArray.from_arrays(array.indices, array.dictionary[::-1])
+
+
+def _in_list(array):
+    offsets = pa.array(range(0, len(array) + 1, 2), pa.int32())
+    return pa.ListArray.from_arrays(offsets, array)
+
+
+def _in_struct(array):
+    return pa.StructArray.from_arrays([array], ["d"])
+
+
+@pytest.mark.parametrize(
+    "chunks, write_kwargs",
+    [
+        # The PLAIN pages hold only values the page already lists...
+        ([_arrow_dictionary(50, 100), _reversed(_arrow_dictionary(50, 100))], {}),
+        # ...or 30 it does not.
+        ([_arrow_dictionary(50, 12), _arrow_dictionary(80, 12)], {}),
+        (
+            [
+                _arrow_dictionary(50, 12, value_type=pa.large_string()),
+                _arrow_dictionary(80, 12, value_type=pa.large_string()),
+            ],
+            {},
+        ),
+        (
+            [
+                _arrow_dictionary(50, 12, null_every=3),
+                _arrow_dictionary(80, 12, null_every=3),
+            ],
+            {},
+        ),
+        (
+            [_in_list(_arrow_dictionary(50, 12)), _in_list(_arrow_dictionary(80, 12))],
+            {},
+        ),
+        (
+            [
+                _in_struct(_arrow_dictionary(50, 12)),
+                _in_struct(_arrow_dictionary(80, 12)),
+            ],
+            {},
+        ),
+        # Each row group starts on a new dictionary page and falls back in turn.
+        (
+            [_arrow_dictionary(50, 12, n=N // 4), _arrow_dictionary(80, 12, n=N // 4)]
+            * 2,
+            {"row_group_size": N // 2},
+        ),
+        (
+            [_arrow_dictionary(50, 60), _arrow_dictionary(80, 60)],
+            {"compression": "zstd"},
+        ),
+    ],
+    ids=[
+        "same-values",
+        "new-values",
+        "large-string",
+        "nulls",
+        "in-list",
+        "in-struct",
+        "row-groups",
+        "zstd",
+    ],
+)
+def test_arrow_dictionary_the_writer_gave_up_on_is_exact_once_decoded(
+    tmp_path, chunks, write_kwargs
+):
+    """Chunks with dictionaries of their own make PyArrow's writer keep the first
+    as the dictionary page and write the rest of the row group PLAIN. The read
+    adds those values' new entries to the dictionary, which only the values can
+    say, so the footer reader decodes each such chunk."""
+    path = tmp_path / "dictionary.parquet"
+    pq.write_table(pa.table({"a": pa.chunked_array(chunks)}), path, **write_kwargs)
+    metadata = pq.read_metadata(str(path))
+    profiles = build_leaf_profiles(metadata.schema)
+    stats = read_size_statistics(metadata)
+
+    assert all(
+        dictionary_decode_size(
+            profiles[0], metadata.row_group(i).column(0), stats[i][0]
+        )
+        for i in range(metadata.num_row_groups)
+    )
+    assert _estimate_through_footer_reader(path) == _allocated(path)
+
+
+def test_arrow_dictionary_left_undecoded_keeps_its_bound(tmp_path, monkeypatch):
+    """A chunk past the decode limit, or one that fails to decode, keeps the
+    bound its page header gives -- over, never under -- and a failed decode must
+    not fail the footer read."""
+    import ray.data._internal.datasource_v2.chunkers.parquet_decoded_size as decoded
+    import ray.data._internal.datasource_v2.listing.footer_reader as footer_reader
+
+    def undecodable(*args, **kwargs):
+        raise OSError("undecodable")
+
+    chunks = [_arrow_dictionary(50, 100), _reversed(_arrow_dictionary(50, 100))]
+    path = _write(pa.table({"a": pa.chunked_array(chunks)}), tmp_path / "d.parquet")
+    exact = _estimate_through_footer_reader(path)
+    with monkeypatch.context() as patch:
+        patch.setattr(decoded, "_DICTIONARY_DECODE_LIMIT", 1)
+        over_limit = _estimate_through_footer_reader(path)
+    monkeypatch.setattr(footer_reader, "ParquetFile", undecodable)
+
+    assert exact == _allocated(path) < over_limit
+    assert _estimate_through_footer_reader(path) == over_limit
+
+
+def test_dictionary_page_read_sizes(tmp_path):
+    """Columns the writer dictionary-encoded on its own decode to plain arrays,
+    so they cost no reads beyond the footer; an Arrow dictionary reads its page
+    header, and a view column its whole dictionary page. None is decoded whole:
+    no writer gave up on its dictionary."""
+    values = [f"v{i % 5}" for i in range(N)]
+    table = pa.table(
+        {
+            "plain": pa.array(values),
+            "arrow": _arrow_dictionary(5, 2),
+            "view": pa.array(values, pa.string_view()),
+        }
+    )
+    path = _write(table, tmp_path / "dictionary.parquet")
+    metadata = pq.read_metadata(str(path))
+    profiles = build_leaf_profiles(metadata.schema)
+    stats = read_size_statistics(metadata)[0]
+    row_group = metadata.row_group(0)
+    view = row_group.column(2)
+
+    assert row_group.column(0).has_dictionary_page
+    assert [
+        dictionary_page_read_size(profiles[i], row_group.column(i), stats[i])
+        for i in range(3)
+    ] == [
+        0,
+        DICTIONARY_PAGE_HEADER_READ_BYTES,
+        view.data_page_offset - view.dictionary_page_offset,
+    ]
+    assert not any(
+        dictionary_decode_size(profiles[i], row_group.column(i), stats[i])
+        for i in range(3)
+    )
+
+
+def test_failed_dictionary_page_read_keeps_the_bound(tmp_path, monkeypatch):
+    """A page that cannot be read loosens its column to the bound; it must not
+    fail the footer read or send the file to fallback."""
+    import ray.data._internal.datasource_v2.listing.footer_reader as footer_reader
+
+    def unreadable(buf, decompress=None):
+        raise OSError("unreadable")
+
+    path = _write(pa.table({"a": _arrow_dictionary(50, 200)}), tmp_path / "d.parquet")
+    monkeypatch.setattr(footer_reader, "read_dictionary_page", unreadable)
+
+    assert _estimate_through_footer_reader(path) == _estimate_whole_file(path)
+    assert _allocated(path) < _estimate_whole_file(path)
+
+
+def _short_views(length, arrow_type=None, null_every=0):
+    """``N`` values of ``length`` bytes, 100 of them distinct."""
+    return pa.array(
+        [
+            None
+            if null_every and i % null_every == 0
+            else f"{i % 100:012d}"[12 - length :]
+            for i in range(N)
+        ],
+        arrow_type or pa.string_view(),
+    )
+
+
+@pytest.mark.parametrize("arrow_type", [pa.string_view(), pa.binary_view()])
+@pytest.mark.parametrize("length", [0, 1, 12])
+def test_short_view_values_are_exact_with_their_dictionary_page(
+    tmp_path, arrow_type, length
+):
+    """Values of up to 12 bytes stay inside their views, which the dictionary
+    page's value lengths show and the footer's byte total cannot."""
+    path = _write(
+        pa.table({"a": _short_views(length, arrow_type)}), tmp_path / "v.parquet"
+    )
+
+    assert _estimate_through_footer_reader(path) == _allocated(path)
+
+
+_TWELVE_BYTE_VIEWS = pa.table({"a": _short_views(12)})
+_UNIQUE_TWELVE_BYTE_VIEWS = pa.table(
+    {"a": pa.array([f"{i:012d}" for i in range(N)], pa.string_view())}
+)
+# Fills the dictionary within the first write batch, so the rest goes PLAIN.
+_SMALL_DICTIONARY = {"dictionary_pagesize_limit": 64, "write_batch_size": 100}
+
+
+@pytest.mark.parametrize(
+    "table, write_kwargs",
+    [
+        (pa.table({"a": _short_views(12, null_every=3)}), {}),
+        (
+            pa.table(
+                {
+                    "a": pa.array(
+                        [[f"{j:012d}" for j in range(i % 4)] for i in range(N)],
+                        pa.list_(pa.string_view()),
+                    )
+                }
+            ),
+            {},
+        ),
+        (_TWELVE_BYTE_VIEWS, {"compression": "none"}),
+        (_TWELVE_BYTE_VIEWS, {"compression": "gzip"}),
+        (_TWELVE_BYTE_VIEWS, {"compression": "brotli"}),
+        (_TWELVE_BYTE_VIEWS, {"compression": "zstd"}),
+        (_TWELVE_BYTE_VIEWS, {"compression": "lz4"}),
+        (_TWELVE_BYTE_VIEWS, {"data_page_version": "2.0"}),
+        (_TWELVE_BYTE_VIEWS, {"version": "1.0"}),
+        # The dictionary fills and later values are written PLAIN; the page
+        # stands in as a sample of them.
+        (_UNIQUE_TWELVE_BYTE_VIEWS, _SMALL_DICTIONARY),
+    ],
+    ids=[
+        "nulls",
+        "in-list",
+        "uncompressed",
+        "gzip",
+        "brotli",
+        "zstd",
+        "lz4",
+        "data-page-v2",
+        "format-1.0",
+        "dictionary-fallback",
+    ],
+)
+def test_short_view_values_are_exact_however_written(tmp_path, table, write_kwargs):
+    path = tmp_path / "v.parquet"
+    pq.write_table(table, path, **write_kwargs)
+
+    assert _estimate_through_footer_reader(path) == _allocated(path)
+
+
+def _views(values):
+    return pa.table({"a": pa.array(values, pa.string_view())})
+
+
+@pytest.mark.parametrize(
+    "table, write_kwargs",
+    [
+        (_views(["x" * (5 if i % 2 else 20) for i in range(N)]), {}),
+        (_views([f"{i:0{8 + i % 9}d}" for i in range(N)]), {}),
+        (
+            pa.table(
+                {
+                    "a": pa.array(
+                        [
+                            ["x" * (5 if j % 2 else 20) for j in range(i % 4)]
+                            for i in range(N)
+                        ],
+                        pa.list_(pa.string_view()),
+                    )
+                }
+            ),
+            {},
+        ),
+        # After the fallback the PLAIN values look like the page's.
+        (_views([f"{i:0{5 if i % 2 else 20}d}" for i in range(N)]), _SMALL_DICTIONARY),
+    ],
+    ids=["two-lengths", "all-distinct", "in-list", "dictionary-fallback"],
+)
+def test_view_values_either_side_of_12_bytes_are_exact_when_the_page_is_typical(
+    tmp_path, table, write_kwargs
+):
+    """Values on both sides of the 12-byte inline limit: the page shows which
+    distinct values are long, and when repeats use them as evenly as the page
+    lists them, how the rest of the bytes split as well."""
+    path = tmp_path / "v.parquet"
+    pq.write_table(table, path, **write_kwargs)
+
+    assert _estimate_through_footer_reader(path) == _allocated(path)
+
+
+def test_view_values_a_misleading_page_undershoots_within_its_floor(tmp_path):
+    """The page has each distinct value's length but not how often it is used.
+    Here it misleads both ways of reading it: 1,000 short values and a
+    10,000-byte one appear once each, and a 13-byte value fills all other rows.
+    The estimate undershoots, but by at most 12 bytes per repeat, so it stays
+    above 16/28 of the decoded size."""
+    values = [f"{i:012d}" for i in range(1000)] + ["y" * 10_000]
+    path = _write(
+        _views(values + ["z" * 13] * (N - len(values))), tmp_path / "v.parquet"
+    )
+    estimate = _estimate_through_footer_reader(path)
+    actual = _allocated(path)
+
+    assert 16 / 28 * actual <= estimate < actual
+
+
+@pytest.mark.parametrize(
+    "table, write_kwargs",
+    [
+        # No dictionary page to consult.
+        (_TWELVE_BYTE_VIEWS, {"use_dictionary": False}),
+        # After the fallback, values longer than any in the page: their bytes
+        # cannot all fit in views of the page's longest value.
+        (
+            _views([f"{i:0{12 if i < N // 2 else 24}d}" for i in range(N)]),
+            _SMALL_DICTIONARY,
+        ),
+    ],
+    ids=["no-dictionary", "dictionary-fallback-to-longer"],
+)
+def test_view_values_the_dictionary_page_cannot_place_stay_bounded(
+    tmp_path, table, write_kwargs
+):
+    path = tmp_path / "v.parquet"
+    pq.write_table(table, path, **write_kwargs)
+
+    assert _allocated(path) <= _estimate_through_footer_reader(path)
+    assert _estimate_through_footer_reader(path) <= _estimate_whole_file(path)
+
+
+# ---------------------------------------------------------------------------
+# Without SizeStatistics: the footer rules, as for a file PyArrow 17 wrote
+# ---------------------------------------------------------------------------
+
+
+def _estimate_without_size_statistics(path, monkeypatch):
+    """The footer reader's estimate with every leaf's SizeStatistics removed."""
+    import ray.data._internal.datasource_v2.listing.footer_reader as footer_reader
+
+    def stripped(metadata):
+        return [
+            [_without_size_statistics(stats) for stats in leaves]
+            for leaves in read_size_statistics(metadata)
+        ]
+
+    with monkeypatch.context() as patch:
+        patch.setattr(footer_reader, "read_size_statistics", stripped)
+        return _estimate_through_footer_reader(path)
+
+
+def test_strings_without_their_bytes_read_their_dictionary_page_header(tmp_path):
+    """The footer reader's one extra read for a file without SizeStatistics: a
+    dictionary-encoded string chunk's page header."""
+    path = _write(_cases()["string-low-cardinality"], tmp_path / "strings.parquet")
+    metadata = pq.read_metadata(str(path))
+    (profile,) = build_leaf_profiles(metadata.schema)
+    chunk = metadata.row_group(0).column(0)
+    (stats,) = read_size_statistics(metadata)[0]
+
+    assert dictionary_page_read_size(profile, chunk, stats) == 0
+    for stripped in (_without_size_statistics(stats), None):
+        assert (
+            dictionary_page_read_size(profile, chunk, stripped)
+            == DICTIONARY_PAGE_HEADER_READ_BYTES
+        )
+
+
+# The cases with empty or null lists.
+_EMPTY_LISTS = ["list-empty-and-null", "list-of-list", "list-of-struct", "map"]
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        label
+        for label in _cases()
+        if label not in _EMPTY_LISTS and label != "mixed-int-string"
+    ],
+)
+def test_estimate_without_size_statistics_matches_allocated_bytes(
+    tmp_path, monkeypatch, label
+):
+    """Fixed-width values need only level counts, which the footer's value and
+    null counts give outside a list, and inside one free of empty and null
+    lists. A dictionary-encoded string's values are each taken at the
+    dictionary's mean length, which its page header gives: exact when they
+    share one length or each appears once, as in every string case here."""
+    path = _write(_cases()[label], tmp_path / f"{label}.parquet")
+
+    assert _estimate_without_size_statistics(path, monkeypatch) == _allocated(path)
+
+
+def test_dictionary_mean_strays_as_far_as_the_rows_mean(tmp_path, monkeypatch):
+    """``s0`` to ``s100`` average 294/101 bytes in the dictionary and
+    14,549/5,000 in the rows, which use the 2-byte values slightly more often
+    than the 4-byte one: 6 bytes over."""
+    path = _write(_cases()["mixed-int-string"], tmp_path / "mixed.parquet")
+
+    assert _estimate_without_size_statistics(path, monkeypatch) == _allocated(path) + 6
+
+
+@pytest.mark.parametrize("label", _EMPTY_LISTS)
+def test_list_children_without_size_statistics_are_bounded(
+    tmp_path, monkeypatch, label
+):
+    """An empty or null list writes a level entry but owns no child slot. The
+    definition histogram counts those entries; the footer's null count lumps
+    them in with null values, so without the histogram a list's children take
+    a slot per entry: over, never under, and by more the more lists are empty
+    or null."""
+    path = _write(_cases()[label], tmp_path / f"{label}.parquet")
+    estimate = _estimate_without_size_statistics(path, monkeypatch)
+    actual = _allocated(path)
+
+    assert actual < estimate <= 1.6 * actual
+
+
+def test_plain_strings_without_size_statistics_are_bounded(tmp_path, monkeypatch):
+    """PLAIN pages hold each value behind a 4-byte length, which the value count
+    takes off; the pages' headers and level runs stay in, a small overshoot."""
+    path = _write(
+        _cases()["string-high-cardinality"],
+        tmp_path / "plain.parquet",
+        use_dictionary=False,
+    )
+    estimate = _estimate_without_size_statistics(path, monkeypatch)
+    actual = _allocated(path)
+
+    assert actual < estimate <= 1.01 * actual
+
+
+@pytest.mark.parametrize(
+    "write_kwargs",
+    [{"dictionary_pagesize_limit": 4096}, _SMALL_DICTIONARY],
+    ids=["4KiB-dictionary", "64B-dictionary"],
+)
+def test_strings_after_a_dictionary_fallback_are_exact_when_lengths_match(
+    tmp_path, monkeypatch, write_kwargs
+):
+    """The dictionary fills and the rest of the chunk is written PLAIN. The
+    footer has the pages' bytes but not how many values went each way, so every
+    value is taken at the dictionary's mean length: exact when they all share
+    it."""
+    table = pa.table({"a": pa.array([f"{i:012d}" for i in range(N)])})
+    path = _write(table, tmp_path / "fallback.parquet", **write_kwargs)
+
+    assert _estimate_without_size_statistics(path, monkeypatch) == _allocated(path)
+
+
+def _skewed(common, rare):
+    """``common`` in every row but 99, which hold the distinct ``rare``."""
+    return pa.table({"a": pa.array([common] * (N - len(rare)) + rare)})
+
+
+@pytest.mark.parametrize(
+    "table, write_kwargs, over",
+    [
+        # The value most rows hold is shorter than the dictionary's mean...
+        (_skewed("a", [f"{i:0100d}" for i in range(99)]), {}, True),
+        # ...or longer.
+        (_skewed("x" * 100, [f"{i:02d}" for i in range(99)]), {}, False),
+        # Values grow down the column: those written PLAIN after the dictionary
+        # filled are longer than the dictionary's mean.
+        (
+            _cases()["string-high-cardinality"],
+            {"dictionary_pagesize_limit": 4096},
+            False,
+        ),
+    ],
+    ids=["common-value-short", "common-value-long", "growing-after-fallback"],
+)
+def test_strings_without_size_statistics_can_misjudge_lengths(
+    tmp_path, monkeypatch, table, write_kwargs, over
+):
+    """The footer rules' known gap. A dictionary-encoded string's values are
+    taken at the dictionary's mean length, since neither the footer nor the
+    page header says which values the rows hold most. The error can go either
+    way, by any factor, and nothing in the footer flags it; SizeStatistics
+    close it."""
+    path = _write(table, tmp_path / "skewed.parquet", **write_kwargs)
+    actual = _allocated(path)
+
+    assert _estimate_through_footer_reader(path) == actual
+    assert (_estimate_without_size_statistics(path, monkeypatch) > actual) == over
+
+
+def test_delta_length_strings_without_size_statistics_are_bounded(
+    tmp_path, monkeypatch
+):
+    """DELTA_LENGTH_BYTE_ARRAY packs the lengths apart from the bytes, in as
+    little as nothing, so the rules take none off: the packed lengths are the
+    overshoot."""
+    path = _write(
+        _cases()["mixed-int-string"],
+        tmp_path / "delta-length.parquet",
+        use_dictionary=False,
+        column_encoding={"s": "DELTA_LENGTH_BYTE_ARRAY"},
+    )
+    estimate = _estimate_without_size_statistics(path, monkeypatch)
+    actual = _allocated(path)
+
+    assert actual < estimate <= 1.05 * actual
+
+
+def test_delta_byte_array_strings_take_the_fixed_ratio(tmp_path, monkeypatch):
+    """DELTA_BYTE_ARRAY stores each value as the suffix that differs from the
+    one before it, so neither its pages' bytes nor PyArrow 24's SizeStatistics
+    (see ``_levels``) give the values' bytes. That leaf takes the fixed ratio
+    with or without SizeStatistics, and the int64 beside it stays exact."""
+    path = _write(
+        _cases()["mixed-int-string"],
+        tmp_path / "delta.parquet",
+        use_dictionary=False,
+        column_encoding={"s": "DELTA_BYTE_ARRAY"},
+    )
+    strings = pq.read_metadata(str(path)).row_group(0).column(1)
+    expected = (
+        _allocated(path, columns=["i"])
+        + strings.total_uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+    )
+
+    assert _estimate_through_footer_reader(path) == expected
+    assert _estimate_without_size_statistics(path, monkeypatch) == expected
 
 
 # ---------------------------------------------------------------------------

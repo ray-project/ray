@@ -11,7 +11,7 @@ It attacks correctness from three directions:
 - A differential oracle against ``thriftpy2``'s own compact protocol, over a
   matrix of schemas chosen to reach every branch of the walk and the estimator.
 - Fault injection that reintroduces the two desync bugs the prototype actually
-  hit, asserting that neither can yield a decoded size.
+  hit, asserting that neither can move a decoded size.
 - Hand-built payloads for the shapes the protocol permits but PyArrow never
   writes, which the oracle therefore cannot reach.
 """
@@ -34,12 +34,18 @@ pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
 
 
-# A minimal parquet.thrift covering only the traversal path. Everything else in
+# A minimal parquet.thrift covering only the traversal path, plus the dictionary
+# page header the planner reads next to the footer. Everything else in
 # the footer is skipped generically by the protocol, so the oracle needs no more
 # than this -- and unlike vendoring the full 1,000-line schema, it cannot drift
 # out of sync with upstream in ways that matter here. All fields are optional so
 # a missing one is a null rather than a parse error.
 _ORACLE_THRIFT = """
+struct PageEncodingStats {
+  1: optional i32 page_type;
+  2: optional i32 encoding;
+  3: optional i32 count;
+}
 struct SizeStatistics {
   1: optional i64 unencoded_byte_array_data_bytes;
   2: optional list<i64> repetition_level_histogram;
@@ -48,6 +54,7 @@ struct SizeStatistics {
 struct ColumnMetaData {
   5: optional i64 num_values;
   6: optional i64 total_uncompressed_size;
+  13: optional list<PageEncodingStats> encoding_stats;
   16: optional SizeStatistics size_statistics;
 }
 struct ColumnChunk {
@@ -59,7 +66,22 @@ struct RowGroup {
 struct FileMetaData {
   4: optional list<RowGroup> row_groups;
 }
+struct DictionaryPageHeader {
+  1: optional i32 num_values;
+  2: optional i32 encoding;
+  3: optional bool is_sorted;
+}
+struct PageHeader {
+  1: optional i32 type;
+  2: optional i32 uncompressed_page_size;
+  3: optional i32 compressed_page_size;
+  4: optional i32 crc;
+  7: optional DictionaryPageHeader dictionary_page_header;
+}
 """
+
+# ``PageType`` values of the pages that hold rows.
+_DATA_PAGE_TYPES = (0, 3)
 
 N = 500
 
@@ -154,6 +176,30 @@ def oracle_module(tmp_path_factory):
     return thriftpy2.load(str(path), module_name="parquet_oracle_thrift")
 
 
+def _oracle_leaf(column):
+    meta_data = column.meta_data
+    if meta_data is None:
+        return None
+    encodings = (
+        None
+        if meta_data.encoding_stats is None
+        else frozenset(
+            stats.encoding
+            for stats in meta_data.encoding_stats
+            if stats.page_type in _DATA_PAGE_TYPES and stats.count > 0
+        )
+    )
+    size_statistics = meta_data.size_statistics
+    if size_statistics is None:
+        return None if encodings is None else (None, (), (), encodings)
+    return (
+        size_statistics.unencoded_byte_array_data_bytes,
+        tuple(size_statistics.repetition_level_histogram or ()),
+        tuple(size_statistics.definition_level_histogram or ()),
+        encodings,
+    )
+
+
 def _oracle_parse(oracle_module, raw):
     """``[row_group][leaf]`` size statistics via thriftpy2's own compact protocol."""
     from thriftpy2.protocol.compact import TCompactProtocol
@@ -162,20 +208,7 @@ def _oracle_parse(oracle_module, raw):
     file_metadata = oracle_module.FileMetaData()
     file_metadata.read(TCompactProtocol(TMemoryBuffer(bytes(raw))))
     return [
-        [
-            None
-            if column.meta_data is None or column.meta_data.size_statistics is None
-            else (
-                column.meta_data.size_statistics.unencoded_byte_array_data_bytes,
-                tuple(
-                    column.meta_data.size_statistics.repetition_level_histogram or ()
-                ),
-                tuple(
-                    column.meta_data.size_statistics.definition_level_histogram or ()
-                ),
-            )
-            for column in row_group.columns
-        ]
+        [_oracle_leaf(column) for column in row_group.columns]
         for row_group in file_metadata.row_groups
     ]
 
@@ -197,7 +230,27 @@ def test_matches_thriftpy2_oracle(written_files, oracle_module, label):
                 our_leaf.unencoded_byte_array_data_bytes,
                 our_leaf.repetition_level_histogram,
                 our_leaf.definition_level_histogram,
+                our_leaf.data_page_encodings,
             ) == their_leaf
+
+
+def test_dictionary_page_header_matches_thriftpy2_oracle(tmp_path, oracle_module):
+    from thriftpy2.protocol.compact import TCompactProtocol
+    from thriftpy2.transport import TMemoryBuffer
+
+    path = tmp_path / "dictionary.parquet"
+    pq.write_table(
+        pa.table({"a": pa.array([f"v{i % 10}" for i in range(N)])}),
+        path,
+        write_page_checksum=True,
+    )
+    raw = _dictionary_page_header_bytes(path)
+    theirs = oracle_module.PageHeader()
+    theirs.read(TCompactProtocol(TMemoryBuffer(raw)))
+
+    assert pss.read_dictionary_page(raw) == pss.DictionaryPage(
+        theirs.dictionary_page_header.num_values, theirs.uncompressed_page_size
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -502,14 +555,16 @@ def _short_varint_skip(self):
 
 @pytest.mark.parametrize("bug", ["binary-skip", "short-varint"])
 @pytest.mark.parametrize("label", list(_table_cases()))
-def test_a_desync_never_yields_a_decoded_size(written_files, monkeypatch, bug, label):
-    """No cursor desync may produce an exact size, only a fallback.
+def test_a_desync_never_moves_a_decoded_size(written_files, monkeypatch, bug, label):
+    """No cursor desync may change a size: each stays where the footer rules put
+    it for a file without SizeStatistics.
 
     This is the whole safety argument for the module, so it is asserted through
     the estimator rather than stopping at the walk: what must never happen is a
     *number* derived from a drifted cursor, and there are two ways to be safe --
-    the walk declines outright, or it reports a leaf as ``None`` and the estimator
-    declines. Both end at the caller's uncompressed-size fallback.
+    the walk declines outright, or the estimator discards what it read for a
+    leaf, as it does histograms that disagree with the footer. Both leave the
+    estimator the rest of the footer alone.
 
     Verifying decoded values against PyArrow used to make this trivially true.
     That check is gone, so this pins that the structural guards which remain --
@@ -518,6 +573,13 @@ def test_a_desync_never_yields_a_decoded_size(written_files, monkeypatch, bug, l
     """
     _, metadata = written_files[label]
     assert read_size_statistics(metadata) is not None, "healthy baseline"
+    leaf_profiles = build_leaf_profiles(metadata.schema)
+    without_size_statistics = [
+        estimate_row_group_decoded_size(
+            metadata.row_group(rg_idx), leaf_profiles, None, None
+        )
+        for rg_idx in range(metadata.num_row_groups)
+    ]
 
     if bug == "binary-skip":
         monkeypatch.setattr(
@@ -534,14 +596,13 @@ def test_a_desync_never_yields_a_decoded_size(written_files, monkeypatch, bug, l
     if stats is None:
         return
 
-    leaf_profiles = build_leaf_profiles(metadata.schema)
     for rg_idx, leaves in enumerate(stats):
         assert (
             estimate_row_group_decoded_size(
                 metadata.row_group(rg_idx), leaf_profiles, None, leaves
             )
-            is None
-        ), f"{label}/{bug} produced a size from a desynced cursor"
+            == without_size_statistics[rg_idx]
+        ), f"{label}/{bug} moved a size from a desynced cursor"
 
 
 def test_truncated_footer_falls_back(written_files, monkeypatch):
@@ -604,6 +665,178 @@ def test_unknown_trailing_field_is_tolerated():
 
     assert result == pss.LeafSizeStats(5, (), ())
     assert reader._pos == len(payload)
+
+
+# ---------------------------------------------------------------------------
+# Data page encodings and dictionary page headers
+# ---------------------------------------------------------------------------
+
+
+def _live_dictionary():
+    return pa.table({"a": pa.array([f"v{i % 10}" for i in range(N)])})
+
+
+@pytest.mark.parametrize(
+    "table, write_kwargs, encodings",
+    [
+        (_live_dictionary(), {}, {8}),
+        (_live_dictionary(), {"data_page_version": "2.0"}, {8}),
+        (_live_dictionary(), {"use_dictionary": False}, {0}),
+        # Format 1.0 names the dictionary encoding PLAIN_DICTIONARY.
+        (_live_dictionary(), {"version": "1.0"}, {2}),
+        # A dictionary page over its limit: the first page indexes into it, the
+        # rest are PLAIN. ``ColumnMetaData.encodings`` reads the same as a live
+        # dictionary here, since the dictionary page itself is PLAIN.
+        (
+            pa.table({"a": pa.array([f"value-{i}" for i in range(N)])}),
+            {"dictionary_pagesize_limit": 64, "write_batch_size": 100},
+            {0, 8},
+        ),
+    ],
+    ids=["live", "data-page-v2", "no-dictionary", "format-1.0", "fallback"],
+)
+def test_data_page_encodings(tmp_path, table, write_kwargs, encodings):
+    path = tmp_path / "encodings.parquet"
+    pq.write_table(table, path, **write_kwargs)
+    stats = read_size_statistics(pq.read_metadata(str(path)))
+
+    assert stats[0][0].data_page_encodings == encodings
+
+
+def test_encodings_without_size_statistics_are_kept():
+    """A writer without SizeStatistics -- PyArrow 17 is one -- still records
+    which encodings its pages use, which the estimator's footer rules size a
+    string by. A chunk with neither has nothing to report."""
+    encodings_only = _reader(
+        0xD9,  # delta 13, LIST -> encoding_stats
+        0x2C,  # size 2, element type STRUCT
+        0x15,  # delta 1, I32 -> page_type
+        0x04,  # zigzag(4) == 2, DICTIONARY_PAGE: not a data page
+        0x15,  # delta 1, I32 -> encoding
+        0x00,  # PLAIN
+        0x15,  # delta 1, I32 -> count
+        0x02,  # zigzag(2) == 1
+        0x00,  # STOP
+        0x15,  # delta 1, I32 -> page_type
+        0x00,  # DATA_PAGE
+        0x15,  # delta 1, I32 -> encoding
+        0x10,  # zigzag(16) == 8, RLE_DICTIONARY
+        0x15,  # delta 1, I32 -> count
+        0x04,  # zigzag(4) == 2
+        0x00,  # STOP
+        0x00,  # STOP of ColumnMetaData
+    )
+    neither = _reader(
+        0x56,  # delta 5, I64 -> num_values, skipped
+        0x02,  # zigzag(2) == 1
+        0x00,  # STOP of ColumnMetaData
+    )
+
+    assert encodings_only._column_metadata() == pss.LeafSizeStats(
+        None, (), (), frozenset({8})
+    )
+    assert neither._column_metadata() is None
+
+
+def _dictionary_page_header_bytes(path, offset=None):
+    chunk = pq.read_metadata(str(path)).row_group(0).column(0)
+    with open(path, "rb") as f:
+        f.seek(chunk.dictionary_page_offset if offset is None else offset)
+        return f.read(pss.DICTIONARY_PAGE_HEADER_READ_BYTES)
+
+
+@pytest.mark.parametrize(
+    "write_kwargs",
+    [
+        {},
+        {"write_page_checksum": True},
+        {"compression": "zstd"},
+        {"compression": "none"},
+        {"version": "1.0"},
+    ],
+    ids=["default", "crc", "zstd", "uncompressed", "format-1.0"],
+)
+def test_dictionary_page_header_matches_the_values(tmp_path, write_kwargs):
+    """One entry per distinct value, each PLAIN encoded behind a 4-byte length."""
+    distinct = [f"value-{i:03d}" * (1 + i % 3) for i in range(100)]
+    path = tmp_path / "dictionary.parquet"
+    table = pa.table({"a": pa.array([distinct[i % 100] for i in range(N)])})
+    pq.write_table(table, path, **write_kwargs)
+
+    header = pss.read_dictionary_page(_dictionary_page_header_bytes(path))
+
+    assert header == pss.DictionaryPage(
+        num_values=100, uncompressed_page_size=sum(4 + len(v) for v in distinct)
+    )
+
+
+def _dictionary_page_bytes(path):
+    """The whole dictionary page, header and values: up to the first data page."""
+    chunk = pq.read_metadata(str(path)).row_group(0).column(0)
+    with open(path, "rb") as f:
+        f.seek(chunk.dictionary_page_offset)
+        return f.read(chunk.data_page_offset - chunk.dictionary_page_offset)
+
+
+def _as_stored(values, uncompressed_size):
+    return values
+
+
+def test_dictionary_page_value_lengths(tmp_path):
+    distinct = [f"value-{i:03d}" * (1 + i % 3) for i in range(100)]
+    path = tmp_path / "dictionary.parquet"
+    table = pa.table({"a": pa.array([distinct[i % 100] for i in range(N)])})
+    pq.write_table(table, path, compression="none")
+    raw = _dictionary_page_bytes(path)
+
+    assert pss.read_dictionary_page(raw, _as_stored) == pss.DictionaryPage(
+        num_values=100,
+        uncompressed_page_size=sum(4 + len(v) for v in distinct),
+        value_lengths={9: 34, 18: 33, 27: 33},
+    )
+    # Short of the values, or of a way to decompress them, only the header.
+    header_only = pss.read_dictionary_page(
+        raw[: pss.DICTIONARY_PAGE_HEADER_READ_BYTES], _as_stored
+    )
+    assert header_only.value_lengths is None
+    assert pss.read_dictionary_page(raw).value_lengths is None
+
+
+def test_dictionary_page_values_that_do_not_decode_keep_the_header(tmp_path):
+    path = tmp_path / "dictionary.parquet"
+    pq.write_table(_live_dictionary(), path, compression="none")
+    raw = _dictionary_page_bytes(path)
+    header = pss.read_dictionary_page(raw)
+
+    def failing(values, uncompressed_size):
+        raise OSError("corrupt")
+
+    def truncated(values, uncompressed_size):
+        return values[:-1]
+
+    def padded(values, uncompressed_size):
+        return bytes(values) + b"\0"
+
+    for decompress in (failing, truncated, padded):
+        assert pss.read_dictionary_page(raw, decompress) == header
+
+
+def test_truncated_dictionary_page_header_is_rejected(tmp_path):
+    path = tmp_path / "dictionary.parquet"
+    pq.write_table(_live_dictionary(), path)
+    raw = _dictionary_page_header_bytes(path)
+
+    for cut in range(10):
+        assert pss.read_dictionary_page(raw[:cut]) is None
+
+
+def test_data_page_header_is_not_a_dictionary_page_header(tmp_path):
+    path = tmp_path / "dictionary.parquet"
+    pq.write_table(_live_dictionary(), path)
+    chunk = pq.read_metadata(str(path)).row_group(0).column(0)
+    raw = _dictionary_page_header_bytes(path, offset=chunk.data_page_offset)
+
+    assert pss.read_dictionary_page(raw) is None
 
 
 if __name__ == "__main__":
