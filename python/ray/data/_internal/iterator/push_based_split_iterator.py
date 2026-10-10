@@ -70,6 +70,8 @@ def streaming_split_push_based(
     iterated from inside an actor whose class mixes in
     ``PushSplitReceiverMixin``.
     """
+    # TODO(push-split): move this into dataset.py as the implementation of
+    # Dataset.streaming_split, replacing the pull-based split.
     split_dataset = create_streaming_split_dataset(
         dataset, n, equal=equal, locality_hints=locality_hints
     )
