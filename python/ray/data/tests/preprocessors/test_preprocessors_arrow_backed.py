@@ -459,8 +459,8 @@ def test_multi_hot_encoder(dataset):
 
 
 # Encoders that treat a whole list as one category, rather than exploding it.
-# This is the ``encode_lists=False`` branch of `compute_unique_value_indices`,
-# which is reached separately from the ``True`` branch `MultiHotEncoder` uses.
+# This is the ``encode_lists=False`` path, which is reached separately from the
+# ``True`` path `MultiHotEncoder` uses.
 WHOLE_LIST_ENCODERS = {
     "OneHotEncoder": lambda: OneHotEncoder(columns=["tokens"]),
     "OrdinalEncoder": lambda: OrdinalEncoder(columns=["tokens"], encode_lists=False),
