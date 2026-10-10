@@ -689,21 +689,32 @@ TEST_F(ReferenceCountTest, TestTryCommitMoves) {
   ObjectID movable_2 = add_owned_object(MoveState::MOVABLE);
   ObjectID unknown = ObjectID::FromRandom();
 
-  // A repeated ID is moved once; NOT_MOVABLE and unknown IDs are left alone.
-  ASSERT_TRUE(rc->TryCommitMoves({plain, movable_1, movable_1, unknown}).ok());
+  // A repeated ID is moved once and both entries are reported as moves; NOT_MOVABLE
+  // and unknown IDs are left alone.
+  StatusOr<std::vector<bool>> is_move =
+      rc->TryCommitMoves({plain, movable_1, movable_1, unknown});
+  ASSERT_TRUE(is_move.ok());
+  ASSERT_EQ(*is_move, (std::vector<bool>{false, true, true, false}));
   ASSERT_EQ(
       rc->GetMoveStates({plain, movable_1, movable_2, unknown}),
       (std::vector<std::optional<MoveState>>{
           MoveState::NOT_MOVABLE, MoveState::MOVED, MoveState::MOVABLE, std::nullopt}));
 
   // All-or-nothing: an already moved object rejects the call and nothing changes.
-  ASSERT_TRUE(rc->TryCommitMoves({movable_2, movable_1}).IsInvalidArgument());
+  is_move = rc->TryCommitMoves({movable_2, movable_1});
+  ASSERT_TRUE(is_move.status().IsInvalidArgument());
   ASSERT_EQ(rc->GetMoveState(movable_2), MoveState::MOVABLE);
 
-  ASSERT_TRUE(rc->TryCommitMoves({movable_2}).ok());
+  is_move = rc->TryCommitMoves({movable_2});
+  ASSERT_TRUE(is_move.ok());
   ASSERT_EQ(rc->GetMoveState(movable_2), MoveState::MOVED);
-  ASSERT_TRUE(rc->TryCommitMoves({plain}).ok());
-  ASSERT_TRUE(rc->TryCommitMoves({}).ok());
+  ASSERT_EQ(*is_move, (std::vector<bool>{true}));
+  is_move = rc->TryCommitMoves({plain});
+  ASSERT_TRUE(is_move.ok());
+  ASSERT_EQ(*is_move, (std::vector<bool>{false}));
+  is_move = rc->TryCommitMoves({});
+  ASSERT_TRUE(is_move.ok());
+  ASSERT_TRUE(is_move->empty());
   ASSERT_TRUE(rc->GetMoveStates({}).empty());
 
   std::vector<ObjectID> out;

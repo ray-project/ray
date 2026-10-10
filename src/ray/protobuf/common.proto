@@ -784,6 +784,9 @@ message TaskArg {
   // The tensor transport to use for this object. If not specified, then use the
   // default object store.
   optional string tensor_transport = 6;
+  // True if this task consumes the object, which was created with consume_once.
+  // Only set on pass-by-ref arguments; cleared if the argument is inlined.
+  bool is_move = 7;
 }
 
 message ReturnObject {

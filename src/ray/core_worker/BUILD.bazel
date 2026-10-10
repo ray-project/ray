@@ -171,6 +171,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:status_or",
         "//src/ray/core_worker:lease_policy",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/pubsub:subscriber_interface",

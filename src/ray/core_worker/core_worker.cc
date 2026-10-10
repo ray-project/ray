@@ -2690,13 +2690,16 @@ Status CoreWorker::SubmitActorTask(
   // Nothing after this commit to MOVED can fail, so a committed move always has a
   // consuming task.
   std::vector<ObjectID> arg_ids;
-  for (const std::unique_ptr<TaskArg> &arg : args) {
-    if (std::optional<ObjectID> arg_id = arg->GetReferenceId()) {
+  std::vector<size_t> arg_indices;
+  for (size_t i = 0; i < args.size(); i++) {
+    if (std::optional<ObjectID> arg_id = args[i]->GetReferenceId()) {
       arg_ids.push_back(*arg_id);
+      arg_indices.push_back(i);
     }
   }
+  std::vector<bool> is_move;
   if (!arg_ids.empty()) {
-    RAY_RETURN_NOT_OK(reference_counter_->TryCommitMoves(arg_ids));
+    RAY_ASSIGN_OR_RETURN(is_move, reference_counter_->TryCommitMoves(arg_ids));
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
@@ -2749,6 +2752,11 @@ Status CoreWorker::SubmitActorTask(
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{},
                       task_options.num_objects_per_yield);
+  for (size_t i = 0; i < is_move.size(); i++) {
+    if (is_move[i]) {
+      builder.SetArgIsMove(arg_indices[i]);
+    }
+  }
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
