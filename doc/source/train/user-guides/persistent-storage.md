@@ -448,7 +448,7 @@ For details, see the following resources:
 Persisting training worker artifacts is deprecated as of Ray 2.43. The feature relied on Ray Tune's local working directory abstraction, which copied the local files of each worker to storage. Ray Train V2 decouples the two libraries, so this API, which already provided limited value, is deprecated.
 :::
 
-In the preceding example, the training loop saves some artifacts to the worker's *current working directory*. For example, when you train a Stable Diffusion model, you might periodically save sample generated images as training artifacts.
+Your training loop can save artifacts to the worker's *current working directory*. For example, when you train a Stable Diffusion model, you might periodically save sample generated images as training artifacts.
 
 By default, Ray Train changes the current working directory of each worker to a directory inside the run's {ref}`local staging directory <train-local-staging-dir>`, so all distributed training workers share the same absolute path as the working directory. To disable this default behavior so your training workers keep their original working directories, see {ref}`train-working-directory`.
 

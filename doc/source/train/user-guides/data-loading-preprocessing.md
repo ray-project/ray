@@ -120,7 +120,7 @@ val_data = ray.data.read_csv("./validation.csv")
 
 def train_func_per_worker():
     # Access Ray datasets in your train_func via ``get_dataset_shard``.
-    # Ray Data shards all datasets across workers by default.
+    # Ray Train shards all datasets across workers by default.
     train_ds = train.get_dataset_shard("train")
     val_ds = train.get_dataset_shard("validation")
 
@@ -168,7 +168,7 @@ eval_data = ray.data.read_parquet("hf://datasets/your-dataset/validation/", file
 
 def train_func():
     # Access Ray datasets in your train_func via ``get_dataset_shard``.
-    # Ray Data shards all datasets across workers by default.
+    # Ray Train shards all datasets across workers by default.
     train_ds = ray.train.get_dataset_shard("train")
     eval_ds = ray.train.get_dataset_shard("evaluation")
 
@@ -233,12 +233,12 @@ Pass your preprocessed datasets to a Ray Train trainer, such as {class}`~ray.tra
 
 To access the datasets you passed to the trainer's `datasets` argument, call {meth}`ray.train.get_dataset_shard` inside the `train_loop_per_worker` that runs on each distributed training worker.
 
-Ray Data splits all datasets across the training workers by default. {meth}`~ray.train.get_dataset_shard` returns `1/n` of the dataset, where `n` is the number of training workers.
+Ray Train splits all datasets across the training workers by default. {meth}`~ray.train.get_dataset_shard` returns `1/n` of the dataset, where `n` is the number of training workers.
 
 Ray Data splits the data on the fly in a streaming fashion.
 
 :::{note}
-Because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might use [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) or similar utilities in other frameworks. For an example, see {doc}`Train with DeepSpeed ZeRO-3 and Ray Train <../examples/deepspeed/deepspeed-example>`.
+Because Ray Train splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might use [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) or similar utilities in other frameworks. For an example, see {doc}`Train with DeepSpeed ZeRO-3 and Ray Train <../examples/deepspeed/deepspeed-example>`.
 :::
 
 To override this behavior, pass the `dataset_config` argument. For details on configuring splitting logic, see {ref}`Split datasets <train-datasets-split>`.

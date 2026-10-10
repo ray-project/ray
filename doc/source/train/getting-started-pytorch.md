@@ -37,9 +37,9 @@ trainer = TorchTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the Python code that runs on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-1. {class}`~ray.train.torch.TorchTrainer` launches the distributed training job.
+- `train_func` is the Python code that runs on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+- {class}`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a PyTorch training script with and without Ray Train.
 
@@ -194,8 +194,8 @@ for epoch in range(10):
 
 Use the {func}`ray.train.torch.prepare_model` utility function to do the following:
 
-1. Move your model to the correct device.
-1. Wrap it in `DistributedDataParallel`.
+- Move your model to the correct device.
+- Wrap it in `DistributedDataParallel`.
 
 ```diff
 -from torch.nn.parallel import DistributedDataParallel
@@ -223,8 +223,8 @@ Use the {func}`ray.train.torch.prepare_model` utility function to do the followi
 
 Use the {func}`ray.train.torch.prepare_data_loader` utility function, which does the following:
 
-1. Adds a {class}`~torch.utils.data.distributed.DistributedSampler` to your {class}`~torch.utils.data.DataLoader`.
-1. Moves the batches to the right device.
+- Adds a {class}`~torch.utils.data.distributed.DistributedSampler` to your {class}`~torch.utils.data.DataLoader`.
+- Moves the batches to the right device.
 
 You don't need this step if you pass a Ray Data dataset to your trainer. See {ref}`data-ingest-torch`.
 
