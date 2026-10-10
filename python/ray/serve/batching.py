@@ -5,7 +5,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from functools import wraps
-from inspect import isasyncgenfunction, iscoroutinefunction
+from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
     AsyncGenerator,
@@ -25,7 +25,12 @@ from typing import (
 )
 
 from ray import serve
-from ray._common.signature import extract_signature, flatten_args, recover_args
+from ray._common.signature import (
+    DUMMY_TYPE,
+    extract_signature,
+    flatten_args,
+    recover_args,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
     BATCH_EXECUTION_TIME_BUCKETS_MS,
@@ -112,6 +117,33 @@ def _batch_args_kwargs(
             )
 
     return recover_args(batched_flattened_args)
+
+
+def _is_first_input_value(
+    input_parameters: List[Parameter], flattened_args: List[Any]
+) -> bool:
+    """Whether the first flattened value is the whole first input parameter.
+
+    `batch_size_fn` sizes `flattened_args[1]`, so it must be the only value
+    bound to the handler's first input parameter.
+    """
+    if not input_parameters or not flattened_args:
+        return False
+
+    first_parameter = input_parameters[0]
+    if first_parameter.kind == Parameter.VAR_KEYWORD:
+        return False
+    if flattened_args[0] != DUMMY_TYPE:
+        # Other kinds don't take keywords, so a matching name lands in `**kwargs`.
+        return flattened_args[0] == first_parameter.name and first_parameter.kind in (
+            Parameter.POSITIONAL_OR_KEYWORD,
+            Parameter.KEYWORD_ONLY,
+        )
+    if first_parameter.kind == Parameter.VAR_POSITIONAL:
+        # `*args` holds every positional value, so it must get exactly one.
+        args, _ = recover_args(flattened_args)
+        return len(args) == 1
+    return True
 
 
 class _BatchQueue:
@@ -239,16 +271,9 @@ class _BatchQueue:
         if self.batch_size_fn is None:
             return len(batch)
 
-        # Extract the actual data items from requests to pass to batch_size_fn.
-        # We need to reconstruct the original arguments from flattened_args.
-        items = []
-        for request in batch:
-            # Recover the original arguments from flattened format
-            args, kwargs = recover_args(request.flattened_args)
-            # The batch function expects a single positional argument (the item)
-            # after 'self' has been extracted (if it was a method)
-            items.append(args[0])
-
+        # Flattened arguments alternate names and values, with `self` already
+        # removed. `enqueue_request` ensures the first value is the first input.
+        items = [request.flattened_args[1] for request in batch]
         return self.batch_size_fn(items)
 
     async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
@@ -924,6 +949,7 @@ def batch(
     _validate_batch_size_fn(batch_size_fn)
 
     def _batch_decorator(_func):
+        signature_parameters = extract_signature(_func)
         lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
             max_batch_size,
             batch_wait_timeout_s,
@@ -947,12 +973,26 @@ def batch(
                     break
 
         def enqueue_request(args, kwargs) -> asyncio.Future:
-            flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
+            flattened_args: List = flatten_args(signature_parameters, args, kwargs)
 
             # If the function is a method, remove self as an argument.
             self = extract_self_if_method_call(args, _func)
             if self is not None:
                 flattened_args = flattened_args[2:]
+
+            if batch_size_fn is not None:
+                input_parameters = (
+                    signature_parameters[1:]
+                    if self is not None
+                    else signature_parameters
+                )
+                if not _is_first_input_value(input_parameters, flattened_args):
+                    raise TypeError(
+                        "When using `batch_size_fn`, pass the handler's first input "
+                        "parameter as the first argument, positionally or by "
+                        "keyword. `batch_size_fn` cannot size `**kwargs` or `*args` "
+                        "with more than one value."
+                    )
 
             batch_queue = lazy_batch_queue_wrapper.queue
 
