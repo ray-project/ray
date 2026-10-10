@@ -11,7 +11,7 @@ froms:
 dockerfile: ci/docker/ray-cpp-wheel.Dockerfile
 srcs:
   - pyproject.toml
-  - README.rst
+  - README.md
   - ci/build/build-ray-cpp-wheel.sh
   - python/setup.py
   - python/LICENSE.txt

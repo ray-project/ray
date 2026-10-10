@@ -78,7 +78,7 @@ review, and ship a PR under Ray's OSS conventions.
    couple of files, especially around admonitions, lists, and tables.
 
 1. **Commit and open the PR** under the repo's contribution conventions (see the root
-   `AGENTS.md` and `CONTRIBUTING.rst`):
+   `AGENTS.md` and `CONTRIBUTING.md`):
    - `[doc]` subject prefix; describe it as a whitespace-only soft-wrap.
    - **DCO sign-off is required**: `git commit --signoff`.
    - Suggested PR title: `[doc] Soft-wrap prose in <area>`.

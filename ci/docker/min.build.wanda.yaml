@@ -13,7 +13,7 @@ srcs:
   - python/setup.py
   - python/LICENSE.txt
   - python/ray/_version.py
-  - README.rst
+  - README.md
 build_args:
   - PYTHON_VERSION
   - EXTRA_DEPENDENCY

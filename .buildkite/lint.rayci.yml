@@ -35,9 +35,9 @@ steps:
       # because renaming or deleting a doc file breaks links to it elsewhere.
       - ray_repo_links
 
-  # `doc_readme` runs `setup.py check --restructuredtext --strict --metadata`,
-  # which guards how Ray's PyPI long description renders. Its inputs are the
-  # repo-root README.rst and python/setup.py; nothing under doc/ feeds it, so a
+  # `doc_readme` runs `setup.py check --strict --metadata`, which guards Ray's
+  # PyPI package metadata. Its inputs are the repo-root README.md and
+  # python/setup.py; nothing under doc/ feeds it, so a
   # prose change cannot change its result. The name reads like documentation,
   # which is how it ended up in the prose matrix above, but it belongs to
   # packaging.
