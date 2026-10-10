@@ -555,16 +555,18 @@ docker run --privileged -p 8000:8000 \
 
 `ray.experimental.sandbox.http.grpc_facade` serves the same detached sandbox actors over gRPC. It implements the subset of a third-party sandbox SDK's control-plane and command-router services that the SDK's Sandbox API uses, so you can point an unmodified client at a Ray cluster to create sandboxes, run commands, and use the client's filesystem API.
 
-The facade requires `grpclib` and `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster, with a token that clients must present:
+The facade requires `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster, with a token that clients must present:
 
 ```bash
-pip install grpclib
+pip install "ray[default]"
 export RAY_SANDBOX_API_TOKEN=$(openssl rand -hex 32)
 python -m ray.experimental.sandbox.http.grpc_facade \
   --host 0.0.0.0 --port 50051 --advertise-url https://<facade-endpoint>
 ```
 
 Clients connect to the URL that the facade advertises. Current client SDKs accept a plaintext `http://` URL only when their server URL is on `localhost`, so either terminate TLS in front of the facade and advertise that `https://` endpoint, or forward a local port to the facade and advertise `http://127.0.0.1:<port>`.
+
+The facade serves the client SDK's original sandbox API. The SDK's 1.6 release made a newer API its default, so set `MODAL_SANDBOX_V2=0` in clients on 1.6 or later.
 
 #### Authentication
 
@@ -580,6 +582,64 @@ Keep these limits in mind:
 * **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
 * **State**: The facade keeps exec state in memory, so run one facade process per cluster.
 * **Network**: The facade rejects network allowlists, which it can't enforce. Sandboxes get open egress unless the client blocks networking, and open egress reaches any address the node can, including other Ray nodes. See [Networking and DNS](#networking-and-dns).
+
+#### Serve the facade with Ray Serve
+
+`ray.experimental.sandbox.http.grpc_app` serves the facade through Ray Serve's gRPC proxy instead of the facade's own server, so you can deploy it as a Serve application, such as an Anyscale service. Name two functions in the Serve config: the facade's `add_servicers_to_server` registers its gRPC services with the proxy, and `grpc_app.build_app` builds the application.
+
+```yaml
+grpc_options:
+  grpc_servicer_functions:
+    - ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server
+applications:
+  - name: sandbox-facade
+    route_prefix: /
+    import_path: ray.experimental.sandbox.http.grpc_app:build_app
+```
+
+The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where sandboxes with network access can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
+
+Clients use the address of Serve's gRPC proxy as their server URL. By default, the facade gives each client `https://` plus the host it dialed as its command-router URL, which suits a TLS endpoint on port 443 in front of the proxy. For any other setup, set `advertise_url` in the application's `args`, such as `http://127.0.0.1:9000` for clients of a local proxy.
+
+On Anyscale, list both of the facade's gRPC services and turn off the service's own token check, which limits a service to one gRPC service name. The facade checks `RAY_SANDBOX_API_TOKEN` itself, which also covers traffic from inside the cluster that the service's check doesn't see:
+
+```yaml
+query_auth_token_enabled: false
+grpc_options:
+  service_names:
+    - modal.client.ModalClient
+    - modal.task_command_router.TaskCommandRouter
+  grpc_servicer_functions:
+    - ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server
+applications:
+  - name: sandbox-facade
+    route_prefix: /
+    import_path: ray.experimental.sandbox.http.grpc_app:build_app
+```
+
+The TLS endpoint in front of the facade must accept HTTP/2 from a client that doesn't negotiate it. The client SDK's command-router connection, which carries commands and file operations, offers no ALPN in its TLS handshake (releases through 1.6.1) and then speaks HTTP/2 anyway. Envoy accepts that connection, because it detects HTTP/2 from the client's connection preface. ingress-nginx doesn't: behind it, creating and terminating sandboxes works, but running commands and file operations fail. On Anyscale, deploy the service to a Kubernetes cloud whose operator routes services through an Envoy Gateway (`networking.gateway` in the operator's Helm values) rather than ingress-nginx.
+
+A proxy in front of the facade also limits each HTTP/2 stream. The client SDK sends a file write as one request stream, and it reads a command's output on a stream that stays quiet until the command exits. Envoy doesn't limit request size by default, but its default route timeout ends any response that takes longer than 15 seconds, a command's output stream included. With Envoy Gateway, turn that timeout off on the Gateway that serves the facade. On Anyscale, that's the Gateway named in the operator's `networking.gateway` values:
+
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: sandbox-facade-streams
+  namespace: <the Gateway's namespace>
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: <the Gateway's name>
+  timeout:
+    http:
+      requestTimeout: 0s
+      maxStreamDuration: 0s
+      connectionIdleTimeout: 1h
+```
+
+ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the backend, which cap file writes at about 7.5 MiB and output reads on a running command at about 11 minutes, once the SDK's retries run out. The annotations `nginx.ingress.kubernetes.io/proxy-body-size: "0"`, `nginx.ingress.kubernetes.io/proxy-read-timeout`, and `nginx.ingress.kubernetes.io/proxy-send-timeout` on the facade's Ingress raise those limits, but no ingress-nginx setting lets it serve the client SDK's command-router connection.
 
 ## API reference
 
