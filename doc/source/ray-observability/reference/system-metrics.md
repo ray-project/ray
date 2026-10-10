@@ -48,6 +48,9 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
 * - `ray_placement_groups`
   - `State`
   - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See [rpc::PlacementGroupTable](https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517) for more information.
+* - `ray_gcs_finished_job_evictions_total`
+  - None
+  - Cumulative number of finished driver records evicted from the GCS job table by the configured retention limit.
 * - OpenTelemetry: `ray_gcs_redis_request_payload_bytes`; OpenCensus: `ray_gcs_redis_request_payload_bytes_total` (plus the deprecated unsuffixed gauge when `RAY_EXPORT_COUNTER_AS_GAUGE=true`)
   - `Command`, `TableName`
   - Application bytes in Redis command arguments accepted for sending by the GCS Redis client, by command and GCS table. Exported only when the GCS storage backend is Redis. Includes the verb, Redis key, field names, and values; excludes RESP framing, TLS, and TCP/IP overhead. Recorded on the first successful submission of each logical command; retries are not counted again. `Command` is the actual verb normalized to uppercase ASCII and truncated to 16 bytes; this limits label length, not the number of distinct labels, so production verbs must remain code-controlled. `TableName` is a GCS table, `NONE`, or `ALL`.
