@@ -3,7 +3,7 @@
 import ctypes
 import logging
 import os
-from typing import List, Optional, TypedDict
+from typing import Dict, List, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +11,14 @@ MB = 1024 * 1024
 DCMI_LIBRARY_PATH_ENV = "RAY_NPU_DCMI_LIBRARY_PATH"
 DCMI_UTILIZATION_RATE_AICORE = 2
 _MAX_CARDS = 64
+_MAX_PROCESSES = 128
+
+
+class ProcessNpuInfo(TypedDict):
+    """NPU memory information for one process."""
+
+    pid: int
+    npu_memory_usage: int  # bytes
 
 
 class NpuUtilizationInfo(TypedDict):
@@ -28,6 +36,7 @@ class NpuUtilizationInfo(TypedDict):
     health_status: Optional[int]
     power_mw: Optional[int]
     temperature_c: Optional[int]
+    processes_pids: Optional[Dict[int, ProcessNpuInfo]]
 
 
 class DcmiError(RuntimeError):
@@ -69,6 +78,13 @@ class _DcmiHbmInfo(ctypes.Structure):
         ("memory_usage", ctypes.c_ulonglong),
         ("temperature", ctypes.c_int),
         ("bandwidth_utilization", ctypes.c_uint),
+    ]
+
+
+class _DcmiProcMemInfo(ctypes.Structure):
+    _fields_ = [
+        ("proc_id", ctypes.c_int),
+        ("proc_mem_usage", ctypes.c_ulong),
     ]
 
 
@@ -155,6 +171,12 @@ class _DcmiLibrary:
                 ctypes.c_int,
                 ctypes.c_int,
                 ctypes.POINTER(ctypes.c_uint),
+            ],
+            "dcmi_get_device_resource_info": [
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.POINTER(_DcmiProcMemInfo),
+                ctypes.POINTER(ctypes.c_int),
             ],
         }
         for name, argument_types in signatures.items():
@@ -293,6 +315,27 @@ class _DcmiLibrary:
         )
         return health.value
 
+    def get_processes(self, card_id: int, device_id: int) -> Dict[int, ProcessNpuInfo]:
+        process_count = ctypes.c_int(_MAX_PROCESSES)
+        process_infos = (_DcmiProcMemInfo * _MAX_PROCESSES)()
+        self._call(
+            "dcmi_get_device_resource_info",
+            card_id,
+            device_id,
+            process_infos,
+            ctypes.byref(process_count),
+        )
+        if not 0 <= process_count.value <= len(process_infos):
+            raise ValueError(f"Invalid DCMI process count: {process_count.value}")
+
+        return {
+            int(process_info.proc_id): ProcessNpuInfo(
+                pid=int(process_info.proc_id),
+                npu_memory_usage=int(process_info.proc_mem_usage),
+            )
+            for process_info in process_infos[: process_count.value]
+        }
+
 
 class NpuMetricProvider:
     """Collect node-level Ascend NPU metrics through DCMI."""
@@ -392,6 +435,9 @@ class NpuMetricProvider:
                     power_mw=power * 100 if power is not None else None,
                     temperature_c=self._query_optional(
                         "get_temperature", card_id, device_id
+                    ),
+                    processes_pids=self._query_optional(
+                        "get_processes", card_id, device_id
                     ),
                 )
                 npu_utilizations.append(info)

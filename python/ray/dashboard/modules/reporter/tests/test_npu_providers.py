@@ -25,6 +25,10 @@ def _make_dcmi():
     dcmi.get_health.return_value = 0
     dcmi.get_power.return_value = 9407
     dcmi.get_temperature.side_effect = [71, 70]
+    dcmi.get_processes.side_effect = [
+        {1001: {"pid": 1001, "npu_memory_usage": 2048 * MB}},
+        {1002: {"pid": 1002, "npu_memory_usage": 1024 * MB}},
+    ]
     return dcmi
 
 
@@ -50,10 +54,14 @@ def test_collects_all_devices_and_normalizes_units():
         "health_status": 0,
         "power_mw": 940700,
         "temperature_c": 71,
+        "processes_pids": {1001: {"pid": 1001, "npu_memory_usage": 2048 * MB}},
     }
     assert usage[1]["index"] == 1
     assert usage[1]["physical_id"] == 5
     assert usage[1]["power_mw"] is None
+    assert usage[1]["processes_pids"] == {
+        1002: {"pid": 1002, "npu_memory_usage": 1024 * MB}
+    }
     dcmi.get_power.assert_called_once_with(2, 0)
 
 
@@ -68,6 +76,19 @@ def test_device_field_failure_does_not_drop_other_metrics():
     assert usage[0]["temperature_c"] is None
     assert usage[0]["utilization_aicore"] == 97
     assert usage[1]["temperature_c"] == 70
+
+
+def test_process_query_failure_does_not_drop_device_metrics():
+    dcmi = _make_dcmi()
+    dcmi.get_processes.side_effect = [RuntimeError("not supported"), {}]
+    provider = NpuMetricProvider(dcmi=dcmi)
+
+    usage = provider.get_npu_usage()
+
+    assert len(usage) == 2
+    assert usage[0]["processes_pids"] is None
+    assert usage[0]["memory_used"] == 4270 * MB
+    assert usage[1]["processes_pids"] == {}
 
 
 def test_card_failure_does_not_drop_other_cards():
@@ -105,3 +126,25 @@ def test_device_name_falls_back_to_legacy_dcmi_api():
     dcmi._call = Mock(side_effect=populate_chip_info)
 
     assert dcmi.get_device_name(2, 0) == "910B2C"
+
+
+def test_get_processes_returns_memory_bytes_by_pid():
+    dcmi = object.__new__(_DcmiLibrary)
+
+    def populate_processes(
+        function_name, card_id, device_id, process_infos, process_count_pointer
+    ):
+        assert function_name == "dcmi_get_device_resource_info"
+        assert (card_id, device_id) == (2, 0)
+        process_infos[0].proc_id = 1234
+        process_infos[0].proc_mem_usage = 4096 * MB
+        process_infos[1].proc_id = 5678
+        process_infos[1].proc_mem_usage = 1024 * MB
+        process_count_pointer._obj.value = 2
+
+    dcmi._call = Mock(side_effect=populate_processes)
+
+    assert dcmi.get_processes(2, 0) == {
+        1234: {"pid": 1234, "npu_memory_usage": 4096 * MB},
+        5678: {"pid": 5678, "npu_memory_usage": 1024 * MB},
+    }

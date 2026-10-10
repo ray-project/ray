@@ -9,7 +9,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import numpy as np
@@ -824,6 +824,9 @@ def test_report_stats_ascend_npu_metrics(tmp_path):
             "health_status": 0,
             "power_mw": 940700,
             "temperature_c": 71,
+            "processes_pids": {
+                4242: {"pid": 4242, "npu_memory_usage": 2048 * 1024 * 1024}
+            },
         }
     ]
 
@@ -864,6 +867,56 @@ def test_report_stats_ascend_npu_metrics(tmp_path):
     stats_payload = json.loads(agent._generate_stats_payload(stats))
     assert stats_payload["npus"][0]["physicalId"] == 4
     assert stats_payload["npus"][0]["memoryUsed"] == 4270 * 1024 * 1024
+    assert stats_payload["npus"][0]["processesPids"] == [
+        {"pid": 4242, "npuMemoryUsage": 2048 * 1024 * 1024}
+    ]
+
+
+def test_reporter_maps_npu_process_memory_to_worker_metrics():
+    worker = MagicMock()
+    worker.status.return_value = psutil.STATUS_RUNNING
+    worker.as_dict.return_value = {
+        "pid": 4242,
+        "cmdline": ["ray::NpuActor"],
+        "cpu_percent": 0.0,
+    }
+
+    agent = object.__new__(ReporterAgent)
+    agent._workers = {}
+    agent._async_get_worker_processes = AsyncMock(return_value={(4242, 1.0): worker})
+    agent._async_get_agent_processes = AsyncMock(return_value={})
+    agent._ip = "127.0.0.1"
+    agent._latest_worker_proc_names = set()
+    agent._latest_gpu_worker_proc_names = set()
+    agent._latest_npu_worker_proc_names = set()
+
+    npus = [
+        {"processes_pids": {4242: {"pid": 4242, "npu_memory_usage": 2 * 1024 * 1024}}},
+        {"processes_pids": {4242: {"pid": 4242, "npu_memory_usage": 3 * 1024 * 1024}}},
+    ]
+    workers = asyncio.run(agent._async_get_workers_and_agents(npus=npus))
+
+    assert workers[0]["npu_memory_usage"] == 5 * 1024 * 1024
+    records = agent.generate_worker_stats_record(workers)
+    npu_records = [
+        record for record in records if record.gauge.name == "component_npu_memory_mb"
+    ]
+    assert len(npu_records) == 1
+    assert npu_records[0].value == 5
+    assert npu_records[0].tags == {
+        "ip": "127.0.0.1",
+        "Component": "ray::NpuActor",
+    }
+
+    workers[0]["npu_memory_usage"] = 0
+    reset_records = agent.generate_worker_stats_record(workers)
+    reset_npu_records = [
+        record
+        for record in reset_records
+        if record.gauge.name == "component_npu_memory_mb"
+    ]
+    assert len(reset_npu_records) == 1
+    assert reset_npu_records[0].value == 0
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):

@@ -40,6 +40,12 @@ if PYDANTIC_INSTALLED:
         powerMw: Optional[int] = None  # current power draw in milliwatts
         temperatureC: Optional[int] = None  # temperature in Celsius
 
+    class ProcessNpuInfo(BaseModel):
+        """Ascend NPU memory information for a single process."""
+
+        pid: int
+        npuMemoryUsage: int  # bytes
+
     class NpuUtilizationInfo(BaseModel):
         """Ascend NPU utilization information for a single device."""
 
@@ -54,6 +60,7 @@ if PYDANTIC_INSTALLED:
         healthStatus: Optional[int] = None  # raw DCMI status; zero is healthy
         powerMw: Optional[int] = None
         temperatureC: Optional[int] = None
+        processesPids: Optional[List[ProcessNpuInfo]] = None
 
     class TpuUtilizationInfo(BaseModel):
         """
@@ -132,6 +139,7 @@ if PYDANTIC_INSTALLED:
         numFds: Optional[int] = None  # Not available on Windows
         gpuMemoryUsage: Optional[int] = None  # in MB, added by _get_workers
         gpuUtilization: Optional[int] = None  # percentage, added by _get_workers
+        npuMemoryUsage: Optional[int] = None  # in bytes, added by _get_workers
 
         @field_validator("cmdline", mode="before")
         @classmethod
