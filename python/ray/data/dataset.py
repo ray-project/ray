@@ -109,6 +109,7 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _validate_min_bytes_per_file_args,
     _validate_rows_per_file_args,
+    create_streaming_split_dataset,
     explain_plan,
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
@@ -2766,16 +2767,9 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
-        op = StreamingSplit(
-            num_splits=n,
-            equal=equal,
-            input_dependencies=[self._logical_plan.dag],
-            locality_hints=locality_hints,
+        split_dataset = create_streaming_split_dataset(
+            self, n, equal=equal, locality_hints=locality_hints
         )
-        logical_plan = LogicalPlan(op, self.context)
-        split_dataset = Dataset._from_parent(self, logical_plan)
-        split_dataset._set_uuid(self._uuid)
-
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
     @ConsumptionAPI
