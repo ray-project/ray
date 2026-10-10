@@ -14,7 +14,10 @@ from ray.serve.llm.openai_api_models import ChatCompletionRequest, CompletionReq
 @pytest.mark.parametrize(
     "dtype_mapping", [None, {"CompletionRequest": CompletionRequest}]
 )
-def test_serve_deployment_processor(dtype_mapping):
+@pytest.mark.parametrize(
+    "stream_config,expected_stream", [(None, True), (False, False)]
+)
+def test_serve_deployment_processor(dtype_mapping, stream_config, expected_stream):
     app_name = "test_serve_deployment_processor_app"
     deployment_name = "test_serve_deployment_name"
 
@@ -24,6 +27,8 @@ def test_serve_deployment_processor(dtype_mapping):
         batch_size=16,
         concurrency=1,
     )
+    if stream_config is not None:
+        config_kwargs["stream"] = stream_config
     if dtype_mapping is not None:
         config_kwargs["dtype_mapping"] = dtype_mapping
     config = ServeDeploymentProcessorConfig(**config_kwargs)
@@ -37,6 +42,7 @@ def test_serve_deployment_processor(dtype_mapping):
     assert stage.fn_constructor_kwargs == {
         "deployment_name": deployment_name,
         "app_name": app_name,
+        "stream": expected_stream,
         "dtype_mapping": dtype_mapping,
         "should_continue_on_error": False,
         "request_timeout_s": None,
@@ -87,6 +93,39 @@ def test_simple_serve_deployment(serve_cleanup):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
+    assert all(out["resp"] == out["id"] + 1 for out in outs)
+
+
+def test_simple_unary_serve_deployment(serve_cleanup):
+    @serve.deployment
+    class SimpleUnaryServeDeployment:
+        async def add(self, request: Dict[str, Any]):
+            return {"result": request["x"] + 1}
+
+    app_name = "simple_unary_serve_deployment_app"
+    deployment_name = "SimpleUnaryServeDeployment"
+
+    serve.run(SimpleUnaryServeDeployment.bind(), name=app_name)
+
+    config = ServeDeploymentProcessorConfig(
+        deployment_name=deployment_name,
+        app_name=app_name,
+        stream=False,
+        batch_size=4,
+        concurrency=1,
+    )
+    processor = build_processor(
+        config,
+        preprocess=lambda row: dict(
+            method="add",
+            dtype=None,
+            request_kwargs=dict(x=row["id"]),
+        ),
+        postprocess=lambda row: dict(resp=row["result"], id=row["id"]),
+    )
+
+    outs = processor(ray.data.range(4)).take_all()
+    assert len(outs) == 4
     assert all(out["resp"] == out["id"] + 1 for out in outs)
 
 
