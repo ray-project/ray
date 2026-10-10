@@ -13,20 +13,20 @@ import hashlib
 import importlib.metadata
 import logging
 import os
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import cache
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ray._common.usage.usage_lib import usage_stats_enabled
 from ray._private.worker import global_worker
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
 from ray.data._internal.usage.actor import get_or_create_usage_collection_actor
-from ray.data._internal.usage.util import (
-    anonymize_op_name,
-    query_prometheus_counter,
-)
+from ray.data._internal.usage.util import anonymize_op_name, query_prometheus_counter
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -86,6 +86,8 @@ class WorkloadInfo:
 @dataclass(frozen=True)
 class EnvInfo:
     pyarrow: Optional[str]
+    # Whitelisted ``DataContext`` fields (see ``_CONTEXT_WHITELIST``).
+    context: Dict[str, Any] = field(default_factory=dict)
 
 
 # Metric names shared by the poller (metric-value keys), the execution callback,
@@ -135,6 +137,18 @@ OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 # A callable that returns the anonymized name for a logical operator.
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
+
+# ``DataContext`` fields recorded with each execution. Only add fields whose
+# values are not user-defined data (no paths, names, or free-form strings).
+_CONTEXT_WHITELIST: Tuple[str, ...] = ("enable_seed_input_lineage_recovery",)
+
+# Bounded buffer of recent executions. OrderedDict so eviction picks the
+# oldest-inserted entry
+_MAX_EXECUTIONS_TO_TRACK = 100
+
+# Module state. Mutations are serialized through ``_lock``.
+_executions: "OrderedDict[str, UsageInfo]" = OrderedDict()
+_lock = threading.Lock()
 
 
 def usage_collection_disabled() -> bool:
@@ -312,7 +326,25 @@ def collect_issues(
 
 def collect_env() -> EnvInfo:
     """Process-wide environment info."""
-    return EnvInfo(pyarrow=_safe_version("pyarrow"))
+    return EnvInfo(
+        pyarrow=_safe_version("pyarrow"),
+        context=collect_context(_CONTEXT_WHITELIST),
+    )
+
+
+def collect_context(names: Tuple[str, ...]) -> Dict[str, Any]:
+    """Read the named fields off the current ``DataContext``. Values other than
+    ``None`` and JSON scalars are recorded as their string form."""
+    ctx = DataContext.get_current()
+    result: Dict[str, Any] = {}
+    for name in names:
+        value = getattr(ctx, name)
+        result[name] = (
+            value
+            if value is None or isinstance(value, (bool, int, float, str))
+            else str(value)
+        )
+    return result
 
 
 def _safe_version(pkg: str) -> Optional[str]:
