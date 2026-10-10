@@ -9,6 +9,9 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
     DiskHashShuffleMapOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
     make_partition_sentinel,
@@ -433,6 +436,60 @@ def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus
     out = pa.concat_tables(_drain_reduce_op(op, feed))
     assert out.column("src").to_pylist() == ["L"]
     assert op.has_completed()
+
+
+_V2_OP_CLASSES = [
+    (ShuffleMapOp, ShuffleReduceOp),
+    (DiskHashShuffleMapOp, DiskHashShuffleReduceOp),
+]
+
+
+def _make_map_op(map_op_cls, upstream_total_rows=None, block_transformer=None):
+    ctx = DataContext.get_current()
+    upstream = InputDataBuffer(ctx, [])
+    upstream.num_output_rows_total = lambda: upstream_total_rows
+    return map_op_cls(
+        upstream,
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {},
+        block_transformer=block_transformer,
+    )
+
+
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
+def test_map_num_output_rows_total_unknown_with_block_transformer(map_op_cls):
+    map_op = _make_map_op(
+        map_op_cls, upstream_total_rows=100, block_transformer=lambda table: table
+    )
+
+    assert map_op.num_output_rows_total() is None
+
+
+@pytest.mark.parametrize("map_op_cls,reduce_op_cls", _V2_OP_CLASSES)
+def test_reduce_num_output_rows_total_borrows_map_total(map_op_cls, reduce_op_cls):
+    map_op = _make_map_op(map_op_cls, upstream_total_rows=100)
+    reduce_op = reduce_op_cls(
+        map_op, map_op.data_context, num_partitions=2, reduce_fn=lambda *args: []
+    )
+
+    assert reduce_op.num_output_rows_total() == 100
+
+
+@pytest.mark.parametrize("map_op_cls,reduce_op_cls", _V2_OP_CLASSES)
+def test_reduce_num_output_rows_total_unknown_when_row_count_not_preserved(
+    map_op_cls, reduce_op_cls
+):
+    map_op = _make_map_op(map_op_cls, upstream_total_rows=100)
+    reduce_op = reduce_op_cls(
+        map_op,
+        map_op.data_context,
+        num_partitions=2,
+        reduce_fn=lambda *args: [],
+        preserves_row_count=False,
+    )
+
+    assert reduce_op.num_output_rows_total() is None
 
 
 def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
