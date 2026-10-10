@@ -42,11 +42,15 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
             max_actor_concurrency=1,
             per_actor_resource_usage=ExecutionResources(cpu=1),
         )
-        return _NodeAwareActorPool(
+        pool = _NodeAwareActorPool(
             create_actor_fn=self._create_actor_fn,
             map_worker_cls_name=map_worker_cls_name,
             config=config,
         )
+        # `_create_actor_fn` (inherited) registers each actor's resource request
+        # with the pool it is creating actors for, mirroring the real operator.
+        self._pool = pool
+        return pool
 
     @patch(f"{_MODULE}.get_draining_nodes")
     @patch(f"{_MODULE}.get_actor_locations")

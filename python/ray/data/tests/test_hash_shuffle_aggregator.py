@@ -7,6 +7,7 @@ import pytest
 
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.operators.hash_shuffle import (
+    AggregatorPool,
     HashShuffleAggregator,
     ShuffleAggregation,
 )
@@ -177,6 +178,27 @@ class TestHashShuffleAggregator:
         results = list(aggregator.finalize(0))
         output_blocks = [results[i] for i in range(0, len(results), 2)]
         assert pa.concat_tables(output_blocks) == full_block
+
+
+def test_aggregator_pool_reports_exact_resource_request(ray_start_regular_shared):
+    """Autoscaler demand for an aggregator must match its remote args.
+
+    Custom resources requested by aggregators must survive into the demand.
+    """
+    pool = AggregatorPool(
+        num_input_seqs=1,
+        num_partitions=2,
+        num_aggregators=2,
+        aggregation_factory=MockNonCompactingAggregation,
+        aggregator_ray_remote_args={
+            "num_cpus": 2,
+            "resources": {"worker_group_a": 1},
+        },
+        target_max_block_size=None,
+    )
+
+    # `max_concurrency` is injected by the pool but is not a resource.
+    assert pool.get_resource_request() == {"CPU": 2, "worker_group_a": 1}
 
 
 if __name__ == "__main__":

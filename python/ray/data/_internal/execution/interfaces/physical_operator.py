@@ -31,6 +31,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.interfaces.resource_request import (
+    execution_resource_dict,
+)
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
@@ -71,9 +74,11 @@ class OpTask(ABC):
         self,
         task_index: int,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         self._task_index: int = task_index
         self._task_resource_bundle: Optional[ExecutionResources] = task_resource_bundle
+        self._task_resource_request: Optional[Dict[str, float]] = task_resource_request
 
     def task_index(self) -> int:
         """Return the index of the task."""
@@ -81,6 +86,9 @@ class OpTask(ABC):
 
     def get_requested_resource_bundle(self) -> Optional[ExecutionResources]:
         return self._task_resource_bundle
+
+    def get_requested_resource_request(self) -> Optional[Dict[str, float]]:
+        return self._task_resource_request
 
     @abstractmethod
     def get_waitable(self) -> Waitable:
@@ -169,6 +177,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[Block], int], None
         ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
         operator_name: str = "Unknown",
     ):
         """Create a DataOpTask
@@ -190,10 +199,11 @@ class DataOpTask(OpTask):
                 size is resolved (before the pair is emitted/deferred). Exposed
                 as a seam for testing the metadata-fetch branches.
             task_resource_bundle: The execution resources of this task.
+            task_resource_request: The exact scheduling resource request for this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
         """
-        super().__init__(task_index, task_resource_bundle)
+        super().__init__(task_index, task_resource_bundle, task_resource_request)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -497,6 +507,7 @@ class MetadataOpTask(OpTask):
         object_ref: ray.ObjectRef,
         task_done_callback: Callable[[], None],
         task_resource_bundle: Optional[ExecutionResources] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         """Initialize a metadata-only OpTask.
 
@@ -505,8 +516,10 @@ class MetadataOpTask(OpTask):
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
             task_resource_bundle: Optional resource bundle reserved for this task.
+            task_resource_request: Optional exact scheduling resource request for
+                this task, as a resource dict.
         """
-        super().__init__(task_index, task_resource_bundle)
+        super().__init__(task_index, task_resource_bundle, task_resource_request)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
@@ -1139,6 +1152,33 @@ class PhysicalOperator(Operator):
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
+
+    def _get_base_resource_requests(self) -> List[Dict[str, float]]:
+        """Return the exact requests of this operator's in-flight tasks/actors.
+
+        Falls back to the task's logical bundle, which loses custom resources but
+        keeps the standard ones.
+        """
+        requests = []
+        for task in self.get_active_tasks():
+            request = task.get_requested_resource_request()
+            if request:
+                requests.append(request)
+                continue
+            resources = task.get_requested_resource_bundle()
+            if resources is not None and not resources.is_zero():
+                requests.append(execution_resource_dict(resources))
+        return requests
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Return the exact resource request of every in-flight task or actor.
+
+        Each entry is the shape one worker needs to be scheduled, custom resources
+        included. Object store memory is not added: it is node-level usage, and
+        folding it in could make a shape unhostable. It is still reported if a
+        task's own remote args ask for it.
+        """
+        return self._get_base_resource_requests()
 
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
