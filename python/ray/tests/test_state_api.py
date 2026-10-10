@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import click
 import pytest
+import requests
 import yaml
 from click.testing import CliRunner
 
@@ -23,6 +24,9 @@ from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
+)
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
 )
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import create_api_options
@@ -474,7 +478,11 @@ def clear_loggers():
     "event_routing_config", ["default", "aggregator"], indirect=True
 )
 @pytest.mark.usefixtures("event_routing_config")
-def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers):
+def test_state_api_client_periodic_warning(
+    shutdown_only, capsys, clear_loggers, monkeypatch
+):
+    # Registers the testing-only /api/v0/delay endpoint.
+    monkeypatch.setenv("RAY_DASHBOARD_MODULE_TEST", "true")
     ray.init()
     timeout = 10
     StateApiClient()._make_http_get_request("/api/v0/delay/5", {}, timeout, True)
@@ -495,6 +503,19 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
         )
     for expected_line in expected_lines:
         expected_line in lines
+
+
+def test_delay_endpoint_disabled_by_default(shutdown_only, monkeypatch):
+    monkeypatch.delenv("RAY_DASHBOARD_MODULE_TEST", raising=False)
+    ctx = ray.init()
+    api_server_url = f"http://{ctx.address_info['webui_url']}"
+    headers = get_auth_headers_if_auth_enabled({})
+    # Make sure the state module is serving, so the 404 below is caused by the
+    # endpoint not being registered rather than the module not being ready.
+    resp = requests.get(f"{api_server_url}/api/v0/nodes", headers=headers)
+    assert resp.status_code == 200
+    resp = requests.get(f"{api_server_url}/api/v0/delay/0", headers=headers)
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
