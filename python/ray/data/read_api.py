@@ -71,6 +71,9 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
+from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
+    HiveReadSpec,
+)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -3968,6 +3971,187 @@ def read_binary_files(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI(stability="alpha")
+def read_hive(
+    table: Optional[str] = None,
+    *,
+    connection_factory: Callable[[], Connection],
+    query: Optional[str] = None,
+    schema: Optional["pyarrow.Schema"] = None,
+    user: Optional[str] = None,
+    limit: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    resources: Optional[Dict[str, float]] = None,
+    label_selector: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read a HiveServer2 table or trusted SQL query into a Dataset.
+
+    Install the optional ``impyla`` package on the driver and Ray workers.
+    Configure authentication, transport, and TLS certificate verification in
+    ``connection_factory``. ``GSSAPI`` also requires ``impyla[kerberos]`` and
+    Kerberos credentials on those nodes.
+
+    .. note::
+
+        Query reads require an explicit Arrow schema. DataSourceV2 planning
+        needs it on the driver before the read worker executes the query.
+        See `issue #66840 <https://github.com/ray-project/ray/issues/66840>`_
+        for optional schema inference from the same query execution.
+
+        Each Dataset execution runs at most one HiveServer2 data query in one
+        Ray task. Ray doesn't retry failed reads. With the default error
+        tolerance, a read error or worker loss fails that Dataset execution.
+        This API preserves ``DataContext.max_errored_blocks``. If you allow
+        block errors, execution can skip failed output and return an
+        incomplete result. This scanner doesn't push
+        Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
+        The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
+        The HiveServer2 reader ignores ``override_num_blocks`` with a warning
+        to preserve streaming. Output blocks follow Ray's normal block-sizing
+        policy. This parameter doesn't parallelize the HiveServer2 query.
+
+        The reader attempts to cancel the HiveServer2 operation and close its
+        cursor and connection when reading ends. Closing a Dataset iterator
+        can force Ray to stop the read worker before Python cleanup runs.
+        Immediate operation cancellation or explicit connection cleanup isn't
+        guaranteed.
+
+    Examples:
+
+        Read a table or a query result. These examples assume
+        ``analytics.events`` has exactly two columns, ``id BIGINT`` and
+        ``name STRING``, in that order. The ``SELECT *`` example assumes
+        HiveServer2 returns ``events.id`` and ``events.name`` as result labels.
+        Match the labels returned by your HiveServer2 instance.
+
+        .. testcode::
+            :skipif: True
+
+            import pyarrow as pa
+            import ray
+
+            def create_connection():
+                from impala.dbapi import connect
+
+                return connect(
+                    host="hive.example.com",
+                    port=10000,
+                    auth_mechanism="NOSASL",
+                    retries=1,
+                )
+
+            table_ds = ray.data.read_hive(
+                "analytics.events", connection_factory=create_connection
+            )
+            query_ds = ray.data.read_hive(
+                query="SELECT * FROM analytics.events",
+                schema=pa.schema(
+                    [("events.id", pa.int64()), ("events.name", pa.string())]
+                ),
+                connection_factory=create_connection,
+            )
+
+            # Use explicit SQL aliases to choose unqualified result labels.
+            aliased_query_ds = ray.data.read_hive(
+                query=(
+                    "SELECT id AS event_id, name AS event_name "
+                    "FROM analytics.events"
+                ),
+                schema=pa.schema(
+                    [("event_id", pa.int64()), ("event_name", pa.string())]
+                ),
+                connection_factory=create_connection,
+            )
+
+    Args:
+        table: The Hive table to read, optionally qualified as
+            ``database.table``. Specify exactly one of ``table`` and ``query``.
+        connection_factory: A serializable function that takes no arguments and
+            returns a new Impyla HiveServer2 connection on each call. Ray calls
+            it on the driver for table metadata and on the read worker for data.
+            Query reads with an explicit schema only call it on the read worker.
+            Ray closes each returned connection. Configure authentication, TLS
+            verification, and client retries in the factory. Read credentials
+            inside the factory to avoid capturing them in its serialized state.
+            Dependencies, credentials, and certificate files must be available
+            wherever the factory runs.
+        query: A trusted, row-producing SQL query. Specify exactly one of
+            ``table`` and ``query``. The query is sent to HiveServer2 as given
+            and must return a result set.
+        schema: The Arrow schema for a query read. Column names must match the
+            HiveServer2 result labels, case-insensitively and in order. Hive may
+            prefix ``SELECT *`` result labels with the table name or alias. Use
+            those labels in the schema or alias the columns in your query. Table
+            reads infer their schema from HiveServer2 metadata; ``schema`` is
+            only supported for query reads. Field types must use a supported
+            Arrow mapping. Hive ``TIMESTAMP`` maps to ``pa.timestamp("us")``
+            without a time zone; sub-microsecond precision is truncated.
+        user: The HiveServer2 session user or proxy user passed to
+            ``connection.cursor(user=user)``. If omitted, Impyla uses the
+            operating system username. Configure the authentication user
+            separately in ``connection_factory``.
+        limit: The maximum number of rows to read from a table. ``0`` skips
+            the data query. The limit is sent to HiveServer2 as SQL. This
+            argument isn't supported for query reads.
+        num_cpus: The number of CPUs to reserve for the read task.
+        memory: The heap memory in bytes to reserve for the read task.
+        resources: Custom resources to reserve for the read task, expressed as
+            a mapping from resource name to quantity.
+        label_selector: Labels required on the node where the read task runs.
+        fallback_strategy: Alternative label requirements that Ray tries in
+            order if ``label_selector`` can't be satisfied.
+        runtime_env: The runtime environment to use for the read task.
+        override_num_blocks: An output block-count hint. The HiveServer2
+            reader ignores this hint and logs a warning when you supply a
+            value. Output blocks follow Ray's normal block-sizing policy.
+            This parameter doesn't add HiveServer2 query parallelism.
+
+    Returns:
+        A :class:`Dataset` containing the HiveServer2 read result.
+    """
+    if override_num_blocks is not None and (
+        isinstance(override_num_blocks, bool)
+        or not isinstance(override_num_blocks, int)
+        or override_num_blocks < 1
+    ):
+        raise ValueError("override_num_blocks must be a positive integer")
+
+    from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+        HiveDatasourceV2,
+    )
+
+    spec = HiveReadSpec(
+        connection_factory=connection_factory,
+        user=user,
+        table=table,
+        query=query,
+        schema=schema,
+        limit=limit,
+    )
+    if override_num_blocks is not None:
+        logger.warning(
+            "The `override_num_blocks` argument is ignored by read_hive to "
+            "preserve streaming. Output blocks follow Ray's normal "
+            "block-sizing policy."
+        )
+    dataset = _read_datasource_v2(
+        HiveDatasourceV2(spec),
+        parallelism=1,
+        num_cpus=num_cpus,
+        memory=memory,
+        resources=resources,
+        label_selector=label_selector,
+        fallback_strategy=fallback_strategy,
+        runtime_env=runtime_env,
+        ray_remote_args={"max_retries": 0},
+    )
+    return dataset
 
 
 @PublicAPI(stability="alpha")
