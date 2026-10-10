@@ -57,6 +57,11 @@ class FakeWorkerPool : public WorkerPoolInterface {
 
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
       const std::shared_ptr<ClientConnection> &connection) const override {
+    for (const auto &worker : registered_workers) {
+      if (worker->Connection() == connection) {
+        return worker;
+      }
+    }
     return registered_worker_by_connection;
   }
 

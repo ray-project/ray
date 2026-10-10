@@ -389,12 +389,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node The node that the bundles are being removed from.
   /// \param max_retry The maximum times the remove request can be retried.
   /// \param current_retry_count The number of times the remove request has been retried.
+  /// \param callback Called when the request succeeds or exhausts its retries.
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
-      int current_retry_count);
+      int current_retry_count,
+      rpc::StatusCallback callback = nullptr);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
@@ -429,6 +431,16 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// bundles.
   void DestroyPlacementGroupPreparedBundleResources(
       const PlacementGroupID &placement_group_id);
+
+  /// Destroy bundles that failed to commit before the placement group is retried.
+  ///
+  /// \param placement_group_id The placement group whose commit attempt failed.
+  /// \param bundle_locations The uncommitted bundles grouped by their old locations.
+  /// \param callback Called after every live node has replied or exhausted retries.
+  void DestroyPlacementGroupUncommittedBundleResources(
+      const PlacementGroupID &placement_group_id,
+      const BundleLocations &bundle_locations,
+      rpc::StatusCallback callback);
 
   /// Destroy the committed bundle resources with this placement group.
   /// The method is idempotent, meaning if all bundles are already cancelled,

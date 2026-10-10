@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "ray/asio/asio_util.h"
@@ -44,6 +45,7 @@
 #include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
@@ -68,6 +70,33 @@
 namespace ray::raylet {
 
 namespace {
+
+bool UsesPlacementGroupBundle(
+    const BundleID &bundle_id,
+    const std::shared_ptr<TaskResourceInstances> &allocated_instances,
+    const PlacementGroupID &placement_group_id,
+    const absl::flat_hash_set<int64_t> &bundle_indices) {
+  if (bundle_id.first != placement_group_id) {
+    return false;
+  }
+  if (bundle_id.second >= 0) {
+    return bundle_indices.contains(bundle_id.second);
+  }
+  if (allocated_instances == nullptr) {
+    return false;
+  }
+
+  for (const auto &resource_id : allocated_instances->ResourceIds()) {
+    const auto resource = ParsePgFormattedResource(resource_id.Binary(),
+                                                   /*for_wildcard_resource=*/false,
+                                                   /*for_indexed_resource=*/true);
+    if (resource && resource->group_id == placement_group_id.Hex() &&
+        bundle_indices.contains(resource->bundle_index)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 rpc::ObjectReference FlatbufferToSingleObjectReference(
     const flatbuffers::String &object_id, const protocol::Address &address) {
@@ -2043,31 +2072,60 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   RAY_LOG(INFO) << "Got request to remove " << request.bundle_specs_size()
                 << " bundle(s) for placement group " << pg_id;
 
-  // Cancel all lease requests for the placement group removal.
+  std::vector<BundleSpecification> bundle_specs;
+  bundle_specs.reserve(request.bundle_specs_size());
+  absl::flat_hash_set<int64_t> bundle_indices;
+  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
+    bundle_specs.emplace_back(rpc_bundle_spec);
+    const auto &bundle_spec = bundle_specs.back();
+    RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
+        << "Bundles in RemovePlacementGroupBundles must all be in the same placement "
+           "group.";
+    bundle_indices.insert(bundle_spec.Index());
+  }
+
+  // Cancel lease requests that use the bundles being removed.
   local_lease_manager_.CancelLeases(
-      [&](const std::shared_ptr<internal::Work> &work) {
+      [&placement_group_id = pg_id,
+       &bundle_indices](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id =
             work->lease_.GetLeaseSpecification().PlacementGroupBundleId();
-        return bundle_id.first == pg_id;
+        if (bundle_id.first == placement_group_id && bundle_id.second < 0 &&
+            work->allocated_instances_ == nullptr) {
+          // A queued wildcard lease is not tied to a concrete bundle yet. Cancel it
+          // conservatively so it cannot remain queued after placement group cleanup.
+          return true;
+        }
+        return UsesPlacementGroupBundle(
+            bundle_id, work->allocated_instances_, placement_group_id, bundle_indices);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      absl::StrCat("Required placement group ", pg_id.Hex(), " is removed."));
+      absl::StrCat("Required placement group bundle is removed from placement group ",
+                   pg_id.Hex(),
+                   "."));
 
-  // Kill all workers that are currently associated with the placement group.
+  // Kill workers that are currently associated with the bundles being removed.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker`
   // will delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_pg` separately.
-  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
+  // `workers_associated_with_bundles` separately.
+  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_bundles;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (worker->GetBundleId().first == pg_id) {
-      workers_associated_with_pg.emplace_back(worker);
+    if (UsesPlacementGroupBundle(worker->GetBundleId(),
+                                 worker->GetAllocatedInstances(),
+                                 pg_id,
+                                 bundle_indices) ||
+        UsesPlacementGroupBundle(worker->GetBundleId(),
+                                 worker->GetLifetimeAllocatedInstances(),
+                                 pg_id,
+                                 bundle_indices)) {
+      workers_associated_with_bundles.emplace_back(worker);
     }
   }
-  for (const auto &worker : workers_associated_with_pg) {
+  for (const auto &worker : workers_associated_with_bundles) {
     std::ostringstream stream;
-    stream << "Destroying worker since its placement group was removed. Placement "
-              "group id: "
+    stream << "Destroying worker since its placement group was removed or its assigned "
+              "bundle was removed. Placement group id: "
            << worker->GetBundleId().first
            << ", bundle index: " << worker->GetBundleId().second
            << ", lease id: " << worker->GetGrantedLeaseId()
@@ -2079,12 +2137,12 @@ void NodeManager::HandleRemovePlacementGroupBundles(
   }
 
   // Return resources for the placement group bundles.
-  for (const auto &rpc_bundle_spec : request.bundle_specs()) {
-    BundleSpecification bundle_spec(rpc_bundle_spec);
-    RAY_CHECK(bundle_spec.PlacementGroupId() == pg_id)
-        << "Bundles in RemovePlacementGroupBundles must be all be in the same placement "
-           "group.";
-    RAY_CHECK_OK(placement_group_resource_manager_.ReturnBundle(bundle_spec));
+  for (const auto &bundle_spec : bundle_specs) {
+    const auto status = placement_group_resource_manager_.ReturnBundle(bundle_spec);
+    if (!status.ok()) {
+      send_reply_callback(status, nullptr, nullptr);
+      return;
+    }
   }
 
   cluster_lease_manager_.ScheduleAndGrantLeases();

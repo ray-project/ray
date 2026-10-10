@@ -1103,6 +1103,70 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeErrorDuringCommittingResources) {
   // node1 is experiencing transient connection failure.
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(
       ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, FailedCommitIsCleanedBeforeRetry) {
+  auto node0 = GenNodeInfo(0);
+  const auto node0_id = NodeID::FromBinary(node0->node_id());
+  AddNode(node0);
+
+  auto placement_group =
+      MakeStrictPackPlacementGroup(/*bundles_count=*/1, /*cpu_per_bundle=*/10);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+
+  // The failed bundle must be removed from the old raylet before retrying and must not
+  // be recorded as committed there.
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 1);
+  ASSERT_TRUE(scheduler_->GetBundlesOnNode(node0_id).empty());
+  CheckPlacementGroupSize(0, GcsPlacementGroupStatus::FAILURE);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  // The old node remains unavailable in GCS's optimistic resource view, so the retry
+  // lands on the newly added node.
+  auto node1 = GenNodeInfo(1);
+  const auto node1_id = NodeID::FromBinary(node1->node_id());
+  AddNode(node1);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  ASSERT_TRUE(scheduler_->GetBundlesOnNode(node0_id).empty());
+  auto bundles_on_node1 = scheduler_->GetBundlesOnNode(node1_id);
+  ASSERT_EQ(bundles_on_node1[placement_group->GetPlacementGroupID()].size(), 1);
+
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
+  ASSERT_EQ(raylet_clients_[1]->num_bundles_removed, 1);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, FailedCommitCanBeCancelledDuringCleanup) {
+  AddNode(GenNodeInfo(0));
+
+  auto placement_group =
+      MakeStrictPackPlacementGroup(/*bundles_count=*/1, /*cpu_per_bundle=*/10);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 1);
+
+  // Removing a placement group while its failed commit is being cleaned up must still
+  // find the active lease tracker and mark it cancelled.
+  scheduler_->MarkScheduleCancelled(placement_group->GetPlacementGroupID());
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
@@ -1460,6 +1524,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   // Mark both IO-error nodes dead and verify the placement group is failed.
   RemoveNode(node0);
   RemoveNode(node1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 

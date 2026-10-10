@@ -64,14 +64,18 @@ class FakeWorker : public WorkerInterface {
   std::string IpAddress() const override { return "127.0.0.1"; }
   void AsyncNotifyGCSRestart() override {}
   void SetAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+    allocated_instances_ = allocated_instances;
+  }
   void SetLifetimeAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+    lifetime_allocated_instances_ = allocated_instances;
+  }
   std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() override {
-    return nullptr;
+    return allocated_instances_;
   }
   std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
-    return nullptr;
+    return lifetime_allocated_instances_;
   }
   void MarkDead() override {}
   bool IsDead() const override { return false; }
@@ -100,8 +104,10 @@ class FakeWorker : public WorkerInterface {
   std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
   void SetSavedProcessGroupId(pid_t pgid) override {}
   void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override {}
-  void ClearAllocatedInstances() override {}
-  void ClearLifetimeAllocatedInstances() override {}
+  void ClearAllocatedInstances() override { allocated_instances_ = nullptr; }
+  void ClearLifetimeAllocatedInstances() override {
+    lifetime_allocated_instances_ = nullptr;
+  }
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
   bool IsRegistered() override { return false; }
@@ -123,6 +129,8 @@ class FakeWorker : public WorkerInterface {
   ActorID actor_id_;
   rpc::Address owner_address_;
   ActorID root_detached_actor_id_;
+  std::shared_ptr<TaskResourceInstances> allocated_instances_;
+  std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
 };
 
 }  // namespace raylet
