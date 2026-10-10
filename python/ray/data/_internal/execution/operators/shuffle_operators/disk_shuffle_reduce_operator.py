@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     TaskContext,
+    task_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -262,6 +263,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
                 self._handle_reduce_done, partition_id, bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
+            task_resource_request=task_resource_dict(reduce_options),
             operator_name=self.name,
         )
 

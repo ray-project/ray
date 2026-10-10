@@ -48,6 +48,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -1037,6 +1038,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
         return shuffling_tasks + finalizing_tasks
 
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        requests = self._get_base_resource_requests()
+        if self._aggregator_pool is not None:
+            # Report aggregator demand even before ``AggregatorPool.start()`` has
+            # issued the ``.remote()`` calls, so a capacity-starved shuffle can
+            # already trigger scale-up.
+            aggregator_request = self._aggregator_pool.get_resource_request()
+            requests.extend(
+                dict(aggregator_request)
+                for _ in range(self._aggregator_pool.num_aggregators)
+            )
+        return requests
+
     def _get_active_shuffling_tasks(self) -> List[MetadataOpTask]:
         return list(
             itertools.chain.from_iterable(
@@ -1832,6 +1846,10 @@ class AggregatorPool:
     @property
     def num_aggregators(self):
         return self._num_aggregators
+
+    def get_resource_request(self) -> Dict[str, float]:
+        """Return the exact resource request used to create each aggregator."""
+        return actor_resource_dict(self._aggregator_ray_remote_args)
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]

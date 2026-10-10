@@ -1,4 +1,4 @@
-from typing import List, Optional, Protocol, runtime_checkable
+from typing import Dict, List, Optional, Protocol, runtime_checkable
 
 from ray.data._internal.execution.interfaces import ExecutionResources
 
@@ -52,6 +52,14 @@ class SupportsClusterAutoscaling(Protocol):
 
         For regular tasks, this is the resources required to schedule a task. For actor
         tasks, this is the resources required to schedule an actor.
+        """
+        ...
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Exact resource request of each in-flight task or actor.
+
+        Custom resources included -- ``ExecutionResources`` cannot express those.
+        Empty when nothing is in flight.
         """
         ...
 
