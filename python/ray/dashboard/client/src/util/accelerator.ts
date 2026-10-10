@@ -25,6 +25,12 @@ export type UnifiedAcceleratorStat = {
   rawTpu?: TPUStats;
 };
 
+export const hasAnyAccelerator = (
+  gpus?: GPUStats[],
+  tpus?: TPUStats[],
+  npus?: NPUStats[],
+): boolean => Boolean(gpus?.length || tpus?.length || npus?.length);
+
 export const normalizeAccelerators = (
   gpus?: GPUStats[],
   tpus?: TPUStats[],

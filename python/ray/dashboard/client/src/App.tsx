@@ -66,6 +66,7 @@ import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { getPlatformEventsEnabled } from "./service/platform";
 import { darkTheme, lightTheme } from "./theme";
+import { hasAnyAccelerator } from "./util/accelerator";
 
 dayjs.extend(duration);
 
@@ -134,7 +135,7 @@ export type GlobalContextType = {
    */
   toggleTheme: () => void;
   /**
-   * Whether accelerators (GPU/TPU) are present on any node.
+   * Whether accelerators (GPU/NPU/TPU) are present on any node.
    */
   showAcceleratorColumns: boolean;
 };
@@ -246,13 +247,10 @@ const App = () => {
         const nodeMapByIp = {} as { [key: string]: string };
         let hasAccelerators = false;
         res.data.data.summary.forEach(
-          ({ hostname, raylet, ip, gpus, tpus }) => {
+          ({ hostname, raylet, ip, gpus, tpus, npus }) => {
             nodeMap[hostname] = raylet.nodeId;
             nodeMapByIp[ip] = raylet.nodeId;
-            if (
-              !hasAccelerators &&
-              ((gpus && gpus.length > 0) || (tpus && tpus.length > 0))
-            ) {
+            if (!hasAccelerators && hasAnyAccelerator(gpus, tpus, npus)) {
               hasAccelerators = true;
             }
           },
