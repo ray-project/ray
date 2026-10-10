@@ -39,6 +39,16 @@ class FakeStoreClient : public StoreClient {
     last_async_put_callback = std::make_unique<Postable<void(bool)>>(std::move(callback));
   }
 
+  void AsyncPutIfMatch(const std::string &table_name,
+                       const std::string &key,
+                       std::string expected_value,
+                       std::string data,
+                       Postable<void(bool)> callback) override {
+    async_put_if_match_calls.push_back({table_name, key});
+    last_async_put_if_match_callback =
+        std::make_unique<Postable<void(bool)>>(std::move(callback));
+  }
+
   void AsyncGet(const std::string &table_name,
                 const std::string &key,
                 ToPostable<rpc::OptionalItemCallback<std::string>> callback) override {
@@ -107,6 +117,7 @@ class FakeStoreClient : public StoreClient {
 
   // Recorded calls. For methods with (table_name, key)-ish args a pair is stored.
   std::vector<std::pair<std::string, std::string>> async_put_calls;
+  std::vector<std::pair<std::string, std::string>> async_put_if_match_calls;
   std::vector<std::pair<std::string, std::string>> async_get_calls;
   std::vector<std::string> async_get_all_calls;
   std::vector<std::string> async_multi_get_calls;
@@ -118,6 +129,7 @@ class FakeStoreClient : public StoreClient {
 
   // Last callback received per method (nullptr until the method is invoked).
   std::unique_ptr<Postable<void(bool)>> last_async_put_callback;
+  std::unique_ptr<Postable<void(bool)>> last_async_put_if_match_callback;
   std::unique_ptr<ToPostable<rpc::OptionalItemCallback<std::string>>>
       last_async_get_callback;
   std::unique_ptr<Postable<void(absl::flat_hash_map<std::string, std::string>)>>

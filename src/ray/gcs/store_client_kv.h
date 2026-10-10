@@ -49,6 +49,12 @@ class StoreClientInternalKV : public InternalKVInterface {
            bool overwrite,
            Postable<void(bool)> callback) override;
 
+  void PutIfMatch(const std::string &ns,
+                  const std::string &key,
+                  std::string expected_value,
+                  std::string value,
+                  Postable<void(bool)> callback) override;
+
   void Del(const std::string &ns,
            const std::string &key,
            bool del_by_prefix,

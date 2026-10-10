@@ -235,6 +235,23 @@ cdef class InnerGcsClient:
                     fut))
         return asyncio.wrap_future(fut)
 
+    def async_internal_kv_put_if_match(
+        self, c_string key, c_string expected_value, c_string value, namespace=None,
+        timeout=None
+    ) -> Future[bool]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout is not None else -1
+            fut = incremented_fut()
+        with nogil:
+            self.inner.get().InternalKV().AsyncInternalKVPutIfMatch(
+                ns, key, expected_value, value, timeout_ms,
+                OptionalItemPyCallback[c_bool](
+                    &convert_optional_bool,
+                    assign_and_decrement_fut,
+                    fut))
+        return asyncio.wrap_future(fut)
+
     def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
                               namespace=None, timeout=None) -> Future[int]:
         cdef:
