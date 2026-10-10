@@ -9,6 +9,7 @@ from ray._common.runtime_env_uri import Protocol, parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
+    _AsyncFileLock,
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
@@ -210,7 +211,34 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         return local_dir_size
 
     def get_uris(self, runtime_env) -> List[str]:
-        return runtime_env.py_modules()
+        uris = []
+        seen_wheel_filenames = set()
+        for uri in runtime_env.py_modules():
+            if is_whl_uri(uri):
+                _, wheel_filename = parse_uri(uri)
+                # Wheel filenames are treated as package identity by
+                # get_uri_for_package. Different builds with the same filename
+                # therefore share a cache entry, and the first one installed
+                # on a node is reused.
+                if wheel_filename in seen_wheel_filenames:
+                    continue
+                seen_wheel_filenames.add(wheel_filename)
+                uri = f"{Protocol.GCS.value}://{wheel_filename}"
+            uris.append(uri)
+        return uris
+
+    def _get_source_uri_for_whl(
+        self, uri: str, runtime_env: "RuntimeEnv"  # noqa: F821
+    ) -> str:
+        if runtime_env is None:
+            return uri
+
+        _, wheel_filename = parse_uri(uri)
+        for source_uri in runtime_env.py_modules():
+            if parse_uri(source_uri)[1] == wheel_filename:
+                return source_uri
+
+        return uri
 
     async def create(
         self,
@@ -226,16 +254,32 @@ class PyModulesPlugin(RuntimeEnvPlugin):
             logger.info("Using in place py_module '%s'.", module_dir)
             return 0
 
+        if is_whl_uri(uri):
+            module_dir = self._get_local_dir_from_uri(uri)
+            async with _AsyncFileLock(str(module_dir) + ".lock"):
+                if module_dir.exists():
+                    logger.info(
+                        "py_modules wheel %s is already installed at %s, "
+                        "skipping installation.",
+                        uri,
+                        module_dir,
+                    )
+                    return get_directory_size_bytes(module_dir)
+
+                wheel_uri = await download_and_unpack_package(
+                    self._get_source_uri_for_whl(uri, runtime_env),
+                    self._resources_dir,
+                    self._gcs_client,
+                    logger=logger,
+                )
+                await install_wheel_package(
+                    wheel_uri=wheel_uri, target_dir=module_dir, logger=logger
+                )
+                return get_directory_size_bytes(module_dir)
+
         module_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_client, logger=logger
         )
-
-        if is_whl_uri(uri):
-            wheel_uri = module_dir
-            module_dir = self._get_local_dir_from_uri(uri)
-            await install_wheel_package(
-                wheel_uri=wheel_uri, target_dir=module_dir, logger=logger
-            )
 
         return get_directory_size_bytes(module_dir)
 
