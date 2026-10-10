@@ -217,6 +217,33 @@ def test_packed_run_rows_keep_on_disk_file_size() -> None:
     assert manifest.file_chunk_metadatas[0]["size_bytes"] == 90
 
 
+@pytest.mark.parametrize(
+    "isolate_heavy_files, expected_num_bins",
+    [
+        # Once each file turns heavy, the heavy pool seals its bin on every file
+        # switch, so the interleaved tail becomes half-full single-file bins.
+        pytest.param(True, 6, id="isolated-heavy-files-shred-interleaved-input"),
+        # Row-group shuffle mode: everything packs into full, mixed-file bins.
+        pytest.param(False, 4, id="shared-pool-keeps-interleaved-input-mixed"),
+    ],
+)
+def test_interleaved_heavy_files(
+    isolate_heavy_files: bool, expected_num_bins: int
+) -> None:
+    # Row-group runs of two heavy files arriving interleaved, as a row-group
+    # shuffle emits them: a0, b0, a1, b1, ...
+    manifests = [
+        _file(path, 200, [_run((i,), 50)]) for i in range(4) for path in ("a", "b")
+    ]
+
+    bins = _pack(manifests, max_bin_bytes=100, isolate_heavy_files=isolate_heavy_files)
+
+    assert len(bins) == expected_num_bins
+    assert _pairs(bins) == [(p, i) for p in ("a", "b") for i in range(4)]
+    if not isolate_heavy_files:
+        assert all(set(b) == {"a", "b"} for b in bins)
+
+
 if __name__ == "__main__":
     import sys
 
