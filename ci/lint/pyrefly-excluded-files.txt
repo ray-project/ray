@@ -48,7 +48,6 @@ python/ray/data/_internal/equalize.py
 python/ray/data/_internal/execution/autoscaling_requester.py
 python/ray/data/_internal/execution/backpressure_policy/concurrency_cap_backpressure_policy.py
 python/ray/data/_internal/execution/backpressure_policy/downstream_capacity_backpressure_policy.py
-python/ray/data/_internal/execution/bundle_queue/fifo.py
 python/ray/data/_internal/execution/bundle_queue/hash_link.py
 python/ray/data/_internal/execution/bundle_queue/reordering.py
 python/ray/data/_internal/execution/callbacks/insert_issue_detectors.py
@@ -58,7 +57,6 @@ python/ray/data/_internal/execution/interfaces/execution_options.py
 python/ray/data/_internal/execution/interfaces/op_runtime_metrics.py
 python/ray/data/_internal/execution/interfaces/physical_operator.py
 python/ray/data/_internal/execution/interfaces/ref_bundle.py
-python/ray/data/_internal/execution/legacy_compat.py
 python/ray/data/_internal/execution/node_trackers/actor_location.py
 python/ray/data/_internal/execution/operators/actor_pool_map_operator.py
 python/ray/data/_internal/execution/operators/aggregate_num_rows.py
@@ -82,7 +80,6 @@ python/ray/data/_internal/execution/util.py
 python/ray/data/_internal/issue_detection/detectors/hanging_detector.py
 python/ray/data/_internal/issue_detection/issue_detector_configuration.py
 python/ray/data/_internal/issue_detection/issue_detector_manager.py
-python/ray/data/_internal/iterator/iterator_impl.py
 python/ray/data/_internal/iterator/stream_split_iterator.py
 python/ray/data/_internal/logging.py
 python/ray/data/_internal/logical/interfaces/logical_operator.py
@@ -98,9 +95,7 @@ python/ray/data/_internal/logical/operators/read_operator.py
 python/ray/data/_internal/logical/operators/streaming_split_operator.py
 python/ray/data/_internal/logical/operators/write_operator.py
 python/ray/data/_internal/logical/optimizers.py
-python/ray/data/_internal/logical/rules/combine_shuffles.py
 python/ray/data/_internal/logical/rules/configure_map_task_memory.py
-python/ray/data/_internal/logical/rules/inherit_batch_format.py
 python/ray/data/_internal/logical/rules/inherit_target_max_block_size.py
 python/ray/data/_internal/logical/rules/limit_pushdown.py
 python/ray/data/_internal/logical/rules/operator_fusion.py
@@ -108,8 +103,6 @@ python/ray/data/_internal/logical/rules/predicate_pushdown.py
 python/ray/data/_internal/logical/rules/projection_pushdown.py
 python/ray/data/_internal/logical/rules/common_subexpr_elimination.py
 python/ray/data/_internal/logical/rules/set_read_parallelism.py
-python/ray/data/_internal/logical/ruleset.py
-python/ray/data/_internal/logical/util.py
 python/ray/data/_internal/memory_tracing.py
 python/ray/data/_internal/metadata_exporter.py
 python/ray/data/_internal/object_extensions/pandas.py
@@ -117,7 +110,6 @@ python/ray/data/_internal/operator_event_exporter.py
 python/ray/data/_internal/operator_schema_exporter.py
 python/ray/data/_internal/output_buffer.py
 python/ray/data/_internal/pandas_block.py
-python/ray/data/_internal/plan.py
 python/ray/data/_internal/planner/aggregate.py
 python/ray/data/_internal/planner/checkpoint/plan_read_op.py
 python/ray/data/_internal/planner/checkpoint/plan_write_op.py
@@ -148,7 +140,6 @@ python/ray/data/_internal/row.py
 python/ray/data/_internal/size_estimator.py
 python/ray/data/_internal/split.py
 python/ray/data/_internal/stats.py
-python/ray/data/_internal/streaming_repartition.py
 python/ray/data/_internal/table_block.py
 python/ray/data/_internal/tensor_extensions/arrow.py
 python/ray/data/_internal/tensor_extensions/pandas.py
@@ -161,7 +152,6 @@ python/ray/data/aggregate.py
 python/ray/data/block.py
 python/ray/data/checkpoint/checkpoint_filter.py
 python/ray/data/checkpoint/interfaces.py
-python/ray/data/collate_fn.py
 python/ray/data/context.py
 python/ray/data/dataset.py
 python/ray/data/datasource/datasink.py
@@ -221,9 +211,7 @@ python/ray/data/tests/datasource/test_snowflake.py
 python/ray/data/tests/datasource/test_text.py
 python/ray/data/tests/datasource/test_tf.py
 python/ray/data/tests/datasource/test_tfrecords.py
-python/ray/data/tests/datasource/test_torch.py
 python/ray/data/tests/datasource/test_turbopuffer_datasink.py
-python/ray/data/tests/datasource/test_uc_datasource.py
 python/ray/data/tests/datasource/test_webdataset.py
 python/ray/data/tests/expressions/test_arithmetic.py
 python/ray/data/tests/expressions/test_boolean.py
@@ -260,7 +248,6 @@ python/ray/data/tests/test_autoscaling_coordinator.py
 python/ray/data/tests/test_backpressure_e2e.py
 python/ray/data/tests/test_backpressure_policies.py
 python/ray/data/tests/test_batcher.py
-python/ray/data/tests/test_block_ref_bundler.py
 python/ray/data/tests/test_bundle_queue.py
 python/ray/data/tests/test_checkpoint.py
 python/ray/data/tests/test_common_subexpr_elimination.py
@@ -274,7 +261,6 @@ python/ray/data/tests/test_dataset_limits.py
 python/ray/data/tests/test_dataset_stats.py
 python/ray/data/tests/test_default_cluster_autoscaler_v2.py
 python/ray/data/tests/test_dynamic_block_split.py
-python/ray/data/tests/test_ecosystem_dask.py
 python/ray/data/tests/test_exceptions.py
 python/ray/data/tests/test_execution_optimizer_advanced.py
 python/ray/data/tests/test_execution_optimizer_basic.py
@@ -285,7 +271,6 @@ python/ray/data/tests/test_filter.py
 python/ray/data/tests/test_groupby_e2e.py
 python/ray/data/tests/test_hash_shuffle.py
 python/ray/data/tests/test_hash_shuffle_aggregator.py
-python/ray/data/tests/test_idempotency_optimizer_guards.py
 python/ray/data/tests/test_hash_shuffle_v2.py
 python/ray/data/tests/test_issue_detection.py
 python/ray/data/tests/test_issue_detection_manager.py
@@ -351,7 +336,6 @@ python/ray/data/tests/unit/test_expression_evaluator.py
 python/ray/data/tests/unit/test_expression_visitor.py
 python/ray/data/tests/unit/test_fifo_bundle_queue.py
 python/ray/data/tests/unit/test_object_extension.py
-python/ray/data/tests/unit/test_path_util.py
 python/ray/data/tests/unit/test_ranker.py
 python/ray/data/tests/unit/test_reordering_bundle_queue.py
 python/ray/data/tests/unit/test_resource_manager.py
@@ -362,8 +346,6 @@ python/ray/data/util/data_batch_conversion.py
 python/ray/data/util/expression_utils.py
 python/ray/data/util/torch_utils.py
 python/ray/data/tests/test_gpu_shuffle.py
-python/ray/data/tests/datasource/test_mongo.py
 python/ray/data/tests/datasource/test_kafka.py
 python/ray/data/_internal/gpu_shuffle/rapidsmpf_backend.py
 python/ray/data/_internal/gpu_shuffle/hash_shuffle.py
-python/ray/data/_internal/execution/bundle_queue/base.py
