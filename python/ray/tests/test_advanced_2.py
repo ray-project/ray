@@ -229,6 +229,39 @@ def test_fractional_resources(shutdown_only):
         Foo2._remote([], {}, resources={"TPU": 2.5})
 
 
+def test_fractional_gpu_greater_than_one_is_invalid(shutdown_only):
+    """Fractional unit instance resource(GPU, TPU) demand >= 1 (e.g. 1.5) must be rejected for tasks,
+    actors, and placement groups since it's invalid. CPU fractional demand >= 1 stays valid."""
+    ray.init(num_cpus=4, num_gpus=4)
+
+    # Task: num_gpus=1.5 must raise ValueError
+    @ray.remote(num_gpus=1.5)
+    def gpu_task():
+        pass
+
+    with pytest.raises(ValueError):
+        gpu_task.remote()
+
+    # Actor: num_gpus=1.5 must raise ValueError
+    @ray.remote(num_gpus=1.5)
+    class GpuActor:
+        pass
+
+    with pytest.raises(ValueError):
+        GpuActor.remote()
+
+    # Placement group: {"GPU": 1.5} must raise ValueError
+    with pytest.raises(ValueError):
+        placement_group([{"GPU": 1.5}])
+
+    # CPU fractional demand >= 1 is still valid
+    @ray.remote(num_cpus=1.5)
+    def cpu_task():
+        return True
+
+    assert ray.get(cpu_task.remote())
+
+
 def test_fractional_memory_round_down(shutdown_only):
     @ray.remote
     def test():

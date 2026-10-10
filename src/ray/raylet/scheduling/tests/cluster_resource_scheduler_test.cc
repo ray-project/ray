@@ -932,7 +932,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                                                 clock_);
 
     ResourceRequest resource_request = CreateResourceRequest(
-        {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+        {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -966,7 +966,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                                                 clock_);
 
     ResourceRequest resource_request = CreateResourceRequest(
-        {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+        {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -1000,7 +1000,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 3},
                                {ResourceID::Memory(), 2},
-                               {ResourceID::GPU(), 1.5},
+                               {ResourceID::GPU(), 2},
                                {ResourceID("custom1"), 2}});
 
     NodeResourceInstances old_local_resources =
@@ -1039,7 +1039,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 3},
                                {ResourceID::Memory(), 2},
-                               {ResourceID::GPU(), 1.5},
+                               {ResourceID::GPU(), 2},
                                {ResourceID("custom1"), 10}});
 
     NodeResourceInstances old_local_resources =
@@ -1110,7 +1110,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 2},
                                {ResourceID::Memory(), 2},
-                               {ResourceID::GPU(), 1.5},
+                               {ResourceID::GPU(), 2},
                                {ResourceID("custom1"), 3},
                                {ResourceID("custom2"), 2}});
 
@@ -1331,7 +1331,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
                                               clock_);
 
   ResourceRequest resource_request = CreateResourceRequest(
-      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -1342,7 +1342,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   ASSERT_EQ(success, true);
 
   vector<FixedPoint> gpu_instances = task_allocation->Get(ResourceID::GPU());
-  vector<FixedPoint> expect_gpu_instance{1., 0.5, 0., 0.};
+  vector<FixedPoint> expect_gpu_instance{1., 1., 0., 0.};
 
   ASSERT_EQ(gpu_instances, expect_gpu_instance);
 }
@@ -1359,7 +1359,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
                                               clock_);
 
   ResourceRequest resource_request = CreateResourceRequest(
-      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
