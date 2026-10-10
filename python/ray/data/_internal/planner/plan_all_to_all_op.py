@@ -13,6 +13,7 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _SHUFFLE_MAP_RUNTIME_ENV,
     _concat_reduce,
     _make_hash_partition_fn,
+    _make_round_robin_partition_fn,
     _sort_reduce,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
@@ -154,6 +155,36 @@ def _plan_hash_shuffle_repartition_v2(
         ),
     )
     return reduce_op
+
+
+def _plan_round_robin_repartition_v2(
+    data_context: DataContext,
+    logical_op: Repartition,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    """Build the Map → Reduce DAG for SHUFFLE_V2 round-robin repartition."""
+    num_partitions = (
+        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
+    )
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+
+    map_op = map_cls(
+        input_physical_op,
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_round_robin_partition_fn(num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"{prefix}RoundRobinShuffleMap(partitions={num_partitions})",
+    )
+    return reduce_cls(
+        map_op,
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=_concat_reduce,
+        disallow_block_splitting=True,
+        peak_memory_multiplier=SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+        name=f"{prefix}RoundRobinShuffleReduce(partitions={num_partitions})",
+    )
 
 
 def _plan_hash_shuffle_repartition(
@@ -407,6 +438,10 @@ def plan_all_to_all_op(
                     f"(got {data_context.shuffle_strategy})"
                 )
 
+        elif op.shuffle and data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+            return _plan_round_robin_repartition_v2(
+                data_context, op, input_physical_dag
+            )
         elif op.shuffle:
             debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
                 "debug_limit_shuffle_execution_to_num_blocks", None

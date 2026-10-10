@@ -576,8 +576,13 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
     ds = ds.repartition(2, shuffle=shuffle)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
 
-    # Operator fusion is only supported for shuffle repartition.
-    if shuffle:
+    ctx = DataContext.get_current()
+    if shuffle and ctx.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+        assert "ReadRange->MapBatches(fn)" in ds.stats()
+        prefix = "Disk" if ctx.use_disk_based_hash_shuffle else ""
+        assert f"{prefix}RoundRobinShuffleMap(partitions=2)" in ds.stats()
+        assert f"{prefix}RoundRobinShuffleReduce(partitions=2)" in ds.stats()
+    elif shuffle:
         assert "ReadRange->MapBatches(fn)->Repartition" in ds.stats()
     else:
         assert "ReadRange->MapBatches(fn)->Repartition" not in ds.stats()
@@ -586,18 +591,29 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
 
+@pytest.mark.parametrize("use_disk", [False, True])
+@pytest.mark.parametrize("keys", [None, ["id"]])
 def test_fuse_map_into_shuffle_reduce(
-    ray_start_regular_shared_2_cpus, restore_data_context
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk, keys
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
 
-    ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
+    ds = (
+        ray.data.range(100)
+        .repartition(4, shuffle=True, keys=keys)
+        .map_batches(lambda b: b)
+    )
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
-    assert dag.name == (
-        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
+    prefix = "Disk" if use_disk else ""
+    reduce_name = (
+        "HashShuffleReduce(keys=('id',), partitions=4)"
+        if keys
+        else "RoundRobinShuffleReduce(partitions=4)"
     )
+    assert dag.name == f"{prefix}{reduce_name}->MapBatches(<lambda>)"
     assert dag._fused_output_map_transformer is not None
 
     assert sorted(extract_values("id", ds.take_all())) == list(range(100))
