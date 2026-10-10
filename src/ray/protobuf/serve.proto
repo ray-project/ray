@@ -255,6 +255,10 @@ message DeploymentConfig {
   // older controller during a rolling upgrade) falls back to the Python-side
   // defaults.
   BackpressureConfig backpressure_config = 24;
+
+  // Extra replicas allowed during a rolling restart, as a percentage of the
+  // target count. Defaults to 0, which stops old replicas before starting new ones.
+  int32 max_surge_percent = 25;
 }
 
 // Configuration of the HTTP response returned when a request is rejected due
