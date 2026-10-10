@@ -17,14 +17,18 @@ import pytest
 import ray
 from ray.data._internal.cluster_autoscaler import (
     CLUSTER_AUTOSCALER_ENV_KEY,
+    DefaultClusterAutoscalerV2,
     RateBasedClusterAutoscaler,
     rate_based_cluster_autoscaler,
+)
+from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
+    _NodeResourceSpec,
 )
 from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
     RollingLogicalUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data._internal.util import MiB
+from ray.data._internal.util import GiB, MiB
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -221,6 +225,150 @@ def test_pads_request_with_cpu_bundles_when_object_store_is_full(
     assert any(
         count > 0 for count in padded
     ), f"Padding ran but added no CPU bundles: {padded}"
+
+
+# Ray Data shouldn't scale up while blocked on a slow consumer. These tests also
+# run with V2, which uses the same utilization gauge.
+@pytest.fixture(params=["V2", "RATE_BASED"])
+def scale_up_requests(request, monkeypatch):
+    """Use the given autoscaler, make it decide fast, and record scale-up times."""
+    monkeypatch.setenv(CLUSTER_AUTOSCALER_ENV_KEY, request.param)
+    requests = []
+
+    if request.param == "V2":
+        orig_init = DefaultClusterAutoscalerV2.__init__
+        orig_log = DefaultClusterAutoscalerV2._log_resource_request
+
+        def fast_init(self, *args, **kwargs):
+            kwargs["min_gap_between_autoscaling_requests_s"] = 0.2
+            kwargs["cluster_util_avg_window_s"] = 1
+            # A local cluster has no worker node shapes to request more of.
+            node_spec = _NodeResourceSpec.of(cpu=1, mem=GiB)
+            kwargs["get_node_counts"] = lambda: {node_spec: 1}
+            orig_init(self, *args, **kwargs)
+
+        # V2 only logs a request that adds nodes.
+        def log(self, *args):
+            requests.append(time.time())
+            orig_log(self, *args)
+
+        monkeypatch.setattr(DefaultClusterAutoscalerV2, "__init__", fast_init)
+        monkeypatch.setattr(DefaultClusterAutoscalerV2, "_log_resource_request", log)
+    else:
+        orig_init = RateBasedClusterAutoscaler.__init__
+        orig_send = RateBasedClusterAutoscaler._send_resource_request
+
+        def fast_gauge(resource_manager, **kwargs):
+            kwargs["cluster_util_avg_window_s"] = 1
+            return RollingLogicalUtilizationGauge(resource_manager, **kwargs)
+
+        def fast_init(self, *args, **kwargs):
+            kwargs["min_gap_between_autoscaling_requests_s"] = 0.2
+            orig_init(self, *args, **kwargs)
+
+        # Rate-based sends `None` when utilization is too low to scale up.
+        def send(self, resource_request):
+            if resource_request:
+                requests.append(time.time())
+            return orig_send(self, resource_request)
+
+        monkeypatch.setattr(
+            rate_based_cluster_autoscaler, "RollingLogicalUtilizationGauge", fast_gauge
+        )
+        monkeypatch.setattr(RateBasedClusterAutoscaler, "__init__", fast_init)
+        monkeypatch.setattr(RateBasedClusterAutoscaler, "_send_resource_request", send)
+
+    return requests
+
+
+def _scale_up_stops(ds, scale_up_requests, quiet_s=3, timeout_s=30):
+    """Read one batch from `ds` and pause. Return whether scale-up requests stop
+    for `quiet_s` seconds within `timeout_s` seconds. Requests while the pipeline
+    fills up are fine."""
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+    next(it)
+    start = time.time()
+    while time.time() - start < timeout_s:
+        if time.time() - max([start, *scale_up_requests]) >= quiet_s:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def test_no_scale_up_while_consumer_is_slow(
+    ray_start_10_cpus_shared, restore_data_context, scale_up_requests
+):
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits = ExecutionResources.for_limits(
+        object_store_memory=20 * MiB
+    )
+
+    ds = ray.data.range(200, override_num_blocks=40).map_batches(
+        lambda batch: {"data": [b"x" * (2 * MiB) for _ in batch["id"]]},
+        batch_size=1,
+    )
+    # The consumer stays paused while the tasks wait in output backpressure.
+    assert _scale_up_stops(ds, scale_up_requests)
+
+
+def test_no_scale_up_while_consumer_is_slow_two_ops(
+    ray_start_10_cpus_shared, restore_data_context, scale_up_requests
+):
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits = ExecutionResources.for_limits(
+        object_store_memory=20 * MiB
+    )
+
+    # One task at a time, so tasks finish and both ops sit idle with queued outputs.
+    ds = (
+        ray.data.from_items(list(range(200)), override_num_blocks=200).map_batches(
+            lambda batch: {"data": [b"x" * MiB for _ in batch["item"]]},
+            num_cpus=0.5,
+            concurrency=1,
+        )
+        # A different `num_cpus` keeps the two maps from being fused.
+        .map_batches(lambda batch: batch, num_cpus=1, concurrency=1)
+    )
+    assert _scale_up_stops(ds, scale_up_requests)
+
+
+def test_no_scale_up_while_consumer_is_slow_after_shuffle(
+    ray_start_10_cpus_shared, restore_data_context, scale_up_requests
+):
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits = ExecutionResources.for_limits(
+        object_store_memory=20 * MiB
+    )
+
+    # The finished shuffle's outputs wait in front of a map blocked on the consumer.
+    ds = (
+        ray.data.range(16, override_num_blocks=16)
+        .map_batches(
+            lambda batch: {"data": [b"x" * (2 * MiB) for _ in batch["id"]]},
+            batch_size=1,
+            num_cpus=0.5,
+        )
+        .random_shuffle()
+        .map_batches(lambda batch: batch, num_cpus=1, concurrency=1)
+    )
+    assert _scale_up_stops(ds, scale_up_requests)
+
+
+def test_scale_up_when_compute_bound(
+    ray_start_10_cpus_shared, restore_data_context, scale_up_requests
+):
+    def slow_udf(batch):
+        time.sleep(1)
+        return batch
+
+    # 40 tasks keep the 10 CPUs busy for about 4 seconds.
+    ds = ray.data.range(40, override_num_blocks=40).map_batches(
+        slow_udf, batch_size=None, num_cpus=1
+    )
+    for _ in ds.iter_batches(batch_size=None):
+        pass
+
+    assert scale_up_requests
 
 
 if __name__ == "__main__":

@@ -277,6 +277,39 @@ class ResourceManager:
         """Return the global pending resource usage at the current time."""
         return self._global_pending_usage
 
+    def get_global_usage_excluding_consumer_blocked_ops(self) -> ExecutionResources:
+        """Return the global usage, excluding ops blocked on a slow consumer.
+
+        Walks back from the last op and stops at the first op that isn't blocked.
+        """
+        usage = self.get_global_usage()
+        for op in reversed(self._topology):
+            # An ineligible op running tasks isn't blocked.
+            if not self.is_op_eligible(op) and op.num_active_tasks() == 0:
+                continue
+            if not self._is_blocked_on_downstream(op):
+                return usage
+            usage = usage.subtract(
+                self.get_op_usage(op, include_ineligible_downstream=True)
+            )
+        # Every op is blocked. The rest only hold outputs.
+        return ExecutionResources.zero()
+
+    def _is_blocked_on_downstream(self, op: PhysicalOperator) -> bool:
+        """Whether the op is waiting for its outputs to be read downstream."""
+        if op.in_task_output_backpressure:
+            return True
+        if op.num_active_tasks() > 0:
+            return False
+        # An idle op short on CPU, GPU, or memory for its next task needs more nodes.
+        budget = self.get_budget(op)
+        if budget is not None and not op.incremental_resource_usage().satisfies_limit(
+            budget, ignore_object_store_memory=True
+        ):
+            return False
+        # Otherwise, if it can't submit tasks, it's waiting on object store memory.
+        return op.in_task_submission_backpressure
+
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.
 
