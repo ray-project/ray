@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import click
 import pytest
+import requests
 import yaml
 from click.testing import CliRunner
 
@@ -499,6 +500,17 @@ def test_state_api_client_periodic_warning(
         )
     for expected_line in expected_lines:
         expected_line in lines
+
+
+def test_delay_endpoint_disabled_by_default(shutdown_only, monkeypatch):
+    monkeypatch.delenv("RAY_DASHBOARD_MODULE_TEST", raising=False)
+    ctx = ray.init()
+    api_server_url = f"http://{ctx.address_info['webui_url']}"
+    # Make sure the state module is serving, so the 404 below is caused by the
+    # endpoint not being registered rather than the module not being ready.
+    assert requests.get(f"{api_server_url}/api/v0/nodes").status_code == 200
+    resp = requests.get(f"{api_server_url}/api/v0/delay/0")
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
