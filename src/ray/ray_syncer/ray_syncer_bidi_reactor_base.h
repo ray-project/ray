@@ -145,8 +145,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   ///
   /// \param message_batch The message batch received.
   void ReceiveUpdate(std::shared_ptr<RaySyncMessageBatch> message_batch) {
-    RAY_CHECK(message_batch->messages_size() > 0);
-
     RAY_LOG(DEBUG) << "Receive message batch with messages_size="
                    << message_batch->messages_size();
 
@@ -268,8 +266,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
             return;
           }
 
+          // Real peers never send an empty batch, so it doesn't count as liveness.
+          if (msg_batch->messages().empty()) {
+            RAY_LOG_EVERY_MS(WARNING, 1000)
+                << "Dropping empty sync message batch from node "
+                << NodeID::FromBinary(GetRemoteNodeID());
+            StartPull();
+            return;
+          }
+
           // Successful rpc completion callback.
-          RAY_CHECK(!msg_batch->messages().empty());
           if (on_rpc_completion_) {
             on_rpc_completion_(NodeID::FromBinary(remote_node_id_));
           }

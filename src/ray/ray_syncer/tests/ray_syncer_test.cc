@@ -401,6 +401,19 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseDropsMalformedMessages) {
       sync_reactor.node_versions_[from_node_id.Binary()];
   ASSERT_EQ(4, versions[MessageType::RESOURCE_VIEW]);
   ASSERT_EQ(-1, versions[MessageType::COMMANDS]);
+
+  // An empty batch is skipped without counting as liveness, and reading continues.
+  sync_reactor.ReceiveUpdate(std::make_shared<RaySyncMessageBatch>());
+  int completions = 0;
+  sync_reactor.SetRpcCompletionCallbackForOnce(
+      [&completions](const NodeID &) { ++completions; });
+  sync_reactor.StartPull();
+  ASSERT_EQ(1, sync_reactor.read_count);
+  sync_reactor.OnReadDone(/*ok=*/true);
+  EXPECT_TRUE(
+      WaitForCondition([&sync_reactor]() { return sync_reactor.read_count == 2; }, 1000));
+  ASSERT_EQ(0, completions);
+  ASSERT_EQ(1, processed);
 }
 
 struct SyncerServerTest {
