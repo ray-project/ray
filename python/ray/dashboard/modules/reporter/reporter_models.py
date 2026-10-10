@@ -40,6 +40,21 @@ if PYDANTIC_INSTALLED:
         powerMw: Optional[int] = None  # current power draw in milliwatts
         temperatureC: Optional[int] = None  # temperature in Celsius
 
+    class NpuUtilizationInfo(BaseModel):
+        """Ascend NPU utilization information for a single device."""
+
+        index: int  # logical index used by ASCEND_RT_VISIBLE_DEVICES
+        cardId: int
+        deviceId: int
+        physicalId: Optional[int] = None
+        name: str
+        utilizationAicore: Optional[int] = None  # percentage
+        memoryUsed: Optional[int] = None  # bytes
+        memoryTotal: Optional[int] = None  # bytes
+        healthStatus: Optional[int] = None  # raw DCMI status; zero is healthy
+        powerMw: Optional[int] = None
+        temperatureC: Optional[int] = None
+
     class TpuUtilizationInfo(BaseModel):
         """
         TPU utilization information for a single TPU device.
@@ -183,6 +198,7 @@ if PYDANTIC_INSTALLED:
         diskIo: DiskIOStats  # (readBytes, writeBytes, readCount, writeCount)
         diskIoSpeed: DiskIOSpeed  # (readSpeed, writeSpeed, readIops, writeIops)
         gpus: List[GpuUtilizationInfo]
+        npus: List[NpuUtilizationInfo]
         tpus: List[TpuUtilizationInfo]
         network: NetworkStats  # (sent, received) in bytes
         networkSpeed: NetworkSpeed  # (sendSpeed, receiveSpeed) in bytes/sec
