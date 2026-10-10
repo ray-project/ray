@@ -11,6 +11,9 @@ from pyarrow import orc
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+    NonSamplingFileIndexer,
+)
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
@@ -18,6 +21,7 @@ from ray.data._internal.datasource_v2.common.synthesized_columns import PathColu
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
@@ -392,13 +396,85 @@ def test_orc_partition_filters_support_listing_and_manifest_pruning():
     scanner = scanner.prune_partitions(partition_predicate)
     pushed, residual = scanner.push_filters(predicate)
     assert pushed.predicate is not None
-    assert pushed.predicate.structurally_equals(predicate)
+    assert pushed.predicate.structurally_equals(partition_predicate & predicate)
     assert residual is None
     assert scanner.partition_columns == {"year"}
     pruner = derive_list_files_pushdown(pushed).partition_pruner
     assert pruner is not None
     assert pruner.should_include("year=2024/data.orc")
     assert not pruner.should_include("year=2023/data.orc")
+    assert pruner.should_include("root.orc")
+
+
+@pytest.mark.parametrize("root_has_year", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "predicate,with_root_year,without_root_year",
+    [
+        (col("year") == "2024", [3], [3]),
+        (col("year") == "from-file", [1], []),
+        (col("year").is_null(), [], [1]),
+    ],
+)
+def test_orc_planned_partition_filters_preserve_root_rows(
+    tmp_path, root_has_year, reverse, predicate, with_root_year, without_root_year
+):
+    root = tmp_path / "root.orc"
+    directory = tmp_path / "year=2024"
+    directory.mkdir()
+    partitioned = directory / "data.orc"
+    data: dict[str, list[int] | list[str]] = {"id": [1]}
+    if root_has_year:
+        data["year"] = ["from-file"]
+    _write_orc(root, pa.table(data))
+    _write_orc(partitioned, pa.table({"id": [3]}))
+    paths = [partitioned, root] if reverse else [root, partitioned]
+    schema = pa.schema([("id", pa.int64()), ("year", pa.string())])
+    scanner = OrcScanner(
+        schema=schema,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+    )
+    listing = ListFiles(
+        paths=[str(tmp_path)],
+        source_paths=[str(tmp_path)],
+        file_indexer=NonSamplingFileIndexer(ignore_missing_paths=False),
+        filesystem=None,
+    )
+    planned = ReadFiles(
+        datasource_name="ORC",
+        scanner=scanner,
+        schema=schema,
+        parallelism=-1,
+        input_dependencies=[listing],
+    ).apply_predicate(predicate)
+    assert isinstance(planned, ReadFiles)
+    scanner = planned.scanner
+    assert isinstance(scanner, OrcScanner)
+    assert scanner.predicate is not None
+    assert scanner.predicate.structurally_equals(predicate)
+    pruner = derive_list_files_pushdown(scanner).partition_pruner
+    assert pruner is not None
+    kept_paths = [path for path in paths if pruner.should_include(str(path))]
+    assert root in kept_paths
+    manifest = scanner.prune_input_split(_manifest(*paths))
+    assert manifest.paths.tolist() == [str(path) for path in kept_paths]
+    scanner = scanner.prune_columns(["id"]).push_limit(2)
+    batches = list(scanner.create_reader().read(manifest))
+    ids = sorted(row["id"] for batch in batches for row in batch.to_pylist())
+    assert ids == (with_root_year if root_has_year else without_root_year)
+
+
+def test_orc_partition_pruner_preserves_missing_predicate_keys():
+    scanner = OrcScanner(
+        schema=pa.schema([("year", pa.string()), ("month", pa.string())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    ).prune_partitions((col("year") == "2024") & (col("month") == "01"))
+    pruner = scanner.pushed_partition_pruner()
+    assert pruner is not None
+    assert pruner.should_include("year=2024/data.orc")
+    assert pruner.should_include("root.orc")
+    assert pruner.should_include("year=2024/month=01/data.orc")
+    assert not pruner.should_include("year=2024/month=02/data.orc")
 
 
 @pytest.fixture

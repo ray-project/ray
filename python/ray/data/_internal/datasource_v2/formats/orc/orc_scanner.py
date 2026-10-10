@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional, Tuple
 
 import pyarrow as pa
@@ -6,6 +6,9 @@ from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
     ArrowFileScanner,
+)
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
@@ -16,11 +19,31 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     combine_predicates,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
+from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
+
+
+class _OrcPartitionPredicatePruner(PartitionPredicatePruner):
+    """Keep paths whose missing keys require evaluation by the ORC reader."""
+
+    def __init__(self, partitioning: Partitioning, predicate: Expr):
+        super().__init__(partitioning, predicate)
+        self._predicate_columns = set(get_column_references(predicate))
+
+    @override
+    def should_include(self, path: str) -> bool:
+        if not self._predicate_columns.issubset(self._parser(path)):
+            return True
+        return super().should_include(path)
 
 
 @DeveloperAPI
@@ -29,6 +52,37 @@ class OrcScanner(ArrowFileScanner):
     """Configure a file-level ORC scan through PyArrow Dataset."""
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
+
+    @override
+    def prune_partitions(self, predicate: Expr) -> "OrcScanner":
+        """Prune known path values and retain the filter for unknown paths."""
+        # A root file may store the column or receive a logical null. Path
+        # pruning cannot decide its rows, so the reader must also apply the
+        # predicate, including when projection removes the filtered column.
+        return replace(
+            self,
+            partition_predicate=combine_predicates(self.partition_predicate, predicate),
+            predicate=combine_predicates(self.predicate, predicate),
+        )
+
+    @override
+    def pushed_partition_pruner(self) -> Optional[FilePruner]:
+        if self.partitioning is None or self.partition_predicate is None:
+            return None
+        return _OrcPartitionPredicatePruner(self.partitioning, self.partition_predicate)
+
+    @override
+    def prune_input_split(self, input_split: FileManifest) -> FileManifest:
+        """Use the same conservative path pruning as upstream file listing."""
+        pruner = self.pushed_partition_pruner()
+        if pruner is None:
+            return input_split
+        keep = [pruner.should_include(path) for path in input_split.paths]
+        if all(keep):
+            return input_split
+        return FileManifest(
+            input_split.as_block().filter(pa.array(keep, type=pa.bool_()))
+        )
 
     def read_schema(self) -> pa.Schema:
         """Return the projected schema including synthesized columns."""

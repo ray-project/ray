@@ -485,9 +485,57 @@ def test_read_orc_partition_conflict_follows_reader_version(
         with pytest.raises(expected_exceptions, match="Partition column year"):
             filtered.take_all()
     else:
-        # With unresolved keys the root's physical value remains a data value;
-        # with explicit keys the shared path pruner excludes unpartitioned files.
-        assert filtered.take_all() == ([{"id": 1}] if field_names is None else [])
+        # Declaring partition keys must not change a root file's stored value.
+        assert filtered.take_all() == [{"id": 1}]
+
+
+@pytest.mark.parametrize("field_names", [None, ["year"]])
+@pytest.mark.parametrize("root_has_year", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize(
+    "predicate,with_root_year,without_root_year",
+    [
+        (col("year") == "2024", [3], [3]),
+        (col("year") == "from-file", [1], []),
+        (col("year").is_null(), [], [1]),
+        (~(col("year") == "2024"), [1], []),
+        ((col("year") == "2024") | (col("id") == 1), [1, 3], [1, 3]),
+        ((col("year").is_null()) & (col("id") > 0), [], [1]),
+    ],
+)
+def test_read_orc_v2_partition_filters_preserve_root_rows(
+    ray_start_regular_shared,
+    tmp_path,
+    monkeypatch,
+    field_names,
+    root_has_year,
+    reverse,
+    predicate,
+    with_root_year,
+    without_root_year,
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    root = tmp_path / "root.orc"
+    directory = tmp_path / "year=2024"
+    directory.mkdir()
+    partitioned = directory / "data.orc"
+    data: dict[str, list[int] | list[str]] = {"id": [1]}
+    if root_has_year:
+        data["year"] = ["from-file"]
+    _write_orc(str(root), pa.table(data))
+    _write_orc(str(partitioned), pa.table({"id": [3]}))
+    paths = [str(partitioned), str(root)] if reverse else [str(root), str(partitioned)]
+    ds = ray.data.read_orc(
+        paths,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=field_names),
+        override_num_blocks=1,
+    )
+    rows = ds.filter(expr=predicate).select_columns(["id"]).limit(2).take_all()
+    expected = with_root_year if root_has_year else without_root_year
+    assert sorted(row["id"] for row in rows) == expected
 
 
 @pytest.mark.parametrize("operation", ["projection", "partition_filter", "data_filter"])
@@ -559,9 +607,9 @@ def test_read_orc_v2_partitioned_scan_optimizations(
             def traced_iter(fragment, scanner_kwargs):
                 yield from original_iter(Fragment(fragment), scanner_kwargs)
 
-            def traced_read(manifest):
-                record("manifest", paths=manifest.paths.tolist())
-                yield from original_read(manifest)
+            def traced_read(input_split):
+                record("manifest", paths=input_split.paths.tolist())
+                yield from original_read(input_split)
 
             reader._iter_fragment_tables = traced_iter
             reader.read = traced_read
