@@ -524,45 +524,47 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode._hanging_rewards_begin["agent_5"], 1.0)
 
     def test_add_env_step_new_agent_joining_as_last_agent_terminates(self):
-        # Regression test: A new agent's very first observation arriving on the
-        # same env step that terminates all previously known agents must NOT
-        # cause the episode to be declared terminated, as long as the env
-        # itself reports `terminateds["__all__"] = False` and the new agent is
-        # not itself terminated/truncated on this step.
-        episode = MultiAgentEpisode()
-        episode.add_env_reset(observations={"agent_1": 0})
-
+        # Reproduction from #66781: "a1" sends its first observation on the step
+        # "a0" terminates, and the env reports `__all__=False`. The episode must
+        # stay open and register "a1".
+        episode = MultiAgentEpisode(agent_module_ids={"a0": "p", "a1": "p"})
+        episode.add_env_reset(
+            observations={"a0": np.zeros(1, np.float32)}, infos={"a0": {}}
+        )
         episode.add_env_step(
-            observations={"agent_2": 0},
-            actions={},
-            rewards={},
-            infos={"agent_2": {}},
-            terminateds={"agent_1": True, "__all__": False},
+            observations={
+                "a0": np.zeros(1, np.float32),
+                "a1": np.ones(1, np.float32),
+            },
+            actions={"a0": 0},
+            rewards={"a0": 1.0, "a1": 0.0},
+            infos={"a0": {}, "a1": {}},
+            terminateds={"a0": True, "__all__": False},
             truncateds={"__all__": False},
         )
-        # The episode must still be considered alive: "agent_2" just joined and
-        # the env did not report `__all__` terminated.
         self.assertFalse(episode.is_terminated)
-        self.assertFalse(episode.is_done)
-        self.assertEqual(episode.agent_ids, {"agent_1", "agent_2"})
+        self.assertEqual(episode.agent_ids, {"a0", "a1"})
+        self.assertFalse(episode.get_terminateds()["__all__"])
 
-        # Sanity check: If the newly joining agent is ALSO already
-        # terminated/truncated on its very first observation (so it never
-        # really joins), and it was the only other agent, the episode should
-        # still be correctly declared terminated.
-        episode2 = MultiAgentEpisode()
-        episode2.add_env_reset(observations={"agent_1": 0})
-
-        episode2.add_env_step(
-            observations={"agent_2": 0},
-            actions={},
-            rewards={},
-            infos={"agent_2": {}},
-            terminateds={"agent_1": True, "agent_2": True, "__all__": True},
+        # A newcomer that is already done on its first observation does not keep
+        # the episode open: every agent is done, so Case 2 still terminates it
+        # even though the env reports `__all__=False`.
+        episode = MultiAgentEpisode(agent_module_ids={"a0": "p", "a1": "p"})
+        episode.add_env_reset(
+            observations={"a0": np.zeros(1, np.float32)}, infos={"a0": {}}
+        )
+        episode.add_env_step(
+            observations={
+                "a0": np.zeros(1, np.float32),
+                "a1": np.ones(1, np.float32),
+            },
+            actions={"a0": 0},
+            rewards={"a0": 1.0, "a1": 0.0},
+            infos={"a0": {}, "a1": {}},
+            terminateds={"a0": True, "a1": True, "__all__": False},
             truncateds={"__all__": False},
         )
-        self.assertTrue(episode2.is_terminated)
-        self.assertTrue(episode2.is_done)
+        self.assertTrue(episode.is_terminated)
 
     def test_get_observations(self):
         # Generate simple records for a multi agent environment.
