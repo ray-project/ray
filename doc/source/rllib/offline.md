@@ -769,8 +769,8 @@ config = (
                 Columns.NEXT_OBS,
                 Columns.REWARDS,
                 Columns.ACTIONS,
-                Columns.TERMINATED,
-                Columns.TRUNCATED,
+                Columns.TERMINATEDS,
+                Columns.TRUNCATEDS,
             ],
         },
     )
