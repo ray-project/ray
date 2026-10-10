@@ -187,7 +187,7 @@ TensorFlow Keras automatically aggregates metrics from all workers. For more con
 
 ## Save and load checkpoints
 
-Save {class}`checkpoints <ray.train.Checkpoint>` by calling `train.report(metrics, checkpoint=Checkpoint(...))` in the training function. This call saves the checkpoint state from the distributed workers on the trainer, where you ran your Python script.
+Save {class}`checkpoints <ray.train.Checkpoint>` by calling `train.report(metrics, checkpoint=Checkpoint(...))` in the training function. This call copies the checkpoint files from the worker to the persistent storage location that you configure with `RunConfig(storage_path)`. For details, see {ref}`persistent-storage-guide`.
 
 Access the latest saved checkpoint through the `checkpoint` attribute of the {py:class}`~ray.train.Result`, and the best saved checkpoints through the `best_checkpoints` attribute.
 

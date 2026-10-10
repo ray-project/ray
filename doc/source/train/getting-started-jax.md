@@ -62,7 +62,7 @@ tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", 
 
 ### GPU scaling configuration
 
-For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. By default, this configuration requests one GPU per worker. Key fields include the following:
+For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. When you set `use_gpu=True` without `resources_per_worker`, Ray Train requests one GPU per worker. Key fields include the following:
 
 * {class}`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
 * {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker uses a GPU.
