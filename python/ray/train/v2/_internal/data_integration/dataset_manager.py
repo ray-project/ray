@@ -109,11 +109,16 @@ class DatasetManager:
                 iterator = iterators[world_rank]
 
                 # Cache the split coordinators for resource cleanup.
+                from ray.data._internal.iterator.push_based_split_iterator import (
+                    PushBasedDataIterator,
+                )
                 from ray.data._internal.iterator.stream_split_iterator import (
                     StreamSplitDataIterator,
                 )
 
-                if isinstance(iterator, StreamSplitDataIterator):
+                if isinstance(
+                    iterator, (StreamSplitDataIterator, PushBasedDataIterator)
+                ):
                     self._coordinator_actors.append(iterator._coord_actor)
 
                 # Cache the dataset iterators for future use.

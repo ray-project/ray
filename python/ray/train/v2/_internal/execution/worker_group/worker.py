@@ -11,6 +11,9 @@ import ray
 import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
+from ray.data._internal.iterator.push_based_split_iterator import (
+    PushSplitReceiverMixin,
+)
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
@@ -129,7 +132,7 @@ class Worker:
         )
 
 
-class RayTrainWorker:
+class RayTrainWorker(PushSplitReceiverMixin):
     def __init__(self):
         self._callbacks: List[WorkerCallback] = []
 
