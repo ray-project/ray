@@ -22,6 +22,7 @@ from ray.data.checkpoint.util import build_pending_checkpoint_trie
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -166,8 +167,19 @@ def convert_and_sort_checkpointed_ids(
     return checkpointed_ids_ndarray, checkpoint_size
 
 
+@DeveloperAPI
 class CheckpointManager(abc.ABC):
-    """Manage checkpoint data."""
+    """Manage checkpoint data.
+
+    Subclasses passed as ``CheckpointConfig.checkpoint_manager_cls`` must have
+    a constructor accepting ``(checkpoint_config=..., data_context=...)``
+    keyword arguments, and their ``load_checkpoint`` must return an
+    ``(ObjectRef, int)`` tuple: the ref is passed opaquely to the configured
+    ``CheckpointFilter`` class's constructor, and the int (size in bytes) is
+    used for the per-actor memory reservation of the filter actors. Returning
+    ``(None, 0)`` means there is no checkpoint data to restore from, and the
+    checkpoint filter operator is not added to the plan.
+    """
 
     def __init__(
         self,
@@ -244,14 +256,25 @@ class CheckpointManager(abc.ABC):
                 allow_not_found=True,
             )
         )
-        if not any(f.type == FileType.File for f in entries):
+        committed_checkpoint_paths = [
+            entry.path
+            for entry in entries
+            if entry.type == FileType.File
+            and entry.path.endswith(".parquet")
+            and not entry.path.endswith(f"{PENDING_CHECKPOINT_SUFFIX}.parquet")
+        ]
+        if not committed_checkpoint_paths:
             return None, 0
 
-        # Load the checkpoint data
+        # Read explicit committed files so pending checkpoints can't filter rows
+        # when a sink doesn't provide a data-file directory for cleanup.
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
-            self.checkpoint_path,
+            committed_checkpoint_paths,
             filesystem=self.filesystem,
             partition_filter=self.checkpoint_path_partition_filter,
+            # Checkpoint files already hold the saved IDs; don't stamp a
+            # generated ID column onto them as if they were input data.
+            _add_generated_id_column=False,
         )
         checkpoint_ds.set_name("checkpoint_dataset")
 
@@ -365,18 +388,34 @@ class CheckpointManager(abc.ABC):
         pass
 
 
+@DeveloperAPI
 class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
 
 
+@DeveloperAPI
 class CheckpointFilter(abc.ABC):
     """Abstract class which defines the interface for filtering checkpointed rows
     based on varying backends.
+
+    Subclasses passed as ``CheckpointConfig.checkpoint_filter_cls`` are
+    constructed with ``(checkpoint_config, checkpoint_ref)``, where
+    ``checkpoint_ref`` is the ``ObjectRef`` returned by the checkpoint
+    manager's ``load_checkpoint`` (by default, a sorted NumPy array of
+    checkpointed IDs). Subclasses that define their own constructor must
+    accept the same two arguments. The class is instantiated once per
+    checkpoint filter actor on a remote worker, so it must be serializable
+    (or importable) there.
     """
 
-    def __init__(self, config: CheckpointConfig):
+    def __init__(
+        self,
+        config: CheckpointConfig,
+        checkpoint_ref: Optional[ObjectRef] = None,
+    ):
         self.ckpt_config = config
         self.id_column = self.ckpt_config.id_column
+        self.checkpoint_ref = checkpoint_ref
 
     @abstractmethod
     def filter_rows_for_block(self, block: Block) -> Block:
@@ -391,6 +430,7 @@ class CheckpointFilter(abc.ABC):
         raise NotImplementedError
 
 
+@DeveloperAPI
 class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends.
 
@@ -403,7 +443,7 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         checkpoint_config: CheckpointConfig,
         checkpoint_ref: ObjectRef[np.ndarray],
     ):
-        super().__init__(checkpoint_config)
+        super().__init__(checkpoint_config, checkpoint_ref)
         self.checkpointed_ids = ray.get(checkpoint_ref)
         assert isinstance(self.checkpointed_ids, np.ndarray)
 

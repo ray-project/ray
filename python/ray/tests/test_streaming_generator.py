@@ -97,6 +97,37 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 generator._next_sync(timeout_s=0)
 
 
+def test_streaming_object_ref_generator_async_timeout_cleans_up_waiter(
+    mocked_worker,
+):
+    """A timed-out async poll must not leave an unresolved waiter task behind."""
+
+    async def run_test():
+        core_worker = mocked_worker.core_worker
+        generator_ref = ray.ObjectRef.from_random()
+        unresolved = asyncio.Event()
+
+        class UnresolvedRef:
+            def __await__(self):
+                return unresolved.wait().__await__()
+
+        core_worker.peek_object_ref_stream.return_value = (UnresolvedRef(), False)
+        generator = ObjectRefGenerator(generator_ref, mocked_worker)
+        baseline_tasks = asyncio.all_tasks()
+
+        for _ in range(3):
+            assert (await generator._next_async(timeout_s=0)).is_nil()
+
+        leaked_tasks = [
+            task
+            for task in asyncio.all_tasks()
+            if task not in baseline_tasks and not task.done()
+        ]
+        assert leaked_tasks == []
+
+    asyncio.run(run_test())
+
+
 def test_streaming_object_ref_generator_consume_bulk_unit(mocked_worker):
     c = mocked_worker.core_worker
     generator_ref = ray.ObjectRef.from_random()

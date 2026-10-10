@@ -59,11 +59,13 @@ extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
     "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
+    # Stops MyST {eval-rst} blocks from pickling the build environment into
+    # doctrees (see _ext/myst_eval_rst_doctree.py).
+    "myst_eval_rst_doctree",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_click.ext",
-    "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
     "sphinx_sitemap",
@@ -72,7 +74,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinxcontrib.autodoc_pydantic",
-    "sphinxcontrib.redoc",
+    "sphinxcontrib.openapi",
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
@@ -126,21 +128,18 @@ llms_txt_exclude = [
     "_includes/*",
     "_templates/*",
     "templates/*",
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
-    "ray-core/api/doc/*",
-    "ray-core/compiled-graph/doc/*",
+    "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/*",
+    "rllib/api/doc/*",
+    "rllib/api/env/doc/*",
+    "ray-more-libs/api/doc/*",
     # Deprecated pages: surfacing a superseded API/guide to an agent is worse
     # than omitting it — the agent may follow the old API. (DOC-908)
     "train/api/deprecated",
     "train/deprecated-user-guides/*",
-    # Retired Ray AIR namespace: orphaned, no longer in the site nav.
-    "ray-air/deployment",
     # Include-only fragments spliced into other pages (no standalone title).
     "train/common/*",
     "ray-contribute/involvement",
@@ -181,16 +180,39 @@ llms_txt_exclude += [
     "data/api/loading_data",
     "data/api/preprocessor",
     "data/api/saving_data",
-    "ray-core/api/cli",
-    "ray-core/api/core",
-    "ray-core/api/exceptions",
-    "ray-core/api/index",
-    "ray-core/api/runtime-env",
-    "ray-core/api/scheduling",
-    "ray-core/api/utility",
-    "ray-core/compiled-graph/compiled-graph-api",
-    "train/examples/pytorch/torch_regression_example",
-    "train/examples/tf/tensorflow_regression_example",
+    "core/api/cli",
+    "core/api/core",
+    "core/api/exceptions",
+    "core/api/index",
+    "core/api/runtime-env",
+    "core/api/scheduling",
+    "core/api/utility",
+    "core/api/compiled-graph",
+    "serve/api/application",
+    "serve/api/config",
+    "serve/api/context",
+    "serve/api/exceptions",
+    "serve/api/handle",
+    "serve/api/llm",
+    "serve/api/observability",
+    "serve/api/request-router",
+    "serve/api/running",
+    "serve/api/schema",
+    "train/api/config",
+    "train/api/developer-api",
+    "train/api/exceptions",
+    "train/api/jax",
+    "train/api/lightgbm",
+    "train/api/lightning",
+    "train/api/result",
+    "train/api/tensorflow",
+    "train/api/torch",
+    "train/api/train-loop",
+    "train/api/transformers",
+    "train/api/tune-integration",
+    "train/api/xgboost",
+    "train/examples/pytorch/torch-regression-example",
+    "train/examples/tf/tensorflow-regression-example",
     "tune/api/api",
     "tune/api/execution",
     "tune/api/integration",
@@ -216,10 +238,6 @@ import template_collections
 # so it doesn't cause a build failure under -W (warnings-as-errors).
 suppress_warnings = [
     "config.cache",
-    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
-    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
-    # the existing (identical) file. Benign and not fixable upstream.
-    "misc.copy_overwrite",
 ]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
@@ -239,22 +257,14 @@ docsearch_index_name = "docs-ray"
 # from the nav tree. These API-ref directories mirror the API-ref entries in
 # `llms_txt_exclude` above, which excludes the same pages from the agent corpus.
 remove_from_toctrees = [
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
-    "ray-core/api/doc/*",
+    "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/algorithm/*",
-    "rllib/package_ref/policy/*",
-    "rllib/package_ref/models/*",
-    "rllib/package_ref/catalogs/*",
-    "rllib/package_ref/rl_modules/*",
-    "rllib/package_ref/learner/*",
-    "rllib/package_ref/evaluation/*",
-    "rllib/package_ref/replay-buffers/*",
-    "rllib/package_ref/utils/*",
+    "rllib/api/doc/*",
+    "rllib/api/env/doc/*",
+    "ray-more-libs/api/doc/*",
 ]
 
 myst_enable_extensions = [
@@ -338,6 +348,15 @@ html_baseurl = "https://docs.ray.io/en/latest/"
 # fall back to html_baseurl for local builds. (DOC-1130)
 llms_txt_base_url = os.getenv("READTHEDOCS_CANONICAL_URL") or html_baseurl
 
+# Read the Docs serves a Markdown rendering of any page from that page's own
+# `.html` URL, under an `Accept: text/markdown` request — there is no separate
+# `.md` file to link to (`page.md`, `page.html.md`, and `?format=md` all 404).
+# So the `.html` links in llms.txt are already the Markdown links; nothing in
+# the file tells an agent that, hence this pointer. Content negotiation happens
+# on the rendered HTML, so it works the same whether a page's source is .rst or
+# .md, and it stays correct as pages migrate between the two.
+llms_txt_markdown_hint = True
+
 # `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
@@ -398,6 +417,8 @@ autogen_files = AUTOGEN_FILES
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
+    # Committed intersphinx inventory snapshots + refresh tooling, not docs.
+    "_intersphinx/**",
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
@@ -405,7 +426,7 @@ exclude_patterns = [
     "serve/tutorials/**/content/**README.md",
     "data/examples/**/content/**README.md",
     "ray-overview/examples/**/content/**README.md",
-    "ray-core/examples/**/content/**README.md",
+    "core/examples/**/content/**README.md",
     "train/examples/**/content/**README.md",
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
@@ -423,6 +444,7 @@ all_toc_libs = [
 ]
 all_toc_libs += [
     "cluster",
+    "kuberay",
     "tune",
     "data",
     "train",
@@ -476,6 +498,18 @@ if os.environ.get("LINKCHECK_ALL"):
         # 429: Rate limited
         "https://medium.com/*",
         "https://towardsdatascience.com/*",
+        # Local Ray dashboard/debugger URLs; unreachable from CI by design.
+        r"http://127\.0\.0\.1[:/].*",
+        # 403 to bots, live for humans (verified). They block the linkcheck
+        # user agent but serve real content in a browser.
+        r"https://goog-perftools\.sourceforge\.net/.*",  # gperftools docs
+        r"https://stackoverflow\.com/.*",
+        r"https://tech\.instacart\.com/.*",  # Medium-hosted blog
+        "https://buildkite.com/user/api-access-tokens",  # auth-gated settings page
+        # Intel Gaudi docs (formerly developer.habana.ai); 403 to bots.
+        r"https://www\.intel\.com/content/www/us/en/developer/platform/gaudi/.*",
+        # Slack workspace links; the auth-wall returns 403 to bots.
+        r"https://ray-distributed\.slack\.com/.*",
     ]
 else:
     # Only check links that point to the ray-project org on github, since those
@@ -503,7 +537,10 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
+    # Each banner carries its own `data-banner-key`, which js/dismissable-banner.js
+    # uses as the localStorage key so the two dismiss independently. Changing a key
+    # re-shows that banner for everyone who already dismissed it.
+    "announcement": """<div class="ray-banner" data-banner-key="ray-docs-banner-dismissed">Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" class="ray-banner__close" aria-label="Close the Anyscale credit banner">&times;</button></div><div class="ray-banner ray-banner--notice" data-banner-key="ray-docs-token-auth-banner-dismissed">Ray 2.59 enables token authentication by default for local clusters, and Ray 2.61 extends it to all clusters. <a href="https://docs.ray.io/en/latest/ray-security/token-auth.html">Read the rollout details</a><button type="button" class="ray-banner__close" aria-label="Close the token authentication banner">&times;</button></div>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -668,7 +705,7 @@ def add_custom_assets(
     ]:
         return "examples.html"
 
-    if pagename == "train/train":
+    if pagename == "train/index":
         app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
@@ -774,16 +811,17 @@ def setup(app):
     app.connect("source-read", apply_ipython3_lexer)
 
 
-redoc = [
-    {
-        "name": "Ray Jobs API",
-        "page": "cluster/running-applications/job-submission/api",
-        "spec": "cluster/running-applications/job-submission/openapi.yml",
-        "embed": True,
-    },
-]
-
-redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+# Render the Jobs API OpenAPI spec with sphinxcontrib-openapi's httpdomain
+# renderer, selected here rather than per-directive.
+#
+# Two notes for anyone changing this. The default renderer is "httpdomain:old",
+# which silently renders no request or response schemas at all -- just paths,
+# parameters, and status codes -- so leaving this unset would quietly drop most
+# of the reference content. And selecting the renderer through this config value
+# rather than by writing `.. openapi:httpdomain::` in the page avoids an
+# "unknown directive name" warning, which matters because .readthedocs.yaml sets
+# fail_on_warning: true.
+openapi_default_renderer = "httpdomain"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
@@ -793,9 +831,12 @@ autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 # environment (doc/requirements-doc.lock.txt). Mocking an installed library
 # shadows the real module: an eager import in a documented class body then hits
 # the mock and aborts the whole package import as a misleading error. numpy and
-# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
-# direct requirements-doc entry), but importing it for real breaks the autodoc
-# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
+# pyarrow are installed, so they are not mocked. Heavy ML libraries (tensorflow,
+# torch, ...) are not installed in the docbuild environment and stay mocked here;
+# documented modules that use them import them lazily or under TYPE_CHECKING, so
+# the mock is enough to render their API. The doctest environment
+# (doctest_depset, fed by python/requirements/ml/*) installs them for real to run
+# the executable examples, but that is a separate depset from this build.
 # The mock list is shared with api_autogen.py and the API/doc consistency check
 # (ci/ray_ci/doc) via api_mock_imports.py, so the standalone stub generator and
 # the check see the same API surface this render produces. THIRD_PARTY_MOCK
@@ -818,56 +859,70 @@ for mock_target in autodoc_mock_imports:
 # is specified in the `intersphinx_mapping` - for example, types annotations
 # that are defined in dependencies can link to their respective documentation.
 #
-# Each value is (base_url, inventory_url). A None inventory falls back to
-# <base_url>objects.inv. A few projects (pandas, scipy, tensorflow) pin an
+# `_intersphinx_targets` is the source of truth: name -> (base_url, inventory).
+# `base_url` is where generated cross-reference links point. `inventory` is the
+# upstream objects.inv used to *resolve* those references at build time; None
+# means the Sphinx default of <base_url>objects.inv. A few projects pin an
 # explicit inventory URL because their hosted objects.inv is unreliable; the
-# ray-project/*/releases/.../object-mirror-* URLs are stable mirrors we control.
+# ray-project/*/releases/.../object-mirror-* URL is a stable mirror we control.
+#
+# To avoid fetching eighteen inventories over the network on every build (slow,
+# and occasionally flaky via the GitHub release-asset redirects), we commit a
+# snapshot of each under doc/source/_intersphinx/ and prefer it. The
+# `intersphinx_mapping` built below lists the local snapshot first and the
+# upstream location second; Sphinx uses the first that loads, so a present
+# snapshot means no network fetch, and a missing one degrades to the old remote
+# behavior (an info message, not a build-breaking warning). Refresh snapshots
+# with `python doc/source/_intersphinx/refresh.py` (see that directory's README).
 #
 # Maintenance note: the build log emits "intersphinx inventory has moved: A -> B"
-# when A returns a redirect. Only chase it when B is another documentation URL
-# (the project relocated). Do NOT copy B when it points at a signed, expiring
+# when A returns a redirect (only when fetching remotely, i.e. on refresh or
+# fallback). Only chase it when B is another documentation URL (the project
+# relocated). Do NOT copy B when it points at a signed, expiring
 # release-assets.githubusercontent.com URL - that's just GitHub's normal redirect
 # for a releases/download/ asset, and the github.com/.../releases/download/ URL
 # is the stable one to keep.
-intersphinx_mapping = {
-    "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
-    "composer": ("https://docs.mosaicml.com/en/latest/", None),
+_intersphinx_targets = {
     "dask": ("https://docs.dask.org/en/stable/", None),
     "datasets": ("https://huggingface.co/docs/datasets/main/en/", None),
-    "distributed": ("https://distributed.dask.org/en/stable/", None),
     "grpc": ("https://grpc.github.io/grpc/python/", None),
     "gymnasium": ("https://gymnasium.farama.org/", None),
-    "horovod": ("https://horovod.readthedocs.io/en/stable/", None),
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
-    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": (
         "https://pandas.pydata.org/pandas-docs/stable/",
         "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
     ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
-    "pydantic": ("https://pydantic.dev/docs/validation/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
-    "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": (
-        "https://docs.scipy.org/doc/scipy/",
-        "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
-    ),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
     ),
     "torch": (
-        "https://docs.pytorch.org/docs/stable/",
-        "https://docs.pytorch.org/docs/2.7/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt.
+        # The inventory is derived from this base, so cross-references resolve only
+        # to symbols that version ships and link to that version's pages. Don't
+        # pair a pinned inventory with docs/stable/: stable serves the newest
+        # release, and PyTorch renames pages between releases, so the emitted links
+        # would 404. Bump this with the requirements pin, then re-run
+        # _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.10/",
+        None,
     ),
-    "torchvision": ("https://docs.pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
+}
+
+# Prefer the committed local snapshot, falling back to the upstream inventory
+# (or the <base_url>objects.inv default when None) if a snapshot is missing.
+intersphinx_mapping = {
+    name: (base_url, (f"_intersphinx/{name}.inv", inventory))
+    for name, (base_url, inventory) in _intersphinx_targets.items()
 }
 
 intersphinx_timeout = 15

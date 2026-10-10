@@ -18,7 +18,7 @@ build:
     # The guard matches doc/ but excludes doc/.claude/ (Claude Code skills
     # and agent files), which never participate in the Sphinx build, so a
     # PR that changes only those paths skips the build instead of running one.
-    # Code sources (python/ray/, rllib/) are intentionally not matched, so a
+    # Code sources (python/ray/) are intentionally not matched, so a
     # code-only PR skips this PR preview. The RTD PR check is not a required
     # merge gate, and the post-merge master build and the Buildkite doc_build
     # still render docstring-driven API-reference changes. This trades a
@@ -67,10 +67,60 @@ build:
     # than "NNNN added") and stale-artifact pruning lands for PRs that rename
     # or delete sources. The rtd and rtd-fallback Makefile targets and
     # doc/load_doc_cache.py stay in the tree for that re-enable.
+    # Raise pip's retry budget for the dependency install below.
+    # files.pythonhosted.org has been returning intermittent 502s
+    # (https://github.com/pypi/support/issues/11895), and one failed wheel fetch
+    # fails the whole docs build. pip defaults to 5 retries with exponential
+    # backoff, which gives up in about 8 seconds of sleeping.
+    #
+    # Written as a config file rather than PIP_RETRIES because the install step
+    # is python.install below, run by Read the Docs rather than by us, and each
+    # job command runs in its own shell so an export here would not reach it.
+    # pip reads this path on every invocation in the build, including that one.
+    #
+    # Only the retry count is raised. The observed failures are immediate 502
+    # responses rather than hangs, so a larger timeout would only lengthen the
+    # worst case without making a fetch more likely to succeed.
+    pre_install:
+      - mkdir -p ~/.config/pip
+      - |
+        echo "[global]" > ~/.config/pip/pip.conf
+        echo "retries = 10" >> ~/.config/pip/pip.conf
+        cat ~/.config/pip/pip.conf
+    # Build with doc/Makefile's default SPHINX_JOBS of auto, one Sphinx write
+    # worker per CPU, the same as local builds and the Buildkite doc build.
+    #
+    # This job used to pin SPHINX_JOBS=2 (#65643). The builder has a
+    # 7,130,316,800 byte cgroup memory ceiling (about 6.64 GiB, the documented
+    # Business limit), each worker holds its own copy of the build environment,
+    # and at -j auto the build peaked within about 600 MB of that ceiling and
+    # was sometimes OOM-killed. When the kernel kills a write worker the parent
+    # Sphinx process reports only a bare EOFError from
+    # multiprocessing/connection.py, naming no document.
+    #
+    # Most of that memory was a leak: MyST {eval-rst} blocks pickled the whole
+    # build environment into each page's doctree, and every worker loaded those
+    # doctrees back. doc/source/_ext/myst_eval_rst_doctree.py fixes it (#66784).
+    # After the fix, a local build with this job's flags, summing RSS across the
+    # Sphinx processes, peaked at 4.74 GB at -j 4 against 2.67 GB at -j 2, and
+    # took 425 seconds against 914. Summed RSS overstates the cgroup figure,
+    # since it counts pages shared between forked workers more than once.
+    #
+    # If EOFError failures come back, memory is the first suspect: set
+    # SPHINX_JOBS=2 on the make command below.
+    #
+    # PYTHONFAULTHANDLER=1 makes Python dump the stack of every thread to
+    # stderr when the process receives a fatal signal such as SIGSEGV. Since
+    # 2026-09-23 some builds have died with a bare "Segmentation fault (core
+    # dumped)" from make about 7 seconds into sphinx-build, right after
+    # autosummary starts, while the same commit and the same installed package
+    # versions pass on a retry. Without the handler the log names no module or
+    # frame, so there is nothing to act on or to hand to Read the Docs support.
+    # The handler costs nothing unless a fatal signal arrives.
     build:
       html:
         - |
-          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
+          PYTHONFAULTHANDLER=1 make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

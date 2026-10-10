@@ -38,19 +38,16 @@ TEAM_API_CONFIGS = {
         # docbuild image lacks. Its surface is documented in doc/source/data/api/llm.rst
         # (reachable from api.rst's toctree).
         "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
-        "head_doc_file": "doc/source/data/api/api.rst",
+        "head_doc_file": "doc/source/data/api/api.md",
         "white_list_apis": {
-            # special case where we cannot deprecate although we want to
-            "ray.data.random_access_dataset.RandomAccessDataset",
+            # Documented in the Ray Train API reference as
+            # `ray.train.DatasetCheckpointConfig`, since it's only used through
+            # `ray.train.DataConfig(dataset_checkpoint_configs=...)`.
+            "ray.data.checkpoint.interfaces.DatasetCheckpointConfig",
         },
         "tracked_doc_debt": {
             # not sure what to do
             "ray.data.dataset.MaterializedDataset",
-            # Deprecated but still documented. Remove from the docs, or move to a
-            # deprecated-only page, then drop these.
-            "ray.data.aggregate.AggregateFn",
-            "ray.data.dataset.Dataset.iter_tf_batches",
-            "ray.data.read_api.read_unity_catalog",
             # Private-named accessor classes documented under expressions.rst
             # "Expression namespaces". Document the public accessor surface, or
             # promote these to public names, then drop them.
@@ -91,6 +88,7 @@ TEAM_API_CONFIGS = {
             "ray.data.dataset.Dataset.write_json",
             "ray.data.dataset.Dataset.write_mongo",
             "ray.data.dataset.Dataset.write_numpy",
+            "ray.data.dataset.Dataset.write_orc",
             "ray.data.dataset.Dataset.write_parquet",
             "ray.data.dataset.Dataset.write_tfrecords",
         },
@@ -106,7 +104,29 @@ TEAM_API_CONFIGS = {
         "head_doc_file": "doc/source/serve/api/index.md",
         "white_list_apis": set(),
         "tracked_doc_debt": {
-            # private versions of request router APIs
+            # Request-router extension surface. All eight are @PublicAPI classes
+            # DEFINED under ray.serve._private.*, which the API policy in
+            # doc/source/ray-contribute/api-policy.md forbids at every exposure
+            # level ("Can this API be private ...? No").
+            #
+            # Seven of them are re-exported by the public ray.serve.request_router
+            # module and documented in this file's own head_doc_file under that
+            # public path, so they look documented to a reader. They are not
+            # documented under the name this check uses: Module._fullname names
+            # every symbol f"{__module__}.{__qualname__}", the definition site.
+            # Deleting these seven entries fails the check with all seven reported
+            # as undocumented, so the exemption is load-bearing today.
+            #
+            # The resolution is to move the definitions into the public
+            # ray/serve/request_router.py that currently only re-exports them. Then
+            # the canonical name is the public path, the autosummary entry matches,
+            # and these entries can be deleted outright. That is a Serve-owned
+            # source change; until it happens this stays tracked debt rather than a
+            # permanent exemption, because the underlying policy violation is real.
+            #
+            # PowerOfTwoChoicesRequestRouter is the one symbol absent from both the
+            # public re-export list and the autosummary, so it additionally needs
+            # documenting or de-annotating.
             "ray.serve._private.common.ReplicaID",
             "ray.serve._private.request_router.common.PendingRequest",
             "ray.serve._private.request_router.pow_2_router.PowerOfTwoChoicesRequestRouter",
@@ -124,7 +144,7 @@ TEAM_API_CONFIGS = {
     },
     "core": {
         "head_modules": {"ray"},
-        "head_doc_file": "doc/source/ray-core/api/index.rst",
+        "head_doc_file": "doc/source/core/api/index.md",
         "white_list_apis": set(),
         "tracked_doc_debt": {
             # These APIs will be documented in near future
@@ -148,7 +168,7 @@ TEAM_API_CONFIGS = {
         # API and once in the Compiled Graph API; conf.py's DuplicateObjectFilter
         # mirrors this exemption for the Sphinx render. ray.remote (canonical
         # ray._private.worker.remote) is cross-listed under both Tasks and
-        # Actors in ray-core/api/core.rst, since @ray.remote defines both.
+        # Actors in core/api/core.rst, since @ray.remote defines both.
         # ray.get / ray.put / ray.method are additionally cross-listed in
         # direct-transport.rst (their Ray Direct Transport usage) beyond core.rst.
         "intentional_duplicate_apis": {
@@ -161,7 +181,7 @@ TEAM_API_CONFIGS = {
     },
     "train": {
         "head_modules": {"ray.train"},
-        "head_doc_file": "doc/source/train/api/api.rst",
+        "head_doc_file": "doc/source/train/api/api.md",
         "white_list_apis": {
             # NOTE: These APIs are documented in a separate file (deprecated.rst).
             # These are deprecated APIs, so just white-listing them here for CI.
@@ -194,7 +214,7 @@ TEAM_API_CONFIGS = {
     },
     "rllib": {
         "head_modules": {"ray.rllib"},
-        "head_doc_file": "doc/source/rllib/package_ref/index.rst",
+        "head_doc_file": "doc/source/rllib/api/index.rst",
         # Private-by-name methods RLlib intentionally documents as a public
         # override / customization contract. The RLModule._forward* hooks that
         # were whitelisted here are now exempted generically by their
@@ -482,13 +502,14 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
 
     # Every documented API must resolve to public code (docs is a subset of
     # code). A documented name that no longer imports, or that resolves to a
-    # deprecated / private object, is a stale or wrong doc entry.
+    # private object, is a stale or wrong doc entry. Deprecated APIs are public
+    # for this purpose: the API policy requires them to be documented.
     print(
         f"--- Validating that documented {team} APIs resolve to public code...",
         file=sys.stderr,
     )
     doc_only_whitelist = white_list_apis | config.get("doc_only_whitelist", set())
-    unresolved_apis, non_public_apis = API.split_resolvable_and_broken_doc_apis(
+    unresolved_apis, private_apis = API.split_resolvable_and_broken_doc_apis(
         doc_apis, doc_only_whitelist
     )
 
@@ -503,15 +524,15 @@ def _check_team(ray_checkout_dir: str, team: str) -> bool:
         )
         passed = False
 
-    if non_public_apis:
+    if private_apis:
         print(
-            "Documented APIs that resolve to deprecated / private objects:",
+            "Documented APIs that resolve to private objects:",
             file=sys.stderr,
         )
-        for api in non_public_apis:
+        for api in private_apis:
             print(f"\t{api}", file=sys.stderr)
         print(
-            f"Some documented {team} APIs are not public. Stop documenting them, "
+            f"Some documented {team} APIs are private. Stop documenting them, "
             "or white-list them if the documentation is intentional.",
             file=sys.stderr,
         )

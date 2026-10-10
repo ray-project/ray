@@ -1008,6 +1008,84 @@ async def test_abort_resilient_to_callback_failure(monkeypatch):
     assert isinstance(controller.get_state(), AbortedState)
 
 
+class _CapturingWorkerGroup(DummyWorkerGroup):
+    """DummyWorkerGroup that records the context it was created with."""
+
+    contexts = []
+
+    def __init__(self, train_run_context, worker_group_context, callbacks=None):
+        type(self).contexts.append(worker_group_context)
+        super().__init__(train_run_context, worker_group_context, callbacks)
+
+
+def _reservation_controller(monkeypatch, callbacks=None, **scaling_kwargs):
+    monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
+    _CapturingWorkerGroup.contexts = []
+    # `_start_worker_group` reads `placement_strategy` off the scaling policy but
+    # `label_selector` off the run context, so both need the config.
+    scaling_config = ScalingConfig(**scaling_kwargs)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(scaling_config=scaling_config),
+        scaling_policy=MockScalingPolicy(scaling_config=scaling_config),
+        failure_policy=MockFailurePolicy(failure_config=None),
+        callbacks=callbacks,
+    )
+    return controller
+
+
+def test_worker_group_start_pins_to_the_reservation(monkeypatch):
+    """The decision's pins become the worker label selectors, and the
+    requested placement strategy is preserved so the placement group still
+    enforces it."""
+    pins = [{"ray.io/node-id": "node-a"}, {"ray.io/node-id": "node-b"}]
+    controller = _reservation_controller(
+        monkeypatch, num_workers=2, placement_strategy="STRICT_SPREAD"
+    )
+
+    controller._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1},
+        reserved_label_selectors=pins,
+    )
+
+    (context,) = _CapturingWorkerGroup.contexts
+    assert context.label_selector == pins
+    assert context.placement_strategy == "STRICT_SPREAD"
+
+
+def test_worker_group_start_without_pins_is_unpinned(monkeypatch):
+    controller = _reservation_controller(monkeypatch, num_workers=2)
+
+    controller._start_worker_group(num_workers=2, resources_per_worker={"CPU": 1})
+
+    (context,) = _CapturingWorkerGroup.contexts
+    assert context.label_selector is None
+
+
+def test_callback_label_selector_wins_over_reservation_pins(monkeypatch):
+    """The coordinator picks nodes by resource fit and never matches label
+    selectors against node labels, so its pins can name a node that violates a
+    callback's selector. The callback's selector wins."""
+
+    class _SelectorCallback(ControllerCallback):
+        def on_controller_start_worker_group(self, *, scaling_config, num_workers):
+            return {"subcluster": "mine"}
+
+    controller = _reservation_controller(
+        monkeypatch, callbacks=[_SelectorCallback()], num_workers=2
+    )
+
+    controller._start_worker_group(
+        num_workers=2,
+        resources_per_worker={"CPU": 1},
+        reserved_label_selectors=[{"ray.io/node-id": f"node-{i}"} for i in range(2)],
+    )
+
+    (context,) = _CapturingWorkerGroup.contexts
+    assert context.label_selector == [{"subcluster": "mine"}] * 2
+
+
 if __name__ == "__main__":
     import sys
 

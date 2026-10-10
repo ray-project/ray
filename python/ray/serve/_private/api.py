@@ -254,9 +254,10 @@ def serve_start(
               localhost. To expose Serve publicly, you probably want to set
               this to "0.0.0.0" for IPv4 or "::" for IPv6.
             - port(int): Port for HTTP server. Defaults to 8000.
-            - root_path(str): Root path to mount the serve application
-              (for example, "/serve"). All deployment routes will be prefixed
-              with this path. Defaults to "".
+            - root_path(str): ASGI root path that the serve application is
+              mounted at (for example, "/serve"), for when Serve runs behind
+              a proxy that strips this prefix before forwarding. Requests
+              reach Serve without the prefix. Defaults to "".
             - middlewares(list): A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.ProxyLocation): The deployment

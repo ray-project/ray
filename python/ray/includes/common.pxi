@@ -107,6 +107,8 @@ cdef int check_status(const CRayStatus& status) except -1 nogil:
         raise GetTimeoutError(message)
     elif status.IsNotFound():
         raise ValueError(message)
+    elif status.IsGcsPassive():
+        raise RpcError(message, rpc_code=CGrpcStatusCode.UNAVAILABLE)
     elif status.IsObjectNotFound():
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():

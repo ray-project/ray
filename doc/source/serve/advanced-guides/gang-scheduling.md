@@ -70,13 +70,7 @@ Each replica in a gang has access to a `GangContext` through the replica context
 :language: python
 ```
 
-Here's the interface of `GangContext`:
-
-```{eval-rst}
-.. autoclass:: ray.serve.context.GangContext
-   :members:
-   :no-index:
-```
+For the full interface, see {py:class}`~ray.serve.context.GangContext`.
 
 Replicas can use `rank` and `world_size` to set up distributed communication, e.g. initializing NCCL process groups, and `member_replica_ids` to discover and connect to their peers.
 
@@ -158,9 +152,7 @@ Gang scheduling works with Ray Serve autoscaling (`num_replicas="auto"`). When a
 
 When using autoscaling with gang scheduling, `min_replicas`, `max_replicas`, and `initial_replicas` must all be multiples of `gang_size`.
 
-:::{note}
-Scale-to-zero (`min_replicas=0`) is not supported with gang scheduling.
-:::
+Scale-to-zero is supported: set `min_replicas=0`. The deployment scales up and down in complete gangs.
 
 In Ray Serve autoscaler, gang quantization is handled automatically by a `GangSchedulingAutoscalingPolicy` wrapper that is injected around the base autoscaling policy.
 

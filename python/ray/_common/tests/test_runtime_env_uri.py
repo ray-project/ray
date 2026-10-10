@@ -201,7 +201,7 @@ class TestParseUri:
             "s3://package{ext}",  # extension in netloc (no path component)
         ],
     )
-    @pytest.mark.parametrize("ext", [".zip", ".tar.gz", ".tar.bz2"])
+    @pytest.mark.parametrize("ext", [".zip", ".tar.gz", ".tar.bz2", ".tar.xz"])
     def test_parse_uri_remote_preserves_extension(self, uri_template, ext):
         """Extensions are kept intact after hashing, whether the filename
         is in the path or the netloc."""

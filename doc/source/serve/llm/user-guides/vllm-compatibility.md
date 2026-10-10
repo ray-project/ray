@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "vLLM features reachable through Ray Serve LLM: embeddings, transcriptions, structured JSON output, and vision language models."
+    description: "vLLM features reachable through Ray Serve LLM: embeddings, transcriptions, structured JSON output, vision language models, and diffusion language models."
 ---
 
 (vllm-compatibility-guide)=
@@ -16,7 +16,7 @@ This compatibility means you can:
 - Switch between `vllm serve` and Ray Serve LLM with no code changes and scale
 - Use Ray Serve's production features such as autoscaling, multi-model serving, and advanced routing
 
-This guide shows how to use vLLM features such as embeddings, structured output, vision language models, and reasoning models with Ray Serve.
+This guide shows how to use vLLM features such as embeddings, structured output, vision language models, diffusion language models, and reasoning models with Ray Serve.
 
 ## Embeddings
 
@@ -89,7 +89,7 @@ curl -X POST http://localhost:8000/v1/embeddings \
 
 ## Transcriptions
 
-You can generate audio transcriptions using Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
+You can generate audio transcriptions using Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models/).
 
 
 ### Deploy a transcription model
@@ -355,17 +355,93 @@ for chunk in response:
 
 ### Supported models
 
-For a complete list of supported vision models, see the [vLLM multimodal models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html#multimodal-language-models).
+For a complete list of supported vision models, see the [vLLM multimodal models documentation](https://docs.vllm.ai/en/stable/models/supported_models/#list-of-multimodal-language-models).
+
+## Diffusion language models
+
+Ray Serve LLM supports discrete diffusion models such as DiffusionGemma through vLLM. Set `diffusion_config` in the engine arguments and serve the model with {doc}`direct streaming <direct-streaming>`, so that per-request `vllm_xargs` reach the engine.
+
+### Deploy a diffusion model
+
+::::{tab-set}
+
+:::{tab-item} Server
+:sync: server
+
+```python
+# Run with RAY_SERVE_ENABLE_HA_PROXY=1 and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1.
+from ray import serve
+from ray.serve.llm import LLMConfig, build_openai_app
+
+
+# Configure a diffusion model
+llm_config = LLMConfig(
+    model_loading_config=dict(
+        model_id="diffusiongemma",
+        model_source="google/diffusiongemma-26B-A4B-it",
+    ),
+    engine_kwargs=dict(
+        tensor_parallel_size=4,
+        max_model_len=8192,
+        diffusion_config=dict(canvas_length=64),
+    ),
+)
+
+# Build and deploy the model
+app = build_openai_app({"llm_configs": [llm_config]})
+serve.run(app, blocking=True)
+```
+:::
+
+:::{tab-item} Python Client
+:sync: client
+
+```python
+from openai import OpenAI
+
+# Initialize client
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+# Create and send a chat request
+response = client.chat.completions.create(
+    model="diffusiongemma",
+    messages=[{"role": "user", "content": "Write a haiku about the ocean."}],
+    stream=True,
+)
+
+for chunk in response:
+    if chunk.choices[0].delta.content is not None:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+```
+:::
+
+:::{tab-item} cURL
+:sync: curl
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer fake-key" \
+    -d '{
+        "model": "diffusiongemma",
+        "messages": [{"role": "user", "content": "Write a haiku about the ocean."}]
+    }'
+```
+:::
+
+::::
+
+For structured reads and the request options they take, see vLLM's [structured diffusion example](https://github.com/vllm-project/vllm/tree/main/examples/features/structured_diffusion).
 
 ## Reasoning models
 
 Ray Serve LLM supports reasoning models such as DeepSeek-R1 and QwQ through vLLM. These models use extended thinking processes before generating final responses.
 
-For reasoning model support and configuration, see the [vLLM reasoning models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
+For reasoning model support and configuration, see the [vLLM reasoning models documentation](https://docs.vllm.ai/en/stable/models/supported_models/).
 
 ## See also
 
-- [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models.html) - Complete list of supported models and features
-- [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server.html) - vLLM's OpenAI-compatible server documentation
+- [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models/) - Complete list of supported models and features
+- [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server/) - vLLM's OpenAI-compatible server documentation
 - {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
 

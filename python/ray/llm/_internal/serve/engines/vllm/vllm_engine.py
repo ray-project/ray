@@ -20,8 +20,9 @@ from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.openai.cli_args import FrontendArgs
-from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.serve.engine.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.exceptions import VLLMClientError
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
@@ -165,24 +166,39 @@ def _normalize_vllm_engine_kwargs(engine_kwargs: Dict[str, Any]) -> Dict[str, An
     return normalized_kwargs
 
 
+def _resolve_hf_model_id_from_mirror(engine_config: "VLLMEngineConfig") -> None:
+    """Resolve hf_model_id to a local path or, for streaming load formats
+    that skip local download, the mirror's URI."""
+    if not engine_config.mirror_config:
+        return
+
+    from ray.llm._internal.common.utils.download_utils import (
+        STREAMING_LOAD_FORMATS,
+        get_model_location_on_disk,
+    )
+
+    local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
+    if local_path and local_path != engine_config.actual_hf_model_id:
+        engine_config.hf_model_id = local_path
+        logger.info(f"Resolved model from mirror to local path: {local_path}")
+    elif (
+        engine_config.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
+        and engine_config.mirror_config.bucket_uri
+    ):
+        engine_config.hf_model_id = engine_config.mirror_config.bucket_uri
+        logger.info(
+            f"Streaming load format; using mirror URI: "
+            f"{engine_config.mirror_config.bucket_uri}"
+        )
+
+
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
     *,
     device_type: Optional[str] = None,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
-
-    # Resolve to local cache path if model was downloaded from S3/GCS mirror
-    # Only do this if mirror_config was specified (intentional S3/GCS download)
-    if engine_config.mirror_config:
-        from ray.llm._internal.common.utils.download_utils import (
-            get_model_location_on_disk,
-        )
-
-        local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
-        if local_path and local_path != engine_config.actual_hf_model_id:
-            engine_config.hf_model_id = local_path
-            logger.info(f"Resolved model from mirror to local path: {local_path}")
+    _resolve_hf_model_id_from_mirror(engine_config)
 
     from vllm.usage.usage_lib import UsageContext
 
@@ -337,7 +353,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_tokenization: Optional["ServingTokenization"] = None
 
     async def build_asgi_app(self):
-        from vllm.entrypoints.openai.api_server import build_app, init_app_state
+        from vllm.entrypoints.openai.api_server import build_app
 
         supported_tasks = ("generate",)
         if hasattr(self._engine_client, "get_supported_tasks"):
@@ -351,12 +367,18 @@ class VLLMEngine(LLMEngine):
             supported_tasks=supported_tasks,
             model_config=self._engine_client.model_config,
         )
-        await init_app_state(
-            self._engine_client,
-            app.state,
-            self._vllm_args,
-            supported_tasks=supported_tasks,
-        )
+        # HTTP handlers and resolve_lora() must share the same model registry.
+        app.state._state.update(self._app_state._state)
+        # build_app() attaches plugins after start() initializes the serving state.
+        for plugin in getattr(app.state, "endpoint_plugins", []):
+            await plugin.init_state(self._engine_client, app.state, self._vllm_args)
+        # On an engine error, vLLM's handler reads state.server -- the uvicorn.Server
+        # its own launcher sets -- and flips should_exit on it, which is what makes
+        # uvicorn stop serving and the process exit. Ray runs no uvicorn loop to
+        # observe that flag (Serve restarts the replica via check_health), but the
+        # read must still succeed: otherwise it raises AttributeError, and that
+        # replaces the engine error in the response.
+        app.state.server = types.SimpleNamespace()
         if self._token_receiver is not None:
             install_prompt_token_forwarding(
                 app.state,
@@ -426,6 +448,7 @@ class VLLMEngine(LLMEngine):
             init_kwargs["vllm_config"] = vllm_engine_config
 
         await init_app_state(self._engine_client, **init_kwargs)
+        self._app_state = state
 
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
@@ -676,7 +699,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_chat, e)
             return
 
@@ -711,7 +734,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_completion, e)
             return
 
@@ -748,7 +771,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_embedding, e)
             return
 
@@ -778,7 +801,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_transcription, e)
             return
 
@@ -816,7 +839,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
@@ -841,7 +864,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
@@ -870,7 +893,7 @@ class VLLMEngine(LLMEngine):
                     raw_request=raw_request,
                 )
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 

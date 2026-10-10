@@ -899,6 +899,31 @@ class PopulationBasedTrainingNanScoreTest(unittest.TestCase):
                 self.assertEqual(abs(min_ordered_results[-1]), 10)
 
 
+def test_pbt_quantile_fraction_zero_selects_no_trials():
+    """`quantile_fraction=0` is documented as doing no exploitation at all.
+
+    The upper end of the quantile was sliced as `trials[-num_trials_in_quantile:]`, and
+    `-0` is `0`, so a count of zero returned the whole population instead of nothing and
+    every trial was told to checkpoint on every perturbation interval.
+    """
+    trials = [DummyTrial(f"t{i}") for i in range(4)]
+    scheduler = PopulationBasedTraining(
+        metric="reward",
+        mode="max",
+        quantile_fraction=0.0,
+        hyperparam_mutations={"lr": [1e-4, 1e-3]},
+    )
+    scheduler._trial_state = {
+        trial: DummyState(last_score=float(i)) for i, trial in enumerate(trials)
+    }
+
+    assert scheduler._quantiles() == ([], [])
+
+    # a fraction that does select trials is unchanged
+    scheduler._quantile_fraction = 0.25
+    assert scheduler._quantiles() == ([trials[0]], [trials[3]])
+
+
 def _create_pb2_scheduler(
     metric="score",
     mode="max",

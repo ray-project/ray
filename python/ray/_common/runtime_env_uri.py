@@ -1,11 +1,22 @@
 import enum
 import hashlib
 import pathlib
+import re
 import urllib.parse
 from typing import Tuple
 from urllib.parse import urlparse
 
+from ray._common.runtime_env_package import (
+    COMPOUND_ARCHIVE_EXTENSIONS,
+    PACKAGE_UPLOAD_EXTENSIONS,
+    WHEEL_EXTENSION,
+    get_package_extension,
+)
+
 _REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "file")
+
+# Matches the leading "C:/" or "C:\" of a Windows path rooted at a drive.
+_WINDOWS_DRIVE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
 
 
 class Protocol(enum.Enum):
@@ -31,12 +42,13 @@ class Protocol(enum.Enum):
     ABFSS = "abfss"
     # File storage path, assumes everything packed in one zip file.
     FILE = "file"
+    # A directory that is already present on every node. Assumes absolute path.
+    LOCAL = "local"
 
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage.
-        # These protocols should only be used with paths that end in
-        # ".zip", ".whl", ".tar.gz", or ".tgz".
+        # RuntimeEnv fields apply their own format constraints to these URIs.
         return [cls[protocol.upper()] for protocol in _REMOTE_PROTOCOLS]
 
 
@@ -69,6 +81,12 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     >>> parse_uri("https://test.com/file.whl")
     (<Protocol.HTTPS: 'https'>, 'file.whl')
 
+    >>> parse_uri("local:///path/in/image")
+    (<Protocol.LOCAL: 'local'>, '/path/in/image')
+
+    >>> parse_uri("local://C:/path/in/image")
+    (<Protocol.LOCAL: 'local'>, 'C:/path/in/image')
+
     """
     if _is_path(pkg_uri):
         raise ValueError(f"Expected URI but received path {pkg_uri}")
@@ -82,8 +100,37 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
 
+    if protocol == Protocol.LOCAL:
+        # There is no package to name: the directory is used in place, so return
+        # the path itself.
+        prefix = f"{Protocol.LOCAL.value}://"
+        if pkg_uri[: len(prefix)].lower() != prefix:
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": a local URI must '
+                "start with local://. Write local:///path/in/image, or "
+                "local://C:/path/in/image on Windows."
+            )
+        path = pkg_uri[len(prefix) :]
+        if path.startswith("/") and _WINDOWS_DRIVE_PATH.match(path[1:]):
+            # A drive spelled with file://'s empty authority: "local:///C:/app".
+            path = path[1:]
+        if not (path.startswith("/") or _WINDOWS_DRIVE_PATH.match(path)):
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": the path must be '
+                "absolute. Write local:///path/in/image, or local://C:/path/in/image "
+                "on Windows."
+            )
+        archive_extension = get_package_extension(path, PACKAGE_UPLOAD_EXTENSIONS)
+        if archive_extension is not None:
+            raise ValueError(
+                f'Invalid "local://" runtime_env URI "{pkg_uri}": the path must be a '
+                f"directory, not a {archive_extension} archive. A local:// directory "
+                "is used in place and is never unpacked."
+            )
+        return (protocol, path)
+
     if protocol in Protocol.remote_protocols():
-        if uri.path.endswith(".whl"):
+        if uri.path.endswith(WHEEL_EXTENSION):
             # Don't modify the .whl filename. See
             # https://peps.python.org/pep-0427/#file-name-convention
             # for more information.
@@ -92,16 +139,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             # Hash the URI to produce a stable, NAME_MAX-safe local filename
             # regardless of how long or deeply nested the URI is. The extension
             # is preserved so is_zip_uri / is_jar_uri keep working. Compound
-            # extensions (.tar.gz, .tar.bz2) are kept intact so archive-type
+            # compound extensions are kept intact so archive-type
             # detection downstream still works.
             # netloc + path covers URIs where the filename has no path
             # component (e.g., s3://package.zip puts "package.zip" in netloc).
             raw = uri.netloc + uri.path
-            if raw.endswith(".tar.gz"):
-                suffix = ".tar.gz"
-            elif raw.endswith(".tar.bz2"):
-                suffix = ".tar.bz2"
-            else:
+            suffix = get_package_extension(raw, COMPOUND_ARCHIVE_EXTENSIONS)
+            if suffix is None:
                 suffix = pathlib.Path(raw).suffix
             digest = hashlib.sha1(pkg_uri.encode("utf-8")).hexdigest()
             package_name = f"{protocol.value}_{digest}{suffix}"

@@ -27,6 +27,18 @@ namespace ray::syncer {
 inline constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::MessageType_ARRAYSIZE);
 
+/// Check whether a message type can index the component arrays.
+///
+/// Proto3 enums are open, so a wire value can be any int32, negatives included.
+///
+/// \param message_type The message type to check.
+///
+/// \return true if it is a known type within kComponentArraySize.
+inline bool IsValidMessageType(int message_type) {
+  return message_type >= 0 && static_cast<size_t>(message_type) < kComponentArraySize &&
+         ray::rpc::syncer::MessageType_IsValid(message_type);
+}
+
 // TODO(hjiang): As of now, only ray syncer uses it so we put it under `ray_syncer`
 // folder, better to place it into other common folders if uses elsewhere.
 //

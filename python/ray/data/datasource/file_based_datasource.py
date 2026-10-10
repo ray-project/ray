@@ -24,6 +24,7 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
+    _truncated_repr,
     infer_compression,
     iterate_with_retry,
     make_async_gen,
@@ -172,11 +173,6 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
-        # Initialize projection state. Subclasses that opt into projection
-        # pushdown (``supports_projection_pushdown() -> True``) receive an
-        # active projection map via ``apply_projection``; otherwise this
-        # stays ``None`` and read paths fall back to all-columns semantics.
-        self._projection_map: Optional[Dict[str, str]] = None
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and
         # causing this data being duplicated and excessive object store spilling.
@@ -185,23 +181,35 @@ class FileBasedDatasource(Datasource):
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
-        paths, file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
+        expanded_paths = list(
+            meta_provider.expand_paths(
+                paths,
+                self._filesystem,
+                partitioning,
+                ignore_missing_paths=ignore_missing_paths,
+            )
         )
 
-        if ignore_missing_paths and len(paths) == 0:
-            raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
+        if not expanded_paths:
+            # Only listing has run at this point: `partition_filter` and
+            # `file_extensions` are applied below and raise their own errors, so
+            # naming them here would point at causes that cannot apply yet. What
+            # can leave the listing empty is a path that holds nothing readable,
+            # including a directory whose entries are all skipped by prefix.
+            message = (
+                f"No files found under {_truncated_repr(paths)}. Note that "
+                "listing skips names starting with '_' or '.'."
             )
+            if ignore_missing_paths:
+                # Missing paths are dropped inside listing, so we cannot tell
+                # here whether they were absent or merely empty.
+                message += (
+                    " Paths that do not exist were also skipped because "
+                    "'ignore_missing_paths' is set to True."
+                )
+            raise ValueError(message)
+
+        paths, file_sizes = map(list, zip(*expanded_paths))
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
@@ -287,63 +295,33 @@ class FileBasedDatasource(Datasource):
                 if partitioning is not None:
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
-                # When projection pushdown is active, retain only parsed
-                # partition columns that are actually requested. This
-                # ensures a pure ``select_columns`` Project eliminated by the
-                # optimizer does not leak unrequested synthetic partition
-                # columns downstream.
-                if self._projection_map is not None and partitions:
-                    partitions = {
-                        k: v for k, v in partitions.items() if k in self._projection_map
-                    }
 
-                with RetryingContextManager(
-                    self._open_input_source(fs, read_path, **open_stream_args),
-                    context=self._data_context,
-                ) as f:
-                    for block in iterate_with_retry(
-                        lambda: self._read_stream(f, read_path),
-                        description="read stream iteratively",
-                        match=self._data_context.retried_io_errors,
-                    ):
-                        if partitions:
-                            block = _add_partitions(block, partitions)
-                        # When projection pushdown is active, only fill the
-                        # synthetic ``path`` column if it is requested. When
-                        # ``_projection_map is None`` (no projection), fall
-                        # back to the legacy behavior of always filling
-                        # ``path`` whenever ``include_paths`` was set.
-                        if self._include_paths and (
-                            self._projection_map is None
-                            or "path" in self._projection_map
-                        ):
-                            block_accessor = BlockAccessor.for_block(block)
-                            block = block_accessor.fill_column("path", read_path)
-                        # When projection pushdown is active, finalize the
-                        # block by selecting exactly the requested columns
-                        # in their requested order. PyArrow readers return
-                        # schema order, not request order, so reordering
-                        # here is required for projection pushdown to match
-                        # ``select_columns`` semantics after the pure
-                        # Project has been removed by the optimizer. Names
-                        # not present in the block (e.g. unrequested
-                        # partition keys parsed from sibling files, or per-
-                        # file schema divergence) are dropped before
-                        # ``BlockAccessor.select`` to avoid a ``KeyError``
-                        # from the underlying ``pa.Table.select``. Empty
-                        # projections are routed through the
-                        # ``__bsp_stub`` row-preserving path automatically.
-                        if self._projection_map is not None:
-                            block_columns = set(
-                                BlockAccessor.for_block(block).column_names()
-                            )
-                            requested = [
-                                name
-                                for name in self._projection_map
-                                if name in block_columns
-                            ]
-                            block = BlockAccessor.for_block(block).select(requested)
-                        yield block
+                # `iterate_with_retry` skips the blocks that a failed attempt
+                # already yielded, so every attempt has to replay the same blocks
+                # from the start of the file. Open the file inside the factory:
+                # reusing one handle would resume a retry from wherever the failure
+                # left the cursor, and the skip would then discard real data. The
+                # `with` lives inside the generator so each attempt's handle is
+                # closed as soon as that attempt ends, whether it raises or runs to
+                # completion.
+                def open_and_read_stream() -> Iterator[Block]:
+                    with RetryingContextManager(
+                        self._open_input_source(fs, read_path, **open_stream_args),
+                        context=self._data_context,
+                    ) as f:
+                        yield from self._read_stream(f, read_path)
+
+                for block in iterate_with_retry(
+                    open_and_read_stream,
+                    description="read stream iteratively",
+                    match=self._data_context.retried_io_errors,
+                ):
+                    if partitions:
+                        block = _add_partitions(block, partitions)
+                    if self._include_paths:
+                        block_accessor = BlockAccessor.for_block(block)
+                        block = block_accessor.fill_column("path", read_path)
+                    yield block
 
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():
@@ -519,9 +497,14 @@ def _add_partitions_to_table(
     for field, value in partitions.items():
         column = pa.array([value] * len(table))
         if field in column_names:
-            # TODO: Handle cast error.
             column_type = table.schema.field(field).type
-            column = column.cast(column_type)
+            try:
+                column = column.cast(column_type)
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
+                raise ValueError(
+                    f"Partition value {value!r} for field {field!r} cannot be cast "
+                    f"to target type {column_type}."
+                ) from e
 
             values_are_equal = pc.all(pc.equal(column, table[field]))
             values_are_equal = values_are_equal.as_py()

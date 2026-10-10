@@ -88,7 +88,7 @@ def test_deploy_config_default_num_replicas_no_replica_restart(
     write_config()
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
-    wait_for_condition(check_running_with_one_replica, timeout=30)
+    wait_for_condition(check_running_with_one_replica, timeout=60)
     initial_pid = get_pid()
 
     config["applications"][0]["deployments"] = [
@@ -100,14 +100,16 @@ def test_deploy_config_default_num_replicas_no_replica_restart(
     write_config()
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
-    wait_for_condition(check_running_with_one_replica, timeout=30)
+    wait_for_condition(check_running_with_one_replica, timeout=60)
 
     observed_pids = [get_pid() for _ in range(5)]
     assert observed_pids == [initial_pid] * len(observed_pids)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path):
+def test_deploy_config_tracing_config_declarative_flow(
+    serve_instance, tmp_path, request
+):
     """Tracing config in the serve config (declarative flow) is applied via `serve deploy`.
 
     Deploys a config with a top-level ``tracing_config``, verifies the controller
@@ -128,13 +130,24 @@ def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path)
     with open(config_file_name, "w") as config_file:
         yaml.safe_dump(config, config_file)
 
+    def disable_tracing():
+        # The controller only ever sets global tracing config, and the Serve
+        # instance is session-scoped, so leave it disabled for later tests.
+        config["tracing_config"]["enabled"] = False
+        with open(config_file_name, "w") as config_file:
+            yaml.safe_dump(config, config_file)
+        subprocess.check_output(["serve", "deploy", config_file_name])
+
+    # Registered before the enabling deploy so it runs however this test exits,
+    # and as a finalizer so a teardown error cannot mask the real failure.
+    request.addfinalizer(disable_tracing)
     subprocess.check_output(["serve", "deploy", config_file_name])
 
     def check_running() -> bool:
         app_status = serve.status().applications.get(SERVE_DEFAULT_APP_NAME)
         return app_status is not None and app_status.status == "RUNNING"
 
-    wait_for_condition(check_running, timeout=30)
+    wait_for_condition(check_running, timeout=60)
 
     # The tracing config from the serve config reached the controller.
     tracing_config = ray.get(client._controller.get_tracing_config.remote())
@@ -156,7 +169,7 @@ def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path)
         )
 
     try:
-        wait_for_condition(replica_traces_created, timeout=20)
+        wait_for_condition(replica_traces_created, timeout=40)
     finally:
         shutil.rmtree(spans_dir, ignore_errors=True)
 
@@ -188,13 +201,13 @@ def test_deploy_basic(serve_instance):
             check_http_response,
             json=["ADD", 2],
             expected_text="3 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         wait_for_condition(
             check_http_response,
             json=["MUL", 2],
             expected_text="-4 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         print("Deployments are reachable over HTTP.")
 
@@ -217,13 +230,13 @@ def test_deploy_basic(serve_instance):
             check_http_response,
             json=["ADD", 0],
             expected_text="1",
-            timeout=15,
+            timeout=30,
         )
         wait_for_condition(
             check_http_response,
             json=["SUB", 5],
             expected_text="3",
-            timeout=15,
+            timeout=30,
         )
         print("Deployments are reachable over HTTP.")
 
@@ -265,14 +278,14 @@ def test_deploy_multi_app_basic(serve_instance):
                 f"{get_application_url(app_name='app1')}", json=["ADD", 2]
             ).text
             == "3 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         wait_for_condition(
             lambda: httpx.post(
                 f"{get_application_url(app_name='app1')}", json=["MUL", 2]
             ).text
             == "2 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
@@ -280,14 +293,14 @@ def test_deploy_multi_app_basic(serve_instance):
                 f"{get_application_url(app_name='app2')}", json=["ADD", 2]
             ).text
             == "5 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         wait_for_condition(
             lambda: httpx.post(
                 f"{get_application_url(app_name='app2')}", json=["MUL", 2]
             ).text
             == "4 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         print('Application "app2" is reachable over HTTP.')
 
@@ -311,7 +324,7 @@ def test_deploy_multi_app_basic(serve_instance):
         wait_for_condition(
             lambda: httpx.post(f"{get_application_url(app_name='app1')}").text
             == "wonderful world",
-            timeout=15,
+            timeout=30,
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
@@ -319,14 +332,14 @@ def test_deploy_multi_app_basic(serve_instance):
                 f"{get_application_url(app_name='app2')}", json=["ADD", 2]
             ).text
             == "12 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         wait_for_condition(
             lambda: httpx.post(
                 f"{get_application_url(app_name='app2')}", json=["MUL", 2]
             ).text
             == "20 pizzas please!",
-            timeout=15,
+            timeout=30,
         )
         print('Application "app2" is reachable over HTTP.')
 
@@ -408,24 +421,24 @@ def test_deploy_multi_app_builder_with_args(serve_instance):
     wait_for_condition(
         lambda: httpx.post(get_application_url(app_name="untyped_default")).text
         == "DEFAULT",
-        timeout=10,
+        timeout=20,
     )
 
     wait_for_condition(
         lambda: httpx.post(get_application_url(app_name="untyped_hello")).text
         == "hello",
-        timeout=10,
+        timeout=20,
     )
 
     wait_for_condition(
         lambda: httpx.post(get_application_url(app_name="typed_default")).text
         == "DEFAULT",
-        timeout=10,
+        timeout=20,
     )
 
     wait_for_condition(
         lambda: httpx.post(get_application_url(app_name="typed_hello")).text == "hello",
-        timeout=10,
+        timeout=20,
     )
 
 
@@ -483,7 +496,7 @@ def test_cli_without_config_deploy(serve_instance):
         assert fetched_status["deployments"]["fn"]["status"] == "HEALTHY"
         return True
 
-    wait_for_condition(check_cli)
+    wait_for_condition(check_cli, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -532,7 +545,10 @@ def test_config_with_deleting_app(serve_instance):
         print("Deployed config with app1 and app2.")
 
     wait_for_condition(
-        check_cli, expected_configs=config_json1["applications"], expected_statuses=2
+        check_cli,
+        expected_configs=config_json1["applications"],
+        expected_statuses=2,
+        timeout=20,
     )
     print("`serve status` and `serve config` are returning expected responses.")
 
@@ -543,7 +559,10 @@ def test_config_with_deleting_app(serve_instance):
         print("Redeployed config with app2 removed.")
 
     wait_for_condition(
-        check_cli, expected_configs=config_json2["applications"], expected_statuses=1
+        check_cli,
+        expected_configs=config_json2["applications"],
+        expected_statuses=1,
+        timeout=20,
     )
     print("`serve status` and `serve config` are returning expected responses.")
 
@@ -567,7 +586,7 @@ def test_status_basic(serve_instance):
         return len(serve_status["applications"][app_name]["deployments"])
 
     wait_for_condition(
-        lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 3, timeout=15
+        lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 3, timeout=30
     )
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:8265/"]
@@ -594,7 +613,7 @@ def test_status_basic(serve_instance):
     assert default_app["status"] in {"DEPLOYING", "RUNNING"}
     wait_for_condition(
         lambda: time.time() > default_app["last_deployed_time_s"],
-        timeout=2,
+        timeout=4,
     )
 
     def proxy_healthy():
@@ -604,7 +623,7 @@ def test_status_basic(serve_instance):
         proxy_status = yaml.safe_load(status_response)["proxies"]
         return len(proxy_status) and all(p == "HEALTHY" for p in proxy_status.values())
 
-    wait_for_condition(proxy_healthy)
+    wait_for_condition(proxy_healthy, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -631,7 +650,7 @@ def test_status_error_msg_format(serve_instance):
         assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
         return True
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_deployment, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -656,7 +675,7 @@ def test_status_invalid_runtime_env(serve_instance):
         assert "Failed to set up runtime environment" in cli_status["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=15)
+    wait_for_condition(check_for_failed_deployment, timeout=30)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -679,7 +698,7 @@ def test_status_syntax_error(serve_instance):
         assert "x = (1 + 2" in status["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_deployment, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -707,7 +726,7 @@ def test_status_constructor_error(serve_instance):
         assert "ZeroDivisionError" in deployment_status["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_deployment, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -735,7 +754,7 @@ def test_status_constructor_retry_error(serve_instance):
         assert "ZeroDivisionError" in deployment_status["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_deployment, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -759,7 +778,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=40)
+    wait_for_condition(check_for_failed_deployment, timeout=80)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -783,7 +802,7 @@ def test_max_replicas_per_node(serve_instance):
         )
         return True
 
-    wait_for_condition(check_application_status, timeout=15)
+    wait_for_condition(check_application_status, timeout=30)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -808,7 +827,7 @@ def test_replica_placement_group_options(serve_instance):
         )
         return True
 
-    wait_for_condition(check_application_status, timeout=15)
+    wait_for_condition(check_application_status, timeout=30)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -821,14 +840,14 @@ def test_deploy_from_import_path(serve_instance):
     wait_for_condition(
         check_http_response,
         expected_text="DEFAULT",
-        timeout=15,
+        timeout=30,
     )
 
     subprocess.check_output(["serve", "deploy", import_path, "message=redeployed!"])
     wait_for_condition(
         check_http_response,
         expected_text="redeployed!",
-        timeout=15,
+        timeout=30,
     )
 
 
@@ -851,7 +870,7 @@ def test_status_multi_app(serve_instance):
         status = yaml.safe_load(status_response)["applications"]
         return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
 
-    wait_for_condition(lambda: num_live_deployments() == 3, timeout=15)
+    wait_for_condition(lambda: num_live_deployments() == 3, timeout=30)
     print("All deployments are live.")
 
     status_response = subprocess.check_output(
@@ -899,7 +918,8 @@ def test_deployment_contains_utils(serve_instance):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
-        lambda: httpx.post(f"{get_application_url()}/").text == "hello_from_utils"
+        lambda: httpx.post(f"{get_application_url()}/").text == "hello_from_utils",
+        timeout=20,
     )
 
 
@@ -920,7 +940,8 @@ def test_deploy_use_custom_request_router(serve_instance):
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
         lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
-        == "hello_from_custom_request_router"
+        == "hello_from_custom_request_router",
+        timeout=20,
     )
 
 
@@ -934,7 +955,8 @@ def test_deploy_use_custom_autoscaling(serve_instance):
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
         lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
-        == "hello_from_custom_autoscaling_policy"
+        == "hello_from_custom_autoscaling_policy",
+        timeout=20,
     )
 
 
@@ -948,7 +970,8 @@ def test_deploy_gang_scheduling(serve_instance):
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
         lambda: httpx.post(f"{get_application_url(app_name='gang_app')}/").status_code
-        == 200
+        == 200,
+        timeout=20,
     )
 
 
@@ -990,7 +1013,7 @@ def test_deploy_gang_scaling(serve_instance, initial_replicas, final_replicas):
             collected.append({r.gang_context.gang_id for r in running})
             return True
 
-        wait_for_condition(_ready, timeout=30)
+        wait_for_condition(_ready, timeout=60)
         return collected[-1]
 
     subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])

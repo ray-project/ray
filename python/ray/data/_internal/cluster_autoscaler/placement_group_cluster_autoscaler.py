@@ -111,7 +111,7 @@ class PlacementGroupClusterAutoscaler(ClusterAutoscaler):
         self._autoscaling_coordinator.request_resources(
             resources=resource_request.copy(),
             expire_after_s=self._autoscaling_request_expire_time_s,
-            request_remaining=False,
+            request_remaining=None,
         )
         self._last_request_time = time.monotonic()
 

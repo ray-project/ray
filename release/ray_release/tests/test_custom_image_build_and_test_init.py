@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -21,6 +21,9 @@ from ray_release.scripts.custom_image_build_and_test_init import (
 )
 
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+
+_TRIGGER = "TRIGGER_OBSERVABILITY_AGENT"
+_COMMENT = "OBS_AGENT_COMMENT_ON_GITHUB_ISSUE"
 
 
 def _expected_rayci_select_keys(sample_yaml: str) -> set:
@@ -483,6 +486,77 @@ def test_custom_image_build_and_test_init_uploads_chunks(
     cmd = upload_calls[0].args[0]
     assert cmd[3].endswith("test_jobs_upload_0.json")
     assert upload_calls[0].kwargs.get("check") is True
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({_TRIGGER: "1", _COMMENT: ""}, {_TRIGGER: "1", _COMMENT: None}),
+        ({_TRIGGER: "", _COMMENT: "1"}, {_TRIGGER: None, _COMMENT: "1"}),
+        ({_TRIGGER: "0", _COMMENT: "0"}, {_TRIGGER: None, _COMMENT: None}),
+    ],
+    ids=["trigger_only", "comment_only", "both_falsy"],
+)
+@patch.dict("os.environ", {"AUTOMATIC": "1"})
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+# The jailed check takes the repo handle as an argument, so it is built -- and
+# its token fetched from AWS -- before the patched method above is ever called.
+@patch(
+    "ray_release.buildkite.filter.TestStateMachine.get_ray_repo",
+    return_value=MagicMock(),
+)
+def test_custom_image_build_and_test_init_threads_the_obs_agent_flags(
+    mock_get_ray_repo,
+    mock_is_jailed_with_open_issue,
+    mock_update_from_s3,
+    env,
+    expected,
+):
+    """Each flag reaches the steps only when set to 1, and only itself.
+
+    The asymmetric cases are the point: setting one flag must not export the
+    other. Two blocks that both happen to be right today would still pass if
+    they were collapsed into one, so each case sets both variables and asserts
+    both -- including the one expected to stay absent.
+    """
+    runner = CliRunner()
+    test_jobs_output_file = "test_jobs.json"
+    with patch.dict("os.environ", env):
+        result = runner.invoke(
+            main,
+            [
+                "--test-collection-file",
+                "release/ray_release/tests/sample_5_tests.yaml",
+                "--global-config",
+                "oss_config.yaml",
+                "--frequency",
+                "nightly",
+                "--test-filters",
+                "prefix:hello_world",
+                "--custom-build-jobs-output-file",
+                "custom_build_jobs.yaml",
+                "--test-jobs-output-file",
+                test_jobs_output_file,
+            ],
+            catch_exceptions=False,
+        )
+
+    with open(
+        os.path.join(
+            _bazel_workspace_dir, f"{os.path.splitext(test_jobs_output_file)[0]}_0.json"
+        ),
+        "r",
+    ) as f:
+        steps = json.load(f)[0]["steps"]
+
+    for step in steps:
+        for var, want in expected.items():
+            assert step["env"].get(var) == want
+
+    assert result.exit_code == 0
 
 
 if __name__ == "__main__":

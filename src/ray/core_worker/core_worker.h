@@ -16,7 +16,9 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
@@ -26,6 +28,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
@@ -58,6 +61,14 @@
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray::core {
+
+/**
+ * @brief In-flight WaitAsync table.
+ *
+ * Defined in core_worker.cc. Posted GetAsync callbacks hold a shared_ptr to
+ * this so they can outlive ``CoreWorker``.
+ */
+struct WaitAsyncRegistry;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -791,6 +802,55 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               std::vector<bool> *results,
               bool fetch_local);
 
+  /**
+   * Asynchronously wait for one object to become ready without blocking the
+   * calling thread. Invokes ``callback`` once when it is ready.
+   *
+   * An object is ready when it is in the in-process memory store or a plasma
+   * marker is present. This does not pull plasma objects locally.
+   *
+   * The callback is invoked at most once. Completions from the memory store
+   * run on ``io_service_`` (same as ``GetAsync``), even when the object is
+   * already present. Cancel and shutdown invoke the callback on the caller.
+   * ``Status::OK`` means the object is ready.
+   *
+   * WaitAsync does not hold a reference and does not subscribe to the
+   * reference counter. Dropping the ``ObjectRef`` leaves the callback
+   * pending, same as ``GetAsync``. It runs when the object is ready, when
+   * ``CancelWaitAsync`` runs, or on shutdown. If the object has no owner,
+   * the callback is invoked immediately with ``ObjectUnknownOwner``.
+   *
+   * \param[in] object_id ID of the object to wait for.
+   * \param[in] callback Invoked with status and ``callback_arg``.
+   * \param[in] callback_arg Opaque pointer passed through to ``callback``.
+   * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
+   * already invoked synchronously on the calling thread (unknown owner, or the
+   * worker is shutting down).
+   */
+  uint64_t WaitAsync(const ObjectID &object_id,
+                     void (*callback)(Status status, void *callback_arg),
+                     void *callback_arg);
+
+  /**
+   * Cancel an in-flight ``WaitAsync`` identified by its handle.
+   *
+   * Completes a pending request (callback once with a cancelled status).
+   * No-op if ``handle`` is 0 or the request already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   */
+  void CancelWaitAsync(uint64_t handle);
+
+  /**
+   * Complete every in-flight ``WaitAsync`` with a shutdown error.
+   *
+   * Invokes each pending callback once. Safe to call more than once. Also
+   * latches the shutdown, so any later ``WaitAsync`` fails fast rather than
+   * registering a wait that the stopped ``io_service_`` can never complete.
+   * The embedding runtime must still be alive — see ``~CoreWorker``.
+   */
+  void CancelAllWaitAsync();
+
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
   /// method.
@@ -1282,15 +1342,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] owner_address The address of the owner who will own this
   /// dynamically generated object.
   /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// Nil() together with a std::nullopt put_index deduces both from the current
   /// worker context.
   /// \param[in] put_index The equivalent of the return value of
   /// WorkerContext::GetNextPutIndex.
-  /// If std::nullopt is specified, it will deduce the put index from the
-  /// current worker context.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
-                                   const TaskID &task_id = TaskID::Nil(),
-                                   std::optional<ObjectIDIndexType> put_index = -1);
+  /// Both task_id and put_index have to be supplied, or neither: deducing one
+  /// while the caller supplies the other would key the ObjectID to one task
+  /// while drawing the index from another. Mixing them panics.
+  ObjectID AllocateDynamicReturnId(
+      const rpc::Address &owner_address,
+      const TaskID &task_id = TaskID::Nil(),
+      std::optional<ObjectIDIndexType> put_index = std::nullopt);
 
   /// Get a handle to an actor.
   ///
@@ -1537,6 +1599,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return The local client for the current node, the pooled client for any
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
+
+  /// Send a FreeLocalObjects batch to the node using the Nagle algorithm. A null
+  /// client or failed reply drops the node's queue so a flaky raylet cannot wedge
+  /// it.
+  /// \param node_id The node whose buffered FreeLocalObjects requests to flush.
+  void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
 
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
@@ -1899,6 +1967,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                       ObjectID object_id,
                       void *py_future);
 
+  /**
+   * Complete a ``WaitAsync`` request and invoke its callback at most once.
+   *
+   * Looks the handle up in ``wait_async_``. Unregisters it, cancels the
+   * memory-store wait, then runs the callback. No-op if the handle is
+   * unknown or already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   * \param[in] status Status passed to the user callback.
+   */
+  void FinishWaitAsync(uint64_t handle, Status status);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -2019,13 +2099,30 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
+  /// Guards free_pending_ / free_in_flight_: FreeObjectOnNodesAsync runs on
+  /// arbitrary ReferenceCounter threads while the reply callback runs on
+  /// io_service_. Lock order is ReferenceCounter::mutex_ -> free_batch_mu_ (the
+  /// former is held when FreeObjectOnNodesAsync is called), so keep this a leaf:
+  /// never call back into ReferenceCounter while holding it.
+  absl::Mutex free_batch_mu_;
+  /// node id -> FIFO queue of object ids waiting to be freed on that node.
+  absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_
+      ABSL_GUARDED_BY(free_batch_mu_);
+  /// Nodes with a FreeLocalObjects RPC currently in flight (backpressure).
+  absl::flat_hash_set<NodeID> free_in_flight_ ABSL_GUARDED_BY(free_batch_mu_);
+
   /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
   /// actors this will contain at most one task ID.
   ///
   /// We have to track this separately because cancellation requests come from submitter
   /// thread than the thread executing the task, so we cannot get the cancellation status
   /// from the thread-local WorkerThreadContext.
-  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
+  ///
+  /// This has its own mutex because IsTaskCanceled() is called from check_signals
+  /// while the process-level core_worker_ lock is held, and taking mutex_ there
+  /// closes a lock-order cycle.
+  mutable absl::Mutex canceled_tasks_mutex_ ABSL_ACQUIRED_AFTER(mutex_);
+  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(canceled_tasks_mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
@@ -2099,6 +2196,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Callbacks for when when a plasma object becomes ready.
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
+
+  // In-flight WaitAsync table. Shared so a posted GetAsync can look up a
+  // handle after this worker is destroyed (the lookup misses and returns).
+  std::shared_ptr<WaitAsyncRegistry> wait_async_;
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
@@ -2179,6 +2280,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
+
+  /// Max object ids per coalesced FreeLocalObjects RPC, read once at
+  /// construction (validated > 0 there; used by
+  /// SendFreeLocalObjectsBatchIfNeeded). Mirrors
+  /// OwnershipBasedObjectDirectory::kMaxObjectReportBatchSize.
+  const size_t max_free_local_objects_batch_size_;
 
   /// Clock used for timestamping events, retries, and timeouts.
   ClockInterface &clock_;
