@@ -22,7 +22,7 @@ examples:
       - lightning
     use_cases:
       - computer vision
-    link: examples/lightning/lightning_mnist_example
+    link: examples/lightning/lightning-mnist-example
   - title: Train a text classifier with Hugging Face Accelerate
     frameworks:
       - accelerate
@@ -32,14 +32,14 @@ examples:
     use_cases:
       - large language models
       - natural language processing
-    link: examples/accelerate/accelerate_example
+    link: examples/accelerate/accelerate-example
   - title: Train an image classifier with TensorFlow
     frameworks:
       - tensorflow
     skill_level: beginner
     use_cases:
       - computer vision
-    link: examples/tf/tensorflow_mnist_example
+    link: examples/tf/tensorflow-mnist-example
   - title: Train a GPT-2-style Transformer with JAX and Flax
     frameworks:
       - jax
@@ -47,12 +47,12 @@ examples:
     skill_level: beginner
     use_cases:
       - natural language processing
-    link: examples/jax/intro_to_jax_trainer/README
+    link: examples/jax/intro-to-jax-trainer/README
   - title: Train with Horovod and PyTorch
     frameworks:
       - horovod
     skill_level: beginner
-    link: examples/horovod/horovod_example
+    link: examples/horovod/horovod-example
   - title: "Train ResNet model with Intel Gaudi"
     frameworks:
       - pytorch
@@ -60,7 +60,7 @@ examples:
     use_cases:
       - computer vision
     contributor: community
-    link: examples/intel_gaudi/resnet
+    link: examples/intel-gaudi/resnet
   - title: "Train BERT model with Intel Gaudi"
     frameworks:
       - transformers
@@ -68,7 +68,7 @@ examples:
     use_cases:
       - natural language processing
     contributor: community
-    link: examples/intel_gaudi/bert
+    link: examples/intel-gaudi/bert
   - title: Profiling a Ray Train Workload with PyTorch Profiler
     frameworks:
       - pytorch
@@ -117,7 +117,7 @@ examples:
     use_cases:
       - large language models
       - natural language processing
-    link: examples/deepspeed/deepspeed_example
+    link: examples/deepspeed/deepspeed-example
   - title: Fine-tune a personalized Stable Diffusion model
     skill_level: intermediate
     frameworks:
@@ -125,7 +125,7 @@ examples:
     use_cases:
       - computer vision
       - generative ai
-    link: examples/pytorch/dreambooth_finetuning
+    link: examples/pytorch/dreambooth-finetuning
   - title: Finetune Stable Diffusion and generate images with Intel Gaudi
     skill_level: intermediate
     frameworks:
@@ -135,21 +135,21 @@ examples:
       - computer vision
       - generative ai
     contributor: community
-    link: examples/intel_gaudi/sd
+    link: examples/intel-gaudi/sd
   - title: Train a text classifier with PyTorch Lightning and Ray Data
     frameworks:
       - lightning
     skill_level: intermediate
     use_cases:
       - natural language processing
-    link: examples/lightning/lightning_cola_advanced
+    link: examples/lightning/lightning-cola-advanced
   - title: Train a text classifier with Hugging Face Transformers
     frameworks:
       - transformers
     skill_level: intermediate
     use_cases:
       - natural language processing
-    link: examples/transformers/huggingface_text_classification
+    link: examples/transformers/huggingface-text-classification
   - title: RL Post-Train an LLM using HuggingFace TRL with GRPO
     frameworks:
       - transformers
@@ -158,7 +158,7 @@ examples:
     use_cases:
       - natural language processing
       - reinforcement learning
-    link: examples/transformers/transformer_reinforcement_learning/README
+    link: examples/transformers/transformer-reinforcement-learning/README
   - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
     frameworks:
       - accelerate
@@ -168,7 +168,7 @@ examples:
       - natural language processing
       - large language models
     contributor: community
-    link: examples/intel_gaudi/llama
+    link: examples/intel-gaudi/llama
   - title: "Pre-train Llama-2 with Intel Gaudi"
     frameworks:
       - accelerate
@@ -179,7 +179,7 @@ examples:
       - natural language processing
       - large language models
     contributor: community
-    link: examples/intel_gaudi/llama_pretrain
+    link: examples/intel-gaudi/llama-pretrain
 
   - title: Fine-tune Llama3.1 with AWS Trainium
     frameworks:
@@ -210,7 +210,7 @@ examples:
       - natural language processing
       - large language models
       - generative ai
-    link: examples/deepspeed/gptj_deepspeed_fine_tuning
+    link: examples/deepspeed/gptj-deepspeed-fine-tuning
   - title: Fine-tune a vicuna-13b text generation model with PyTorch Lightning and DeepSpeed
     frameworks:
       - lightning
@@ -219,7 +219,7 @@ examples:
     use_cases:
       - large language models
       - generative ai
-    link: examples/lightning/vicuna_13b_lightning_deepspeed_finetune
+    link: examples/lightning/vicuna-13b-lightning-deepspeed-finetune
   - title: Fine-tune a dolly-v2-7b text generation model with PyTorch Lightning and FSDP
     frameworks:
       - lightning
@@ -228,7 +228,7 @@ examples:
       - large language models
       - generative ai
       - natural language processing
-    link: examples/lightning/dolly_lightning_fsdp_finetuning
+    link: examples/lightning/dolly-lightning-fsdp-finetuning
   - title: Train a tabular model with XGBoost
     frameworks:
       - xgboost

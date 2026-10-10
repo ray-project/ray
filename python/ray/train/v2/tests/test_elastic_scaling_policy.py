@@ -5,8 +5,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from freezegun import freeze_time
 
+import ray._raylet
+from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    ReservedResources,
+    ResourceDict,
+)
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     ResourceRequestPriority,
+    ResourceRequestStrategy,
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.scaling_policy import (
@@ -14,6 +20,9 @@ from ray.train.v2._internal.execution.scaling_policy import (
     AUTOSCALING_REQUESTS_INTERVAL_S,
     NoopDecision,
     ResizeDecision,
+)
+from ray.train.v2._internal.execution.scaling_policy.autoscaling_coordinator_client import (
+    TrainAutoscalingCoordinatorClient,
 )
 from ray.train.v2._internal.execution.scaling_policy.elastic import (
     ElasticScalingPolicy,
@@ -26,13 +35,15 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
+NODE_ID_KEY = ray._raylet.RAY_NODE_ID_KEY
+
 
 @pytest.fixture(autouse=True)
 def mock_autoscaling_coordinator(monkeypatch):
     mock_coordinator = MagicMock()
     mock_coordinator._reserved_resources = None
     mock_coordinator.get_reserved_resources.remote = MagicMock(
-        side_effect=lambda _: mock_coordinator._reserved_resources
+        side_effect=lambda _, recompute=False: mock_coordinator._reserved_resources
     )
 
     monkeypatch.setattr(
@@ -54,13 +65,15 @@ def _start_scaling_policy(policy, run_id: str = "test-run") -> None:
     policy.after_controller_start(MagicMock(run_id=run_id))
 
 
-def _make_reserved(resources_per_worker: dict, num_nodes: int) -> list:
-    """Build a list of reserved resource bundles with ``num_nodes`` entries.
+def _make_reserved(
+    resources_per_worker: ResourceDict, num_nodes: int
+) -> ReservedResources:
+    """Build per-node reserved resources with ``num_nodes`` entries.
 
-    Mirrors the ``List[ResourceDict]`` returned by
+    Mirrors the ``ReservedResources`` returned by
     ``AutoscalingCoordinator.get_reserved_resources``.
     """
-    return [dict(resources_per_worker) for _ in range(num_nodes)]
+    return {f"n{i}": dict(resources_per_worker) for i in range(num_nodes)}
 
 
 def _get_mock_worker_group_status(num_workers: int) -> WorkerGroupPollStatus:
@@ -82,7 +95,9 @@ def _get_mock_worker_group_state(
     )
 
 
-@patch.object(ElasticScalingPolicy, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0)
+@patch.object(
+    TrainAutoscalingCoordinatorClient, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0
+)
 def test_non_running_worker_group_decision():
     """Test decisions being made when the worker group is initializing/restarting.
     Ensures that the policy will resize the worker group as soon as resources are available.
@@ -127,6 +142,63 @@ def test_non_running_worker_group_decision():
     assert decision.num_workers == max_workers
 
 
+@pytest.mark.parametrize(
+    "num_fresh_nodes,expected_num_workers",
+    [
+        pytest.param(8, 8, id="unchanged"),
+        # A node died after the cached view was taken: decide on what's left.
+        pytest.param(5, 5, id="shrank_above_min"),
+        pytest.param(3, None, id="shrank_below_min"),
+    ],
+)
+def test_non_running_decision_pins_to_a_fresh_reservation(
+    num_fresh_nodes, expected_num_workers
+):
+    """The decision's size and its pins both come from one fresh snapshot, so
+    the worker group never waits on workers the reservation no longer has."""
+    resources_per_worker = {"CPU": 8, "GPU": 1}
+    scaling_config = ScalingConfig(
+        num_workers=(4, 64),
+        resources_per_worker=resources_per_worker,
+        use_gpu=True,
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+    _start_scaling_policy(policy)
+    cached = _make_reserved(resources_per_worker, 8)
+    fresh = _make_reserved(resources_per_worker, num_fresh_nodes)
+    policy._autoscaling_coordinator.get_reserved_resources.remote.side_effect = (
+        lambda _, recompute=False: fresh if recompute else cached
+    )
+
+    decision = policy.make_decision_for_non_running_worker_group()
+
+    if expected_num_workers is None:
+        assert isinstance(decision, NoopDecision)
+        return
+    assert isinstance(decision, ResizeDecision)
+    assert decision.num_workers == expected_num_workers
+    assert decision.label_selectors == [{NODE_ID_KEY: node_id} for node_id in fresh]
+
+
+@patch.object(
+    TrainAutoscalingCoordinatorClient, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0
+)
+def test_decision_pins_are_capped_at_max_workers():
+    """A reservation larger than ``max_workers`` pins exactly ``max_workers``."""
+    resources_per_worker = {"CPU": 1}
+    scaling_config = ScalingConfig(
+        num_workers=(1, 3), resources_per_worker=resources_per_worker
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+    _start_scaling_policy(policy)
+    policy._autoscaling_coordinator._reserved_resources = {"n0": {"CPU": 5}}
+
+    decision = policy.make_decision_for_non_running_worker_group()
+
+    assert decision.num_workers == 3
+    assert decision.label_selectors == [{NODE_ID_KEY: "n0"}] * 3
+
+
 def test_before_controller_abort():
     """Test that before_controller_abort sends a cancel request to the AutoscalingCoordinator."""
     resources_per_worker = {"CPU": 4, "GPU": 1}
@@ -151,7 +223,7 @@ def test_get_reserved_resources_interval():
     min_workers, max_workers = 4, 64
     resources_per_worker = {"CPU": 8, "GPU": 1}
     get_reserved_resources_interval_s = (
-        ElasticScalingPolicy.GET_RESERVED_RESOURCES_INTERVAL_S
+        TrainAutoscalingCoordinatorClient.GET_RESERVED_RESOURCES_INTERVAL_S
     )
 
     scaling_config = ScalingConfig(
@@ -212,7 +284,9 @@ def test_get_reserved_resources_interval():
         assert reserved_resources == _make_reserved(resources_per_worker, max_workers)
 
 
-@patch.object(ElasticScalingPolicy, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0)
+@patch.object(
+    TrainAutoscalingCoordinatorClient, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0
+)
 def test_running_worker_group_decision():
     """Test decisions being made when the worker group is running.
     Ensures that the policy will resize the worker group when there is a change
@@ -266,6 +340,7 @@ def test_running_worker_group_decision():
     )
     assert isinstance(decision, ResizeDecision)
     assert decision.num_workers == max_workers
+    assert len(decision.label_selectors) == max_workers
 
 
 def test_monitor_recently_started_worker_group():
@@ -387,7 +462,7 @@ def test_count_possible_workers():
     policy = ElasticScalingPolicy(scaling_config)
 
     # No resources
-    assert policy._count_possible_workers([]) == 0
+    assert policy._count_possible_workers({}) == 0
 
     # Single node
     assert policy._count_possible_workers(_make_reserved({"CPU": 8, "GPU": 1}, 1)) == 1
@@ -406,6 +481,41 @@ def test_count_possible_workers():
     )
 
 
+@pytest.mark.parametrize("per_worker_gpu, num_workers", [(0.1, 5), (0.2, 5), (0.3, 3)])
+def test_count_possible_workers_fractional_resources(per_worker_gpu, num_workers):
+    """Fractional per-worker resources must not lose a worker to float error.
+
+    The coordinator builds a node's reserved total by adding the per-worker
+    bundle once per worker, so the total is not exactly
+    ``num_workers * per_worker_gpu``. A plain ``//`` reads five 0.1-GPU bundles
+    as four workers, and if that undercount drops below ``min_workers`` the
+    policy never starts the run at all.
+    """
+    scaling_config = ScalingConfig(
+        num_workers=(num_workers, num_workers),
+        use_gpu=True,
+        resources_per_worker={"GPU": per_worker_gpu},
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+
+    # Mirror how the coordinator accumulates the per-node total.
+    reserved_gpu = 0.0
+    for _ in range(num_workers):
+        reserved_gpu = reserved_gpu + per_worker_gpu
+
+    assert policy._count_possible_workers({"n0": {"GPU": reserved_gpu}}) == num_workers
+
+
+def test_count_possible_workers_ignores_partial_worker():
+    """Tolerating float drift must not invent a worker out of a real shortfall."""
+    scaling_config = ScalingConfig(
+        num_workers=(1, 8), use_gpu=True, resources_per_worker={"GPU": 1}
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+
+    assert policy._count_possible_workers({"n0": {"GPU": 3.9}}) == 3
+
+
 def test_count_possible_workers_with_zero_resources():
     max_workers = 4
     scaling_config = ScalingConfig(
@@ -415,7 +525,7 @@ def test_count_possible_workers_with_zero_resources():
     policy = ElasticScalingPolicy(scaling_config)
 
     assert (
-        policy._count_possible_workers([{"CPU": 1, "GPU": 1, "memory": 1}])
+        policy._count_possible_workers({"n0": {"CPU": 1, "GPU": 1, "memory": 1}})
         == max_workers
     )
 
@@ -437,6 +547,7 @@ def test_request_and_clear():
             label_selectors=None,
             expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
             priority=ResourceRequestPriority.HIGH,
+            strategy=ResourceRequestStrategy.PACK,
         )
 
     with freeze_time() as frozen_time:

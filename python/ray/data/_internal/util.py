@@ -817,16 +817,11 @@ def unify_block_metadata_schema(
         A unified schema of the input list of schemas, or None if no valid schemas
         are provided.
     """
-    # Some blocks could be empty, in which case we cannot get their schema.
-    # TODO(ekl) validate schema is the same across different blocks.
-
-    # First check if there are blocks with computed schemas, then unify
-    # valid schemas from all such blocks.
-
-    schemas_to_unify = []
-    for m in block_metadata_with_schemas:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-            schemas_to_unify.append(m.schema)
+    # NOTE: An empty block can still carry a valid schema (e.g., an empty
+    # Arrow table), so blocks are not filtered on their number of rows.
+    schemas_to_unify = [
+        m.schema for m in block_metadata_with_schemas if m.schema is not None
+    ]
     return unify_schemas_with_validation(schemas_to_unify)
 
 
@@ -850,21 +845,20 @@ def unify_schemas_with_validation(
 def unify_ref_bundles_schema(
     ref_bundles: List["RefBundle"],
 ) -> Optional["Schema"]:
-    schemas_to_unify = []
-    for bundle in ref_bundles:
-        if bundle.schema is not None and (
-            bundle.num_rows() is None or bundle.num_rows() > 0
-        ):
-            schemas_to_unify.append(bundle.schema)
+    # NOTE: An empty bundle can still carry a valid schema (e.g., an empty
+    # Arrow table), so bundles are not filtered on their number of rows.
+    schemas_to_unify = [
+        bundle.schema for bundle in ref_bundles if bundle.schema is not None
+    ]
     return unify_schemas_with_validation(schemas_to_unify)
 
 
 def find_insertion_index(
-    columns: List[np.ndarray],
+    key_columns: List[np.ndarray],
     pivot: Tuple[Union[Any]],
     descending: List[bool],
     has_nulls: Optional[List[bool]] = None,
-    _start_from_idx: int = 0,
+    start_from_idx: int = 0,
 ) -> int:
     """For the given list of *sorted* columns, find the index where ``pivot`` value
     should be added, while maintaining sorted order.
@@ -875,7 +869,7 @@ def find_insertion_index(
     value could be inserted.
 
     Args:
-        columns: List of *sorted* arrays (as ndarrays).
+        key_columns: List of *sorted* arrays (as ndarrays).
         pivot: A (row-like) tuple of corresponding column values, for which insertion
                 needs to be determined.
         descending: List of booleans designating whether key columns are in ascending
@@ -887,19 +881,13 @@ def find_insertion_index(
                    but expensive when called in a hot loop. Callers that know the
                    column has no nulls (e.g. via Arrow's O(1) ``null_count``) should
                    pass ``False`` for that column to skip the O(n) strip.
-        _start_from_idx: The index to start the search from. Rows before this
+        start_from_idx: The index to start the search from. Rows before this
             index are assumed to already precede ``pivot`` in sorted order.
 
     Returns:
         Index where the pivot value would have been inserted into to maintain sorted
         order of ``key_columns``.
     """
-
-    assert len(columns) > 0, "Expected non-empty list of key columns"
-    assert has_nulls is None or len(has_nulls) == len(columns), (
-        f"has_nulls length ({len(has_nulls)}) must equal columns length "
-        f"({len(columns)})"
-    )
 
     # NOTE: Left and right offsets track 2 insertion points:
     #
@@ -912,7 +900,7 @@ def find_insertion_index(
     # insertion point in the multi-column scenario, since lexicographic ordering
     # in the second (and beyond) columns might not necessarily match the
     # non-lexicographic ordering.
-    left, right = _start_from_idx, len(columns[0])
+    left, right = start_from_idx, len(key_columns[0])
 
     for col_idx, cur_pivot_val in enumerate(pivot):
         if left == right:
@@ -922,7 +910,7 @@ def find_insertion_index(
         #
         # This is necessary to make sure that the values in the projected range
         # are in the ascending/descending order (in multi-column scenario)
-        column_range_view = columns[col_idx][left:right]
+        column_range_view = key_columns[col_idx][left:right]
 
         # Nulls sort last in Arrow, so they accumulate at the tail of
         # column_range_view. Stripping them before searching avoids a
@@ -1776,6 +1764,27 @@ def _validate_rows_per_file_args(
         )
 
     return min_rows_per_file, max_rows_per_file
+
+
+def _validate_min_bytes_per_file_args(
+    *,
+    min_bytes_per_file: Optional[int] = None,
+    num_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> None:
+    """Validate the minimum bytes per file and its mutually exclusive arguments."""
+    if min_bytes_per_file is not None and min_bytes_per_file <= 0:
+        raise ValueError("min_bytes_per_file must be a positive integer")
+
+    if min_bytes_per_file is not None and any(
+        value is not None
+        for value in (num_rows_per_file, min_rows_per_file, max_rows_per_file)
+    ):
+        raise ValueError(
+            "min_bytes_per_file cannot be used with min_rows_per_file, "
+            "max_rows_per_file, or num_rows_per_file"
+        )
 
 
 def is_nan(value) -> bool:

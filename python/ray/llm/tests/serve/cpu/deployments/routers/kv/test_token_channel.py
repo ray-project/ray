@@ -27,6 +27,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forward
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
 )
 
 
@@ -214,6 +215,53 @@ def test_malformed_payload_falls_back():
     assert request.kv_transfer_params is None
 
 
+def test_token_store_skips_chat_tokenization():
+    """The token-store handoff reaches vLLM's native reuse interface."""
+    store = TokenStore()
+    store.put("token-key", payload=_payload([1, 2, 3]))
+    request = SimpleNamespace(kv_transfer_params={"remote_engine_id": "replica-1"})
+
+    inject_prompt_token_ids(request, _raw_request("token-key"), store)
+
+    online_renderer = pytest.importorskip("vllm.renderers.online_renderer")
+
+    class Renderer:
+        tokenizer = object()
+
+        async def render_chat_async(self, *args, **kwargs):
+            raise AssertionError("vLLM should skip chat rendering and tokenization")
+
+    class ChatParams:
+        def with_defaults(self, *args, **kwargs):
+            return self
+
+    request.cache_salt = None
+    request.tool_choice = "none"
+    request.build_tok_params = lambda model_config: object()
+    request.build_chat_params = lambda *args: ChatParams()
+    renderer = online_renderer.OnlineRenderer.__new__(online_renderer.OnlineRenderer)
+    renderer.renderer = Renderer()
+    renderer.trust_request_mm_kwargs = False
+    renderer.model_config = SimpleNamespace(
+        multimodal_config=None, enable_prompt_embeds=False
+    )
+    renderer.parser = None
+
+    conversation, engine_inputs = asyncio.run(
+        renderer.preprocess_chat(
+            request,
+            messages=[{"role": "user", "content": "not rendered"}],
+            default_template=None,
+            default_template_content_format="auto",
+            default_template_kwargs=None,
+        )
+    )
+
+    assert conversation == []
+    assert engine_inputs[0]["prompt_token_ids"] == [1, 2, 3]
+    assert request.kv_transfer_params == {"remote_engine_id": "replica-1"}
+
+
 @pytest.mark.asyncio
 async def test_keeps_tokens_separate():
     token_ids_by_key = {
@@ -309,7 +357,9 @@ async def test_routes_tokens_to_replica():
 
     request = MagicMock()
     request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hello"}')
-    request.headers = Headers({})
+    request.headers = Headers(
+        {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/completions"}
+    )
 
     try:
         await _push_until(sender, selected_endpoint, "warmup", [0])
