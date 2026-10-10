@@ -13,6 +13,7 @@ myst:
 :hidden:
 
 Key Concepts <key-concepts>
+Programming Models <programming-models>
 User Guides <user-guide>
 Examples <examples/index>
 Internals <internals/index>
