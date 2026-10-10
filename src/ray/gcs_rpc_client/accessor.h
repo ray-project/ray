@@ -330,6 +330,14 @@ class NodeResourceInfoAccessor {
   virtual void AsyncGetAllAvailableResources(
       const rpc::MultiItemCallback<rpc::AvailableResources> &callback);
 
+  /// Get available resources of all nodes from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param reply The available resources of all nodes returned by GCS.
+  /// \return Status
+  virtual Status GetAllAvailableResources(int64_t timeout_ms,
+                                          rpc::GetAllAvailableResourcesReply &reply);
+
   /// Get total resources of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.

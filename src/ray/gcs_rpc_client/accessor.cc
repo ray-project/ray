@@ -528,6 +528,13 @@ void NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
       });
 }
 
+Status NodeResourceInfoAccessor::GetAllAvailableResources(
+    int64_t timeout_ms, rpc::GetAllAvailableResourcesReply &reply) {
+  rpc::GetAllAvailableResourcesRequest request;
+  return client_impl_->GetGcsRpcClient().SyncGetAllAvailableResources(
+      std::move(request), &reply, timeout_ms);
+}
+
 void NodeResourceInfoAccessor::AsyncGetAllTotalResources(
     const rpc::MultiItemCallback<rpc::TotalResources> &callback) {
   rpc::GetAllTotalResourcesRequest request;

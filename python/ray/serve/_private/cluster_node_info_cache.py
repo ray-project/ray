@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
 import ray
-from ray._common.utils import binary_to_hex
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S, SERVE_LOGGER_NAME
 
@@ -103,24 +102,23 @@ class ClusterNodeInfoCache(ABC):
         }
 
     def _fetch_available_resources_per_node(self) -> Dict[str, Dict[str, float]]:
-        """Fetch available resources per alive node via get_all_resource_usage()."""
+        """Fetch available resources per alive node via get_all_available_resources()."""
         try:
-            reply = self._gcs_client.get_all_resource_usage(
+            available_resources = self._gcs_client.get_all_available_resources(
                 timeout=RAY_GCS_RPC_TIMEOUT_S
             )
         except Exception:
             logger.warning(
-                "Failed to fetch resource usage from GCS. "
+                "Failed to fetch available resources from GCS. "
                 "Available resources cache will be stale.",
                 exc_info=True,
             )
             return self._cached_available_resources_per_node
 
         return {
-            node_id: dict(resource_data.resources_available)
-            for resource_data in reply.resource_usage_data.batch
-            if (node_id := binary_to_hex(resource_data.node_id))
-            in self._alive_node_id_set
+            node_id: resources
+            for node_id, resources in available_resources.items()
+            if node_id in self._alive_node_id_set
         }
 
     def get_alive_nodes(self) -> List[Tuple[str, str, str]]:
