@@ -3,11 +3,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.llm._internal.serve.engines.common.kv_transfer.factory import (
+    KVConnectorBackendFactory,
+)
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
-)
-from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
-    KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.multi_connector import (
     MultiConnectorBackend,
