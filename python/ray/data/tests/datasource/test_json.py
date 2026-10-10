@@ -18,6 +18,7 @@ from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 # Set the test timeout to 6 minutes
@@ -127,6 +128,91 @@ def test_json_read_with_parse_options(
     assert ds.count() == 3
     assert ds.input_files() == [path1]
     assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
+
+
+def test_json_read_invalid_format_includes_path(ray_start_regular_shared, tmp_path):
+    path = tmp_path / "malformed.json"
+    path.write_text(
+        """
+        [
+          {"name": "A", "value": 1},
+          {"name": "B", "value": }
+        ]
+        """
+    )
+
+    with pytest.raises(
+        json.JSONDecodeError,
+        match="Failed to read JSON file",
+    ) as exc_info:
+        ray.data.read_json(str(path)).materialize()
+
+    assert path.as_posix() in str(exc_info.value)
+
+
+def test_json_read_invalid_utf8_includes_path(ray_start_regular_shared, tmp_path):
+    path = tmp_path / "malformed_encoding.json"
+    path.write_bytes(b'[{"name": "\xff"}]')
+
+    with pytest.raises(UnicodeDecodeError) as exc_info:
+        ray.data.read_json(str(path)).materialize()
+
+    error = exc_info.value
+    error_message = str(exc_info.value)
+    assert path.as_posix() in error_message
+    assert "utf-8" in error_message.lower()
+    assert isinstance(error, RayTaskError)
+    assert isinstance(error.cause, UnicodeDecodeError)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        # Fails while estimating the chunk size.
+        '{"name": "A", "value":\n',
+        # Chunk-size estimation succeeds, then the actual read fails.
+        '{"name": "A", "value": 1}\n' '{"name": "B", "value":\n',
+    ],
+)
+def test_jsonl_read_invalid_format_includes_path(
+    ray_start_regular_shared, tmp_path, content
+):
+    path = tmp_path / "malformed.jsonl"
+    path.write_text(content)
+
+    with pytest.raises(
+        ValueError,
+        match="Failed to parse line-delimited JSON from file",
+    ) as exc_info:
+        ray.data.read_json(str(path), lines=True).materialize()
+
+    assert path.as_posix() in str(exc_info.value)
+    assert "Expected object or value" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        # Invalid UTF-8 in the first row.
+        b'{"name": "\xff"}\n',
+        # Invalid UTF-8 in a later row.
+        b'{"name": "valid"}\n{"name": "\xff"}\n',
+    ],
+)
+def test_jsonl_read_invalid_utf8_includes_path(
+    ray_start_regular_shared, tmp_path, content
+):
+    path = tmp_path / "malformed_encoding.jsonl"
+    path.write_bytes(content)
+
+    with pytest.raises(UnicodeDecodeError) as exc_info:
+        ray.data.read_json(str(path), lines=True).materialize()
+
+    error = exc_info.value
+    assert isinstance(error, RayTaskError)
+    assert isinstance(error.cause, UnicodeDecodeError)
+    assert path.as_posix() in str(error)
+    assert "utf-8" in str(error).lower()
 
 
 @pytest.mark.parametrize("override_num_blocks", [None, 1, 3])

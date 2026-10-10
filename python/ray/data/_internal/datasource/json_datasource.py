@@ -145,6 +145,8 @@ class ArrowJSONDatasource(FileBasedDatasource):
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
+        import json
+
         import pyarrow as pa
 
         buffer: pa.lib.Buffer = f.read_buffer()
@@ -154,11 +156,34 @@ class ArrowJSONDatasource(FileBasedDatasource):
         except pa.ArrowInvalid as e:
             # If read with PyArrow fails, try falling back to native json.load().
             logger.warning(
-                f"Error reading with pyarrow.json.read_json(). "
+                f"Error reading {path} with pyarrow.json.read_json(). "
                 f"Falling back to native json.load(), which may be slower. "
                 f"PyArrow error was:\n{e}"
             )
-            yield from self._read_with_python_json(buffer)
+            try:
+                yield from self._read_with_python_json(buffer)
+            except json.JSONDecodeError as json_error:
+                raise json.JSONDecodeError(
+                    (
+                        f"Failed to read JSON file: {path}. "
+                        "Please check that the file contains valid JSON. "
+                        f"{json_error.msg}"
+                    ),
+                    json_error.doc,
+                    json_error.pos,
+                ) from json_error
+            except UnicodeDecodeError as decode_error:
+                raise UnicodeDecodeError(
+                    decode_error.encoding,
+                    decode_error.object,
+                    decode_error.start,
+                    decode_error.end,
+                    (
+                        f"{decode_error.reason}. "
+                        f"Failed to read JSON file: {path}. "
+                        "Please check that the file uses a valid text encoding."
+                    ),
+                ) from decode_error
 
 
 class PandasJSONDatasource(FileBasedDatasource):
@@ -185,20 +210,40 @@ class PandasJSONDatasource(FileBasedDatasource):
         self._target_output_size_bytes = target_output_size_bytes
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        chunksize = self._estimate_chunksize(f)
+        try:
+            chunksize = self._estimate_chunksize(f)
 
-        with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
-            if chunksize is None:
-                # When chunksize=None, pandas returns DataFrame directly
-                # (no context manager).
-                df = pd.read_json(stream, chunksize=chunksize, lines=True)
-                yield _cast_range_index_to_string(df)
-            else:
-                # When chunksize is a number, pandas returns JsonReader
-                # (supports context manager).
-                with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
-                    for df in reader:
-                        yield _cast_range_index_to_string(df)
+            with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
+                if chunksize is None:
+                    # When chunksize=None, pandas returns DataFrame directly
+                    # (no context manager).
+                    df = pd.read_json(stream, chunksize=chunksize, lines=True)
+                    yield _cast_range_index_to_string(df)
+                else:
+                    # When chunksize is a number, pandas returns JsonReader
+                    # (supports context manager).
+                    with pd.read_json(
+                        stream, chunksize=chunksize, lines=True
+                    ) as reader:
+                        for df in reader:
+                            yield _cast_range_index_to_string(df)
+        except UnicodeDecodeError as decode_error:
+            raise UnicodeDecodeError(
+                decode_error.encoding,
+                decode_error.object,
+                decode_error.start,
+                decode_error.end,
+                (
+                    f"{decode_error.reason}. "
+                    f"Failed to read JSON file: {path}. "
+                    "Please check that the file uses a valid text encoding."
+                ),
+            ) from decode_error
+        except ValueError as e:
+            raise ValueError(
+                f"Failed to parse line-delimited JSON from file: {path}. "
+                f"Original error: {e}"
+            ) from e
 
     def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:
         """Estimate the chunksize by sampling the first row.
