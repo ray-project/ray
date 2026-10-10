@@ -523,6 +523,10 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
         c_bool IsGcsLeader() const
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetAllAvailableResources(
+            int64_t timeout_ms,
+            CGetAllAvailableResourcesReply &reply)
+
         CRayStatus GetDrainingNodes(
             int64_t timeout_ms,
             CGetDrainingNodesReply &reply)
@@ -810,6 +814,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_bool is_dead() const
         CJobConfig config() const
         const c_string &SerializeAsString() const
+
+    cdef cppclass CGetAllAvailableResourcesReply "ray::rpc::GetAllAvailableResourcesReply":
+        const c_string& SerializeAsString() const
 
     cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
         const c_string& SerializeAsString() const

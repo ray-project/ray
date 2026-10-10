@@ -22,11 +22,13 @@ from libcpp.utility cimport move
 import concurrent.futures
 import ray._private.ray_constants as ray_constants
 from ray.core.generated.gcs_service_pb2 import (
+    GetAllAvailableResourcesReply,
     GetAllResourceUsageReply,
     GetDrainingNodesReply,
 )
 from ray.includes.common cimport (
     CGcsClient,
+    CGetAllAvailableResourcesReply,
     CGetAllResourceUsageReply,
     CGetDrainingNodesReply,
     ConnectOnSingletonIoContext,
@@ -476,6 +478,33 @@ cdef class InnerGcsClient:
                 draining_node.node_id
             ): draining_node.draining_deadline_timestamp_ms
             for draining_node in reply.draining_nodes
+        }
+
+    def get_all_available_resources(
+        self, timeout: Optional[int | float] = None
+    ) -> Dict[str, Dict[str, float]]:
+        """Get available resources of all alive nodes from GCS.
+
+        Returns a map from hex node ID to a map of resource name to available
+        amount. Implicit resources and resources at their default value are
+        omitted.
+        """
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef CGetAllAvailableResourcesReply c_reply
+        cdef c_string serialized_reply
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get()
+                .NodeResources()
+                .GetAllAvailableResources(timeout_ms, c_reply)
+            )
+            serialized_reply = c_reply.SerializeAsString()
+
+        reply = GetAllAvailableResourcesReply()
+        reply.ParseFromString(serialized_reply)
+        return {
+            binary_to_hex(resources.node_id): dict(resources.resources_available)
+            for resources in reply.resources_list
         }
 
     def get_all_resource_usage(
