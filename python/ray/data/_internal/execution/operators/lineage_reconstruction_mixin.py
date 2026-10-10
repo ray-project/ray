@@ -100,7 +100,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # zero-row bundles and prepends them on the next merge, so the block of
         # interest is not necessarily first.
         dependencies = lineage_tracker.resolve_dependencies(
-            block_ref.hex() for block_ref in inputs.block_refs
+            block_ref.hex()  # pyrefly: ignore[missing-attribute]
+            for block_ref in inputs.block_refs
         )
 
         stamp = inputs.reconstruction_stamp
@@ -129,11 +130,13 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         For a downstream reconstruction child task, the parent task that completes last holds the full input
         set of reconstruction blocks, and can release it to the operator's output queue.
         """
+        lineage_tracker = self._lineage_tracker
+        assert lineage_tracker is not None
         held_blocks = self._reconstruction_outputs.get(reconstruction_plan_id, {})
         # Each child's blocks come back in its first attempt's input order, across all
         # of its parents. Re-running the child on that exact order keeps every output
         # index holding the rows it held originally, which output reuse relies on.
-        for child_task_id, slots in self._lineage_tracker.get_pending_children(
+        for child_task_id, slots in lineage_tracker.get_pending_children(
             lineage_task_id, reconstruction_plan_id
         ).items():
             missing = [slot for slot in slots if slot not in held_blocks]
@@ -172,7 +175,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             # Register with the lineage tracker that all the blocks for this task in a
             # particular reconstruction plan are now queued
             for slot in slots:
-                self._lineage_tracker.register_block_queued(
+                lineage_tracker.register_block_queued(
                     slot.parent_lineage_task_id,
                     slot.output_index,
                     reconstruction_plan_id,
