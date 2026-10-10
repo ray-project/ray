@@ -458,7 +458,6 @@ doc/source/rllib/
 
 doc/source/train/
 doc/source/tune/
-doc/source/ray-air/
 @ ml_doc
 ;
 
