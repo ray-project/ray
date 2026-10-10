@@ -1,5 +1,6 @@
 import itertools
 import uuid
+from types import MethodType
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 from ray.data._internal.execution.bundle_queue import EstimateBytes, RebundleQueue
@@ -111,6 +112,8 @@ def _plan_write_op_internal(
     Returns:
         The physical operator for the write operation.
     """
+    from ray.data.datasource.file_datasink import _FileDatasink
+
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
@@ -134,12 +137,24 @@ def _plan_write_op_internal(
     on_start = None
     if isinstance(datasink, Datasink):
         on_start = datasink.on_write_start
+        # Skip the inherited no-op hook so it doesn't prevent write fusion.
+        if (
+            type(on_start) is MethodType
+            and on_start.__func__ is Datasink.on_write_start
+        ):
+            on_start = None
 
     min_bytes_per_bundle = (
         datasink.min_bytes_per_write if isinstance(datasink, Datasink) else None
     )
     ref_bundler = None
-    supports_fusion = True
+    # Keep Write separate so custom hooks receive the schema after upstream transforms.
+    # The default file hook only handles file setup and doesn't use the schema.
+    supports_fusion = on_start is None or (
+        isinstance(datasink, _FileDatasink)
+        and type(on_start) is MethodType
+        and on_start.__func__ is _FileDatasink.on_write_start
+    )
     if min_bytes_per_bundle is not None:
         ref_bundler = RebundleQueue(EstimateBytes(min_bytes_per_bundle))
         supports_fusion = False
