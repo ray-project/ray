@@ -380,6 +380,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
 
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
+        c_bool consume_once
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,

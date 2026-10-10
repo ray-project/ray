@@ -49,6 +49,21 @@ enum class LineageReconstructionEligibility {
 };
 
 /**
+ * Move state of an owned object.
+ * The state only moves forward. An object starts in either NOT_MOVABLE or MOVABLE state
+ * depending on consume_once flag. A consume-once object goes from MOVABLE to MOVED when
+ * it is passed to its one consuming actor task.
+ **/
+enum class MoveState {
+  /// Default. The object can be passed to any number of tasks and borrowed.
+  NOT_MOVABLE,
+  /// Created with `consume_once=True` and not yet passed to a consuming actor task.
+  MOVABLE,
+  /// After a MOVABLE ref is passed to its consuming actor task.
+  MOVED,
+};
+
+/**
  * @brief Convert LineageReconstructionEligibility to the corresponding ErrorType for
  * reporting to users.
  *
@@ -212,6 +227,8 @@ class ReferenceCounterInterface {
    * @param[in] pinned_at_node_id The primary location for the object, if it
    * is already known. This is only used for ray.put calls.
    * @param[in] tensor_transport The transport used for the object.
+   * @param[in] move_state The initial move state. MOVABLE for the returns of an actor
+   * task submitted with `consume_once=True`, NOT_MOVABLE otherwise.
    */
   virtual void AddOwnedObject(
       const ObjectID &object_id,
@@ -222,7 +239,8 @@ class ReferenceCounterInterface {
       LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      const std::optional<std::string> &tensor_transport = std::nullopt) = 0;
+      const std::optional<std::string> &tensor_transport = std::nullopt,
+      MoveState move_state = MoveState::NOT_MOVABLE) = 0;
 
   /**
    * @brief Add an owned object that was dynamically created.
@@ -735,6 +753,14 @@ class ReferenceCounterInterface {
    */
   virtual std::optional<std::string> GetTensorTransport(
       const ObjectID &object_id) const = 0;
+
+  /**
+   * @brief Get the move state of the given object.
+   *
+   * @return The object's move state, or std::nullopt if there is no reference to it.
+   * Upto the caller to see if std::nullopt is expected or not.
+   */
+  virtual std::optional<MoveState> GetMoveState(const ObjectID &object_id) const = 0;
 
   /**
    * @brief Set whether lineage pinning is enabled, i.e. whether objects owned by
