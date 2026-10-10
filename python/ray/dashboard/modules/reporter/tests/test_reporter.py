@@ -48,6 +48,7 @@ from ray.dashboard.modules.reporter.reporter_head import (
     _query_flag,
     _task_cpu_profiling_response,
 )
+from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -870,6 +871,23 @@ def test_report_stats_ascend_npu_metrics(tmp_path):
     assert stats_payload["npus"][0]["processesPids"] == [
         {"pid": 4242, "npuMemoryUsage": 2048 * 1024 * 1024}
     ]
+
+
+def test_stats_payload_accepts_legacy_reporter_without_npus(tmp_path):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+
+    legacy_payload = json.loads(
+        agent._generate_stats_payload(copy.deepcopy(STATS_TEMPLATE))
+    )
+    legacy_payload.pop("npus")
+
+    parsed_payload = StatsPayload.parse_obj(legacy_payload)
+
+    assert parsed_payload.npus == []
 
 
 def test_reporter_maps_npu_process_memory_to_worker_metrics():
