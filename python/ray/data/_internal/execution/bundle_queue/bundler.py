@@ -253,6 +253,19 @@ class RebundleQueue(BaseBundleQueue):
     def add(self, bundle: RefBundle, **kwargs: Any):
         from ray.data._internal.execution.interfaces import RefBundle
 
+        # A stamped bundle is the exact input set of blocks for a lineage reconstruction task.
+        # After all blocks for a reconstruction task downstream are produced, the parent operator already assembles the
+        # input blocks and stores it in a ready bundle.
+        # For a seed task, linage tracker stores the bundled input built for the original attempt.
+        #
+        # Merging, slicing or holding the refbundle back would run the child reconstruction task against the wrong blocks.
+        # So we enqueue it as a ready bundle immediately.
+        if bundle.reconstruction_stamp is not None:
+            self._on_enqueue_bundle(bundle)
+            self._ready_bundles.append(bundle)
+            self._consumed_bundles_list.append([bundle])
+            return
+
         num_rows = bundle.num_rows() or 0
         self._total_pending_bytes += bundle.size_bytes()
         if num_rows == 0:
