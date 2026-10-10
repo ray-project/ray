@@ -100,9 +100,10 @@ NodeLabelSchedulingPolicy::FilterNodesByLabelMatchExpressions(
       return match_nodes;
     }
 
-    for (auto iter = match_nodes.begin(); iter != match_nodes.end(); iter++) {
-      if (!IsNodeMatchLabelExpression(*(iter->second), expression)) {
-        match_nodes.erase(iter);
+    for (auto iter = match_nodes.begin(); iter != match_nodes.end();) {
+      auto cur = iter++;
+      if (!IsNodeMatchLabelExpression(*(cur->second), expression)) {
+        match_nodes.erase(cur);
       }
     }
   }
