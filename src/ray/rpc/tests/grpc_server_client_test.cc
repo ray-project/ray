@@ -35,7 +35,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
           handler_io_service_work_(handler_io_service_.get_executor());
       handler_io_service_.run();
     });
-    grpc_server_.reset(new GrpcServer("test", 0, true));
+    grpc_server_.reset(new GrpcServer("test", 0, true, metric_context_));
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);
@@ -94,6 +94,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
   std::unique_ptr<std::thread> handler_thread_;
   std::unique_ptr<GrpcServer> grpc_server_;
   grpc::CompletionQueue cq_;
+  boost::asio::io_context metric_context_;
   std::shared_ptr<grpc::Channel> channel_;
   // Client
   instrumented_io_context client_io_service_;

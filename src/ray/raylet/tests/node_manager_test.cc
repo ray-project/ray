@@ -446,7 +446,8 @@ class NodeManagerTest : public ::testing::Test {
         boost::asio::basic_stream_socket<local_stream_protocol>(io_service_),
         fake_memory_manager_worker_eviction_total_count_,
         fake_node_manager_unexpected_worker_failure_total_count_,
-        fake_clock_);
+        fake_clock_,
+        metric_context_);
 
     // The NodeManager constructor wires up the worker pool exactly once.
     EXPECT_EQ(fake_worker_pool_.set_node_manager_port_calls, 1);
@@ -463,6 +464,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
   FakeClock fake_clock_;
   ray::Clock clock_;
+  boost::asio::io_context metric_context_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;

@@ -62,7 +62,17 @@ class InstrumentedIOContextWithThread {
   explicit InstrumentedIOContextWithThread(const std::string &thread_name,
                                            bool enable_lag_probe = false,
                                            bool used_for_health_check = true)
-      : io_service_(enable_lag_probe, /*running_on_single_thread=*/true, thread_name),
+      : InstrumentedIOContextWithThread(
+            thread_name, enable_lag_probe, used_for_health_check, unused_io_context_) {}
+
+  InstrumentedIOContextWithThread(const std::string &thread_name,
+                                  bool enable_lag_probe,
+                                  bool used_for_health_check,
+                                  boost::asio::io_context &metric_context)
+      : io_service_(enable_lag_probe,
+                    /*running_on_single_thread=*/true,
+                    thread_name,
+                    metric_context),
         work_(io_service_.get_executor()),
         thread_name_(thread_name),
         used_for_health_check_(used_for_health_check) {
@@ -101,6 +111,7 @@ class InstrumentedIOContextWithThread {
   std::thread io_thread_;
   std::string thread_name_;
   bool used_for_health_check_;
+  boost::asio::io_context unused_io_context_;
 };
 
 /// `IOContextProvider` uses a specified `Policy` to determine whether a type `T`
@@ -139,14 +150,16 @@ class InstrumentedIOContextWithThread {
 template <typename Policy>
 class IOContextProvider {
  public:
-  explicit IOContextProvider(instrumented_io_context &default_io_context)
-      : default_io_context_(default_io_context) {
+  explicit IOContextProvider(instrumented_io_context &default_io_context,
+                             boost::asio::io_context &metric_context)
+      : default_io_context_(default_io_context), metric_context_(metric_context) {
     for (size_t i = 0; i < Policy::kAllDedicatedIOContexts.size(); i++) {
       const auto &metadata = Policy::kAllDedicatedIOContexts[i];
       dedicated_io_contexts_[i] = std::make_unique<InstrumentedIOContextWithThread>(
           std::string(metadata.name),
           metadata.enable_lag_probe,
-          metadata.used_for_health_check);
+          metadata.used_for_health_check,
+          metric_context_);
     }
   }
 
@@ -210,4 +223,5 @@ class IOContextProvider {
              Policy::kAllDedicatedIOContexts.size()>
       dedicated_io_contexts_;
   instrumented_io_context &default_io_context_;
+  boost::asio::io_context &metric_context_;
 };

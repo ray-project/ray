@@ -20,7 +20,8 @@
 #include "gtest/gtest.h"
 
 TEST(EventStatsTest, TestRecordEnd) {
-  EventTracker event_tracker;
+  boost::asio::io_context metric_context;
+  EventTracker event_tracker{metric_context};
   std::shared_ptr<StatsHandle> handle = event_tracker.RecordStart("method");
   auto event_stats = event_tracker.get_event_stats("method").value();
   ASSERT_EQ(event_stats.cum_count, 1);
@@ -34,7 +35,8 @@ TEST(EventStatsTest, TestRecordEnd) {
 }
 
 TEST(EventStatsTest, TestRecordExecution) {
-  EventTracker event_tracker;
+  boost::asio::io_context metric_context;
+  EventTracker event_tracker{metric_context};
   std::shared_ptr<StatsHandle> handle = event_tracker.RecordStart("method");
   auto event_stats = event_tracker.get_event_stats("method").value();
   ASSERT_EQ(event_stats.cum_count, 1);

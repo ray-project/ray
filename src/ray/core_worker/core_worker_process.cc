@@ -91,6 +91,7 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
+
   core_worker_process = std::make_unique<CoreWorkerProcessImpl>(options);
 
 #ifndef _WIN32
@@ -280,7 +281,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
-                                        IsLocalhost(options.node_ip_address));
+                                        IsLocalhost(options.node_ip_address),
+                                        metric_context_);
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -797,7 +799,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
-      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
+      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()),
+      metric_thread_(ray::JoinableThread(std::thread([this /*, &metric_context_*/] {
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+            metric_context_.get_executor());
+        SetThreadName("metric_recorder");
+        metric_context_.run();
+      }))) {
   if (options_.enable_logging) {
     // Setup logging for worker system logging.
     {
@@ -953,6 +961,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcessImpl. pid: " << getpid();
   // Shutdown stats module if worker process exits.
+  metric_context_.stop();
   stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
