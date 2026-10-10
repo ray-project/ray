@@ -5293,6 +5293,27 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3_kv_router.yaml --skip-hf-token true
 
+# LoRA traffic through PrefixCacheAffinityRouter to fake replicas on a CPU node:
+# tracks where the router places adapters and requests.
+- name: llm_serve_prefix_router_lora_benchmark
+  frequency: weekly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      # For ray.llm's dependencies. The benchmark uses no GPU.
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_cpu_single_node.yaml
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python prefix_router_lora_benchmark.py
+
 ##############
 # LLM Batch
 ##############

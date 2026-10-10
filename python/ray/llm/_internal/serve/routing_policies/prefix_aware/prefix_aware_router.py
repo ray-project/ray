@@ -1,5 +1,6 @@
 # These imports are used for metrics tracking, will remove for PR
 import logging
+import random
 import time
 from typing import (
     Any,
@@ -19,9 +20,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.request_router import (
-    PowerOfTwoChoicesRequestRouter,
-)
 from ray.serve._private.request_router.common import (
     PendingRequest,
 )
@@ -65,6 +63,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         eviction_target_chars: Optional[int] = 360_000,
         eviction_interval_secs: Optional[int] = 10,
         tree_actor: Optional[ActorHandle] = None,
+        multiplex_spill_threshold: Optional[float] = 64,
     ):
         """Initialize the prefix-aware routing state and configuration.
 
@@ -85,10 +84,17 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 when eviction is enabled.
             tree_actor: The actor to use for the prefix tree in a test environment.
                 If None, a detached actor will be created/retrieved.
+            multiplex_spill_threshold: For multiplexed requests (e.g. LoRA
+                adapters), how many more requests the chosen replicas may have
+                than the least busy replica that has the model or has the fewest
+                models loaded. Above it, the request is routed to the least busy of
+                those instead, which loads the model there. Use float("inf") to
+                never spill.
         """
         # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
         self._match_rate_threshold = match_rate_threshold
+        self._multiplex_spill_threshold = multiplex_spill_threshold
 
         # === Eviction policy ===
         self._do_eviction = do_eviction
@@ -205,6 +211,15 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         return ""
 
+    def _prefix_tree_key_prefix(self, pending_request: PendingRequest) -> str:
+        """Returns what a request's text is prefixed with in the prefix tree.
+
+        vLLM's prefix cache doesn't share KV across LoRA adapters, so the text of a
+        multiplexed request goes under its model ID.
+        """
+        model_id = pending_request.metadata.multiplexed_model_id
+        return f"\0{model_id}\0" if model_id else ""
+
     async def _prefix_match_best_replicas(
         self,
         pending_request: Optional[PendingRequest],
@@ -224,7 +239,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
-                # Start Sphinx tag: __begin_load_balance_component__
+                key_prefix = self._prefix_tree_key_prefix(pending_request)
                 # Check for imbalanced load.
                 highest_queue_len = 0
                 lowest_queue_len = float("inf")
@@ -253,8 +268,6 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 is_imbalanced = (
                     highest_queue_len - lowest_queue_len > self._imbalanced_threshold
                 )
-                # End Sphinx tag: __end_load_balance_component__
-                # Start Sphinx tag: __begin_prefix_match_component__
                 if not is_imbalanced:
                     # Convert candidate replica IDs to strings for prefix matching.
                     candidate_replica_ids_strings = [
@@ -262,13 +275,19 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     ]
                     (matched_text, matched_tenant_id_strings,) = ray.get(
                         self._tree_actor.prefix_match.remote(
-                            input_text, candidate_replica_ids_strings
+                            key_prefix + input_text, candidate_replica_ids_strings
                         )
                     )
-                    match_rate = len(matched_text) / len(input_text)
+                    # Count only text matched under this request's model: model IDs
+                    # can share a prefix with each other.
+                    matched_chars = max(len(matched_text) - len(key_prefix), 0)
+                    # Empty text (e.g. image-only messages) has no prefix to match.
+                    match_rate = matched_chars / len(input_text) if input_text else 0.0
                     if match_rate < self._match_rate_threshold:
                         smallest_tenants_id_strings = ray.get(
-                            self._tree_actor.get_smallest_tenants.remote()
+                            self._tree_actor.get_smallest_tenants.remote(
+                                candidate_replica_ids_strings
+                            )
                         )
                         if (
                             smallest_tenants_id_strings is not None
@@ -281,7 +300,6 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                             and len(matched_tenant_id_strings) > 0
                         ):
                             chosen_replica_id_strings = matched_tenant_id_strings
-                # End Sphinx tag: __end_prefix_match_component__
         return [
             [
                 self._replicas[ReplicaID.from_full_id_str(chosen_id_string)]
@@ -289,13 +307,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             ]
         ]
 
-    # Start Sphinx tag: __begin_on_replica_actor_died__
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
         ray.get(self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()]))
-
-    # End Sphinx tag: __end_on_replica_actor_died__
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
@@ -338,26 +353,18 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self,
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
-    ) -> List[RunningReplica]:
-        """One iteration of the power of two choices procedure that chooses
-         (at most) two random available replicas.
+    ) -> List[List[RunningReplica]]:
+        """Chooses replicas by prefix match, falling back to power of two choices.
 
         For multiplexing, this will first attempt to choose replicas that have the
         requested model ID for a configured timeout. If no replicas with the matching
         model ID are available after that timeout, it will fall back to the regular
-        procedure.
+        procedure. A multiplexed request whose chosen replicas are much busier than
+        the alternatives is routed by load instead (see multiplex_spill_threshold).
         """
-        # Start Sphinx tag: __begin_pow2_router_base__
-        # Get fallback replicas from PowerOfTwoChoicesRequestRouter
-        fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
-            self,
-            candidate_replicas=candidate_replicas,
-            pending_request=pending_request,
-        )
-        if pending_request is None or not fallback_replicas:
-            return fallback_replicas
-        # End Sphinx tag: __end_pow2_router_base__
-
+        # Compute the candidates once per attempt. apply_multiplex_routing and
+        # apply_locality_routing advance per-request state, such as the locality
+        # tier, so a second call would return the next tier's candidates.
         if (
             pending_request is not None
             and pending_request.metadata.multiplexed_model_id
@@ -372,25 +379,68 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 pending_request=pending_request,
             )
         if not candidate_replica_ids:
-            return fallback_replicas
+            return []
 
-        # Convert candidate replica IDs to RunningReplica objects.
-        replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in candidate_replicas
-        }
         candidate_replicas = [
-            replica_id_to_replica_map[candidate_replica_id]
-            for candidate_replica_id in candidate_replica_ids
+            self._replicas[replica_id] for replica_id in candidate_replica_ids
         ]
         chosen_replicas = await self._prefix_match_best_replicas(
             pending_request, candidate_replicas
         )
         if chosen_replicas[0]:
+            if (
+                pending_request is not None
+                and pending_request.metadata.multiplexed_model_id
+            ):
+                spill_replicas = self._get_spill_replicas(
+                    chosen_replicas[0], candidate_replicas
+                )
+                if spill_replicas:
+                    return [spill_replicas]
             return chosen_replicas
 
-        return fallback_replicas
+        # Fall back to power of two choices: two random candidates, of which the one
+        # with the shorter queue is chosen.
+        fallback_replicas = random.sample(
+            candidate_replicas, k=min(2, len(candidate_replicas))
+        )
+        return [fallback_replicas]
 
-    # Start Sphinx tag: __begin_on_request_routed__
+    def _get_spill_replicas(
+        self,
+        chosen_replicas: List[RunningReplica],
+        candidate_replicas: List[RunningReplica],
+    ) -> List[RunningReplica]:
+        """Returns where to route a multiplexed request by load, or nothing.
+
+        Serve loads a multiplexed model onto more replicas only when the replicas
+        that have it reject requests, which never happens with an unbounded
+        max_ongoing_requests. So when the chosen replicas are much busier than the
+        candidates and the replicas with the fewest models loaded, route the request
+        to the least busy of those instead.
+
+        Busy replicas are left out: replica selection prefers replicas with a cached
+        queue length, so offering them would keep the request on them whenever the
+        idle replicas have no cached queue length.
+        """
+        spill_pool = {r.replica_id: r for r in candidate_replicas}
+        for replica_id in self._get_replica_ids_with_fewest_multiplexed_models():
+            spill_pool[replica_id] = self._replicas[replica_id]
+        chosen_load = min(self._get_cached_queue_len(r) for r in chosen_replicas)
+        least_load = min(self._get_cached_queue_len(r) for r in spill_pool.values())
+        if chosen_load - least_load <= self._multiplex_spill_threshold:
+            return []
+        return [
+            r
+            for r in spill_pool.values()
+            if self._get_cached_queue_len(r) - least_load
+            <= self._multiplex_spill_threshold
+        ]
+
+    def _get_cached_queue_len(self, replica: RunningReplica) -> int:
+        # A replica without a cached queue length hasn't served requests recently.
+        return self._replica_queue_len_cache.get(replica.replica_id) or 0
+
     def on_request_routed(
         self,
         pending_request: PendingRequest,
@@ -413,8 +463,8 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 # Insert into prefix tree
                 ray.get(
                     self._tree_actor.insert.remote(
-                        input_text, replica_id.to_full_id_str(), time.time()
+                        self._prefix_tree_key_prefix(pending_request) + input_text,
+                        replica_id.to_full_id_str(),
+                        time.time(),
                     )
                 )
-
-    # End Sphinx tag: __end_on_request_routed__
