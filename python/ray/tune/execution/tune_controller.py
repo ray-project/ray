@@ -1885,6 +1885,13 @@ class TuneController:
         if not trial.export_formats or len(trial.export_formats) <= 0:
             return
 
+        # Pending and paused trials may not have a started actor to export from.
+        if (
+            trial not in self._trial_to_actor
+            or not self._actor_manager.is_actor_started(self._trial_to_actor[trial])
+        ):
+            return
+
         # Todo: We are waiting here synchronously until the task resolved.
         # Instead, we should schedule the trial stop after the export resolved.
         # This requires changes in TrialRunner, which we can remove once the
