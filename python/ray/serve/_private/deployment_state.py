@@ -1077,6 +1077,13 @@ class ActorReplicaWrapper:
         return self._is_cross_language
 
     @property
+    def is_pending_allocation(self) -> bool:
+        """True if the replica has not yet been allocated to a node."""
+        return self._allocated_obj_ref is None or not check_obj_ref_ready_nowait(
+            self._allocated_obj_ref  # type: ignore[arg-type]
+        )
+
+    @property
     def actor_handle(self) -> Optional[ActorHandle]:
         if not self._actor_handle:
             try:
@@ -1572,9 +1579,7 @@ class ActorReplicaWrapper:
         """
 
         # Check whether the replica has been allocated.
-        if self._allocated_obj_ref is None or not check_obj_ref_ready_nowait(
-            self._allocated_obj_ref  # type: ignore[arg-type]
-        ):
+        if self.is_pending_allocation:
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         if not self._is_cross_language:
@@ -2376,15 +2381,15 @@ class DeploymentReplica:
             extra={"log_to_stderr": False},
         )
         self._shutdown_start_time = time.time()
-        if self._actor.node_id is None:
-            # Replica was never scheduled on a node, so skip
-            # the graceful shutdown entirely and let check_stopped()
-            # force kill it immediately on the next tick.
-            timeout_s = 0
+        if self._actor.is_pending_allocation:
+            # Replica has not yet been allocated to a node, so skip the graceful shutdown
+            # entirely and let check_stopped() force kill it immediately
+            # on the next tick.
+            timeout_s = 0.0
         else:
             timeout_s = self._actor.graceful_stop()
             if not graceful:
-                timeout_s = 0
+                timeout_s = 0.0
             elif self._actor._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
                 # In direct ingress mode, ensure we wait at least
                 # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give

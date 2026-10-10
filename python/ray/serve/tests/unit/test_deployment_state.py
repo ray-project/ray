@@ -4879,7 +4879,7 @@ def test_stop_one_running_replica_for_testing(mock_deployment_state_manager):
 
 
 def test_force_kill_unallocated_replica(mock_deployment_state_manager):
-    """Tests replicas that were never scheduled (PENDING_ALLOCATION) should be
+    """Tests replicas that were never scheduled should be
     force killed immediately without waiting for the graceful shutdown
     timeout.
     """
@@ -4892,9 +4892,8 @@ def test_force_kill_unallocated_replica(mock_deployment_state_manager):
     ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
     dsm.update()
 
-    # Simulate a replica stuck in PENDING_ALLOCATION
     replica = ds._replicas.get()[0]
-    replica._actor.set_unscheduled()
+    assert replica._actor.is_pending_allocation
 
     # Delete deployment.
     ds.delete()
