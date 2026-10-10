@@ -1080,3 +1080,9 @@ redirects:
 - from: /ray-observability/*
   to: /ray-observability/index.html
   type: page
+- from: /llm/examples/batch/*
+  to: /data/examples/llm/:splat
+  type: page
+- from: /data/working-with-llms.html
+  to: /data/llm/working-with-llms.html
+  type: page

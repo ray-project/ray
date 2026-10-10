@@ -114,8 +114,9 @@ python/deplocks/llm/*.lock
 ;
 
 python/ray/llm/
-doc/source/llm/
-doc/source/data/doc_code/working-with-llms/
+# Ray LLM doc assets live in an llm/ directory under a library's docs, such
+# as doc/source/serve/llm/ or doc/source/data/examples/llm/.
+doc/source/*/llm/*
 ci/docker/llm.build.Dockerfile
 @ llm
 ;
