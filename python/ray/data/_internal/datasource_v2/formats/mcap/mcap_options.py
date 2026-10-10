@@ -1,7 +1,7 @@
 """Options of ``read_mcap``.
 
-``TimeRange`` and ``WindowSpec`` are public option types of ``read_mcap``. Both
-are re-exported from ``ray.data.datasource``.
+``TimeRange``, ``WindowSpec`` and ``VideoOptions`` are public option types of
+``read_mcap``. All three are re-exported from ``ray.data.datasource``.
 
 ``MCAPSelection`` bundles the ``topics``, ``message_types`` and ``time_range``
 filters. It decides from summary records whether a file, chunk or channel can
@@ -10,6 +10,7 @@ on which chunks can match.
 """
 
 import hashlib
+import math
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -157,6 +158,67 @@ class WindowSpec:
         return _seconds_to_ns(
             self.stride_s if self.stride_s is not None else self.length_s
         )
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class VideoOptions:
+    """Decode the video topics of a ``read_mcap`` inside the read task.
+
+    At ``message`` granularity every selected topic must be video, and each
+    row is one RGB frame in a ``frame`` column, ``uint8`` of shape
+    ``(height, width, 3)``, in place of ``data``. At ``window`` granularity
+    each row adds, per video topic, a ``frames:<topic>`` tensor of shape
+    ``(n, height, width, 3)`` and the frames' log times in
+    ``frame_times:<topic>``. The other topics stay in the message lists. A
+    window whose decoded frames exceed ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails
+    the read, so use ``fps`` and ``resize`` to keep windows small.
+
+    A topic is video when its schema name is a known video schema or
+    ``read_mcap(video_topics=...)`` lists it. Its codec comes from the
+    message's ``format`` field or its bytes (JPEG, PNG, H.264, H.265, VP9,
+    AV1). Every emitted frame is complete, even when a read task starts
+    mid-stream. Requires ``av`` for H.264, H.265, VP9 and AV1, and ``Pillow``
+    for JPEG and PNG.
+
+    Attributes:
+        fps: Keep at most one frame per ``1/fps`` seconds of ``log_time`` per
+            topic. The intervals are aligned to the epoch, so the kept frames
+            do not depend on how the read is split into tasks. ``None`` keeps
+            every frame.
+        resize: Scale frames to this ``(height, width)``. ``None`` keeps the
+            coded size.
+    """
+
+    fps: Optional[float] = None
+    resize: Optional[Tuple[int, int]] = None
+
+    def __post_init__(self):
+        if self.fps is not None and (isinstance(self.fps, bool) or self.fps <= 0):
+            raise ValueError(f"fps must be a positive number, got {self.fps!r}")
+        if self.fps is not None and not (
+            math.isfinite(self.fps) and round(_NS_PER_S / self.fps) >= 1
+        ):
+            # Thinning would never move on from an interval of 0 ns.
+            raise ValueError(
+                "fps must be finite and leave at least one nanosecond between "
+                f"frames, got {self.fps!r}"
+            )
+        if self.resize is not None:
+            if len(self.resize) != 2 or any(
+                isinstance(v, bool) or not isinstance(v, int) or v <= 0
+                for v in self.resize
+            ):
+                raise ValueError(
+                    "resize must be a (height, width) pair of positive integers, "
+                    f"got {self.resize!r}"
+                )
+            object.__setattr__(self, "resize", tuple(self.resize))
+
+    @property
+    def fps_interval_ns(self) -> Optional[int]:
+        """Minimum log-time distance between two emitted frames of a topic."""
+        return int(round(_NS_PER_S / self.fps)) if self.fps is not None else None
 
 
 @dataclass(frozen=True)

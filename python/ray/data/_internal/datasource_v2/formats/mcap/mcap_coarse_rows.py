@@ -45,6 +45,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_lead_in import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     DEFAULT_MAX_LEAD_IN_NS,
     MCAPSelection,
+    VideoOptions,
     WindowSpec,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_video import is_video_channel
@@ -78,7 +79,11 @@ class RowSettings:
     selection: MCAPSelection
     granularity: str
     window: Optional[WindowSpec]
+    video: Optional[VideoOptions]
     video_topics: FrozenSet[str]
+    # With ``video`` at ``window`` granularity, the topics that get frame
+    # columns. Settled at planning, so the schema is fixed before any task runs.
+    decoded_topics: Tuple[str, ...]
     include_metadata: bool
     include_row_id: bool
     columns: Optional[List[str]]
@@ -96,15 +101,18 @@ class RowSettings:
     def row_digest(self) -> str:
         """The digest in every coarse row's id.
 
-        It covers the selection, and the options that change a row's lead-in:
-        the listed video topics and the look-back cap. A checkpoint written
-        under other options then never skips one of these rows.
+        It covers the selection, and the options that change what a row holds:
+        the listed video topics, the look-back cap and, for decoded rows, the
+        ``video`` options. A checkpoint written under other options then never
+        skips one of these rows.
         """
         options = []
         if self.video_topics:
             options.append("video_topics=" + ",".join(sorted(self.video_topics)))
         if self.max_lead_in_ns != DEFAULT_MAX_LEAD_IN_NS:
             options.append(f"max_lead_in_ns={self.max_lead_in_ns}")
+        if self.video is not None:
+            options.append(f"video=fps:{self.video.fps},resize:{self.video.resize}")
         return self.selection.digest(*options)
 
 
@@ -571,14 +579,20 @@ class CoarseRows:
         batch.add(row)
         yield self._finish(batch.build(), assignment, 0)
 
-    def new_batch(self) -> CoarseRowBatch:
+    def new_batch(
+        self, frame_shape: Optional[Dict[str, Tuple[int, int]]] = None
+    ) -> CoarseRowBatch:
         columns = self._settings.columns
-        return CoarseRowBatch(
+        batch = CoarseRowBatch(
             granularity=self._settings.granularity,
             include_metadata=self._settings.include_metadata,
             include_row_id=self._settings.include_row_id,
             columns=frozenset(columns) if columns is not None else None,
+            decoded_topics=self._settings.decoded_topics,
         )
+        if frame_shape is not None:
+            batch.frame_shape = frame_shape
+        return batch
 
     def _check_row_size(self, row: CoarseRow, what: str) -> None:
         if row.payload_bytes > self._settings.max_row_bytes:
