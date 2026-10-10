@@ -659,5 +659,178 @@ def test_long_poll_client_disable_propagates_to_host_log():
     assert "not running" in output.lower(), output
 
 
+@pytest.fixture
+def ray_initialized(monkeypatch):
+    """These tests mock the host, so Ray itself is not running."""
+    monkeypatch.setattr(ray, "is_initialized", lambda: True)
+
+
+def _reconnecting_client(resolver, host_actor=None, client_id="test_reconnect"):
+    return LongPollClient(
+        host_actor if host_actor is not None else MagicMock(),
+        {"key_1": lambda _: None},
+        call_in_event_loop=get_or_create_event_loop(),
+        client_id=client_id,
+        host_actor_resolver=resolver,
+    )
+
+
+@pytest.mark.asyncio
+async def test_client_reconnects_to_replacement_host(serve_instance):
+    """A host replaced under the same name must not wedge the client forever.
+
+    See https://github.com/ray-project/ray/issues/63784.
+    """
+
+    @ray.remote
+    class NamedHost:
+        def __init__(self, value):
+            self.host = LongPollHost()
+            self.host.notify_changed({"key_1": value})
+
+        async def listen_for_change(self, keys_to_snapshot_ids):
+            return await self.host.listen_for_change(keys_to_snapshot_ids)
+
+    name = "test_replacement_host"
+    host = NamedHost.options(name=name).remote(100)
+
+    received = {}
+    client = LongPollClient(
+        host,
+        {"key_1": lambda result: received.__setitem__("key_1", result)},
+        call_in_event_loop=get_or_create_event_loop(),
+        client_id="test_client_reconnects",
+        host_actor_resolver=lambda: ray.get_actor(name),
+    )
+    try:
+        await async_wait_for_condition(
+            lambda: received.get("key_1") == 100, timeout=20, retry_interval_ms=100
+        )
+
+        ray.kill(host, no_restart=True)
+
+        def name_released():
+            try:
+                ray.get_actor(name)
+                return False
+            except ValueError:
+                return True
+
+        await async_wait_for_condition(name_released, timeout=20, retry_interval_ms=100)
+        # Hold the handle: a named actor dies with its last reference.
+        replacement = NamedHost.options(name=name).remote(999)
+        assert replacement._actor_id != host._actor_id
+
+        await async_wait_for_condition(
+            lambda: received.get("key_1") == 999, timeout=60, retry_interval_ms=200
+        )
+        assert client.is_running
+    finally:
+        client.stop()
+
+
+def test_rebind_host_actor_resets_snapshot_ids():
+    """IDs from the dead host are meaningless to its replacement."""
+    client = _reconnecting_client(MagicMock())
+    client.snapshot_ids["key_1"] = 7
+
+    replacement = MagicMock()
+    client._rebind_host_actor(replacement)
+
+    assert client.host_actor is replacement
+    assert client.snapshot_ids == {"key_1": -1}
+
+
+@pytest.mark.asyncio
+async def test_reconnect_declines_stale_name_resolution(monkeypatch, ray_initialized):
+    """A name still pointing at the dead actor is not a replacement."""
+    monkeypatch.setattr(long_poll_module, "LONG_POLL_RECONNECT_TIMEOUT_S", 0.2)
+    dead = MagicMock()
+    client = _reconnecting_client(lambda: dead, host_actor=dead)
+
+    client._process_update(ray.exceptions.ActorDiedError())
+
+    await async_wait_for_condition(
+        lambda: client.is_running is False, timeout=20, retry_interval_ms=100
+    )
+    assert client.host_actor is dead
+
+
+@pytest.mark.asyncio
+async def test_client_disables_itself_when_host_never_resolves(
+    monkeypatch, ray_initialized
+):
+    """Reconnection is bounded so an intentional shutdown still retires it."""
+    monkeypatch.setattr(long_poll_module, "LONG_POLL_RECONNECT_TIMEOUT_S", 0.2)
+
+    def resolver():
+        raise ValueError("no such actor")
+
+    client = _reconnecting_client(resolver)
+    client._process_update(ray.exceptions.ActorDiedError())
+
+    await async_wait_for_condition(
+        lambda: client.is_running is False, timeout=20, retry_interval_ms=100
+    )
+
+
+@pytest.mark.asyncio
+async def test_client_without_resolver_retires_on_host_death():
+    """Opting out preserves the pre-existing shutdown behavior."""
+    client = _reconnecting_client(None)
+
+    client._process_update(ray.exceptions.ActorDiedError())
+
+    await async_wait_for_condition(
+        lambda: client.is_running is False, timeout=20, retry_interval_ms=100
+    )
+
+
+@pytest.mark.asyncio
+async def test_stopped_client_does_not_reconnect():
+    """A client stopped on purpose must not chase a replacement host."""
+    resolver = MagicMock()
+    client = _reconnecting_client(resolver)
+    client.stop()
+
+    client._process_update(ray.exceptions.ActorDiedError())
+
+    await asyncio.sleep(1)
+    resolver.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_stop_cancels_in_flight_reconnect(ray_initialized):
+    """A reconnect already in flight must not outlive stop()."""
+    dead = MagicMock()
+    client = _reconnecting_client(lambda: dead, host_actor=dead)
+    client._process_update(ray.exceptions.ActorDiedError())
+    await async_wait_for_condition(
+        lambda: client._reconnect_task is not None, timeout=20, retry_interval_ms=50
+    )
+
+    client.stop()
+
+    await async_wait_for_condition(
+        lambda: client._reconnect_task.done(), timeout=20, retry_interval_ms=50
+    )
+    assert client._reconnect_task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_retires_when_ray_is_shut_down(monkeypatch):
+    """Resolving auto-inits Ray, which would revive a process that shut it down."""
+    monkeypatch.setattr(ray, "is_initialized", lambda: False)
+    resolver = MagicMock()
+    client = _reconnecting_client(resolver)
+
+    client._process_update(ray.exceptions.ActorDiedError())
+
+    await async_wait_for_condition(
+        lambda: client.is_running is False, timeout=20, retry_interval_ms=50
+    )
+    resolver.assert_not_called()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
