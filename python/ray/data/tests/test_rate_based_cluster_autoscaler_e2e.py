@@ -281,9 +281,12 @@ def scale_up_requests(request, monkeypatch):
     return requests
 
 
-def _scale_up_stops(scale_up_requests, quiet_s=3, timeout_s=30):
-    """Return whether scale-up requests stop for `quiet_s` seconds within
-    `timeout_s` seconds. Requests while the pipeline fills up are fine."""
+def _scale_up_stops(ds, scale_up_requests, quiet_s=3, timeout_s=30):
+    """Read one batch from `ds` and pause. Return whether scale-up requests stop
+    for `quiet_s` seconds within `timeout_s` seconds. Requests while the pipeline
+    fills up are fine."""
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+    next(it)
     start = time.time()
     while time.time() - start < timeout_s:
         if time.time() - max([start, *scale_up_requests]) >= quiet_s:
@@ -304,13 +307,8 @@ def test_no_scale_up_while_consumer_is_slow(
         lambda batch: {"data": [b"x" * (2 * MiB) for _ in batch["id"]]},
         batch_size=1,
     )
-    it = iter(ds.iter_batches(batch_size=1, prefetch_batches=0))
-    next(it)
     # The consumer stays paused while the tasks wait in output backpressure.
-    stopped = _scale_up_stops(scale_up_requests)
-    del it
-
-    assert stopped
+    assert _scale_up_stops(ds, scale_up_requests)
 
 
 def test_no_scale_up_while_consumer_is_slow_two_ops(
@@ -331,12 +329,7 @@ def test_no_scale_up_while_consumer_is_slow_two_ops(
         # A different `num_cpus` keeps the two maps from being fused.
         .map_batches(lambda batch: batch, num_cpus=1, concurrency=1)
     )
-    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
-    next(it)
-    stopped = _scale_up_stops(scale_up_requests)
-    del it
-
-    assert stopped
+    assert _scale_up_stops(ds, scale_up_requests)
 
 
 def test_no_scale_up_while_consumer_is_slow_after_shuffle(
@@ -358,12 +351,7 @@ def test_no_scale_up_while_consumer_is_slow_after_shuffle(
         .random_shuffle()
         .map_batches(lambda batch: batch, num_cpus=1, concurrency=1)
     )
-    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
-    next(it)
-    stopped = _scale_up_stops(scale_up_requests)
-    del it
-
-    assert stopped
+    assert _scale_up_stops(ds, scale_up_requests)
 
 
 def test_scale_up_when_compute_bound(

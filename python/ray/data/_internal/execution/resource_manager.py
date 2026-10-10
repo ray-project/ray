@@ -280,49 +280,34 @@ class ResourceManager:
     def get_global_usage_excluding_consumer_blocked_ops(self) -> ExecutionResources:
         """Return the global usage, excluding ops blocked on a slow consumer.
 
-        An op is excluded if it's blocked on downstream and all its downstream ops
-        are excluded too, i.e., the chain of blocked ops ends at the consumer.
+        Walks back from the last op and stops at the first op that isn't blocked.
         """
-        excluded_ops = set()
-        # Visit downstream ops first.
+        usage = self.get_global_usage()
         for op in reversed(self._topology):
-            if self._is_blocked_on_downstream(op) and all(
-                downstream_op in excluded_ops
-                for downstream_op in self.get_downstream_eligible_ops(op)
-            ):
-                excluded_ops.add(op)
-                excluded_ops.update(self._get_downstream_ineligible_ops(op))
-
-        return ExecutionResources.combine_sum(
-            usage for op, usage in self._op_usages.items() if op not in excluded_ops
-        )
+            if not self.is_op_eligible(op):
+                continue
+            if not self._is_blocked_on_downstream(op):
+                return usage
+            usage = usage.subtract(
+                self.get_op_usage(op, include_ineligible_downstream=True)
+            )
+        # Every op is blocked. The rest only hold outputs.
+        return ExecutionResources.zero()
 
     def _is_blocked_on_downstream(self, op: PhysicalOperator) -> bool:
         """Whether the op is waiting for its outputs to be read downstream."""
-        # Don't exclude an op after it that's still running tasks, e.g., sort sampling.
-        if any(
-            downstream_op.num_active_tasks() > 0
-            for downstream_op in self._get_downstream_ineligible_ops(op)
-        ):
-            return False
         if op.in_task_output_backpressure:
             return True
         if op.num_active_tasks() > 0:
             return False
-        # A finished op only waits for its outputs to be read.
-        if op.has_execution_finished():
-            return True
-        if not op.in_task_submission_backpressure:
-            return False
-        # More nodes help if the budget can't fit another task's CPU, GPU, or memory.
-        budget = (
-            self._op_resource_allocator.get_budget(op)
-            if self._op_resource_allocator is not None
-            else None
-        )
-        return budget is None or op.incremental_resource_usage().satisfies_limit(
+        # An idle op short on CPU, GPU, or memory for its next task needs more nodes.
+        budget = self.get_budget(op)
+        if budget is not None and not op.incremental_resource_usage().satisfies_limit(
             budget, ignore_object_store_memory=True
-        )
+        ):
+            return False
+        # Otherwise, if it can't submit tasks, it's waiting on object store memory.
+        return op.in_task_submission_backpressure
 
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.

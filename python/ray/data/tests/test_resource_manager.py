@@ -613,9 +613,6 @@ class TestResourceManager:
         gpu_op.num_active_tasks = MagicMock(return_value=1)
         assert usage() == (4, 2, 350)
 
-        # Finished ops have no budget, so their backpressure flags are off.
-        cpu_op.notify_in_task_submission_backpressure(False)
-        gpu_op.notify_in_task_submission_backpressure(False)
         # The CPU op finished, but the GPU op is still running, so both count.
         cpu_op.mark_execution_finished()
         assert usage() == (4, 2, 350)
@@ -623,10 +620,6 @@ class TestResourceManager:
         gpu_op.num_active_tasks = MagicMock(return_value=0)
         gpu_op.mark_execution_finished()
         assert usage() == (0, 0, 0)
-
-        # Pretend the Limit is still running tasks, like a sort sampling op.
-        limit_op.num_active_tasks = MagicMock(return_value=1)
-        assert usage() == (4, 2, 350)
 
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
