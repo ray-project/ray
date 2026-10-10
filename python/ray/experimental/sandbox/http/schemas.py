@@ -7,7 +7,7 @@ in ``tests/test_http_schemas.py`` deliberately when you do.
 """
 
 from datetime import datetime
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -289,6 +289,52 @@ class SandboxAPISettings(BaseModel):
             "routinely takes tens of seconds to place an actor; requests "
             "never fail on this budget, they report pending and the client "
             "polls."
+        ),
+    )
+    host_mode: Literal["actor", "node"] = Field(
+        default="actor",
+        description=(
+            "How the gRPC facade hosts sandboxes (the REST app always uses "
+            "'actor'). 'actor': one detached SandboxHost actor (one Ray "
+            "worker process) per sandbox. 'node': one SandboxNodeHost actor "
+            "per node hosts every sandbox placed there, and each sandbox's "
+            "resources are reserved by a one-bundle placement group; creates "
+            "skip a worker process start. Named sandboxes always use 'actor'."
+        ),
+    )
+    warm_pool: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "With host_mode='node': sandboxes each node host keeps booted "
+            "ahead of creates, as a list of {'image', 'network', 'size'} "
+            "plus an optional 'cpu'. A gRPC facade create of that image and "
+            "network with no workdir or resource limits takes one at once, "
+            "and the host boots a replacement in the background. Booted "
+            "sandboxes reserve no cluster resources until a create takes "
+            "them; with 'cpu' (each sandbox's request) and "
+            "reservation_slab_cpus, the host also reserves size x cpu CPUs in "
+            "slabs while the pool fills, so a burst finds its reservations "
+            "ready."
+        ),
+    )
+    host_channel: bool = Field(
+        default=False,
+        description=(
+            "With host_mode='node': API replicas call node hosts over a direct "
+            "connection each (served on the host's event loop) instead of Ray "
+            "actor tasks, falling back to Ray when it is unavailable. Ray's "
+            "per-task dispatch limits a busy node host."
+        ),
+    )
+    reservation_slab_cpus: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "With host_mode='node': CPUs each node host reserves at a time "
+            "(one placement group) and shares among the sandboxes it hosts, "
+            "so a burst costs Ray one reservation per slab rather than per "
+            "sandbox. 0 reserves each sandbox on its own. Only sandboxes that "
+            "request nothing but CPUs use slabs."
         ),
     )
     default_actor_num_cpus: float = Field(

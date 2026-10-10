@@ -34,6 +34,32 @@ _RUNSC_ROOT = "/tmp/runsc"
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
+# Each runsc CLI call (run, exec, state, kill, delete) is a short-lived Go
+# process, and Go sizes its scheduler to every CPU it can see: on a many-core
+# node, dozens of concurrent calls then spend most of their time in the
+# kernel (measured: 0.14 CPU-s per exec at 64 concurrent on a 120-CPU pod,
+# 0.014 CPU-s with GOMAXPROCS=2). gVisor's containerd shim runs runsc with
+# GOMAXPROCS=2 for this reason, and runsc drops the variable for the sandbox
+# and gofer processes it starts.
+
+
+# `runsc run --pid-file` writes this file once the container exists, so the
+# start loop stats it every _START_POLL_SECONDS and only then asks
+# `runsc state` (a process per call) whether the container runs: before, a
+# `runsc state` process every 0.1 s made each create wait up to 0.1 s past
+# its boot, and those processes cost CPU that a burst of boots needs.
+_PID_FILE = "sandbox.pid"
+_START_POLL_SECONDS = 0.01
+_STATE_POLL_SECONDS = 0.05
+
+
+def runsc_env() -> Dict[str, str]:
+    """The environment for runsc CLI subprocesses: GOMAXPROCS=2 unless set."""
+    env = dict(os.environ)
+    env.setdefault("GOMAXPROCS", "2")
+    return env
+
+
 # network="public" gives each sandbox a private user+network namespace pair
 # bridged by slirp4netns user-mode networking, the rootless-container shape:
 # a holder process (`unshare --user --map-root-user --net`) pins the
@@ -190,9 +216,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdout=subprocess.DEVNULL,
             stderr=stderr_file,
             start_new_session=True,
+            env=runsc_env(),
         )
         start_time = time.time()
         timeout = config.timeout_seconds
+        pid_file = os.path.join(root_dir, _PID_FILE)
 
         try:
             while True:
@@ -203,9 +231,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to start: {stderr_str}"
                     )
 
-                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
-                if res.returncode == 0:
+                delay = _START_POLL_SECONDS
+                res = None
+                if os.path.exists(pid_file):
+                    state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+                    res = subprocess.run(
+                        state_args, capture_output=True, text=True, env=runsc_env()
+                    )
+                    delay = _STATE_POLL_SECONDS
+                if res is not None and res.returncode == 0:
                     try:
                         state_data = json.loads(res.stdout)
                         status = state_data.get("status")
@@ -228,7 +262,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
                     )
 
-                time.sleep(0.1)
+                time.sleep(delay)
         except Exception:
             # Delete runsc's container state, then kill the whole group:
             # under slirp4netns, a bare proc.kill() would orphan the namespace
@@ -267,7 +301,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
             try:
-                subprocess.run(kill_args, capture_output=True, timeout=5)
+                subprocess.run(
+                    kill_args, capture_output=True, timeout=5, env=runsc_env()
+                )
             except subprocess.TimeoutExpired:
                 pass
 
@@ -387,6 +423,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env=runsc_env(),
             )
             stdout_str, stderr_str = proc.communicate(timeout=timeout)
             duration = time.time() - start_time
@@ -445,6 +482,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
         _, stderr_str = proc.communicate(input=content_bytes)
         if proc.returncode != 0:
@@ -466,6 +504,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
         stdout, stderr = proc.communicate()
         if proc.returncode != 0:
@@ -478,7 +517,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def get_status(self, sandbox_id: str) -> SandboxStatus:
         """Get operational status of the gVisor sandbox."""
         meta = self._sandbox_metadata.get(sandbox_id)
-        if meta and os.path.exists(meta["root_dir"]):
+        # `runsc run` stays attached for the sandbox's lifetime, so its exit
+        # means the sandbox is gone even before delete_sandbox runs.
+        proc = meta.get("proc") if meta else None
+        if (
+            meta
+            and os.path.exists(meta["root_dir"])
+            and (proc is None or proc.poll() is None)
+        ):
             return SandboxStatus.RUNNING
         return SandboxStatus.TERMINATED
 
@@ -504,7 +550,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
         try:
-            subprocess.run(del_args, capture_output=True, timeout=10)
+            subprocess.run(del_args, capture_output=True, timeout=10, env=runsc_env())
         except subprocess.TimeoutExpired:
             pass
 
@@ -530,13 +576,23 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             args = [a for a in args if a != "--rootless"]
             if "--ignore-cgroups" not in args:
                 args.insert(1, "--ignore-cgroups")
+        if use_netns:
+            # runsc puts gofers in one empty network namespace pinned under
+            # --root, and the first sandbox to start pins it. runsc here runs
+            # in the sandbox's own user namespace, so it can neither join a
+            # namespace pinned outside it (setns EPERM) nor pin one: after any
+            # sandbox outside one (network="none") ran on the node, every
+            # "public" sandbox failed to start. Give its gofer a new empty
+            # namespace instead, what it got before anything was pinned.
+            args.insert(1, "--gofer-network-namespace=new")
         if config.network:
             # "public" = host egress + generated resolv.conf (handled in the
             # OCI bundle); runsc itself just sees host networking — of the
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
-        args.extend(["run", "--bundle", root_dir, sandbox_id])
+        pid_file = os.path.join(root_dir, _PID_FILE)
+        args.extend(["run", "--pid-file", pid_file, "--bundle", root_dir, sandbox_id])
         if use_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
             ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
@@ -549,9 +605,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
                 # Stop waiting as soon as the holder dies, and refuse an
-                # empty NSPID (which would resolve to /proc//ns/net).
-                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
-                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                # empty NSPID (which would resolve to /proc//ns/net). Both
+                # waits check every 10 ms for up to 10 s: the holder and
+                # slirp4netns are up within tens of milliseconds.
+                f"for i in $(seq 1 1000); do [ -s {netns_pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.01; done; "
                 f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
                 '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
                 # slirp4netns attaches from the pod side and stays in the
@@ -562,8 +620,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
                 f"3>{ready_file} & "
                 "SLIRP=$!; "
-                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
-                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
+                f"for i in $(seq 1 1000); do [ -s {ready_file} ] && break; "
+                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.01; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
                 f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
             )
