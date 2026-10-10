@@ -4869,6 +4869,13 @@ class TrainIterCtx:
         self.time_start = None
         self.time_stop = None
 
+    @staticmethod
+    def _sum_finite_agent_steps(values):
+        # A retired agent may keep a registered metric key whose empty
+        # sampling window reduces to NaN. Such a key is not sampled progress.
+        # Do not let it turn the entire per-iteration counter into NaN.
+        return sum(value for value in values if np.isfinite(value))
+
     def __enter__(self):
         # Before first call to `step()`, `results` is expected to be None ->
         # Start with self.failures=-1 -> set to 0 before the very first call
@@ -4886,12 +4893,12 @@ class TrainIterCtx:
                 (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
                 default=0,
             )
-            self.init_agent_steps_sampled = sum(
+            self.init_agent_steps_sampled = self._sum_finite_agent_steps(
                 self.algo.metrics.peek(
                     (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME), default={}
                 ).values()
             )
-            self.init_agent_steps_trained = sum(
+            self.init_agent_steps_trained = self._sum_finite_agent_steps(
                 self.algo.metrics.peek(
                     (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME), default={}
                 ).values()
@@ -4934,7 +4941,7 @@ class TrainIterCtx:
         if self.algo.config.enable_env_runner_and_connector_v2:
             if self.algo.config.count_steps_by == "agent_steps":
                 self.sampled = (
-                    sum(
+                    self._sum_finite_agent_steps(
                         self.algo.metrics.peek(
                             (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME),
                             default={},
@@ -4943,7 +4950,7 @@ class TrainIterCtx:
                     - self.init_agent_steps_sampled
                 )
                 self.trained = (
-                    sum(
+                    self._sum_finite_agent_steps(
                         self.algo.metrics.peek(
                             (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME),
                             default={},

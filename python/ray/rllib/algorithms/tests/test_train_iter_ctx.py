@@ -186,5 +186,58 @@ def test_train_iter_ctx_new_api_agent_steps_watchdog_tracks_lifetime_progress():
             ctx.should_stop(True)
 
 
+def test_train_iter_ctx_new_api_skips_retired_agent_nonfinite_lifetime_metrics():
+    # A completed agent leaves a registered metric key that can reduce to NaN.
+    # The active agent's progress must remain visible to the watchdog.
+    algo = _fake_algo(
+        tolerance=1,
+        min_sample_timesteps=3,
+        count_steps_by="agent_steps",
+    )
+    algo.config.enable_env_runner_and_connector_v2 = True
+    algo.metrics = _FakeMetrics()
+    sampled_key = (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+    trained_key = (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME)
+    algo.metrics.values[sampled_key] = {"active": 5, "retired": float("nan")}
+    algo.metrics.values[trained_key] = {"active": 7, "retired": float("inf")}
+
+    with TrainIterCtx(algo) as ctx:
+        assert ctx.should_stop(None) is False
+        assert ctx.should_stop(True) is False
+        assert ctx.sampled == 0
+        algo.metrics.values[sampled_key] = {"active": 6, "retired": float("nan")}
+        algo.metrics.values[trained_key] = {"active": 9, "retired": float("nan")}
+        assert ctx.should_stop(True) is False
+        assert ctx.sampled == 1
+        assert ctx.trained == 2
+        assert ctx.sample_progress_failures == 0
+
+        assert ctx.should_stop(True) is False
+        with pytest.raises(RuntimeError, match="No sampling progress"):
+            ctx.should_stop(True)
+
+
+def test_train_iter_ctx_new_api_all_nonfinite_agents_still_watchdog():
+    # NaN < minimum and NaN >= minimum are both false: without filtering,
+    # the no-progress condition is silently bypassed on every iteration.
+    algo = _fake_algo(
+        tolerance=1,
+        min_sample_timesteps=1,
+        count_steps_by="agent_steps",
+    )
+    algo.config.enable_env_runner_and_connector_v2 = True
+    algo.metrics = _FakeMetrics()
+    algo.metrics.values[(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME)] = {
+        "retired": float("nan")
+    }
+
+    with TrainIterCtx(algo) as ctx:
+        assert ctx.should_stop(None) is False
+        assert ctx.should_stop(True) is False
+        assert ctx.sampled == 0
+        with pytest.raises(RuntimeError, match="No sampling progress"):
+            ctx.should_stop(True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
