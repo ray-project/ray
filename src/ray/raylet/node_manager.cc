@@ -2348,6 +2348,21 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleCancelStaleActorLeases(
+    rpc::CancelStaleActorLeasesRequest request,
+    rpc::CancelStaleActorLeasesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  cluster_lease_manager_.CancelLeases(
+      [](const std::shared_ptr<internal::Work> &work) {
+        return work->lease_.GetLeaseSpecification().IsActorCreationTask();
+      },
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      "The lease request is cancelled because it was requested by a previous GCS. It "
+      "can happen upon GCS restart.");
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {

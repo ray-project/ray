@@ -23,6 +23,7 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     external_redis_test_enabled,
     generate_system_config_map,
+    get_resource_usage,
     persistent_gcs_test_enabled,
     redis_sentinel_replicas,
     wait_for_pid_to_exit,
@@ -367,6 +368,52 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
             break
         except ray.exceptions.RayActorError:
             continue
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [{"num_cpus": 2, "resources": {"GPUx": 1}}],
+    indirect=True,
+)
+def test_queued_lease_dropped_after_gcs_restart(
+    ray_start_regular_with_external_redis,
+):
+    """A lease request queued on a raylet before a GCS restart is dropped by it.
+
+    Once the resources it was waiting for are freed, they stay available for new
+    actors instead of being taken by the old request.
+    """
+
+    @ray.remote(num_cpus=1, resources={"GPUx": 1})
+    class Holder:
+        def ready(self):
+            return True
+
+    a = Holder.options(name="A", lifetime="detached").remote()
+    assert ray.get(a.ready.remote())
+
+    # A holds the only GPUx, so the lease request of B stays queued on the raylet.
+    b = Holder.options(name="B", lifetime="detached").remote()
+    gcs_address = ray.get_runtime_context().gcs_address
+
+    def lease_is_queued() -> bool:
+        load = get_resource_usage(gcs_address).resource_load_by_shape
+        return any(d.num_ready_requests_queued > 0 for d in load.resource_demands)
+
+    wait_for_condition(lease_is_queued)
+
+    # Restart the GCS while the lease request of B is queued.
+    ray._private.worker._global_node.kill_gcs_server()
+    ray._private.worker._global_node.start_gcs_server()
+
+    # Kill B and A, so no actor is waiting for or holding the GPUx.
+    ray.kill(b)
+    ray.kill(a)
+
+    # The GPUx is free, so a new actor requiring it can be scheduled.
+    c = Holder.remote()
+    done, _ = ray.wait([c.ready.remote()], timeout=30)
+    assert done, "The freed GPUx was not available to a new actor."
 
 
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
