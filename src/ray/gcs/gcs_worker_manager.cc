@@ -277,6 +277,13 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
           RAY_LOG(WARNING).WithField(worker_id)
               << "Failed to get worker info, status = " << status;
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        } else if (!result) {
+          // The worker row is gone (e.g. evicted after the worker died).
+          RAY_LOG(WARNING).WithField(worker_id)
+              << "Worker not found when updating debugger port";
+          GCS_RPC_SEND_REPLY(send_reply_callback,
+                             reply,
+                             Status::NotFound("Worker not found: " + worker_id.Hex()));
         } else {
           // Update the debugger port
           auto worker_data = std::make_shared<rpc::WorkerTableData>();
@@ -326,6 +333,13 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
       RAY_LOG(WARNING).WithField(worker_id)
           << "Failed to get worker info, status = " << status;
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    } else if (!result) {
+      // The worker row is gone (e.g. evicted after the worker died).
+      RAY_LOG(WARNING).WithField(worker_id)
+          << "Worker not found when updating num_paused_threads";
+      GCS_RPC_SEND_REPLY(send_reply_callback,
+                         reply,
+                         Status::NotFound("Worker not found: " + worker_id.Hex()));
     } else {
       // Update the num_paused_threads_delta
       auto worker_data = std::make_shared<rpc::WorkerTableData>();
