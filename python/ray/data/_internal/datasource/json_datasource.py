@@ -156,7 +156,7 @@ class ArrowJSONDatasource(FileBasedDatasource):
         except pa.ArrowInvalid as e:
             # If read with PyArrow fails, try falling back to native json.load().
             logger.warning(
-                f"Error reading with pyarrow.json.read_json(). "
+                f"Error reading {path} with pyarrow.json.read_json(). "
                 f"Falling back to native json.load(), which may be slower. "
                 f"PyArrow error was:\n{e}"
             )
