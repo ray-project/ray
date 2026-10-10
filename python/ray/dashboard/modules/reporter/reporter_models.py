@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple
 
-from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
 
 if PYDANTIC_INSTALLED:
     from pydantic import field_validator
@@ -206,7 +206,9 @@ if PYDANTIC_INSTALLED:
         diskIo: DiskIOStats  # (readBytes, writeBytes, readCount, writeCount)
         diskIoSpeed: DiskIOSpeed  # (readSpeed, writeSpeed, readIops, writeIops)
         gpus: List[GpuUtilizationInfo]
-        npus: List[NpuUtilizationInfo]
+        # Older Reporter agents do not include this field. Keep a per-payload
+        # empty list default so a newer Dashboard Head can parse their data.
+        npus: List[NpuUtilizationInfo] = Field(default_factory=list)
         tpus: List[TpuUtilizationInfo]
         network: NetworkStats  # (sent, received) in bytes
         networkSpeed: NetworkSpeed  # (sendSpeed, receiveSpeed) in bytes/sec
