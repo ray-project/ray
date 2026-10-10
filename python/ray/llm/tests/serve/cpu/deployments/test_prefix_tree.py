@@ -617,6 +617,69 @@ class TestPrefixTreeGetSmallestTenants:
         smallest_tenants = tree.get_smallest_tenants()
         assert set(smallest_tenants) == {"tenant_1", "tenant_2"}
 
+    def test_get_smallest_tenants_among_available(self, tree: PrefixTree) -> None:
+        """Test get_smallest_tenants only considers the available tenants."""
+        tree.add_tenants(["tenant_1", "tenant_2", "tenant_3"], 0)
+        tree.insert("aaaa", "tenant_1", 1)  # 4 chars
+        tree.insert("bb", "tenant_2", 2)  # 2 chars
+        tree.insert("c", "tenant_3", 3)  # 1 char
+        assert tree.get_smallest_tenants(["tenant_1", "tenant_2"]) == ["tenant_2"]
+        # Tenants that aren't in the tree are ignored.
+        assert tree.get_smallest_tenants(["tenant_1", "unknown"]) == ["tenant_1"]
+        assert tree.get_smallest_tenants(["unknown"]) is None
+
+
+class TestPrefixTreePrefixMatchOrSmallestTenants:
+    """Tests for the prefix_match_or_smallest_tenants method."""
+
+    def test_match_above_threshold_returns_matched_tenants(
+        self, tree: PrefixTree
+    ) -> None:
+        tree.add_tenants(["tenant_1", "tenant_2"], 0)
+        tree.insert("hello world", "tenant_1", 1)
+        tree.insert("z", "tenant_2", 2)
+        assert tree.prefix_match_or_smallest_tenants(
+            "hello there", match_rate_threshold=0.1
+        ) == ["tenant_1"]
+
+    def test_match_below_threshold_returns_smallest_tenants(
+        self, tree: PrefixTree
+    ) -> None:
+        tree.add_tenants(["tenant_1", "tenant_2"], 0)
+        tree.insert("hello world", "tenant_1", 1)
+        tree.insert("z", "tenant_2", 2)
+        # Only "h" matches: 1 of 20 characters is below the 10% threshold.
+        assert tree.prefix_match_or_smallest_tenants(
+            "h" + "x" * 19, match_rate_threshold=0.1
+        ) == ["tenant_2"]
+
+    def test_empty_text_returns_smallest_tenants(self, tree: PrefixTree) -> None:
+        tree.add_tenants(["tenant_1", "tenant_2"], 0)
+        tree.insert("hello", "tenant_1", 1)
+        assert tree.prefix_match_or_smallest_tenants("", match_rate_threshold=0.1) == [
+            "tenant_2"
+        ]
+
+    def test_match_uses_only_available_tenants(self, tree: PrefixTree) -> None:
+        """Only the available tenants count toward the match and the fallback."""
+        tree.add_tenants(["tenant_1", "tenant_2", "tenant_3", "tenant_4"], 0)
+        tree.insert("hello world", "tenant_1", 1)
+        tree.insert("hello", "tenant_2", 2)
+        tree.insert("xyz", "tenant_3", 3)
+        assert tree.prefix_match_or_smallest_tenants(
+            "hello world", match_rate_threshold=0.1
+        ) == ["tenant_1"]
+        # Without tenant_1, only tenant_2's "hello" matches: 5 of 11 characters.
+        available = ["tenant_2", "tenant_3"]
+        assert tree.prefix_match_or_smallest_tenants(
+            "hello world", available, match_rate_threshold=0.1
+        ) == ["tenant_2"]
+        # That's below a 50% threshold, so the smallest available tenant is returned:
+        # tenant_3, not tenant_4, which has fewer characters but isn't available.
+        assert tree.prefix_match_or_smallest_tenants(
+            "hello world", available, match_rate_threshold=0.5
+        ) == ["tenant_3"]
+
 
 class TestPrefixTreeComprehensive:
     """Comprehensive tests for the PrefixTree"""
