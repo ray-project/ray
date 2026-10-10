@@ -2,7 +2,7 @@ import { Box, Tooltip, Typography } from "@mui/material";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
-import { GPUStats, NodeDetail, TPUStats } from "../../type/node";
+import { GPUStats, NodeDetail, NPUStats, TPUStats } from "../../type/node";
 import {
   normalizeAccelerators,
   UnifiedAcceleratorStat,
@@ -50,6 +50,38 @@ const TpuTooltip = ({ tpu }: { tpu: TPUStats }) => {
   );
 };
 
+const NpuTooltip = ({ npu }: { npu: NPUStats }) => {
+  return (
+    <Box>
+      <Typography variant="body2">Name: {npu.name}</Typography>
+      <Typography variant="body2">
+        Card/Device: {npu.cardId}/{npu.deviceId}
+      </Typography>
+      {npu.physicalId !== undefined && npu.physicalId !== null && (
+        <Typography variant="body2">Physical ID: {npu.physicalId}</Typography>
+      )}
+      {npu.healthStatus !== undefined && npu.healthStatus !== null && (
+        <Typography variant="body2">
+          Health:{" "}
+          {npu.healthStatus === 0
+            ? "Healthy"
+            : `Unhealthy (${npu.healthStatus})`}
+        </Typography>
+      )}
+      {npu.temperatureC !== undefined && npu.temperatureC !== null && (
+        <Typography variant="body2">
+          Temperature: {npu.temperatureC}°C
+        </Typography>
+      )}
+      {npu.powerMw !== undefined && npu.powerMw !== null && (
+        <Typography variant="body2">
+          Power Draw: {(npu.powerMw / 1000).toFixed(1)} W
+        </Typography>
+      )}
+    </Box>
+  );
+};
+
 export const NodeAcceleratorEntry: React.FC<NodeAcceleratorEntryProps> = ({
   accelerator,
   slot,
@@ -57,6 +89,8 @@ export const NodeAcceleratorEntry: React.FC<NodeAcceleratorEntryProps> = ({
   const title =
     accelerator.type === "GPU" && accelerator.rawGpu ? (
       <GpuTooltip gpu={accelerator.rawGpu} />
+    ) : accelerator.type === "NPU" && accelerator.rawNpu ? (
+      <NpuTooltip npu={accelerator.rawNpu} />
     ) : accelerator.type === "TPU" && accelerator.rawTpu ? (
       <TpuTooltip tpu={accelerator.rawTpu} />
     ) : (
@@ -84,7 +118,7 @@ export const NodeAcceleratorEntry: React.FC<NodeAcceleratorEntryProps> = ({
 };
 
 export const NodeAcceleratorView = ({ node }: { node: NodeDetail }) => {
-  const accelerators = normalizeAccelerators(node.gpus, node.tpus);
+  const accelerators = normalizeAccelerators(node.gpus, node.tpus, node.npus);
 
   return (
     <Box sx={{ minWidth: 120 }}>
@@ -108,13 +142,15 @@ export const NodeAcceleratorView = ({ node }: { node: NodeDetail }) => {
 export const WorkerAcceleratorRow = ({
   workerPID,
   gpus,
+  npus,
   tpus,
 }: {
   workerPID: number | null;
   gpus?: GPUStats[];
+  npus?: NPUStats[];
   tpus?: TPUStats[];
 }) => {
-  const accelerators = normalizeAccelerators(gpus, tpus);
+  const accelerators = normalizeAccelerators(gpus, tpus, npus);
 
   const workerGPUEntries = accelerators
     .map((acc, i) => {
@@ -147,8 +183,9 @@ export const getSumAcceleratorUtilization = (
   workerPID: number | null,
   gpus?: GPUStats[],
   tpus?: TPUStats[],
+  npus?: NPUStats[],
 ) => {
-  const accelerators = normalizeAccelerators(gpus, tpus);
+  const accelerators = normalizeAccelerators(gpus, tpus, npus);
   const workerGPUUtilizationEntries = accelerators
     .map((acc, i) => {
       const process = acc.processesPids?.find(
