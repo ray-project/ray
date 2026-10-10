@@ -1,0 +1,146 @@
+from typing import Iterator
+
+import pyarrow as pa
+import pyarrow.dataset as pds
+from typing_extensions import override
+
+from ray.data._internal.datasource_v2.common.file_reader import FileReader
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
+from ray.util.annotations import DeveloperAPI
+
+
+@DeveloperAPI
+class OrcFileReader(FileReader):
+    """Read ORC files in batches using PyArrow Dataset fragments.
+
+    Each fragment covers a whole file. PyArrow applies row filters to the
+    scanned batches; this reader does not provide ORC-native stripe pruning.
+    Path-derived partition values take precedence over same-named file columns
+    and are synthesized before filtering and projection.
+    """
+
+    @override
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+        """Keep the declared order after per-file partition synthesis."""
+        schema = self._schema
+        for table in super().read(input_split):
+            if self._columns is None and schema is not None:
+                produced = set(table.column_names)
+                schema_names = schema.names
+                schema_name_set = set(schema_names)
+                column_names = [name for name in schema_names if name in produced]
+                column_names.extend(
+                    name for name in table.column_names if name not in schema_name_set
+                )
+                table = table.select(column_names)
+            yield table
+
+    @override
+    def _iter_fragment_tables(
+        self, fragment: pds.Fragment, scanner_kwargs: dict
+    ) -> Iterator[pa.Table]:
+        if self._partition_parser is None:
+            yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+            return
+
+        partitions = self._partition_parser(fragment.path)
+        physical_schema = fragment.physical_schema
+        schema = self._schema
+        if schema is None:
+            schema = physical_schema
+        synthesized = {column.name for column in self._synthesized_columns}
+        schema = pa.schema([field for field in schema if field.name not in synthesized])
+
+        for name, value in partitions.items():
+            if schema.get_field_index(name) == -1:
+                schema = schema.append(
+                    pa.field(name, self._broadcast_partition_value(name, value, 0).type)
+                )
+
+        schema_names = set(schema.names)
+        output_columns = (
+            schema.names
+            if self._columns is None
+            else [name for name in self._columns if name in schema_names]
+        )
+        filter_columns = (
+            get_column_references(self._predicate)
+            if self._predicate is not None
+            else []
+        )
+        required_columns = list(dict.fromkeys(output_columns + filter_columns))
+
+        data_predicate = self._predicate
+        residual_predicate = None
+        partition_matches = True
+        if self._predicate is not None:
+            split = _split_predicate_by_columns(self._predicate, set(partitions))
+            data_predicate = split.data_predicate
+            residual_predicate = split.residual_predicate
+            if split.partition_predicate is not None:
+                # Compare the same typed values that will appear in the output.
+                # A missing directory key stays a data predicate, so root-file
+                # values and logical nulls cannot be pruned by a path guess.
+                partition_table = pa.table(
+                    {
+                        name: self._broadcast_partition_value(name, value, 1)
+                        for name, value in partitions.items()
+                    }
+                )
+                partition_matches = (
+                    partition_table.filter(
+                        split.partition_predicate.to_pyarrow()
+                    ).num_rows
+                    > 0
+                )
+
+        # The shared kwargs are also used by concurrent fragment reads.
+        scan_kwargs = dict(scanner_kwargs)
+        scan_kwargs["columns"] = required_columns
+
+        if not partition_matches:
+            return
+
+        required_names = set(required_columns)
+        # Partition fields come from the path, including when a same-named
+        # field is stored in the file. Do not decode those physical columns.
+        scan_kwargs["columns"] = [
+            name for name in required_columns if name not in partitions
+        ]
+        if data_predicate is not self._predicate:
+            scan_kwargs["filter"] = (
+                data_predicate.to_pyarrow() if data_predicate is not None else None
+            )
+        file_schema = pa.schema(
+            [field for field in schema if field.name not in partitions]
+        )
+        # Filtering must not hide an unsafe column that this scan will decode.
+        decoded_names = set(scan_kwargs["columns"])
+        decoded_schema = pa.schema(
+            [field for field in physical_schema if field.name in decoded_names]
+        )
+        raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
+        scanner = fragment.scanner(**scan_kwargs, schema=file_schema)
+        for tagged in scanner.scan_batches():
+            table = pa.Table.from_batches([tagged.record_batch])
+            for name, value in partitions.items():
+                if name in required_names:
+                    table = table.append_column(
+                        name,
+                        self._broadcast_partition_value(name, value, table.num_rows),
+                    )
+            if residual_predicate is not None:
+                table = table.filter(residual_predicate.to_pyarrow())
+            yield table
+
+    @override
+    def _on_batch_read(self, table: pa.Table) -> None:
+        super()._on_batch_read(table)
+        raise_on_pickle_object_columns(table)
