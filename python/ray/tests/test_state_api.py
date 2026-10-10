@@ -25,6 +25,9 @@ from ray._common.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import create_api_options
 from ray._raylet import GcsClient, NodeID
@@ -506,10 +509,12 @@ def test_delay_endpoint_disabled_by_default(shutdown_only, monkeypatch):
     monkeypatch.delenv("RAY_DASHBOARD_MODULE_TEST", raising=False)
     ctx = ray.init()
     api_server_url = f"http://{ctx.address_info['webui_url']}"
+    headers = get_auth_headers_if_auth_enabled({})
     # Make sure the state module is serving, so the 404 below is caused by the
     # endpoint not being registered rather than the module not being ready.
-    assert requests.get(f"{api_server_url}/api/v0/nodes").status_code == 200
-    resp = requests.get(f"{api_server_url}/api/v0/delay/0")
+    resp = requests.get(f"{api_server_url}/api/v0/nodes", headers=headers)
+    assert resp.status_code == 200
+    resp = requests.get(f"{api_server_url}/api/v0/delay/0", headers=headers)
     assert resp.status_code == 404
 
 
