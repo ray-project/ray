@@ -1387,6 +1387,40 @@ def test_write_nested_timestamps_converted_to_microseconds(temp_delta_path):
     ]
 
 
+def test_write_timestamp_map_keys_converted_to_microseconds(temp_delta_path):
+    """Map keys are converted too."""
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    # Timezone-aware: deltalake doesn't add the ``timestampNtz`` feature for a
+    # naive timestamp that only appears as a map key, so committing one fails
+    # with or without this conversion.
+    ns = pa.timestamp("ns", tz="America/New_York")
+    table = pa.table(
+        {"m": pa.array([[(1704110400_123456789, "v")]], type=pa.map_(ns, pa.string()))}
+    )
+    ray.data.from_arrow(table).write_delta(temp_delta_path)
+
+    us = pa.timestamp("us", tz="UTC")
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    assert table_schema.field("m").type.key_type == us
+    expected = pa.scalar(1704110400_123456, type=us).as_py()
+    assert _read_committed_parquet_rows(temp_delta_path) == [{"m": [(expected, "v")]}]
+
+
+def test_timestamp_conversion_rejects_out_of_range_values():
+    """A timestamp that doesn't fit in microseconds raises rather than
+    silently wrapping."""
+    import pyarrow as pa
+
+    from ray.data._internal.datasource.delta_datasink import _cast_to_delta_schema
+
+    # The smallest whole second whose microsecond value exceeds int64.
+    table = pa.table({"t": pa.array([9_223_372_036_855], type=pa.timestamp("s"))})
+    with pytest.raises(pa.ArrowInvalid, match="out of bounds"):
+        _cast_to_delta_schema(table)
+
+
 def test_append_nanosecond_timestamps_to_microsecond_table(temp_delta_path):
     """Appending nanosecond timestamps to a table with a microsecond column
     is not a type conflict once they're converted."""
