@@ -573,6 +573,96 @@ class TestReconciler:
         assert events_i_2[1].new_instance_status == Instance.TERMINATING
 
     @staticmethod
+    def test_gc_terminated_instances_past_retention(setup):
+        # TERMINATED records older than the GC retention window are deleted from
+        # storage, while recently TERMINATED and non-terminal records are kept.
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        retention_s = InstanceReconcileConfig().terminated_instance_gc_retention_s
+        now = time.time_ns()
+        instances = [
+            create_instance(
+                "i-stale",
+                status=Instance.TERMINATED,
+                status_times=[
+                    (Instance.TERMINATED, now - (retention_s + 60) * s_to_ns)
+                ],
+            ),
+            create_instance(
+                "i-fresh",
+                status=Instance.TERMINATED,
+                status_times=[(Instance.TERMINATED, now)],
+            ),
+            create_instance(
+                "i-live",
+                status=Instance.ALLOCATED,
+                cloud_instance_id="c-live",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={
+                "c-live": CloudInstance(
+                    "c-live", "worker_nodes1", False, NodeKind.WORKER
+                )
+            },
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        stored, _ = instance_storage.get_instances()
+        assert "i-stale" not in stored
+        assert "i-fresh" in stored
+        assert "i-live" in stored
+
+    @staticmethod
+    def test_gc_terminated_instances_disabled_with_negative_retention(setup):
+        # A negative retention disables GC so even old TERMINATED records remain.
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        now = time.time_ns()
+        TestReconciler._add_instances(
+            instance_storage,
+            [
+                create_instance(
+                    "i-stale",
+                    status=Instance.TERMINATED,
+                    status_times=[
+                        (Instance.TERMINATED, now - 10 * 24 * 3600 * s_to_ns)
+                    ],
+                )
+            ],
+        )
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(
+                {
+                    "instance_reconcile_config": InstanceReconcileConfig(
+                        terminated_instance_gc_retention_s=-1
+                    )
+                }
+            ),
+        )
+
+        stored, _ = instance_storage.get_instances()
+        assert "i-stale" in stored
+
+    @staticmethod
     def test_ray_reconciler_no_op(setup):
         instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
 

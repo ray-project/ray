@@ -111,6 +111,17 @@ class InstanceReconcileConfig:
     max_num_retry_request_to_allocate: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_MAX_NUM_RETRY_REQUEST_TO_ALLOCATE", 3
     )
+    # How long to retain a TERMINATED instance record before garbage collecting
+    # it from the instance storage. TERMINATED is a terminal state and nothing
+    # else removes these records, so without GC the storage—and the per-cycle
+    # reconcile cost and serialized AutoscalingState that scan it—grow without
+    # bound on instance-churning clusters. The default retains a full day of
+    # terminations so the status_history of recently reclaimed nodes stays
+    # inspectable for post-incident triage (e.g. overnight scaling issues),
+    # while bounding steady-state memory to roughly one day of churn.
+    terminated_instance_gc_retention_s: int = env_integer(
+        "RAY_AUTOSCALER_RECONCILE_TERMINATED_INSTANCE_GC_RETENTION_S", 24 * 60 * 60
+    )
 
 
 @dataclass
