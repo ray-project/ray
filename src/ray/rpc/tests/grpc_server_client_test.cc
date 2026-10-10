@@ -227,6 +227,25 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   }
 }
 
+// gRPC can keep reporting a channel as IDLE for a moment after its first call starts.
+// A client with a call in flight must not look idle, or the core worker client pool
+// evicts it and the next actor task goes out on a new client with fresh sequence state.
+TEST_F(TestGrpcServerClientFixture, TestNotIdleWhileCallInFlight) {
+  // Freeze the server so the call stays in flight.
+  test_service_handler_.frozen = true;
+  PingRequest request;
+  std::atomic<bool> done(false);
+  Ping(request, [&done](const Status &status, const PingReply &reply) { done = true; });
+  for (int i = 0; i < 100; i++) {
+    ASSERT_FALSE(grpc_client_->IsChannelIdleAfterRPCs());
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  test_service_handler_.frozen = false;
+  while (!done) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
 TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
   // Make sure the timeout value in the macro works as expected.
   test_service_handler_.frozen = true;
