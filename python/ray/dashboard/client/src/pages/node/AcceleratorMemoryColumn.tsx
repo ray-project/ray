@@ -2,18 +2,17 @@ import { Box, Tooltip, Typography } from "@mui/material";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
-import { GPUStats, NodeDetail, TPUStats } from "../../type/node";
+import { GPUStats, NodeDetail, NPUStats, TPUStats } from "../../type/node";
 import { normalizeAccelerators } from "../../util/accelerator";
 import { memoryConverter } from "../../util/converter";
 
 const GRAM_COL_WIDTH = 120;
 
 export const NodeAcceleratorMemory = ({ node }: { node: NodeDetail }) => {
-  const accelerators = normalizeAccelerators(node.gpus, node.tpus);
+  const accelerators = normalizeAccelerators(node.gpus, node.tpus, node.npus);
 
   const nodeGRAMEntries = accelerators.map((acc, i) => {
     const props = {
-      key: acc.uuid || acc.name + acc.index,
       gpuName: acc.name,
       utilization: acc.memoryUsed,
       total: acc.memoryTotal,
@@ -22,7 +21,12 @@ export const NodeAcceleratorMemory = ({ node }: { node: NodeDetail }) => {
       // absolute usage is not available.
       utilPercent: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
     };
-    return <AcceleratorMemoryEntry {...props} />;
+    return (
+      <AcceleratorMemoryEntry
+        key={acc.uuid || acc.name + acc.index}
+        {...props}
+      />
+    );
   });
   return (
     <div style={{ minWidth: 60 }}>
@@ -40,13 +44,15 @@ export const NodeAcceleratorMemory = ({ node }: { node: NodeDetail }) => {
 export const WorkerAcceleratorMemory = ({
   workerPID,
   gpus,
+  npus,
   tpus,
 }: {
   workerPID: number | null;
   gpus?: GPUStats[];
+  npus?: NPUStats[];
   tpus?: TPUStats[];
 }) => {
-  const accelerators = normalizeAccelerators(gpus, tpus);
+  const accelerators = normalizeAccelerators(gpus, tpus, npus);
 
   const workerGRAMEntries = accelerators
     .map((acc, i) => {
@@ -57,7 +63,6 @@ export const WorkerAcceleratorMemory = ({
         return undefined;
       }
       const props = {
-        key: acc.uuid || acc.name + acc.index,
         gpuName: acc.name,
         total: acc.memoryTotal,
         utilization: process.memoryUsage,
@@ -66,7 +71,12 @@ export const WorkerAcceleratorMemory = ({
         // absolute usage is not available.
         utilPercent: acc.rawTpu ? acc.rawTpu.hbmUtilization : undefined,
       };
-      return <AcceleratorMemoryEntry {...props} />;
+      return (
+        <AcceleratorMemoryEntry
+          key={acc.uuid || acc.name + acc.index}
+          {...props}
+        />
+      );
     })
     .filter((entry) => entry !== undefined);
 
@@ -83,8 +93,9 @@ export const getSumAcceleratorMemoryUsage = (
   workerPID: number | null,
   gpus?: GPUStats[],
   tpus?: TPUStats[],
+  npus?: NPUStats[],
 ) => {
-  const accelerators = normalizeAccelerators(gpus, tpus);
+  const accelerators = normalizeAccelerators(gpus, tpus, npus);
 
   const workerGRAMEntries = accelerators
     .map((acc, i) => {
