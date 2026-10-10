@@ -781,6 +781,93 @@ def test_read_mcap_granularity_validation(
         )
 
 
+def _optimized(ds):
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+
+    return LogicalOptimizer().optimize(ds._logical_plan).dag
+
+
+def _walk(op):
+    yield op
+    for child in op.input_dependencies:
+        yield from _walk(child)
+
+
+def test_read_mcap_filter_pushdown(ray_start_regular_shared, tmp_path, datasource_v2):
+    """``ds.filter`` on ``topic`` or ``log_time`` folds into the read.
+
+    On V2 the ``Filter`` leaves the plan and ``ListFiles`` gets the predicate,
+    while a conjunct on another column keeps a ``Filter``. Rows are the same on
+    both paths.
+    """
+    from ray.data._internal.logical.operators import ListFiles
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data.expressions import col
+
+    path = os.path.join(tmp_path, "chunked.mcap")
+    _write_chunked_mcap(path, 9)
+    base = 1_000_000_000
+
+    ds = ray.data.read_mcap(path).filter(
+        expr=(col("topic") == "/a") & (col("log_time") < base + 4_000_000)
+    )
+    rows = ds.take_all()
+    assert [row["data"]["seq"] for row in rows] == [0, 3]
+    if datasource_v2:
+        plan = list(_walk(_optimized(ds)))
+        assert not any(isinstance(op, Filter) for op in plan)
+        (list_files,) = [op for op in plan if isinstance(op, ListFiles)]
+        assert list_files.predicate is not None
+
+    mixed = ray.data.read_mcap(path).filter(
+        expr=(col("topic") == "/b") & (col("sequence") >= 0)
+    )
+    assert sorted(row["data"]["seq"] for row in mixed.take_all()) == [1, 4, 7]
+    if datasource_v2:
+        plan = list(_walk(_optimized(mixed)))
+        (filter_op,) = [op for op in plan if isinstance(op, Filter)]
+        assert "sequence" in str(filter_op.predicate_expr)
+
+
+def test_read_mcap_count_from_statistics(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """``count()`` under a topic selection is answered from the summaries."""
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.count_operator import Count
+    from ray.data._internal.logical.operators.map_operator import MapBatches, Project
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+
+    paths = []
+    for i in range(2):
+        path = os.path.join(tmp_path, f"f{i}.mcap")
+        _write_chunked_mcap(path, 6)
+        paths.append(path)
+
+    def optimized_count_plan(ds):
+        count = Count(
+            input_dependencies=[
+                Project(exprs=[], input_dependencies=[ds._logical_plan.dag])
+            ]
+        )
+        return LogicalOptimizer().optimize(LogicalPlan(count, ds.context)).dag
+
+    ds = ray.data.read_mcap(paths, topics=["/a"])
+    assert ds.count() == 4
+    pushed = ray.data.read_mcap(paths).filter(expr=col("topic").is_in(["/a", "/b"]))
+    assert pushed.count() == 8
+    if datasource_v2:
+        assert isinstance(optimized_count_plan(ds), MapBatches)
+        assert isinstance(optimized_count_plan(pushed), MapBatches)
+
+    # A time range has to be read.
+    ranged = ray.data.read_mcap(paths, time_range=(1_000_000_000, 1_002_000_000))
+    assert ranged.count() == 4
+    if datasource_v2:
+        assert not isinstance(optimized_count_plan(ranged), MapBatches)
+
+
 def _write_h264_recording(path):
     """Write 30 H.264 frames at 30 fps on ``/camera``, a keyframe every 10, in
     small chunks so that tasks can start mid-GOP."""

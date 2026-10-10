@@ -8,6 +8,7 @@ from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     DEFAULT_MAX_LEAD_IN_NS,
     MESSAGE_GRANULARITY,
@@ -15,30 +16,39 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     VideoOptions,
     WindowSpec,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_pushdown import (
+    narrow_selection,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_reader import (
     DEFAULT_MAX_ROW_BYTES,
     MCAPReader,
 )
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
+    SupportsFilterPushdown,
     SupportsLimitPushdown,
 )
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
 @dataclass(frozen=True)
-class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
+class MCAPScanner(
+    FileScanner, SupportsFilterPushdown, SupportsColumnPruning, SupportsLimitPushdown
+):
     """Scanner for MCAP files on Datasource V2.
 
     Holds the message selection and row granularity from ``read_mcap``, the
     topics it lists as video (``video_topics``), and the pushdowns the
-    optimizer applies: column pruning and a per-task row limit. A pruned read
+    optimizer applies: column pruning, a per-task row limit and, at message
+    granularity, filters on ``topic`` and ``log_time``. Those filters fold into
+    the selection, so listing prunes files and chunks with them. A pruned read
     neither builds nor JSON-decodes the columns it drops. Partition pruning
-    comes from :class:`FileScanner`. Other filters are not pushed down.
+    comes from :class:`FileScanner`.
 
     At ``message`` granularity, the planned ``schema`` fixes what ``data``
     holds in every block: decoded JSON values when every selected channel of
@@ -64,6 +74,9 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
     target_block_size: Optional[int] = None
     max_row_bytes: int = DEFAULT_MAX_ROW_BYTES
     max_lead_in_ns: int = DEFAULT_MAX_LEAD_IN_NS
+    # The conjuncts :meth:`push_filters` folded into ``selection``. The planner
+    # hands them to the indexer, so listing prunes on the same selection.
+    predicate: Optional[Expr] = None
 
     def read_schema(self) -> pa.Schema:
         """Return the dataset schema after column pruning.
@@ -79,6 +92,51 @@ class MCAPScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdown):
             assert idx >= 0, f"Column {name} not found in schema"
             fields.append(self.schema.field(idx))
         return pa.schema(fields)
+
+    @override
+    def metadata_row_count_is_exact(self) -> bool:
+        """Whether ``count()`` can be answered from the summaries.
+
+        A summary's ``Statistics`` counts messages per channel, so a selection
+        by topic or message type is exact from metadata. A time range is not:
+        the statistics say nothing about how many messages fall inside it.
+        Coarse rows are windows, topics or files, which no statistic counts.
+        Decoded rows are frames, not messages: ``fps`` thins them and
+        undecodable ones are dropped.
+        """
+        return (
+            self.granularity == MESSAGE_GRANULARITY
+            and self.video is None
+            and self.limit is None
+            and self.partition_predicate is None
+            and self.selection.time_range is None
+        )
+
+    @override
+    def push_filters(self, predicate: Expr) -> Tuple["MCAPScanner", Optional[Expr]]:
+        """Fold ``topic`` and ``log_time`` conjuncts into the selection.
+
+        Only message rows have both as scalar columns. A coarse row holds
+        ``log_time`` as a list, so at any other granularity the whole predicate
+        stays with the ``Filter`` above the read.
+        """
+        if self.granularity != MESSAGE_GRANULARITY:
+            return self, predicate
+        narrowed = narrow_selection(self.selection, predicate)
+        if narrowed.pushed is None:
+            return self, predicate
+        return (
+            replace(
+                self,
+                selection=narrowed.selection,
+                predicate=combine_predicates(self.predicate, narrowed.pushed),
+            ),
+            narrowed.residual,
+        )
+
+    @override
+    def pushed_predicate(self) -> Optional[Expr]:
+        return self.predicate
 
     @override
     def prune_columns(self, columns: List[str]) -> "MCAPScanner":
