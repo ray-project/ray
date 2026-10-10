@@ -129,6 +129,10 @@ If your UDF runs on GPU, size batches to use about 1/4 of the GPU memory as a ru
 
 If a task or actor uses more than a few GiB of memory, set ``memory`` to tell Ray Data how much memory each task or actor needs, so that Ray Data doesn't launch too many at once.
 
+:::{note}
+The log-based sizing method below requires task unique set size samples. Ray Data collects these samples only on Linux. Before using the `max` value, check that `max_uss_bytes.num_samples` is greater than `0`. Ray Data's periodic high-memory warning also skips operators with no samples. The absence of this warning doesn't confirm that your `memory` setting is sufficient.
+:::
+
 To pick a value for ``memory``, find the `max` value in the `max_uss_bytes` field of the Ray Data log file. Ray typically writes this log file to `/tmp/ray/session-latest/ray-data/ray-data.log`. Set ``memory`` to 1.25 times that value, which keeps the observed maximum worker heap usage at 80% of the requested memory and leaves a 20% buffer.
 
 ```
