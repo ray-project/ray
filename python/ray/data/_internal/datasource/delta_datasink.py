@@ -151,6 +151,12 @@ def _to_delta_type(data_type: "pa.DataType") -> "pa.DataType":
             _to_delta_field(data_type.item_field),
             keys_sorted=data_type.keys_sorted,
         )
+    if pa.types.is_dictionary(data_type):
+        return pa.dictionary(
+            data_type.index_type,
+            _to_delta_type(data_type.value_type),
+            ordered=data_type.ordered,
+        )
     return data_type
 
 
