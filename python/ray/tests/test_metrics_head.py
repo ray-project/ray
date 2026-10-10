@@ -13,6 +13,7 @@ from ray._private.ray_constants import SESSION_LATEST
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
     MAX_PERCENTAGE_EXPRESSION,
+    OVERVIEW_AND_HEALTH_PANELS,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
@@ -236,6 +237,23 @@ def test_default_dashboard_utilizes_global_filters():
                     # We skip expressions that are constant value targets serving as visual aids
                     continue
                 assert "{global_filters}" in target.expr
+
+
+def test_cluster_npu_utilization_averages_reported_samples():
+    cluster_utilization = next(
+        panel
+        for panel in OVERVIEW_AND_HEALTH_PANELS
+        if panel.title == "Cluster Utilization"
+    )
+    npu_target = next(
+        target
+        for target in cluster_utilization.targets
+        if target.legend == "NPU AI Core (physical)"
+    )
+
+    assert npu_target.expr == (
+        'avg(ray_node_npus_utilization{{instance=~"$Instance",{global_filters}}})'
+    )
 
 
 def test_serve_dashboard_utilizes_global_filters():
