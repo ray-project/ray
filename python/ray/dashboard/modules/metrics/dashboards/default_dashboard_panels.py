@@ -78,7 +78,7 @@ OVERVIEW_AND_HEALTH_PANELS = [
             ),
             # Ascend NPU AI Core
             Target(
-                expr='sum(ray_node_npus_utilization{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_npus_available{{instance=~"$Instance",{global_filters}}}) or vector(0))',
+                expr='avg(ray_node_npus_utilization{{instance=~"$Instance",{global_filters}}})',
                 legend="NPU AI Core (physical)",
             ),
             # Memory
