@@ -655,6 +655,16 @@ def test_nixl_cross_device_fetch(ray_start_regular):
                 assert id(new_tensor) == id(buffer)
             return [t.clone() for t in tensors]
 
+        def fetch_into_mixed_device_buffers(self, refs):
+            mixed_buffers = [
+                torch.empty(3, dtype=torch.int64),
+                torch.empty(3, dtype=torch.int64).to("cuda"),
+            ]
+            set_target_for_ref(refs[0], mixed_buffers)
+            with pytest.raises(ValueError, match="same device type"):
+                ray.get(refs[0])
+            return True
+
         def target_device_overrides_target_buffer(self, refs):
             # Setting a target device after a target buffer should overwrite the
             # target buffer so the two options stay mutually exclusive.
@@ -692,6 +702,10 @@ def test_nixl_cross_device_fetch(ray_start_regular):
     )
     assert torch.equal(buffer_tensors[0], torch.tensor([1, 2, 3]))
     assert torch.equal(buffer_tensors[1], torch.tensor([4, 5, 6]))
+
+    # Target buffers that mix device types are rejected before the transfer.
+    cuda_ref_mixed = ray.get(actors[0].put_cuda.remote())
+    assert ray.get(actors[1].fetch_into_mixed_device_buffers.remote([cuda_ref_mixed]))
 
     # A later set_target_device_for_ref call overwrites an earlier
     # set_target_for_ref call so target buffer and target device stay mutually

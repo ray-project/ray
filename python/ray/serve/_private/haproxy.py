@@ -79,6 +79,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
@@ -1275,6 +1276,7 @@ class HAProxyApi(ProxyApi):
             # so lowercase here for the Lua lookup. Empty string disables
             # forwarding entirely.
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
             METRICS_PRE_CALL_ROUTER=metrics_pre,

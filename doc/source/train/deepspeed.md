@@ -126,9 +126,9 @@ Check the below examples for more details:
 * - Accelerate ({ref}`User Guide <train-hf-accelerate>`)
   - [Fine-tune Llama-2 series models with DeepSpeed, Accelerate, and Ray Train.](https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed)
 * - Transformers ({ref}`User Guide <train-pytorch-transformers>`)
-  - {doc}`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj_deepspeed_fine_tuning>`
+  - {doc}`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj-deepspeed-fine-tuning>`
 * - Lightning ({ref}`User Guide <train-pytorch-lightning>`)
-  - {doc}`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <examples/lightning/vicuna_13b_lightning_deepspeed_finetune>`
+  - {doc}`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <examples/lightning/vicuna-13b-lightning-deepspeed-finetune>`
 ```
 
 
