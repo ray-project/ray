@@ -198,12 +198,6 @@ For details, see the following end-to-end examples:
 ::::
 :::::
 
-:::{seealso}
-For more advanced use cases, see the following Llama-2 fine-tuning example:
-
-- [Fine-tuning Llama-2 series models with DeepSpeed, Accelerate, and Ray Train](https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed)
-:::
-
 The following user guides might also help:
 
 - {ref}`train_scaling_config`

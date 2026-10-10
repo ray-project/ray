@@ -867,8 +867,13 @@ redirects:
   to: /train/deepspeed.html
   type: page
 - from: /train/examples/deepspeed/gptj_deepspeed_fine_tuning.html
-  to: /train/examples/deepspeed/gptj-deepspeed-fine-tuning.html
+  to: /_collections/train/examples/pytorch/deepspeed_finetune/README.html
   type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
+- from: /train/examples/deepspeed/gptj-deepspeed-fine-tuning.html
+  to: /_collections/train/examples/pytorch/deepspeed_finetune/README.html
+  type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
 - from: /train/examples/horovod/horovod_example.html
   to: /train/getting-started-pytorch.html
   type: page
@@ -900,8 +905,13 @@ redirects:
   to: /train/examples/jax/intro-to-jax-trainer/README.html
   type: page
 - from: /train/examples/lightning/dolly_lightning_fsdp_finetuning.html
-  to: /train/examples/lightning/dolly-lightning-fsdp-finetuning.html
+  to: /_collections/train/examples/pytorch/pytorch-fsdp/README.html
   type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
+- from: /train/examples/lightning/dolly-lightning-fsdp-finetuning.html
+  to: /_collections/train/examples/pytorch/pytorch-fsdp/README.html
+  type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
 - from: /train/examples/lightning/lightning_cola_advanced.html
   to: /train/examples/lightning/lightning-cola-advanced.html
   type: page
@@ -909,8 +919,13 @@ redirects:
   to: /train/examples/lightning/lightning-mnist-example.html
   type: page
 - from: /train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune.html
-  to: /train/examples/lightning/vicuna-13b-lightning-deepspeed-finetune.html
+  to: /_collections/train/examples/pytorch/deepspeed_finetune/README.html
   type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
+- from: /train/examples/lightning/vicuna-13b-lightning-deepspeed-finetune.html
+  to: /_collections/train/examples/pytorch/deepspeed_finetune/README.html
+  type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
 - from: /train/examples/pytorch/convert_existing_pytorch_code_to_ray_train.html
   to: /_collections/train/examples/pytorch/distributing-pytorch/README.html
   type: page
@@ -918,14 +933,24 @@ redirects:
   to: /_collections/train/examples/pytorch/distributing-pytorch/README.html
   type: page
 - from: /train/examples/pytorch/dreambooth_finetuning.html
-  to: /train/examples/pytorch/dreambooth-finetuning.html
+  to: /train/examples.html
   type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
+- from: /train/examples/pytorch/dreambooth-finetuning.html
+  to: /train/examples.html
+  type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
 - from: /train/examples/pytorch/pytorch_resnet_finetune.html
   to: /train/examples/pytorch/pytorch-resnet-finetune.html
   type: page
 - from: /train/examples/pytorch/torch_detection.html
-  to: /train/examples/pytorch/torch-detection.html
+  to: /_collections/ray-overview/examples/object-detection/README.html
   type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
+- from: /train/examples/pytorch/torch-detection.html
+  to: /_collections/ray-overview/examples/object-detection/README.html
+  type: page
+  description: "Temporary: repoint when the replacement or rebuilt example ships"
 - from: /train/examples/pytorch/torch_fashion_mnist_example.html
   to: /train/getting-started-pytorch.html
   type: page
