@@ -2041,7 +2041,8 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
     dependency is required, and the output is a plain list of values (like
     :class:`Unique`) rather than value/count records. The price is that the
     accumulator holds every distinct value with its count until the final
-    ranking, so memory grows with the number of distinct values.
+    ranking, so memory grows with the number of distinct values. Values that
+    Arrow can't count natively (for example tensors) are counted in Python.
 
     Ties are broken deterministically: values with equal counts are ordered by
     value (ascending), with nulls last.
@@ -2120,7 +2121,21 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
                 "counts": list(counter.values()),
             }
         else:
-            value_counts = accessor.value_counts() or {"values": [], "counts": []}
+            try:
+                value_counts = accessor.value_counts() or {"values": [], "counts": []}
+            except pa.ArrowNotImplementedError:
+                # Arrow has no `value_counts` kernel for this type (e.g. extension
+                # types such as tensors), so count in Python over hashable values.
+                counter = collections.Counter(
+                    tuple(value)
+                    if isinstance(value, (list, tuple, np.ndarray))
+                    else value
+                    for value in accessor.to_pylist()
+                )
+                value_counts = {
+                    "values": list(counter.keys()),
+                    "counts": list(counter.values()),
+                }
 
         values: List[Any] = []
         counts: List[int] = []

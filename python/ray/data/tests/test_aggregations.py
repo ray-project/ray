@@ -709,6 +709,19 @@ class TestTopKUnique:
         with pytest.raises(ValueError, match="`k` must be a positive integer"):
             TopKUnique(on="v", k=0)
 
+    def test_topk_unique_tensor_column(self, ray_start_regular_shared_2_cpus):
+        """Arrow has no `value_counts` kernel for extension types such as
+        tensors, so these are counted in Python (each array is one value)."""
+        arrays = [np.array([1, 2])] * 3 + [np.array([3, 4])] * 2 + [np.array([5, 6])]
+        ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
+
+        result = ds.aggregate(TopKUnique(on="t", k=2))
+
+        assert [tuple(value) for value in result["topk_unique(t)"]] == [
+            (1, 2),
+            (3, 4),
+        ]
+
     # ----- Column-wise merge (VectorizedAggregateFnV2._combine_column) -----
 
     @staticmethod

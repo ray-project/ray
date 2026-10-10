@@ -9,7 +9,6 @@ from typing import (
     Hashable,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
 )
@@ -21,7 +20,8 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
-from ray.data.block import BlockAccessor
+from ray.data.aggregate import TopKUnique, Unique
+from ray.data.block import BlockAccessor, BlockColumnAccessor
 from ray.data.datatype import DataType
 from ray.data.preprocessor import (
     Preprocessor,
@@ -43,6 +43,52 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _to_hashable(value: Any) -> Any:
+    """Make a list-like value usable as a category: lists and arrays become tuples."""
+    return tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else value
+
+
+class _EncoderUnique(Unique):
+    """``Unique`` that falls back to Python for column types Arrow can't handle.
+
+    Arrow has no ``unique`` kernel for extension types (e.g. tensors), and the
+    uniqueness of a list-typed column needs the optional ``polars`` package. The
+    encoders accepted such columns before they fit through aggregations, so they
+    keep accepting them: the vectorized path is tried first, and only when it
+    isn't available for the column's type are the values collected in Python.
+    """
+
+    # NOTE: ImportError covers `polars` not being installed.
+    _FALLBACK_ERRORS = (pa.ArrowNotImplementedError, ImportError)
+
+    def aggregate_block(self, block):
+        try:
+            return super().aggregate_block(block)
+        except self._FALLBACK_ERRORS:
+            values = set()
+            column = BlockColumnAccessor.for_column(block[self._target_col_name])
+            for value in column.to_pylist():
+                if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN and (
+                    isinstance(value, (list, np.ndarray))
+                ):
+                    values.update(_to_hashable(element) for element in value)
+                else:
+                    values.add(_to_hashable(value))
+            if self._ignore_nulls:
+                values = {value for value in values if not is_null(value)}
+            return list(self._normalize_nans(values))
+
+    def _combine_column(self, accumulator_col):
+        try:
+            return super()._combine_column(accumulator_col)
+        except self._FALLBACK_ERRORS:
+            merged = set()
+            for partial in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+                if partial is not None:
+                    merged.update(_to_hashable(value) for value in partial)
+            return list(self._normalize_nans(merged))
 
 
 def _get_unique_value_arrow_arrays(
@@ -157,6 +203,8 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             Another preprocessor that encodes categorical data.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -185,16 +233,16 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self._columns,
-                encode_lists=self._encode_lists,
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: _EncoderUnique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=(
+                    Unique.ListEncodingMode.FLATTEN if self._encode_lists else None
+                ),
+                alias_name=f"unique_values({col})",
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=self._columns,
         )
         return self
@@ -431,6 +479,8 @@ class OneHotEncoder(SerializablePreprocessorBase):
             :class:`OrdinalEncoder`.
     """  # noqa: E501
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -459,17 +509,25 @@ class OneHotEncoder(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self._columns,
-                encode_lists=False,
-                key_gen=key_gen,
-                max_categories=self._max_categories,
+        _validate_max_categories(self._max_categories, self._columns)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: (
+                TopKUnique(
+                    on=col,
+                    k=self._max_categories[col],
+                    ignore_nulls=False,
+                    encode_lists=False,
+                    alias_name=f"unique_values({col})",
+                )
+                if col in self._max_categories
+                else _EncoderUnique(
+                    on=col,
+                    ignore_nulls=False,
+                    encode_lists=None,
+                    alias_name=f"unique_values({col})",
+                )
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=self._columns,
         )
         return self
@@ -708,6 +766,8 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     [1]: https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MultiLabelBinarizer.html
     """
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -736,17 +796,25 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self._columns,
-                encode_lists=True,
-                key_gen=key_gen,
-                max_categories=self._max_categories,
+        _validate_max_categories(self._max_categories, self._columns)
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: (
+                TopKUnique(
+                    on=col,
+                    k=self._max_categories[col],
+                    ignore_nulls=False,
+                    encode_lists=True,
+                    alias_name=f"unique_values({col})",
+                )
+                if col in self._max_categories
+                else _EncoderUnique(
+                    on=col,
+                    ignore_nulls=False,
+                    encode_lists=Unique.ListEncodingMode.FLATTEN,
+                    alias_name=f"unique_values({col})",
+                )
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=self._columns,
         )
         return self
@@ -876,6 +944,8 @@ class LabelEncoder(SerializablePreprocessorBase):
             :class:`LabelEncoder`.
     """
 
+    _supports_deferred_fit = True
+
     def __init__(self, label_column: str, *, output_column: Optional[str] = None):
         super().__init__()
         self._label_column = label_column
@@ -890,15 +960,14 @@ class LabelEncoder(SerializablePreprocessorBase):
         return self._output_column
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=[self._label_column],
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: _EncoderUnique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=Unique.ListEncodingMode.FLATTEN,
+                alias_name=f"unique_values({col})",
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: f"unique_values({col})",
             columns=[self._label_column],
         )
         return self
@@ -1055,6 +1124,8 @@ class Categorizer(SerializablePreprocessorBase):
 
     """  # noqa: E501
 
+    _supports_deferred_fit = True
+
     def __init__(
         self,
         columns: List[str],
@@ -1094,18 +1165,17 @@ class Categorizer(SerializablePreprocessorBase):
         def callback(unique_indices: Dict[str, Dict]) -> pd.CategoricalDtype:
             return pd.CategoricalDtype(unique_indices.keys())
 
-        self._stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=columns_to_get,
-                key_gen=key_gen,
+        self._stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: _EncoderUnique(
+                on=col,
+                ignore_nulls=False,
+                encode_lists=Unique.ListEncodingMode.FLATTEN,
+                alias_name=col,
             ),
             post_process_fn=make_post_processor(
                 base_fn=unique_post_fn(drop_na_values=True),
                 callbacks=[callback],
             ),
-            stat_key_fn=lambda col: f"unique({col})",
-            post_key_fn=lambda col: col,
             columns=columns_to_get,
         )
 
@@ -1169,48 +1239,12 @@ class Categorizer(SerializablePreprocessorBase):
         )
 
 
-def compute_unique_value_indices(
-    *,
-    dataset: "Dataset",
-    columns: List[str],
-    key_gen: Callable,
-    encode_lists: bool = True,
-    max_categories: Optional[Dict[str, int]] = None,
-):
-    """Compute the set of unique values for each column across the full dataset.
-
-    Counts value frequencies globally (summed across all partitions) and then,
-    if ``max_categories`` is specified for a column, selects only the top-k most
-    frequent values. This ensures that a value appearing moderately in many
-    partitions is not missed — e.g. a value with count 3 in each of two
-    partitions (global count 6) is correctly preferred over a value with count 5
-    in a single partition.
-
-    Args:
-        dataset: The Ray Dataset to compute value counts over.
-        columns: Column names to compute unique values for.
-        key_gen: A callable that maps a column name to the key used in the
-            returned dictionary (e.g. ``lambda col: f"unique({col})"``).
-        encode_lists: If ``True``, list-type column elements are exploded so
-            that each list element is counted individually. If ``False``, entire
-            lists are treated as single categorical values (converted to tuples
-            for hashability).
-        max_categories: Optional mapping from column name to the maximum number
-            of unique values to keep. Only the most frequent values (by global
-            count) are retained. Columns not present in the mapping keep all
-            unique values.
-
-    Returns:
-        Dict[str, Set]: A mapping from ``key_gen(col)`` to the set of unique
-        values for that column (limited to top-k if ``max_categories`` applies).
-
-    Raises:
-        ValueError: If a column in ``max_categories`` is not in ``columns``.
-        ValueError: If a column listed in ``columns`` is missing from the
-            dataset.
-    """
-    if max_categories is None:
-        max_categories = {}
+def _validate_max_categories(
+    max_categories: Optional[Dict[str, int]], columns: List[str]
+) -> None:
+    """Validate that every ``max_categories`` key is one of ``columns``."""
+    if not max_categories:
+        return
     columns_set = set(columns)
     for column in max_categories:
         if column not in columns_set:
@@ -1218,71 +1252,6 @@ def compute_unique_value_indices(
                 f"You set `max_categories` for {column}, which is not present in "
                 f"{columns}."
             )
-
-    def get_pd_value_counts_per_column(col: pd.Series) -> Dict:
-
-        # special handling for lists
-        if _is_series_composed_of_lists(col):
-            if encode_lists:
-                counter = Counter()
-
-                def update_counter(element):
-                    # A missing row contributes no tokens. `Counter.update`
-                    # iterates its argument, and a missing value is not
-                    # iterable: `pd.NA` raises `TypeError: 'NAType' object is
-                    # not iterable`, and `None` fails the same way.
-                    if not _is_null(element):
-                        counter.update(element)
-                    return element
-
-                col.map(update_counter)
-                return counter
-            else:
-                # convert to tuples to make lists hashable. A missing row has no
-                # list to convert: `tuple(pd.NA)` raises `TypeError: 'NAType'
-                # object is not iterable` here in `fit`, so `na_action="ignore"`
-                # carries the null through to `unique_post_fn` instead, where it
-                # reaches the documented "consider imputing missing values
-                # first" `ValueError`. This mirrors the `encode_lists=True`
-                # branch above.
-                col = col.map(lambda x: tuple(x), na_action="ignore")
-        return Counter(col.value_counts(dropna=False).to_dict())
-
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Dict]]:
-
-        df_columns = df.columns.tolist()
-        result = {}
-        for col in columns:
-            if col in df_columns:
-                result[col] = [get_pd_value_counts_per_column(df[col])]
-            else:
-                raise ValueError(
-                    f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
-                )
-        return result
-
-    value_counts_ds = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    # Aggregate counters globally per column before applying max_categories,
-    # so that top-k is computed over the full dataset rather than per-partition.
-    global_counters: Dict[str, Counter] = {col: Counter() for col in columns}
-    for batch in value_counts_ds.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                filtered: Dict[Any, int] = {
-                    k: v for k, v in counter.items() if v is not None
-                }
-                global_counters[col].update(filtered)
-
-    unique_values_by_col: Dict[str, Set] = {key_gen(col): set() for col in columns}
-    for col in columns:
-        counter = global_counters[col]
-        if col in max_categories:
-            top_k_values = dict(counter.most_common(max_categories[col]))
-            unique_values_by_col[key_gen(col)].update(top_k_values.keys())
-        else:
-            unique_values_by_col[key_gen(col)].update(counter.keys())
-
-    return unique_values_by_col
 
 
 def _is_null(value: Any) -> bool:
