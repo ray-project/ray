@@ -1,5 +1,24 @@
 import { GPUStats, NPUStats, TPUStats } from "../type/node";
-import { normalizeAccelerators } from "./accelerator";
+import { hasAnyAccelerator, normalizeAccelerators } from "./accelerator";
+
+describe("hasAnyAccelerator", () => {
+  it("detects an NPU-only node", () => {
+    const npus: NPUStats[] = [
+      {
+        index: 0,
+        cardId: 2,
+        deviceId: 0,
+        name: "Ascend910",
+      },
+    ];
+
+    expect(hasAnyAccelerator(undefined, undefined, npus)).toBe(true);
+  });
+
+  it("returns false when all accelerator lists are empty", () => {
+    expect(hasAnyAccelerator([], [], [])).toBe(false);
+  });
+});
 
 describe("normalizeAccelerators", () => {
   it("handles undefined inputs", () => {
