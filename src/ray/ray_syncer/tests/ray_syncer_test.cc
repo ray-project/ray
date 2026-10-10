@@ -23,7 +23,10 @@
 #include <grpcpp/server_builder.h>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <chrono>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -160,6 +163,66 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 }
 
+TEST(MessageTypeValidationTest, IsValidMessageType) {
+  EXPECT_TRUE(IsValidMessageType(static_cast<int>(MessageType::RESOURCE_VIEW)));
+  EXPECT_TRUE(IsValidMessageType(static_cast<int>(MessageType::COMMANDS)));
+  EXPECT_FALSE(IsValidMessageType(-1));
+  EXPECT_FALSE(IsValidMessageType(static_cast<int>(kComponentArraySize)));
+  EXPECT_FALSE(IsValidMessageType(std::numeric_limits<int32_t>::min()));
+  EXPECT_FALSE(IsValidMessageType(0x41414141));
+}
+
+TEST_F(RaySyncerTest, NodeStateConsumeMalformedMessage) {
+  std::unique_ptr<NodeState> node_status = std::make_unique<NodeState>();
+  FakeReceiverInterface *receiver = GetReceiver(MessageType::RESOURCE_VIEW);
+  ASSERT_TRUE(node_status->SetComponent(MessageType::RESOURCE_VIEW, nullptr, receiver));
+  int consumed = 0;
+  receiver->consume_sync_message_fn = [&consumed](std::shared_ptr<const RaySyncMessage>) {
+    ++consumed;
+  };
+
+  NodeID from_node_id = NodeID::FromRandom();
+  const int invalid_types[] = {-1,
+                               -3,
+                               static_cast<int>(kComponentArraySize),
+                               std::numeric_limits<int32_t>::min(),
+                               0x41414141};
+  for (int message_type : invalid_types) {
+    RaySyncMessage msg =
+        MakeMessage(static_cast<MessageType>(message_type), /*version=*/1, from_node_id);
+    ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)))
+        << "message_type=" << message_type;
+  }
+  for (const std::string &bad_node_id :
+       {std::string(), std::string(5, 'A'), std::string(NodeID::Size() + 1, 'A')}) {
+    RaySyncMessage msg =
+        MakeMessage(MessageType::RESOURCE_VIEW, /*version=*/1, from_node_id);
+    msg.set_node_id(bad_node_id);
+    ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)))
+        << "node_id size=" << bad_node_id.size();
+  }
+  ASSERT_EQ(0, consumed);
+  ASSERT_TRUE(node_status->GetClusterView().empty());
+
+  // A valid message is still consumed, and a later invalid one does not clobber it.
+  RaySyncMessage msg =
+      MakeMessage(MessageType::RESOURCE_VIEW, /*version=*/5, from_node_id);
+  ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_EQ(1, consumed);
+  RaySyncMessage bad =
+      MakeMessage(static_cast<MessageType>(-1), /*version=*/6, from_node_id);
+  ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(bad)));
+  ASSERT_EQ(1, consumed);
+  const std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize> &view =
+      node_status->GetClusterView().at(from_node_id.Binary());
+  ASSERT_NE(nullptr, view[MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(5, view[MessageType::RESOURCE_VIEW]->version());
+  ASSERT_EQ(nullptr, view[MessageType::COMMANDS]);
+
+  ASSERT_EQ(std::nullopt,
+            node_status->CreateSyncMessage(static_cast<MessageType>(0x41414141)));
+}
+
 struct FakeReactor {
   void StartRead(RaySyncMessageBatch *) { ++read_count; }
 
@@ -283,6 +346,74 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
       [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
 
   ASSERT_EQ(1, sync_reactor.node_versions_.size());
+}
+
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseDropsMalformedMessages) {
+  NodeID node_id = NodeID::FromRandom();
+  int processed = 0;
+  FakeRaySyncerBidiReactorBase<FakeReactor> sync_reactor(
+      /* io_context */ io_context_,
+      /* remote_node_id */ node_id.Binary(),
+      /* message_processor */
+      [&processed](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {
+        ++processed;
+      },
+      /* max_batch_size */ 1,
+      /* max_batch_delay_ms */ 0);
+  sync_reactor.SetSelfRef(std::shared_ptr<FakeRaySyncerBidiReactorBase<FakeReactor>>(
+      &sync_reactor, [](FakeRaySyncerBidiReactorBase<FakeReactor> *) {}));
+
+  NodeID from_node_id = NodeID::FromRandom();
+  const int invalid_types[] = {-1,
+                               static_cast<int>(kComponentArraySize),
+                               std::numeric_limits<int32_t>::min(),
+                               0x41414141};
+  for (int message_type : invalid_types) {
+    RaySyncMessage msg =
+        MakeMessage(static_cast<MessageType>(message_type), /*version=*/1, from_node_id);
+    ASSERT_FALSE(sync_reactor.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)))
+        << "message_type=" << message_type;
+  }
+  ASSERT_TRUE(sync_reactor.node_versions_.empty());
+  ASSERT_TRUE(sync_reactor.sending_buffer_.empty());
+
+  std::shared_ptr<RaySyncMessageBatch> batch = std::make_shared<RaySyncMessageBatch>();
+  for (int message_type : invalid_types) {
+    *batch->add_messages() =
+        MakeMessage(static_cast<MessageType>(message_type), /*version=*/1, from_node_id);
+  }
+  // Version -5 takes the stale path, which logs the node_id.
+  for (const std::string &bad_node_id :
+       {std::string(), std::string(5, 'A'), std::string(NodeID::Size() + 1, 'A')}) {
+    for (int64_t version : {1, -5}) {
+      RaySyncMessage msg = MakeMessage(MessageType::RESOURCE_VIEW, version, from_node_id);
+      msg.set_node_id(bad_node_id);
+      *batch->add_messages() = std::move(msg);
+    }
+  }
+  *batch->add_messages() =
+      MakeMessage(MessageType::RESOURCE_VIEW, /*version=*/4, from_node_id);
+  sync_reactor.ReceiveUpdate(batch);
+
+  ASSERT_EQ(1, processed);
+  ASSERT_EQ(1, sync_reactor.node_versions_.size());
+  const std::array<int64_t, kComponentArraySize> &versions =
+      sync_reactor.node_versions_[from_node_id.Binary()];
+  ASSERT_EQ(4, versions[MessageType::RESOURCE_VIEW]);
+  ASSERT_EQ(-1, versions[MessageType::COMMANDS]);
+
+  // An empty batch is skipped without counting as liveness, and reading continues.
+  sync_reactor.ReceiveUpdate(std::make_shared<RaySyncMessageBatch>());
+  int completions = 0;
+  sync_reactor.SetRpcCompletionCallbackForOnce(
+      [&completions](const NodeID &) { ++completions; });
+  sync_reactor.StartPull();
+  ASSERT_EQ(1, sync_reactor.read_count);
+  sync_reactor.OnReadDone(/*ok=*/true);
+  EXPECT_TRUE(
+      WaitForCondition([&sync_reactor]() { return sync_reactor.read_count == 2; }, 1000));
+  ASSERT_EQ(0, completions);
+  ASSERT_EQ(1, processed);
 }
 
 struct SyncerServerTest {
