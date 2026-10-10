@@ -1,0 +1,823 @@
+import json
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+import ray.experimental.sandbox as sandbox_api
+from ray.experimental.sandbox.backend.base import SandboxStatus
+from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+
+class TestCheckpointRestore(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.image_manager = MagicMock()
+        self.image_manager.images_dir = os.path.join(self.temp_dir, "images")
+        self.image_manager.pull_image.return_value = os.path.join(
+            self.temp_dir, "images", "busybox_latest"
+        )
+        self.backend = GVisorSandboxBackend(
+            image_manager=self.image_manager,
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _create_mock_sandbox(self, rootless: bool = False, network: str = "none"):
+        config = SandboxConfig(
+            image="busybox:latest",
+            rootless=rootless,
+            network=network,
+            readonly=True,
+            workdir="/workspace",
+        )
+        sandbox_id = "ray-sandbox-test-123"
+        root_dir = os.path.join(self.temp_dir, "instances", sandbox_id)
+        os.makedirs(os.path.join(root_dir, "bundle"), exist_ok=True)
+        os.makedirs(os.path.join(root_dir, "rootfs"), exist_ok=True)
+        os.makedirs(os.path.join(root_dir, "workdir"), exist_ok=True)
+        with open(os.path.join(root_dir, "config.json"), "w") as f:
+            f.write("{}")
+
+        self.backend._sandbox_metadata[sandbox_id] = {
+            "config": config,
+            "root_dir": root_dir,
+            "workdir": os.path.join(root_dir, "workdir"),
+            "cwd": "/workspace",
+            "process": MagicMock(),
+            "proc": MagicMock(),
+            "status": SandboxStatus.RUNNING,
+            "paused": False,
+        }
+        return sandbox_id, root_dir
+
+    def test_checkpoint_rootless_disallowed(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=True)
+        with pytest.raises(
+            SandboxError, match="does not support checkpoint/restore in rootless mode"
+        ):
+            self.backend.checkpoint_sandbox(sandbox_id)
+
+    def test_checkpoint_bundle_creation(self):
+        sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
+
+        # Write dummy files to upper rootfs and workdir
+        with open(os.path.join(root_dir, "rootfs", "file_in_overlay.txt"), "w") as f:
+            f.write("test overlay content")
+        with open(os.path.join(root_dir, "workdir", "file_in_workdir.txt"), "w") as f:
+            f.write("test workdir content")
+
+        dest_checkpoint_dir = os.path.join(self.temp_dir, "my_checkpoint")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=dest_checkpoint_dir,
+                leave_running=True,
+            )
+
+            checkpoint_path = result["checkpoint_path"]
+            assert checkpoint_path == dest_checkpoint_dir
+            assert os.path.isdir(checkpoint_path)
+            assert os.path.isfile(os.path.join(checkpoint_path, "manifest.json"))
+            assert os.path.isfile(os.path.join(checkpoint_path, "config.json"))
+            assert os.path.isdir(os.path.join(checkpoint_path, "state"))
+            assert os.path.isdir(os.path.join(checkpoint_path, "fs"))
+
+            # Check manifest contents
+            with open(os.path.join(checkpoint_path, "manifest.json")) as f:
+                manifest = json.load(f)
+            assert manifest["version"] == "1.0"
+            assert manifest["image"] == "busybox:latest"
+            assert manifest["sandbox_id"] == sandbox_id
+
+            # Check that upper layer and workdir were copied
+            assert os.path.isfile(
+                os.path.join(checkpoint_path, "fs", "rootfs", "file_in_overlay.txt")
+            )
+            assert os.path.isfile(
+                os.path.join(checkpoint_path, "fs", "workdir", "file_in_workdir.txt")
+            )
+
+            # Check runsc checkpoint command flags
+            checkpoint_calls = [
+                call[0][0]
+                for call in mock_run.call_args_list
+                if len(call[0]) > 0
+                and isinstance(call[0][0], list)
+                and "checkpoint" in call[0][0]
+            ]
+            assert len(checkpoint_calls) == 1
+            cmd = checkpoint_calls[0]
+            assert "checkpoint" in cmd
+            assert "--leave-running" in cmd
+            assert "--compression=none" in cmd
+            assert "--exclude-committed-zero-pages" in cmd
+            assert any(arg.startswith("--image-path=") for arg in cmd)
+
+    def test_restore_validation_errors(self):
+        # Non-existent checkpoint path
+        with pytest.raises(SandboxError, match="Checkpoint path does not exist"):
+            self.backend.restore_sandbox("/nonexistent/checkpoint/path")
+
+        # Missing manifest.json
+        invalid_ckpt = os.path.join(self.temp_dir, "invalid_ckpt")
+        os.makedirs(invalid_ckpt, exist_ok=True)
+        with pytest.raises(SandboxError, match="Missing manifest.json"):
+            self.backend.restore_sandbox(invalid_ckpt)
+
+        # Missing state dir
+        with open(os.path.join(invalid_ckpt, "manifest.json"), "w") as f:
+            json.dump({"version": "1.0", "image": "busybox:latest"}, f)
+        with pytest.raises(SandboxError, match="Missing state directory"):
+            self.backend.restore_sandbox(invalid_ckpt)
+
+    def test_build_restore_command(self):
+        config_none = SandboxConfig(
+            image="busybox:latest", network="none", rootless=False
+        )
+        cmd = self.backend._build_restore_command(
+            config=config_none,
+            root_dir="/path/to/bundle",
+            state_dir="/path/to/state",
+            sandbox_id="sb-test",
+            background=True,
+            direct=False,
+        )
+        assert cmd[0] == "runsc"
+        assert "restore" in cmd
+        assert "--background" in cmd
+        assert "--bundle" in cmd
+        assert "/path/to/bundle" in cmd
+        assert "--image-path" in cmd
+        assert "/path/to/state" in cmd
+        assert cmd[-1] == "sb-test"
+
+        # Public network with slirp4netns
+        config_public = SandboxConfig(
+            image="busybox:latest", network="public", rootless=False
+        )
+        cmd_public = self.backend._build_restore_command(
+            config=config_public,
+            root_dir="/path/to/bundle",
+            state_dir="/path/to/state",
+            sandbox_id="sb-test-net",
+            background=True,
+            direct=True,
+        )
+        assert cmd_public[0] == "bash"
+        assert cmd_public[1] == "-c"
+        assert "unshare --user" in cmd_public[2]
+        assert "slirp4netns" in cmd_public[2]
+        assert "restore" in cmd_public[2]
+        assert "--direct" in cmd_public[2]
+
+    def test_restore_success(self):
+        # Setup mock checkpoint directory
+        ckpt_dir = os.path.join(self.temp_dir, "valid_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        fs_upper = os.path.join(ckpt_dir, "fs", "rootfs")
+        fs_workdir = os.path.join(ckpt_dir, "fs", "workdir")
+        os.makedirs(state_dir, exist_ok=True)
+        os.makedirs(fs_upper, exist_ok=True)
+        os.makedirs(fs_workdir, exist_ok=True)
+
+        with open(os.path.join(fs_upper, "saved.txt"), "w") as f:
+            f.write("restored upper data")
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-src",
+            "config": {
+                "image": "busybox:latest",
+                "cpu": 2.0,
+                "memory": "1Gi",
+                "env": {"FOO": "BAR"},
+                "workdir": "/workspace",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        # Mock image cache directory with rootfs.erofs
+        images_dir = os.path.join(self.temp_dir, "images", "busybox_latest")
+        os.makedirs(images_dir, exist_ok=True)
+        with open(os.path.join(images_dir, "rootfs.erofs"), "w") as f:
+            f.write("mock erofs")
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.run") as mock_run,
+            patch("time.sleep"),
+        ):
+            # runsc state query returns running
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps({"status": "running"})
+            )
+            restored_id = self.backend.restore_sandbox(ckpt_dir)
+
+            assert restored_id.startswith("ray-sandbox-")
+            assert restored_id in self.backend._sandbox_metadata
+            meta = self.backend._sandbox_metadata[restored_id]
+            assert meta["config"].image == "busybox:latest"
+            assert meta["status"] == SandboxStatus.RUNNING
+
+            # Check that restored rootfs received the copied file
+            restored_root = meta["root_dir"]
+            assert os.path.isfile(os.path.join(restored_root, "rootfs", "saved.txt"))
+            with open(os.path.join(restored_root, "rootfs", "saved.txt")) as f:
+                assert f.read() == "restored upper data"
+
+    def test_restore_config_overrides(self):
+        ckpt_dir = os.path.join(self.temp_dir, "override_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        fs_upper = os.path.join(ckpt_dir, "fs", "rootfs")
+        os.makedirs(state_dir, exist_ok=True)
+        os.makedirs(fs_upper, exist_ok=True)
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-orig",
+            "config": {
+                "image": "busybox:latest",
+                "cpu": 1.0,
+                "memory": "512Mi",
+                "env": {"ORIG": "VAL"},
+                "workdir": "/orig",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.returncode = 0
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/mock"),
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.run") as mock_run,
+            patch("time.sleep"),
+        ):
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps({"status": "running"})
+            )
+            restored_id = self.backend.restore_sandbox(
+                ckpt_dir,
+                cpu=4.0,
+                memory="2Gi",
+            )
+            meta = self.backend._sandbox_metadata[restored_id]
+            assert meta["config"].cpu == 4.0
+            assert meta["config"].memory == "2Gi"
+            assert meta["config"].env == {"ORIG": "VAL"}
+            assert meta["config"].workdir == "/orig"
+            assert meta["config"].network == "none"
+            assert meta["config"].readonly is True
+
+    def test_default_checkpoint_path_format(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = self.backend.checkpoint_sandbox(sandbox_id)
+            ckpt_path = result["checkpoint_path"]
+            assert sandbox_id in ckpt_path
+            assert "/checkpoints/" in ckpt_path
+
+    def test_runtime_delegation(self):
+        runtime = SandboxRuntime()
+        runtime._backend = MagicMock()
+        runtime._backend.checkpoint_sandbox.return_value = {
+            "checkpoint_path": "/ckpt/dir"
+        }
+        runtime._backend.restore_sandbox.return_value = "restored-id"
+
+        ckpt = runtime.checkpoint("id-123", checkpoint_path="/custom")
+        assert ckpt == "/ckpt/dir"
+        runtime._backend.checkpoint_sandbox.assert_called_once_with(
+            sandbox_id="id-123",
+            checkpoint_path="/custom",
+            leave_running=True,
+            timeout_seconds=30.0,
+        )
+
+        res = runtime.restore("/ckpt/dir", cpu=4.0)
+        assert res == "restored-id"
+        runtime._backend.restore_sandbox.assert_called_once()
+
+    def test_checkpoint_copy_failure_preserves_sandbox(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        with (
+            patch("subprocess.run") as mock_run,
+            patch(
+                "ray.experimental.sandbox.backend.checkpoint_utils.copy_fs_tree",
+                side_effect=PermissionError("Permission denied"),
+            ),
+            patch.object(self.backend, "_delete_container_state") as mock_delete_state,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            with pytest.raises(SandboxError, match="Failed to copy rootfs overlay"):
+                self.backend.checkpoint_sandbox(sandbox_id, leave_running=False)
+
+            meta = self.backend._sandbox_metadata[sandbox_id]
+            assert meta["status"] == SandboxStatus.RUNNING
+            mock_delete_state.assert_not_called()
+
+    def test_checkpoint_leave_running_false_terminates_on_success(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.object(self.backend, "_delete_container_state") as mock_delete_state,
+            patch.object(self.backend, "_terminate_tree") as mock_terminate,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            self.backend.checkpoint_sandbox(sandbox_id, leave_running=False)
+
+            meta = self.backend._sandbox_metadata[sandbox_id]
+            assert meta["status"] == SandboxStatus.TERMINATED
+            mock_delete_state.assert_called_once()
+            mock_terminate.assert_called_once()
+
+    def test_checkpoint_clears_existing_destination(self):
+        sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
+        rootfs_dir = os.path.join(root_dir, "rootfs")
+        workdir_dir = self.backend._sandbox_metadata[sandbox_id]["workdir"]
+        with open(os.path.join(rootfs_dir, "active.txt"), "w") as f:
+            f.write("active rootfs")
+        with open(os.path.join(workdir_dir, "active.py"), "w") as f:
+            f.write("active workdir")
+
+        ckpt_dir = os.path.join(self.temp_dir, "fixed_path_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        old_rootfs = os.path.join(ckpt_dir, "fs", "rootfs")
+        old_workdir = os.path.join(ckpt_dir, "fs", "workdir")
+        os.makedirs(state_dir, exist_ok=True)
+        os.makedirs(old_rootfs, exist_ok=True)
+        os.makedirs(old_workdir, exist_ok=True)
+
+        stale_dump = os.path.join(state_dir, "stale_dump.img")
+        stale_rootfs = os.path.join(old_rootfs, "deleted_guest_file.txt")
+        stale_workdir = os.path.join(old_workdir, "deleted_script.py")
+        with open(stale_dump, "w") as f:
+            f.write("stale dump")
+        with open(stale_rootfs, "w") as f:
+            f.write("deleted in guest")
+        with open(stale_workdir, "w") as f:
+            f.write("deleted script in guest")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            self.backend.checkpoint_sandbox(
+                sandbox_id, checkpoint_path=ckpt_dir, leave_running=True
+            )
+
+        assert not os.path.exists(stale_dump)
+        assert not os.path.exists(stale_rootfs)
+        assert not os.path.exists(stale_workdir)
+        assert os.path.isfile(os.path.join(ckpt_dir, "fs", "rootfs", "active.txt"))
+        assert os.path.isfile(os.path.join(ckpt_dir, "fs", "workdir", "active.py"))
+        assert os.path.isfile(os.path.join(ckpt_dir, "manifest.json"))
+
+    def test_checkpoint_to_existing_file_raises(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        file_path = os.path.join(self.temp_dir, "file_as_ckpt_path")
+        with open(file_path, "w") as f:
+            f.write("not a directory")
+
+        with pytest.raises(SandboxError, match="exists and is a file"):
+            self.backend.checkpoint_sandbox(sandbox_id, checkpoint_path=file_path)
+
+    def test_checkpoint_restricts_bundle_permissions(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        ckpt_dir = os.path.join(self.temp_dir, "perm_checkpoint")
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("os.geteuid", return_value=1000),
+            patch("shutil.which", return_value="/usr/bin/sudo"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            self.backend.checkpoint_sandbox(
+                sandbox_id, checkpoint_path=ckpt_dir, leave_running=True
+            )
+
+            chmod_calls = [
+                call[0][0]
+                for call in mock_run.call_args_list
+                if len(call[0]) > 0
+                and isinstance(call[0][0], list)
+                and "chmod" in call[0][0]
+            ]
+            assert len(chmod_calls) >= 1
+            for cmd in chmod_calls:
+                assert "sudo" in cmd
+                assert "chmod" in cmd
+                assert "go+rX" not in " ".join(cmd)
+
+    def test_checkpoint_failure_preserves_previously_valid_bundle(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        ckpt_dir = os.path.join(self.temp_dir, "prev_valid_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        fs_dir = os.path.join(ckpt_dir, "fs", "rootfs")
+        os.makedirs(state_dir, exist_ok=True)
+        os.makedirs(fs_dir, exist_ok=True)
+
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            f.write('{"version": "1.0", "valid": true}')
+        with open(os.path.join(ckpt_dir, "config.json"), "w") as f:
+            f.write('{"valid": true}')
+        with open(os.path.join(state_dir, "valid.img"), "w") as f:
+            f.write("valid dump")
+        with open(os.path.join(fs_dir, "valid.txt"), "w") as f:
+            f.write("valid overlay")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stderr="runsc crashed")
+            with pytest.raises(SandboxError, match="Failed to checkpoint sandbox"):
+                self.backend.checkpoint_sandbox(sandbox_id, checkpoint_path=ckpt_dir)
+
+        assert os.path.isfile(os.path.join(ckpt_dir, "manifest.json"))
+        with open(os.path.join(ckpt_dir, "manifest.json")) as f:
+            assert "valid" in f.read()
+        assert os.path.isfile(os.path.join(ckpt_dir, "config.json"))
+        assert os.path.isfile(os.path.join(state_dir, "valid.img"))
+        assert os.path.isfile(os.path.join(fs_dir, "valid.txt"))
+
+        parent = os.path.dirname(ckpt_dir)
+        staging_dirs = [
+            d for d in os.listdir(parent) if d.startswith("prev_valid_checkpoint.tmp.")
+        ]
+        assert len(staging_dirs) == 0
+
+    def test_checkpoint_swap_failure_preserves_backup(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        ckpt_dir = os.path.join(self.temp_dir, "swap_fail_checkpoint")
+        os.makedirs(ckpt_dir, exist_ok=True)
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            f.write('{"version": "1.0", "original": true}')
+
+        real_replace = os.replace
+        call_count = 0
+
+        def failing_replace(src, dst):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return real_replace(src, dst)
+            raise OSError("simulated disk/filesystem error")
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("os.replace", side_effect=failing_replace),
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            with pytest.raises(OSError, match="simulated disk/filesystem error"):
+                self.backend.checkpoint_sandbox(sandbox_id, checkpoint_path=ckpt_dir)
+
+        parent = os.path.dirname(ckpt_dir)
+        backup_dirs = [
+            d for d in os.listdir(parent) if d.startswith("swap_fail_checkpoint.old.")
+        ]
+        assert len(backup_dirs) == 1
+        backup_manifest = os.path.join(parent, backup_dirs[0], "manifest.json")
+        assert os.path.isfile(backup_manifest)
+        with open(backup_manifest) as f:
+            assert "original" in f.read()
+
+    def test_restore_network_override_clears_dns(self):
+        ckpt_dir = os.path.join(self.temp_dir, "dns_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-dns",
+            "config": {
+                "image": "busybox:latest",
+                "cpu": 1.0,
+                "memory": "512Mi",
+                "workdir": "/workspace",
+                "rootless": False,
+                "network": "public",
+                "dns": ["8.8.8.8", "8.8.4.4"],
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.run") as mock_run,
+            patch("time.sleep"),
+        ):
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps({"status": "running"})
+            )
+            # Overriding network to "none" should clear inherited dns without ValueError
+            restored_id = self.backend.restore_sandbox(ckpt_dir, network="none")
+            meta = self.backend._sandbox_metadata[restored_id]
+            assert meta["config"].network == "none"
+            assert meta["config"].dns is None
+
+    def test_restore_readonly_false_copies_workdir_to_rootfs(self):
+        ckpt_dir = os.path.join(self.temp_dir, "readonly_false_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        fs_workdir = os.path.join(ckpt_dir, "fs", "workdir")
+        os.makedirs(state_dir, exist_ok=True)
+        os.makedirs(fs_workdir, exist_ok=True)
+
+        with open(os.path.join(fs_workdir, "app.py"), "w") as f:
+            f.write("print('hello from workdir')")
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-src",
+            "config": {
+                "image": "busybox:latest",
+                "cpu": 1.0,
+                "memory": "512Mi",
+                "workdir": "/workspace",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.returncode = 0
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.run") as mock_run,
+            patch("time.sleep"),
+        ):
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps({"status": "running"})
+            )
+            # Restoring with readonly=False should copy fs/workdir into host workdir path
+            restored_id = self.backend.restore_sandbox(
+                ckpt_dir, readonly=False, workdir="/workspace"
+            )
+            meta = self.backend._sandbox_metadata[restored_id]
+            assert meta["config"].readonly is False
+            assert meta["workdir"] is not None
+            restored_file = os.path.join(meta["workdir"], "app.py")
+            assert os.path.isfile(restored_file)
+            with open(restored_file) as f:
+                assert f.read() == "print('hello from workdir')"
+
+    def test_restore_workdir_path_traversal_rejected(self):
+        ckpt_dir = os.path.join(self.temp_dir, "traversal_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-trav",
+            "config": {
+                "image": "busybox:latest",
+                "workdir": "/workspace",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        from ray.experimental.sandbox.exceptions import SandboxCreationError
+
+        with pytest.raises(SandboxCreationError, match="Path traversal detected"):
+            self.backend.restore_sandbox(ckpt_dir, workdir="/../../../../etc/cron.d")
+
+    def test_restore_preserves_and_applies_oci_spec_transform_fn(self):
+        ckpt_dir = os.path.join(self.temp_dir, "transform_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-xfrm",
+            "config": {
+                "image": "busybox:latest",
+                "workdir": "/workspace",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.returncode = 0
+
+        def sample_transform(spec):
+            spec["annotations"] = spec.get("annotations", {})
+            spec["annotations"]["custom.annotation"] = "custom_value"
+            return spec
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.run") as mock_run,
+            patch("time.sleep"),
+            patch.object(
+                self.backend._image_manager, "prepare_oci_bundle"
+            ) as mock_prep,
+        ):
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps({"status": "running"})
+            )
+            restored_id = self.backend.restore_sandbox(
+                ckpt_dir,
+                _oci_spec_transform_fn=sample_transform,
+            )
+            meta = self.backend._sandbox_metadata[restored_id]
+            assert meta["config"]._oci_spec_transform_fn is sample_transform
+            mock_prep.assert_called_once()
+            assert (
+                mock_prep.call_args.kwargs["_oci_spec_transform_fn"] is sample_transform
+            )
+
+    def test_copy_fs_tree_preserves_symlinks_without_following(self):
+        src_dir = os.path.join(self.temp_dir, "symlink_src")
+        dst_dir = os.path.join(self.temp_dir, "symlink_dst")
+        os.makedirs(src_dir, exist_ok=True)
+
+        # Create a symlink pointing to an absolute external/host file (e.g. /etc/passwd or /dev/null)
+        planted_target = "/etc/hosts"
+        symlink_path = os.path.join(src_dir, "leak_symlink")
+        os.symlink(planted_target, symlink_path)
+
+        self.backend._copy_fs_tree(src_dir, dst_dir)
+
+        copied_item = os.path.join(dst_dir, "leak_symlink")
+        assert os.path.islink(copied_item), "Symlink was not preserved as a symlink!"
+        assert os.readlink(copied_item) == planted_target
+
+    def test_restore_missing_runsc_raises_without_leaking(self):
+        ckpt_dir = os.path.join(self.temp_dir, "ckpt_missing_runsc")
+        os.makedirs(ckpt_dir, exist_ok=True)
+        os.makedirs(os.path.join(ckpt_dir, "state"), exist_ok=True)
+        manifest = {
+            "image": "ubuntu:latest",
+            "config": {
+                "image": "ubuntu:latest",
+                "rootless": False,
+                "network": "none",
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        with (
+            patch("shutil.which", return_value=None),
+            patch.object(self.backend._image_manager, "pull_image") as mock_pull,
+        ):
+            with pytest.raises(SandboxCreationError, match="runsc' not found in PATH"):
+                self.backend.restore_sandbox(ckpt_dir)
+            mock_pull.assert_not_called()
+
+    def test_restore_missing_slirp_for_public_network_raises(self):
+        ckpt_dir = os.path.join(self.temp_dir, "ckpt_missing_slirp")
+        os.makedirs(ckpt_dir, exist_ok=True)
+        os.makedirs(os.path.join(ckpt_dir, "state"), exist_ok=True)
+        manifest = {
+            "image": "ubuntu:latest",
+            "config": {
+                "image": "ubuntu:latest",
+                "rootless": False,
+                "network": "public",
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        def fake_which(bin_name):
+            if bin_name == "runsc":
+                return "/usr/bin/runsc"
+            return None
+
+        with (
+            patch("shutil.which", side_effect=fake_which),
+            patch.object(self.backend._image_manager, "pull_image") as mock_pull,
+        ):
+            with pytest.raises(
+                SandboxCreationError, match="network='public' isolates each sandbox"
+            ):
+                self.backend.restore_sandbox(ckpt_dir)
+            mock_pull.assert_not_called()
+
+    def test_restore_popen_failure_cleans_up(self):
+        ckpt_dir = os.path.join(self.temp_dir, "ckpt_popen_fail")
+        os.makedirs(ckpt_dir, exist_ok=True)
+        os.makedirs(os.path.join(ckpt_dir, "state"), exist_ok=True)
+        manifest = {
+            "image": "ubuntu:latest",
+            "config": {
+                "image": "ubuntu:latest",
+                "rootless": False,
+                "network": "none",
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/runsc"),
+            patch.object(self.backend._image_manager, "pull_image"),
+            patch.object(self.backend._image_manager, "prepare_oci_bundle"),
+            patch.object(self.backend._image_manager, "release_image") as mock_release,
+            patch(
+                "subprocess.Popen", side_effect=FileNotFoundError("missing executable")
+            ),
+        ):
+            with pytest.raises(FileNotFoundError):
+                self.backend.restore_sandbox(ckpt_dir)
+            mock_release.assert_called_once()
+            # Verify root_dir was cleaned up
+            called_args = mock_release.call_args[0]
+            instance_id = called_args[1]
+            from ray.experimental.sandbox.backend.gvisor import _RAY_SANDBOX_DIR
+
+            root_dir = os.path.join(_RAY_SANDBOX_DIR, instance_id)
+            assert not os.path.exists(root_dir)
+
+    def test_api_exports(self):
+        assert hasattr(sandbox_api, "restore")
+        assert callable(sandbox_api.restore)
+        assert "restore" in sandbox_api.__all__
+
+    def test_top_level_restore_preserves_manifest_resources(self):
+        ckpt_dir = os.path.join(self.temp_dir, "manifest_res_ckpt")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "config": {
+                "image": "busybox:latest",
+                "cpu": 4.0,
+                "memory": "8Gi",
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        with patch.object(sandbox_api.Sandbox, "options") as mock_options:
+            mock_remote = MagicMock()
+            mock_options.return_value = mock_remote
+
+            # Restore without explicit cpu/memory overrides
+            sandbox_api.restore(ckpt_dir)
+
+            # Verify that actor options inherited recorded cpu and memory from manifest
+            mock_options.assert_called_once_with(
+                num_cpus=4.0,
+                memory=8589934592,  # 8Gi in bytes
+            )
+            mock_remote.remote.assert_called_once_with(
+                restore_from=ckpt_dir,
+                cpu=None,
+                memory=None,
+                ttl_seconds=None,
+                timeout_seconds=30.0,
+            )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

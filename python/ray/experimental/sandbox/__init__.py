@@ -7,6 +7,9 @@ from ray.experimental.sandbox.backend.base import (
     ExecutionResult,
     SandboxStatus,
 )
+from ray.experimental.sandbox.backend.checkpoint_utils import (
+    load_checkpoint_manifest,
+)
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_DNS,
@@ -114,8 +117,64 @@ def create(
     )
 
 
+@PublicAPI(stability="alpha")
+def restore(
+    checkpoint_path: str,
+    cpu: Optional[float] = None,
+    memory: Optional[Union[str, int, float]] = None,
+    ttl_seconds: Optional[int] = None,
+    timeout_seconds: float = 30.0,
+    resources: Optional[Dict[str, float]] = None,
+    **kwargs,
+) -> ActorHandle:
+    """Restore a remote sandbox environment from a checkpoint managed by a Ray actor.
+
+    The restored sandbox preserves the full execution state, network mode,
+    mounts, Linux capabilities, and process environment of the checkpointed
+    sandbox. Cgroup resource allocations (cpu, memory) and lifecycle limits
+    (ttl_seconds, timeout_seconds) can optionally be overridden.
+
+    Args:
+        checkpoint_path: Path to the checkpoint bundle directory.
+        cpu: Optional CPU allocation override.
+        memory: Optional memory allocation override.
+        ttl_seconds: Optional time-to-live in seconds.
+        timeout_seconds: Timeout in seconds for restore.
+        resources: Custom logical resource requirements for the Ray actor.
+        **kwargs: Additional options.
+
+    Returns:
+        A Sandbox actor handle.
+    """
+    manifest, _ = load_checkpoint_manifest(checkpoint_path)
+    recorded_config = manifest.get("config", {})
+
+    effective_cpu = cpu if cpu is not None else recorded_config.get("cpu")
+    effective_memory = memory if memory is not None else recorded_config.get("memory")
+
+    actor_opts = {}
+    if effective_cpu is not None and effective_cpu >= 0:
+        actor_opts["num_cpus"] = effective_cpu
+    if effective_memory is not None:
+        parsed_mem = parse_memory_bytes(effective_memory)
+        if parsed_mem is not None and parsed_mem > 0:
+            actor_opts["memory"] = parsed_mem
+    if resources:
+        actor_opts["resources"] = resources
+
+    return Sandbox.options(**actor_opts).remote(
+        restore_from=checkpoint_path,
+        cpu=cpu,
+        memory=memory,
+        ttl_seconds=ttl_seconds,
+        timeout_seconds=timeout_seconds,
+        **kwargs,
+    )
+
+
 __all__ = [
     "create",
+    "restore",
     "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",
