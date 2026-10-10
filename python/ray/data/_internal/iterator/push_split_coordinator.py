@@ -419,18 +419,25 @@ class PushSplitCoordinator:
         """Stop pushers, force-shutdown the executor, join pusher threads.
 
         Shutdown must precede join: it is what unblocks a pusher waiting in
-        get_next.
+        get_next. The pusher state is taken under the lock; the blocking
+        shutdown and joins run outside it, so exiting pushers can still take
+        it.
         """
-        for event in self._pusher_stop_events.values():
+        with self._lock:
+            stop_events = list(self._pusher_stop_events.values())
+            threads = self._pusher_threads
+            self._pusher_threads = []
+            self._pusher_stop_events = {}
+            executor = self._current_executor
+
+        for event in stop_events:
             event.set()
-        if self._current_executor is not None:
-            self._current_executor.shutdown(force=True)
-        for thread in self._pusher_threads:
+        if executor is not None:
+            executor.shutdown(force=True)
+        for thread in threads:
             thread.join(timeout=10)
             if thread.is_alive():
                 logger.warning(f"Pusher thread {thread.name} did not exit in 10s.")
-        self._pusher_threads = []
-        self._pusher_stop_events = {}
 
     def _try_start_new_epoch(self, starting_epoch: int) -> None:
         with self._lock:
@@ -530,8 +537,6 @@ class PushSplitCoordinator:
                 # immediately. A dead consumer stops reporting, which parks
                 # this thread with the split's remaining data kept in the
                 # executor.
-                # TODO(push-split): let a replacement worker resume a parked
-                # split mid-epoch.
                 t0 = time.monotonic()
                 has_room = flow.wait_for_room(self.DEMAND_WAIT_TIMEOUT_S)
                 if not has_room:
