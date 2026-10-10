@@ -18,6 +18,8 @@ from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
+    INCLUDE_PATHS_COLUMN_NAME,
+    ROW_HASH_COLUMN_NAME,
     PathColumn,
     RowHashColumn,
 )
@@ -75,7 +77,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         file_extensions: Optional[Union[List[str], tuple[str, ...]]] = ("parquet",),
         ignore_missing_paths: bool = False,
         skip_paths: Optional[Union[str, List[str]]] = None,
-        include_paths: bool = False,
+        include_paths: Union[bool, str] = False,
         include_row_hash: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_parquet_args: Optional[dict] = None,
@@ -124,12 +126,30 @@ class ParquetDatasourceV2(FileDataSourceV2):
             self._skip_paths = frozenset(resolved_skip_paths)
         else:
             self._skip_paths = frozenset()
+        if isinstance(include_paths, str) and not include_paths:
+            raise ValueError("`include_paths` column name must be nonempty.")
+
+        path_column_name = (
+            include_paths
+            if isinstance(include_paths, str)
+            else INCLUDE_PATHS_COLUMN_NAME
+        )
+        self._custom_path_column_name = (
+            path_column_name
+            if isinstance(include_paths, str)
+            and path_column_name != INCLUDE_PATHS_COLUMN_NAME
+            else None
+        )
         # ``include_paths`` / ``include_row_hash`` become the columns the
         # reader appends to every batch; the scanner and reader only ever see
         # this tuple.
         synthesized_columns: List[SynthesizedColumn] = []
         if include_paths:
-            synthesized_columns.append(PathColumn())
+            if include_row_hash and path_column_name == ROW_HASH_COLUMN_NAME:
+                raise ValueError(
+                    "`include_paths` column name conflicts with `row_hash`."
+                )
+            synthesized_columns.append(PathColumn(name=path_column_name))
         if include_row_hash:
             synthesized_columns.append(RowHashColumn())
         # Columns Ray Data itself requests (e.g. the checkpoint ID column
@@ -363,8 +383,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
             idx = schema.get_field_index(column.name)
             if idx == -1:
                 schema = schema.append(pa.field(column.name, column.type))
-            elif schema.field(idx).type != column.type:
-                schema = schema.set(idx, pa.field(column.name, column.type))
+            else:
+                # The reader appends synthesized columns after the file columns.
+                # Keep the inferred order consistent when a name collides.
+                schema = schema.remove(idx).append(pa.field(column.name, column.type))
 
         check_for_legacy_tensor_type(schema)
         return schema
@@ -380,6 +402,15 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # datasource itself stays immutable — fall back to the
         # constructor-provided one for direct users of this API.
         partitioning = options.get("partitioning", self._partitioning)
+        if (
+            self._custom_path_column_name is not None
+            and partitioning is not None
+            and partitioning.field_names is not None
+            and self._custom_path_column_name in partitioning.field_names
+        ):
+            raise ValueError(
+                "`include_paths` column name conflicts with a partition column."
+            )
         return ParquetScanner(
             schema=schema,
             filesystem=filesystem or self._filesystem,

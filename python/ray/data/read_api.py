@@ -1616,7 +1616,7 @@ def read_parquet(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-    include_paths: bool = False,
+    include_paths: Union[bool, str] = False,
     include_row_hash: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     ignore_missing_paths: bool = False,
@@ -1725,9 +1725,9 @@ def read_parquet(
         columns: A list of column names to read. Only the specified columns are
             read during the file scan. Deprecated — use
             :meth:`~ray.data.Dataset.select_columns` on the returned dataset
-            instead. To downselect when ``include_paths`` and/or
-            ``include_row_hash`` are ``True``, list the synthetic ``'path'``
-            / ``'row_hash'`` columns explicitly in your
+            instead. To downselect when ``include_paths`` or
+            ``include_row_hash`` is enabled, list the synthetic path column
+            (``'path'`` by default) and/or ``'row_hash'`` explicitly in your
             ``select_columns([...])`` call to retain them.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -1749,11 +1749,17 @@ def read_parquet(
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
-        include_paths: If ``True``, include the path to each file. File paths are
-            stored in the ``'path'`` column. To downselect to fewer columns,
-            use :meth:`~ray.data.Dataset.select_columns` on the returned
-            dataset and include ``'path'`` explicitly in the list to retain
-            it.
+        include_paths: If ``True``, include each file's path in the ``'path'``
+            column. With DataSourceV2, pass a nonempty string to use it as the
+            column name instead. ``False`` omits the path column. The path
+            column overwrites a same-named file column. For an unpartitioned
+            file, ``include_paths="source_file"`` preserves an existing
+            ``'path'`` column and stores file paths in ``'source_file'``. A
+            custom name other than ``'path'`` that matches a path-derived
+            partition column raises ``ValueError``. Using ``'row_hash'`` when
+            ``include_row_hash=True`` also raises ``ValueError``. To downselect
+            to fewer columns, use :meth:`~ray.data.Dataset.select_columns` and
+            include the chosen path column name explicitly to retain it.
         include_row_hash: If ``True``, include a deterministic hash for each row.
             The hash is a uint64 computed from the source file path and the row's
             output position, making it reproducible across repeated reads of the
@@ -1856,6 +1862,19 @@ def read_parquet(
     add_generated_id_column = arrow_parquet_args.pop("_add_generated_id_column", True)
 
     ctx = DataContext.get_current()
+    if isinstance(include_paths, str):
+        if not include_paths:
+            raise ValueError("`include_paths` column name must be nonempty.")
+        if not ctx.use_datasource_v2:
+            raise NotImplementedError(
+                "A string `include_paths` column name requires DataSourceV2. "
+                "Enable `DataContext.get_current().use_datasource_v2` or set "
+                "`RAY_DATA_USE_DATASOURCE_V2=1` before importing Ray."
+            )
+        path_column_name = include_paths
+    else:
+        path_column_name = "path"
+
     if ctx.use_datasource_v2:
         # ``tensor_column_schema`` is folded into ``_block_udf`` by
         # ``_resolve_parquet_args`` above; passing that transform through
@@ -1904,16 +1923,13 @@ def read_parquet(
         )
         select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
-            # V1 ``columns=[...]`` implicitly retained the synthetic
-            # ``"path"`` / ``"row_hash"`` columns when ``include_paths``
-            # / ``include_row_hash`` were set (see
-            # ``ParquetDatasource.get_current_projection``).
-            # ``select_columns([...])`` is literal, so preserve V1's
-            # behavior by appending those columns when applying the
-            # projection on the caller's behalf.
+            # The deprecated ``columns=`` retains synthesized columns
+            # implicitly, while ``select_columns([...])`` is literal. Append
+            # their configured names to keep that behavior for the default
+            # and custom path column names.
             select_columns_after_read = list(columns)
-            if include_paths and "path" not in select_columns_after_read:
-                select_columns_after_read.append("path")
+            if include_paths and path_column_name not in select_columns_after_read:
+                select_columns_after_read.append(path_column_name)
             if include_row_hash and "row_hash" not in select_columns_after_read:
                 select_columns_after_read.append("row_hash")
             if (

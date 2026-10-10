@@ -83,6 +83,88 @@ def test_read_parquet_v2_include_paths(tmp_path, restore_ctx):
     assert "path" in schema.names
 
 
+def test_read_parquet_v2_custom_path_column_preserves_file_column(
+    tmp_path, restore_ctx
+):
+    first = tmp_path / "first.parquet"
+    second = tmp_path / "second.parquet"
+    _write(first, pa.table({"id": [1], "path": ["original-first"]}))
+    _write(second, pa.table({"id": [2], "path": ["original-second"]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), include_paths="source_file")
+
+    assert ds.schema().names == ["id", "path", "source_file"]
+    assert sorted(ds.take_all(), key=lambda row: row["id"]) == [
+        {"id": 1, "path": "original-first", "source_file": str(first)},
+        {"id": 2, "path": "original-second", "source_file": str(second)},
+    ]
+
+
+def test_read_parquet_v2_custom_path_column_collision_preserves_column_order(
+    tmp_path, restore_ctx
+):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"source_file": ["physical"], "id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(file_path), include_paths="source_file")
+
+    assert ds.schema().names == ["id", "source_file"]
+    batch = ds.take_batch(batch_format="pyarrow")
+    assert batch.column_names == ds.schema().names
+    assert batch.to_pylist() == [{"id": 1, "source_file": str(file_path)}]
+
+
+@pytest.mark.parametrize("include_paths", [True, "path"])
+def test_read_parquet_v2_only_path_projection_uses_synthesized_value(
+    tmp_path, restore_ctx, include_paths
+):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"path": ["physical-first", "physical-second"]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(
+        str(file_path), include_paths=include_paths
+    ).select_columns(["path"])
+
+    assert ds.take_all() == [{"path": str(file_path)}] * 2
+
+
+@pytest.mark.parametrize("include_paths", [True, "path"])
+def test_read_parquet_v2_default_path_collision_preserves_column_order(
+    tmp_path, restore_ctx, include_paths
+):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"path": ["physical"], "id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(file_path), include_paths=include_paths)
+
+    assert ds.schema().names == ["id", "path"]
+    batch = ds.take_batch(batch_format="pyarrow")
+    assert batch.column_names == ds.schema().names
+    assert batch.to_pylist() == [{"id": 1, "path": str(file_path)}]
+
+
+def test_read_parquet_custom_path_column_requires_v2(tmp_path, restore_ctx):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"id": [1]}))
+
+    restore_ctx.use_datasource_v2 = False
+    with pytest.raises(NotImplementedError, match="requires DataSourceV2"):
+        ray.data.read_parquet(str(file_path), include_paths="source_file")
+
+
+def test_read_parquet_v2_rejects_empty_path_column_name(tmp_path, restore_ctx):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.raises(ValueError, match="must be nonempty"):
+        ray.data.read_parquet(str(file_path), include_paths="")
+
+
 def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
@@ -92,6 +174,21 @@ def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
     assert schema is not None
     assert "row_hash" in schema.names
     assert schema.types[schema.names.index("row_hash")] == pa.uint64()
+
+
+def test_read_parquet_v2_row_hash_collision_preserves_column_order(
+    tmp_path, restore_ctx
+):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"row_hash": ["physical"], "id": [1]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(file_path), include_row_hash=True)
+
+    assert ds.schema().names == ["id", "row_hash"]
+    batch = ds.take_batch(batch_format="pyarrow")
+    assert batch.column_names == ds.schema().names
+    assert batch.schema.field("row_hash").type == pa.uint64()
 
 
 def test_read_parquet_v2_columns_applies_select_columns(tmp_path, restore_ctx):
@@ -128,6 +225,20 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     # ``include_paths=True``; the V2 path appends it to keep that
     # behavior.
     assert [expr.name for expr in dag.exprs] == ["a", "path"]
+
+
+def test_read_parquet_v2_columns_with_custom_path_column(tmp_path, restore_ctx):
+    file_path = tmp_path / "data.parquet"
+    _write(file_path, pa.table({"id": [1], "path": ["physical"]}))
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+        ds = ray.data.read_parquet(
+            str(file_path), columns=["id"], include_paths="source_file"
+        )
+
+    assert ds.schema().names == ["id", "source_file"]
+    assert ds.take_all() == [{"id": 1, "source_file": str(file_path)}]
 
 
 def test_read_parquet_v2_filter_raises(tmp_path, restore_ctx):
