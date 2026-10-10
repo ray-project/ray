@@ -18,6 +18,7 @@ from typing import (
     Literal,
     Mapping,
     Optional,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -265,6 +266,20 @@ def _merge_named_ray_remote_args(
         {name: value for name, value in named_args.items() if value is not None}
     )
     return ray_remote_args
+
+
+def _coerce_integral_sum(result: Any, integer_aggregations: Set[str]) -> Any:
+    """Return widened integer sums as ints while preserving decimal inputs."""
+    from decimal import Decimal
+
+    if isinstance(result, Mapping):
+        return {
+            name: int(value)
+            if name in integer_aggregations and isinstance(value, Decimal)
+            else value
+            for name, value in result.items()
+        }
+    return result
 
 
 @PublicAPI
@@ -3999,8 +4014,44 @@ class Dataset:
             If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
         """
-        ret = self._aggregate_on(Sum, on, ignore_nulls=ignore_nulls)
-        return self._aggregate_result(ret)
+        import pyarrow as pa
+
+        from ray.data._internal.arrow_aggregation import integer_sum_type
+        from ray.data._internal.table_block import _resolve_aggregated_column_names
+        from ray.data.aggregate import _IntegerSumInput
+
+        aggs = self._build_multicolumn_aggs(Sum, on, ignore_nulls=ignore_nulls)
+        names = _resolve_aggregated_column_names([agg.name for agg in aggs])
+        schema = self.schema(fetch_if_missing=False)
+        integer_aggregations = set()
+        if schema is not None:
+            integer_columns = {
+                name
+                for name, dtype in zip(schema.names, schema.types)
+                if isinstance(dtype, pa.DataType)
+                and integer_sum_type(dtype) is not None
+            }
+            integer_aggregations = {
+                name
+                for agg, name in zip(aggs, names)
+                if agg.get_target_column() in integer_columns
+            }
+            ret = self.aggregate(*aggs)
+        else:
+            # Infer provenance in the same execution. Fetching a missing schema
+            # separately would re-run a lazy UDF or datasource just to determine
+            # whether a Decimal result originally came from an integer column.
+            flags = [
+                _IntegerSumInput(agg.get_target_column(), f"__integer_sum_input_{i}")
+                for i, agg in enumerate(aggs)
+            ]
+            ret = self.aggregate(*aggs, *flags)
+            if ret is not None:
+                integer_aggregations = {
+                    name for name, flag in zip(names, flags) if ret[flag.name]
+                }
+                ret = {name: ret[name] for name in names}
+        return self._aggregate_result(_coerce_integral_sum(ret, integer_aggregations))
 
     @AllToAllAPI
     @ConsumptionAPI

@@ -287,6 +287,21 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         if self._is_all_null():
             return None
 
+        # NumPy integer ``sum`` wraps. Accumulate through Arrow decimal128,
+        # matching ``ArrowBlockColumnAccessor.sum``.
+        if pd.api.types.is_integer_dtype(self._column.dtype):
+            if not ignore_nulls and bool(self._column.isna().any()):
+                return None if as_py else np.nan
+            import pyarrow as pa
+
+            from ray.data._internal.arrow_aggregation import sum_array
+
+            array = pa.array(self._column, from_pandas=True)
+            result = sum_array(array, skip_nulls=True).as_py()
+            if result is None:
+                return None
+            return int(result)
+
         # NOTE: We pass `min_count=1` to workaround quirky Pandas behavior,
         #       where (by default) when min_count=0 it will return 0.0 for
         #       all-null/NaN series

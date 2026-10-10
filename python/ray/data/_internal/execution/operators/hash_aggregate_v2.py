@@ -3,7 +3,13 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 import pyarrow as pa
 import pyarrow.types as pa_types
 
-from ray.data._internal.arrow_aggregation import ArrowAggSpec, arrow_agg_options
+from ray.data._internal.arrow_aggregation import (
+    ArrowAggSpec,
+    arrow_agg_options,
+    integer_sum_metadata,
+    retarget_sum_column,
+    widen_integer_sum_partials,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     BlockTransformer,
     ReduceFn,
@@ -119,16 +125,27 @@ def _make_vectorized_aggregating_transformer(
 
         agg_specs: List[tuple] = []
         names: List[str] = []
+        sum_metadata: dict = {}
+        sum_sources: dict = {}
         for i, (agg, spec) in enumerate(zip(aggs, specs)):
             col = agg.get_target_column()
             opts = arrow_agg_options(agg._ignore_nulls)
             if spec.prep is not None:
                 block = spec.prep(i, col, block)
+            source_col = col
+            if spec.widen_integers:
+                sum_metadata.update(
+                    integer_sum_metadata(f"__agg{i}_sum", block[col].type)
+                )
+                if col not in sum_sources:
+                    block, source_col = retarget_sum_column(block, col, i)
+                    sum_sources[col] = source_col
+                source_col = sum_sources[col]
             names.extend(f"__agg{i}_{c}" for c in spec.components)
-            agg_specs += spec.raw_agg_specs(i, col, opts)
+            agg_specs += spec.raw_agg_specs(i, source_col, opts)
 
         out = block.group_by(keys, use_threads=False).aggregate(agg_specs)
-        return out.rename_columns(keys + names)
+        return out.rename_columns(keys + names).replace_schema_metadata(sum_metadata)
 
     return _arrow_transform
 
@@ -154,7 +171,11 @@ def _make_vectorized_aggregating_reduce_fn(
         partition_id: int, tables_by_input: List[List[pa.Table]]
     ) -> Iterable[Block]:
         shards = tables_by_input[0]
-        tables = [t for t in shards if t.num_rows > 0]
+        tables = [
+            t if has_collection else widen_integer_sum_partials(t)
+            for t in shards
+            if t.num_rows > 0
+        ]
         if not tables:
             return
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
@@ -190,6 +211,7 @@ def _make_vectorized_aggregating_reduce_fn(
 
         merged = combined.group_by(keys, use_threads=False).aggregate(agg_specs)
         merged = merged.rename_columns(keys + names)
+        merged = merged.replace_schema_metadata(combined.schema.metadata)
 
         # Finalize into output columns.  Duplicate output names are munged to
         # name, name_2, name_3, ... (counting against the original name).
