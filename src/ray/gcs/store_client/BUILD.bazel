@@ -95,6 +95,7 @@ ray_cc_library(
     visibility = [
         ":__subpackages__",
         "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
     ],
     deps = [
         ":store_client",
