@@ -125,7 +125,9 @@ def build_dev_openai_app(builder_config: Dict) -> Application:
         default_ingress_options, config.ingress_deployment_config
     )
 
-    ingress_cls = make_fastapi_ingress(DevIngress, endpoint_map=DEV_ENDPOINTS)
+    ingress_cls = make_fastapi_ingress(
+        DevIngress, endpoint_map=DEV_ENDPOINTS, api_key=config.api_key
+    )
 
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
