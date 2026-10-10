@@ -27,23 +27,50 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import (
+    Partitioning,
+    _partition_field_types_to_pa_schema,
+)
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
 class _OrcPartitionPredicatePruner(PartitionPredicatePruner):
-    """Keep paths whose missing keys require evaluation by the ORC reader."""
+    """Prune known partition conditions and defer unknown values to the reader."""
 
-    def __init__(self, partitioning: Partitioning, predicate: Expr):
+    def __init__(self, partitioning: Partitioning, predicate: Expr, schema: pa.Schema):
         super().__init__(partitioning, predicate)
         self._predicate_columns = set(get_column_references(predicate))
+        path_schema = _partition_field_types_to_pa_schema(
+            field_names=list(self._predicate_columns),
+            field_types=partitioning.field_types or {},
+        )
+        self._type_safe_columns = {
+            field.name
+            for field in path_schema
+            if schema.get_field_index(field.name) != -1
+            and schema.field(field.name).type == field.type
+        }
 
     @override
     def should_include(self, path: str) -> bool:
-        if not self._predicate_columns.issubset(self._parser(path)):
+        partitions = self._parser(path)
+        if self._predicate_columns.issubset(partitions):
+            return super().should_include(path)
+
+        # A known false AND conjunct rules out the file even if another key is
+        # missing. Only use values with the reader's logical type: narrowing or
+        # casting here could otherwise disagree with the synthesized output.
+        known_values = {
+            name: [value]
+            for name, value in partitions.items()
+            if name in self._type_safe_columns
+        }
+        split = _split_predicate_by_columns(self._predicate, set(known_values))
+        if split.partition_predicate is None:
             return True
-        return super().should_include(path)
+        known_table = pa.table(known_values)
+        return known_table.filter(split.partition_predicate.to_pyarrow()).num_rows > 0
 
 
 @DeveloperAPI
@@ -69,7 +96,9 @@ class OrcScanner(ArrowFileScanner):
     def pushed_partition_pruner(self) -> Optional[FilePruner]:
         if self.partitioning is None or self.partition_predicate is None:
             return None
-        return _OrcPartitionPredicatePruner(self.partitioning, self.partition_predicate)
+        return _OrcPartitionPredicatePruner(
+            self.partitioning, self.partition_predicate, self.schema
+        )
 
     @override
     def prune_input_split(self, input_split: FileManifest) -> FileManifest:

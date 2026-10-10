@@ -464,17 +464,138 @@ def test_orc_planned_partition_filters_preserve_root_rows(
     assert ids == (with_root_year if root_has_year else without_root_year)
 
 
-def test_orc_partition_pruner_preserves_missing_predicate_keys():
+@pytest.mark.parametrize(
+    "predicate,expected",
+    [
+        (
+            (col("year") == "2024") & (col("month") == "01"),
+            [False, True, True, True, False],
+        ),
+        (
+            (col("month") == "01") & (col("year") == "2024"),
+            [False, True, True, True, False],
+        ),
+        (
+            (col("year") == "2024") | (col("month") == "01"),
+            [True, True, True, True, True],
+        ),
+        (
+            ~((col("year") == "2024") & (col("month") == "01")),
+            [True, True, True, False, True],
+        ),
+        (
+            (col("year") == "2024") & ~(col("month") == "01"),
+            [False, True, True, False, True],
+        ),
+        (
+            ((col("month") == "01") | (col("year") == "2024"))
+            & (col("year") == "2025"),
+            [False, False, True, False, False],
+        ),
+    ],
+)
+def test_orc_partition_pruner_preserves_missing_predicate_keys(predicate, expected):
     scanner = OrcScanner(
         schema=pa.schema([("year", pa.string()), ("month", pa.string())]),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    ).prune_partitions(predicate)
+    paths = [
+        "year=2023/data.orc",
+        "year=2024/data.orc",
+        "root.orc",
+        "year=2024/month=01/data.orc",
+        "year=2024/month=02/data.orc",
+    ]
+    pruner = derive_list_files_pushdown(scanner).partition_pruner
+    assert pruner is not None
+    assert [pruner.should_include(path) for path in paths] == expected
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=[1] * len(paths), chunk_metadatas=[None] * len(paths)
+    )
+    assert scanner.prune_input_split(manifest).paths.tolist() == [
+        path for path, keep in zip(paths, expected) if keep
+    ]
+
+
+@pytest.mark.parametrize(
+    "year,predicate,expected",
+    [
+        ("2023", (col("year") == "2024") & (col("month") == "01"), []),
+        ("2023", (col("month") == "01") & (col("year") == "2024"), []),
+        ("2024", (col("year") == "2024") & (col("month") == "01"), [1]),
+        ("2023", (col("year") == "2024") | (col("month") == "01"), [1]),
+        ("2023", ~((col("year") == "2024") & (col("month") == "01")), [1, 2]),
+        ("2024", ~((col("year") == "2024") & (col("month") == "01")), [2]),
+    ],
+)
+def test_orc_partial_partition_pruning_precedes_file_reads(
+    tmp_path, orc_read_requests, year, predicate, expected
+):
+    directory = tmp_path / f"year={year}"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1, 2], "month": ["01", "02"]}))
+    scanner = OrcScanner(
+        schema=pa.schema(
+            [("id", pa.int64()), ("year", pa.string()), ("month", pa.string())]
+        ),
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    ).prune_partitions(predicate)
+    pruner = derive_list_files_pushdown(scanner).partition_pruner
+    assert pruner is not None
+    assert pruner.should_include(str(path)) == bool(expected)
+    manifest = scanner.prune_input_split(_manifest(path))
+    assert len(manifest) == int(bool(expected))
+    batches = list(scanner.prune_columns(["id"]).create_reader().read(manifest))
+    assert [row["id"] for batch in batches for row in batch.to_pylist()] == expected
+    assert bool(orc_read_requests["datasets"]) == bool(expected)
+    assert bool(orc_read_requests["scans"]) == bool(expected)
+    assert orc_read_requests["stripes"] == []
+
+
+@pytest.mark.parametrize(
+    "year_type,field_types,path_value,year_predicate",
+    [
+        (pa.int64(), {}, "2024", col("year") > 2023),
+        (
+            pa.float32(),
+            {"year": float},
+            "0.1",
+            col("year") == 0.10000000149011612,
+        ),
+        (pa.string(), {"year": int}, "2024", col("year") == "2024"),
+    ],
+)
+def test_orc_partial_partition_pruning_defers_type_conversion(
+    tmp_path, year_type, field_types, path_value, year_predicate
+):
+    directory = tmp_path / f"year={path_value}"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(path, pa.table({"id": [1, 2], "month": ["01", "02"]}))
+    scanner = OrcScanner(
+        schema=pa.schema(
+            [("id", pa.int64()), ("year", year_type), ("month", pa.string())]
+        ),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_types=field_types),
+    ).prune_partitions(year_predicate & (col("month") == "01"))
+    pruner = derive_list_files_pushdown(scanner).partition_pruner
+    assert pruner is not None
+    assert pruner.should_include(str(path))
+    manifest = scanner.prune_input_split(_manifest(path))
+    assert len(manifest) == 1
+    batches = list(scanner.prune_columns(["id"]).create_reader().read(manifest))
+    assert [row for batch in batches for row in batch.to_pylist()] == [{"id": 1}]
+
+
+def test_orc_partial_partition_pruning_defers_unknown_logical_types():
+    scanner = OrcScanner(
+        schema=pa.schema([("month", pa.string())]),
         partitioning=Partitioning(PartitionStyle.HIVE),
     ).prune_partitions((col("year") == "2024") & (col("month") == "01"))
     pruner = scanner.pushed_partition_pruner()
     assert pruner is not None
-    assert pruner.should_include("year=2024/data.orc")
-    assert pruner.should_include("root.orc")
-    assert pruner.should_include("year=2024/month=01/data.orc")
-    assert not pruner.should_include("year=2024/month=02/data.orc")
+    assert pruner.should_include("year=2023/data.orc")
 
 
 @pytest.fixture
