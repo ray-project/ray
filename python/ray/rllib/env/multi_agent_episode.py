@@ -414,23 +414,10 @@ class MultiAgentEpisode:
         # not yet terminated. If at least one agent terminated, declare the episode
         # terminated. If all agents were only truncated, declare it truncated, so the
         # last observations are still bootstrapped and not treated as terminal.
-        # Exclude agents that are observed for the first time in this very env step
-        # (and are not already terminated or truncated themselves): `self.agent_ids`
-        # does not contain these new agents yet (they are only added to
-        # `self.agent_episodes` further below), so without this exclusion, a new
-        # agent joining on the same env step that finishes off all previously known
-        # agents would cause the episode to be declared terminated/truncated, even
-        # though the env reported `__all__`->False and the new agent is still alive.
-        new_alive_agent_ids = {
-            aid
-            for aid in observations
-            if aid not in self.agent_ids
-            and not (terminateds.get(aid, False) or truncateds.get(aid, False))
-        }
-        if (
-            not self.is_terminated
-            and not new_alive_agent_ids
-            and all(aid in agents_done for aid in self.agent_ids)
+        # Agents observed for the first time in this step count as well: they are
+        # only added to `self.agent_episodes` further below.
+        if not self.is_terminated and all(
+            aid in agents_done for aid in self.agent_ids | set(observations)
         ):
             if any(
                 terminateds.get(aid, False)
