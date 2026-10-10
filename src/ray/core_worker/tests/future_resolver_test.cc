@@ -47,7 +47,7 @@ class FutureResolverTest : public ::testing::Test {
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
             /*free_object_on_nodes_async=*/
-            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &, int64_t, bool) {},
             owned_object_count_by_state_,
             owned_object_sizes_by_state_)),
         resolver_(
