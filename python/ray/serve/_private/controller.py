@@ -407,6 +407,38 @@ class ServeController:
         if record_delay is not None:
             record_delay(delay_ms)
 
+    @staticmethod
+    def _carried_health_owner(full_id_str: Optional[str]) -> Optional[ReplicaID]:
+        """The replica a handle report's carried health describes.
+
+        A sender from before the id carried its deployment sends a bare unique id
+        that cannot be routed, so it is ignored rather than guessed at.
+        """
+        if full_id_str is None or not ReplicaID.is_full_id_str(full_id_str):
+            return None
+        return ReplicaID.from_full_id_str(full_id_str)
+
+    def _record_carried_health(
+        self,
+        replica_id: Optional[ReplicaID],
+        healthy: Optional[bool],
+        checked_at: Optional[float],
+        consecutive_failures: Optional[int],
+    ) -> None:
+        """Record self-health a metric report carried, if it carried any."""
+        if (
+            replica_id is None
+            or healthy is None
+            or checked_at is None
+            or consecutive_failures is None
+        ):
+            # The sender writes all four together, so a report missing any of them
+            # predates the fields and cannot be mirrored.
+            return
+        self.record_replica_health(
+            replica_id, checked_at, healthy, consecutive_failures
+        )
+
     def record_replica_health(
         self,
         replica_id: ReplicaID,
@@ -431,6 +463,12 @@ class ServeController:
             )
         # Decompression (above) always yields a ReplicaMetricReport.
         replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
+        self._record_carried_health(
+            replica_metric_report.replica_id,
+            replica_metric_report.healthy,
+            replica_metric_report.health_checked_at,
+            replica_metric_report.health_consecutive_failures,
+        )
         self._record_metrics_delay(
             replica_metric_report.timestamp,
             replica_metric_report.replica_id.deployment_id,
@@ -474,6 +512,12 @@ class ServeController:
                     self.handle_metrics_delay_histogram.observe,
                     self._health_metrics_tracker.record_handle_metrics_delay,
                 )
+                self._record_carried_health(
+                    self._carried_health_owner(d["health_replica_id"]),
+                    d["healthy"],
+                    d["health_checked_at"],
+                    d["health_consecutive_failures"],
+                )
                 self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
                 self._health_metrics_tracker.record_handle_ingest(
                     (time.monotonic() - ingest_start) * 1000
@@ -495,6 +539,12 @@ class ServeController:
             handle_metric_report.deployment_id,
             self.handle_metrics_delay_histogram.observe,
             self._health_metrics_tracker.record_handle_metrics_delay,
+        )
+        self._record_carried_health(
+            self._carried_health_owner(handle_metric_report.health_replica_id),
+            handle_metric_report.healthy,
+            handle_metric_report.health_checked_at,
+            handle_metric_report.health_consecutive_failures,
         )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report

@@ -23,6 +23,7 @@ from ray.exceptions import (
 )
 from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
+    _SELF_HEALTH_SNAPSHOT,
     DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
@@ -3491,6 +3492,74 @@ class TestCustomRequestRouterAPIs:
         )
         # Should complete without error.
         await r._backoff(0)
+
+
+class TestHandleReportCarriesHealth:
+    """A handle living in a replica's process carries that replica's self-health."""
+
+    def _manager(self, source):
+        return RouterMetricsManager(
+            DeploymentID(name="a", app_name="b"),
+            "random_handle",
+            "random_actor",
+            source,
+            Mock(),
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            # A Mock, not get_event_loop(): these are sync tests that never run the
+            # loop, and asking for one raises once an earlier test has cleared it.
+            event_loop=Mock(),
+        )
+
+    def _manager_with_config(self, source):
+        m = self._manager(source)
+        m.metrics_pusher = Mock()
+        m.update_deployment_config(
+            DeploymentConfig(autoscaling_config=AutoscalingConfig()), 0
+        )
+        return m
+
+    def _publish(self):
+        """Publish the way the replica does: a full id string, so the controller can
+        route it to the sender's own deployment rather than the handle's target."""
+        sender = ReplicaID("r1", DeploymentID(name="upstream", app_name="app"))
+        _SELF_HEALTH_SNAPSHOT.clear()
+        _SELF_HEALTH_SNAPSHOT.update(
+            replica_id=sender.to_full_id_str(),
+            healthy=False,
+            checked_at=99.0,
+            consecutive_failures=2,
+        )
+        return sender
+
+    def test_replica_handle_carries_it(self):
+        sender = self._publish()
+        report = self._manager_with_config(
+            DeploymentHandleSource.REPLICA
+        )._get_metrics_report()
+        assert report.health_replica_id == sender.to_full_id_str()
+        assert report.healthy is False
+        assert report.health_checked_at == 99.0
+        assert report.health_consecutive_failures == 2
+
+    def test_proxy_handle_does_not(self):
+        self._publish()
+        report = self._manager_with_config(
+            DeploymentHandleSource.PROXY
+        )._get_metrics_report()
+        # A proxy's health is not a replica's, so it must not be attributed to one.
+        assert report.health_replica_id is None
+        assert report.healthy is None
+
+    def test_nothing_published_carries_nothing(self):
+        _SELF_HEALTH_SNAPSHOT.clear()
+        report = self._manager_with_config(
+            DeploymentHandleSource.REPLICA
+        )._get_metrics_report()
+        assert report.health_replica_id is None
 
 
 if __name__ == "__main__":

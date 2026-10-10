@@ -1,9 +1,11 @@
 from copy import deepcopy
+from unittest.mock import Mock
 
 import pytest
 
-from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.common import DeploymentID, ReplicaID, TargetCapacityDirection
 from ray.serve._private.controller import (
+    ServeController,
     applications_match,
     calculate_target_capacity_direction,
 )
@@ -712,6 +714,60 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+CARRIED_REPLICA_ID = ReplicaID("r1", DeploymentID(name="d", app_name="app"))
+
+
+class TestCarriedHealthOwner:
+    """A handle report's health describes the replica whose process sent it, which on a
+    composed app belongs to a different deployment than the handle routes to, so the id
+    has to name its own deployment."""
+
+    def test_a_full_id_string_names_the_owning_replica(self):
+        full = CARRIED_REPLICA_ID.to_full_id_str()
+        assert ServeController._carried_health_owner(full) == CARRIED_REPLICA_ID
+
+    def test_a_bare_unique_id_is_not_routable(self):
+        """What a sender from before the id carried its deployment would send."""
+        assert ServeController._carried_health_owner("r1") is None
+
+    def test_a_report_carrying_no_id_is_not_routable(self):
+        assert ServeController._carried_health_owner(None) is None
+
+
+class TestCarriedHealthIngest:
+    """Health a report carried goes down the same path the heartbeat feeds, so
+    suppressing heartbeats does not make the controller think the fleet went quiet."""
+
+    def _controller(self):
+        c = ServeController.__new__(ServeController)
+        c.deployment_state_manager = Mock()
+        return c
+
+    def test_carriage_uses_the_same_funnel_as_the_heartbeat(self):
+        c = self._controller()
+        c._record_carried_health(CARRIED_REPLICA_ID, False, 50.0, 2)
+        c.deployment_state_manager.record_replica_health.assert_called_once_with(
+            CARRIED_REPLICA_ID, 50.0, False, 2
+        )
+
+    def test_a_report_carrying_nothing_is_ignored(self):
+        c = self._controller()
+        c._record_carried_health(None, True, 50.0, 0)  # no id
+        c._record_carried_health(CARRIED_REPLICA_ID, None, 50.0, 0)  # no verdict
+        # The sender writes all four together, so a report missing the count or the
+        # check time predates those fields and there is nothing to mirror.
+        c._record_carried_health(CARRIED_REPLICA_ID, False, 50.0, None)
+        c._record_carried_health(CARRIED_REPLICA_ID, False, None, 1)
+        c.deployment_state_manager.record_replica_health.assert_not_called()
+
+    def test_a_zero_check_time_is_not_the_same_as_a_missing_one(self):
+        """`or` would take the fallback for a legitimate 0.0."""
+        c = self._controller()
+        c._record_carried_health(CARRIED_REPLICA_ID, True, 0.0, 0)
+        args = c.deployment_state_manager.record_replica_health.call_args.args
+        assert args[1] == 0.0
 
 
 if __name__ == "__main__":
