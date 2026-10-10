@@ -107,7 +107,8 @@ By default, requests rejected due to backpressure return a `503` status code —
 To configure the rejection response, use the {mod}`BackpressureConfig <ray.serve.config.BackpressureConfig>` deployment option:
 
 - `status_code`: The HTTP status code returned for requests rejected due to backpressure. Must be `503` (the default) or `429` (Too Many Requests). Requests rejected because the deployment is unavailable always return `503`.
-- `retry_after_s`: If set, rejected HTTP responses include a [`Retry-After` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After) with this value, rounded up to an integer number of seconds. Clients and SDKs that honor `Retry-After` use it to pace their retries. The header can be combined with either status code; it's valid on `503` as well as `429`.
+- `retry_after_s`: If set, rejected HTTP responses include a [`Retry-After` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After) with this value, rounded up to an integer number of seconds. Clients and SDKs that honor `Retry-After` use it to pace their retries. The header can be combined with either status code; it's valid on `503` as well as `429`. Serve jitters the value by up to ±20% so that clients rejected at the same moment don't all retry at the same moment.
+- `retry_after_policy`: How the `Retry-After` value is chosen. `"static"` (the default) uses `retry_after_s`. `"queue_drain_rate"` computes it; see [Computing the Retry-After value](#computing-the-retry-after-value).
 
 ```{literalinclude} ../doc_code/load_shedding.py
 :start-after: __custom_response_deployment_start__
@@ -126,3 +127,17 @@ Rejected requests now return `429` with the `Retry-After` header set:
 :::{note}
 If you switch to `429`, dashboards and alerts that track load shedding via `5xx` rates no longer see these rejections. Monitor the `429` rate (for example, using the `status_code` tag on Serve's HTTP request metrics) so that capacity exhaustion stays visible.
 :::
+
+#### Computing the Retry-After value
+
+A static `retry_after_s` is right only for the load it was tuned for: when the queue drains slower than expected, clients retry too early and are rejected again, adding load while the deployment is shedding it; when it drains faster, capacity sits idle while clients wait. With `retry_after_policy="queue_drain_rate"`, the component that rejects the request estimates how long its queue takes to drain instead:
+
+```{literalinclude} ../doc_code/load_shedding.py
+:start-after: __queue_drain_rate_deployment_start__
+:end-before: __queue_drain_rate_deployment_end__
+:language: python
+```
+
+The estimate is the queue depth at rejection divided by the recently observed drain rate, clamped to between 1 and 60 seconds and jittered like the static value. The proxy or `DeploymentHandle` uses how fast it assigns queued requests to replicas; with direct ingress, the replica uses how fast its running requests complete. Each estimate only reflects what the rejecting component observes locally.
+
+Until enough traffic has been observed to estimate the drain rate, for example right after a replica starts, rejections fall back to `retry_after_s`, or send no `Retry-After` header if it isn't set. The value is a hint, not a reservation: a retry at the suggested time isn't guaranteed to be admitted.
