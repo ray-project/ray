@@ -74,6 +74,7 @@ export const WorkerAcceleratorMemory = ({
       return (
         <AcceleratorMemoryEntry
           key={acc.uuid || acc.name + acc.index}
+          showUsedWhenTotalMissing
           {...props}
         />
       );
@@ -124,6 +125,7 @@ type AcceleratorMemoryEntryProps = {
   utilization: number;
   total: number;
   utilPercent?: number;
+  showUsedWhenTotalMissing?: boolean;
 };
 
 const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
@@ -132,19 +134,41 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   utilization,
   total,
   utilPercent,
+  showUsedWhenTotalMissing = false,
 }) => {
-  let ratioStr = getMemDisplayRatioNoPercent(utilization, total);
+  let ratioOverride: string | undefined;
   // When the utilization percentage is present but absolute usage is missing
   // (as is the case on some TPU generations), spoof the bar with just a percentage.
   if (
     utilPercent !== undefined &&
     utilPercent !== null &&
-    (total === 0 || isNaN(total))
+    Number.isFinite(utilPercent) &&
+    (total === 0 || !Number.isFinite(total))
   ) {
-    ratioStr = `${utilPercent.toFixed(1)}%`;
+    ratioOverride = `${utilPercent.toFixed(1)}%`;
     utilization = utilPercent;
     total = 100;
   }
+
+  const hasValidUtilization = Number.isFinite(utilization) && utilization >= 0;
+  const hasValidTotal = Number.isFinite(total) && total > 0;
+  const ratioStr =
+    hasValidUtilization && hasValidTotal
+      ? ratioOverride ?? getMemDisplayRatioNoPercent(utilization, total)
+      : undefined;
+
+  const memoryDisplay = ratioStr ? (
+    <PercentageBar num={utilization} total={total}>
+      {ratioStr}
+    </PercentageBar>
+  ) : (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      {showUsedWhenTotalMissing && hasValidUtilization
+        ? memoryConverter(utilization * 1024 * 1024)
+        : "N/A"}
+    </Typography>
+  );
+
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
@@ -152,9 +176,7 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
           <RightPaddedTypography variant="body1">
             [{slot}]:{" "}
           </RightPaddedTypography>
-          <PercentageBar num={utilization} total={total}>
-            {ratioStr}
-          </PercentageBar>
+          {memoryDisplay}
         </Box>
       </Tooltip>
     </Box>
