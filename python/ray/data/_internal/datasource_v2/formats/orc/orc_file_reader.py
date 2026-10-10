@@ -1,8 +1,7 @@
-from typing import Any, Dict, Iterator, List
+from typing import Iterator
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow.fs import LocalFileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_reader import FileReader
@@ -14,7 +13,6 @@ from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_co
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data.datasource.file_based_datasource import _add_partitions_to_table
 from ray.util.annotations import DeveloperAPI
 
 
@@ -24,12 +22,13 @@ class OrcFileReader(FileReader):
 
     Each fragment covers a whole file. PyArrow applies row filters to the
     scanned batches; this reader does not provide ORC-native stripe pruning.
-    Partitioned reads validate and synthesize partition values before projection.
+    Path-derived partition values take precedence over same-named file columns
+    and are synthesized before filtering and projection.
     """
 
     @override
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Keep the declared order after per-file validation and synthesis."""
+        """Keep the declared order after per-file partition synthesis."""
         schema = self._schema
         for table in super().read(input_split):
             if self._columns is None and schema is not None:
@@ -77,9 +76,6 @@ class OrcFileReader(FileReader):
             else []
         )
         required_columns = list(dict.fromkeys(output_columns + filter_columns))
-        validation_columns = [
-            name for name in partitions if physical_schema.get_field_index(name) != -1
-        ]
 
         data_predicate = self._predicate
         residual_predicate = None
@@ -109,30 +105,12 @@ class OrcFileReader(FileReader):
         scan_kwargs = dict(scanner_kwargs)
         scan_kwargs["columns"] = required_columns
 
-        if validation_columns:
-            read_columns = [
-                name
-                for name in dict.fromkeys(
-                    (required_columns if partition_matches else []) + validation_columns
-                )
-                if physical_schema.get_field_index(name) != -1
-            ]
-            yield from self._iter_stripes_with_partition_validation(
-                fragment,
-                schema=schema,
-                partitions=partitions,
-                read_columns=read_columns,
-                partition_matches=partition_matches,
-                scanner_kwargs=scan_kwargs,
-            )
-            return
-
         if not partition_matches:
             return
 
         required_names = set(required_columns)
-        # Directory-only fields are produced here, before the base reader's
-        # projection and limit. They must not be read as null placeholders.
+        # Partition fields come from the path, including when a same-named
+        # field is stored in the file. Do not decode those physical columns.
         scan_kwargs["columns"] = [
             name for name in required_columns if name not in partitions
         ]
@@ -161,58 +139,6 @@ class OrcFileReader(FileReader):
             if residual_predicate is not None:
                 table = table.filter(residual_predicate.to_pyarrow())
             yield table
-
-    def _iter_stripes_with_partition_validation(
-        self,
-        fragment: pds.Fragment,
-        *,
-        schema: pa.Schema,
-        partitions: Dict[str, Any],
-        read_columns: List[str],
-        partition_matches: bool,
-        scanner_kwargs: dict,
-    ) -> Iterator[pa.Table]:
-        """Validate stored partition columns before yielding filtered ORC batches."""
-        import pyarrow.orc as orc
-
-        # Validate a whole stripe before any row-reducing operation.
-        # Batch-level checks reject a null-only batch in a valid stripe.
-        # Even a rejected directory must validate its real partition fields.
-        filesystem = self._filesystem or LocalFileSystem()
-        required_names = set(scanner_kwargs["columns"])
-        with filesystem.open_input_file(fragment.path) as source:
-            orc_file = orc.ORCFile(source)
-            for stripe_index in range(orc_file.nstripes):
-                table = pa.Table.from_batches(
-                    [orc_file.read_stripe(stripe_index, columns=read_columns)]
-                )
-                if table.num_rows == 0:
-                    continue
-                raise_on_pickle_object_columns(table)
-                table = _add_partitions_to_table(table, partitions)
-                if not partition_matches:
-                    continue
-                # Validation uses physical types. Filtering must use the
-                # same logical path values as the final output, without
-                # carrying over rounding or formatting from those types.
-                for name, value in partitions.items():
-                    if name in required_names:
-                        column = self._broadcast_partition_value(
-                            name, value, table.num_rows
-                        )
-                        table = table.set_column(
-                            table.schema.get_field_index(name), name, column
-                        )
-                        index = schema.get_field_index(name)
-                        schema = schema.set(
-                            index, schema.field(index).with_type(column.type)
-                        )
-                # Reuse Arrow's schema alignment and batch sizing after
-                # validation, including null-fill for missing data fields.
-                for stripe in pds.dataset(table).get_fragments():
-                    scanner = stripe.scanner(**scanner_kwargs, schema=schema)
-                    for tagged in scanner.scan_batches():
-                        yield pa.Table.from_batches([tagged.record_batch])
 
     @override
     def _on_batch_read(self, table: pa.Table) -> None:

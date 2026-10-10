@@ -458,7 +458,7 @@ def test_read_orc_mixed_partition_projection(
 
 
 @pytest.mark.parametrize("field_names", [None, ["year"]])
-def test_read_orc_rejects_partition_conflict_before_filter(
+def test_read_orc_partition_conflict_follows_reader_version(
     ray_start_regular_shared, tmp_path, orc_reader_version, field_names
 ):
     from ray.data.datasource.partitioning import Partitioning, PartitionStyle
@@ -468,12 +468,11 @@ def test_read_orc_rejects_partition_conflict_before_filter(
     root = tmp_path / "root.orc"
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
+    partition = partition_dir / "data.orc"
     _write_orc(str(root), pa.table({"id": [1], "year": ["from-file"]}))
-    _write_orc(
-        str(partition_dir / "data.orc"), pa.table({"id": [2], "year": ["from-file"]})
-    )
+    _write_orc(str(partition), pa.table({"id": [2], "year": ["from-file"]}))
     ds = ray.data.read_orc(
-        str(tmp_path),
+        [str(root), str(partition)],
         partitioning=Partitioning(PartitionStyle.HIVE, field_names=field_names),
         override_num_blocks=1,
     )
@@ -481,13 +480,20 @@ def test_read_orc_rejects_partition_conflict_before_filter(
         ValueError,
         RayTaskError,
     )
-    with pytest.raises(expected_exceptions, match="Partition column year"):
-        ds.filter(expr=col("year") == "from-file").select_columns(["id"]).take_all()
+    filtered = ds.filter(expr=col("year") == "from-file").select_columns(["id"])
+    if not orc_reader_version:
+        with pytest.raises(expected_exceptions, match="Partition column year"):
+            filtered.take_all()
+    else:
+        # With unresolved keys the root's physical value remains a data value;
+        # with explicit keys the shared path pruner excludes unpartitioned files.
+        assert filtered.take_all() == ([{"id": 1}] if field_names is None else [])
 
 
 @pytest.mark.parametrize("operation", ["projection", "partition_filter", "data_filter"])
+@pytest.mark.parametrize("stored_partition", [False, True])
 def test_read_orc_v2_partitioned_scan_optimizations(
-    ray_start_regular_shared, tmp_path, monkeypatch, operation
+    ray_start_regular_shared, tmp_path, monkeypatch, operation, stored_partition
 ):
     from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
         OrcDatasourceV2,
@@ -503,8 +509,29 @@ def test_read_orc_v2_partitioned_scan_optimizations(
 
     class TracingScanner(OrcScanner):
         def create_reader(self):
+            import fsspec
+            from pyarrow.fs import FSSpecHandler, PyFileSystem
+
             reader = super().create_reader()
             original_iter = reader._iter_fragment_tables
+            original_read = reader.read
+
+            def record(kind, **kwargs):
+                with open(trace_path, "a") as trace:
+                    trace.write(json.dumps({"kind": kind, **kwargs}) + "\n")
+
+            class TrackingHandler(FSSpecHandler):
+                def open_input_file(self, path):
+                    record("open", path=path)
+                    return super().open_input_file(path)
+
+                def open_input_stream(self, path):
+                    record("open", path=path)
+                    return super().open_input_stream(path)
+
+            reader._filesystem = PyFileSystem(
+                TrackingHandler(fsspec.filesystem("file"))
+            )
 
             class Fragment:
                 def __init__(self, fragment):
@@ -520,24 +547,24 @@ def test_read_orc_v2_partitioned_scan_optimizations(
                         OrcFileReader,
                     )
 
-                    with open(trace_path, "a") as trace:
-                        trace.write(
-                            json.dumps(
-                                {
-                                    "path": self._fragment.path,
-                                    "columns": kwargs["columns"],
-                                    "filter": str(kwargs["filter"]),
-                                    "source": inspect.getfile(OrcFileReader),
-                                }
-                            )
-                            + "\n"
-                        )
+                    record(
+                        "scan",
+                        path=self._fragment.path,
+                        columns=kwargs["columns"],
+                        filter=str(kwargs["filter"]),
+                        source=inspect.getfile(OrcFileReader),
+                    )
                     return self._fragment.scanner(**kwargs)
 
             def traced_iter(fragment, scanner_kwargs):
                 yield from original_iter(Fragment(fragment), scanner_kwargs)
 
+            def traced_read(manifest):
+                record("manifest", paths=manifest.paths.tolist())
+                yield from original_read(manifest)
+
             reader._iter_fragment_tables = traced_iter
+            reader.read = traced_read
             return reader
 
     def create_scanner(datasource, schema, filesystem=None, **options):
@@ -550,10 +577,10 @@ def test_read_orc_v2_partitioned_scan_optimizations(
     for year, ids in [("2023", [1, 2]), ("2024", [3, 4])]:
         directory = tmp_path / f"year={year}"
         directory.mkdir()
-        _write_orc(
-            str(directory / "data.orc"),
-            pa.table({"id": ids, "payload": ["wide" * 1024] * 2}),
-        )
+        data = {"id": ids, "payload": ["wide" * 1024] * 2}
+        if stored_partition:
+            data["year"] = ["wrong"] * 2
+        _write_orc(str(directory / "data.orc"), pa.table(data))
     ds = ray.data.read_orc(
         str(tmp_path),
         partitioning=Partitioning(PartitionStyle.HIVE),
@@ -568,7 +595,8 @@ def test_read_orc_v2_partitioned_scan_optimizations(
         [1, 2, 3, 4] if operation == "projection" else [3, 4]
     )
     with open(trace_path) as trace:
-        requests = [json.loads(line) for line in trace]
+        events = [json.loads(line) for line in trace]
+    requests = [event for event in events if event["kind"] == "scan"]
     assert len(requests) == (1 if operation == "partition_filter" else 2)
     assert all(request["columns"] == ["id"] for request in requests)
     assert all(
@@ -578,7 +606,13 @@ def test_read_orc_v2_partitioned_scan_optimizations(
         for request in requests
     )
     if operation == "partition_filter":
-        assert all("year=2024" in request["path"] for request in requests)
+        manifests = [event for event in events if event["kind"] == "manifest"]
+        opened = [event for event in events if event["kind"] == "open"]
+        assert manifests and opened
+        assert {path for event in manifests for path in event["paths"]} == {
+            str(tmp_path / "year=2024" / "data.orc")
+        }
+        assert all("year=2024" in event["path"] for event in opened + requests)
     assert all(
         (request["filter"] != "None") == (operation == "data_filter")
         for request in requests
@@ -634,13 +668,20 @@ def test_read_orc_v2_partitioned_predicates_and_limit(
     }
 
 
-@pytest.mark.parametrize("predicate", ["id > 100", "year == '2025'"])
-def test_read_orc_v2_conflicting_partition_cannot_be_filtered_out(
-    ray_start_regular_shared, tmp_path, monkeypatch, predicate
+@pytest.mark.parametrize(
+    "predicate,expected",
+    [
+        ("id > 100", []),
+        ("year == '2025'", []),
+        ("year == '2024'", [{"id": 1}]),
+        ("year == 'wrong' or id < 0", []),
+    ],
+)
+def test_read_orc_v2_filters_use_path_partition_values(
+    ray_start_regular_shared, tmp_path, monkeypatch, predicate, expected
 ):
     from ray.data.context import DataContext
     from ray.data.datasource.partitioning import Partitioning, PartitionStyle
-    from ray.exceptions import RayTaskError
 
     monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
     directory = tmp_path / "year=2024"
@@ -655,9 +696,50 @@ def test_read_orc_v2_conflicting_partition_cannot_be_filtered_out(
         .filter(expr=predicate)
         .select_columns(["id"])
     )
-    expected_exceptions: tuple[type[Exception], ...] = (ValueError, RayTaskError)
-    with pytest.raises(expected_exceptions, match="Partition column year"):
-        ds.take_all()
+    assert ds.take_all() == expected
+
+
+@pytest.mark.parametrize("file_year", ["wrong", None, "2024"])
+@pytest.mark.parametrize("operation", ["full", "project", "filter", "filter_only"])
+def test_read_orc_v2_partition_values_match_parquet(
+    ray_start_regular_shared, tmp_path, monkeypatch, file_year, operation
+):
+    import pyarrow.parquet as pq
+
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    directory = tmp_path / "year=2024"
+    directory.mkdir()
+    table = pa.table(
+        {"id": [1, 2], "year": pa.array([file_year, None], type=pa.string())}
+    )
+    _write_orc(str(directory / "data.orc"), table)
+    pq.write_table(table, directory / "data.parquet")
+    rows_by_format = []
+    for read in [ray.data.read_orc, ray.data.read_parquet]:
+        ds = read(
+            str(tmp_path),
+            partitioning=Partitioning(PartitionStyle.HIVE),
+            override_num_blocks=1,
+        )
+        if operation in {"filter", "filter_only"}:
+            ds = ds.filter(expr=(col("year") == "2024") & (col("id") > 1))
+        if operation in {"project", "filter"}:
+            ds = ds.select_columns(["year", "id"])
+        elif operation == "filter_only":
+            ds = ds.select_columns(["id"])
+        rows_by_format.append(ds.take_all())
+    assert rows_by_format[0] == rows_by_format[1]
+    assert rows_by_format[0] == (
+        [{"id": 2}]
+        if operation == "filter_only"
+        else [
+            {"id": value, "year": "2024"}
+            for value in ([2] if operation == "filter" else [1, 2])
+        ]
+    )
 
 
 @pytest.mark.parametrize("operation", ["full", "project", "filter", "filter_only"])
