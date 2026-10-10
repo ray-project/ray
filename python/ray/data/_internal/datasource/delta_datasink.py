@@ -124,6 +124,75 @@ def _nested_schema_additions(
     return existing_field.with_type(patch_type), added_paths
 
 
+def _to_delta_type(data_type: "pa.DataType") -> "pa.DataType":
+    """Return ``data_type`` with every timestamp, including nested ones, as a
+    microsecond timestamp, timezone-aware ones in UTC.
+
+    Delta Lake has no stable timestamp type at any other unit. ``deltalake``'s
+    own ``write_deltalake`` applies the same conversion before writing, but
+    this datasink writes Parquet with PyArrow directly, so it must apply it
+    itself.
+    """
+    import pyarrow as pa
+
+    if pa.types.is_timestamp(data_type):
+        return pa.timestamp("us", tz="UTC" if data_type.tz is not None else None)
+    if pa.types.is_struct(data_type):
+        return pa.struct([_to_delta_field(field) for field in data_type])
+    if pa.types.is_list(data_type):
+        return pa.list_(_to_delta_field(data_type.value_field))
+    if pa.types.is_large_list(data_type):
+        return pa.large_list(_to_delta_field(data_type.value_field))
+    if pa.types.is_fixed_size_list(data_type):
+        return pa.list_(_to_delta_field(data_type.value_field), data_type.list_size)
+    if pa.types.is_map(data_type):
+        return pa.map_(
+            _to_delta_field(data_type.key_field),
+            _to_delta_field(data_type.item_field),
+            keys_sorted=data_type.keys_sorted,
+        )
+    return data_type
+
+
+def _to_delta_field(field: "pa.Field") -> "pa.Field":
+    """Apply ``_to_delta_type`` to ``field``'s type."""
+    return field.with_type(_to_delta_type(field.type))
+
+
+def _to_delta_schema(schema: "pa.Schema") -> "pa.Schema":
+    """Apply ``_to_delta_type`` to every field of ``schema``."""
+    import pyarrow as pa
+
+    return pa.schema(
+        [_to_delta_field(field) for field in schema], metadata=schema.metadata
+    )
+
+
+def _cast_to_delta_schema(table: "pa.Table") -> "pa.Table":
+    """Cast ``table``'s timestamps to the types ``_to_delta_schema`` gives.
+
+    Sub-microsecond precision is truncated, since Delta Lake can't store it,
+    but a value outside the microsecond range still raises rather than
+    silently wrapping.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    schema = _to_delta_schema(table.schema)
+    if schema.equals(table.schema):
+        return table
+    columns = [
+        column
+        if column.type.equals(field.type)
+        else pc.cast(
+            column,
+            options=pc.CastOptions(target_type=field.type, allow_time_truncate=True),
+        )
+        for column, field in zip(table.columns, schema)
+    ]
+    return pa.Table.from_arrays(columns, schema=schema)
+
+
 @dataclass
 class DeltaWriteResult:
     """Result returned from each worker's ``write`` task.
@@ -157,6 +226,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         untouched. (Iceberg has to evolve in ``on_write_start`` instead,
         because PyIceberg binds field IDs at write time; Delta workers write
         plain Parquet and the schema is only established at commit.)
+
+    Timestamps, including nested ones, are written as microsecond
+    timestamps, timezone-aware ones in UTC -- the only timestamp types Delta
+    Lake supports. Sub-microsecond precision is truncated.
 
     Credential refresh on an authentication error is attempted on both the
     driver's commit and each worker's Parquet write:
@@ -321,7 +394,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         partition columns up front and so a mismatch fails before anything has
         been written.
         """
-        self._schema = schema
+        self._schema = _to_delta_schema(schema) if schema is not None else None
 
         from deltalake import DeltaTable
 
@@ -375,6 +448,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         for block_idx, block in enumerate(blocks):
             table = BlockAccessor.for_block(block).to_arrow()
             if table.num_rows > 0:
+                table = _cast_to_delta_schema(table)
                 add_actions.extend(self._write_parquet(table, ctx, block_idx))
                 schemas.append(table.schema)
 
