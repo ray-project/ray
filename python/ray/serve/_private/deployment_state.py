@@ -4766,19 +4766,12 @@ class DeploymentState:
                 self._curr_status_info = self._curr_status_info.update_message(message)
             return False, any_replicas_recovering
 
-        # Got to make a call to complete current deploy() goal after
-        # start failure threshold reached, while we might still have
-        # pending replicas in current goal.
-        if running_at_target_version_replica_cnt > 0:
-            # At least one RUNNING replica at target state, partial
-            # success; We can stop tracking constructor failures and
-            # leave it to the controller to fully scale to target
-            # number of replicas and only return as completed once
-            # reached target replica count
-            self._replica_has_started = True
         # Deployment-scoped actor failed after threshold exceeded (consistent
         # with replica startup: transition only when retries exhausted).
-        elif self.deployment_actor_terminally_failed():
+        # Checked before the running-replica case below: running replicas
+        # depend on the shared actors, and the controller no longer recreates
+        # them, so the failure must surface even with replicas running.
+        if self.deployment_actor_terminally_failed():
             msg = self._deployment_actor_failed
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
@@ -4790,6 +4783,17 @@ class DeploymentState:
                 ),
             )
             return False, any_replicas_recovering
+
+        # Got to make a call to complete current deploy() goal after
+        # start failure threshold reached, while we might still have
+        # pending replicas in current goal.
+        if running_at_target_version_replica_cnt > 0:
+            # At least one RUNNING replica at target state, partial
+            # success; We can stop tracking constructor failures and
+            # leave it to the controller to fully scale to target
+            # number of replicas and only return as completed once
+            # reached target replica count
+            self._replica_has_started = True
         elif self._replica_startup_failing():
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
