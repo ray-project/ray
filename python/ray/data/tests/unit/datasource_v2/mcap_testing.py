@@ -170,3 +170,34 @@ def summary_of(path: str):
     summary = read_summary(LocalFileSystem(), path)
     assert summary is not None
     return summary
+
+
+def write_cut_short(path: str, source: str) -> str:
+    """Write the first half of the MCAP file ``source`` to ``path``.
+
+    Like a recording whose writer crashed: no summary, footer or end magic.
+    """
+    with open(source, "rb") as f:
+        data = f.read()
+    with open(path, "wb") as f:
+        f.write(data[: len(data) // 2])
+    return path
+
+
+def without_summary_records(monkeypatch, *names: str) -> None:
+    """Make every later summary read return the record maps ``names`` empty.
+
+    ``names`` are ``Summary`` attributes such as ``"channels"``, as a writer that
+    does not repeat those records in the summary leaves them.
+    """
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_io
+
+    real_parse = mcap_io._collect_summary_records
+
+    def parse(section):
+        summary = real_parse(section)
+        for name in names:
+            setattr(summary, name, {})
+        return summary
+
+    monkeypatch.setattr(mcap_io, "_collect_summary_records", parse)
