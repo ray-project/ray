@@ -29,6 +29,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     round_robin_messages,
     scanner_for,
     summary_of,
+    write_cut_short,
     write_mcap,
 )
 
@@ -94,6 +95,17 @@ def test_invalid_json_fails_naming_the_message(tmp_path):
 
     with pytest.raises(ValueError, match=r"#c=\d+:0: message on JSON-encoded topic"):
         read_all(datasource, list_manifests(datasource)[0])
+
+
+def test_reading_a_file_cut_short_fails_naming_it(tmp_path, chunked_file):
+    """The read task of a file whose summary cannot be read fails with an error
+    that names the file and says why."""
+    cut_short = write_cut_short(os.path.join(tmp_path, "cut_short.mcap"), chunked_file)
+    datasource = MCAPDatasourceV2([chunked_file, cut_short])
+    (manifest,) = [m for m in list_manifests(datasource) if cut_short in m.paths]
+
+    with pytest.raises(ValueError, match="cut_short.mcap' is not a complete MCAP"):
+        read_all(datasource, manifest)
 
 
 def test_non_json_channel_under_a_decoded_plan_fails(tmp_path):
