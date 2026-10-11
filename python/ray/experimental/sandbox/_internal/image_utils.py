@@ -19,6 +19,7 @@ from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, List, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal import docker_config
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -42,13 +43,14 @@ _MKFS_EROFS_MIN_VERSION = "1.7"
 def _registry_request(
     url: str, headers: Dict[str, str], auth_header: Optional[str] = None
 ) -> urllib.request.Request:
-    """Build a registry request, keeping the bearer token off redirects.
+    """Build a registry request, keeping its credentials off redirects.
 
     Registries answer blob GETs with a redirect to presigned object storage.
     urllib does not copy unredirected headers onto a redirected request, so
-    marking the token this way drops it at the hop. Sending it onward would
-    trip S3's ``400 InvalidArgument: Only one auth mechanism allowed``, since
-    the presigned URL already carries its own signature.
+    marking the credentials this way drops them at the hop. Sending them
+    onward would hand them to the storage host and trip S3's ``400
+    InvalidArgument: Only one auth mechanism allowed``, since the presigned
+    URL already carries its own signature.
     """
     req = urllib.request.Request(url, headers=headers)
     if auth_header:
@@ -109,8 +111,8 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
     avoids Docker Hub's anonymous rate limits and pulls over the local
     network instead of the WAN. Only Docker Hub pulls are rewritten; other
     registries pass through untouched. When set, the mirror is
-    authoritative (no fallback to the upstream), and it is used with the
-    same anonymous token flow as any registry.
+    authoritative (no fallback to the upstream), and it authenticates like
+    any registry (see ``get_registry_auth_headers``).
 
     Args:
         registry: Registry host chosen by ``parse_image_ref``.
@@ -190,7 +192,30 @@ def get_registry_auth_headers(
     reference: str = "latest",
     timeout: float = 30.0,
 ) -> Dict[str, str]:
-    """Retrieve bearer authentication token headers for registry repository."""
+    """Answer a registry's authentication challenge for pulling ``repo``.
+
+    An anonymous manifest request shows whether, and how, the registry wants
+    callers to authenticate. Only a challenge sends Ray to the node's Docker
+    config for the registry's credentials (see
+    ``docker_config.registry_credentials``), so pulls of public images never
+    run a credential helper. A ``Basic`` challenge, Amazon ECR's, takes the
+    credentials on every request; a ``Bearer`` challenge trades them, or
+    nothing for a public repository, for a token from the realm it names.
+
+    Args:
+        registry: Registry host, optionally with a scheme.
+        repo: Repository path within the registry.
+        reference: Tag or digest whose manifest is requested.
+        timeout: Network and credential helper timeout in seconds.
+
+    Returns:
+        The ``Authorization`` header for the pull's registry requests, or no
+        headers when the registry asks for none.
+
+    Raises:
+        SandboxCreationError: If the registry demands credentials that the
+            node's Docker config lacks, or turns down the ones it has.
+    """
     url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
@@ -200,8 +225,21 @@ def get_registry_auth_headers(
         if err.code != 401:
             return {}
         auth_hdr = err.headers.get("Www-Authenticate", "")
-        if not re.match(r"^\s*Bearer\b", auth_hdr, re.IGNORECASE):
+        scheme = auth_hdr.split(None, 1)[0].lower() if auth_hdr.strip() else ""
+        if scheme not in ("basic", "bearer"):
             return {}
+
+        creds = docker_config.registry_credentials(registry, timeout)
+        if creds is not None and creds.registry_token:
+            return {"Authorization": f"Bearer {creds.registry_token}"}
+        if scheme == "basic":
+            if creds is None or not creds.username:
+                raise SandboxCreationError(
+                    f"Registry '{registry}' requires credentials to pull "
+                    f"'{repo}', and the Docker config "
+                    f"{docker_config.config_path()} provides none for it."
+                )
+            return {"Authorization": creds.basic_authorization()}
 
         realm_m = re.search(r'realm=["\']?([^"\',\s]+)["\']?', auth_hdr, re.IGNORECASE)
         if not realm_m:
@@ -222,9 +260,29 @@ def get_registry_auth_headers(
         if scope:
             params["scope"] = scope
 
-        sep = "&" if "?" in realm else "?"
-        auth_url = f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
-        auth_req = urllib.request.Request(auth_url, headers={"User-Agent": _USER_AGENT})
+        if creds is not None and creds.identity_token:
+            # The token spec's OAuth2 refresh-token grant.
+            auth_url = realm
+            form = dict(
+                params,
+                grant_type="refresh_token",
+                refresh_token=creds.identity_token,
+                client_id="ray-sandbox",
+            )
+            auth_req = urllib.request.Request(
+                auth_url,
+                data=urllib.parse.urlencode(form).encode("utf-8"),
+                headers={"User-Agent": _USER_AGENT},
+            )
+        else:
+            sep = "&" if "?" in realm else "?"
+            auth_url = (
+                f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
+            )
+            basic = None
+            if creds is not None and creds.username:
+                basic = creds.basic_authorization()
+            auth_req = _registry_request(auth_url, {"User-Agent": _USER_AGENT}, basic)
         try:
             with urllib.request.urlopen(auth_req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -232,6 +290,13 @@ def get_registry_auth_headers(
                 if token:
                     return {"Authorization": f"Bearer {token}"}
         except Exception as auth_err:
+            if creds is not None:
+                raise SandboxCreationError(
+                    f"Failed to get a pull token for '{registry}' from "
+                    f"'{realm}' with the credentials in "
+                    f"{docker_config.config_path()}: "
+                    f"{_describe_pull_error(auth_err)}"
+                ) from auth_err
             logger.warning(
                 f"Failed to obtain registry auth token from '{auth_url}': {auth_err}"
             )
@@ -1128,6 +1193,23 @@ def _extract_image_layers(
         if isinstance(err, SandboxCreationError):
             raise
         raise SandboxCreationError(
-            f"Failed to pull and extract container image '{image}': {err}"
+            f"Failed to pull and extract container image '{image}': "
+            f"{_describe_pull_error(err)}"
         ) from err
     return ownership
+
+
+def _describe_pull_error(err: Exception) -> str:
+    """Describe a failed pull, with the registry's own reasons for an HTTP error.
+
+    A registry's error body says why it refused a request: Amazon ECR's
+    ``DENIED``, for one, names the IAM action that the node's role lacks.
+    """
+    if not isinstance(err, urllib.error.HTTPError):
+        return str(err)
+    try:
+        errors = json.loads(err.read(65536)).get("errors") or []
+        reasons = "; ".join(f"{e['code']}: {e['message']}" for e in errors)
+    except Exception:
+        reasons = ""
+    return f"{err}: {reasons}" if reasons else str(err)
