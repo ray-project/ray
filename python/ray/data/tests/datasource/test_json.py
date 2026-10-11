@@ -193,11 +193,14 @@ def test_jsonl_read_invalid_format_includes_path(
 @pytest.mark.parametrize(
     "content",
     [
-        # Invalid UTF-8 in the first row.
+        # Invalid UTF-8 during chunk-size estimation.
         b'{"name": "\xff"}\n',
-        # Invalid UTF-8 in a later row.
-        b'{"name": "valid"}\n{"name": "\xff"}\n',
+        # Estimation succeeds, but streaming read encounters invalid UTF-8.
+        b'{"name": "valid"}\n'
+        + (b'{"name": "' + b"x" * 100 + b'"}\n') * 100
+        + b'{"name": "\xff"}\n',
     ],
+    ids=["chunk-size-estimation", "streaming-read"],
 )
 def test_jsonl_read_invalid_utf8_includes_path(
     ray_start_regular_shared, tmp_path, content
