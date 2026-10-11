@@ -107,10 +107,16 @@ class _DcmiLibrary:
         candidates = (
             (configured_path,) if configured_path else cls._DEFAULT_LIBRARY_PATHS
         )
+        load_mode = getattr(ctypes, "RTLD_LOCAL", None)
         last_error = None
         for path in candidates:
             try:
-                return cls(ctypes.CDLL(path, mode=ctypes.RTLD_LOCAL))
+                handle = (
+                    ctypes.CDLL(path, mode=load_mode)
+                    if load_mode is not None
+                    else ctypes.CDLL(path)
+                )
+                return cls(handle)
             except OSError as error:
                 last_error = error
         raise OSError("Unable to load the Ascend DCMI library") from last_error
