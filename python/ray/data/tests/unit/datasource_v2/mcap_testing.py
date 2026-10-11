@@ -9,17 +9,21 @@ collect without it.
 import json
 import shutil
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+from ray.data._internal.datasource_v2.common.listing_utils import (
+    partition_files,
+    sample_files,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summary
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
 BASE_TIME = 1_000_000_000  # log time of the first message, in nanoseconds
 STEP = 1_000_000  # 1 ms between consecutive messages
@@ -194,6 +198,27 @@ def list_manifests(datasource, **kwargs):
             pa.array(datasource.paths), filesystem=datasource.filesystem, **kwargs
         )
     )
+
+
+def pack(datasource, paths: Optional[List[str]] = None, **kwargs) -> List[FileManifest]:
+    """List ``paths`` (the datasource's by default) and pack the rows into read
+    tasks, as one ``ListFiles`` task does. ``kwargs`` go to the listing."""
+    indexer = datasource._get_file_indexer()
+    partitioner = datasource.get_file_partitioner()
+    assert partitioner is not None
+    listed = indexer.list_files(
+        pa.array(datasource.paths if paths is None else paths),
+        filesystem=datasource.filesystem,
+        **kwargs,
+    )
+    return [
+        FileManifest(block)
+        for block in partition_files(
+            [manifest.as_block() for manifest in listed],
+            None,  # pyrefly: ignore[bad-argument-type]  (TaskContext unused)
+            partitioner,
+        )
+    ]
 
 
 def infer_schema(datasource) -> pa.Schema:
