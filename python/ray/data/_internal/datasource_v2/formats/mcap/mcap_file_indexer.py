@@ -2,11 +2,11 @@
 
 ``MCAPSummaryIndexer`` walks the paths like ``NonSamplingFileIndexer``, then
 reads each file's summary and emits one manifest row per chunk that can hold a
-selected message. The partitioner (``OnlineBinPacker``) groups those rows into
-read tasks by the memory each chunk is estimated to need (``chunk_run``). A
-large recording is then read by many tasks, and a small one shares a task with
-its neighbours. A file whose summary shows it cannot match the selection is
-dropped before any payload is read.
+selected message. The partitioner groups those rows into read tasks by the
+memory each chunk is estimated to need (``chunk_run``). A large recording is
+then read by many tasks, and a small one shares a task with its neighbours
+(``mcap_file_cuts``). A file whose summary shows it cannot match the selection
+is dropped before any payload is read.
 
 A file whose summary is missing, has no chunk index or lists no channels is
 listed as one whole-file row.

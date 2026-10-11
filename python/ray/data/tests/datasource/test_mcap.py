@@ -4,6 +4,7 @@ import logging
 import os
 import re
 
+import pyarrow as pa
 import pytest
 
 import ray
@@ -551,6 +552,46 @@ def test_read_mcap_v2_splits_a_file_across_read_tasks(
         assert ds.num_blocks() == 9
 
 
+def _heaviest_chunk(path, **options) -> int:
+    """The weight the V2 listing gives the heaviest chunk of ``path``."""
+    datasource = mcap_datasource_v2.MCAPDatasourceV2([path], **options)
+    (manifest,) = datasource._get_file_indexer().list_files(
+        pa.array([path]), filesystem=datasource.filesystem
+    )
+    return max(int(md["size_bytes"]) for md in manifest.file_chunk_metadatas)
+
+
+def test_read_mcap_preserve_order_keeps_split_files_in_log_time_order(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """With ``preserve_order``, each file comes out in ``log_time`` order from
+    start to end, and the files follow each other in the order they are passed.
+
+    On V2 each file is split across several read tasks, and each path is listed
+    by a listing task of its own.
+    """
+    num_files, num_messages = 3, 12
+    paths = [os.path.join(tmp_path, f"f{i}.mcap") for i in range(num_files)]
+    for path in paths:
+        _write_chunked_mcap(path, num_messages)
+    ray.data.DataContext.get_current().execution_options.preserve_order = True
+    if datasource_v2:
+        # Room for two or three chunks per task, so every file needs several.
+        budget = int(2.5 * _heaviest_chunk(paths[0], include_paths=True))
+        monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", budget)
+
+    ds = ray.data.read_mcap(paths, include_paths=True).materialize()
+    rows = [(os.path.basename(r["path"]), r["log_time"]) for r in ds.take_all()]
+
+    assert rows == [
+        (f"f{i}.mcap", 1_000_000_000 + j * 1_000_000)
+        for i in range(num_files)
+        for j in range(num_messages)
+    ]
+    if datasource_v2:
+        assert ds.num_blocks() >= 3 * num_files
+
+
 def test_read_mcap_include_row_id(
     ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
 ):
@@ -571,7 +612,9 @@ def test_read_mcap_include_row_id(
     assert len(by_id) == 12
 
     monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
-    resplit = ray.data.read_mcap(paths, include_row_id=True)
+    resplit = ray.data.read_mcap(paths, include_row_id=True).materialize()
+    # The read really is split: a task per chunk, not one per file.
+    assert resplit.num_blocks() > len(paths)
     assert {row["row_id"]: row["log_time"] for row in resplit.take_all()} == by_id
 
     # The topic filter drops rows but does not change the ids of the rows it keeps.

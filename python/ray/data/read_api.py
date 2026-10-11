@@ -3300,8 +3300,10 @@ def read_mcap(
       before you group by them or write blocks from several read tasks into one
       Arrow IPC file. Cast ``schema_data`` before you mix this output with the
       legacy reader's in one Parquet folder.
-    - A large file is split across read tasks, so its messages are in
-      ``log_time`` order within each task, not across the whole file.
+    - A large file is split across read tasks. Its messages keep ``log_time``
+      order across the whole file only with
+      ``DataContext.execution_options.preserve_order``, and the files of one
+      directory can come out in a different order than listed.
     - ``override_num_blocks`` has no effect.
 
     To use the legacy reader, set ``DataContext.get_current().use_datasource_v2``
@@ -3376,16 +3378,19 @@ def read_mcap(
             ``offered_qos_profiles``; read it with ``json.loads``. It and
             ``schema_data`` are dictionary-encoded, so a block stores each of a
             channel's values once.
-        log_time_order: Whether each read task returns a file's messages in
-            ascending ``log_time`` order. Defaults to True. Messages with equal
-            log times keep the order they were written in. If False, messages
-            come in the order they were written. On the V2 datasource
+        log_time_order: Whether a file's messages come out in ascending
+            ``log_time`` order. Defaults to True. Messages with equal log times
+            keep the order they were written in. If False, messages come in the
+            order they were written. On the V2 datasource
             (``DataContext.use_datasource_v2``), a file that takes more memory
             to read than one read task's budget
             (``RAY_DATA_MCAP_BIN_PACKING_BYTES``, 128 MiB by default) is split
-            across tasks, and messages are not ordered across tasks or files,
-            even with ``preserve_order``. To order a whole file, sort
-            after reading, for example with ``ds.sort("log_time")``. A file
+            across tasks, cut only where its order holds. With
+            ``DataContext.execution_options.preserve_order``, the file then
+            comes out in order from start to end; without it, only within each
+            task. Where chunks overlap in time, such as cameras and robot state
+            written to chunks of their own, the overlapping stretch stays in one
+            task, so a file with no clean cut is read by one task. A file
             without a chunk index is read by one task, which holds its selected
             messages in memory to sort them. ``False`` requires the V2
             datasource.

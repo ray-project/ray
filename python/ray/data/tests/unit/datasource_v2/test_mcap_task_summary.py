@@ -202,6 +202,7 @@ def test_task_summary_holds_the_declarations_and_the_owned_chunk_indexes(
         assert task_summary.chunk_indexes == [
             index_by_offset[int(offset)] for offset in metadata["unit_ids"]
         ]
+    assert len(tasks) == CHUNKED_FILE_MESSAGES
 
 
 def _write_overlapping(path):
@@ -257,6 +258,7 @@ def test_rows_match_reading_the_summary_from_the_file(
     datasource = MCAPDatasourceV2([path], **options)
     set_task_budget(monkeypatch, bin_bytes)
     tasks = pack(datasource)
+    listed = sum(len(m) for m in list_manifests(datasource))
     scanner = scanner_for(datasource)
 
     with_records = [list(scanner.create_reader().read(task)) for task in tasks]
@@ -266,6 +268,9 @@ def test_rows_match_reading_the_summary_from_the_file(
     ]
 
     assert with_records == from_file
+    if bin_bytes == ONE_CHUNK_PER_TASK and listed > 1:
+        # The case compares split tasks, so the file must still be split.
+        assert len(tasks) > 1
 
 
 def test_whole_file_rows_carry_the_whole_summary(chunked_file, monkeypatch):
