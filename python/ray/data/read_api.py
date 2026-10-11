@@ -3559,7 +3559,9 @@ def read_mcap(
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
-            value in most cases.
+            value in most cases. The V2 datasource ignores it and logs a warning: it
+            sizes each read task by bytes instead, about 128 MiB by default
+            (``RAY_DATA_MCAP_BIN_PACKING_BYTES``).
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -3605,6 +3607,13 @@ def read_mcap(
         ):
             # A checkpoint keyed on ``row_id`` needs the column in the read output.
             include_row_id = True
+        num_blocks = _get_num_output_blocks(parallelism, override_num_blocks)
+        if num_blocks != -1:
+            logger.warning(
+                "`read_mcap` ignores `override_num_blocks` with the V2 datasource. "
+                "It sizes each read task by bytes instead, about 128 MiB by "
+                "default (RAY_DATA_MCAP_BIN_PACKING_BYTES)."
+            )
         datasource_v2 = MCAPDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
             topics=topics,
@@ -3623,7 +3632,7 @@ def read_mcap(
         )
         return _read_datasource_v2(
             datasource_v2,
-            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            parallelism=num_blocks,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
