@@ -7,6 +7,7 @@ the memory reading it is estimated to need. ``OnlineBinPacker`` groups the
 chunks into read tasks of about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that
 estimate (128 MiB by default). When the read keeps order, ``OrderedFileGrouper``
 first joins each file's chunks so that one task reads the file (``mcap_file_cuts``).
+``TaskSummaryPartitioner`` adds to each task the summary records it needs.
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
@@ -51,6 +52,9 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     TimeRange,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
+from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
+    TaskSummaryPartitioner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -185,7 +189,9 @@ class MCAPDatasourceV2(FileDataSourceV2):
             max_shared_open_bins=_BIN_PACKING_MAX_SHARED_OPEN_BINS,
             requires_global_input=False,
         )
-        return OrderedFileGrouper(packer, budget=_BIN_PACKING_BYTES)
+        return TaskSummaryPartitioner(
+            OrderedFileGrouper(packer, budget=_BIN_PACKING_BYTES)
+        )
 
     @property
     @override
