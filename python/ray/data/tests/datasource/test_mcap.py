@@ -30,12 +30,25 @@ def datasource_v2(request, restore_data_context):
     return request.param
 
 
-def create_test_mcap_file(file_path: str, messages: list) -> None:
-    """Create a test MCAP file with given messages."""
-    from mcap.writer import Writer
+def create_test_mcap_file(file_path: str, messages: list, index: bool = True) -> None:
+    """Create a test MCAP file with given messages.
+
+    With ``index=False`` the file has no chunks and no chunk index, so readers
+    scan it from the start.
+    """
+    from mcap.writer import IndexType, Writer
 
     with open(file_path, "wb") as stream:
-        writer = Writer(stream)
+        if index:
+            writer = Writer(stream)
+        else:
+            writer = Writer(
+                stream,
+                use_chunking=False,
+                index_types=IndexType.NONE,
+                use_statistics=False,
+                use_summary_offsets=False,
+            )
         writer.start(profile="", library="ray-test")
 
         # Register schema
@@ -453,8 +466,12 @@ def test_read_mcap_partition_filter_applies_to_schema_planning(
     assert [row["data"] for row in ds.take_all()] == [{"value": 1}]
 
 
-def test_read_mcap_log_time_order(ray_start_regular_shared, tmp_path, datasource_v2):
-    """Messages written out of log-time order come back sorted by default.
+@pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
+def test_read_mcap_log_time_order(
+    ray_start_regular_shared, tmp_path, datasource_v2, index
+):
+    """Messages written out of log-time order come back sorted by default, with
+    or without a chunk index.
 
     With ``log_time_order=False`` they come back in the order they were written.
     The legacy datasource always sorts, so it refuses ``False``.
@@ -464,7 +481,7 @@ def test_read_mcap_log_time_order(ray_start_regular_shared, tmp_path, datasource
         {"topic": "/test", "data": {"seq": i}, "log_time": log_time}
         for i, log_time in enumerate([3_000_000_000, 1_000_000_000, 2_000_000_000])
     ]
-    create_test_mcap_file(path, messages)
+    create_test_mcap_file(path, messages, index=index)
 
     ordered = ray.data.read_mcap(path).take_all()
     assert [row["data"]["seq"] for row in ordered] == [1, 2, 0]

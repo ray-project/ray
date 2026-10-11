@@ -1,13 +1,24 @@
 """The reading of selected messages out of one MCAP file.
 
 An indexed file is read chunk by chunk, in file order or merged by log time. A
-file without a chunk index is scanned from the start. A channel or schema that
-only an earlier chunk declares is read back from that chunk.
+file without a chunk index is scanned from the start, and sorted in memory when
+ordered by log time. A channel or schema that only an earlier chunk declares is
+read back from that chunk.
 """
 
 import heapq
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+)
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import read_chunk
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
@@ -23,6 +34,12 @@ if TYPE_CHECKING:
 # One selected message as the reader sees it: its schema (``None`` for a
 # schema-less channel), its channel, the record, and its ``row_id``.
 _Selected = Tuple[Optional["Schema"], "Channel", "Message", str]
+# A message of a file without a chunk index, with its position in the file.
+_Scanned = Tuple[Optional["Schema"], "Channel", "Message", int]
+
+
+def _log_time(message: _Scanned) -> int:
+    return message[2].log_time
 
 
 @dataclass
@@ -295,11 +312,29 @@ class SelectedMessageReader:
             ):
                 break
 
-    def iter_unindexed(self, f: Any, path: str) -> Iterator[_Selected]:
+    def iter_unindexed(
+        self, f: Any, path: str, limit: Optional[int] = None
+    ) -> Iterator[_Selected]:
+        """Yield the selected messages of a file without a chunk index.
+
+        Without ``log_time_order``, they stream in file order. With it, the file
+        can only be ordered whole, so its selected messages are held in memory
+        and sorted by log time. The sort is stable: equal log times keep file
+        order. With ``limit``, only the ``limit`` earliest are held.
+        """
+        scanned: Iterable[_Scanned] = self._scan_unindexed(f, path)
+        if self._log_time_order and limit is not None:
+            scanned = heapq.nsmallest(limit, scanned, key=_log_time)
+        elif self._log_time_order:
+            scanned = sorted(scanned, key=_log_time)
+        for schema, channel, message, ordinal in scanned:
+            yield schema, channel, message, unindexed_message_row_id(path, ordinal)
+
+    def _scan_unindexed(self, f: Any, path: str) -> Iterator[_Scanned]:
         """Scan a file without a chunk index from the start, in file order.
 
-        ``log_time_order`` is not honoured here: ordering by log time would mean
-        holding the whole file in memory.
+        Each message comes with its position among all messages of the file, so
+        a sort holds an integer per message rather than its ``row_id``.
         """
         from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import StreamReader
@@ -326,4 +361,4 @@ class SelectedMessageReader:
                     continue
                 if not self._selection.in_time_range(record.log_time):
                     continue
-                yield schema, channel, record, unindexed_message_row_id(path, ordinal)
+                yield schema, channel, record, ordinal
