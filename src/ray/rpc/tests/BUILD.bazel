@@ -16,6 +16,7 @@ ray_cc_library(
     name = "grpc_test_common",
     testonly = True,
     hdrs = ["grpc_test_common.h"],
+    visibility = ["//src/ray/rpc/authentication/tests:__pkg__"],
     deps = [
         "//src/ray/protobuf:test_service_cc_grpc",
         "//src/ray/rpc:grpc_server",

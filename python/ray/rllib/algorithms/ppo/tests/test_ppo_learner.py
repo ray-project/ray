@@ -6,10 +6,17 @@ import numpy as np
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
+from ray.rllib.algorithms.ppo.ppo import (
+    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
+    LEARNER_RESULTS_KL_KEY,
+)
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.rl_module import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import LEARNER_RESULTS
+from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils.metrics import (
+    LEARNER_RESULTS,
+)
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
@@ -77,6 +84,19 @@ class TestPPO(unittest.TestCase):
             s1 = learner_group1.get_state()
             s2 = learner_group2.get_state()
             check(s1, s2)
+
+    def test_skipped_update_leaves_the_kl_coeff_alone(self):
+        """A skipped update measures no KL, so it must not move the KL coefficient."""
+        learner = ppo.PPOConfig().training(kl_coeff=0.01).build_learner(env=self.ENV)
+        # What an earlier, real update leaves behind once its window is empty.
+        learner.metrics.log_value(
+            (DEFAULT_MODULE_ID, LEARNER_RESULTS_KL_KEY), float("nan"), window=1
+        )
+        before = learner.curr_kl_coeffs_per_module[DEFAULT_MODULE_ID].item()
+
+        learner.update(batch=MultiAgentBatch(policy_batches={}, env_steps=0))
+
+        check(before, learner.curr_kl_coeffs_per_module[DEFAULT_MODULE_ID].item())
 
     def test_kl_coeff_changes(self):
         # Simple environment with 4 independent cartpole entities

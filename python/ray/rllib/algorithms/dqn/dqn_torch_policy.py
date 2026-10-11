@@ -1,6 +1,6 @@
 """PyTorch policy class used for DQN"""
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Type
 
 import gymnasium as gym
 
@@ -156,9 +156,9 @@ def build_q_model_and_distribution(
 
     Args:
         policy: The policy, which will use the model for optimization.
-        obs_space (gym.spaces.Space): The policy's observation space.
-        action_space (gym.spaces.Space): The policy's action space.
-        config (AlgorithmConfigDict):
+        obs_space: The policy's observation space.
+        action_space: The policy's action space.
+        config: The Policy's config.
 
     Returns:
         (q_model, TorchCategorical)
@@ -260,12 +260,17 @@ def get_distribution_inputs_and_class(
 
 
 @OldAPIStack
-def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
+def build_q_losses(
+    policy: Policy,
+    model: ModelV2,
+    _: Type[TorchDistributionWrapper],
+    train_batch: SampleBatch,
+) -> TensorType:
     """Constructs the loss for DQNTorchPolicy.
 
     Args:
         policy: The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
+        model: The Model to calculate the loss for.
         train_batch: The training data.
 
     Returns:

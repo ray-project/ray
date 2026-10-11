@@ -6,22 +6,22 @@ myst:
 
 (data-ingest-torch)=
 
-# Data Loading and Preprocessing
+# Data loading and preprocessing
 
-Ray Train integrates with {ref}`Ray Data <data>` to offer a performant and scalable streaming solution for loading and preprocessing large datasets. Key advantages include:
+Ray Train integrates with {ref}`Ray Data <data>` for scalable, streaming data loading and preprocessing of large datasets. Ray Data provides the following advantages:
 
 - Streaming data loading and preprocessing, scalable to petabyte-scale data.
 - Scaling out heavy data preprocessing to CPU nodes, to avoid bottlenecking GPU training.
 - Automatic and fast failure recovery.
 - Automatic on-the-fly data splitting across distributed training workers.
 
-For more details about Ray Data, check out the {ref}`Ray Data documentation<data>`.
+For details, see the {ref}`Ray Data documentation<data>`.
 
 :::{note}
-In addition to Ray Data, you can continue to use framework-native data utilities with Ray Train, such as PyTorch Dataset, Hugging Face Dataset, and Lightning DataModule.
+Besides Ray Data, you can use framework-native data utilities with Ray Train, such as PyTorch Dataset, Hugging Face Dataset, and Lightning DataModule.
 :::
 
-In this guide, we will cover how to incorporate Ray Data into your Ray Train script, and different ways to customize your data ingestion pipeline.
+This guide covers how to add Ray Data to your Ray Train script and how to customize your data ingestion pipeline.
 
 <!-- TODO: Replace this image with a better one. -->
 
@@ -37,12 +37,12 @@ Install Ray Data and Ray Train:
 pip install -U "ray[data,train]"
 ```
 
-Data ingestion can be set up with four basic steps:
+Set up data ingestion in four steps:
 
 1. Create a Ray Dataset from your input data.
-2. Apply preprocessing operations to your Ray Dataset.
-3. Input the preprocessed Dataset into the Ray Train Trainer, which internally splits the dataset equally in a streaming way across the distributed training workers.
-4. Consume the Ray Dataset in your training function.
+1. Apply preprocessing operations to your Ray Dataset.
+1. Pass the preprocessed dataset to the Ray Train trainer, which splits it equally across the distributed training workers in a streaming fashion.
+1. Consume the Ray Dataset in your training function.
 
 ::::{tab-set}
 :::{tab-item} PyTorch
@@ -119,7 +119,7 @@ train_data = ray.data.read_csv("./train.csv")
 val_data = ray.data.read_csv("./validation.csv")
 
 def train_func_per_worker():
-    # Access Ray datsets in your train_func via ``get_dataset_shard``.
+    # Access Ray datasets in your train_func via ``get_dataset_shard``.
     # Ray Data shards all datasets across workers by default.
     train_ds = train.get_dataset_shard("train")
     val_ds = train.get_dataset_shard("validation")
@@ -151,7 +151,7 @@ trainer.fit()
 ```
 :::
 
-:::{tab-item} HuggingFace Transformers
+:::{tab-item} Hugging Face Transformers
 ```{code-block} python
 :emphasize-lines: 7-9,14-15,18-19,25,31-32,42
 
@@ -167,7 +167,7 @@ train_data = ray.data.read_parquet("hf://datasets/your-dataset/train/", filesyst
 eval_data = ray.data.read_parquet("hf://datasets/your-dataset/validation/", filesystem=fs)
 
 def train_func():
-    # Access Ray datsets in your train_func via ``get_dataset_shard``.
+    # Access Ray datasets in your train_func via ``get_dataset_shard``.
     # Ray Data shards all datasets across workers by default.
     train_ds = ray.train.get_dataset_shard("train")
     eval_ds = ray.train.get_dataset_shard("evaluation")
@@ -208,71 +208,75 @@ trainer.fit()
 
 (train-datasets-load)=
 
-### Loading data
+### Load data
 
-Ray Datasets can be created from many different data sources and formats. For more details, see {ref}`Loading data <loading_data>`.
+You can create Ray Datasets from many data sources and formats. For details, see {ref}`Loading data <loading_data>`.
 
 (train-datasets-preprocess)=
 
-### Preprocessing data
+### Preprocess data
 
-Ray Data supports a wide range of preprocessing operations that you can use to transform data prior to training.
+Ray Data supports a wide range of preprocessing operations that you can use to transform data before training.
 
-- For general preprocessing, see {ref}`Transforming Data <transforming_data>`.
-- For tabular data, see {ref}`Preprocessing Structured Data <preprocessing_structured_data>`.
+- For general preprocessing, see {ref}`Transforming data <transforming_data>`.
+- For tabular data, see {ref}`Preprocessing structured data <preprocessing_structured_data>`.
 - For PyTorch tensors, see {ref}`Return Torch tensors from transformations <transform_pytorch>`.
-- For optimizing expensive preprocessing operations, see {ref}`Caching the preprocessed dataset <dataset_cache_performance>`.
+- To optimize expensive preprocessing operations, see {ref}`Cache the preprocessed dataset <dataset_cache_performance>`.
 
 (train-datasets-input)=
 
-### Inputting and splitting data
+(inputting-and-splitting-data)=
 
-Your preprocessed datasets can be passed into a Ray Train Trainer (e.g. {class}`~ray.train.torch.TorchTrainer`) through the `datasets` argument.
+### Input and split data
 
-The datasets passed into the Trainer's `datasets` can be accessed inside of the `train_loop_per_worker` run on each distributed training worker by calling {meth}`ray.train.get_dataset_shard`.
+Pass your preprocessed datasets to a Ray Train trainer, such as {class}`~ray.train.torch.TorchTrainer`, through the `datasets` argument.
+
+To access the datasets you passed to the trainer's `datasets` argument, call {meth}`ray.train.get_dataset_shard` inside the `train_loop_per_worker` that runs on each distributed training worker.
 
 Ray Data splits all datasets across the training workers by default. {meth}`~ray.train.get_dataset_shard` returns `1/n` of the dataset, where `n` is the number of training workers.
 
-Ray Data does data splitting in a streaming fashion on the fly.
+Ray Data splits the data on the fly in a streaming fashion.
 
 :::{note}
-Be aware that because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might consider using [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) ({doc}`example <../examples/deepspeed/deepspeed_example>`) or utilities available in other frameworks that you can explore.
+Because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might use [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) or similar utilities in other frameworks. For an example, see {doc}`Train with DeepSpeed ZeRO-3 and Ray Train <../examples/deepspeed/deepspeed-example>`.
 :::
 
-This behavior can be overwritten by passing in the `dataset_config` argument. For more information on configuring splitting logic, see {ref}`Splitting datasets <train-datasets-split>`.
+To override this behavior, pass the `dataset_config` argument. For details on configuring splitting logic, see {ref}`Split datasets <train-datasets-split>`.
 
 (train-datasets-consume)=
 
-### Consuming data
+### Consume data
 
-Inside the `train_loop_per_worker`, each worker can access its shard of the dataset via {meth}`ray.train.get_dataset_shard`.
+Inside `train_loop_per_worker`, each worker accesses its shard of the dataset through {meth}`ray.train.get_dataset_shard`.
 
-This data can be consumed in a variety of ways:
+You can consume this data in several ways, including the following:
 
-- To create a generic Iterable of batches, you can call {meth}`~ray.data.DataIterator.iter_batches`.
-- To create a replacement for a PyTorch DataLoader, you can call {meth}`~ray.data.DataIterator.iter_torch_batches`.
+- To create a generic iterable of batches, call {meth}`~ray.data.DataIterator.iter_batches`.
+- To create a replacement for a PyTorch DataLoader, call {meth}`~ray.data.DataIterator.iter_torch_batches`.
 
-For more details on how to iterate over your data, see {ref}`Iterating over data <iterating-over-data>`.
+For details on iterating over your data, see {ref}`Iterating over data <iterating-over-data>`.
 
 (train-datasets-pytorch)=
 
-## Starting with PyTorch data
+(starting-with-pytorch-data)=
 
-Some frameworks provide their own dataset and data loading utilities. For example:
+## Start with PyTorch data
 
-- **PyTorch:** [Dataset & DataLoader](https://pytorch.org/tutorials/beginner/basics/data_tutorial.html)
+Some frameworks provide their own dataset and data loading utilities, such as the following:
+
+- **PyTorch:** [Dataset and DataLoader](https://pytorch.org/tutorials/beginner/basics/data_tutorial.html)
 - **Hugging Face:** [Dataset](https://huggingface.co/docs/datasets/index)
 - **PyTorch Lightning:** [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html)
 
-You can still use these framework data utilities directly with Ray Train.
+You can use these framework data utilities directly with Ray Train.
 
-At a high level, you can compare these concepts as follows:
+The following table compares these concepts at a high level.
 
 ```{list-table}
 :header-rows: 1
 
 * - PyTorch API
-  - HuggingFace API
+  - Hugging Face API
   - Ray Data API
 * - [torch.utils.data.Dataset](https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.Dataset)
   - [datasets.Dataset](https://huggingface.co/docs/datasets/main/en/package_reference/main_classes#datasets.Dataset)
@@ -282,52 +286,52 @@ At a high level, you can compare these concepts as follows:
   - {meth}`ray.data.Dataset.iter_torch_batches`
 ```
 
-For more details, see the following sections for each framework:
+For details, see the tab for your framework.
 
 ::::{tab-set}
 :::{tab-item} PyTorch DataLoader
-**Option 1 (with Ray Data):**
+To use your PyTorch Dataset with Ray Data, do the following:
 
 1. Convert your PyTorch Dataset to a Ray Dataset.
-2. Pass the Ray Dataset into the TorchTrainer via  `datasets` argument.
-3. Inside your `train_loop_per_worker`, you can access the dataset via {meth}`ray.train.get_dataset_shard`.
-4. Create a dataset iterable via {meth}`ray.data.DataIterator.iter_torch_batches`.
+1. Pass the Ray Dataset to `TorchTrainer` through the `datasets` argument.
+1. Inside your `train_loop_per_worker`, access the dataset through {meth}`ray.train.get_dataset_shard`.
+1. Create a dataset iterable through {meth}`ray.data.DataIterator.iter_torch_batches`.
 
-For more details, see {ref}`Migrate from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
+For details, see {ref}`Migrate from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
 
-**Option 2 (without Ray Data):**
+To use the PyTorch Dataset and DataLoader without Ray Data, do the following:
 
-1. Instantiate the Torch Dataset and DataLoader directly in the `train_loop_per_worker`.
-2. Use the {meth}`ray.train.torch.prepare_data_loader` utility to set up the DataLoader for distributed training.
+1. Instantiate the PyTorch Dataset and DataLoader directly in the `train_loop_per_worker`.
+1. Use the {meth}`ray.train.torch.prepare_data_loader` utility to set up the DataLoader for distributed training.
 :::
 
 :::{tab-item} LightningDataModule
-The `LightningDataModule` is created with PyTorch `Dataset`s and `DataLoader`s. You can apply the same logic here.
+You build a `LightningDataModule` from PyTorch `Dataset` and `DataLoader` objects, so the same approach applies.
 :::
 
 :::{tab-item} Hugging Face Dataset
-**Option 1 (with Ray Data):**
+To use your Hugging Face Dataset with Ray Data, do the following:
 
 1. Convert your Hugging Face Dataset to a Ray Dataset. For instructions, see {ref}`Ray Data for Hugging Face <loading_datasets_from_ml_libraries>`.
-2. Pass the Ray Dataset into the TorchTrainer via the `datasets` argument.
-3. Inside your `train_loop_per_worker`, access the sharded dataset via {meth}`ray.train.get_dataset_shard`.
-4. Create a iterable dataset via {meth}`ray.data.DataIterator.iter_torch_batches`.
-5. Pass the iterable dataset while initializing `transformers.Trainer`.
-6. Wrap your transformers trainer with the {meth}`ray.train.huggingface.transformers.prepare_trainer` utility.
+1. Pass the Ray Dataset to `TorchTrainer` through the `datasets` argument.
+1. Inside your `train_loop_per_worker`, access the sharded dataset through {meth}`ray.train.get_dataset_shard`.
+1. Create an iterable dataset through {meth}`ray.data.DataIterator.iter_torch_batches`.
+1. Pass the iterable dataset to `transformers.Trainer` when you initialize it.
+1. Wrap your Transformers `Trainer` with the {meth}`ray.train.huggingface.transformers.prepare_trainer` utility.
 
-**Option 2 (without Ray Data):**
+To use the Hugging Face Dataset without Ray Data, do the following:
 
 1. Instantiate the Hugging Face Dataset directly in the `train_loop_per_worker`.
-2. Pass the Hugging Face Dataset into `transformers.Trainer` during initialization.
+1. Pass the Hugging Face Dataset into `transformers.Trainer` during initialization.
 :::
 ::::
 
 :::{tip}
-When using Torch or Hugging Face Datasets directly without Ray Data, make sure to instantiate your Dataset *inside* the `train_loop_per_worker`. Instantiating the Dataset outside of the `train_loop_per_worker` and passing it in via global scope can cause errors due to the Dataset not being serializable.
+When you use PyTorch or Hugging Face Datasets directly without Ray Data, instantiate your Dataset *inside* `train_loop_per_worker`. If you instantiate the Dataset outside `train_loop_per_worker` and pass it in through global scope, it can cause errors because the Dataset isn't serializable.
 :::
 
 :::{note}
-When using PyTorch DataLoader with more than 1 worker, you should set the process start method to be `forkserver` or `spawn`. {ref}`Forking Ray Actors and Tasks is an anti-pattern <forking-ray-processes-antipattern>` that can lead to unexpected issues such as deadlocks.
+When you use a PyTorch DataLoader with more than one worker, set the process start method to `forkserver` or `spawn`. {ref}`Forking Ray actors and tasks is an anti-pattern <forking-ray-processes-antipattern>` that can lead to unexpected issues such as deadlocks.
 
 ```python
 data_loader = DataLoader(
@@ -341,10 +345,10 @@ data_loader = DataLoader(
 
 (train-datasets-split)=
 
-## Splitting datasets
-By default, Ray Train splits all datasets across workers using {meth}`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset.
+## Split datasets
+By default, Ray Train splits all datasets across workers with {meth}`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data instead of iterating over the entire dataset.
 
-If want to customize which datasets are split, pass in a {class}`DataConfig <ray.train.DataConfig>` to the Trainer constructor.
+To customize which datasets Ray Train splits, pass a {class}`DataConfig <ray.train.DataConfig>` to the trainer constructor.
 
 For example, to split only the training dataset, do the following:
 
@@ -384,8 +388,10 @@ my_trainer.fit()
 ```
 
 
-### Full customization (advanced)
-For use cases not covered by the default config class, you can also fully customize exactly how your input datasets are split. Define a custom {class}`DataConfig <ray.train.DataConfig>` class (DeveloperAPI). The {class}`DataConfig <ray.train.DataConfig>` class is responsible for that shared setup and splitting of data across nodes.
+(full-customization-advanced)=
+
+### Advanced: Full customization
+For use cases that the default configuration class doesn't cover, you can fully customize how Ray Train splits your input datasets. Define a custom {class}`DataConfig <ray.train.DataConfig>` class, which is a developer API. The {class}`DataConfig <ray.train.DataConfig>` class is responsible for shared setup and for splitting data across nodes.
 
 ```{testcode}
 # Note that this example class is doing the same thing as the basic DataConfig
@@ -445,20 +451,22 @@ my_trainer.fit()
 ```
 
 
-The subclass must be serializable, since Ray Train copies it from the driver script to the driving actor of the Trainer. Ray Train calls its {meth}`configure <ray.train.DataConfig.configure>` method on the main actor of the Trainer group to create the data iterators for each worker.
+The subclass must be serializable because Ray Train copies it from the driver script to the driving actor of the trainer. Ray Train calls its {meth}`configure <ray.train.DataConfig.configure>` method on the main actor of the trainer group to create the data iterators for each worker.
 
-In general, you can use {class}`DataConfig <ray.train.DataConfig>` for any shared setup that has to occur ahead of time before the workers start iterating over data. The setup runs at the start of each Trainer run.
+You can use {class}`DataConfig <ray.train.DataConfig>` for any shared setup that has to happen before the workers start iterating over data. The setup runs at the start of each trainer run.
 
 
-## Random shuffling
-Randomly shuffling data for each epoch can be important for model quality depending on what model you are training.
+## Shuffle data randomly
+Depending on the model you're training, randomly shuffling data each epoch can be important for model quality.
 
-Ray Data provides multiple options for random shuffling, see {ref}`Shuffling data <shuffling_data>` for more details.
+Ray Data provides multiple options for random shuffling. For details, see {ref}`Shuffling data <shuffling_data>`.
 
-## Enabling reproducibility
-When developing or hyperparameter tuning models, reproducibility is important during data ingest so that data ingest does not affect model quality. Follow these three steps to enable reproducibility:
+## Enable reproducibility
+When you develop models or tune their hyperparameters, reproducible data ingest is important so that data ingest doesn't affect model quality. To enable reproducibility, follow these three steps.
 
-**Step 1:** Enable deterministic execution in Ray Datasets by setting the `preserve_order` flag in the {class}`DataContext <ray.data.context.DataContext>`.
+### Step 1: Enable deterministic execution
+
+Enable deterministic execution in Ray Datasets by setting the `preserve_order` flag in the {class}`DataContext <ray.data.context.DataContext>`.
 
 ```{testcode}
 import ray
@@ -472,25 +480,29 @@ ds = ray.data.read_text(
 )
 ```
 
-**Step 2:** Set a seed for any shuffling operations:
+### Step 2: Set a seed for shuffling
 
-* `seed` argument to {meth}`random_shuffle <ray.data.Dataset.random_shuffle>`
-* `seed` argument to {meth}`randomize_block_order <ray.data.Dataset.randomize_block_order>`
-* `local_shuffle_seed` argument to {meth}`iter_batches <ray.data.DataIterator.iter_batches>`
+Set a seed for any shuffling operations with the following arguments:
 
-**Step 3:** Follow the best practices for enabling reproducibility for your training framework of choice. For example, see the [Pytorch reproducibility guide](https://docs.pytorch.org/docs/stable/notes/randomness.html).
+- `seed` argument to {meth}`random_shuffle <ray.data.Dataset.random_shuffle>`
+- `seed` argument to {meth}`randomize_block_order <ray.data.Dataset.randomize_block_order>`
+- `local_shuffle_seed` argument to {meth}`iter_batches <ray.data.DataIterator.iter_batches>`
+
+### Step 3: Follow your framework's best practices
+
+Follow your training framework's best practices for reproducibility. For example, see the [PyTorch reproducibility guide](https://docs.pytorch.org/docs/stable/notes/randomness.html).
 
 
 
 (preprocessing_structured_data)=
 
-## Preprocessing structured data
+## Preprocess structured data
 
 :::{note}
-This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use Ray Data operations such as `map_batches`. See the {ref}`Ray Data Working with PyTorch guide <working_with_pytorch>` for more details.
+This section covers tabular or structured data. To preprocess unstructured data, use Ray Data operations such as `map_batches`. For details, see the {ref}`Ray Data Working with PyTorch guide <working_with_pytorch>`.
 :::
 
-For tabular data, use Ray Data {ref}`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations. You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
+For tabular data, use Ray Data {ref}`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations. To use them with Ray Train trainers, apply them to the dataset before you pass it to a trainer. The following example scales some columns, concatenates the results, and saves the fitted preprocessor with the training run:
 
 ```{testcode}
 import base64
@@ -553,23 +565,25 @@ print(StandardScaler.deserialize(serialized_data))
 ```
 
 
-This example persists the fitted preprocessor using the `Trainer(metadata={...})` constructor argument. This arg specifies a dict that is available from `TrainContext.get_metadata()` and `checkpoint.get_metadata()` for checkpoints that the Trainer saves. This design enables the recreation of the fitted preprocessor for inference.
+This example persists the fitted preprocessor with the `Trainer(metadata={...})` constructor argument. This argument specifies a dict that's available from `TrainContext.get_metadata()`, and from `checkpoint.get_metadata()` for checkpoints that the trainer saves. With this metadata, you can recreate the fitted preprocessor for inference.
 
 (train-debugging-data-loading-bottlenecks)=
 
-## Debugging data loading bottlenecks
+(debugging-data-loading-bottlenecks)=
 
-When diagnosing bottlenecks leading to slow training throughput, the first question to answer is whether the training ever stalls to wait for the next data batch. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer this: the **Data Ingestion** row tells you whether data loading is stalling training, and then narrows down which stage and if rank stragglers are responsible.
+## Debug data loading bottlenecks
 
-To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster as described in {ref}`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**; open it from Grafana's dashboard list and find the **Data Ingestion** section.
+When you diagnose bottlenecks that slow training throughput, first find out whether training ever stalls to wait for the next data batch. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer that question. The **Data Ingestion** row shows whether data loading is stalling training, then narrows down which stage is responsible and whether rank stragglers are the cause.
 
-Follow the steps below using the panels to identify data loading bottlenecks.
+To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster, as described in {ref}`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**. Open it from Grafana's dashboard list and find the **Data Ingestion** section.
+
+To identify data loading bottlenecks with these panels, follow these steps.
 
 ### Step 1: Is training stalling on data loading?
 
-Check **Max Exposed Data Loading Time**. This panel reports the per-batch data loading time that the training loop is actually blocked on, taken as the maximum across ranks so that it reflects the slowest rank.
+Check **Max Exposed Data Loading Time**. This panel reports the per-batch data loading time that the training loop is blocked on. It takes the maximum across ranks, so it reflects the slowest rank.
 
-Ray Data prefetches batches on background threads while your training loop computes on the current batch, so data loading work that finishes before the next batch is requested is completely hidden and costs you nothing. This panel measures only the part that isn't hidden and stalls your training.
+Ray Data prefetches batches on background threads while your training loop computes on the current batch. Data loading work that finishes before the training loop requests the next batch is fully hidden and costs you nothing. This panel measures only the part that isn't hidden, which stalls your training.
 
 ```{figure} ../images/data_ingestion/max_exposed_time.png
 :align: center
@@ -580,10 +594,10 @@ non-zero, so training is stalling on data loading and it's worth continuing
 to step 2.
 ```
 
-- **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so there's nothing to gain from tuning the ingest pipeline. Look elsewhere for the bottleneck.
+- **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so tuning the ingest pipeline gains you nothing. Look elsewhere for the bottleneck.
 - **The value is non-zero.** The training loop is blocking on batches, and every millisecond shown here is a millisecond your accelerators sit idle. Continue to step 2.
 
-To corroborate a non-zero reading, cross-reference GPU utilization, which the **GPU Usage** panel reports in the same dashboard. A training loop whose accelerators stay fed holds utilization high and steady. One that stalls on data loading shows the opposite: utilization collapses every time the loop runs dry waiting for the next batch and recovers once it arrives, so the chart swings continuously instead of settling. Unstable GPU utilization is often the first symptom users notice, and exposed data loading time is what explains it. A PyTorch profiler trace shows the same pattern at finer granularity, as gaps between kernel launches while the loop waits.
+To confirm a non-zero reading, check GPU utilization in the **GPU Usage** panel of the same dashboard. A training loop whose accelerators stay fed holds utilization high and steady. A loop that stalls on data loading shows the opposite pattern. Utilization collapses every time the loop runs dry waiting for the next batch and recovers once the batch arrives, so the chart swings continuously instead of settling. Unstable GPU utilization is often the first symptom you notice, and exposed data loading time explains it. A PyTorch profiler trace shows the same pattern at finer granularity, as gaps between kernel launches while the loop waits.
 
 ```{figure} ../images/data_ingestion/spiky_gpu_utilization.png
 :align: center
@@ -605,7 +619,7 @@ Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows t
 * - Stage
   - What it covers
 * - Production Wait
-  - Waiting for the upstream Ray Data pipeline to produce the next block. Points at the data pipeline rather than at the training worker.
+  - Waiting for the upstream Ray Data pipeline to produce the next block. Time in this stage points at the data pipeline rather than at the training worker.
 * - Data Transfer
   - Resolving and transferring blocks to the training worker, including cross-node object store transfers.
 * - Batching
@@ -615,10 +629,10 @@ Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows t
 * - Collate
   - Running your `collate_fn`.
 * - Finalize
-  - Finalizing the batch. For GPU training this is the host-to-device transfer.
+  - Finalizing the batch. For GPU training, this is the host-to-device transfer.
 ```
 
-Look for the stage that contributes the largest percentage of the data loading time breakdown. For instance, a large **Production Wait** percentage means the upstream Ray Data pipeline can't produce data fast enough. A large percentage in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
+Look for the stage with the largest share of data loading time. A large **Production Wait** percentage means the upstream Ray Data pipeline can't produce data fast enough. A large percentage in any other stage means the bottleneck is last-mile batch preparation on the training worker itself.
 
 ```{figure} ../images/data_ingestion/data_loading_by_stage.png
 :align: center
@@ -630,7 +644,7 @@ rest, so the bottleneck is on the training worker rather than upstream.
 ```
 
 :::{note}
-This panel breaks down *total* data loading time, including the portion that pipelining hides behind training, and it always adds up to 100%. Read it only after step 1 shows a non-zero exposed time. Otherwise, none of the stages are contributing to training stall.
+This panel breaks down *total* data loading time, including the portion that pipelining hides behind training, and it always adds up to 100%. Read it only after step 1 shows a non-zero exposed time. Otherwise, none of the stages contribute to a training stall.
 :::
 
 ### Step 3: Is the stage systemically slow, or is one rank straggling?
@@ -642,19 +656,21 @@ Every stage has a matching per-rank panel: **Production Wait Time by Rank**, **D
 :alt: Six per-rank panels in which each stage's lines sit close together across ranks.
 
 The six per-rank stage panels. Collate time is high but nearly identical on
-every rank, at roughly 180 ms/batch, which points at a systemically slow
+every rank, at roughly 180 ms per batch, which points at a systemically slow
 stage rather than a straggler.
 ```
 
 - **Uniformly high across all ranks.** The stage is systemically slow, and the fixes in {ref}`train-ingest-performance-tips` apply to the run as a whole.
 - **One rank far above the rest.** That rank is a straggler. Because distributed training synchronizes across ranks on every step, a single slow rank holds back the entire run, so a straggler costs you much more than its share of the work. Common causes are poor data locality, where blocks are consistently fetched from a remote node, and a hot node where the training worker competes with Ray Data tasks for CPU.
 
-### Monitoring ingest throughput
+(monitoring-ingest-throughput)=
+
+### Monitor ingest throughput
 
 Two more panels sit alongside the drill-down as general health metrics rather than as steps in it:
 
 - **Data Ingest Throughput by Rank**: rows per second each rank consumes from its data loader. Use it to learn the steady-state ingest rate of a healthy run, so that you can spot drops and imbalance across ranks later.
-- **Data Production Throughput**: rows per second the Ray Data pipeline delivers to the training workers. This panel only reports data for datasets that are split across workers, which is controlled by the `datasets_to_split` argument of {class}`DataConfig <ray.train.DataConfig>`, so datasets you excluded from splitting show nothing here.
+- **Data Production Throughput**: rows per second the Ray Data pipeline delivers to the training workers. This panel reports data only for datasets that Ray Train splits across workers. The `datasets_to_split` argument of {class}`DataConfig <ray.train.DataConfig>` controls which datasets those are, so datasets you exclude from splitting show nothing here.
 
 ```{figure} ../images/data_ingestion/throughput_metrics.png
 :align: center
@@ -662,10 +678,12 @@ Two more panels sit alongside the drill-down as general health metrics rather th
 
 **Data Ingest Throughput by Rank** and **Data Production Throughput** for the
 same run. Aggregate ingest across the four ranks tracks production closely,
-at roughly 4.4K rows/s, so production and consumption are balanced.
+at roughly 4.4K rows per second, so production and consumption are balanced.
 ```
 
-### Choosing a fix
+### Choose a fix
+
+The following table maps each drill-down result to the performance tips that address it.
 
 ```{list-table}
 :header-rows: 1
@@ -693,10 +711,10 @@ For lower-level, per-operator timings that these panels don't cover, see the {re
 
 (prefetching-batches)=
 
-### Prefetching batches
-While iterating over a dataset for training, you can increase `prefetch_batches` in {meth}`iter_batches <ray.data.DataIterator.iter_batches>` or {meth}`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this approach launches background threads to fetch and process the next `N` batches.
+### Prefetch batches
+When you iterate over a dataset for training, you can increase `prefetch_batches` in {meth}`iter_batches <ray.data.DataIterator.iter_batches>` or {meth}`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to improve performance. While training runs on the current batch, Ray Data launches background threads to fetch and process the next `N` batches.
 
-This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing `collate_fn`. However, increasing `prefetch_batches` leads to more data that needs to be held in heap memory. By default, `prefetch_batches` is set to 1.
+Prefetching can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing, such as converting batches to tensors or running `collate_fn`. However, a higher `prefetch_batches` value holds more data in heap memory. The default `prefetch_batches` value is `1`.
 
 For example, the following code prefetches 10 batches at a time for each training worker:
 
@@ -728,17 +746,19 @@ my_trainer.fit()
 
 (avoid-heavy-collate-fn)=
 
-### Avoid heavy transformation in collate_fn
+### Avoid heavy transformation in `collate_fn`
 
-The `collate_fn` parameter in {meth}`iter_batches <ray.data.DataIterator.iter_batches>` or {meth}`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, {ref}`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer. When your expensive transformation requires batch_size as input, such as text tokenization, you can {ref}`scale it out to Ray Data <scaling_collation_functions>` for better performance.
+With the `collate_fn` parameter in {meth}`iter_batches <ray.data.DataIterator.iter_batches>` or {meth}`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>`, you can transform data before feeding it to the model. This operation runs locally in the training workers. Avoid adding a heavy transformation in this function because it might become the bottleneck. Instead, {ref}`apply the transformation with map or map_batches <transforming_data>` before you pass the dataset to the trainer. When your expensive transformation requires `batch_size` as input, such as text tokenization, {ref}`scale it out to Ray Data <scaling_collation_functions>` for better performance.
 
 
 (dataset_cache_performance)=
 
-### Caching the preprocessed dataset
-If your preprocessed Dataset is small enough to fit in Ray object store memory (by default this is 30% of total cluster RAM), *materialize* the preprocessed dataset in Ray's built-in object store, by calling {meth}`materialize() <ray.data.Dataset.materialize>` on the preprocessed dataset. This method tells Ray Data to compute the entire preprocessed and pin it in the Ray object store memory. As a result, when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run. However, if the preprocessed data is too large to fit into Ray object store memory, this approach will greatly decreases performance as data needs to be spilled to and read back from disk.
+(caching-the-preprocessed-dataset)=
 
-Transformations that you want to run per-epoch, such as randomization, should go after the materialize call.
+### Cache the preprocessed dataset
+If your preprocessed dataset is small enough to fit in Ray object store memory, *materialize* it in Ray's built-in object store by calling {meth}`materialize() <ray.data.Dataset.materialize>` on it. By default, object store memory is 30% of total cluster RAM. This method tells Ray Data to compute the entire preprocessed dataset and pin it in Ray object store memory. As a result, the preprocessing operations don't need to rerun when you iterate over the dataset repeatedly. However, if the preprocessed data is too large to fit in Ray object store memory, this approach greatly decreases performance, because data has to be spilled to disk and read back.
+
+Place transformations that you want to run every epoch, such as randomization, after the `materialize()` call.
 
 ```{testcode}
 from typing import Dict
@@ -777,20 +797,27 @@ train_ds = train_ds.map_batches(augment_data, batch_size="auto")
 
 (adding-cpu-only-nodes)=
 
-### Adding CPU-only nodes to your cluster
-If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, Ray's native support for heterogeneous resources enables you to simply add more CPU-only nodes to your cluster, and Ray Data automatically scales out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
+(adding-cpu-only-nodes-to-your-cluster)=
 
-In general, adding CPU-only nodes can help in two ways: \* Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck. \* Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to {ref}`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
+### Add CPU-only nodes to your cluster
+If expensive CPU preprocessing bottlenecks GPU training and the preprocessed dataset is too large to fit in object store memory, materializing the dataset doesn't work. In this case, add more CPU-only nodes to your cluster. Ray supports heterogeneous resources natively, so Ray Data automatically scales out CPU-only preprocessing tasks to the CPU-only nodes, which keeps the GPUs more saturated.
+
+Adding CPU-only nodes can help in two ways:
+
+- More CPU cores parallelize preprocessing further. This helps when CPU compute time is the bottleneck.
+- More object store memory gives Ray Data room to buffer more data between the preprocessing and training stages, and makes it possible to {ref}`cache the preprocessed dataset <dataset_cache_performance>`. This helps when memory is the bottleneck.
 
 (isolating-ray-data-worker-processes)=
 
-### Isolating Ray Data worker processes from training nodes
+(isolating-ray-data-worker-processes-from-training-nodes)=
 
-You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes when training workers themselves run CPU or RAM-heavy operations such as storing large local shuffle buffers or running expensive collate functions. Launching more Ray Data processes would oversubscribe the training worker nodes. Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous cluster (for example, 4 GPU training nodes and 4 CPU-only nodes).
+### Isolate Ray Data worker processes from training nodes
 
-One workaround is to force full-node exclusion by reserving all CPUs per training worker via `resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}` in `ScalingConfig`. This method is fragile since it's tied to node shapes, and Ray Data also doesn't exclude other resources such as object store memory properly, since the typical configuration is to only take up logical CPUs and GPUs.
+When training workers themselves run CPU-heavy or RAM-heavy operations, such as storing large local shuffle buffers or running expensive collate functions, you might want to keep Ray Data CPU tasks off the training worker nodes. Launching more Ray Data processes would oversubscribe those nodes. Instead, run the Ray Data tasks on a separate set of CPU nodes in your heterogeneous cluster, such as a cluster with four GPU training nodes and four CPU-only nodes.
 
-The recommended approach is to use {ref}`subclusters <data_concurrent_execution>` to pin the training Dataset to CPU-only nodes. This correctly scopes the memory budget to only the nodes where data tasks can actually run. It requires adding labels to your worker node configurations and setting the `label_selector` in two places:
+One workaround is to force full-node exclusion by reserving all CPUs for each training worker with `resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}` in `ScalingConfig`. This method is fragile because it's tied to node shapes. Ray Data also doesn't properly exclude other resources such as object store memory, because the typical configuration takes up only logical CPUs and GPUs.
+
+Instead, use {ref}`subclusters <data_concurrent_execution>` to pin the training dataset to CPU-only nodes. This approach correctly scopes the memory budget to only the nodes where data tasks can run. To set it up, add labels to your worker node configurations and set `label_selector` in two places:
 
 ```python
 import ray
@@ -821,12 +848,12 @@ trainer = TorchTrainer(
 ```
 
 :::{tip}
-Before resorting to isolating Ray Data tasks from training nodes, consider offloading that heavy work from training workers to the data pipeline instead: {ref}`scale out expensive collation <scaling_collation_functions>` and use {ref}`map_batches-based shuffling <map_batches_shuffle>` in place of large local shuffle buffers. These reduce CPU pressure on training workers and often eliminate the need for node isolation entirely.
+Before you isolate Ray Data tasks from training nodes, try offloading the heavy work from training workers to the data pipeline. {ref}`Scale out expensive collation <scaling_collation_functions>`, and use {ref}`map_batches-based shuffling <map_batches_shuffle>` instead of large local shuffle buffers. These changes reduce CPU pressure on training workers and often eliminate the need for node isolation.
 :::
 
-See {ref}`data_performance_tips` for more info on how to tune Ray Data.
+For details on tuning Ray Data, see {ref}`data_performance_tips`.
 
 ## More data ingest guides
 
-- {ref}`Weighted dataset mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
-- {ref}`Scaling out expensive collate functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.
+- {ref}`Weighted dataset mixing <mixing_data>`: combine multiple datasets with target row ratios for training.
+- {ref}`Scaling out expensive collate functions <scaling_collation_functions>`: scale out expensive collation functions to Ray Data.

@@ -12,11 +12,11 @@ py_test_run_all_notebooks(
     include = ["*.ipynb"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     exclude = [
-        "convert_existing_pytorch_code_to_ray_train.ipynb",  # CPU test, see below
+        "convert-existing-pytorch-code-to-ray-train.ipynb",  # CPU test, see below
         # Already declared as //doc:pytorch_resnet_finetune with identical
         # size and tags. Without this entry the notebook gets a second target
         # here and runs twice on GPU in the same job.
-        "pytorch_resnet_finetune.ipynb",
+        "pytorch-resnet-finetune.ipynb",
     ],
     tags = [
         "exclusive",
@@ -29,7 +29,7 @@ py_test_run_all_notebooks(
 # CPU Tests
 py_test_run_all_notebooks(
     size = "large",
-    include = ["convert_existing_pytorch_code_to_ray_train.ipynb"],
+    include = ["convert-existing-pytorch-code-to-ray-train.ipynb"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     exclude = [],
     tags = [
