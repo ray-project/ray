@@ -92,6 +92,11 @@ OVERVIEW_AND_HEALTH_PANELS = [
                 expr='sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_gram_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_gram_used{{instance=~"$Instance",{global_filters}}})) * 100',
                 legend="GRAM",
             ),
+            # Ascend NPU HBM
+            Target(
+                expr='sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_npu_hbm_available{{instance=~"$Instance",{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}})) * 100',
+                legend="HBM",
+            ),
             # Object Store
             Target(
                 expr='sum(ray_object_store_memory{{instance=~"$Instance",{global_filters}}}) / on() sum(ray_resources{{Name="object_store_memory",instance=~"$Instance",{global_filters}}}) * 100',
