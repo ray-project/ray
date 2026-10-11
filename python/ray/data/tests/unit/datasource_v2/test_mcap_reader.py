@@ -6,6 +6,7 @@ no Ray cluster.
 
 import dataclasses
 import importlib.util
+import json
 import os
 
 import pyarrow as pa
@@ -77,7 +78,7 @@ def test_reader_tables_match_inferred_schema(chunked_file, include_metadata):
     assert table.column("path").to_pylist() == [chunked_file] * CHUNKED_FILE_MESSAGES
     if include_metadata:
         assert pa.types.is_dictionary(table.schema.field("schema_data").type)
-        assert table.column("channel_metadata").to_pylist()[0] == [("origin", "/a")]
+        assert table.column("channel_metadata").to_pylist()[0] == '{"origin":"/a"}'
         assert set(table.column_names) >= {"channel_id", "schema_name"}
     else:
         assert "channel_id" not in table.column_names
@@ -523,7 +524,7 @@ def test_message_types_filter_matches_legacy_semantics(chunked_file):
 
 def rows_built_one_value_at_a_time(path: str) -> pa.Table:
     """The message rows of ``path`` with one Python value per row and column, and
-    ``schema_data`` dictionary-encoded afterwards: what the builder must equal."""
+    the dictionary columns encoded afterwards: what the builder must equal."""
     from mcap.reader import make_reader
 
     schema = message_schema(include_metadata=True, include_row_id=False)
@@ -541,13 +542,18 @@ def rows_built_one_value_at_a_time(path: str) -> pa.Table:
                 "schema_name": record_schema.name if record_schema else None,
                 "schema_encoding": record_schema.encoding if record_schema else None,
                 "schema_data": record_schema.data if record_schema else None,
-                "channel_metadata": list(channel.metadata.items()),
+                "channel_metadata": json.dumps(
+                    channel.metadata,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ),
             }
             for name, value in values.items():
                 columns[name].append(value)
     arrays = [
-        pa.array(columns[f.name], pa.binary()).dictionary_encode()
-        if f.name == "schema_data"
+        pa.array(columns[f.name], f.type.value_type).dictionary_encode()
+        if pa.types.is_dictionary(f.type)
         else pa.array(columns[f.name], type=f.type)
         for f in schema
     ]
@@ -557,8 +563,9 @@ def rows_built_one_value_at_a_time(path: str) -> pa.Table:
 def test_rows_equal_a_row_by_row_build(tmp_path):
     """Rows built from per-channel slots equal rows built one value at a time.
 
-    ``schema_data`` holds each definition once: two schemas with the same bytes
-    share an entry, and the schema-less channel's rows are null.
+    The dictionary columns hold each value once: two schemas with the same bytes
+    share an entry, as do two channels without metadata, and the schema-less
+    channel's ``schema_data`` is null.
     """
     path = os.path.join(tmp_path, "mixed.mcap")
     write_mixed_channels(path)
@@ -570,6 +577,49 @@ def test_rows_equal_a_row_by_row_build(tmp_path):
     (schema_data,) = table.column("schema_data").chunks
     assert schema_data.dictionary.to_pylist() == [SHARED_SCHEMA, b"uint8 c\n"]
     assert schema_data.null_count == table.num_rows // len(MIXED_TOPICS)
+    (channel_metadata,) = table.column("channel_metadata").chunks
+    assert [json.loads(text) for text in channel_metadata.dictionary.to_pylist()] == [
+        {"origin": "/a"},
+        {},
+        {"ключ": "значение"},
+    ]
+
+
+def test_channel_metadata_is_json_stored_once_per_table():
+    """A channel's metadata is stored once per table as JSON text with sorted keys,
+    so each row costs a 4-byte index however large the metadata is."""
+    from mcap.records import Channel, Message
+
+    # ROS 2 Jazzy writes QoS profiles as YAML, plus a type hash.
+    metadata = {
+        "type_description_hash": "RIHS01_" + "7d" * 32,
+        "offered_qos_profiles": "- history: keep_last\n  depth: 10\n" * 10,
+    }
+    channel = Channel(
+        id=1, topic="/imu", message_encoding="cdr", metadata=metadata, schema_id=0
+    )
+    builder = _MessageTableBuilder(
+        columns={"channel_metadata"},
+        include_metadata=True,
+        include_row_id=False,
+        decode_json=False,
+    )
+    num_rows = 1_000
+    for i in range(num_rows):
+        message = Message(
+            channel_id=1, log_time=i, data=b"", publish_time=i, sequence=i
+        )
+        builder.add((None, channel, message, f"/run.mcap#c=0:{i}"))
+
+    column = builder.build().column("channel_metadata")
+
+    (chunk,) = column.chunks
+    (text,) = chunk.dictionary.to_pylist()
+    assert text == json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+    assert json.loads(column[num_rows - 1].as_py()) == metadata
+    # The 4-byte indices plus the text once; a map on every row would take
+    # about 450 bytes a row.
+    assert column.nbytes < 5 * num_rows
 
 
 @pytest.mark.parametrize("include_metadata", [True, False])
