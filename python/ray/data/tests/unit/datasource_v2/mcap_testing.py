@@ -363,9 +363,26 @@ class _SeekLoggingFile:
 
 
 def chunks_read(seek_log: SeekLog, path: str) -> List[int]:
-    """Start offsets of the chunks of ``path`` that were read.
+    """Start offsets of the reads of chunk records in ``path``, in order.
 
-    A chunk record is read in one read from its start offset.
+    Each read starts at a chunk record and fetches that chunk, or a run of
+    chunks fetched together (``mcap_io.read_chunks``).
     """
     starts = {c.chunk_start_offset for c in summary_of(path).chunk_indexes}
     return [offset for offset in seek_log.seeks[path] if offset in starts]
+
+
+def record_parsed_chunks(monkeypatch) -> List[int]:
+    """Record the offset of every chunk the reader parses out of its reads."""
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_chunks
+
+    real_read_chunks = mcap_chunks.read_chunks
+    offsets: List[int] = []
+
+    def read_chunks(f, chunk_indexes, reads):
+        for chunk_index, chunk in real_read_chunks(f, chunk_indexes, reads):
+            offsets.append(chunk_index.chunk_start_offset)
+            yield chunk_index, chunk
+
+    monkeypatch.setattr(mcap_chunks, "read_chunks", read_chunks)
+    return offsets
