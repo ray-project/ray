@@ -3497,6 +3497,11 @@ def read_mcap(
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
             Defaults to True. When True, includes schema, channel, and message metadata.
+            On the V2 datasource, ``channel_metadata`` holds each channel's
+            metadata map as JSON text with sorted keys, such as ROS 2's
+            ``offered_qos_profiles``; read it with ``json.loads``. It and
+            ``schema_data`` are dictionary-encoded, so a block stores each of a
+            channel's values once.
         log_time_order: Whether each read task returns a file's messages in
             ascending ``log_time`` order. Defaults to True. Messages with equal
             log times keep the order they were written in. If False, messages
