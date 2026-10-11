@@ -13,6 +13,10 @@ import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
+    SelectedMessageReader,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summary
 
 BASE_TIME = 1_000_000_000  # log time of the first message, in nanoseconds
@@ -134,6 +138,52 @@ def write_mcap_without_summary_schemas(path):
         writer.finish()
 
 
+MIXED_TOPICS = ("/a", "/b", "/raw", "/ü")  # channels of ``write_mixed_channels``
+SHARED_SCHEMA = b"float64 x\n" * 30  # the definition /a and /b both use
+
+
+def write_mixed_channels(path, num_messages=40, payload_bytes=100):
+    """Write CDR messages on four channels in turn, a few messages per chunk.
+
+        topic   schema                      metadata
+        /a      A                           {"origin": "/a"}
+        /b      B, same bytes as A          {}
+        /raw    none (schema id 0)          {}
+        /ü      C                           {"ключ": "значение"}
+
+    Message ``i`` has ``payload_bytes`` bytes of value ``i % 256`` and log time
+    ``BASE_TIME + i * STEP``.
+    """
+    from mcap.writer import CompressionType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream,
+            chunk_size=4 * (payload_bytes + 31),
+            compression=CompressionType.ZSTD,
+        )
+        writer.start(profile="ros2", library="ray-test")
+        a = writer.register_schema("pkg/A", "ros2msg", SHARED_SCHEMA)
+        b = writer.register_schema("pkg/B", "ros2msg", SHARED_SCHEMA)
+        c = writer.register_schema("pkg/C", "ros2msg", b"uint8 c\n")
+        channels = [
+            writer.register_channel("/a", "cdr", a, {"origin": "/a"}),
+            writer.register_channel("/b", "cdr", b, {}),
+            writer.register_channel("/raw", "cdr", 0, {}),
+            writer.register_channel("/ü", "cdr", c, {"ключ": "значение"}),
+        ]
+        for i in range(num_messages):
+            log_time = BASE_TIME + i * STEP
+            writer.add_message(
+                channel_id=channels[i % len(channels)],
+                log_time=log_time,
+                publish_time=log_time,
+                data=bytes([i % 256]) * payload_bytes,
+                sequence=i,
+            )
+        writer.finish()
+
+
 def list_manifests(datasource, **kwargs):
     """List ``datasource``'s paths as one ``ListFiles`` task does."""
     indexer = datasource._get_file_indexer()
@@ -163,6 +213,13 @@ def read_all(datasource, *manifests, scanner=None) -> pa.Table:
     tables = [table for manifest in manifests for table in reader.read(manifest)]
     assert tables, "expected at least one table"
     return pa.concat_tables(tables)
+
+
+def selected_messages(path: str):
+    """Every message of the local, indexed file ``path``, as the reader yields them."""
+    reader = SelectedMessageReader(MCAPSelection(), log_time_order=True)
+    with open(path, "rb") as f:
+        yield from reader.iter_chunks(f, path, summary_of(path), None)
 
 
 def summary_of(path: str):

@@ -191,9 +191,11 @@ class MCAPReader(Reader[FileManifest]):
                 self._target_block_size is not None
                 and builder.estimated_bytes >= self._target_block_size
             ):
+                num_rows = builder.num_rows
+                # ``build`` empties the builder, so the yielded table is the
+                # only copy of its rows.
                 yield self._finish(builder.build(), path, unit, rows_before)
-                rows_before += builder.num_rows
-                builder.reset()
+                rows_before += num_rows
         if builder.num_rows > 0:
             yield self._finish(builder.build(), path, unit, rows_before)
 
