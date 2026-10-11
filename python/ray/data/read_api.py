@@ -3391,10 +3391,11 @@ def read_mcap(
             tasks, and small files can share one. Each task returns each of its
             files in order, but tasks finish in any order, so a split file is in
             order only within each task. With
-            ``DataContext.execution_options.preserve_order``, files are not
-            split: each file is read by one task, so it comes out in order from
-            start to end. A file larger than the budget then gets a task of its
-            own and holds that much memory, as the legacy reader does. Files can
+            ``DataContext.execution_options.preserve_order``, a file is cut only
+            where its order holds, so it comes out in order from start to end.
+            Where chunks overlap in time, such as cameras and robot state
+            written to chunks of their own, the overlapping stretch stays in one
+            task, so a file with no clean cut is read by one task. Files can
             come out in a different order than they were listed. A file without
             a chunk index is always read by one task, which holds its selected
             messages in memory to sort them.
