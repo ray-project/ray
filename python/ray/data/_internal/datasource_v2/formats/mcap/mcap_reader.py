@@ -18,6 +18,7 @@ partition and synthesized columns. The other modules read and build the rows:
 - ``mcap_message_rows`` builds message rows.
 """
 
+import itertools
 import logging
 from functools import partial
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
@@ -117,7 +118,8 @@ class MCAPReader(Reader[FileManifest]):
         """Read the files and chunks named by ``input_split``.
 
         All rows that name one file are read together. Files come out in
-        manifest order.
+        manifest order. With ``limit``, reading stops at that many rows: no
+        later message is added to a table and no later chunk or file is read.
         """
         from ray.data.context import DataContext
 
@@ -126,28 +128,29 @@ class MCAPReader(Reader[FileManifest]):
         retried_io_errors = DataContext.get_current().retried_io_errors
         remaining = self._limit
         for path, offsets in _owned_chunks(input_split):
+            if remaining is not None and remaining <= 0:
+                return
             tables = iterate_with_retry(
-                partial(self._read_file, path, offsets),
+                partial(self._read_file, path, offsets, remaining),
                 f"read MCAP file {path}",
                 match=retried_io_errors,
             )
             for table in tables:
                 if remaining is not None:
-                    if remaining <= 0:
-                        return
-                    if table.num_rows > remaining:
-                        table = table.slice(0, remaining)
                     remaining -= table.num_rows
                 yield table
 
     # -- one file ----------------------------------------------------------
 
-    def _read_file(self, path: str, offsets: Optional[Set[int]]) -> Iterator[pa.Table]:
+    def _read_file(
+        self, path: str, offsets: Optional[Set[int]], limit: Optional[int]
+    ) -> Iterator[pa.Table]:
         """Yield the tables of one file, limited to the chunks at ``offsets``.
 
         ``offsets`` is ``None`` for a whole-file row, which means every chunk. A
         file without a chunk index is scanned linearly, through a read buffer of
-        ``DataContext.streaming_read_buffer_size`` bytes.
+        ``DataContext.streaming_read_buffer_size`` bytes. At most ``limit`` rows
+        are yielded.
         """
         from ray.data.context import DataContext
 
@@ -161,14 +164,18 @@ class MCAPReader(Reader[FileManifest]):
                 )
             else:
                 messages = self._message_reader.iter_chunks(f, path, summary, offsets)
-            yield from self._tables(messages, path, offsets)
+            yield from self._tables(itertools.islice(messages, limit), path, offsets)
 
     # -- rows to tables ----------------------------------------------------
 
     def _tables(
         self, messages: Iterator[_Selected], path: str, offsets: Optional[Set[int]]
     ) -> Iterator[pa.Table]:
-        """Build tables of about ``target_block_size`` bytes from the messages."""
+        """Build tables of about ``target_block_size`` bytes from the messages.
+
+        Messages are pulled one at a time, so a chunk is read only once its
+        first message is the next one needed.
+        """
         # Every table reports one read unit: the file for a whole-file read, else
         # the task's first chunk. Each chunk has one owner, so a checkpoint that
         # hands the unit back skips only this task's rows. The unit is finished
