@@ -1,8 +1,11 @@
 """Unit tests for the Ascend NPU metric provider."""
 
 import ctypes
+import sys
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+import pytest
 
 from ray.dashboard.modules.reporter.npu_providers import (
     DCMI_LIBRARY_PATH_ENV,
@@ -164,3 +167,7 @@ def test_get_processes_returns_memory_bytes_by_pid():
         1234: {"pid": 1234, "npu_memory_usage": 4096 * MB},
         5678: {"pid": 5678, "npu_memory_usage": 1024 * MB},
     }
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
