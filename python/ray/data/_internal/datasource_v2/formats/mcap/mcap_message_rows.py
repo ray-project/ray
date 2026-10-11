@@ -1,7 +1,9 @@
 """Message rows: their Arrow schema and the builder that turns messages into tables."""
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from array import array
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import pyarrow as pa
 
@@ -11,7 +13,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import ROW_ID_CO
 from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 
 if TYPE_CHECKING:
-    from mcap.records import Channel
+    from mcap.records import Channel, Schema
 
 # Rough in-memory cost of one row beyond its payload: the timestamps, the
 # sequence number, the topic string and the Arrow offsets around them. Only
@@ -29,6 +31,38 @@ METADATA_COLUMNS = (
     "schema_data",
     "channel_metadata",
 )
+
+# The ``int64`` columns a row takes from its message record.
+_MESSAGE_INT_COLUMNS = ("log_time", "publish_time", "sequence")
+
+# A ``binary`` or ``string`` array addresses its values with int32 offsets, so
+# a buffer is sealed into its own chunk before it passes this many bytes.
+_MAX_BUFFER_BYTES = 2**31 - 1
+
+# Columns whose value a row takes from its channel and schema: the column type
+# and how to read the value.
+_CHANNEL_COLUMNS: Dict[
+    str, Tuple[pa.DataType, Callable[["Channel", Optional["Schema"]], Any]]
+] = {
+    "topic": (pa.string(), lambda channel, schema: channel.topic),
+    "channel_id": (pa.int64(), lambda channel, schema: channel.id),
+    "message_encoding": (
+        pa.string(),
+        lambda channel, schema: channel.message_encoding,
+    ),
+    "schema_name": (
+        pa.string(),
+        lambda channel, schema: schema.name if schema else None,
+    ),
+    "schema_encoding": (
+        pa.string(),
+        lambda channel, schema: schema.encoding if schema else None,
+    ),
+    "channel_metadata": (
+        pa.map_(pa.string(), pa.string()),
+        lambda channel, schema: list(channel.metadata.items()),
+    ),
+}
 
 
 def message_schema(
@@ -100,8 +134,70 @@ def decode_payload(channel: "Channel", data: bytes, where: str) -> Any:
         ) from e
 
 
+def _int_array(values: array, type_: pa.DataType) -> pa.Array:
+    """Wrap an ``array.array`` of int32 or int64 values as an Arrow array, no copy."""
+    return pa.Array.from_buffers(type_, len(values), [None, pa.py_buffer(values)])
+
+
+class _VarWidthBuffer:
+    """``binary`` or ``string`` values packed into one buffer as they arrive.
+
+    A value costs its bytes plus an int32 offset, as in the finished array,
+    rather than a Python object. The finished array wraps the buffer without a
+    copy. A buffer is sealed into its own chunk before its offsets overflow.
+    """
+
+    def __init__(self, type_: pa.DataType):
+        self._type = type_
+        self._chunks: List[pa.Array] = []
+        self._start_buffer()
+
+    def append(self, value: bytes) -> None:
+        if len(self._data) + len(value) > _MAX_BUFFER_BYTES:
+            self._seal()
+        self._data += value
+        self._offsets.append(len(self._data))
+
+    def finish(self) -> Union[pa.Array, pa.ChunkedArray]:
+        """The values as one array, or as one chunk per 2 GiB buffer."""
+        self._seal()
+        chunks, self._chunks = self._chunks, []
+        if len(chunks) == 1:
+            return chunks[0]
+        return pa.chunked_array(chunks, type=self._type)
+
+    def _start_buffer(self) -> None:
+        self._data = bytearray()
+        self._offsets = array("i", [0])
+
+    def _seal(self) -> None:
+        count = len(self._offsets) - 1
+        if count:
+            buffers = [None, pa.py_buffer(self._offsets), pa.py_buffer(self._data)]
+            self._chunks.append(pa.Array.from_buffers(self._type, count, buffers))
+        self._start_buffer()
+
+
+@dataclass(frozen=True)
+class _ChannelSlot:
+    """What a row takes from its channel and schema, stored once per table."""
+
+    channel: "Channel"
+    schema: Optional["Schema"]
+    # Position of ``schema.data`` in the table's ``schema_data`` dictionary.
+    schema_index: Optional[int]
+
+
 class _MessageTableBuilder:
-    """Accumulates selected messages column by column and builds Arrow tables."""
+    """Accumulates selected messages column by column and builds Arrow tables.
+
+    A row costs about what it costs in the finished table. Integers go into
+    typed arrays, payloads and row ids into one buffer each, and what a row
+    takes from its channel and schema is stored once per table, in a
+    ``_ChannelSlot``, with one int32 per row pointing at it. ``schema_data`` is
+    built as a dictionary from the slots, so a table holds each definition
+    once.
+    """
 
     def __init__(
         self,
@@ -111,93 +207,128 @@ class _MessageTableBuilder:
         include_row_id: bool,
         decode_json: bool,
     ):
-        # ``None`` means every column. The set decides what is accumulated, so a
-        # pruned read never decodes a JSON payload it will not return.
-        self._want = (
-            (lambda name: True) if columns is None else (lambda name: name in columns)
-        )
-        self._include_metadata = include_metadata
-        self._include_row_id = include_row_id
-        # Fixed by the planned schema: ``data`` is decoded JSON values or bytes
-        # for every row of the dataset, never a mix.
+        """Initialize the builder.
+
+        Args:
+            columns: Columns to build; ``None`` for every column. A pruned read
+                never decodes a JSON payload it will not return.
+            include_metadata: Whether to build the channel and schema columns.
+            include_row_id: Whether to build ``row_id``.
+            decode_json: Whether ``data`` holds decoded JSON values rather than
+                bytes. Fixed by the planned schema for every row of the dataset.
+        """
+        names = list(DATA_COLUMNS)
+        if include_metadata:
+            names += METADATA_COLUMNS
+        if include_row_id:
+            names.append(ROW_ID_COLUMN)
+        # The columns this builder emits, in output order.
+        self._names = [n for n in names if columns is None or n in columns]
         self._decode_json = decode_json
         self.reset()
 
     def reset(self) -> None:
+        """Drop every row added so far."""
         self.num_rows = 0
         self.estimated_bytes = 0
-        self._columns: Dict[str, List[Any]] = {}
+        self._slots: List[_ChannelSlot] = []
+        self._slot_by_records: Dict[Tuple[int, int], int] = {}
+        self._schema_index: Dict[bytes, int] = {}
+        self._slot_ids = array("i")
+        self._ints = {n: array("q") for n in _MESSAGE_INT_COLUMNS if n in self._names}
+        wants_data = "data" in self._names
+        self._json_values: Optional[List[Any]] = (
+            [] if wants_data and self._decode_json else None
+        )
+        self._payloads: Optional[_VarWidthBuffer] = (
+            _VarWidthBuffer(pa.binary())
+            if wants_data and not self._decode_json
+            else None
+        )
+        self._row_ids: Optional[_VarWidthBuffer] = (
+            _VarWidthBuffer(pa.string()) if ROW_ID_COLUMN in self._names else None
+        )
 
     def add(self, selected: _Selected) -> None:
         schema, channel, message, row_id = selected
+        self._slot_ids.append(self._slot(channel, schema))
         self.num_rows += 1
         self.estimated_bytes += len(message.data) + _ROW_OVERHEAD_BYTES
-        put = self._columns.setdefault
-        if self._want("data"):
-            put("data", []).append(
-                decode_payload(channel, message.data, row_id)
-                if self._decode_json
-                else message.data
-            )
-        if self._want("topic"):
-            put("topic", []).append(channel.topic)
-        if self._want("log_time"):
-            put("log_time", []).append(message.log_time)
-        if self._want("publish_time"):
-            put("publish_time", []).append(message.publish_time)
-        if self._want("sequence"):
-            put("sequence", []).append(message.sequence)
-        if self._include_metadata:
-            if self._want("channel_id"):
-                put("channel_id", []).append(message.channel_id)
-            if self._want("message_encoding"):
-                put("message_encoding", []).append(channel.message_encoding)
-            if self._want("schema_name"):
-                put("schema_name", []).append(schema.name if schema else None)
-            if self._want("schema_encoding"):
-                put("schema_encoding", []).append(schema.encoding if schema else None)
-            if self._want("schema_data"):
-                put("schema_data", []).append(schema.data if schema else None)
-            if self._want("channel_metadata"):
-                put("channel_metadata", []).append(list(channel.metadata.items()))
-        if self._include_row_id and self._want(ROW_ID_COLUMN):
-            put(ROW_ID_COLUMN, []).append(row_id)
+        for name, values in self._ints.items():
+            values.append(getattr(message, name))
+        if self._payloads is not None:
+            self._payloads.append(message.data)
+        elif self._json_values is not None:
+            self._json_values.append(decode_payload(channel, message.data, row_id))
+        if self._row_ids is not None:
+            self._row_ids.append(row_id.encode())
 
     def build(self) -> pa.Table:
-        n = self.num_rows
-        cols = self._columns
-        arrays: Dict[str, pa.Array] = {}
-        if "data" in cols:
-            if self._decode_json:
-                # Ray's converter infers a struct from the decoded values.
-                # Blocks whose structs differ are unified downstream with nulls.
-                arrays["data"] = convert_to_pyarrow_array(cols["data"], "data")
-            else:
-                arrays["data"] = pa.array(cols["data"], type=pa.binary())
-        for name, type_ in (
-            ("topic", pa.string()),
-            ("log_time", pa.int64()),
-            ("publish_time", pa.int64()),
-            ("sequence", pa.int64()),
-            ("channel_id", pa.int64()),
-            ("message_encoding", pa.string()),
-            ("schema_name", pa.string()),
-            ("schema_encoding", pa.string()),
-        ):
-            if name in cols:
-                arrays[name] = pa.array(cols[name], type=type_)
-        if "schema_data" in cols:
-            arrays["schema_data"] = pa.array(
-                cols["schema_data"], type=pa.binary()
-            ).dictionary_encode()
-        if "channel_metadata" in cols:
-            arrays["channel_metadata"] = pa.array(
-                cols["channel_metadata"], type=pa.map_(pa.string(), pa.string())
-            )
-        if ROW_ID_COLUMN in cols:
-            arrays[ROW_ID_COLUMN] = pa.array(cols[ROW_ID_COLUMN], type=pa.string())
+        """Build a table of the rows added so far, and empty the builder.
+
+        The builder lets go of the rows before the table is returned, so a
+        caller that yields the table does not also hold what it was built from.
+        """
+        num_rows = self.num_rows
+        slot_ids = _int_array(self._slot_ids, pa.int32())
+        arrays = {name: self._column(name, slot_ids) for name in self._names}
+        self.reset()
         if not arrays:
             # Every column was pruned, as for ``count()``. A stub column keeps
             # the row count, as in ``FileReader``.
-            return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(n)})
+            return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
         return pa.table(arrays)
+
+    def _slot(self, channel: "Channel", schema: Optional["Schema"]) -> int:
+        """The index of the slot for ``channel`` and ``schema``, added on first use."""
+        # Keyed by identity: the slot holds both records, so neither id is
+        # reused while the builder lives.
+        key = (id(channel), id(schema))
+        slot = self._slot_by_records.get(key)
+        if slot is None:
+            slot = len(self._slots)
+            self._slots.append(self._new_slot(channel, schema))
+            self._slot_by_records[key] = slot
+        return slot
+
+    def _new_slot(self, channel: "Channel", schema: Optional["Schema"]) -> _ChannelSlot:
+        schema_index = None
+        if "schema_data" in self._names and schema is not None:
+            schema_index = self._schema_index.get(schema.data)
+            if schema_index is None:
+                schema_index = len(self._schema_index)
+                self._schema_index[schema.data] = schema_index
+        return _ChannelSlot(channel, schema, schema_index)
+
+    def _column(
+        self, name: str, slot_ids: pa.Array
+    ) -> Union[pa.Array, pa.ChunkedArray]:
+        """Build one column of the table."""
+        if name in _CHANNEL_COLUMNS:
+            type_, value_of = _CHANNEL_COLUMNS[name]
+            values = [value_of(s.channel, s.schema) for s in self._slots]
+            return pa.array(values, type=type_).take(slot_ids)
+        if name == "schema_data":
+            return self._schema_data(slot_ids)
+        if name in self._ints:
+            return _int_array(self._ints[name], pa.int64())
+        if name == ROW_ID_COLUMN:
+            assert self._row_ids is not None
+            return self._row_ids.finish()
+        if self._json_values is not None:
+            # Ray's converter infers a struct from the decoded values.
+            # Blocks whose structs differ are unified downstream with nulls.
+            return convert_to_pyarrow_array(self._json_values, "data")
+        assert self._payloads is not None
+        return self._payloads.finish()
+
+    def _schema_data(self, slot_ids: pa.Array) -> pa.DictionaryArray:
+        """``schema_data`` as a dictionary holding each definition once.
+
+        Slots are numbered in order of first use, so the dictionary lists the
+        definitions in order of first appearance, as ``dictionary_encode`` does.
+        """
+        per_slot = [s.schema_index for s in self._slots]
+        indices = pa.array(per_slot, type=pa.int32()).take(slot_ids)
+        dictionary = pa.array(list(self._schema_index), type=pa.binary())
+        return pa.DictionaryArray.from_arrays(indices, dictionary)

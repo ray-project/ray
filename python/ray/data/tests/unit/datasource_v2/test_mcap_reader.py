@@ -11,8 +11,13 @@ import os
 import pyarrow as pa
 import pytest
 
+from ray.data._internal.datasource_v2.formats.mcap import mcap_message_rows
 from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
     MCAPDatasourceV2,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
+    _MessageTableBuilder,
+    message_schema,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     ROW_ID_COLUMN,
@@ -21,16 +26,22 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
+    BASE_TIME,
     CHUNKED_FILE_MESSAGES,
+    MIXED_TOPICS,
+    SHARED_SCHEMA,
+    STEP,
     infer_schema,
     list_manifests,
     mixed_encoding_messages,
     read_all,
     round_robin_messages,
     scanner_for,
+    selected_messages,
     summary_of,
     write_cut_short,
     write_mcap,
+    write_mixed_channels,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -301,6 +312,142 @@ def test_message_types_filter_matches_legacy_semantics(chunked_file):
     selection = MCAPSelection.create(["/a"], None, {"test_schema"})
     selected = selection.selected_channel_ids(summary.channels, summary.schemas)
     assert {summary.channels[cid].topic for cid in selected} == {"/a"}
+
+
+def rows_built_one_value_at_a_time(path: str) -> pa.Table:
+    """The message rows of ``path`` with one Python value per row and column, and
+    ``schema_data`` dictionary-encoded afterwards: what the builder must equal."""
+    from mcap.reader import make_reader
+
+    schema = message_schema(include_metadata=True, include_row_id=False)
+    columns = {name: [] for name in schema.names}
+    with open(path, "rb") as f:
+        for record_schema, channel, message in make_reader(f).iter_messages():
+            values = {
+                "data": message.data,
+                "topic": channel.topic,
+                "log_time": message.log_time,
+                "publish_time": message.publish_time,
+                "sequence": message.sequence,
+                "channel_id": message.channel_id,
+                "message_encoding": channel.message_encoding,
+                "schema_name": record_schema.name if record_schema else None,
+                "schema_encoding": record_schema.encoding if record_schema else None,
+                "schema_data": record_schema.data if record_schema else None,
+                "channel_metadata": list(channel.metadata.items()),
+            }
+            for name, value in values.items():
+                columns[name].append(value)
+    arrays = [
+        pa.array(columns[f.name], pa.binary()).dictionary_encode()
+        if f.name == "schema_data"
+        else pa.array(columns[f.name], type=f.type)
+        for f in schema
+    ]
+    return pa.Table.from_arrays(arrays, schema=schema)
+
+
+def test_rows_equal_a_row_by_row_build(tmp_path):
+    """Rows built from per-channel slots equal rows built one value at a time.
+
+    ``schema_data`` holds each definition once: two schemas with the same bytes
+    share an entry, and the schema-less channel's rows are null.
+    """
+    path = os.path.join(tmp_path, "mixed.mcap")
+    write_mixed_channels(path)
+    datasource = MCAPDatasourceV2([path])
+
+    table = read_all(datasource, *list_manifests(datasource))
+
+    assert table.equals(rows_built_one_value_at_a_time(path))
+    (schema_data,) = table.column("schema_data").chunks
+    assert schema_data.dictionary.to_pylist() == [SHARED_SCHEMA, b"uint8 c\n"]
+    assert schema_data.null_count == table.num_rows // len(MIXED_TOPICS)
+
+
+def test_builder_holds_rows_compactly():
+    """Accumulated rows cost about their payload and ``row_id``, not a Python object
+    per value: rows of 100-byte payloads and 2 KB schemas stay under 230 bytes."""
+    import tracemalloc
+
+    from mcap.records import Channel, Message, Schema
+
+    schema = Schema(
+        id=1, name="sensor_msgs/msg/Imu", encoding="ros2msg", data=b"x" * 2048
+    )
+    channel = Channel(
+        id=1,
+        topic="/imu",
+        message_encoding="cdr",
+        metadata={"offered_qos_profiles": "q" * 400},
+        schema_id=1,
+    )
+    builder = _MessageTableBuilder(
+        columns=None, include_metadata=True, include_row_id=True, decode_json=False
+    )
+    num_rows = 20_000
+
+    tracemalloc.start()
+    try:
+        start = tracemalloc.get_traced_memory()[0]
+        for i in range(num_rows):
+            # A fresh record per row, as reading a chunk makes.
+            log_time = BASE_TIME + i * STEP
+            message = Message(
+                channel_id=1,
+                log_time=log_time,
+                data=bytes([i % 256]) * 100,
+                publish_time=log_time + 1,
+                sequence=i,
+            )
+            builder.add((schema, channel, message, f"/data/run.mcap#c=0:{i}"))
+        per_row = (tracemalloc.get_traced_memory()[0] - start) / num_rows
+    finally:
+        tracemalloc.stop()
+
+    # 104 for the payload, about 28 for row_id, 24 for the times and sequence, 4
+    # for the channel slot, plus array over-allocation.
+    assert per_row < 230
+
+
+def test_build_empties_the_builder(chunked_file):
+    """``build`` leaves the builder empty, so the next table holds only the rows
+    added after it."""
+    builder = _MessageTableBuilder(
+        columns=None, include_metadata=True, include_row_id=True, decode_json=True
+    )
+    messages = list(selected_messages(chunked_file))
+    for selected in messages[:4]:
+        builder.add(selected)
+    first = builder.build()
+    assert (builder.num_rows, builder.estimated_bytes) == (0, 0)
+
+    for selected in messages[4:]:
+        builder.add(selected)
+    second = builder.build()
+
+    assert first.column("log_time").to_pylist() == [
+        BASE_TIME + i * STEP for i in range(4)
+    ]
+    assert second.num_rows == CHUNKED_FILE_MESSAGES - 4
+    expected_ids = [row_id for _, _, _, row_id in messages[4:]]
+    assert second.column(ROW_ID_COLUMN).to_pylist() == expected_ids
+
+
+def test_payload_buffer_starts_a_chunk_before_its_offsets_overflow(monkeypatch):
+    """A ``binary`` buffer is sealed into its own chunk before its int32 offsets
+    would overflow, and the chunks keep the values in order."""
+    # A 10-byte limit stands in for 2 GiB.
+    monkeypatch.setattr(mcap_message_rows, "_MAX_BUFFER_BYTES", 10)
+    values = [b"abcd", b"efgh", b"ijk", b"", b"lmnopqrstu", b"v"]
+    buffer = mcap_message_rows._VarWidthBuffer(pa.binary())
+    for value in values:
+        buffer.append(value)
+
+    column = buffer.finish()
+
+    assert column.to_pylist() == values
+    assert [len(chunk) for chunk in column.chunks] == [2, 2, 1, 1]
 
 
 if __name__ == "__main__":
