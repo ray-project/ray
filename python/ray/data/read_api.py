@@ -3285,7 +3285,10 @@ def read_mcap(
     Each row is one message. The ``data`` column holds decoded JSON values when
     every selected topic is JSON-encoded, and the raw payload bytes otherwise.
     To decode the JSON topics of a recording that also has other encodings,
-    select them with ``topics`` or ``message_types``.
+    select them with ``topics`` or ``message_types``. JSON values are typed from
+    the values each read task holds: a field that only some files have is null
+    in the other rows, and a field whose type differs between files, such as a
+    number in one and a string in another, fails where their rows are combined.
 
     Examples:
         :noindex:
