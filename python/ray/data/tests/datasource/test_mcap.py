@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import logging
 import os
 import re
 
@@ -316,9 +317,12 @@ def test_read_mcap_nonexistent_file(ray_start_regular_shared):
 
 @pytest.mark.parametrize("override_num_blocks", [1, 2])
 def test_read_mcap_override_num_blocks(
-    ray_start_regular_shared, tmp_path, override_num_blocks
+    ray_start_regular_shared, tmp_path, override_num_blocks, datasource_v2, caplog
 ):
-    """Test override_num_blocks parameter."""
+    """A read with ``override_num_blocks`` still returns every row.
+
+    The V2 datasource sizes read tasks by bytes, so it ignores the setting and warns.
+    """
     path = os.path.join(tmp_path, "blocks_test.mcap")
     messages = [
         {
@@ -330,12 +334,20 @@ def test_read_mcap_override_num_blocks(
     ]
     create_test_mcap_file(path, messages)
 
-    ds = ray.data.read_mcap(path, override_num_blocks=override_num_blocks)
+    # Ray's loggers do not propagate to the root logger caplog listens on.
+    read_api_logger = logging.getLogger("ray.data.read_api")
+    read_api_logger.addHandler(caplog.handler)
+    try:
+        ds = ray.data.read_mcap(path, override_num_blocks=override_num_blocks)
+    finally:
+        read_api_logger.removeHandler(caplog.handler)
 
-    # Should still read all the data
     assert ds.count() == 3
-    rows = ds.take_all()
-    assert len(rows) == 3
+    assert len(ds.take_all()) == 3
+    warned = any(
+        "ignores `override_num_blocks`" in record.message for record in caplog.records
+    )
+    assert warned == datasource_v2
 
 
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
