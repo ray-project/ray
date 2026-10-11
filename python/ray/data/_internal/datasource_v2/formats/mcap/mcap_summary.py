@@ -10,6 +10,7 @@ of many files concurrently, with retries.
 Format specification: https://mcap.dev/spec
 """
 
+import math
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import (
@@ -36,6 +37,16 @@ if TYPE_CHECKING:
     from mcap.summary import Summary
 
 _T = TypeVar("_T")
+
+# Peak memory of reading a chunk, as a multiple of the bytes its rows take as
+# tables: the table being built plus the chunk being decompressed. Reads of one
+# 128 MiB bin peaked at 1.08 to 1.16 times their tables.
+_READ_PEAK_FACTOR = 1.2
+
+# A ``MessageIndex`` record after a chunk: opcode (1), length (8), channel id
+# (2) and entries length (4), then a log time and an offset (16) per message.
+_MESSAGE_INDEX_HEADER_BYTES = 15
+_MESSAGE_INDEX_ENTRY_BYTES = 16
 
 # Summaries read concurrently within one listing task. A summary read is a few
 # small ranged requests, so it is latency-bound on remote storage.
@@ -127,11 +138,16 @@ def estimate_chunk_rows(
 ) -> int:
     """Estimate how many messages a chunk holds.
 
-    A chunk index records sizes but no message count. The file's count from
-    ``Statistics`` is split across chunks in proportion to uncompressed size.
-    The listing row marks the estimate inexact (``fully_matched=False``), so a
-    pushed-down limit never relies on it.
+    The chunk's message indexes hold 16 bytes per message, so their length
+    gives the count of every channel. A file written without them has the count
+    from ``Statistics`` split across chunks in proportion to uncompressed size.
+    The listing row marks the count inexact (``fully_matched=False``), since it
+    includes unselected channels, so a pushed-down limit never relies on it.
     """
+    channels = len(chunk_index.message_index_offsets)
+    indexed = chunk_index.message_index_length - _MESSAGE_INDEX_HEADER_BYTES * channels
+    if channels and indexed > 0:
+        return indexed // _MESSAGE_INDEX_ENTRY_BYTES
     if (
         statistics is None
         or statistics.message_count == 0
@@ -146,16 +162,22 @@ def chunk_run(
     chunk_index: "ChunkIndex",
     statistics: Optional["Statistics"],
     total_uncompressed_size: int,
+    row_bytes: int,
 ) -> FileChunk:
     """Build the listing row for one chunk.
 
-    ``size_bytes`` is the chunk's uncompressed size, which is what a task holds
-    in memory to read it and what the partitioner budgets on. A chunk that
-    records no size counts as one byte.
+    ``size_bytes`` estimates the peak memory of reading the chunk, which is
+    what the partitioner budgets on: ``_READ_PEAK_FACTOR`` times the bytes its
+    rows take as tables. Those are the chunk's uncompressed records plus
+    ``row_bytes`` per message for the columns a row adds (see
+    ``MessageRowLayout.row_bytes``). A chunk that records no size counts as one
+    byte.
     """
+    num_rows = estimate_chunk_rows(chunk_index, statistics, total_uncompressed_size)
+    table_bytes = chunk_index.uncompressed_size + num_rows * row_bytes
     return FileChunk(
         unit_ids=(chunk_index.chunk_start_offset,),
-        num_rows=estimate_chunk_rows(chunk_index, statistics, total_uncompressed_size),
-        size_bytes=max(chunk_index.uncompressed_size, 1),
+        num_rows=num_rows,
+        size_bytes=max(math.ceil(_READ_PEAK_FACTOR * table_bytes), 1),
         fully_matched=False,
     )

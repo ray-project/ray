@@ -3,9 +3,10 @@
 ``MCAPSummaryIndexer`` walks the paths like ``NonSamplingFileIndexer``, then
 reads each file's summary and emits one manifest row per chunk that can hold a
 selected message. The partitioner (``OnlineBinPacker``) groups those rows into
-read tasks by uncompressed bytes. A large recording is then read by many tasks,
-and a small one shares a task with its neighbours. A file whose summary shows
-it cannot match the selection is dropped before any payload is read.
+read tasks by the memory each chunk is estimated to need (``chunk_run``). A
+large recording is then read by many tasks, and a small one shares a task with
+its neighbours. A file whose summary shows it cannot match the selection is
+dropped before any payload is read.
 
 A file whose summary is missing, has no chunk index or lists no channels is
 listed as one whole-file row.
@@ -31,6 +32,9 @@ from typing import (
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
+    MessageRowLayout,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
@@ -75,6 +79,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         selection: MCAPSelection,
         ignore_missing_paths: bool,
         read_task_bytes: int,
+        row_layout: MessageRowLayout = MessageRowLayout(),
         skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
@@ -90,6 +95,8 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         # The partitioner's budget per read task, which the row of an unreadable
         # file weighs (see the module docstring).
         self._read_task_bytes = read_task_bytes
+        # The columns a row carries, which size each chunk's listing row.
+        self._row_layout = row_layout
         self._io_concurrency = (
             io_concurrency
             if io_concurrency is not None
@@ -180,7 +187,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         """The listing rows of one file, or ``None`` when it cannot match.
 
         One row per chunk that may hold a selected message, carrying the chunk's
-        byte offset as its unit id and its uncompressed size as its weight. A
+        byte offset as its unit id and its estimated read memory as its weight. A
         file whose summary is missing, has no chunk index or lists no channels
         is one whole-file row, since nothing can be pruned or split.
         """
@@ -204,8 +211,11 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             return None
 
         total_uncompressed = sum(c.uncompressed_size for c in summary.chunk_indexes)
+        row_bytes = self._row_layout.row_bytes(
+            path, (summary.channels[c] for c in selected), summary.schemas
+        )
         runs = [
-            chunk_run(chunk_index, summary.statistics, total_uncompressed)
+            chunk_run(chunk_index, summary.statistics, total_uncompressed, row_bytes)
             for chunk_index in summary.chunk_indexes
             if self._selection.chunk_may_match(chunk_index, selected)
             and chunk_unit_id(path, chunk_index.chunk_start_offset)
