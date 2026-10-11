@@ -481,22 +481,28 @@ cdef class InnerGcsClient:
         }
 
     def get_all_available_resources(
-        self, timeout: Optional[int | float] = None
+        self,
+        timeout: Optional[int | float] = None,
+        include_implicit_resources: bool = False,
     ) -> Dict[str, Dict[str, float]]:
         """Get available resources of all alive nodes from GCS.
 
         Returns a map from hex node ID to a map of resource name to available
-        amount. Implicit resources and resources at their default value are
-        omitted.
+        amount. Resources at their default value are omitted. Implicit resources
+        are omitted unless include_implicit_resources is True, in which case the
+        ones in use are returned.
         """
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef c_bool c_include_implicit_resources = include_implicit_resources
         cdef CGetAllAvailableResourcesReply c_reply
         cdef c_string serialized_reply
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .NodeResources()
-                .GetAllAvailableResources(timeout_ms, c_reply)
+                .GetAllAvailableResources(
+                    timeout_ms, c_include_implicit_resources, c_reply
+                )
             )
             serialized_reply = c_reply.SerializeAsString()
 

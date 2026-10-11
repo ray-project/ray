@@ -529,8 +529,11 @@ void NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
 }
 
 Status NodeResourceInfoAccessor::GetAllAvailableResources(
-    int64_t timeout_ms, rpc::GetAllAvailableResourcesReply &reply) {
+    int64_t timeout_ms,
+    bool include_implicit_resources,
+    rpc::GetAllAvailableResourcesReply &reply) {
   rpc::GetAllAvailableResourcesRequest request;
+  request.set_include_implicit_resources(include_implicit_resources);
   return client_impl_->GetGcsRpcClient().SyncGetAllAvailableResources(
       std::move(request), &reply, timeout_ms);
 }

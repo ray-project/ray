@@ -105,7 +105,7 @@ class ClusterNodeInfoCache(ABC):
         """Fetch available resources per alive node via get_all_available_resources()."""
         try:
             available_resources = self._gcs_client.get_all_available_resources(
-                timeout=RAY_GCS_RPC_TIMEOUT_S
+                timeout=RAY_GCS_RPC_TIMEOUT_S, include_implicit_resources=True
             )
         except Exception:
             logger.warning(

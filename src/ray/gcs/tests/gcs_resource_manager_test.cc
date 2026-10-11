@@ -21,6 +21,7 @@
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/constants.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/fake_gcs_node_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
@@ -263,6 +264,40 @@ TEST_F(GcsResourceManagerTest, DrainStateImmediatelyVisibleToScheduler) {
       cluster_resource_manager_.GetNodeResources(scheduling_node_id);
   ASSERT_EQ(node_resources.draining_deadline_timestamp_ms,
             drain_request->deadline_timestamp_ms());
+}
+
+TEST_F(GcsResourceManagerTest, TestGetAllAvailableResourcesImplicitResources) {
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 4});
+  gcs_resource_manager_->OnNodeAdd(*node);
+  auto node_id = NodeID::FromBinary(node->node_id());
+
+  // One implicit resource is half used and another is fully used. An unused
+  // implicit resource is never reported since its default is 1.0.
+  const std::string half_used = std::string(kImplicitResourcePrefix) + "app:a";
+  const std::string full = std::string(kImplicitResourcePrefix) + "app:b";
+  UpdateFromResourceViewSync(
+      node_id,
+      /*available_resources=*/{{"CPU", 2}, {half_used, 0.5}, {full, 0}},
+      /*total_resources=*/{{"CPU", 4}});
+
+  auto get_available = [this](bool include_implicit_resources) {
+    rpc::GetAllAvailableResourcesRequest request;
+    request.set_include_implicit_resources(include_implicit_resources);
+    rpc::GetAllAvailableResourcesReply reply;
+    gcs_resource_manager_->HandleGetAllAvailableResources(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+    EXPECT_EQ(reply.resources_list_size(), 1);
+    const auto &available = reply.resources_list(0).resources_available();
+    return absl::flat_hash_map<std::string, double>(available.begin(), available.end());
+  };
+
+  // By default implicit resources are hidden.
+  ASSERT_EQ(get_available(false), (absl::flat_hash_map<std::string, double>{{"CPU", 2}}));
+  // With the flag, implicit resources in use are returned.
+  ASSERT_EQ(get_available(true),
+            (absl::flat_hash_map<std::string, double>{
+                {"CPU", 2}, {half_used, 0.5}, {full, 0}}));
 }
 
 }  // namespace ray

@@ -525,6 +525,7 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllAvailableResources(
             int64_t timeout_ms,
+            c_bool include_implicit_resources,
             CGetAllAvailableResourcesReply &reply)
 
         CRayStatus GetDrainingNodes(

@@ -22,7 +22,8 @@ class FakeGcsClient:
     def get_all_node_info(self, timeout):
         return self.nodes
 
-    def get_all_available_resources(self, timeout):
+    def get_all_available_resources(self, timeout, include_implicit_resources=False):
+        self.include_implicit_resources = include_implicit_resources
         if self.raise_on_get_all_available_resources:
             raise RuntimeError("failed to get available resources")
         return self.available_resources
@@ -180,24 +181,32 @@ def test_get_available_resources_per_node(ray_start_cluster):
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
     cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
 
-    def check(expected_worker_cpu):
+    # Same kind of resource Serve uses to enforce max_replicas_per_node.
+    implicit_resource = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}app:deployment"
+
+    def check(expected_worker_cpu, expected_worker_implicit):
         cluster_node_info_cache.update()
         available = cluster_node_info_cache.get_available_resources_per_node()
         assert set(available) == {head_node_id, worker_node_id}
         assert available[head_node_id]["head"] == 1
         assert available[worker_node_id].get("CPU", 0) == expected_worker_cpu
+        # Unused implicit resources are omitted (1.0 available); used ones are
+        # included so the scheduler sees slots held by replicas it doesn't track.
+        assert (
+            available[worker_node_id].get(implicit_resource) == expected_worker_implicit
+        )
         return True
 
-    wait_for_condition(check, expected_worker_cpu=2)
+    wait_for_condition(check, expected_worker_cpu=2, expected_worker_implicit=None)
 
-    @ray.remote(num_cpus=2, resources={"worker": 0.1})
+    @ray.remote(num_cpus=2, resources={"worker": 0.1, implicit_resource: 0.5})
     class Actor:
         def ready(self):
             pass
 
     actor = Actor.remote()
     ray.get(actor.ready.remote())
-    wait_for_condition(check, expected_worker_cpu=0)
+    wait_for_condition(check, expected_worker_cpu=0, expected_worker_implicit=0.5)
 
 
 def test_get_available_resources_per_node_filters_dead_nodes():

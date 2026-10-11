@@ -333,9 +333,12 @@ class NodeResourceInfoAccessor {
   /// Get available resources of all nodes from GCS synchronously.
   ///
   /// \param timeout_ms -1 means infinite.
+  /// \param include_implicit_resources Whether to also return implicit resources
+  /// that are in use.
   /// \param reply The available resources of all nodes returned by GCS.
   /// \return Status
   virtual Status GetAllAvailableResources(int64_t timeout_ms,
+                                          bool include_implicit_resources,
                                           rpc::GetAllAvailableResourcesReply &reply);
 
   /// Get total resources of all nodes from GCS asynchronously.

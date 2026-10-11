@@ -90,11 +90,20 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(node_resources_entry.first.Binary());
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    for (const auto &resource_id : node_resources.GetAvailableResourceIds()) {
-      const auto &resource_name = resource_id.Binary();
-      const auto resource_value = node_resources.GetAvailableSum(resource_id);
-      resource.mutable_resources_available()->insert(
-          {resource_name, resource_value.Double()});
+    if (request.include_implicit_resources()) {
+      // Implicit resources are only stored when they differ from their default
+      // of 1.0, so this returns just the ones in use.
+      for (const auto &[resource_name, resource_value] :
+           node_resources.GetAvailableResourceMap()) {
+        resource.mutable_resources_available()->insert({resource_name, resource_value});
+      }
+    } else {
+      for (const auto &resource_id : node_resources.GetAvailableResourceIds()) {
+        const auto &resource_name = resource_id.Binary();
+        const auto resource_value = node_resources.GetAvailableSum(resource_id);
+        resource.mutable_resources_available()->insert(
+            {resource_name, resource_value.Double()});
+      }
     }
     reply->add_resources_list()->CopyFrom(resource);
   }
