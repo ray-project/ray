@@ -5,7 +5,8 @@ set. Listing reads each file's summary, drops files that cannot match the
 selection, and emits one row per chunk (``MCAPSummaryIndexer``), weighted by
 the memory reading it is estimated to need. ``OnlineBinPacker`` groups the
 chunks into read tasks of about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that
-estimate (128 MiB by default).
+estimate (128 MiB by default), and ``TaskSummaryPartitioner`` adds to each task
+the summary records it needs.
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
@@ -47,6 +48,9 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     TimeRange,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
+from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
+    TaskSummaryPartitioner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -174,11 +178,12 @@ class MCAPDatasourceV2(FileDataSourceV2):
             OnlineBinPacker,
         )
 
-        return OnlineBinPacker(
+        packer = OnlineBinPacker(
             max_bin_bytes=_BIN_PACKING_BYTES,
             max_shared_open_bins=_BIN_PACKING_MAX_SHARED_OPEN_BINS,
             requires_global_input=False,
         )
+        return TaskSummaryPartitioner(packer)
 
     @property
     @override

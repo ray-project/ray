@@ -199,17 +199,7 @@ def test_file_without_index_is_one_whole_file_row(tmp_path):
 
 def test_summary_without_channels_is_one_whole_file_row(chunked_file, monkeypatch):
     """A file whose summary lists no channels is listed whole and still read."""
-    from ray.data._internal.datasource_v2.formats.mcap import mcap_summary
-
-    real_read_summary = mcap_summary.read_summary
-
-    def without_channels(filesystem, path):
-        summary = real_read_summary(filesystem, path)
-        assert summary is not None
-        summary.channels = {}
-        return summary
-
-    monkeypatch.setattr(mcap_summary, "read_summary", without_channels)
+    without_summary_records(monkeypatch, "channels")
     datasource = MCAPDatasourceV2([chunked_file], topics=["/a"])
 
     (manifest,) = list_manifests(datasource)
