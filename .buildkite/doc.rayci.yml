@@ -117,6 +117,17 @@ steps:
       - oss
       - doc
 
+  - label: ":book: doc: test MyST eval-rst doctree extension"
+    key: doc_test_myst_eval_rst_doctree
+    instance_type: small
+    commands:
+      - python doc/source/_ext/test_myst_eval_rst_doctree.py
+    depends_on: docbuild
+    job_env: docbuild-py3.11
+    tags:
+      - oss
+      - doc
+
   - label: ":book: doc: linkcheck"
     key: doc_linkcheck
     instance_type: medium
@@ -151,12 +162,11 @@ steps:
       - oss
       - doc_redirects
     commands:
-      - uv tool install anyscale-rtd-redirects==0.2.0
+      - uv tool install anyscale-rtd-redirects==0.3.0
       # The doc_redirects tag selects on doc/redirects/*.yaml, but the commands below
-      # name current.yaml: multiple files compose in the order given, which a glob
-      # can't express. Fail closed if another redirect file appears, so it can't select
-      # this step and then go unvalidated. To add one, name it in both commands below in
-      # compose order, then update this guard.
+      # name only current.yaml: rtd-redirects reads one redirect file per command.
+      # Fail closed if another redirect file appears, so it can't select this step and
+      # then go unvalidated. Add new rules to current.yaml instead of a new file.
       #
       # The guard recurses rather than globbing a single level, because the tag rule
       # matches with fnmatch, whose `*` crosses `/`: doc/redirects/nested/foo.yaml
@@ -210,11 +220,10 @@ steps:
   #
   # Drift and deletion. `apply` converges the project to the file: a live
   # redirect absent from current.yaml is deleted. That's the intended one-write-
-  # path behavior reinforced by the dashboard-edit freeze, but 0.2.0 has no
-  # --no-delete or --accept-drift guard, so a drifted project reconciles hard on
-  # the first automated run. The local-first manual-apply phase exists to shake
-  # that out before this turns on. On failure the step fails but master is not
-  # blocked (the docs already merged); an operator reruns after fixing the cause.
+  # path behavior reinforced by the dashboard-edit freeze, but rtd-redirects has
+  # no --no-delete or --accept-drift guard, so any drift reconciles hard. On
+  # failure the step fails but master is not blocked (the docs already merged);
+  # an operator reruns after fixing the cause.
   - label: ":book: doc: apply redirects"
     key: doc_redirects_apply
     depends_on: forge
@@ -223,12 +232,11 @@ steps:
       - skip-on-premerge
     commands:
       # Same fail-closed guard as the validate step: current.yaml is the only file
-      # the compose order below names. To add another, name it here and in the
-      # apply command in compose order, then update this guard.
+      # the apply command below reads.
       - >
         test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
         { echo "doc/redirects/ holds a .yaml file this step doesn't apply; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
-      - uv tool install anyscale-rtd-redirects==0.2.0
+      - uv tool install anyscale-rtd-redirects==0.3.0
       # Dedicated, least-privilege secret: `oss-ci/rtd-api-token` holds only the
       # anyscale-ray RtD bot token, is read by no other step, and grants no access
       # beyond that one project. Do not fold the token into ci/env/setup_credentials.py's

@@ -13,6 +13,10 @@ ray_cc_library(
         ],
         "//conditions:default": [],
     }),
+    visibility = [
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         ":affinity_with_bundle_scheduling_policy",
         ":bundle_scheduling_policy",
@@ -45,6 +49,12 @@ ray_cc_library(
     name = "cluster_resource_manager",
     srcs = ["cluster_resource_manager.cc"],
     hdrs = ["cluster_resource_manager.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/actor/tests:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+    ],
     deps = [
         ":local_resource_manager",
         "//src/ray/asio:periodical_runner_interface",
@@ -66,6 +76,12 @@ ray_cc_library(
     name = "cluster_resource_scheduler",
     srcs = ["cluster_resource_scheduler.cc"],
     hdrs = ["cluster_resource_scheduler.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/actor/tests:__pkg__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         ":cluster_resource_manager",
         ":composite_scheduling_policy",
@@ -113,6 +129,11 @@ ray_cc_library(
         "cluster_lease_manager.h",
         "scheduler_stats.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__pkg__",
+        "//src/ray/raylet/tests:__pkg__",
+    ],
     deps = [
         ":cluster_lease_manager_interface",
         ":cluster_resource_scheduler",
@@ -139,6 +160,7 @@ ray_cc_library(
 ray_cc_library(
     name = "local_lease_manager_interface",
     hdrs = ["local_lease_manager_interface.h"],
+    visibility = ["//src/ray/raylet:__pkg__"],
     deps = [
         ":scheduler_internal",
         "//src/ray/observability:fake_metric",
@@ -151,6 +173,7 @@ ray_cc_library(
     name = "local_resource_manager",
     srcs = ["local_resource_manager.cc"],
     hdrs = ["local_resource_manager.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/common/scheduling:placement_group_util",
@@ -181,6 +204,7 @@ ray_cc_library(
 ray_cc_library(
     name = "scheduling_options",
     hdrs = ["policy/scheduling_options.h"],
+    visibility = [":__subpackages__"],
     deps = [
         ":scheduling_context",
         "//src/ray/common:ray_config",
@@ -190,6 +214,10 @@ ray_cc_library(
 ray_cc_library(
     name = "scheduling_context",
     hdrs = ["policy/scheduling_context.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:placement_group",
@@ -232,6 +260,7 @@ ray_cc_library(
     name = "composite_scheduling_policy",
     srcs = ["policy/composite_scheduling_policy.cc"],
     hdrs = ["policy/composite_scheduling_policy.h"],
+    visibility = ["//src/ray/raylet/scheduling/policy/tests:__pkg__"],
     deps = [
         ":affinity_with_bundle_scheduling_policy",
         ":bundle_scheduling_policy",
@@ -249,6 +278,7 @@ ray_cc_library(
     name = "hybrid_scheduling_policy",
     srcs = ["policy/hybrid_scheduling_policy.cc"],
     hdrs = ["policy/hybrid_scheduling_policy.h"],
+    visibility = ["//src/ray/raylet/scheduling/policy/tests:__pkg__"],
     deps = [
         ":scheduling_policy",
         "@com_google_absl//absl/random",

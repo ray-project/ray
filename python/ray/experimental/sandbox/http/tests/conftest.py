@@ -243,6 +243,13 @@ def fake_resolver() -> FakeResolver:
     return FakeResolver()
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_api_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep a token exported in the developer's shell out of the tests;
+    the tests that need one set it themselves."""
+    monkeypatch.delenv("RAY_SANDBOX_API_TOKEN", raising=False)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def ensure_runsc():
     """Provision runsc for the integration test, mirroring sandbox/tests."""

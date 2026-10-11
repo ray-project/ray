@@ -450,6 +450,12 @@ SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id"
 # returned by /internal/route.
 SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
+# Original client path forwarded by HAProxy to /internal/route. It identifies
+# the API when different endpoints accept the same request body.
+SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "request-path"
+)
+
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 

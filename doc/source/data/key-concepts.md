@@ -103,8 +103,21 @@ The following example shows how streaming execution works in Ray Data:
 ```python
 import ray
 
+def cpu_function(row):
+    return row
+
+class GPUClass:
+    def __call__(self, row):
+        return row
+
+def cpu_function2(row):
+    return row
+
+def filter_func(row):
+    return True
+
 # Create a dataset with 1K rows
-ds = ray.data.read_parquet(...)
+ds = ray.data.range(1000)
 
 # Define a pipeline of operations
 ds = ds.map(cpu_function, num_cpus=2)

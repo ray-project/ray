@@ -88,7 +88,7 @@ ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple
 
 batch = ds.take_batch(batch_size=2, batch_format="numpy")
 print("Batch:", batch)
-print("Image shape", batch["image"].shape)
+print("Image shape:", batch["image"].shape)
 ```
 
 ```{testoutput}

@@ -230,7 +230,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds = ray.data.range(10).map_batches(fn)
     ds = ds.materialize()
-    block = ray.get(ds.get_internal_block_refs()[0])
+    block = ray.get(next(ds.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_dict"].iloc[0] == {"data": 0}
@@ -242,7 +242,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds2 = ray.data.range(10).map_batches(fn2)
     ds2 = ds2.materialize()
-    block = ray.get(ds2.get_internal_block_refs()[0])
+    block = ray.get(next(ds2.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_none"].iloc[0] is None
@@ -472,6 +472,54 @@ def test_to_pandas_does_not_downcast_out_of_range_floats(
     assert len(df) == 2
     assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
     assert float_value in df["v"].dropna().tolist()
+
+
+def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
+    """`to_pandas()` on an empty dataset must keep the schema's columns.
+
+    Regression test for #59946: an empty Arrow table with columns was converted
+    to a column-less pandas DataFrame because `to_pandas()` builds only from the
+    (zero) batches of an empty dataset and ignored the known schema.
+    """
+    ds = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([], pa.int32())], ["apples"]))]
+    )
+    df = ds.to_pandas()
+    assert list(df.columns) == ["apples"]
+    assert len(df) == 0
+    # The empty-dataset dtype must match what a non-empty dataset of the same
+    # schema produces (routed through the same BlockAccessor conversion).
+    nonempty = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([1], pa.int32())], ["apples"]))]
+    ).to_pandas()
+    assert df["apples"].dtype == nonempty["apples"].dtype
+
+    # Multiple columns are preserved too.
+    ds2 = ray.data.from_arrow_refs(
+        [
+            ray.put(
+                pa.table(
+                    [pa.array([], pa.int32()), pa.array([], pa.string())], ["a", "b"]
+                )
+            )
+        ]
+    )
+    assert list(ds2.to_pandas().columns) == ["a", "b"]
+
+    # Pandas-backed empty datasets preserve columns and dtypes too.
+    pandas_df = pd.DataFrame(
+        {"a": pd.Series([], dtype="int64"), "b": pd.Series([], dtype="float64")}
+    )
+    ds3 = ray.data.from_pandas(pandas_df)
+    df3 = ds3.to_pandas()
+    assert list(df3.columns) == ["a", "b"]
+    assert df3["a"].dtype == np.int64
+    assert df3["b"].dtype == np.float64
+
+    # A dataset with no blocks at all (and hence no schema) still converts
+    # cleanly to an empty, column-less DataFrame.
+    df4 = ray.data.range(0).to_pandas()
+    assert len(df4) == 0
 
 
 @pytest.fixture

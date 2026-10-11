@@ -40,11 +40,9 @@ _DOC_SOURCE = "doc/source/"
 # to run on edits to it.
 _ALLOWED_ONLY_IN_API_PREFIXES = {"apis/"}
 
-# In the doc_api rule but NOT in API_PATH_PREFIXES. Ray Core's api/index.rst
-# toctrees into ray-observability/reference/api.rst, so those pages are part of
-# the Core API surface the check walks even though they live outside
-# ray-core/api/.
-_ALLOWED_ONLY_IN_RULE = {"ray-observability/reference/"}
+# In the doc_api rule but NOT in API_PATH_PREFIXES. Empty: every API reference
+# page the consistency check walks lives under an API_PATH_PREFIXES directory.
+_ALLOWED_ONLY_IN_RULE = set()
 
 # Directories routed to doc_api that are not API reference pages. The doc_api
 # tag covers two populations: the API reference pages (which this test keeps
