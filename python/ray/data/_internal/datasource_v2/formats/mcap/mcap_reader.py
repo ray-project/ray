@@ -183,6 +183,7 @@ class MCAPReader(Reader[FileManifest]):
             include_metadata=self._include_metadata,
             include_row_id=self._include_row_id,
             decode_json=self._decode_json,
+            extra_row_bytes=self._appended_row_bytes(path, unit, wanted),
         )
         rows_before = 0
         for selected in messages:
@@ -198,6 +199,21 @@ class MCAPReader(Reader[FileManifest]):
                 rows_before += num_rows
         if builder.num_rows > 0:
             yield self._finish(builder.build(), path, unit, rows_before)
+
+    def _appended_row_bytes(
+        self, path: str, unit: ReadUnit, wanted: Optional[Set[str]]
+    ) -> int:
+        """Bytes per row of the partition and synthesized columns ``_finish`` adds."""
+        total = 0
+        if self._partition_parser is not None:
+            for name, value in self._partition_parser(path).items():
+                if wanted is None or name in wanted:
+                    total += self._partition_value_array(name, value, 1).nbytes
+        position = ReadUnitPosition(unit=unit, rows_before=0)
+        for column in self._synthesized_columns:
+            if wanted is None or column.name in wanted:
+                total += column.compute(position, 1).nbytes
+        return total
 
     def _finish(
         self, table: pa.Table, path: str, unit: ReadUnit, rows_before: int
