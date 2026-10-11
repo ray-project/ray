@@ -9,8 +9,7 @@ typed from.
 import importlib.util
 import json
 import os
-from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import pyarrow as pa
 import pytest
@@ -31,6 +30,8 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
     STEP,
+    SeekLog,
+    chunks_read,
     infer_schema,
     list_manifests,
     mixed_encoding_messages,
@@ -114,50 +115,6 @@ def infer(
 def struct_of(key: str) -> pa.DataType:
     """The type planned for JSON payloads ``{key: i}``."""
     return pa.struct([(key, pa.int64())])
-
-
-class SeekLog:
-    """A filesystem whose files record, per path, every offset they seek to."""
-
-    def __init__(self):
-        self._filesystem = LocalFileSystem()
-        self.seeks: Dict[str, List[int]] = defaultdict(list)
-
-    def open_input_file(self, path):
-        return _SeekLoggingFile(
-            self._filesystem.open_input_file(path), self.seeks[path]
-        )
-
-
-class _SeekLoggingFile:
-    """A file that appends every absolute seek offset to ``seeks``."""
-
-    def __init__(self, f, seeks: List[int]):
-        self._f = f
-        self._seeks = seeks
-
-    def seek(self, offset, whence=0):
-        if whence == 0:
-            self._seeks.append(offset)
-        return self._f.seek(offset, whence)
-
-    def __getattr__(self, name):
-        return getattr(self._f, name)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc_info):
-        self._f.close()
-
-
-def chunks_read(seek_log: SeekLog, path: str) -> List[int]:
-    """Start offsets of the chunks of ``path`` that were read.
-
-    A chunk record is read in one read from its start offset.
-    """
-    starts = {c.chunk_start_offset for c in summary_of(path).chunk_indexes}
-    return [offset for offset in seek_log.seeks[path] if offset in starts]
 
 
 def count_scans(monkeypatch) -> List[str]:
