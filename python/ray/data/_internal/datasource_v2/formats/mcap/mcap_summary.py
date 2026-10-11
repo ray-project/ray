@@ -46,8 +46,9 @@ _T = TypeVar("_T")
 _R = TypeVar("_R")
 
 # Peak memory of reading a chunk, as a multiple of the bytes its rows take as
-# tables: the table being built plus the chunk being decompressed. Reads of one
-# 128 MiB bin peaked at 1.08 to 1.16 times their tables.
+# tables: the table being built, the chunk being decompressed and the ranged
+# read that fetched it (``mcap_io.ChunkReads``). Reads of one 128 MiB table
+# peaked at 1.14 to 1.20 times their tables.
 _READ_PEAK_FACTOR = 1.2
 
 # A ``MessageIndex`` record after a chunk: opcode (1), length (8), channel id
