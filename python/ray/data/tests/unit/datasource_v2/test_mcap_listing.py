@@ -21,7 +21,10 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     ROW_ID_COLUMN,
     TimeRange,
 )
-from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import chunk_unit_id
+from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
+    _READ_PEAK_FACTOR,
+    chunk_unit_id,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
@@ -36,6 +39,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     write_cut_short,
     write_mcap,
     write_mcap_without_summary_schemas,
+    write_mixed_channels,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -95,7 +99,8 @@ def record_read_back(monkeypatch) -> List[int]:
 
 
 def test_indexer_lists_one_row_per_chunk(chunked_file):
-    """Each chunk is one listing row, carrying its offset and uncompressed size."""
+    """Each chunk is one listing row, carrying its offset, its message count and a
+    size above its uncompressed bytes."""
     datasource = MCAPDatasourceV2([chunked_file])
 
     (manifest,) = list_manifests(datasource)
@@ -104,9 +109,11 @@ def test_indexer_lists_one_row_per_chunk(chunked_file):
     assert len(manifest) == len(summary.chunk_indexes) == CHUNKED_FILE_MESSAGES
     offsets = [unit_ids(md)[0] for md in manifest.file_chunk_metadatas]
     assert offsets == [c.chunk_start_offset for c in summary.chunk_indexes]
-    assert [int(md["size_bytes"]) for md in manifest.file_chunk_metadatas] == [
-        c.uncompressed_size for c in summary.chunk_indexes
-    ]
+    assert [int(md["num_rows"]) for md in manifest.file_chunk_metadatas] == [1] * 9
+    assert all(
+        int(md["size_bytes"]) > chunk.uncompressed_size
+        for md, chunk in zip(manifest.file_chunk_metadatas, summary.chunk_indexes)
+    )
     # Row counts are estimates: never trusted as exact survivor counts.
     assert not any(md["fully_matched"] for md in manifest.file_chunk_metadatas)
     assert all(path == chunked_file for path in manifest.paths)
@@ -351,7 +358,56 @@ def test_unreadable_file_gets_a_read_task_of_its_own(tmp_path):
     )
 
 
-def test_bin_packer_groups_chunks_by_uncompressed_bytes(tmp_path):
+@pytest.mark.parametrize(
+    "include_metadata, include_row_id, include_paths",
+    [(False, False, False), (True, False, False), (True, True, True)],
+)
+def test_listed_sizes_bound_the_table_a_read_builds(
+    tmp_path, include_metadata, include_row_id, include_paths
+):
+    """A chunk's listed size is ``_READ_PEAK_FACTOR`` times a bound on the bytes
+    its rows take as a table, and the bound is tight: a read of the file builds
+    a table between 80% and 100% of it, whichever columns the rows carry."""
+    path = os.path.join(tmp_path, "mixed.mcap")
+    write_mixed_channels(path, num_messages=400, payload_bytes=1000)
+    datasource = MCAPDatasourceV2(
+        [path],
+        include_metadata=include_metadata,
+        include_row_id=include_row_id,
+        include_paths=include_paths,
+    )
+    (manifest,) = list_manifests(datasource)
+
+    table = read_all(datasource, manifest)
+
+    listed = sum(int(md["size_bytes"]) for md in manifest.file_chunk_metadatas)
+    bound = listed / _READ_PEAK_FACTOR
+    assert 0.8 * bound <= table.nbytes <= bound
+
+
+def test_chunk_rows_fall_back_to_statistics_without_message_indexes(tmp_path):
+    """A file with a chunk index but no message indexes splits the statistics'
+    message count across its chunks by size, rounded per chunk."""
+    from mcap.writer import IndexType, Writer
+
+    path = os.path.join(tmp_path, "no_message_index.mcap")
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=1, index_types=IndexType.CHUNK)
+        writer.start(profile="", library="ray-test")
+        channel = writer.register_channel("/a", "cdr", 0)
+        for i in range(6):
+            writer.add_message(channel, log_time=i, data=b"x" * 10, publish_time=i)
+        writer.finish()
+    assert not any(c.message_index_offsets for c in summary_of(path).chunk_indexes)
+
+    (manifest,) = list_manifests(MCAPDatasourceV2([path]))
+
+    rows = [int(md["num_rows"]) for md in manifest.file_chunk_metadatas]
+    assert min(rows) >= 1
+    assert abs(sum(rows) - 6) <= len(rows) // 2
+
+
+def test_bin_packer_groups_chunks_by_their_listed_size(tmp_path):
     """Bins of two chunks' worth of bytes put every chunk of three files in exactly
     one read task."""
     paths = []
