@@ -1,7 +1,7 @@
 import argparse
 import functools
 import uuid
-from typing import Callable
+from typing import Callable, List
 
 from benchmark import Benchmark
 
@@ -30,6 +30,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="Logical memory in bytes to pass to the read.",
+    )
+    parser.add_argument(
+        "--sf",
+        type=int,
+        default=1,
+        help="Scale factor. Reads the input path this many times.",
     )
 
     consume_group = parser.add_mutually_exclusive_group()
@@ -76,7 +82,7 @@ def main(args):
         read_fn = get_read_fn(args)
         consume_fn = get_consume_fn(args)
 
-        ds = read_fn(args.path)
+        ds = read_fn([args.path] * args.sf)
         consume_fn(ds)
 
         # Report arguments for the benchmark.
@@ -93,7 +99,7 @@ def main(args):
     benchmark.write_result()
 
 
-def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
+def get_read_fn(args: argparse.Namespace) -> Callable[[List[str]], ray.data.Dataset]:
     if args.format == "image":
         # FIXME: We specify the mode as a workaround for
         # https://github.com/ray-project/ray/issues/49883.

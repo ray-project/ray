@@ -313,7 +313,15 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         self._total_input_rows += input_meta.num_rows or 0
         self._total_input_bytes += input_meta.size_bytes or 0
-        self._map_blocks_stats.append(input_meta.to_stats())
+        block_stats = input_meta.to_stats()
+        if block_stats.exec_stats is not None:
+            block_stats = dataclasses.replace(
+                block_stats,
+                exec_stats=dataclasses.replace(
+                    block_stats.exec_stats, task_idx=task_idx
+                ),
+            )
+        self._map_blocks_stats.append(block_stats)
 
         self._metrics.on_task_finished(
             task_idx,

@@ -189,5 +189,4 @@ Open your web browser and go to `http://localhost:6006/#profile` to analyze TPU 
 
 Sample output:
 
-![TensorBoard TPU Profiler Overview](../images/jax-tpu-profiler-1.png)
-![TensorBoard TPU Trace View](../images/jax-tpu-profiler-2.png)
+![TensorBoard TPU Profiler Overview](../images/jax-tpu-profiler-1.png) ![TensorBoard TPU Trace View](../images/jax-tpu-profiler-2.png)

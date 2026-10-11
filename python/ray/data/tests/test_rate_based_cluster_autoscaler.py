@@ -696,6 +696,119 @@ def test_fractional_resource_and_high_object_store_utilization_does_not_crash():
     autoscaler.try_trigger_scaling()
 
 
+class _MutableUtilizationGauge(ResourceUtilizationGauge):
+    """A gauge whose reading can be changed mid-test."""
+
+    def __init__(self, utilization: ClusterUtil):
+        self.utilization = utilization
+
+    def observe(self):
+        pass
+
+    def get(self):
+        return self.utilization
+
+
+_HIGH_UTIL = ClusterUtil(cpu=0.9, gpu=0.9, memory=0.9, object_store_memory=0.9)
+_LOW_UTIL = ClusterUtil(cpu=0.0, gpu=0.0, memory=0.0, object_store_memory=0.0)
+
+
+def _make_release_delay_autoscaler(gauge, get_time) -> RateBasedClusterAutoscaler:
+    return RateBasedClusterAutoscaler(
+        ops=[_make_fake_op()],
+        execution_id="test_low_util_release",
+        utility_calculator=gauge,
+        autoscaling_coordinator=FakeAutoscalingCoordinator(get_time=get_time),
+        min_gap_between_autoscaling_requests_s=0,
+        autoscaling_request_expire_time_s=3600,
+        low_util_request_release_delay_s=100,
+        get_time=get_time,
+    )
+
+
+def test_low_utilization_grace_period_keeps_explicit_request():
+    """Below the scale-up threshold, the last explicit request is resent briefly.
+
+    This avoids immediately dropping explicit autoscaler demand. Port of OSS
+    #62592's regression tests; same semantics as `DefaultClusterAutoscalerV2`.
+    """
+    current_time = {"t": 0.0}
+    gauge = _MutableUtilizationGauge(_HIGH_UTIL)
+    autoscaler = _make_release_delay_autoscaler(gauge, lambda: current_time["t"])
+
+    current_time["t"] = 10.0
+    request = autoscaler.try_trigger_scaling()
+    assert request
+    reserved = autoscaler.get_total_resources()
+    assert reserved != ExecutionResources.zero()
+
+    # Low utilization within the grace window: the request is kept alive verbatim.
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 20.0
+    assert autoscaler.try_trigger_scaling() == request
+    assert autoscaler.get_total_resources() == reserved
+
+
+def test_low_utilization_after_grace_sends_empty_request():
+    """After the grace window, low utilization renews with an empty request.
+
+    This is what lets idle termination scale the cluster down during a long
+    low-utilization tail: without the release, the request sized during the
+    high-throughput phase pins every node until the dataset finishes.
+    """
+    current_time = {"t": 0.0}
+    gauge = _MutableUtilizationGauge(_HIGH_UTIL)
+    autoscaler = _make_release_delay_autoscaler(gauge, lambda: current_time["t"])
+
+    current_time["t"] = 10.0
+    assert autoscaler.try_trigger_scaling()
+
+    # 190s of low utilization > the 100s release delay: the request is released.
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 200.0
+    assert autoscaler.try_trigger_scaling() == []
+    assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
+
+def test_high_utilization_after_release_rearms_grace_window():
+    """A new non-empty request after a release re-arms the grace window.
+
+    Also pins that keep-alive resends do NOT refresh the window: the window is
+    measured from the last genuine non-empty request, otherwise it never closes.
+    """
+    current_time = {"t": 0.0}
+    gauge = _MutableUtilizationGauge(_HIGH_UTIL)
+    autoscaler = _make_release_delay_autoscaler(gauge, lambda: current_time["t"])
+
+    current_time["t"] = 10.0
+    assert autoscaler.try_trigger_scaling()
+
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 200.0
+    assert autoscaler.try_trigger_scaling() == []
+
+    # Utilization recovers: a fresh non-empty request re-arms the window.
+    gauge.utilization = _HIGH_UTIL
+    current_time["t"] = 210.0
+    request = autoscaler.try_trigger_scaling()
+    assert request
+
+    # Within the new window, the request is kept alive...
+    gauge.utilization = _LOW_UTIL
+    current_time["t"] = 220.0
+    assert autoscaler.try_trigger_scaling() == request
+
+    # ...still kept at t=305, just inside the window armed at t=210...
+    current_time["t"] = 305.0
+    assert autoscaler.try_trigger_scaling() == request
+
+    # ...but the keep-alives did not refresh the window (armed at t=210),
+    # so at t=315 the request is released again.
+    current_time["t"] = 315.0
+    assert autoscaler.try_trigger_scaling() == []
+    assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
+
 if __name__ == "__main__":
     import sys
 

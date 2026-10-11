@@ -817,16 +817,11 @@ def unify_block_metadata_schema(
         A unified schema of the input list of schemas, or None if no valid schemas
         are provided.
     """
-    # Some blocks could be empty, in which case we cannot get their schema.
-    # TODO(ekl) validate schema is the same across different blocks.
-
-    # First check if there are blocks with computed schemas, then unify
-    # valid schemas from all such blocks.
-
-    schemas_to_unify = []
-    for m in block_metadata_with_schemas:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-            schemas_to_unify.append(m.schema)
+    # NOTE: An empty block can still carry a valid schema (e.g., an empty
+    # Arrow table), so blocks are not filtered on their number of rows.
+    schemas_to_unify = [
+        m.schema for m in block_metadata_with_schemas if m.schema is not None
+    ]
     return unify_schemas_with_validation(schemas_to_unify)
 
 
@@ -850,12 +845,11 @@ def unify_schemas_with_validation(
 def unify_ref_bundles_schema(
     ref_bundles: List["RefBundle"],
 ) -> Optional["Schema"]:
-    schemas_to_unify = []
-    for bundle in ref_bundles:
-        if bundle.schema is not None and (
-            bundle.num_rows() is None or bundle.num_rows() > 0
-        ):
-            schemas_to_unify.append(bundle.schema)
+    # NOTE: An empty bundle can still carry a valid schema (e.g., an empty
+    # Arrow table), so bundles are not filtered on their number of rows.
+    schemas_to_unify = [
+        bundle.schema for bundle in ref_bundles if bundle.schema is not None
+    ]
     return unify_schemas_with_validation(schemas_to_unify)
 
 
@@ -1770,6 +1764,27 @@ def _validate_rows_per_file_args(
         )
 
     return min_rows_per_file, max_rows_per_file
+
+
+def _validate_min_bytes_per_file_args(
+    *,
+    min_bytes_per_file: Optional[int] = None,
+    num_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> None:
+    """Validate the minimum bytes per file and its mutually exclusive arguments."""
+    if min_bytes_per_file is not None and min_bytes_per_file <= 0:
+        raise ValueError("min_bytes_per_file must be a positive integer")
+
+    if min_bytes_per_file is not None and any(
+        value is not None
+        for value in (num_rows_per_file, min_rows_per_file, max_rows_per_file)
+    ):
+        raise ValueError(
+            "min_bytes_per_file cannot be used with min_rows_per_file, "
+            "max_rows_per_file, or num_rows_per_file"
+        )
 
 
 def is_nan(value) -> bool:
