@@ -31,6 +31,8 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     MIXED_TOPICS,
     SHARED_SCHEMA,
     STEP,
+    SeekLog,
+    chunks_read,
     infer_schema,
     list_manifests,
     mixed_encoding_messages,
@@ -260,6 +262,65 @@ def test_log_time_order_merges_overlapping_chunks(tmp_path):
     as_written = MCAPDatasourceV2([path], log_time_order=False)
     table = read_all(as_written, manifest)
     assert table.column("log_time").to_pylist() == [10, 30, 20]
+
+
+@pytest.mark.parametrize("log_time_order", [True, False])
+def test_limit_reads_only_the_chunks_it_needs(chunked_file, log_time_order):
+    """A limit of two reads the two chunks holding the first two messages and no
+    other chunk, in log-time and in file order."""
+    datasource = MCAPDatasourceV2([chunked_file], log_time_order=log_time_order)
+    (manifest,) = list_manifests(datasource)
+    seek_log = SeekLog()
+    scanner = dataclasses.replace(scanner_for(datasource), filesystem=seek_log)
+
+    table = read_all(datasource, manifest, scanner=scanner.push_limit(2))
+
+    assert table.num_rows == 2
+    offsets = sorted(
+        c.chunk_start_offset for c in summary_of(chunked_file).chunk_indexes
+    )
+    assert chunks_read(seek_log, chunked_file) == offsets[:2]
+
+
+def test_limit_never_decodes_the_messages_past_it(tmp_path):
+    """Messages past the limit are never added to a table, so a malformed JSON
+    payload after them does not fail the read."""
+    path = os.path.join(tmp_path, "late_garbage.mcap")
+    messages = round_robin_messages(4, topics=("/json",))
+    messages[3]["data"] = b"{not json"
+    # One chunk holds every message, so the bad payload is read either way.
+    write_mcap(path, messages, chunk_size=1 << 20)
+    datasource = MCAPDatasourceV2([path])
+    (manifest,) = list_manifests(datasource)
+    scanner = scanner_for(datasource)
+
+    table = read_all(datasource, manifest, scanner=scanner.push_limit(3))
+
+    assert [value["seq"] for value in table.column("data").to_pylist()] == [0, 1, 2]
+    with pytest.raises(ValueError, match="not valid JSON"):
+        read_all(datasource, manifest, scanner=scanner)
+
+
+def test_limit_met_by_the_first_file_never_opens_the_second(tmp_path):
+    """A task whose limit is met by its first file does not open its second."""
+    first = os.path.join(tmp_path, "first.mcap")
+    second = os.path.join(tmp_path, "second.mcap")
+    for path in (first, second):
+        write_mcap(path, round_robin_messages(3))
+    datasource = MCAPDatasourceV2([first, second])
+    # Listed one file at a time, so the task's manifest names ``first`` first.
+    manifests = [list_manifests(MCAPDatasourceV2([p]))[0] for p in (first, second)]
+    one_task = FileManifest(pa.concat_tables([m.as_block() for m in manifests]))
+    seek_log = SeekLog()
+    scanner = dataclasses.replace(scanner_for(datasource), filesystem=seek_log)
+
+    table = read_all(datasource, one_task, scanner=scanner.push_limit(3))
+
+    assert table.column("log_time").to_pylist() == [
+        m["log_time"] for m in round_robin_messages(3)
+    ]
+    assert first in seek_log.seeks
+    assert second not in seek_log.seeks
 
 
 def test_reader_cuts_tables_at_target_block_size(chunked_file):
