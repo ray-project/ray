@@ -55,10 +55,11 @@ _READ_PEAK_FACTOR = 1.2
 _MESSAGE_INDEX_HEADER_BYTES = 15
 _MESSAGE_INDEX_ENTRY_BYTES = 16
 
-# Summaries read concurrently within one listing task. A summary read is a few
-# small ranged requests, so it is latency-bound on remote storage.
+# Summaries read concurrently within one listing task. A summary read is an
+# open and one to three small ranged reads, so a listing waits on request
+# latency. Up to twice this many read summaries are held at once.
 _DEFAULT_SUMMARY_IO_CONCURRENCY = env_integer(
-    "RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", 16
+    "RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", 32
 )
 
 
