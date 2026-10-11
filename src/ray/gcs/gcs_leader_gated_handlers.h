@@ -91,10 +91,10 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
   LeaderGatedNodeInfoHandler(
       rpc::NodeInfoGcsServiceHandler &handler,
       std::function<bool()> is_leader_fn,
-      std::function<void(const rpc::GcsNodeInfo &)> cache_local_node_fn)
+      std::function<bool(const rpc::GcsNodeInfo &)> try_handle_passive_head_fn)
       : handler_(handler),
         is_leader_fn_(std::move(is_leader_fn)),
-        cache_local_node_fn_(std::move(cache_local_node_fn)) {}
+        try_handle_passive_head_fn_(std::move(try_handle_passive_head_fn)) {}
 
   // Gated on passive GCS.
 
@@ -127,7 +127,13 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
         return;
       }
       // Cache the local head node in-memory without persisting to Redis
-      cache_local_node_fn_(node_info);
+      if (!try_handle_passive_head_fn_(node_info)) {
+        // Acknowledging here would drop the node: the raylet takes OK as registered
+        // and never retries.
+        handler_.HandleRegisterNode(
+            std::move(request), reply, std::move(send_reply_callback));
+        return;
+      }
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       return;
     }
@@ -139,7 +145,7 @@ class LeaderGatedNodeInfoHandler : public rpc::NodeInfoGcsServiceHandler {
  private:
   rpc::NodeInfoGcsServiceHandler &handler_;
   const std::function<bool()> is_leader_fn_;
-  const std::function<void(const rpc::GcsNodeInfo &)> cache_local_node_fn_;
+  const std::function<bool(const rpc::GcsNodeInfo &)> try_handle_passive_head_fn_;
 };
 
 class LeaderGatedActorInfoHandler : public rpc::ActorInfoGcsServiceHandler {

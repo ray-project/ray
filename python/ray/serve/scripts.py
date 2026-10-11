@@ -184,6 +184,13 @@ def cli():
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
+@click.option(
+    "--grpc-enable-reflection/--grpc-disable-reflection",
+    default=True,
+    required=False,
+    help="Enable the gRPC server reflection protocol on the gRPC server. "
+    "Defaults to enabled.",
+)
 def start(
     address,
     http_host,
@@ -191,6 +198,7 @@ def start(
     proxy_location,
     grpc_port,
     grpc_servicer_functions,
+    grpc_enable_reflection,
 ):
     ray.init(
         address=address,
@@ -205,6 +213,7 @@ def start(
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
+            enable_reflection=grpc_enable_reflection,
         ),
     )
 
@@ -867,11 +876,19 @@ def controller_health(address: str, output_json: bool):
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
+@click.option(
+    "--grpc-enable-reflection/--grpc-disable-reflection",
+    default=True,
+    required=False,
+    help="Enable the gRPC server reflection protocol on the gRPC server. "
+    "Defaults to enabled.",
+)
 def build(
     import_paths: Tuple[str],
     app_dir: str,
     output_path: Optional[str],
     grpc_servicer_functions: List[str],
+    grpc_enable_reflection: bool,
 ):
     sys.path.insert(0, app_dir)
 
@@ -911,6 +928,7 @@ def build(
         "grpc_options": {
             "port": DEFAULT_GRPC_PORT,
             "grpc_servicer_functions": grpc_servicer_functions,
+            "enable_reflection": grpc_enable_reflection,
         },
         "logging_config": LoggingConfig().model_dump(),
         "applications": app_configs,

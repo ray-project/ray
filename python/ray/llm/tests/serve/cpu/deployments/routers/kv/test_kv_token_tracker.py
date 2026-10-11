@@ -240,7 +240,10 @@ async def test_peer_trackers_converge_through_request_lifecycle():
         # tells every peer to book the already-selected worker.
         broadcast_handle = _TrackerBroadcastHandle(*trackers)
         routing.start_reservation_broadcast(broadcast_handle)
-        selection = await routing.select_worker("req-bcast", token_ids, [worker_id], 32)
+        peer._svc = _RecordingSelectionService(peer._svc)
+        selection = await routing.select_worker(
+            "req-bcast", token_ids, [worker_id], 32, lora_name="adapter-a"
+        )
         assert selection["worker_id"] == worker_id
         assert _active_requests(routing, worker_id) == 1
         await routing.flush_reservation_broadcast()
@@ -261,6 +264,7 @@ async def test_peer_trackers_converge_through_request_lifecycle():
         assert loads[0][0] == 1
         assert loads[0][1] > 0
         assert all("req-bcast" in tracker._requests for tracker in trackers)
+        assert peer._svc.create_reservation_calls[0]["lora_name"] == "adapter-a"
 
         prefill = [("on_prefill_complete", ("req-bcast",))]
         for tracker in trackers:
@@ -323,6 +327,7 @@ async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
             "isl_tokens": len(token_ids),
             "expected_output_tokens": 32,
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
+            "lora_name": None,
         }
 
         await tracker.on_request_completed("req-delayed-self")
@@ -374,6 +379,7 @@ async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
             "isl_tokens": len(token_ids),
             "expected_output_tokens": 32,
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
+            "lora_name": None,
         }
 
         await peer.on_request_completed("req-delayed-peer")

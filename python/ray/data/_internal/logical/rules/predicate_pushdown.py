@@ -56,7 +56,7 @@ class PredicatePushdown(Rule):
 
     Eligibility is determined by the LogicalOperatorSupportsPredicatePassThrough trait, which operators
     implement to declare their pushdown behavior:
-    - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle, Limit)
+    - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle)
     - PASSTHROUGH_WITH_SUBSTITUTION: Filter passes through with column rebinding (Project)
     - PUSH_INTO_BRANCHES: Filter is pushed into each branch (Union)
     - CONDITIONAL: Filter may be pushed based on analysis (Join - analyzes which side
