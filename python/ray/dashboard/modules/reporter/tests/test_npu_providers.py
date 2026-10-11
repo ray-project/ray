@@ -1,9 +1,11 @@
 """Unit tests for the Ascend NPU metric provider."""
 
+import ctypes
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from ray.dashboard.modules.reporter.npu_providers import (
+    DCMI_LIBRARY_PATH_ENV,
     MB,
     NpuMetricProvider,
     _DcmiLibrary,
@@ -112,6 +114,20 @@ def test_missing_dcmi_library_disables_provider():
         assert not provider.initialize()
         assert provider.get_npu_usage() == []
         load.assert_called_once_with()
+
+
+def test_loads_dcmi_without_rtld_local(monkeypatch):
+    library_path = "/fake/libdcmi.so"
+    handle = SimpleNamespace()
+    cdll = Mock(return_value=handle)
+    monkeypatch.setenv(DCMI_LIBRARY_PATH_ENV, library_path)
+    monkeypatch.delattr(ctypes, "RTLD_LOCAL", raising=False)
+    monkeypatch.setattr(ctypes, "CDLL", cdll)
+
+    dcmi = _DcmiLibrary.load()
+
+    assert dcmi._handle is handle
+    cdll.assert_called_once_with(library_path)
 
 
 def test_device_name_falls_back_to_legacy_dcmi_api():
