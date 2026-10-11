@@ -44,8 +44,11 @@ METADATA_COLUMNS = (
 # The ``int64`` columns a row takes from its message record.
 _MESSAGE_INT_COLUMNS = ("log_time", "publish_time", "sequence")
 
+# Columns that store a channel's value once per table, with an index per row.
+_DICTIONARY_COLUMNS = ("schema_data", "channel_metadata")
+
 # Bytes of the int32 offset or dictionary index each value of a ``string``,
-# ``binary``, ``map`` or dictionary column adds to its table.
+# ``binary`` or dictionary column adds to its table.
 _INT32_BYTES = 4
 
 # A ``binary`` or ``string`` array addresses its values with int32 offsets, so
@@ -76,10 +79,6 @@ _CHANNEL_COLUMNS: Dict[
         pa.string(),
         lambda channel, schema: schema.encoding if schema else None,
     ),
-    "channel_metadata": (
-        pa.map_(pa.string(), pa.string()),
-        lambda channel, schema: list(channel.metadata.items()),
-    ),
 }
 
 
@@ -92,10 +91,12 @@ def message_schema(
     """The Arrow schema of message rows, before partition and synthesized columns.
 
     Text columns are ``string`` and integer columns ``int64``. ``schema_data``
-    is dictionary-encoded: a schema definition is stored once per file but
-    repeated on every row, and ROS 2 definitions run kilobytes each.
-    ``channel_metadata`` is a ``map``, so its type does not depend on which
-    keys a recorder wrote.
+    and ``channel_metadata`` hold a channel's values, repeated on every row:
+    ROS 2 definitions run kilobytes each, and ROS 2 writes each channel's QoS
+    profiles as YAML. Both are dictionary-encoded, so a table stores each value
+    once and a row holds an int32 index. ``channel_metadata`` is the channel's
+    metadata map as JSON text with sorted keys, because Parquet cannot write a
+    dictionary of ``map`` values.
 
     Args:
         include_metadata: Whether the per-channel and per-schema columns are present.
@@ -120,7 +121,7 @@ def message_schema(
             pa.field("schema_name", pa.string()),
             pa.field("schema_encoding", pa.string()),
             pa.field("schema_data", pa.dictionary(pa.int32(), pa.binary())),
-            pa.field("channel_metadata", pa.map_(pa.string(), pa.string())),
+            pa.field("channel_metadata", pa.dictionary(pa.int32(), pa.string())),
         ]
     if include_row_id:
         fields.append(pa.field(ROW_ID_COLUMN, pa.string()))
@@ -152,31 +153,37 @@ def decode_payload(channel: "Channel", data: bytes, where: str) -> Any:
         ) from e
 
 
+def _channel_metadata_text(channel: "Channel") -> str:
+    """A channel's metadata map as JSON text, the value of ``channel_metadata``.
+
+    Keys are sorted, so equal maps give equal text whatever order a recorder
+    wrote them in. Non-ASCII characters stay as they are rather than escaped.
+    """
+    return json.dumps(
+        channel.metadata, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+
+
 def _value_bytes(value: Any) -> int:
     """Bytes one value of a ``_CHANNEL_COLUMNS`` column adds to a table."""
     if value is None:
         return _INT32_BYTES
     if isinstance(value, int):
         return 8
-    if isinstance(value, str):
-        return len(value.encode()) + _INT32_BYTES
-    # A ``channel_metadata`` map: an offset, then a key and a value per entry.
-    return _INT32_BYTES + sum(_value_bytes(k) + _value_bytes(v) for k, v in value)
+    return len(value.encode()) + _INT32_BYTES
 
 
 def _channel_row_bytes(
     channel: "Channel", schema: Optional["Schema"], names: Sequence[str]
 ) -> int:
     """Bytes a row on ``channel`` adds to the ``names`` columns it takes from its
-    channel and schema, the ``schema_data`` index included."""
+    channel and schema, the dictionary indices included."""
     total = sum(
         _value_bytes(value_of(channel, schema))
         for name, (_, value_of) in _CHANNEL_COLUMNS.items()
         if name in names
     )
-    if "schema_data" in names:
-        total += _INT32_BYTES
-    return total
+    return total + _INT32_BYTES * sum(1 for n in _DICTIONARY_COLUMNS if n in names)
 
 
 @dataclass(frozen=True)
@@ -203,8 +210,8 @@ class MessageRowLayout:
         beyond its record in the chunk.
 
         A message record holds 31 bytes of header and the payload, which cover
-        the ``data`` offset and the integer columns. A row adds the strings and
-        metadata of its channel, and ``row_id`` and ``path`` when present.
+        the ``data`` offset and the integer columns. A row adds its channel's
+        strings and dictionary indices, and ``row_id`` and ``path`` when present.
         """
         names = list(DATA_COLUMNS)
         if self.include_metadata:
@@ -278,6 +285,8 @@ class _ChannelSlot:
     schema: Optional["Schema"]
     # Position of ``schema.data`` in the table's ``schema_data`` dictionary.
     schema_index: Optional[int]
+    # Position of the channel's metadata text in the ``channel_metadata`` dictionary.
+    metadata_index: Optional[int]
     # Bytes a row on this channel adds to the table, payload and ``row_id`` aside.
     row_bytes: int
 
@@ -288,9 +297,9 @@ class _MessageTableBuilder:
     A row costs about what it costs in the finished table. Integers go into
     typed arrays, payloads and row ids into one buffer each, and what a row
     takes from its channel and schema is stored once per table, in a
-    ``_ChannelSlot``, with one int32 per row pointing at it. ``schema_data`` is
-    built as a dictionary from the slots, so a table holds each definition
-    once.
+    ``_ChannelSlot``, with one int32 per row pointing at it. ``schema_data`` and
+    ``channel_metadata`` are built as dictionaries from the slots, so a table
+    holds each distinct value once.
 
     ``estimated_bytes`` is the memory the builder holds for its rows, so the
     reader can cut tables at its target size. It counts every column,
@@ -342,7 +351,9 @@ class _MessageTableBuilder:
         self.estimated_bytes = 0
         self._slots: List[_ChannelSlot] = []
         self._slot_by_records: Dict[Tuple[int, int], int] = {}
+        # The distinct values of each dictionary column, in order of first use.
         self._schema_index: Dict[bytes, int] = {}
+        self._metadata_index: Dict[str, int] = {}
         self._slot_ids = array("i")
         self._ints = {n: array("q") for n in _MESSAGE_INT_COLUMNS if n in self._names}
         wants_data = "data" in self._names
@@ -410,14 +421,29 @@ class _MessageTableBuilder:
         row_bytes = self._fixed_row_bytes + _channel_row_bytes(
             channel, schema, self._names
         )
-        schema_index = None
+        schema_index = metadata_index = None
         if "schema_data" in self._names and schema is not None:
-            schema_index = self._schema_index.get(schema.data)
-            if schema_index is None:
-                schema_index = len(self._schema_index)
-                self._schema_index[schema.data] = schema_index
-                self.estimated_bytes += len(schema.data) + _INT32_BYTES
-        return _ChannelSlot(channel, schema, schema_index, row_bytes)
+            schema_index = self._dictionary_index(
+                self._schema_index, schema.data, len(schema.data)
+            )
+        if "channel_metadata" in self._names:
+            text = _channel_metadata_text(channel)
+            metadata_index = self._dictionary_index(
+                self._metadata_index, text, len(text.encode())
+            )
+        return _ChannelSlot(channel, schema, schema_index, metadata_index, row_bytes)
+
+    def _dictionary_index(self, values: Dict[Any, int], value: Any, size: int) -> int:
+        """The position of ``value`` in a dictionary column, added on first use.
+
+        A new value adds its ``size`` bytes and an offset to the table once.
+        """
+        index = values.get(value)
+        if index is None:
+            index = len(values)
+            values[value] = index
+            self.estimated_bytes += size + _INT32_BYTES
+        return index
 
     def _column(
         self, name: str, slot_ids: pa.Array
@@ -428,7 +454,15 @@ class _MessageTableBuilder:
             values = [value_of(s.channel, s.schema) for s in self._slots]
             return pa.array(values, type=type_).take(slot_ids)
         if name == "schema_data":
-            return self._schema_data(slot_ids)
+            per_slot = [s.schema_index for s in self._slots]
+            return _dictionary_column(
+                per_slot, self._schema_index, pa.binary(), slot_ids
+            )
+        if name == "channel_metadata":
+            per_slot = [s.metadata_index for s in self._slots]
+            return _dictionary_column(
+                per_slot, self._metadata_index, pa.string(), slot_ids
+            )
         if name in self._ints:
             return _int_array(self._ints[name], pa.int64())
         if name == ROW_ID_COLUMN:
@@ -441,13 +475,19 @@ class _MessageTableBuilder:
         assert self._payloads is not None
         return self._payloads.finish()
 
-    def _schema_data(self, slot_ids: pa.Array) -> pa.DictionaryArray:
-        """``schema_data`` as a dictionary holding each definition once.
 
-        Slots are numbered in order of first use, so the dictionary lists the
-        definitions in order of first appearance, as ``dictionary_encode`` does.
-        """
-        per_slot = [s.schema_index for s in self._slots]
-        indices = pa.array(per_slot, type=pa.int32()).take(slot_ids)
-        dictionary = pa.array(list(self._schema_index), type=pa.binary())
-        return pa.DictionaryArray.from_arrays(indices, dictionary)
+def _dictionary_column(
+    per_slot: List[Optional[int]],
+    values: Dict[Any, int],
+    value_type: pa.DataType,
+    slot_ids: pa.Array,
+) -> pa.DictionaryArray:
+    """A dictionary column holding each distinct value once.
+
+    ``per_slot`` is each slot's position in ``values``, or ``None`` for a null.
+    Slots are numbered in order of first use, so the dictionary lists the values
+    in order of first appearance, as ``dictionary_encode`` does.
+    """
+    indices = pa.array(per_slot, type=pa.int32()).take(slot_ids)
+    dictionary = pa.array(list(values), type=value_type)
+    return pa.DictionaryArray.from_arrays(indices, dictionary)
