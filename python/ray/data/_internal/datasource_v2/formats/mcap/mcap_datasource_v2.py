@@ -2,9 +2,10 @@
 
 ``read_api.read_mcap`` constructs it when ``DataContext.use_datasource_v2`` is
 set. Listing reads each file's summary, drops files that cannot match the
-selection, and emits one row per chunk (``MCAPSummaryIndexer``).
-``OnlineBinPacker`` groups the chunks into read tasks of about
-``RAY_DATA_MCAP_BIN_PACKING_BYTES`` uncompressed bytes (128 MiB by default).
+selection, and emits one row per chunk (``MCAPSummaryIndexer``), weighted by
+the memory reading it is estimated to need. ``OnlineBinPacker`` groups the
+chunks into read tasks of about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that
+estimate (128 MiB by default).
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
@@ -38,6 +39,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_file_indexer import (
     MCAPSummaryIndexer,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
+    MessageRowLayout,
     message_schema,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
@@ -70,7 +72,8 @@ if TYPE_CHECKING:
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
-# Chunks are packed into read tasks of about this many uncompressed bytes.
+# Chunks are packed into read tasks of about this many bytes of estimated read
+# memory (``mcap_summary.chunk_run``).
 _BIN_PACKING_BYTES = env_integer("RAY_DATA_MCAP_BIN_PACKING_BYTES", 128 * MiB)
 # How many partly filled read tasks the packer keeps open at once.
 _BIN_PACKING_MAX_SHARED_OPEN_BINS = env_integer(
@@ -122,6 +125,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         )
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
+        self._include_paths = include_paths
         synthesized: List[SynthesizedColumn] = []
         if include_paths:
             synthesized.append(PathColumn())
@@ -152,11 +156,16 @@ class MCAPDatasourceV2(FileDataSourceV2):
             selection=self._selection,
             ignore_missing_paths=self._ignore_missing_paths,
             read_task_bytes=_BIN_PACKING_BYTES,
+            row_layout=MessageRowLayout(
+                include_metadata=self._include_metadata,
+                include_row_id=self._include_row_id,
+                include_paths=self._include_paths,
+            ),
         )
 
     def get_file_partitioner(self, **kwargs):
-        # Each listing row is one chunk with its exact uncompressed size, so
-        # chunks are packed into read tasks by bytes.
+        # Each listing row is one chunk weighted by its estimated read memory,
+        # so chunks are packed into read tasks by that estimate.
         #
         # Packing is per listing shard, not global, so listing can run as many
         # parallel tasks. Each chunk still lands in exactly one read task; the

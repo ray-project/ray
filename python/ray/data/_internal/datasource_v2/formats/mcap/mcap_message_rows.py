@@ -8,7 +8,9 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     List,
+    Mapping,
     Optional,
     Sequence,
     Set,
@@ -21,6 +23,7 @@ import pyarrow as pa
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import _Selected
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import ROW_ID_COLUMN
+from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import message_row_id
 from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 
 if TYPE_CHECKING:
@@ -174,6 +177,53 @@ def _channel_row_bytes(
     if "schema_data" in names:
         total += _INT32_BYTES
     return total
+
+
+@dataclass(frozen=True)
+class MessageRowLayout:
+    """The columns a read builds for each message, to size its read tasks.
+
+    Attributes:
+        include_metadata: Whether rows carry the channel and schema columns.
+        include_row_id: Whether rows carry ``row_id``.
+        include_paths: Whether rows carry ``path``.
+    """
+
+    include_metadata: bool = True
+    include_row_id: bool = False
+    include_paths: bool = False
+
+    def row_bytes(
+        self,
+        path: str,
+        channels: Iterable["Channel"],
+        schemas: Mapping[int, "Schema"],
+    ) -> int:
+        """The most bytes a row of ``path`` on one of ``channels`` adds to a table
+        beyond its record in the chunk.
+
+        A message record holds 31 bytes of header and the payload, which cover
+        the ``data`` offset and the integer columns. A row adds the strings and
+        metadata of its channel, and ``row_id`` and ``path`` when present.
+        """
+        names = list(DATA_COLUMNS)
+        if self.include_metadata:
+            names += METADATA_COLUMNS
+        per_row = max(
+            (
+                _channel_row_bytes(
+                    c, schemas.get(c.schema_id) if c.schema_id else None, names
+                )
+                for c in channels
+            ),
+            default=0,
+        )
+        if self.include_row_id:
+            longest_id = message_row_id(path, 2**64 - 1, 2**32 - 1)
+            per_row += len(longest_id.encode()) + _INT32_BYTES
+        if self.include_paths:
+            per_row += len(path.encode()) + _INT32_BYTES
+        return per_row
 
 
 def _int_array(values: array, type_: pa.DataType) -> pa.Array:
