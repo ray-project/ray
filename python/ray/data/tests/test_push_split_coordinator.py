@@ -57,6 +57,32 @@ def test_flow_finish_clears_contribution():
     assert flow.in_flight_bytes() == 0
 
 
+def test_flow_holds_refs_until_consumed():
+    flow = _SplitFlow()
+    flow.report(target_rows=100, consumed_rows=0, consumed_bytes=0)
+    flow.record_push(num_rows=10, size_bytes=100, block_ref="b0")
+    flow.record_push(num_rows=10, size_bytes=0, block_ref="b1")
+    flow.record_push(num_rows=10, size_bytes=200, block_ref="b2")
+    assert flow.num_unconsumed_refs() == 3
+
+    # Consuming b0's bytes releases b0 and the empty block after it.
+    flow.report(target_rows=100, consumed_rows=10, consumed_bytes=100)
+    assert flow.num_unconsumed_refs() == 1
+
+    # A partial byte count doesn't release b2.
+    flow.report(target_rows=100, consumed_rows=10, consumed_bytes=150)
+    assert flow.num_unconsumed_refs() == 1
+    flow.report(target_rows=100, consumed_rows=10, consumed_bytes=50)
+    assert flow.num_unconsumed_refs() == 0
+
+    flow.record_push(num_rows=10, size_bytes=100, block_ref="b3")
+    flow.finish()
+    assert flow.num_unconsumed_refs() == 0
+    # Nothing is held for a push recorded after finishing.
+    flow.record_push(num_rows=10, size_bytes=100, block_ref="b4")
+    assert flow.num_unconsumed_refs() == 0
+
+
 def test_flow_wait_for_room_wakes_on_report():
     flow = _SplitFlow()
     assert not flow.wait_for_room(timeout=0.01)
