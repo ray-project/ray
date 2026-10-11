@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import ray
 from ray._private.ray_constants import (
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
+    RDT_FETCH_FAIL_TIMEOUT_SECONDS,
 )
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
@@ -177,12 +178,18 @@ class _AgentGuard:
             self.release_read(reader_agent, key)
         with self._cond:
             self._waiting_writers[agent] += 1
-            self._cond.wait_for(
-                lambda: agent not in self._writing and not self._reads.get(agent)
-            )
-            self._waiting_writers[agent] -= 1
-            if not self._waiting_writers[agent]:
-                del self._waiting_writers[agent]
+            try:
+                acquired = self._cond.wait_for(
+                    lambda: agent not in self._writing and not self._reads.get(agent),
+                    timeout=RDT_FETCH_FAIL_TIMEOUT_SECONDS,
+                )
+            finally:
+                self._waiting_writers[agent] -= 1
+                if not self._waiting_writers[agent]:
+                    del self._waiting_writers[agent]
+                self._cond.notify_all()
+            if not acquired:
+                raise TimeoutError(f"Timed out waiting for transfers on {agent}.")
             self._writing.add(agent)
         try:
             yield
@@ -588,9 +595,7 @@ class NixlTensorTransport(TensorTransportManager):
                 elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
                     evicted_agent_name, _ = self._remote_agents.popitem(last=False)
                     with self._agent_guard.write(evicted_agent_name, self._wait_done):
-                        # Another thread may have re-added it while we waited.
-                        if evicted_agent_name not in self._remote_agents:
-                            nixl_agent.remove_remote_agent(evicted_agent_name)
+                        nixl_agent.remove_remote_agent(evicted_agent_name)
 
                 self._remote_agents[remote_name] = remote_agent_meta_version
 
@@ -709,8 +714,13 @@ class NixlTensorTransport(TensorTransportManager):
     def _wait_done(self, xfer_handle: Any) -> None:
         """Polls until the transfer leaves PROC so its final state is recorded on the handle."""
         nixl_agent = self.get_nixl_agent()
+        # On timeout the removal fails the stuck transfer instead of hanging here.
+        deadline = time.monotonic() + RDT_FETCH_FAIL_TIMEOUT_SECONDS
         try:
-            while nixl_agent.check_xfer_state(xfer_handle) == "PROC":
+            while (
+                nixl_agent.check_xfer_state(xfer_handle) == "PROC"
+                and time.monotonic() < deadline
+            ):
                 time.sleep(0.001)
         except Exception:
             # The error surfaces from wait_fetch_complete.
