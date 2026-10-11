@@ -13,8 +13,11 @@ from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     buffered,
+    parse_summary_records,
     read_chunk,
     read_summary_from,
+    read_summary_section_from,
+    summary_records,
 )
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     CHUNKED_FILE_MESSAGES,
@@ -33,6 +36,7 @@ pytestmark = pytest.mark.skipif(
 # index of about a hundred bytes per message.
 MANY_CHUNKS = 3000
 FOOTER_AND_MAGIC = 37  # footer record (29 bytes) and the 8 magic bytes
+CHUNK_INDEX_OPCODE = 0x08
 SUMMARY_FIELDS = (
     "statistics",
     "schemas",
@@ -141,6 +145,36 @@ def test_small_file_summary_takes_one_read_and_a_large_one_three(tmp_path):
         reads[path] = f.reads
 
     assert reads == {small: 1, large: 3}
+
+
+@pytest.mark.parametrize("writer", WRITERS.values(), ids=WRITERS.keys())
+def test_records_copied_out_of_a_section_parse_as_the_section_does(tmp_path, writer):
+    """A section's records, copied without the footer, parse to the file's
+    summary; a run of them parses to just those records."""
+    path = os.path.join(tmp_path, "file.mcap")
+    writer(path)
+    section = read_summary_section_from(CountingFile(path), path)
+    expected = read_summary_from(CountingFile(path), path)
+    assert section is not None and expected is not None
+
+    records = list(summary_records(section))
+    copied = parse_summary_records(b"".join(bytes(r) for _, r in records), path)
+    last_chunk_index = [bytes(r) for op, r in records if op == CHUNK_INDEX_OPCODE][-1:]
+    alone = parse_summary_records(b"".join(last_chunk_index), path)
+
+    for field in SUMMARY_FIELDS:
+        assert getattr(copied, field) == getattr(expected, field), field
+    assert alone.chunk_indexes == expected.chunk_indexes[-1:]
+    assert not alone.channels and not alone.schemas
+
+
+def test_no_records_parse_to_an_empty_summary():
+    """Empty records, as a read task gets for a file without a summary, parse to
+    a summary with nothing in it."""
+    summary = parse_summary_records(b"", "file.mcap")
+
+    for field in SUMMARY_FIELDS:
+        assert not getattr(summary, field), field
 
 
 def test_file_without_summary_section_has_no_summary(tmp_path):

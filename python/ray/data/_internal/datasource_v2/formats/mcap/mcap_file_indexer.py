@@ -11,6 +11,9 @@ dropped before any payload is read.
 A file whose summary is missing, has no chunk index or lists no channels is
 listed as one whole-file row.
 
+Each row also carries the summary records its read task will need, so read
+tasks do not read summaries (``mcap_task_summary``).
+
 A file whose summary cannot be read, such as a recording cut short, does not
 fail the listing. It is listed as one row that names no chunk, which the reader
 takes as the whole file, and that weighs a whole read task, so the packer puts
@@ -39,9 +42,14 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     _DEFAULT_SUMMARY_IO_CONCURRENCY,
+    ListedSummary,
     chunk_run,
     chunk_unit_id,
-    read_summaries,
+    read_listed_summaries,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
+    split_section,
+    with_listing_records,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
@@ -52,7 +60,6 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 if TYPE_CHECKING:
     from concurrent.futures import Future
 
-    from mcap.summary import Summary
     from pyarrow.fs import FileSystem
 
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
@@ -135,23 +142,23 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         excluded = excluded_read_unit_ids or frozenset()
         for file_info, summary_read in self._read_summaries(file_infos, filesystem):
             try:
-                summary = summary_read.result()
+                listed = summary_read.result()
             except Exception as e:  # noqa: BLE001 - the file's own read task fails
                 manifest = self._unreadable_file_manifest(file_info, e)
             else:
-                manifest = self._manifest_for_file(file_info, summary, excluded)
+                manifest = self._manifest_for_file(file_info, listed, excluded)
             if manifest is not None:
                 yield manifest
 
     def _read_summaries(
         self, file_infos: Iterable[FileInfo], filesystem: "FileSystem"
-    ) -> Iterator[Tuple[FileInfo, "Future[Optional[Summary]]"]]:
+    ) -> Iterator[Tuple[FileInfo, "Future[Optional[ListedSummary]]"]]:
         """Start summary reads concurrently, yielding them in listing order.
 
         Listing order decides how the partitioner groups chunks into tasks, so
         it must not depend on which read finishes first.
         """
-        return read_summaries(
+        return read_listed_summaries(
             filesystem, file_infos, lambda info: info.path, self._io_concurrency
         )
 
@@ -172,16 +179,18 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             size_bytes=self._read_task_bytes,
             fully_matched=False,
         )
-        return FileManifest.construct_manifest(
+        manifest = FileManifest.construct_manifest(
             paths=[file_info.path],
             sizes=[file_info.size],
             chunk_metadatas=[whole_file.to_metadata()],
         )
+        # No records: the read task reads the summary itself and fails on it.
+        return with_listing_records(manifest, None, [None])
 
     def _manifest_for_file(
         self,
         file_info: FileInfo,
-        summary: Optional["Summary"],
+        listed: Optional[ListedSummary],
         excluded_read_unit_ids: AbstractSet[str],
     ) -> Optional[FileManifest]:
         """The listing rows of one file, or ``None`` when it cannot match.
@@ -193,13 +202,18 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         """
         path = file_info.path
         assert file_info.size is not None
+        summary = listed.summary if listed is not None else None
 
         if summary is None or not summary.chunk_indexes or not summary.channels:
             # Without a summary, a chunk index or channel records, nothing says
-            # which chunk holds what.
-            return FileManifest.construct_manifest(
+            # which chunk holds what. The read task gets the whole summary.
+            manifest = FileManifest.construct_manifest(
                 paths=[path], sizes=[file_info.size], chunk_metadatas=[None]
             )
+            records = (
+                b"" if listed is None else split_section(listed.section).everything
+            )
+            return with_listing_records(manifest, records, [None])
 
         selected = self._selection.selected_channel_ids(
             summary.channels, summary.schemas
@@ -223,8 +237,15 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         ]
         if not runs:
             return None
-        return FileManifest.construct_manifest(
+        manifest = FileManifest.construct_manifest(
             paths=[path] * len(runs),
             sizes=[file_info.size] * len(runs),
             chunk_metadatas=[run.to_metadata() for run in runs],
+        )
+        assert listed is not None
+        records = split_section(listed.section)
+        return with_listing_records(
+            manifest,
+            records.declarations,
+            [records.chunk_indexes[run.unit_ids[0]] for run in runs],
         )
