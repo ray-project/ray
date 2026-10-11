@@ -607,7 +607,7 @@ class PushSplitCoordinator:
                         num_rows = max(1, flow.target_rows)
                     # Record before sending, so a fast consumer's report can
                     # never make consumed exceed pushed.
-                    flow.record_push(num_rows, size_bytes)
+                    flow.record_push(num_rows, size_bytes, entry.ref)
                     push_block(seq, entry, size_bytes, num_rows)
                     seq += 1
                 self._update_external_consumer_bytes()

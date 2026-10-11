@@ -250,17 +250,24 @@ def test_push_split_flow_control_bounds_buffering(ray_start_regular_shared):
     coordinator = iterators[0]._coord_actor
 
     target_rows = 4 * 100
+    max_held_blocks = (target_rows + block_rows) // block_rows + 1
     sampled = 0
+    held_refs_seen = False
     deadline = time.monotonic() + 120
     while sampled < 5 and time.monotonic() < deadline:
         state: Any = ray.get(coordinator.debug_state.remote())
         for split in state["rows_pushed"]:
             outstanding = state["rows_pushed"][split] - state["rows_consumed"][split]
             assert outstanding <= target_rows + block_rows, state
+            # Refs to sent-but-unconsumed blocks are held (so Ray Data counts
+            # them), but never more than the window's worth.
+            assert state["unconsumed_refs"][split] <= max_held_blocks, state
+            held_refs_seen |= state["unconsumed_refs"][split] > 0
         if any(pushed > 0 for pushed in state["rows_pushed"].values()):
             sampled += 1
         time.sleep(0.5)
     assert sampled == 5, "producer never started pushing"
+    assert held_refs_seen, "no refs held for in-flight blocks"
     _run_epochs(consumers)
 
 
