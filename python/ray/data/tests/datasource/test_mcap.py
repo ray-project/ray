@@ -660,6 +660,48 @@ def test_read_mcap_checkpoint_config_turns_on_row_id(
     assert "row_id" in ray.data.read_mcap(simple_mcap_file).schema().names
 
 
+def test_read_mcap_v1_refuses_a_row_id_checkpoint(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2
+):
+    """A checkpoint keyed on ``row_id`` needs the column, which only the V2
+    datasource builds. On the V1 legacy design ``read_mcap`` refuses it at once,
+    instead of reading without the ids the checkpoint needs."""
+    from ray.data.checkpoint import CheckpointConfig
+
+    if datasource_v2:
+        pytest.skip("V2 turns row_id on")
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column="row_id", checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
+    )
+
+    with pytest.raises(NotImplementedError, match="checkpoint keyed on `row_id`"):
+        ray.data.read_mcap(simple_mcap_file)
+
+
+@pytest.mark.parametrize("name", ["row_id", "uid"])
+def test_read_mcap_refuses_generated_id_column(
+    ray_start_regular_shared, simple_mcap_file, name
+):
+    """A checkpoint config that asks for generated ids fails at ``read_mcap``.
+
+    Only ``read_parquet`` builds generated ids. The name ``row_id`` must not turn
+    on MCAP's own ``row_id`` column instead.
+    """
+    from ray.data.checkpoint import CheckpointConfig
+    from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        generated_id_column=name, checkpoint_path="/tmp/ray_data_mcap_ckpt_unused"
+    )
+
+    with pytest.raises(
+        InvalidCheckpointingConfig, match="works only with `read_parquet`"
+    ):
+        ray.data.read_mcap(simple_mcap_file)
+
+
 def test_read_mcap_v2_schema_matches_rows(
     ray_start_regular_shared, multi_topic_mcap_file, datasource_v2
 ):
