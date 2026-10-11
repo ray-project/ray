@@ -428,6 +428,30 @@ def test_packer_packs_per_listing_shard(tmp_path):
     assert len(per_shard) <= len(whole) + 1
 
 
+def listed_rows(datasource: MCAPDatasourceV2) -> List[Tuple[str, List[int], int]]:
+    """Every listing row in listing order: its path, chunk offsets and weight."""
+    return [
+        (str(path), unit_ids(md), int(md["size_bytes"]))
+        for manifest in list_manifests(datasource)
+        for path, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ]
+
+
+def test_listing_order_does_not_depend_on_summary_concurrency(tmp_path, monkeypatch):
+    """Listing 30 files with one summary read at a time or 32 at once gives the
+    same rows in the same order, so the packer forms the same read tasks."""
+    for i in range(30):
+        write_mcap(os.path.join(tmp_path, f"f{i:02d}.mcap"), round_robin_messages(4))
+
+    monkeypatch.setenv("RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", "1")
+    one_at_a_time = listed_rows(MCAPDatasourceV2([str(tmp_path)]))
+    monkeypatch.setenv("RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", "32")
+    many_at_once = listed_rows(MCAPDatasourceV2([str(tmp_path)]))
+
+    assert len(one_at_a_time) == 30 * 4
+    assert many_at_once == one_at_a_time
+
+
 if __name__ == "__main__":
     import sys
 
