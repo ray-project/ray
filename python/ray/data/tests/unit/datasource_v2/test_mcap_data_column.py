@@ -9,7 +9,7 @@ typed from.
 import importlib.util
 import json
 import os
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pyarrow as pa
 import pytest
@@ -570,6 +570,125 @@ def test_schema_walk_keeps_the_extension_filter(tmp_path):
     schema = datasource.infer_schema(sample)
 
     assert pa.types.is_struct(schema.field("data").type)
+
+
+SAMPLED_FILES = 16  # files ``sample_files`` lists for planning by default
+
+
+def write_sample_and_a_17th(tmp_path, payloads, encoding="json") -> List[str]:
+    """Write the planning sample and one more file past it, all on ``/a``.
+
+        file      00 .. 15          zz_last
+        payload   {"seq": 0} JSON   ``payloads``, ``encoding``
+        planning  sampled           not sampled
+
+    The names sort in this order, so planning samples files 00 to 15.
+    """
+    paths = write_files(tmp_path, [dict(key="seq")] * SAMPLED_FILES)
+    last = os.path.join(tmp_path, "zz_last.mcap")
+    messages = [
+        {"topic": "/a", "data": payload, "log_time": BASE_TIME + i * STEP}
+        for i, payload in enumerate(payloads)
+    ]
+    write_mcap(last, messages, message_encoding=encoding)
+    return paths + [last]
+
+
+def read_each_file(paths) -> Dict[str, pa.Table]:
+    """Plan ``paths`` together, then read each file as its own task, by path."""
+    datasource = MCAPDatasourceV2(paths)
+    assert infer_schema(datasource).field("data").type == struct_of("seq")
+    return {
+        manifest.paths.tolist()[0]: read_all(datasource, manifest)
+        for manifest in list_manifests(datasource)
+    }
+
+
+def test_non_json_file_past_the_sample_fails_its_read_task(tmp_path):
+    """A CDR channel in a 17th file fails that file's read task, naming the topic.
+
+    The 16 sampled files planned ``data`` as decoded JSON, and every task follows
+    the plan rather than mixing bytes into a JSON column.
+    """
+    paths = write_sample_and_a_17th(tmp_path, [b"\x01\x02"], encoding="cdr")
+    datasource = MCAPDatasourceV2(paths)
+    manifests = {m.paths.tolist()[0]: m for m in list_manifests(datasource)}
+
+    for path in paths[:SAMPLED_FILES]:
+        read_all(datasource, manifests[path])
+    with pytest.raises(ValueError, match="topic '/a' is 'cdr'-encoded"):
+        read_all(datasource, manifests[paths[-1]])
+
+
+@pytest.mark.parametrize(
+    "payloads, last_type, combined_type, combined_first_row",
+    [
+        (
+            [{"seq": 0, "extra": "x"}],
+            # Ray's converter orders struct fields by name; unifying keeps the
+            # planned field first.
+            pa.struct([("extra", pa.string()), ("seq", pa.int64())]),
+            pa.struct([("seq", pa.int64()), ("extra", pa.string())]),
+            {"seq": 0, "extra": None},
+        ),
+        (
+            [{"seq": 0.5}],
+            pa.struct([("seq", pa.float64())]),
+            pa.struct([("seq", pa.float64())]),
+            {"seq": 0.0},
+        ),
+    ],
+    ids=["new_field", "int_to_float"],
+)
+def test_json_past_the_sample_is_typed_by_its_own_values(
+    tmp_path, payloads, last_type, combined_type, combined_first_row
+):
+    """A 17th file's JSON is typed by its own values, not by the plan.
+
+    Combining its block with a planned one, as Ray Data does, adds a new field
+    as null and widens int to float.
+    """
+    from ray.data._internal.arrow_ops.transform_pyarrow import concat
+
+    paths = write_sample_and_a_17th(tmp_path, payloads)
+
+    tables = read_each_file(paths)
+
+    assert tables[paths[-1]].schema.field("data").type == last_type
+    combined = concat([tables[paths[0]], tables[paths[-1]]], promote_types=True)
+    assert combined.schema.field("data").type == combined_type
+    # The first row comes from a sampled file, typed to the combined struct.
+    assert combined.column("data").to_pylist()[0] == combined_first_row
+
+
+def test_json_past_the_sample_with_a_clashing_type_fails_where_combined(tmp_path):
+    """A 17th file whose ``seq`` is a string reads alone, but its block cannot be
+    combined with a planned block, whose ``seq`` is an int."""
+    from ray.data._internal.arrow_ops.transform_pyarrow import concat
+    from ray.data._internal.tensor_extensions.arrow import ArrowConversionError
+
+    paths = write_sample_and_a_17th(tmp_path, [{"seq": "zero"}])
+
+    tables = read_each_file(paths)
+
+    assert tables[paths[-1]].column("data").to_pylist() == [{"seq": "zero"}]
+    with pytest.raises(ArrowConversionError, match="Field seq has incompatible types"):
+        concat([tables[paths[0]], tables[paths[-1]]], promote_types=True)
+
+
+def test_mixed_json_types_in_one_task_are_refused(tmp_path):
+    """JSON values Arrow cannot type together fall back to pickled objects, which
+    the reader refuses."""
+    path = os.path.join(tmp_path, "mixed.mcap")
+    write_mcap(
+        path,
+        round_robin_messages(1, topics=("/a",))
+        + [{"topic": "/a", "data": {"seq": "one"}, "log_time": BASE_TIME + STEP}],
+    )
+    datasource = MCAPDatasourceV2([path])
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        read_all(datasource, list_manifests(datasource)[0])
 
 
 if __name__ == "__main__":
