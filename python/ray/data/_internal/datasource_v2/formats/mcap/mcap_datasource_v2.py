@@ -175,7 +175,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         #
         # Packing is per listing shard, not global, so listing can run as many
         # parallel tasks. Each chunk still lands in exactly one read task; the
-        # cost is at most one under-filled task per shard.
+        # cost is that bins may not fill as well, which may mean more read tasks.
         from ray.data._internal.datasource_v2.common.online_bin_packer import (
             OnlineBinPacker,
         )
