@@ -3290,6 +3290,24 @@ def read_mcap(
     in the other rows, and a field whose type differs between files, such as a
     number in one and a string in another, fails where their rows are combined.
 
+    By default, ``read_mcap`` reads through the V2 datasource
+    (``DataContext.use_datasource_v2``). Its rows differ from the legacy reader's
+    in three ways:
+
+    - ``schema_data`` and the new ``channel_metadata`` column are
+      dictionary-encoded, so a block stores each channel's values once. pandas
+      shows them as category columns. Cast them to ``binary`` and ``string``
+      before you group by them or write blocks from several read tasks into one
+      Arrow IPC file. Cast ``schema_data`` before you mix this output with the
+      legacy reader's in one Parquet folder.
+    - A large file is split across read tasks, so its messages are in
+      ``log_time`` order within each task, not across the whole file.
+    - ``override_num_blocks`` has no effect.
+
+    To use the legacy reader, set ``DataContext.get_current().use_datasource_v2``
+    to ``False`` or set ``RAY_DATA_USE_DATASOURCE_V2=0``. This also moves
+    ``read_parquet`` back to its legacy reader.
+
     Examples:
         :noindex:
 
@@ -3332,6 +3350,14 @@ def read_mcap(
         ...     include_metadata=True, # doctest: +SKIP
         ...     include_paths=True # doctest: +SKIP
         ... ) # doctest: +SKIP
+
+        Store ``schema_data`` as plain bytes, as the legacy reader does.
+
+        >>> import pyarrow as pa # doctest: +SKIP
+        >>> def plain_schema_data(t: pa.Table) -> pa.Table: # doctest: +SKIP
+        ...     i = t.schema.get_field_index("schema_data") # doctest: +SKIP
+        ...     return t.set_column(i, "schema_data", t["schema_data"].cast(pa.binary())) # doctest: +SKIP
+        >>> ds = ds.map_batches(plain_schema_data, batch_format="pyarrow") # doctest: +SKIP
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
