@@ -1,9 +1,11 @@
 """The reading of selected messages out of one MCAP file.
 
-An indexed file is read chunk by chunk, in file order or merged by log time. A
-file without a chunk index is scanned from the start, and sorted in memory when
-ordered by log time. A channel or schema that only an earlier chunk declares is
-read back from that chunk.
+An indexed file is read chunk by chunk, in file order or merged by log time.
+Chunks that are read one after another and lie close together in the file are
+fetched in one ranged read (``mcap_io.read_chunks``). A file without a chunk
+index is scanned from the start, and sorted in memory when ordered by log time.
+A channel or schema that only an earlier chunk declares is read back from that
+chunk.
 """
 
 import heapq
@@ -21,7 +23,11 @@ from typing import (
     Tuple,
 )
 
-from ray.data._internal.datasource_v2.formats.mcap.mcap_io import read_chunk
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
+    ChunkReads,
+    read_chunk,
+    read_chunks,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     message_row_id,
@@ -29,7 +35,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
 )
 
 if TYPE_CHECKING:
-    from mcap.records import Channel, ChunkIndex, Message, Schema
+    from mcap.records import Channel, Chunk, ChunkIndex, Message, Schema
     from mcap.summary import Summary
 
 # One selected message as the reader sees it: its schema (``None`` for a
@@ -41,6 +47,11 @@ _Scanned = Tuple[Optional["Schema"], "Channel", "Message", int]
 
 def _log_time(message: _Scanned) -> int:
     return message[2].log_time
+
+
+def _merge_order(chunk_index: "ChunkIndex") -> Tuple[int, int]:
+    """The order in which the log-time merge expands chunks."""
+    return chunk_index.message_start_time, chunk_index.chunk_start_offset
 
 
 @dataclass
@@ -81,12 +92,19 @@ class SelectedMessageReader:
     """Reads the messages a selection keeps out of an open MCAP file.
 
     With ``log_time_order``, an indexed file's messages come out in ascending
-    ``log_time`` order rather than in file order.
+    ``log_time`` order rather than in file order. ``chunk_reads`` decides which
+    chunks share a ranged read.
     """
 
-    def __init__(self, selection: MCAPSelection, log_time_order: bool):
+    def __init__(
+        self,
+        selection: MCAPSelection,
+        log_time_order: bool,
+        chunk_reads: ChunkReads = ChunkReads(),
+    ):
         self._selection = selection
         self._log_time_order = log_time_order
+        self._chunk_reads = chunk_reads
 
     def iter_chunks(
         self,
@@ -118,9 +136,9 @@ class SelectedMessageReader:
             file_summary or (lambda: summary),
         )
         if not self._log_time_order:
-            for chunk_index in chunk_indexes:
-                yield from self._read_chunk(
-                    f, path, summary, chunk_index, selected, declared
+            for chunk_index, chunk in read_chunks(f, chunk_indexes, self._chunk_reads):
+                yield from self._chunk_messages(
+                    f, path, summary, chunk_index, chunk, selected, declared
                 )
             return
         yield from self._merge_chunks_by_log_time(
@@ -166,18 +184,32 @@ class SelectedMessageReader:
         the top, so only the chunks that overlap in time are held at once. A
         message is yielded once every chunk that could precede it is expanded.
         """
-        # Heap entries: (log time, kind, chunk offset, index in chunk, item).
-        # ``kind`` 0 is a chunk index, 1 a message, so on a tied log time a
-        # chunk is expanded before a message is yielded.
+        # Heap entries: (log time, kind, chunk offset, index in chunk, message).
+        # ``kind`` 0 is a chunk, 1 a message, so on a tied log time a chunk is
+        # expanded before a message is yielded.
         heap: List[Tuple[int, int, int, int, Any]] = [
-            (c.message_start_time, 0, c.chunk_start_offset, 0, c) for c in chunk_indexes
+            (c.message_start_time, 0, c.chunk_start_offset, 0, None)
+            for c in chunk_indexes
         ]
         heapq.heapify(heap)
+        # Chunks leave the heap in ``_merge_order``, so they are read in it.
+        chunks = read_chunks(
+            f, sorted(chunk_indexes, key=_merge_order), self._chunk_reads
+        )
         while heap:
             _, kind, offset, _, item = heapq.heappop(heap)
             if kind == 0:
-                for index, selected_message in self._read_chunk(
-                    f, path, summary, item, selected, declared, with_index=True
+                chunk_index, chunk = next(chunks)
+                assert chunk_index.chunk_start_offset == offset
+                for index, selected_message in self._chunk_messages(
+                    f,
+                    path,
+                    summary,
+                    chunk_index,
+                    chunk,
+                    selected,
+                    declared,
+                    with_index=True,
                 ):
                     heapq.heappush(
                         heap,
@@ -192,12 +224,13 @@ class SelectedMessageReader:
             else:
                 yield item
 
-    def _read_chunk(
+    def _chunk_messages(
         self,
         f: Any,
         path: str,
         summary: "Summary",
         chunk_index: "ChunkIndex",
+        chunk: "Chunk",
         selected: Set[int],
         declared: "_Declared",
         with_index: bool = False,
@@ -212,7 +245,6 @@ class SelectedMessageReader:
         from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import breakup_chunk
 
-        chunk = read_chunk(f, chunk_index)
         index = -1
         for record in breakup_chunk(chunk):
             if isinstance(record, Message):
