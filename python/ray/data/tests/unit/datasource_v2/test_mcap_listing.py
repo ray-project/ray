@@ -6,7 +6,7 @@ The indexer and the bin packer are called directly, with no Ray cluster.
 import dataclasses
 import importlib.util
 import os
-from typing import Any, List
+from typing import Any, Iterable, List, Tuple
 
 import pyarrow as pa
 import pytest
@@ -45,6 +45,36 @@ pytestmark = pytest.mark.skipif(
 def unit_ids(chunk_metadata: Any) -> List[int]:
     """The chunk offsets a listing row reads, from its ``unit_ids``."""
     return [int(i) for i in chunk_metadata["unit_ids"]]
+
+
+def pack(datasource: MCAPDatasourceV2, shard: List[str]) -> List[FileManifest]:
+    """List ``shard`` and pack its rows into read tasks, as one ``ListFiles``
+    task does."""
+    indexer = datasource._get_file_indexer()
+    partitioner = datasource.get_file_partitioner()
+    assert partitioner is not None
+    blocks = [
+        m.as_block()
+        for m in indexer.list_files(pa.array(shard), filesystem=datasource.filesystem)
+    ]
+    return [
+        FileManifest(block)
+        for block in partition_files(
+            blocks,
+            None,  # pyrefly: ignore[bad-argument-type]  (TaskContext unused)
+            partitioner,
+        )
+    ]
+
+
+def chunk_units(tasks: Iterable[FileManifest]) -> List[Tuple[str, int]]:
+    """Every ``(path, chunk offset)`` the tasks read."""
+    return [
+        (path, i)
+        for task in tasks
+        for path, md in zip(task.paths, task.file_chunk_metadatas)
+        for i in unit_ids(md)
+    ]
 
 
 def record_read_back(monkeypatch) -> List[int]:
@@ -318,41 +348,12 @@ def test_packer_packs_per_listing_shard(tmp_path):
     datasource = MCAPDatasourceV2(paths)
     partitioner = datasource.get_file_partitioner()
     assert partitioner is not None and not partitioner.requires_global_input
-    # A typed binding: the narrowing above does not reach the closure below.
-    packer: OnlineBinPacker = partitioner
 
-    def pack(shard):
-        """List ``shard`` and pack its blocks, as one ``ListFiles`` task does."""
-        indexer = datasource._get_file_indexer()
-        blocks = [
-            m.as_block()
-            for m in indexer.list_files(
-                pa.array(shard), filesystem=datasource.filesystem
-            )
-        ]
-        return [
-            FileManifest(block)
-            for block in partition_files(
-                blocks,
-                None,  # pyrefly: ignore[bad-argument-type]  (TaskContext unused)
-                packer,
-            )
-        ]
+    per_shard = pack(datasource, paths[:2]) + pack(datasource, paths[2:])
+    whole = pack(datasource, paths)
 
-    def units(tasks):
-        """Every ``(path, chunk offset)`` the tasks read."""
-        return [
-            (path, i)
-            for task in tasks
-            for path, md in zip(task.paths, task.file_chunk_metadatas)
-            for i in unit_ids(md)
-        ]
-
-    per_shard = pack(paths[:2]) + pack(paths[2:])
-    whole = pack(paths)
-
-    assert sorted(units(per_shard)) == sorted(units(whole))
-    assert len(set(units(per_shard))) == len(units(per_shard)) == 16
+    assert sorted(chunk_units(per_shard)) == sorted(chunk_units(whole))
+    assert len(set(chunk_units(per_shard))) == len(chunk_units(per_shard)) == 16
     # Two shards may each leave one bin under-filled.
     assert len(per_shard) <= len(whole) + 1
 
