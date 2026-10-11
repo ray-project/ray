@@ -10,8 +10,9 @@ whole summary. They stay MCAP records, in two steps:
    file's records, stored once per file. For a chunk row those are the file's
    schema and channel records. A whole-file row carries the raw summary section,
    or no records when the file has no summary. An unreadable file carries null.
-2. ``TaskSummaryPartitioner`` packs the rows with ``OnlineBinPacker``, which
-   keeps only paths, sizes and chunk metadata. To each packed row it adds the
+2. ``TaskSummaryPartitioner`` groups the rows into read tasks with
+   ``OrderedFileCutter`` and ``OnlineBinPacker`` (``mcap_file_cuts``), which
+   keep only paths, sizes and chunk metadata. To each packed row it adds the
    file's records followed by the index records of the chunks the row names,
    compressed with zstd (``TASK_SUMMARY_COLUMN``).
 
@@ -21,7 +22,7 @@ file, which fails the task with the file's own error.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import pyarrow as pa
 
@@ -44,6 +45,7 @@ _FILE_RECORDS_TYPE = pa.dictionary(pa.int32(), pa.binary())
 
 # A ``ChunkIndex`` record starts with the opcode and the record length, then the
 # chunk's two log times (8 bytes each) and its start offset (8).
+_LOG_TIMES_AT = _RECORD_PREFIX_BYTES
 _CHUNK_START_OFFSET_AT = _RECORD_PREFIX_BYTES + 16
 
 
@@ -73,6 +75,23 @@ def split_section(section: memoryview) -> SectionRecords:
     return SectionRecords(
         declarations=b"".join(declarations),
         chunk_indexes=chunk_indexes,
+    )
+
+
+def chunk_log_times(record: Optional[bytes]) -> Optional[Tuple[int, int]]:
+    """The first and last log time in a chunk, read from its ``ChunkIndex`` record.
+
+    ``None`` when ``record`` is not a ``ChunkIndex`` record, such as the empty or
+    missing record of a listing row that names no chunk.
+    """
+    from mcap.opcode import Opcode
+
+    at = _LOG_TIMES_AT
+    if not record or record[0] != Opcode.CHUNK_INDEX or len(record) < at + 16:
+        return None
+    return (
+        int.from_bytes(record[at : at + 8], "little"),
+        int.from_bytes(record[at + 8 : at + 16], "little"),
     )
 
 
@@ -139,9 +158,10 @@ class _HeldFile:
 class TaskSummaryPartitioner(FilePartitioner):
     """Packs listing rows with ``packer`` and adds each row's summary records.
 
-    ``packer`` is an ``OnlineBinPacker``. It drops the listing's record
-    columns, so this partitioner holds each file's records until its last row
-    leaves in a packed task. What it holds follows the packer's open bins.
+    ``packer`` groups the rows into read tasks (``OrderedFileCutter``). It
+    drops the listing's record columns, so this partitioner holds each file's
+    records until its last row leaves in a packed task. What it holds follows
+    the packer's open bins.
     """
 
     def __init__(self, packer: FilePartitioner):
