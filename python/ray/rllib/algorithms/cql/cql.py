@@ -138,6 +138,8 @@ class CQLConfig(SACConfig):
             min_q_weight: in Q weight multiplier.
             deterministic_backup: If the target in the Bellman update should have an
                 entropy backup. Defaults to `True`.
+            **kwargs: Additional config settings, forwarded to the parent
+                `SACConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

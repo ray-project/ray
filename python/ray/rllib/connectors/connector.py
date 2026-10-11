@@ -46,11 +46,15 @@ class ConnectorContext:
         """Construct a ConnectorContext instance.
 
         Args:
+            config: The algorithm config dict of the policy this context belongs to.
             initial_states: States that are used for constructing
                 the initial input dict for RNN models. [] if a model is not recurrent.
-            action_space_struct: a policy's action space, in python
-                data format. E.g., python dict instead of DictSpace, python tuple
-                instead of TupleSpace.
+            observation_space: The observation space of the policy.
+            action_space: The action space of the policy.
+            view_requirements: The view requirements of the policy, mapping column
+                names to their `ViewRequirement` definitions.
+            is_policy_recurrent: Whether the policy this context belongs to is
+                recurrent.
         """
         self.config = config or {}
         self.initial_states = initial_states or []
@@ -236,7 +240,6 @@ class AgentConnector(Connector):
         forward pass.
 
         Args:
-            ctx: Context for running this connector call.
             output: Env and agent IDs, plus data output from policy forward pass.
         """
         pass
@@ -247,7 +250,7 @@ class AgentConnector(Connector):
         """Transform a list of data items from env before they reach policy.
 
         Args:
-            ac_data: List of env and agent IDs, plus arbitrary data items from
+            acd_list: List of env and agent IDs, plus arbitrary data items from
                 an environment or upstream agent connectors.
 
         Returns:
@@ -268,7 +271,7 @@ class AgentConnector(Connector):
         """Transform a single agent connector data item.
 
         Args:
-            data: Env and agent IDs, plus arbitrary data item from a single agent
+            ac_data: Env and agent IDs, plus arbitrary data item from a single agent
                 of an environment.
 
         Returns:
@@ -449,7 +452,8 @@ class ConnectorPipeline(abc.ABC):
         Args:
             key: The key to index by
 
-        Returns: The Connector at index `key`.
+        Returns:
+            The list of Connectors in this pipeline matching `key`.
         """
         # In case key is a class
         if not isinstance(key, str):

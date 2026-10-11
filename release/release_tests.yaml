@@ -1783,17 +1783,6 @@
         byod:
           runtime_env:
             RAY_SERVE_ENABLE_HA_PROXY: "1"
-      run:
-        timeout: 7200
-        long_running: false
-        # HAProxy is HTTP-only and does not proxy the gRPC server bound by
-        # gRPCOptions(port=9000); --run-grpc would crash with connection refused
-        # under RAY_SERVE_ENABLE_HA_PROXY=1. Run the HAProxy-proxied transports
-        # only.
-        script: >-
-          python workloads/microbenchmarks.py
-          --run-http --run-handle --run-latency --run-throughput
-          --run-streaming
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -5378,6 +5367,10 @@
   cluster:
     byod:
       runtime_env:
+        HF_HOME: "/home/ray/.cache/huggingface"
+        RAY_LLM_BENCHMARK_DATASET_PATH: "/tmp/ray_llm_benchmark_dataset"
+        RAY_DATA_LLM_BENCHMARK_METRICS_WAIT_TIMEOUT_S: "35"
+        RAY_DATA_LLM_BENCHMARK_METRICS_POLL_INTERVAL_S: "1"
         VLLM_DISABLE_COMPILE_CACHE: "1"
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
@@ -5426,7 +5419,7 @@
   frequency: weekly
   group: ray-examples
   team: ml
-  working_dir: //doc/source/train/examples/transformers/transformer_reinforcement_learning
+  working_dir: //doc/source/train/examples/transformers/transformer-reinforcement-learning
 
   cluster:
     byod:

@@ -73,10 +73,11 @@ class WorldModel(nn.Module):
         """Initializes a WorldModel instance.
 
         Args:
-             model_size: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
-             action_space: The action space the our environment used.
-             batch_length_T: The length (T) of the sequences used for training. The
+            observation_space: The observation space of the environment used.
+            action_space: The action space the our environment used.
+            batch_length_T: The length (T) of the sequences used for training. The
                 actual shape of the input data (e.g. rewards) is then: [B, T, ...],
                 where B is the "batch size", T is the "batch length" (this arg) and
                 "..." is the dimension of the data (e.g. (64, 64, 3) for Atari image
@@ -281,6 +282,18 @@ class WorldModel(nn.Module):
             actions: The batch (B, T, ...) of actions to be used in combination with
                 h-states and computed z-states to yield the next h-states.
             is_first: The batch (B, T) of `is_first` flags.
+
+        Returns:
+            A dict with the time axis already folded into the batch axis (all shapes
+            are [BxT, ...]) containing the (symlogged) input observations
+            ("sampled_obs_symlog_BxT"), the decoder's predicted observations
+            ("obs_distribution_means_BxT"), the reward predictor's logits and
+            (expected) reward values ("reward_logits_BxT" and "rewards_BxT"), the
+            continue predictor's distribution and (expected) continue flags
+            ("continue_distribution_BxT" and "continues_BxT"), the deterministic
+            h-states ("h_states_BxT"), the sampled posterior z-states and their probs
+            ("z_posterior_states_BxT" and "z_posterior_probs_BxT"), and the probs of
+            the prior z-states ("z_prior_probs_BxT").
         """
         if self.symlog_obs:
             observations = symlog(observations)

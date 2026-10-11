@@ -5,7 +5,7 @@ TensorFlow policy class used for SAC.
 import copy
 import logging
 from functools import partial
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete
@@ -43,6 +43,9 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.episode_v2 import EpisodeV2
+
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
@@ -58,8 +61,8 @@ def build_sac_model(
 
     Args:
         policy: The TFPolicy that will use the models.
-        obs_space (gym.spaces.Space): The observation space.
-        action_space (gym.spaces.Space): The action space.
+        obs_space: The observation space.
+        action_space: The action space.
         config: The SACConfig object.
 
     Returns:
@@ -122,7 +125,7 @@ def postprocess_trajectory(
     policy: Policy,
     sample_batch: SampleBatch,
     other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-    episode=None,
+    episode: Optional["EpisodeV2"] = None,
 ) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
@@ -138,11 +141,11 @@ def postprocess_trajectory(
         policy: The Policy used to generate the trajectory
             (`sample_batch`)
         sample_batch: The SampleBatch to postprocess.
-        other_agent_batches (Optional[Dict[AgentID, SampleBatch]]): Optional
-            dict of AgentIDs mapping to other agents' trajectory data (from the
-            same episode). NOTE: The other agents use the same policy.
-        episode (Optional[Episode]): Optional multi-agent episode
-            object in which the agents operated.
+        other_agent_batches: Optional dict of AgentIDs mapping to other
+            agents' trajectory data (from the same episode). NOTE: The other
+            agents use the same policy.
+        episode: Optional multi-agent episode object in which the agents
+            operated.
 
     Returns:
         SampleBatch: The postprocessed, modified SampleBatch (or a new one).
@@ -159,7 +162,7 @@ def _get_dist_class(
         policy: The policy for which to return the action
             dist class.
         config: The Algorithm's config dict.
-        action_space (gym.spaces.Space): The action space used.
+        action_space: The action space used.
 
     Returns:
         Type[TFActionDistribution]: A TF distribution class.
@@ -208,6 +211,7 @@ def get_distribution_inputs_and_class(
         obs_batch: The observations to be used as inputs to the
             model.
         explore: Whether to activate exploration or not.
+        **kwargs: Forward compatibility placeholder; ignored.
 
     Returns:
         Tuple[TensorType, Type[TFActionDistribution], List[TensorType]]: The
@@ -239,8 +243,8 @@ def sac_actor_critic_loss(
 
     Args:
         policy: The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[ActionDistribution]: The action distr. class.
+        model: The Model to calculate the loss for.
+        dist_class: The action distr. class.
         train_batch: The training data.
 
     Returns:
@@ -659,8 +663,8 @@ def setup_early_mixins(
 
     Args:
         policy: The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
         config: The Policy's config.
     """
     ActorCriticOptimizerMixin.__init__(policy, config)
@@ -710,8 +714,8 @@ def setup_mid_mixins(
 
     Args:
         policy: The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
         config: The Policy's config.
     """
     ComputeTDErrorMixin.__init__(policy, sac_actor_critic_loss)
@@ -731,8 +735,8 @@ def setup_late_mixins(
 
     Args:
         policy: The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
+        obs_space: The Policy's observation space.
+        action_space: The Policy's action space.
         config: The Policy's config.
     """
     TargetNetworkMixin.__init__(policy)
@@ -748,9 +752,8 @@ def validate_spaces(
 
     Args:
         policy: The policy, whose spaces are being validated.
-        observation_space (gym.spaces.Space): The observation space to
-            validate.
-        action_space (gym.spaces.Space): The action space to validate.
+        observation_space: The observation space to validate.
+        action_space: The action space to validate.
         config: The Policy's config dict.
 
     Raises:

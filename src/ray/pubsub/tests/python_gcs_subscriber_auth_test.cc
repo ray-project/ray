@@ -31,10 +31,10 @@ namespace ray {
 namespace pubsub {
 
 // Mock implementation of ObservabilityPubSubService for testing authentication
-class MockObservabilityPubSubService final
+class FakeObservabilityPubSubService final
     : public rpc::ObservabilityPubSubService::Service {
  public:
-  explicit MockObservabilityPubSubService(bool should_accept_requests)
+  explicit FakeObservabilityPubSubService(bool should_accept_requests)
       : should_accept_requests_(should_accept_requests) {}
 
   grpc::Status GcsSubscriberCommandBatch(
@@ -105,9 +105,9 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
 
   // Start a GCS server with optional authentication token
   void StartServer(const std::string &server_token, bool should_accept_requests = true) {
-    auto mock_service =
-        std::make_unique<MockObservabilityPubSubService>(should_accept_requests);
-    mock_service_ptr_ = mock_service.get();
+    auto fake_service =
+        std::make_unique<FakeObservabilityPubSubService>(should_accept_requests);
+    fake_service_ptr_ = fake_service.get();
 
     std::shared_ptr<rpc::AuthenticationToken> auth_token;
     if (!server_token.empty()) {
@@ -124,7 +124,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
                                                 7200000,
                                                 auth_token);
 
-    server_->RegisterService(std::move(mock_service));
+    server_->RegisterService(std::move(fake_service));
     server_->Run();
 
     // Wait for server to start
@@ -155,7 +155,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   }
 
   std::unique_ptr<rpc::GrpcServer> server_;
-  MockObservabilityPubSubService *mock_service_ptr_ = nullptr;
+  FakeObservabilityPubSubService *fake_service_ptr_ = nullptr;
   int server_port_ = 0;
 };
 
@@ -171,7 +171,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokens) {
 
   ASSERT_TRUE(status.ok()) << "Subscribe should succeed with matching tokens: "
                            << status.ToString();
-  EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
+  EXPECT_EQ(fake_service_ptr_->subscribe_count(), 1);
 
   ASSERT_TRUE(subscriber->Close().ok());
 }
@@ -207,7 +207,7 @@ TEST_F(PythonGcsSubscriberAuthTest, ClientTokenServerNoAuth) {
   ASSERT_TRUE(status.ok())
       << "Subscribe should succeed when server doesn't require auth: "
       << status.ToString();
-  EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
+  EXPECT_EQ(fake_service_ptr_->subscribe_count(), 1);
 
   ASSERT_TRUE(subscriber->Close().ok());
 }
@@ -249,7 +249,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensPoll) {
   ASSERT_TRUE(status.ok()) << "Poll should succeed with matching tokens: "
                            << status.ToString();
   // At least one poll should have been made
-  EXPECT_GE(mock_service_ptr_->poll_count(), 1);
+  EXPECT_GE(fake_service_ptr_->poll_count(), 1);
 
   ASSERT_TRUE(subscriber->Close().ok());
 }
@@ -291,12 +291,12 @@ TEST_F(PythonGcsSubscriberAuthTest, MatchingTokensClose) {
   auto subscriber = CreateSubscriber();
   Status status = subscriber->Subscribe();
   ASSERT_TRUE(status.ok()) << "Subscribe should succeed: " << status.ToString();
-  EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
+  EXPECT_EQ(fake_service_ptr_->subscribe_count(), 1);
 
   // Close should succeed with matching tokens
   ASSERT_TRUE(subscriber->Close().ok())
       << "Close should succeed with matching tokens: " << status.ToString();
-  EXPECT_EQ(mock_service_ptr_->unsubscribe_count(), 1);
+  EXPECT_EQ(fake_service_ptr_->unsubscribe_count(), 1);
 }
 
 TEST_F(PythonGcsSubscriberAuthTest, NoAuthRequired) {
@@ -309,7 +309,7 @@ TEST_F(PythonGcsSubscriberAuthTest, NoAuthRequired) {
 
   ASSERT_TRUE(status.ok()) << "Subscribe should succeed without auth: "
                            << status.ToString();
-  EXPECT_EQ(mock_service_ptr_->subscribe_count(), 1);
+  EXPECT_EQ(fake_service_ptr_->subscribe_count(), 1);
 
   // Test polling without auth - use very short timeout
   std::string key_id;
@@ -337,7 +337,7 @@ TEST_F(PythonGcsSubscriberAuthTest, MultipleSubscribersMatchingTokens) {
 
   ASSERT_TRUE(status1.ok()) << "First subscriber should succeed: " << status1.ToString();
   ASSERT_TRUE(status2.ok()) << "Second subscriber should succeed: " << status2.ToString();
-  EXPECT_EQ(mock_service_ptr_->subscribe_count(), 2);
+  EXPECT_EQ(fake_service_ptr_->subscribe_count(), 2);
 
   ASSERT_TRUE(subscriber1->Close().ok());
   ASSERT_TRUE(subscriber2->Close().ok());

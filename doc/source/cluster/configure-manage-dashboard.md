@@ -11,7 +11,7 @@ myst:
 Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster vs. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced dashboard experience.
 
 :::{note}
-Ray dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.md), and other observability tools.
+Ray dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../kuberay/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.md), and other observability tools.
 :::
 
 ## Changing the Ray dashboard port
@@ -184,6 +184,8 @@ Set `spec.headGroupSpec.rayStartParams.include-dashboard` to `False`. Check out 
 The Ray Dashboard redacts secret values out of the {ref}`runtime environments <runtime-environments>` it serves to browsers. Variable names stay visible and their values appear as `<redacted>`. Passing credentials through `runtime_env={"env_vars": {...}}` is a common Ray pattern, so these values are often cloud keys, database passwords, or API tokens. On deployments where the dashboard is exposed without authentication, a malicious web page could exploit DNS rebinding to read them from a browser.
 
 Redaction applies only to requests from a browser. `ray list runtime-envs`, `ray job status`, and the Python SDK still return the plaintext values.
+
+Ray also masks `env_vars` values in the runtime environment agent and setup logs and in worker process command lines, which the dashboard shows on the Logs and Cluster pages. This masking applies to every client and doesn't depend on the setting below.
 
 To disable redaction, set the following environment variable on the Ray head node before starting Ray:
 

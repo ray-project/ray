@@ -215,8 +215,8 @@ class IMPALAConfig(AlgorithmConfig):
         _separate_vf_optimizer: Optional[bool] = NotProvided,
         _lr_vf: Optional[float] = NotProvided,
         # Deprecated args.
-        num_aggregation_workers=DEPRECATED_VALUE,
-        max_requests_in_flight_per_aggregator_worker=DEPRECATED_VALUE,
+        num_aggregation_workers: Optional[int] = DEPRECATED_VALUE,
+        max_requests_in_flight_per_aggregator_worker: Optional[int] = DEPRECATED_VALUE,
         **kwargs,
     ) -> Self:
         """Sets the training related configuration.
@@ -283,6 +283,14 @@ class IMPALAConfig(AlgorithmConfig):
                 algorithms (APPO, IMPALA) on the old API stack.
             _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
                 for the value network.
+            num_aggregation_workers: Deprecated. Use
+                `config.learners(num_aggregator_actors_per_learner=..)` on the new API
+                stack instead.
+            max_requests_in_flight_per_aggregator_worker: Deprecated. Use
+                `config.learners(max_requests_in_flight_per_aggregator_actor=..)` on
+                the new API stack instead.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -379,6 +387,11 @@ class IMPALAConfig(AlgorithmConfig):
             _skip_learners: If True, no `update` requests are sent to the LearnerGroup
                 and Learner actors. Only EnvRunners and aggregator actors (if
                 applicable) are used.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.debugging()` method.
+
+        Returns:
+            This updated AlgorithmConfig object.
         """
         super().debugging(**kwargs)
 

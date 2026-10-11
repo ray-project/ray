@@ -254,9 +254,11 @@ class SandboxAPISettings(BaseModel):
         default="RAY_SANDBOX_API_TOKEN",
         description=(
             "Environment variable read at app construction for the bearer "
-            "token. Unset/empty disables the app-level check (an Anyscale "
-            "service already enforces its own bearer token at the platform "
-            "edge)."
+            "token, which the REST app and the gRPC facade both require on "
+            "every call when it is set. Unset/empty disables the check: the "
+            "REST app then relies on what sits in front of it (an Anyscale "
+            "service enforces its own bearer token at the platform edge), "
+            "and the facade's CLI serves only loopback addresses."
         ),
     )
     num_replicas: int = Field(default=1, ge=1)
