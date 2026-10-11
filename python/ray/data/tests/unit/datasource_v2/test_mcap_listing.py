@@ -31,6 +31,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     round_robin_messages,
     scanner_for,
     summary_of,
+    without_summary_records,
     write_mcap,
     write_mcap_without_summary_schemas,
 )
@@ -44,6 +45,21 @@ pytestmark = pytest.mark.skipif(
 def unit_ids(chunk_metadata: Any) -> List[int]:
     """The chunk offsets a listing row reads, from its ``unit_ids``."""
     return [int(i) for i in chunk_metadata["unit_ids"]]
+
+
+def record_read_back(monkeypatch) -> List[int]:
+    """Record the offset of every earlier chunk a reader reads back for records."""
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_chunks
+
+    real_scan = mcap_chunks._scan_declarations
+    offsets: List[int] = []
+
+    def scan(f, chunk_index, declared):
+        offsets.append(chunk_index.chunk_start_offset)
+        real_scan(f, chunk_index, declared)
+
+    monkeypatch.setattr(mcap_chunks, "_scan_declarations", scan)
+    return offsets
 
 
 def test_indexer_lists_one_row_per_chunk(chunked_file):
@@ -240,23 +256,12 @@ def test_channels_declared_only_in_earlier_chunks_are_found(chunked_file, monkey
     Each channel record sits in the first chunk that uses it, and the reader's
     summary lists none, so a task owning only later chunks reads back for them.
     """
-    from mcap.reader import SeekingReader
-
-    real_get_summary = SeekingReader.get_summary
-
-    def without_channels(self):
-        summary = real_get_summary(self)
-        assert summary is not None
-        summary.channels = {}
-        summary.schemas = {}
-        return summary
-
     # Only the reader gets the stripped summary: the listing still has a row per chunk.
     datasource = MCAPDatasourceV2([chunked_file])
     (manifest,) = list_manifests(datasource)
     assert len(manifest) == CHUNKED_FILE_MESSAGES
     scanner = scanner_for(datasource)
-    monkeypatch.setattr(SeekingReader, "get_summary", without_channels)
+    without_summary_records(monkeypatch, "channels", "schemas")
 
     table = read_all(datasource, manifest, scanner=scanner)
 
@@ -264,8 +269,12 @@ def test_channels_declared_only_in_earlier_chunks_are_found(chunked_file, monkey
     assert table.column("topic").to_pylist() == ["/a", "/b", "/c"] * 3
     block = manifest.as_block()
     assert isinstance(block, pa.Table)
+    read_back = record_read_back(monkeypatch)
     tail = read_all(datasource, FileManifest(block.slice(6)), scanner=scanner)
     assert tail.column("topic").to_pylist() == ["/a", "/b", "/c"]
+    # Chunks 0, 1 and 2 declare /a, /b and /c.
+    summary = summary_of(chunked_file)
+    assert read_back == [c.chunk_start_offset for c in summary.chunk_indexes[:3]]
 
 
 def test_bin_packer_groups_chunks_by_uncompressed_bytes(tmp_path):

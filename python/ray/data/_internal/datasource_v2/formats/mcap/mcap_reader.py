@@ -30,6 +30,10 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
     _Selected,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
+    buffered,
+    read_summary_from,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     _MessageTableBuilder,
 )
@@ -142,16 +146,19 @@ class MCAPReader(Reader[FileManifest]):
         """Yield the tables of one file, limited to the chunks at ``offsets``.
 
         ``offsets`` is ``None`` for a whole-file row, which means every chunk. A
-        file without a chunk index is scanned linearly.
+        file without a chunk index is scanned linearly, through a read buffer of
+        ``DataContext.streaming_read_buffer_size`` bytes.
         """
-        from mcap.reader import SeekingReader
+        from ray.data.context import DataContext
 
         filesystem = self._filesystem or LocalFileSystem()
         with filesystem.open_input_file(path) as f:
-            reader = SeekingReader(f)
-            summary = reader.get_summary()
+            summary = read_summary_from(f, path)
             if summary is None or not summary.chunk_indexes:
-                messages = self._message_reader.iter_unindexed(f, path)
+                buffer_size = DataContext.get_current().streaming_read_buffer_size
+                messages = self._message_reader.iter_unindexed(
+                    buffered(f, buffer_size), path
+                )
             else:
                 messages = self._message_reader.iter_chunks(f, path, summary, offsets)
             yield from self._tables(messages, path, offsets)

@@ -3,9 +3,9 @@
 An MCAP file can end with a summary section, found through the footer. It holds
 the schemas and channels, one ``ChunkIndex`` per chunk (byte offset, sizes,
 log-time bounds, channels) and a ``Statistics`` record (message counts, time
-bounds). Reading it takes two seeks, so a read can be planned without reading
-any message. ``read_summaries`` reads the summaries of many files concurrently,
-with retries.
+bounds). Reading it takes one to three ranged reads (``mcap_io``), so a read can
+be planned without reading any message. ``read_summaries`` reads the summaries
+of many files concurrently, with retries.
 
 Format specification: https://mcap.dev/spec
 """
@@ -27,6 +27,7 @@ from typing import (
 from pyarrow.fs import FileSystem
 
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import read_summary_from
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.util import call_with_retry
 
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T")
 
-# Summaries read concurrently within one listing task. A summary read is two
+# Summaries read concurrently within one listing task. A summary read is a few
 # small ranged requests, so it is latency-bound on remote storage.
 _DEFAULT_SUMMARY_IO_CONCURRENCY = env_integer(
     "RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", 16
@@ -46,13 +47,10 @@ _DEFAULT_SUMMARY_IO_CONCURRENCY = env_integer(
 def read_summary(filesystem: FileSystem, path: str) -> Optional["Summary"]:
     """Return the summary of the MCAP file at ``path``, or ``None`` if it has none.
 
-    The summary section is optional. A file without one cannot be split or
-    pruned, and is read whole by a linear scan.
+    See ``mcap_io.read_summary_from``.
     """
-    from mcap.reader import SeekingReader
-
     with filesystem.open_input_file(path) as f:
-        return SeekingReader(f).get_summary()
+        return read_summary_from(f, path)
 
 
 def _read_summary_with_retry(

@@ -33,12 +33,14 @@ from typing import (
 
 import pyarrow as pa
 
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import buffered, read_chunk
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     decode_payload,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summaries
 from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
+from ray.data.context import DataContext
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -166,8 +168,9 @@ class _FileInspector:
         if not may_scan or self._scans_left == 0:
             return _DataSignature()
         self._scans_left -= 1
+        buffer_size = DataContext.get_current().streaming_read_buffer_size
         with self._filesystem.open_input_file(path) as f:
-            return self._by_scanning(f, path, want_type)
+            return self._by_scanning(buffered(f, buffer_size), path, want_type)
 
     def _settles(self, summary: "Summary") -> bool:
         """Whether the summary alone tells which channels are selected.
@@ -222,13 +225,10 @@ class _FileInspector:
         self, f: Any, chunk_index: "ChunkIndex", selected: Set[int]
     ) -> Optional["Message"]:
         """The chunk's first message on a ``selected`` channel in ``time_range``."""
-        from mcap.data_stream import ReadDataStream
-        from mcap.records import Chunk, Message
+        from mcap.records import Message
         from mcap.stream_reader import breakup_chunk
 
-        # Skip the record's opcode (1 byte) and length (8 bytes).
-        f.seek(chunk_index.chunk_start_offset + 1 + 8)
-        for record in breakup_chunk(Chunk.read(ReadDataStream(f))):
+        for record in breakup_chunk(read_chunk(f, chunk_index)):
             if (
                 isinstance(record, Message)
                 and record.channel_id in selected
