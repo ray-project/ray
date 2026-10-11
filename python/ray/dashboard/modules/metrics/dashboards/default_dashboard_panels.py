@@ -18,6 +18,8 @@ MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})
 PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
 MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
 PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
+MAX_NPUS = 'sum(autoscaler_cluster_resources{{resource="NPU",{global_filters}}})'
+PENDING_NPUS = 'sum(autoscaler_pending_resources{{resource="NPU",{global_filters}}})'
 MAX_MEMORY = 'sum(autoscaler_cluster_resources{{resource="memory",{global_filters}}})'
 PENDING_MEMORY = (
     'sum(autoscaler_pending_resources{{resource="memory",{global_filters}}})'
@@ -30,6 +32,7 @@ def max_plus_pending(max_resource, pending_resource):
 
 MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
 MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
+MAX_PLUS_PENDING_NPUS = max_plus_pending(MAX_NPUS, PENDING_NPUS)
 MAX_PLUS_PENDING_MEMORY = max_plus_pending(MAX_MEMORY, PENDING_MEMORY)
 
 MAX_PERCENTAGE_EXPRESSION = (
@@ -318,6 +321,28 @@ RAY_RESOURCES_PANELS = [
             # (A and predicate) means to return A when the predicate satisfies in PromSql.
             Target(
                 expr=f"({MAX_PLUS_PENDING_GPUS} and {MAX_PLUS_PENDING_GPUS} > ({MAX_GPUS} or vector(0)))",
+                legend="MAX + PENDING",
+            ),
+        ],
+    ),
+    Panel(
+        id=72,
+        title="Logical NPU Usage",
+        description='Logical NPU usage of Ray. The dotted line indicates the total number of NPUs. The logical NPU is allocated by `resources={"NPU": ...}` arguments from tasks and actors. PENDING means the number of NPUs that will be available when new nodes are up after the autoscaler scales up.',
+        unit="NPUs",
+        targets=[
+            Target(
+                expr='sum(ray_resources{{Name="NPU",State="USED",instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="NPU Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_resources{{Name="NPU",instance=~"$Instance",{global_filters}}})',
+                legend="MAX",
+            ),
+            # If max + pending > max, we display this value.
+            # (A and predicate) means to return A when the predicate satisfies in PromSql.
+            Target(
+                expr=f"({MAX_PLUS_PENDING_NPUS} and {MAX_PLUS_PENDING_NPUS} > ({MAX_NPUS} or vector(0)))",
                 legend="MAX + PENDING",
             ),
         ],
