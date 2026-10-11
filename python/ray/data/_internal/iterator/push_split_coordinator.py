@@ -49,11 +49,12 @@ In the next PRs: stats/metrics export, locality-aware pushing, mid-epoch
 consumer replacement.
 """
 
+import collections
 import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.data._internal.stats import DatasetStats
@@ -98,6 +99,13 @@ class _SplitFlow:
     may send while ``target_rows - (rows_pushed - rows_consumed) > 0``.
     Whole blocks are sent, so one send may overshoot the window, which only
     delays the next send until consumption catches up.
+
+    Each sent block's ObjectRef is held until the consumer reports its bytes
+    consumed. Blocks are sent by value, so the consumer holds no reference;
+    holding one here keeps Ray Data counting delivered-but-unconsumed blocks
+    against the operator's object-store usage, as it counts a pull
+    consumer's prefetched refs. It adds no object-store memory: the consumer
+    pins the object anyway.
     """
 
     def __init__(self):
@@ -108,6 +116,10 @@ class _SplitFlow:
         self.bytes_pushed = 0
         self.bytes_consumed = 0
         self.finished = False
+        # (block ref, size_bytes) of sent blocks not yet reported consumed,
+        # in send order; consumers consume in send order.
+        self._unconsumed_refs: Deque[Tuple[Any, int]] = collections.deque()
+        self._released_bytes = 0
         # Observability (written by the split's pusher): time idle because
         # the window was full (consumer-bound) vs. blocked on the executor's
         # output (producer-bound).
@@ -125,7 +137,18 @@ class _SplitFlow:
             self.target_rows = target_rows
             self.rows_consumed += consumed_rows
             self.bytes_consumed += consumed_bytes
+            self._release_consumed_refs()
             self.cond.notify()
+
+    def _release_consumed_refs(self) -> None:
+        # Bytes are reported cumulatively, so a reordered report still
+        # releases exactly the blocks consumed so far.
+        while self._unconsumed_refs:
+            _, size_bytes = self._unconsumed_refs[0]
+            if self._released_bytes + size_bytes > self.bytes_consumed:
+                break
+            self._unconsumed_refs.popleft()
+            self._released_bytes += size_bytes
 
     def rows_to_send(self) -> int:
         with self.cond:
@@ -139,7 +162,9 @@ class _SplitFlow:
             self.cond.wait(timeout)
             return self.rows_to_send() > 0
 
-    def record_push(self, num_rows: int, size_bytes: int) -> None:
+    def record_push(
+        self, num_rows: int, size_bytes: int, block_ref: Optional[Any] = None
+    ) -> None:
         with self.cond:
             # A sender that was mid-fetch when the split finished must not
             # add bytes no consumer will read back.
@@ -148,6 +173,12 @@ class _SplitFlow:
             self.rows_pushed += num_rows
             self.bytes_pushed += size_bytes
             self.blocks_pushed += 1
+            if block_ref is not None:
+                self._unconsumed_refs.append((block_ref, size_bytes))
+
+    def num_unconsumed_refs(self) -> int:
+        with self.cond:
+            return len(self._unconsumed_refs)
 
     def finish(self) -> None:
         """Close the window and drop this split's contribution to pacing."""
@@ -156,6 +187,7 @@ class _SplitFlow:
             self.rows_consumed = self.rows_pushed
             self.bytes_consumed = self.bytes_pushed
             self.target_rows = 0
+            self._unconsumed_refs.clear()
 
     def in_flight_bytes(self) -> int:
         # Consumed never exceeds pushed: senders record a push before sending
@@ -298,6 +330,7 @@ class PushSplitCoordinator:
             "rows_consumed": {i: f.rows_consumed for i, f in flows.items()},
             "bytes_pushed": {i: f.bytes_pushed for i, f in flows.items()},
             "bytes_consumed": {i: f.bytes_consumed for i, f in flows.items()},
+            "unconsumed_refs": {i: f.num_unconsumed_refs() for i, f in flows.items()},
             "blocks_pushed": {i: f.blocks_pushed for i, f in flows.items()},
             "wait_demand_s": {i: f.wait_demand_s for i, f in flows.items()},
             "wait_output_s": {i: f.wait_output_s for i, f in flows.items()},
