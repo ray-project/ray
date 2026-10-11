@@ -7,6 +7,7 @@ collect without it.
 """
 
 import json
+from collections import defaultdict
 from typing import Any, Dict, List
 
 import pyarrow as pa
@@ -258,3 +259,47 @@ def without_summary_records(monkeypatch, *names: str) -> None:
         return summary
 
     monkeypatch.setattr(mcap_io, "_collect_summary_records", parse)
+
+
+class SeekLog:
+    """A filesystem whose files record, per path, every offset they seek to."""
+
+    def __init__(self):
+        self._filesystem = LocalFileSystem()
+        self.seeks: Dict[str, List[int]] = defaultdict(list)
+
+    def open_input_file(self, path):
+        return _SeekLoggingFile(
+            self._filesystem.open_input_file(path), self.seeks[path]
+        )
+
+
+class _SeekLoggingFile:
+    """A file that appends every absolute seek offset to ``seeks``."""
+
+    def __init__(self, f, seeks: List[int]):
+        self._f = f
+        self._seeks = seeks
+
+    def seek(self, offset, whence=0):
+        if whence == 0:
+            self._seeks.append(offset)
+        return self._f.seek(offset, whence)
+
+    def __getattr__(self, name):
+        return getattr(self._f, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._f.close()
+
+
+def chunks_read(seek_log: SeekLog, path: str) -> List[int]:
+    """Start offsets of the chunks of ``path`` that were read.
+
+    A chunk record is read in one read from its start offset.
+    """
+    starts = {c.chunk_start_offset for c in summary_of(path).chunk_indexes}
+    return [offset for offset in seek_log.seeks[path] if offset in starts]
