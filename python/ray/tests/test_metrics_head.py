@@ -12,8 +12,11 @@ from ray._common.utils import get_default_ray_temp_dir
 from ray._private.ray_constants import SESSION_LATEST
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
+    MAX_NPUS,
     MAX_PERCENTAGE_EXPRESSION,
+    MAX_PLUS_PENDING_NPUS,
     OVERVIEW_AND_HEALTH_PANELS,
+    RAY_RESOURCES_PANELS,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
@@ -272,6 +275,36 @@ def test_cluster_npu_hbm_utilization_uses_reported_capacity():
         '{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",'
         "{global_filters}}})) * 100"
     )
+
+
+def test_logical_npu_usage_panel():
+    logical_npu_usage = next(
+        panel for panel in RAY_RESOURCES_PANELS if panel.title == "Logical NPU Usage"
+    )
+
+    assert logical_npu_usage.unit == "NPUs"
+    assert [
+        (target.legend, target.expr) for target in logical_npu_usage.targets[:2]
+    ] == [
+        (
+            "NPU Usage: {{instance}}",
+            'sum(ray_resources{{Name="NPU",State="USED",instance=~"$Instance",'
+            "{global_filters}}}) by (instance)",
+        ),
+        (
+            "MAX",
+            'sum(ray_resources{{Name="NPU",instance=~"$Instance",'
+            "{global_filters}}})",
+        ),
+    ]
+    pending_target = logical_npu_usage.targets[2]
+    assert pending_target.legend == "MAX + PENDING"
+    assert pending_target.expr == (
+        f"({MAX_PLUS_PENDING_NPUS} and {MAX_PLUS_PENDING_NPUS} > "
+        f"({MAX_NPUS} or vector(0)))"
+    )
+    assert 'resource="NPU"' in pending_target.expr
+    assert "autoscaler_pending_resources" in pending_target.expr
 
 
 def test_serve_dashboard_utilizes_global_filters():
