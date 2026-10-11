@@ -365,6 +365,48 @@ def test_rows_equal_a_row_by_row_build(tmp_path):
     assert schema_data.null_count == table.num_rows // len(MIXED_TOPICS)
 
 
+@pytest.mark.parametrize("include_metadata", [True, False])
+@pytest.mark.parametrize("include_row_id", [True, False])
+def test_estimated_bytes_match_the_built_table(
+    tmp_path, include_metadata, include_row_id
+):
+    """``estimated_bytes`` is the size of the table ``build`` returns, every column
+    counted, ``row_id`` included."""
+    path = os.path.join(tmp_path, "mixed.mcap")
+    write_mixed_channels(path, num_messages=400)
+    builder = _MessageTableBuilder(
+        columns=None,
+        include_metadata=include_metadata,
+        include_row_id=include_row_id,
+        decode_json=False,
+    )
+    for selected in selected_messages(path):
+        builder.add(selected)
+    estimated = builder.estimated_bytes
+
+    table = builder.build()
+
+    # Arrow adds one offset per column and a validity bitmap where there are nulls.
+    assert estimated <= table.nbytes <= 1.01 * estimated
+
+
+def test_reader_cuts_tables_at_the_target_counting_every_column(tmp_path):
+    """With ``row_id`` and ``path`` on, each table but the last is cut as soon as
+    it reaches the target size."""
+    path = os.path.join(tmp_path, "mixed.mcap")
+    write_mixed_channels(path, num_messages=400)
+    datasource = MCAPDatasourceV2([path], include_row_id=True, include_paths=True)
+    (manifest,) = list_manifests(datasource)
+    target = 8 * 1024
+    scanner = dataclasses.replace(scanner_for(datasource), target_block_size=target)
+
+    tables = list(scanner.create_reader().read(manifest))
+
+    assert len(tables) > 1
+    # One row of about 350 bytes past the target, at most.
+    assert all(target <= t.nbytes <= 1.05 * target for t in tables[:-1])
+
+
 def test_builder_holds_rows_compactly():
     """Accumulated rows cost about their payload and ``row_id``, not a Python object
     per value: rows of 100-byte payloads and 2 KB schemas stay under 230 bytes."""

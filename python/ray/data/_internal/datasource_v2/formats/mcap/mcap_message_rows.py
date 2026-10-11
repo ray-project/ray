@@ -3,7 +3,18 @@
 import json
 from array import array
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 import pyarrow as pa
 
@@ -14,11 +25,6 @@ from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 
 if TYPE_CHECKING:
     from mcap.records import Channel, Schema
-
-# Rough in-memory cost of one row beyond its payload: the timestamps, the
-# sequence number, the topic string and the Arrow offsets around them. Only
-# used to decide when a table is big enough to yield.
-_ROW_OVERHEAD_BYTES = 96
 
 # Columns a message row carries, in output order. Metadata columns are present
 # only with ``include_metadata``; ``row_id`` only with ``include_row_id``.
@@ -35,9 +41,18 @@ METADATA_COLUMNS = (
 # The ``int64`` columns a row takes from its message record.
 _MESSAGE_INT_COLUMNS = ("log_time", "publish_time", "sequence")
 
+# Bytes of the int32 offset or dictionary index each value of a ``string``,
+# ``binary``, ``map`` or dictionary column adds to its table.
+_INT32_BYTES = 4
+
 # A ``binary`` or ``string`` array addresses its values with int32 offsets, so
 # a buffer is sealed into its own chunk before it passes this many bytes.
 _MAX_BUFFER_BYTES = 2**31 - 1
+
+# Decoded JSON is held as Python objects until a table is built, at 6-7 times
+# the payload's bytes for dicts of numbers, so a row counts this many bytes per
+# payload byte.
+_DECODED_JSON_BYTES_PER_PAYLOAD_BYTE = 6
 
 # Columns whose value a row takes from its channel and schema: the column type
 # and how to read the value.
@@ -134,6 +149,33 @@ def decode_payload(channel: "Channel", data: bytes, where: str) -> Any:
         ) from e
 
 
+def _value_bytes(value: Any) -> int:
+    """Bytes one value of a ``_CHANNEL_COLUMNS`` column adds to a table."""
+    if value is None:
+        return _INT32_BYTES
+    if isinstance(value, int):
+        return 8
+    if isinstance(value, str):
+        return len(value.encode()) + _INT32_BYTES
+    # A ``channel_metadata`` map: an offset, then a key and a value per entry.
+    return _INT32_BYTES + sum(_value_bytes(k) + _value_bytes(v) for k, v in value)
+
+
+def _channel_row_bytes(
+    channel: "Channel", schema: Optional["Schema"], names: Sequence[str]
+) -> int:
+    """Bytes a row on ``channel`` adds to the ``names`` columns it takes from its
+    channel and schema, the ``schema_data`` index included."""
+    total = sum(
+        _value_bytes(value_of(channel, schema))
+        for name, (_, value_of) in _CHANNEL_COLUMNS.items()
+        if name in names
+    )
+    if "schema_data" in names:
+        total += _INT32_BYTES
+    return total
+
+
 def _int_array(values: array, type_: pa.DataType) -> pa.Array:
     """Wrap an ``array.array`` of int32 or int64 values as an Arrow array, no copy."""
     return pa.Array.from_buffers(type_, len(values), [None, pa.py_buffer(values)])
@@ -186,6 +228,8 @@ class _ChannelSlot:
     schema: Optional["Schema"]
     # Position of ``schema.data`` in the table's ``schema_data`` dictionary.
     schema_index: Optional[int]
+    # Bytes a row on this channel adds to the table, payload and ``row_id`` aside.
+    row_bytes: int
 
 
 class _MessageTableBuilder:
@@ -197,6 +241,12 @@ class _MessageTableBuilder:
     ``_ChannelSlot``, with one int32 per row pointing at it. ``schema_data`` is
     built as a dictionary from the slots, so a table holds each definition
     once.
+
+    ``estimated_bytes`` is the memory the builder holds for its rows, so the
+    reader can cut tables at its target size. It counts every column,
+    ``row_id`` and the appended ones (``extra_row_bytes``) included, and equals
+    the size of the table ``build`` returns, except for decoded JSON, which is
+    held as Python objects until then.
     """
 
     def __init__(
@@ -206,6 +256,7 @@ class _MessageTableBuilder:
         include_metadata: bool,
         include_row_id: bool,
         decode_json: bool,
+        extra_row_bytes: int = 0,
     ):
         """Initialize the builder.
 
@@ -216,6 +267,8 @@ class _MessageTableBuilder:
             include_row_id: Whether to build ``row_id``.
             decode_json: Whether ``data`` holds decoded JSON values rather than
                 bytes. Fixed by the planned schema for every row of the dataset.
+            extra_row_bytes: Bytes per row of the columns the caller appends to
+                each table, such as ``path``.
         """
         names = list(DATA_COLUMNS)
         if include_metadata:
@@ -225,6 +278,12 @@ class _MessageTableBuilder:
         # The columns this builder emits, in output order.
         self._names = [n for n in names if columns is None or n in columns]
         self._decode_json = decode_json
+        self._fixed_row_bytes = extra_row_bytes + sum(
+            8 for n in _MESSAGE_INT_COLUMNS if n in self._names
+        )
+        for name in ("data", ROW_ID_COLUMN):
+            if name in self._names:
+                self._fixed_row_bytes += _INT32_BYTES
         self.reset()
 
     def reset(self) -> None:
@@ -251,17 +310,23 @@ class _MessageTableBuilder:
 
     def add(self, selected: _Selected) -> None:
         schema, channel, message, row_id = selected
-        self._slot_ids.append(self._slot(channel, schema))
+        slot = self._slot(channel, schema)
+        self._slot_ids.append(slot)
         self.num_rows += 1
-        self.estimated_bytes += len(message.data) + _ROW_OVERHEAD_BYTES
+        self.estimated_bytes += self._slots[slot].row_bytes
         for name, values in self._ints.items():
             values.append(getattr(message, name))
         if self._payloads is not None:
             self._payloads.append(message.data)
+            self.estimated_bytes += len(message.data)
         elif self._json_values is not None:
             self._json_values.append(decode_payload(channel, message.data, row_id))
+            payload_bytes = len(message.data)
+            self.estimated_bytes += _DECODED_JSON_BYTES_PER_PAYLOAD_BYTE * payload_bytes
         if self._row_ids is not None:
-            self._row_ids.append(row_id.encode())
+            encoded = row_id.encode()
+            self._row_ids.append(encoded)
+            self.estimated_bytes += len(encoded)
 
     def build(self) -> pa.Table:
         """Build a table of the rows added so far, and empty the builder.
@@ -292,13 +357,17 @@ class _MessageTableBuilder:
         return slot
 
     def _new_slot(self, channel: "Channel", schema: Optional["Schema"]) -> _ChannelSlot:
+        row_bytes = self._fixed_row_bytes + _channel_row_bytes(
+            channel, schema, self._names
+        )
         schema_index = None
         if "schema_data" in self._names and schema is not None:
             schema_index = self._schema_index.get(schema.data)
             if schema_index is None:
                 schema_index = len(self._schema_index)
                 self._schema_index[schema.data] = schema_index
-        return _ChannelSlot(channel, schema, schema_index)
+                self.estimated_bytes += len(schema.data) + _INT32_BYTES
+        return _ChannelSlot(channel, schema, schema_index, row_bytes)
 
     def _column(
         self, name: str, slot_ids: pa.Array
