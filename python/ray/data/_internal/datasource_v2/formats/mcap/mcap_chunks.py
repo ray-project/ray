@@ -9,6 +9,7 @@ import heapq
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
+from ray.data._internal.datasource_v2.formats.mcap.mcap_io import read_chunk
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     message_row_id,
@@ -44,13 +45,11 @@ def _scan_declarations(f: Any, chunk_index: "ChunkIndex", declared: _Declared) -
     A record already in ``declared`` is not replaced. The chunk is marked as
     scanned.
     """
-    from mcap.data_stream import ReadDataStream
-    from mcap.records import Channel, Chunk, Schema
+    from mcap.records import Channel, Schema
     from mcap.stream_reader import breakup_chunk
 
     declared.scanned.add(chunk_index.chunk_start_offset)
-    f.seek(chunk_index.chunk_start_offset + 1 + 8)
-    for record in breakup_chunk(Chunk.read(ReadDataStream(f))):
+    for record in breakup_chunk(read_chunk(f, chunk_index)):
         if isinstance(record, Channel):
             declared.channels.setdefault(record.id, record)
         elif isinstance(record, Schema):
@@ -181,13 +180,10 @@ class SelectedMessageReader:
         does not depend on the selection. With ``with_index``, each message is
         yielded as ``(index in chunk, message)``.
         """
-        from mcap.data_stream import ReadDataStream
-        from mcap.records import Channel, Chunk, Message, Schema
+        from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import breakup_chunk
 
-        # Skip the record's opcode (1 byte) and length (8 bytes).
-        f.seek(chunk_index.chunk_start_offset + 1 + 8)
-        chunk = Chunk.read(ReadDataStream(f))
+        chunk = read_chunk(f, chunk_index)
         index = -1
         for record in breakup_chunk(chunk):
             if isinstance(record, Message):
@@ -298,8 +294,6 @@ class SelectedMessageReader:
                 schema_id is None or schema_id in declared.schemas
             ):
                 break
-        # Back to the chunk being read.
-        f.seek(chunk_index.chunk_start_offset + 1 + 8)
 
     def iter_unindexed(self, f: Any, path: str) -> Iterator[_Selected]:
         """Scan a file without a chunk index from the start, in file order.

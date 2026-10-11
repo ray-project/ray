@@ -37,6 +37,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     read_all,
     round_robin_messages,
     summary_of,
+    without_summary_records,
     write_mcap,
     write_mcap_without_summary_schemas,
 )
@@ -151,14 +152,25 @@ class _SeekLoggingFile:
 
 
 def chunks_read(seek_log: SeekLog, path: str) -> List[int]:
-    """Start offsets of the chunks of ``path`` whose data was read."""
-    summary = summary_of(path)
-    # A chunk's data starts after its opcode (1 byte) and length (8 bytes).
-    starts = {
-        c.chunk_start_offset + 1 + 8: c.chunk_start_offset
-        for c in summary.chunk_indexes
-    }
-    return [starts[offset] for offset in seek_log.seeks[path] if offset in starts]
+    """Start offsets of the chunks of ``path`` that were read.
+
+    A chunk record is read in one read from its start offset.
+    """
+    starts = {c.chunk_start_offset for c in summary_of(path).chunk_indexes}
+    return [offset for offset in seek_log.seeks[path] if offset in starts]
+
+
+def count_scans(monkeypatch) -> List[str]:
+    """Record the path of every file planning scans whole, in order."""
+    real_by_scanning = mcap_data_column._FileInspector._by_scanning
+    scanned: List[str] = []
+
+    def by_scanning(self, f, path, want_type):
+        scanned.append(path)
+        return real_by_scanning(self, f, path, want_type)
+
+    monkeypatch.setattr(mcap_data_column._FileInspector, "_by_scanning", by_scanning)
+    return scanned
 
 
 def test_only_the_file_that_types_data_has_a_chunk_read(tmp_path):
@@ -217,41 +229,26 @@ def test_at_most_max_scanned_files_are_scanned(tmp_path, monkeypatch):
     The only file with ``/a`` comes after the budget's worth of files without
     a chunk index.
     """
-    import mcap.reader  # noqa: F401 - binds the real StreamReader for summaries
-    import mcap.stream_reader
-
-    real_stream_reader = mcap.stream_reader.StreamReader
-    scans = []
-
-    def counting_stream_reader(*args, **kwargs):
-        scans.append(args)
-        return real_stream_reader(*args, **kwargs)
-
     budget = mcap_data_column._MAX_SCANNED_FILES
     paths = write_files(
         tmp_path,
         [dict(topic="/b", index=False) for _ in range(budget)] + [dict(index=False)],
     )
-    monkeypatch.setattr(mcap.stream_reader, "StreamReader", counting_stream_reader)
+    scans = count_scans(monkeypatch)
 
     assert infer(paths, selection=ONLY_A) is None
-    assert len(scans) == budget
+    assert scans == paths[:budget]
 
 
 def test_walk_never_scans_a_file_whole(tmp_path, monkeypatch):
     """Past the sample, a file whose summary cannot settle the selection is skipped."""
-    import mcap.reader  # noqa: F401 - binds the real StreamReader for summaries
-    import mcap.stream_reader
-
-    def no_scan(*args, **kwargs):
-        raise AssertionError("a file was scanned whole")
-
     paths = write_files(
         tmp_path, [dict(topic="/b") for _ in range(16)] + [dict(index=False)]
     )
-    monkeypatch.setattr(mcap.stream_reader, "StreamReader", no_scan)
+    scans = count_scans(monkeypatch)
 
     assert infer(paths, selection=ONLY_A) is None
+    assert scans == []
 
 
 def test_walk_skips_unreadable_files_and_stops_at_its_cap(tmp_path, monkeypatch):
@@ -279,14 +276,16 @@ def test_walk_skips_unreadable_files_and_stops_at_its_cap(tmp_path, monkeypatch)
 
 
 def test_unreadable_sampled_file_fails_planning(tmp_path):
-    """A sampled file that is not MCAP fails planning, as the listing would."""
-    from mcap.exceptions import InvalidMagic
-
+    """A sampled file that is not MCAP fails planning with an error naming it, as
+    the listing would."""
     paths = write_files(tmp_path, [dict(topic="/b") for _ in range(5)])
     with open(paths[4], "wb") as f:
         f.write(b"not an MCAP file")
-    with pytest.raises(InvalidMagic):
+
+    with pytest.raises(ValueError, match="is not an MCAP file") as error:
         infer(paths, selection=ONLY_A)
+
+    assert paths[4] in str(error.value)
 
 
 @pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
@@ -379,8 +378,6 @@ def test_schema_walk_does_not_scan_files_whose_summary_lacks_schemas(
     It skips a file whose summary lacks the schemas ``message_types`` needs, so
     ``data`` stays binary.
     """
-    import mcap.stream_reader
-
     # Eighteen files without ``/a`` put the last file past the 16-file sample.
     paths = []
     for i in range(18):
@@ -391,13 +388,11 @@ def test_schema_walk_does_not_scan_files_whose_summary_lacks_schemas(
     write_mcap_without_summary_schemas(last)
     paths.append(last)
 
-    def no_scan(*args, **kwargs):
-        raise AssertionError("a file was read whole for the schema")
-
-    monkeypatch.setattr(mcap.stream_reader, "StreamReader", no_scan)
+    scans = count_scans(monkeypatch)
     datasource = MCAPDatasourceV2(paths, topics=["/a"], message_types=["test_schema"])
 
     assert infer_schema(datasource).field("data").type == pa.binary()
+    assert scans == []
 
 
 def test_data_type_is_inferred_when_the_summary_lists_no_channels(
@@ -407,21 +402,13 @@ def test_data_type_is_inferred_when_the_summary_lists_no_channels(
 
     JSON payloads are still planned as decoded values.
     """
-    from mcap.reader import SeekingReader
-
-    real_get_summary = SeekingReader.get_summary
-
-    def without_channels(self):
-        summary = real_get_summary(self)
-        assert summary is not None
-        summary.channels = {}
-        return summary
-
-    monkeypatch.setattr(SeekingReader, "get_summary", without_channels)
+    without_summary_records(monkeypatch, "channels")
+    scans = count_scans(monkeypatch)
     datasource = MCAPDatasourceV2([chunked_file], topics=["/a"])
 
     schema = infer_schema(datasource)
     assert pa.types.is_struct(schema.field("data").type)
+    assert scans == [chunked_file]
     (manifest,) = list_manifests(datasource)
     table = read_all(datasource, manifest)
 
