@@ -128,11 +128,11 @@ class _FileInspector:
 
         The type comes from the first file in listing order with a selected
         message in ``time_range``. Files after it get the encoding check only.
-        Stops at a selected channel that is not JSON. A summary that cannot be
-        read fails planning.
+        Stops at a selected channel that is not JSON. A file whose summary cannot
+        be read is skipped; its own read task reports the error.
         """
         value_type: Optional[pa.DataType] = None
-        for path, summary in _summaries(self._filesystem, paths, skip_unreadable=False):
+        for path, summary in _summaries(self._filesystem, paths, skip_unreadable=True):
             signature = self._inspect(
                 path, summary, want_type=value_type is None, may_scan=True
             )

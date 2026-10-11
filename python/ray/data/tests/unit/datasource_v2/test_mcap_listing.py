@@ -13,6 +13,7 @@ import pytest
 
 from ray.data._internal.datasource_v2.common.listing_utils import partition_files
 from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
+from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
 from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
     MCAPDatasourceV2,
 )
@@ -32,6 +33,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     scanner_for,
     summary_of,
     without_summary_records,
+    write_cut_short,
     write_mcap,
     write_mcap_without_summary_schemas,
 )
@@ -305,6 +307,48 @@ def test_channels_declared_only_in_earlier_chunks_are_found(chunked_file, monkey
     # Chunks 0, 1 and 2 declare /a, /b and /c.
     summary = summary_of(chunked_file)
     assert read_back == [c.chunk_start_offset for c in summary.chunk_indexes[:3]]
+
+
+def test_unreadable_file_is_listed_as_one_row_naming_no_chunk(tmp_path, chunked_file):
+    """A file whose summary cannot be read does not fail the listing. It is one
+    row that names no chunk and weighs a whole read task; the other file keeps
+    its chunk rows."""
+    cut_short = write_cut_short(os.path.join(tmp_path, "cut_short.mcap"), chunked_file)
+    datasource = MCAPDatasourceV2([chunked_file, cut_short])
+
+    rows = [
+        (path, len(md["unit_ids"]), int(md["size_bytes"]))
+        for manifest in list_manifests(datasource)
+        for path, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ]
+
+    budget = mcap_datasource_v2._BIN_PACKING_BYTES
+    assert [row for row in rows if row[0] == cut_short] == [(cut_short, 0, budget)]
+    assert sum(path == chunked_file for path, _, _ in rows) == CHUNKED_FILE_MESSAGES
+
+
+def test_unreadable_file_gets_a_read_task_of_its_own(tmp_path):
+    """The packer puts no other file in the read task of an unreadable file, so
+    reading it fails that task alone."""
+    paths = []
+    for i in range(3):
+        path = os.path.join(tmp_path, f"f{i}.mcap")
+        write_mcap(path, round_robin_messages(4))
+        paths.append(path)
+    # Listed between valid files, as a crashed run in a folder of recordings.
+    cut_short = write_cut_short(os.path.join(tmp_path, "f1_cut.mcap"), paths[0])
+    datasource = MCAPDatasourceV2(paths + [cut_short])
+
+    tasks = pack(datasource, paths + [cut_short])
+
+    files_per_task = [set(task.paths) for task in tasks]
+    assert {cut_short} in files_per_task
+    assert sum(cut_short in files for files in files_per_task) == 1
+    # The valid files' chunks are read as if the folder held no bad file.
+    valid_tasks = [task for task in tasks if cut_short not in task.paths]
+    assert sorted(chunk_units(valid_tasks)) == sorted(
+        chunk_units(pack(MCAPDatasourceV2(paths), paths))
+    )
 
 
 def test_bin_packer_groups_chunks_by_uncompressed_bytes(tmp_path):

@@ -580,6 +580,38 @@ def test_read_mcap_v2_schema_matches_rows(
     assert block.schema.types == planned.types
 
 
+@pytest.mark.parametrize("corruption", ["cut_short", "not_mcap"])
+def test_read_mcap_max_errored_blocks_skips_a_corrupt_recording(
+    ray_start_regular_shared, tmp_path, datasource_v2, corruption
+):
+    """A folder with one corrupt recording reads the others when
+    ``max_errored_blocks`` allows one error, and fails naming the file when not.
+    """
+    folder = os.path.join(tmp_path, "drive")
+    os.makedirs(folder)
+    valid = os.path.join(folder, "1.mcap")
+    create_test_mcap_file(
+        valid,
+        [{"topic": "/imu", "data": {"i": i}, "log_time": i} for i in range(3)],
+    )
+    with open(valid, "rb") as f:
+        data = f.read()
+    corrupt = os.path.join(folder, "2.mcap")
+    with open(corrupt, "wb") as f:
+        # A run that crashed mid-recording, or a file that is not MCAP at all.
+        f.write(data[: len(data) // 2] if corruption == "cut_short" else b"x" * 100)
+    ctx = ray.data.DataContext.get_current()
+
+    ctx.max_errored_blocks = 1
+    assert ray.data.read_mcap(folder).count() == 3
+
+    ctx.max_errored_blocks = 0
+    with pytest.raises(Exception) as error:
+        ray.data.read_mcap(folder).count()
+    if datasource_v2:
+        assert "2.mcap" in str(error.value)
+
+
 def test_read_mcap_lists_files_in_parallel(
     ray_start_regular_shared, tmp_path, datasource_v2
 ):

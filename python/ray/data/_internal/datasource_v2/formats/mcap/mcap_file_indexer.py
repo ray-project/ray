@@ -9,6 +9,12 @@ it cannot match the selection is dropped before any payload is read.
 
 A file whose summary is missing, has no chunk index or lists no channels is
 listed as one whole-file row.
+
+A file whose summary cannot be read, such as a recording cut short, does not
+fail the listing. It is listed as one row that names no chunk, which the reader
+takes as the whole file, and that weighs a whole read task, so the packer puts
+no other file in its task. Reading it then fails that task alone, where
+``DataContext.max_errored_blocks`` can skip it.
 """
 
 import logging
@@ -34,9 +40,14 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     read_summaries,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 
 if TYPE_CHECKING:
+    from concurrent.futures import Future
+
     from mcap.summary import Summary
     from pyarrow.fs import FileSystem
 
@@ -63,6 +74,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         *,
         selection: MCAPSelection,
         ignore_missing_paths: bool,
+        read_task_bytes: int,
         skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
@@ -75,6 +87,9 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             max_paths_per_output=max_paths_per_output,
         )
         self._selection = selection
+        # The partitioner's budget per read task, which the row of an unreadable
+        # file weighs (see the module docstring).
+        self._read_task_bytes = read_task_bytes
         self._io_concurrency = (
             io_concurrency
             if io_concurrency is not None
@@ -111,23 +126,50 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         )
         assert filesystem is not None  # ``list_file_infos`` raised otherwise
         excluded = excluded_read_unit_ids or frozenset()
-        for file_info, summary in self._read_summaries(file_infos, filesystem):
-            manifest = self._manifest_for_file(file_info, summary, excluded)
+        for file_info, summary_read in self._read_summaries(file_infos, filesystem):
+            try:
+                summary = summary_read.result()
+            except Exception as e:  # noqa: BLE001 - the file's own read task fails
+                manifest = self._unreadable_file_manifest(file_info, e)
+            else:
+                manifest = self._manifest_for_file(file_info, summary, excluded)
             if manifest is not None:
                 yield manifest
 
     def _read_summaries(
         self, file_infos: Iterable[FileInfo], filesystem: "FileSystem"
-    ) -> Iterator[Tuple[FileInfo, Optional["Summary"]]]:
-        """Read summaries concurrently, yielding them in listing order.
+    ) -> Iterator[Tuple[FileInfo, "Future[Optional[Summary]]"]]:
+        """Start summary reads concurrently, yielding them in listing order.
 
         Listing order decides how the partitioner groups chunks into tasks, so
         it must not depend on which read finishes first.
         """
-        for file_info, summary_read in read_summaries(
+        return read_summaries(
             filesystem, file_infos, lambda info: info.path, self._io_concurrency
-        ):
-            yield file_info, summary_read.result()
+        )
+
+    def _unreadable_file_manifest(
+        self, file_info: FileInfo, error: Exception
+    ) -> FileManifest:
+        """The one row of a file whose summary cannot be read (see module doc)."""
+        logger.warning(
+            "Cannot read the summary of MCAP file %s, so it is read whole in a "
+            "read task of its own: %s",
+            file_info.path,
+            error,
+        )
+        assert file_info.size is not None
+        whole_file = FileChunk(
+            unit_ids=(),
+            num_rows=0,
+            size_bytes=self._read_task_bytes,
+            fully_matched=False,
+        )
+        return FileManifest.construct_manifest(
+            paths=[file_info.path],
+            sizes=[file_info.size],
+            chunk_metadatas=[whole_file.to_metadata()],
+        )
 
     def _manifest_for_file(
         self,

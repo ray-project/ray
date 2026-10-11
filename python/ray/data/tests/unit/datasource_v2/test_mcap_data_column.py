@@ -275,17 +275,14 @@ def test_walk_skips_unreadable_files_and_stops_at_its_cap(tmp_path, monkeypatch)
     )
 
 
-def test_unreadable_sampled_file_fails_planning(tmp_path):
-    """A sampled file that is not MCAP fails planning with an error naming it, as
-    the listing would."""
-    paths = write_files(tmp_path, [dict(topic="/b") for _ in range(5)])
-    with open(paths[4], "wb") as f:
+def test_unreadable_sampled_file_is_skipped(tmp_path):
+    """A sampled file that is not MCAP does not fail planning: ``data`` is typed
+    from the next file, and the bad file's own read task reports the error."""
+    paths = write_files(tmp_path, [dict(key="unread"), dict(key="typed")])
+    with open(paths[0], "wb") as f:
         f.write(b"not an MCAP file")
 
-    with pytest.raises(ValueError, match="is not an MCAP file") as error:
-        infer(paths, selection=ONLY_A)
-
-    assert paths[4] in str(error.value)
+    assert infer(paths, selection=ONLY_A) == struct_of("typed")
 
 
 @pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])

@@ -279,16 +279,17 @@ def _owned_chunks(manifest: FileManifest) -> List[Tuple[str, Optional[Set[int]]]
     """Group a manifest's rows by file: ``(path, chunk offsets or None)``.
 
     A row with chunk metadata contributes its ``unit_ids``, the chunk byte
-    offsets. A row without it means the whole file, which wins over any offsets
-    listed for the same path.
+    offsets. A row that names no chunk means the whole file (see
+    ``mcap_file_indexer``), which wins over any offsets listed for the same path.
     """
     owned: Dict[str, Optional[Set[int]]] = {}
     for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
         path = str(path)
-        if metadata is None or "unit_ids" not in metadata:
+        unit_ids = None if metadata is None else metadata.get("unit_ids")
+        if unit_ids is None or len(unit_ids) == 0:
             owned[path] = None
             continue
-        offsets = {int(i) for i in metadata["unit_ids"]}
+        offsets = {int(i) for i in unit_ids}
         current = owned.get(path, offsets)
         if current is not None:
             current.update(offsets)

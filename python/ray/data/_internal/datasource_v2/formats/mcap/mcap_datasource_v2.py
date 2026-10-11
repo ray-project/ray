@@ -151,6 +151,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         return MCAPSummaryIndexer(
             selection=self._selection,
             ignore_missing_paths=self._ignore_missing_paths,
+            read_task_bytes=_BIN_PACKING_BYTES,
         )
 
     def get_file_partitioner(self, **kwargs):
