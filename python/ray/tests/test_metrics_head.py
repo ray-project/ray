@@ -256,6 +256,24 @@ def test_cluster_npu_utilization_averages_reported_samples():
     )
 
 
+def test_cluster_npu_hbm_utilization_uses_reported_capacity():
+    cluster_utilization = next(
+        panel
+        for panel in OVERVIEW_AND_HEALTH_PANELS
+        if panel.title == "Cluster Utilization"
+    )
+    hbm_target = next(
+        target for target in cluster_utilization.targets if target.legend == "HBM"
+    )
+
+    assert hbm_target.expr == (
+        'sum(ray_node_npu_hbm_used{{instance=~"$Instance",{global_filters}}}) '
+        '/ on() (sum(ray_node_npu_hbm_available{{instance=~"$Instance",'
+        '{global_filters}}}) + sum(ray_node_npu_hbm_used{{instance=~"$Instance",'
+        "{global_filters}}})) * 100"
+    )
+
+
 def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
