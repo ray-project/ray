@@ -417,7 +417,8 @@ class MultiAgentEpisode:
         # Agents observed for the first time in this step count as well: they are
         # only added to `self.agent_episodes` further below.
         if not self.is_terminated and all(
-            aid in agents_done for aid in self.agent_ids | set(observations)
+            aid in agents_done
+            for aid in self.agent_episodes.keys() | observations.keys()
         ):
             if any(
                 terminateds.get(aid, False)
