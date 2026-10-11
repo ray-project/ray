@@ -11,7 +11,6 @@ from typing import Any, Iterable, List, Tuple
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource_v2.common.listing_utils import partition_files
 from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
 from ray.data._internal.datasource_v2.formats.mcap import mcap_datasource_v2
 from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
@@ -31,6 +30,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     CHUNKED_FILE_MESSAGES,
     STEP,
     list_manifests,
+    pack,
     read_all,
     round_robin_messages,
     scanner_for,
@@ -51,26 +51,6 @@ pytestmark = pytest.mark.skipif(
 def unit_ids(chunk_metadata: Any) -> List[int]:
     """The chunk offsets a listing row reads, from its ``unit_ids``."""
     return [int(i) for i in chunk_metadata["unit_ids"]]
-
-
-def pack(datasource: MCAPDatasourceV2, shard: List[str]) -> List[FileManifest]:
-    """List ``shard`` and pack its rows into read tasks, as one ``ListFiles``
-    task does."""
-    indexer = datasource._get_file_indexer()
-    partitioner = datasource.get_file_partitioner()
-    assert partitioner is not None
-    blocks = [
-        m.as_block()
-        for m in indexer.list_files(pa.array(shard), filesystem=datasource.filesystem)
-    ]
-    return [
-        FileManifest(block)
-        for block in partition_files(
-            blocks,
-            None,  # pyrefly: ignore[bad-argument-type]  (TaskContext unused)
-            partitioner,
-        )
-    ]
 
 
 def chunk_units(tasks: Iterable[FileManifest]) -> List[Tuple[str, int]]:
