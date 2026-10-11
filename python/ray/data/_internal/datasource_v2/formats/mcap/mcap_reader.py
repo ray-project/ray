@@ -160,7 +160,7 @@ class MCAPReader(Reader[FileManifest]):
             if summary is None or not summary.chunk_indexes:
                 buffer_size = DataContext.get_current().streaming_read_buffer_size
                 messages = self._message_reader.iter_unindexed(
-                    buffered(f, buffer_size), path
+                    buffered(f, buffer_size), path, limit
                 )
             else:
                 messages = self._message_reader.iter_chunks(f, path, summary, offsets)

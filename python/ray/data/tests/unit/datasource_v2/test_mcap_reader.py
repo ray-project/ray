@@ -264,6 +264,55 @@ def test_log_time_order_merges_overlapping_chunks(tmp_path):
     assert table.column("log_time").to_pylist() == [10, 30, 20]
 
 
+@pytest.fixture
+def unordered_unindexed_file(tmp_path):
+    """Four messages on ``/a`` written out of log-time order, with no chunk index.
+
+        seq        0   1   2   3
+        log time   20  10  30  10
+
+    Messages 1 and 3 tie at log time 10.
+    """
+    path = os.path.join(tmp_path, "unindexed.mcap")
+    messages = [
+        {"topic": "/a", "data": {"seq": seq}, "log_time": log_time}
+        for seq, log_time in enumerate((20, 10, 30, 10))
+    ]
+    write_mcap(path, messages, index=False)
+    return path
+
+
+@pytest.mark.parametrize(
+    "log_time_order, limit, expected_seqs",
+    [
+        (True, None, [1, 3, 0, 2]),
+        (True, 2, [1, 3]),
+        (False, None, [0, 1, 2, 3]),
+        (False, 2, [0, 1]),
+    ],
+)
+def test_file_without_a_chunk_index_is_sorted_by_its_task(
+    unordered_unindexed_file, log_time_order, limit, expected_seqs
+):
+    """A file without a chunk index comes out in log-time order, ties in file
+    order, and a limit keeps its earliest messages. Without ``log_time_order``
+    it comes out as written."""
+    datasource = MCAPDatasourceV2(
+        [unordered_unindexed_file], log_time_order=log_time_order, include_row_id=True
+    )
+    (manifest,) = list_manifests(datasource)
+    scanner = scanner_for(datasource)
+    if limit is not None:
+        scanner = scanner.push_limit(limit)
+
+    table = read_all(datasource, manifest, scanner=scanner)
+
+    assert [value["seq"] for value in table.column("data").to_pylist()] == expected_seqs
+    # A row id is the message's position in the file, whatever the row order.
+    row_ids = table.column(ROW_ID_COLUMN).to_pylist()
+    assert row_ids == [f"{unordered_unindexed_file}#m={seq}" for seq in expected_seqs]
+
+
 @pytest.mark.parametrize("log_time_order", [True, False])
 def test_limit_reads_only_the_chunks_it_needs(chunked_file, log_time_order):
     """A limit of two reads the two chunks holding the first two messages and no

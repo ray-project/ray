@@ -3342,12 +3342,19 @@ def read_mcap(
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
             Defaults to True. When True, includes schema, channel, and message metadata.
-        log_time_order: Whether to return messages in ascending ``log_time``
-            order. Defaults to True. If False, each file's messages come in the
-            order they were written. The order holds for each file's messages
-            within one read task. A large file is read by several tasks, and
-            nothing is ordered across tasks or files. ``False`` requires the V2
-            datasource (``DataContext.use_datasource_v2``).
+        log_time_order: Whether each read task returns a file's messages in
+            ascending ``log_time`` order. Defaults to True. Messages with equal
+            log times keep the order they were written in. If False, messages
+            come in the order they were written. On the V2 datasource
+            (``DataContext.use_datasource_v2``), a file that takes more memory
+            to read than one read task's budget
+            (``RAY_DATA_MCAP_BIN_PACKING_BYTES``, 128 MiB by default) is split
+            across tasks, and messages are not ordered across tasks or files,
+            even with ``preserve_order``. To order a whole file, sort
+            after reading, for example with ``ds.sort("log_time")``. A file
+            without a chunk index is read by one task, which holds its selected
+            messages in memory to sort them. ``False`` requires the V2
+            datasource.
         include_row_id: If ``True``, add a ``row_id`` column with a deterministic
             id per message, built from the file path and the message's position
             in the file. A message gets the same id on every run, however the
