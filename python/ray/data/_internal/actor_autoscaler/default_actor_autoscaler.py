@@ -151,9 +151,15 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 ),
             )
         elif util <= self._actor_pool_scaling_down_threshold:
-            if actor_pool.num_pending_actors() > 0:
+            # Pending actors can stay unstarted for a while when the cluster has
+            # no free resources, so they must not pin an under-utilized pool; only
+            # skip while *every* actor is still starting, to keep pre-warming.
+            if (
+                actor_pool.num_pending_actors() > 0
+                and actor_pool.num_running_actors() == 0
+            ):
                 return ActorPoolScalingRequest.no_op(
-                    reason="no downscaling while actors are pending"
+                    reason="no downscaling while all actors are starting"
                 )
             if actor_pool.current_size() <= actor_pool.min_size():
                 return ActorPoolScalingRequest.no_op(reason="reached min size")
