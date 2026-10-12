@@ -3252,6 +3252,8 @@ def read_mcap(
     time_range: Optional[Union[Tuple[int, int], TimeRange]] = None,
     message_types: Optional[Union[List[str], Set[str]]] = None,
     include_metadata: bool = True,
+    log_time_order: bool = True,
+    include_row_id: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -3279,6 +3281,11 @@ def read_mcap(
     MCAP is a format commonly used in robotics and autonomous systems for storing
     ROS2 messages and other time-series data. This reader provides predicate pushdown
     optimization for efficient filtering by topics, time ranges, and message types.
+
+    Each row is one message. The ``data`` column holds decoded JSON values when
+    every selected topic is JSON-encoded, and the raw payload bytes otherwise.
+    To decode the JSON topics of a recording that also has other encodings,
+    select them with ``topics`` or ``message_types``.
 
     Examples:
         :noindex:
@@ -3335,6 +3342,20 @@ def read_mcap(
             include. Only messages with matching schema names will be read.
         include_metadata: Whether to include MCAP metadata fields in the output.
             Defaults to True. When True, includes schema, channel, and message metadata.
+        log_time_order: Whether to return messages in ascending ``log_time``
+            order. Defaults to True. If False, each file's messages come in the
+            order they were written. The order holds for each file's messages
+            within one read task. A large file is read by several tasks, and
+            nothing is ordered across tasks or files. ``False`` requires the V2
+            datasource (``DataContext.use_datasource_v2``).
+        include_row_id: If ``True``, add a ``row_id`` column with a deterministic
+            id per message, built from the file path and the message's position
+            in the file. A message gets the same id on every run, however the
+            read is split into tasks, so the column can serve as the
+            ``id_column`` of a :class:`~ray.data.checkpoint.CheckpointConfig`.
+            Turned on automatically when the current checkpoint config's
+            ``id_column`` is ``row_id``. Requires the V2 datasource
+            (``DataContext.use_datasource_v2``).
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -3390,6 +3411,63 @@ def read_mcap(
                 f"{time_range}"
             )
         time_range = TimeRange(start_time=time_range[0], end_time=time_range[1])
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+            MCAPDatasourceV2,
+        )
+        from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+            ROW_ID_COLUMN,
+        )
+
+        checkpoint_config = ctx.checkpoint_config
+        if (
+            checkpoint_config is not None
+            and checkpoint_config.id_column == ROW_ID_COLUMN
+        ):
+            # A checkpoint keyed on ``row_id`` needs the column in the read output.
+            include_row_id = True
+        datasource_v2 = MCAPDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            topics=topics,
+            time_range=time_range,
+            message_types=message_types,
+            include_metadata=include_metadata,
+            log_time_order=log_time_order,
+            include_row_id=include_row_id,
+            include_paths=include_paths,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            partition_filter=partition_filter,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
+
+    if not log_time_order or include_row_id:
+        raise NotImplementedError(
+            "`log_time_order=False` and `include_row_id` on `read_mcap` require "
+            "the V2 datasource. Enable it with "
+            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
 
     datasource = MCAPDatasource(
         paths,
