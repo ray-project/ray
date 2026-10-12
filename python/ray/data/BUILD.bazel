@@ -1885,7 +1885,7 @@ py_test(
 
 py_test(
     name = "test_push_split_coordinator",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_push_split_coordinator.py"],
     tags = [
         "exclusive",
