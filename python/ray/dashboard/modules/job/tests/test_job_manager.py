@@ -1059,7 +1059,7 @@ class TestRuntimeEnv:
             # its visibility mask but has no task or actor resource assignment.
             assert driver_ids == [], driver_ids
             if os.environ["RAY_TEST_RESOURCES_SPECIFIED"] == "1":
-                assert driver_visible in ("0", "1"), driver_visible
+                assert driver_visible in ("0", "2"), driver_visible
             else:
                 assert driver_visible == "0,2", driver_visible
 
