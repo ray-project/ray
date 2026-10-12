@@ -247,3 +247,9 @@ def test_top_n_merge_cleans_empty_inputs():
     assert output_bundles == []
     assert stats == {"TopNMerge(limit=2)": []}
     destroy_if_owned.assert_called_once_with(bundle)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
