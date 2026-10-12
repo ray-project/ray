@@ -19,7 +19,7 @@
     "model-multiplexing": "20260915-034626",
     "multi_agent_a2a": "20260915-034624",
     "object-detection-video-processing": "20260915-034613",
-    "pytorch-fsdp": "20260915-034626",
+    "pytorch-fsdp": "20261005-232940",
     "pytorch-profiling": "20260915-034627",
     "ray_train_workloads": "20260915-034814",
     "tensor_parallel_autotp": "20260915-034747",
