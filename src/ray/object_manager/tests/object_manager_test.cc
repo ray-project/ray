@@ -222,7 +222,8 @@ class ObjectManagerTest : public ::testing::Test {
 
 class PushSlotTest : public ObjectManagerTest {
  protected:
-  PushSlotTest() : ObjectManagerTest(/*max_bytes_in_flight=*/2, /*object_chunk_size=*/1) {}
+  PushSlotTest()
+      : ObjectManagerTest(/*max_bytes_in_flight=*/2, /*object_chunk_size=*/1) {}
 };
 
 TEST_F(PushSlotTest, PushSlotsStayHeldWhileChunkRpcsAreOutstanding) {
@@ -274,8 +275,7 @@ TEST_F(PushSlotTest, DeadlineFailureReleasesPushSlotAndAllowsQueuedPushes) {
 
   object_manager_->Push(queued_object_id, remote_node_id);
   DrainServices();
-  for (int completion = 0;
-       completion < 4 && remote_client->num_push_requests < 5;
+  for (int completion = 0; completion < 4 && remote_client->num_push_requests < 5;
        completion++) {
     ASSERT_TRUE(remote_client->ReplyPush());
     DrainServices();
