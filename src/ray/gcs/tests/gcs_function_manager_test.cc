@@ -116,4 +116,32 @@ TEST_F(GCSFunctionManagerTest, TestRemoveJobReferenceIsIdempotent) {
   EXPECT_FALSE(HasKey("fun", "FunctionsToRun:" + job_id_hex + ":key1"));
 }
 
+TEST_F(GCSFunctionManagerTest, TestJobReferenceReleasedCallback) {
+  const auto job_id = JobID::FromInt(3);
+  int callback_count = 0;
+  JobID released_job_id = JobID::Nil();
+  function_manager_->SetJobReferenceReleasedCallback([&](const JobID &id) {
+    callback_count++;
+    released_job_id = id;
+  });
+
+  EXPECT_FALSE(function_manager_->HasJobReference(job_id));
+  function_manager_->AddJobReference(job_id);
+  function_manager_->AddJobReference(job_id);
+  EXPECT_TRUE(function_manager_->HasJobReference(job_id));
+
+  function_manager_->RemoveJobReference(job_id);
+  EXPECT_EQ(callback_count, 0);
+  EXPECT_TRUE(function_manager_->HasJobReference(job_id));
+
+  function_manager_->RemoveJobReference(job_id);
+  EXPECT_EQ(callback_count, 1);
+  EXPECT_EQ(released_job_id, job_id);
+  EXPECT_FALSE(function_manager_->HasJobReference(job_id));
+
+  // A duplicate release doesn't generate a duplicate callback.
+  function_manager_->RemoveJobReference(job_id);
+  EXPECT_EQ(callback_count, 1);
+}
+
 }  // namespace ray
