@@ -184,13 +184,13 @@ A simple example of a multi-agent env where all agents always step simultaneousl
 
 Here's the initial class scaffold for your Rock-Paper-Scissors game:
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
 :language: python
 :start-after: __sphinx_doc_1_begin__
 :end-before: __sphinx_doc_1_end__
 ```
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
 :language: python
 :start-after: __sphinx_doc_2_begin__
 :end-before: __sphinx_doc_2_end__
@@ -198,7 +198,7 @@ Here's the initial class scaffold for your Rock-Paper-Scissors game:
 
 Next, implement the constructor of your class:
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
 :language: python
 :start-after: __sphinx_doc_3_begin__
 :end-before: __sphinx_doc_3_end__
@@ -208,7 +208,7 @@ The constructor specifies `self.agents = self.possible_agents` to indicate that 
 
 The `reset` logic adds both players to the returned observations dict, because both players act simultaneously in the next `step()` call. It also resets a `num_moves` counter that tracks the number of moves played, so the episode ends after exactly 10 timesteps, or 10 actions by either player:
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
 :language: python
 :start-after: __sphinx_doc_4_begin__
 :end-before: __sphinx_doc_4_end__
@@ -216,13 +216,13 @@ The `reset` logic adds both players to the returned observations dict, because b
 
 Finally, your `step` method handles the next observations, the rewards, and the termination dict. Each player observes the action the opponent chose. The rewards are +1 or -1 according to the winner and loser rules described earlier. You set the special `__all__` agent ID in the termination dict to `True` only when the number of moves reaches 10. The truncateds and infos dicts always remain empty:
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
 :language: python
 :start-after: __sphinx_doc_5_begin__
 :end-before: __sphinx_doc_5_end__
 ```
 
-For a complete end-to-end example script that shows how to run a multi-agent RLlib setup against your `RockPaperScissors` env, see the [`agents_act_simultaneously.py` example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/agents_act_simultaneously.py).
+For a complete end-to-end example script that shows how to run a multi-agent RLlib setup against your `RockPaperScissors` env, see the [`agents_act_simultaneously.py` example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/agents_act_simultaneously.py).
 
 ### Example: Turn-based environments
 
@@ -232,7 +232,7 @@ This example implements the Tic-Tac-Toe game with one slight change, played on a
 
 Here's your initial class scaffold for the Tic-Tac-Toe game:
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
 :language: python
 :start-after: __sphinx_doc_1_begin__
 :end-before: __sphinx_doc_1_end__
@@ -240,7 +240,7 @@ Here's your initial class scaffold for the Tic-Tac-Toe game:
 
 In your constructor, define all possible agent IDs that can show up in your game, `player1` and `player2`, the active agent IDs, which are the same as all possible agents, and each agent's observation and action spaces.
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
 :language: python
 :start-after: __sphinx_doc_2_begin__
 :end-before: __sphinx_doc_2_end__
@@ -248,7 +248,7 @@ In your constructor, define all possible agent IDs that can show up in your game
 
 Now implement your `reset()` method. Empty the board by setting it to all zeros, pick a random start player, and return that start player's first observation. You don't return the other player's observation, because that player doesn't act next.
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
 :language: python
 :start-after: __sphinx_doc_3_begin__
 :end-before: __sphinx_doc_3_end__
@@ -258,7 +258,7 @@ From here on, each `step()` flips between the two agents. Use the `self.current_
 
 You also compute both agents' rewards based on three criteria. Did the current player win, meaning the opponent lost? Did the current player place a piece on an already occupied field, which gets penalized? Is the game done because the board is full, in which case both agents receive 0 reward?
 
-```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+```{literalinclude} ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
 :language: python
 :start-after: __sphinx_doc_4_begin__
 :end-before: __sphinx_doc_4_end__
@@ -272,7 +272,7 @@ You can then assign such a group of agents to a single policy for centralized ex
 
 You can use the {py:meth}`~ray.rllib.env.multi_agent_env.MultiAgentEnv.with_agent_groups` method to define these groups:
 
-```{literalinclude} ../../../rllib/env/multi_agent_env.py
+```{literalinclude} ../../../python/ray/rllib/env/multi_agent_env.py
 :language: python
 :start-after: __grouping_doc_begin__
 :end-before: __grouping_doc_end__
@@ -308,7 +308,7 @@ config = (
 )
 ```
 
-For an end-to-end example with the [water world env](https://pettingzoo.farama.org/environments/sisl/), see the [PettingZoo parameter-sharing example script](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py).
+For an end-to-end example with the [water world env](https://pettingzoo.farama.org/environments/sisl/), see the [PettingZoo parameter-sharing example script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py).
 
 For an example on the pistonball env with RLlib, see the [PettingZoo RLlib tutorial](https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py).
 
@@ -333,7 +333,7 @@ register_env(
 config = PPOConfig().environment("open_spiel_env")
 ```
 
-See the [end-to-end example with the Connect-4 env](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py) of OpenSpiel, trained by an RLlib algorithm using a self-play strategy.
+See the [end-to-end example with the Connect-4 env](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/self_play_with_open_spiel.py) of OpenSpiel, trained by an RLlib algorithm using a self-play strategy.
 
 ## Run training experiments with a MultiAgentEnv
 
@@ -398,7 +398,7 @@ print(algo.train())
 
 RLlib creates and routes decisions to each policy based on the provided `policy_mapping_fn`. It reports training statistics for each policy separately in the result dict returned by `train()`.
 
-The example scripts [rock_paper_scissors_heuristic_vs_learned.py](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py) and [rock_paper_scissors_learned_vs_learned.py](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py) demonstrate competing policies with heuristic and learned strategies.
+The example scripts [rock_paper_scissors_heuristic_vs_learned.py](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py) and [rock_paper_scissors_learned_vs_learned.py](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py) demonstrate competing policies with heuristic and learned strategies.
 
 ### Scale to many MultiAgentEnvs per EnvRunner
 
@@ -410,4 +410,4 @@ Unlike single-agent environments, multi-agent setups aren't vectorizable yet. Th
 
 RLlib supports variable sharing across policies.
 
-See the [PettingZoo parameter sharing example](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py) for details.
+See the [PettingZoo parameter sharing example](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py) for details.

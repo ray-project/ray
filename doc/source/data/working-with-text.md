@@ -4,30 +4,28 @@ myst:
     description: "Read, transform, run inference on, and save large text datasets with Ray Data."
 ---
 
-# Working with Text
+# Working with text
 
-With Ray Data, you can easily read and transform large amounts of text data.
+Use Ray Data to read and transform large amounts of text data.
 
-This guide shows you how to:
+This guide shows you how to do the following:
 
-* {ref}`Read text files <reading-text-files>`
-* {ref}`Transform text data <transforming-text>`
-* {ref}`Perform inference on text data <performing-inference-on-text>`
-* {ref}`Save text data <saving-text>`
+* {ref}`Read text files <reading-text-files>`.
+* {ref}`Transform text data <transforming-text>`.
+* {ref}`Perform inference on text data <performing-inference-on-text>`.
+* {ref}`Save text data <saving-text>`.
 
 (reading-text-files)=
 
-## Reading text files
+## Read text files
 
-Ray Data can read lines of text and JSONL. Alternatively, you can read raw binary
-files and manually decode data.
+Ray Data reads lines of text and JSON Lines files. For other text formats, read the raw binary files and decode the data yourself.
 
 ::::{tab-set}
 
 :::{tab-item} Text lines
 
-To read lines of text, call {func}`~ray.data.read_text`. Ray Data creates a
-row for each line of text. In the schema, the column name defaults to "text".
+To read lines of text, call {func}`~ray.data.read_text`. Ray Data creates a row for each line of text. The column name in the schema defaults to `text`.
 
 ```{testcode}
 import ray
@@ -47,11 +45,9 @@ ds.show(3)
 
 :::{tab-item} JSON Lines
 
-[JSON Lines](https://jsonlines.org/) is a text format for structured data.
-It's typically used to process data one record at a time.
+[JSON Lines](https://jsonlines.org/) is a text format for structured data. It's typically used to process data one record at a time.
 
-To read JSON Lines files, call {func}`~ray.data.read_json`. Ray Data creates a
-row for each JSON object.
+To read JSON Lines files, call {func}`~ray.data.read_json`. Ray Data creates a row for each JSON object.
 
 ```{testcode}
 import ray
@@ -69,11 +65,9 @@ ds.show(3)
 
 :::
 
-
 :::{tab-item} Other formats
 
-To read other text formats, call {func}`~ray.data.read_binary_files`. Then,
-call {meth}`~ray.data.Dataset.map` to decode your data.
+To read other text formats, call {func}`~ray.data.read_binary_files`. Then call {meth}`~ray.data.Dataset.map` to decode your data.
 
 ```{testcode}
 from typing import Any, Dict
@@ -105,12 +99,9 @@ For more information on reading files, see {ref}`Loading data <loading_data>`.
 
 (transforming-text)=
 
-## Transforming text
+## Transform text
 
-To transform text, implement your transformation in a function or callable class. Then,
-call {meth}`Dataset.map() <ray.data.Dataset.map>` or
-{meth}`Dataset.map_batches() <ray.data.Dataset.map_batches>`. Ray Data transforms your
-text in parallel.
+To transform text, implement your transformation in a function or callable class. Then call {meth}`Dataset.map() <ray.data.Dataset.map>` or {meth}`Dataset.map_batches() <ray.data.Dataset.map_batches>`. Ray Data transforms your text in parallel.
 
 ```{testcode}
 from typing import Any, Dict
@@ -134,16 +125,13 @@ ds.show(3)
 {'text': 'explicit is better than implicit.'}
 ```
 
-For more information on transforming data, see
-{ref}`Transforming data <transforming_data>`.
+For more information on transforming data, see {ref}`Transforming data <transforming_data>`.
 
 (performing-inference-on-text)=
 
-## Performing inference on text
+## Perform inference on text
 
-To perform inference with a pre-trained model on text data, implement a callable class
-that sets up and invokes a model. Then, call
-{meth}`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
+To perform inference on text data with a pre-trained model, implement a callable class that sets up and invokes the model. Then call {meth}`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
 ```{testcode}
 from typing import Dict
@@ -177,21 +165,17 @@ ds.show(3)
 {'text': 'Explicit is better than implicit.', 'label': 'POSITIVE'}
 ```
 
-For more information on handling large language models, see {ref}`Working with LLMs <working-with-llms>`.
+For more information on working with large language models, see {ref}`Working with LLMs <working-with-llms>`.
 
-For more information on performing inference, see
-{ref}`End-to-end: Offline Batch Inference <batch_inference_home>`
-and {ref}`Stateful Transforms <stateful_transforms>`.
+For more information on performing inference, see {ref}`End-to-end: Offline Batch Inference <batch_inference_home>` and {ref}`Stateful transforms <stateful_transforms>`.
 
 (saving-text)=
 
-## Saving text
+## Save text
 
-To save text, call a method like {meth}`~ray.data.Dataset.write_parquet`. Ray Data can
-save text in many formats.
+To save text, call a method such as {meth}`~ray.data.Dataset.write_parquet`. Ray Data can save text in many formats.
 
-To view the full list of supported file formats, see the
-{ref}`Saving Data API <saving-data-api>`.
+For the full list of supported file formats, see the {ref}`Saving Data API <saving-data-api>`.
 
 ```{testcode}
 :skipif: True

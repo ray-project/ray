@@ -152,4 +152,8 @@ doc_no_new_rst() {
   python doc/test_no_new_rst.py
 }
 
+ray_repo_links() {
+  python ci/lint/check_ray_repo_links.py
+}
+
 "$@"

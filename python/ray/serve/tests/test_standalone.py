@@ -4,16 +4,21 @@ requires a shared Serve instance.
 """
 
 import asyncio
+import json
 import logging
 import os
 import shutil
 import socket
 import sys
 import time
+from typing import List
 
 import httpx
 import pytest
+from fastapi import FastAPI, WebSocket
 from opentelemetry import trace
+from starlette.requests import Request
+from websockets.sync.client import connect
 
 import ray
 import ray._private.state as state
@@ -32,7 +37,11 @@ from ray.serve._private.constants import (
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import expected_proxy_actors, get_application_url
+from ray.serve._private.test_utils import (
+    expected_proxy_actors,
+    get_application_url,
+    get_application_urls,
+)
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
@@ -284,26 +293,88 @@ def test_middleware(ray_shutdown):
         )
 
 
+def _all_ingress_urls(**kwargs) -> List[str]:
+    """URLs Serve listens on, without root_path or the route prefix.
+
+    Includes the internal targets (e.g. replicas behind HAProxy) so a broken
+    target can't hide behind HAProxy's fallback to the Serve proxy.
+    """
+    urls = get_application_urls(exclude_route_prefix=True, **kwargs)
+    urls += get_application_urls(
+        exclude_route_prefix=True, from_proxy_manager=True, **kwargs
+    )
+    return sorted(set(urls))
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_http_root_path(ray_shutdown):
+@pytest.mark.parametrize("root_path", ["", "/serve", "/serve/"])
+def test_http_root_path(ray_shutdown, root_path: str):
+    """`root_path` follows the ASGI spec.
+
+    Serve sits behind a proxy that strips `root_path`, so requests arrive without it.
+    The app sees the full path in `scope["path"]` and its mount point (`root_path + route_prefix`)
+    in `scope["root_path"]`. Like uvicorn, Serve uses `root_path` as-is, so a value like `"/serve/"`
+    results in `"//"` in the path.
+
+    By default, this runs against the HTTP proxy. With `RAY_SERVE_ENABLE_HA_PROXY=1`, it also runs
+    against HAProxy and direct ingress.
+    """
+    app = FastAPI()
+
+    @app.get("/items/{item_id}")
+    def get_item(item_id: str, request: Request):
+        return {
+            "path": request.scope["path"],
+            "raw_path": request.scope["raw_path"].decode(),
+            "root_path": request.scope["root_path"],
+            "url_for": request.url_for("get_item", item_id=item_id).path,
+        }
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_json(
+            {"path": websocket.scope["path"], "root_path": websocket.scope["root_path"]}
+        )
+        await websocket.close()
+
     @serve.deployment
-    def hello():
-        return "hello"
+    @serve.ingress(app)
+    class Ingress:
+        pass
 
-    port = find_free_port()
-    root_path = "/serve"
-    serve.start(http_options=dict(root_path=root_path, port=port))
-    serve.run(hello.bind(), route_prefix="/hello")
+    serve.start(http_options={"root_path": root_path})
+    serve.run(Ingress.bind(), route_prefix="/hello")
+    mount = f"{root_path}/hello"
 
-    # check routing works as expected
-    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/hello")
-    assert resp.status_code == 200
-    assert resp.text == "hello"
+    for url in _all_ingress_urls():
+        # The app sees the full path; raw_path keeps the percent-encoding.
+        resp = httpx.get(f"{url}/hello/items/a%20b")
+        assert resp.status_code == 200, (url, resp.text)
+        assert resp.json() == {
+            "path": f"{mount}/items/a b",
+            "raw_path": f"{mount}/items/a%20b",
+            "root_path": mount,
+            "url_for": f"{mount}/items/a b",
+        }, url
 
-    # check advertized routes are prefixed correctly
-    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
-    assert resp.status_code == 200
-    assert resp.json() == {"/hello": "default"}
+        # A request that includes root_path is outside the mount.
+        if root_path:
+            resp = httpx.get(f"{url}{root_path}/hello/items/1")
+            assert resp.status_code == 404, url
+
+        # Serve's own endpoints are served without root_path.
+        assert httpx.get(f"{url}/-/healthz").status_code == 200, url
+        resp = httpx.get(f"{url}/-/routes")
+        assert resp.status_code == 200, url
+        assert resp.json() == {"/hello": "default"}, url
+
+    for url in _all_ingress_urls(is_websocket=True):
+        with connect(f"{url}/hello/ws") as websocket:
+            assert json.loads(websocket.recv()) == {
+                "path": f"{mount}/ws",
+                "root_path": mount,
+            }, url
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")

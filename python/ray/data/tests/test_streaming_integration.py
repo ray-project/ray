@@ -633,15 +633,28 @@ def test_streaming_split_context(ray_start_10_cpus_shared):
 
 
 def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
-    """Test that _get_dataset_tag() returns correct tags from the coordinator."""
+    """The tag names the epoch the split is about to consume, not the last one."""
     ds = ray.data.range(10)
     i1, i2 = ds.streaming_split(2, equal=True)
 
-    tags1 = i1._get_dataset_tag()
-    tags2 = i2._get_dataset_tag()
-    assert tags1["dataset"] == tags2["dataset"]
-    assert tags1["split_index"] == "0"
-    assert tags2["split_index"] == "1"
+    @ray.remote
+    def consume(it):
+        return sum(1 for _ in it.iter_rows())
+
+    def dataset_ids():
+        tags1 = i1._get_dataset_tag()
+        tags2 = i2._get_dataset_tag()
+        assert tags1["split_index"] == "0"
+        assert tags2["split_index"] == "1"
+        assert tags1["dataset"] == tags2["dataset"]
+        return tags1["dataset"]
+
+    # Verify the run indices are correct within the dataset ids
+    assert dataset_ids().endswith("_0")
+    ray.get([consume.remote(i1), consume.remote(i2)])
+    assert dataset_ids().endswith("_1")
+    ray.get([consume.remote(i1), consume.remote(i2)])
+    assert dataset_ids().endswith("_2")
 
 
 def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):

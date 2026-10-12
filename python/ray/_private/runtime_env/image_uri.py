@@ -4,8 +4,13 @@ import os
 import tempfile
 from typing import List, Optional
 
+from ray._private.authentication.authentication_token_setup import (
+    _get_default_token_path,
+)
+from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.redaction import REDACTED_PLACEHOLDER
 
 default_logger = logging.getLogger(__name__)
 
@@ -107,15 +112,30 @@ def _modify_context_impl(
     # Support for runtime_env['env_vars']
     env_vars.update(context.env_vars)
 
-    # Set environment variables
+    # Mount the token file rather than passing the token via --env, which is
+    # logged and visible in `ps`.
+    if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in env_vars:
+        token_path = os.path.abspath(
+            env_vars.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
+        )
+        if os.path.isfile(token_path):
+            container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
+            env_vars["RAY_AUTH_TOKEN_PATH"] = token_path
+
+    # Set environment variables. Log only `redacted_command`: the values can
+    # hold secrets.
+    redacted_command = list(container_command)
     for env_var_name, env_var_value in env_vars.items():
         container_command.append("--env")
         container_command.append(f"{env_var_name}='{env_var_value}'")
+        redacted_command.append("--env")
+        redacted_command.append(f"{env_var_name}='{REDACTED_PLACEHOLDER}'")
 
     # The RAY_JOB_ID environment variable is needed for the default worker.
     # It won't be set at the time setup() is called, but it will be set
     # when worker command is executed, so we use RAY_JOB_ID=$RAY_JOB_ID
     # for the container start command
+    num_secret_args = len(container_command)
     container_command.append("--env")
     container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
 
@@ -125,16 +145,18 @@ def _modify_context_impl(
     container_command.append("--entrypoint")
     container_command.append("python")
     container_command.append(image_uri)
+    redacted_command.extend(container_command[num_secret_args:])
 
     # Example:
     # podman run -v /tmp/ray:/tmp/ray
     # --cgroup-manager=cgroupfs --network=host --pid=host --ipc=host
     # --userns=keep-id --env RAY_RAYLET_PID=23478 --env RAY_JOB_ID=$RAY_JOB_ID
     # --entrypoint python rayproject/ray:nightly-py39
-    container_command_str = " ".join(container_command)
-    logger.info(f"Starting worker in container with prefix {container_command_str}")
+    logger.info(
+        "Starting worker in container with prefix %s", " ".join(redacted_command)
+    )
 
-    context.py_executable = container_command_str
+    context.py_executable = " ".join(container_command)
 
 
 class ImageURIPlugin(RuntimeEnvPlugin):

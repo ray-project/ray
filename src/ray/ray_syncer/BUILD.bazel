@@ -17,6 +17,11 @@ ray_cc_library(
         "ray_syncer_client.h",
         "ray_syncer_server.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/asio:periodical_runner_interface",
@@ -29,5 +34,15 @@ ray_cc_library(
         "//src/ray/rpc/authentication:authentication_token_validator",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_ray_syncer",
+    testonly = True,
+    hdrs = ["fake_ray_syncer.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":ray_syncer",
     ],
 )

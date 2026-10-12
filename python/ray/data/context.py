@@ -152,7 +152,19 @@ DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
 
-DEFAULT_ENABLE_EXTERNAL_SHUFFLE = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+
+def _deduce_default_enable_disk_shuffle() -> bool:
+    legacy = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+    if "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE" in os.environ:
+        logger.warning(
+            "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE is deprecated, please use "
+            "RAY_DATA_ENABLE_DISK_SHUFFLE instead"
+        )
+
+    return env_bool("RAY_DATA_ENABLE_DISK_SHUFFLE", legacy)
+
+
+DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -244,6 +256,15 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
     "AWS Error SERVICE_UNAVAILABLE",
+    # PyArrow's S3FileSystem surfaces a transient credential-lookup failure
+    # (e.g. an empty IMDS response under load) as ACCESS_DENIED on the
+    # bucket-existence check that `create_dir` runs before a write, e.g.
+    # "AWS Error ACCESS_DENIED during HeadBucket operation" (DATA-3602).
+    # Deliberately not the bare "AWS Error ACCESS_DENIED": a genuine per-object
+    # denial (HeadObject) on a read must still fail fast so the credentials hint
+    # in `_handle_read_os_error` is shown promptly instead of after ~3 minutes
+    # of retries.
+    "AWS Error ACCESS_DENIED during HeadBucket operation",
 )
 
 DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
@@ -417,6 +438,14 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
 # Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
     "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
+)
+
+
+# Charge lineage reconstruction tasks to the operator that owns them when
+# reporting resource usage. Enabled by default; set to 0 to fall back to
+# counting only the tasks Ray Data itself submitted.
+DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING: bool = env_bool(
+    "RAY_DATA_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING", True
 )
 
 
@@ -869,7 +898,7 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Applies to the
-            ``SHUFFLE_V2`` shuffle strategy (including external hash shuffle).
+            ``SHUFFLE_V2`` shuffle strategy (including disk-based hash shuffle).
             Other shuffle strategies ignore it. Input blocks are buffered per
             node and
             processed as a batch once this size is reached; remaining
@@ -878,11 +907,13 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_external_hash_shuffle: Whether keyed ``repartition()``,
+        use_disk_based_hash_shuffle: Whether keyed ``repartition()``,
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
-            external (on-disk, file-transport) shuffle instead of the object
-            store. Defaults to the ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE``
-            environment variable (``False`` when unset).
+            disk-based (file-transport) shuffle instead of the object
+            store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
+            environment variable (``False`` when unset). Deprecated
+            aliases: ``use_external_hash_shuffle`` and the
+            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -918,6 +949,10 @@ class DataContext:
             later. If `None`, this backpressure policy is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
             of an operator based on its and downstream operators' queue size.
+        enable_lineage_reconstruction_resource_accounting: Whether to count the
+            tasks Ray Core runs to reconstruct lost objects toward an operator's
+            reported resource usage. When disabled, those tasks occupy resources
+            that backpressure doesn't know about.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -1002,7 +1037,7 @@ class DataContext:
     # to perform aggregations on partitions produced during hash-shuffling
     #
     # When unset defaults to the smaller of
-    #   - Total # of CPUs available in the cluster * 2
+    #   - Total # of CPUs available in the cluster (at least 1)
     #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
     max_hash_shuffle_aggregators: Optional[int] = None
 
@@ -1031,7 +1066,7 @@ class DataContext:
     # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
     # hash-shuffle operations (keyed repartition, aggregations, joins).
     # When False, use the object-store path.
-    use_external_hash_shuffle: bool = DEFAULT_ENABLE_EXTERNAL_SHUFFLE
+    use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
 
     ################################################################
     # GPU Shuffle configuration
@@ -1143,6 +1178,10 @@ class DataContext:
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
+
+    enable_lineage_reconstruction_resource_accounting: bool = (
+        DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING
     )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
@@ -1418,6 +1457,32 @@ class DataContext:
         warnings.warn(
             "`hash_shuffle_compression` is deprecated, please configure "
             "`shuffle_compression` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+
+    # Deprecated alias of `use_disk_based_hash_shuffle`
+    @property
+    def use_external_hash_shuffle(self) -> bool:
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=3)
+
+        return self.use_disk_based_hash_shuffle
+
+    @use_external_hash_shuffle.setter
+    def use_external_hash_shuffle(self, value: bool) -> None:
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=4)
+
+        self.use_disk_based_hash_shuffle = value
+
+    @staticmethod
+    def _warn_use_external_hash_shuffle_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
+        warnings.warn(
+            "`use_external_hash_shuffle` is deprecated, please configure "
+            "`use_disk_based_hash_shuffle` instead.",
             DeprecationWarning,
             stacklevel=stacklevel,
         )

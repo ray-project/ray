@@ -48,7 +48,7 @@ Note that the full Ray Data test suite can be heavy to run locally, start with t
 
 Explain **why the change exists and what it achieves**. Clear descriptions reduce back-and-forth and speed up reviews.
 
-Here's an example of a PR with a good description: [[Data] Refactor PhysicalOperator.completed to fix side effects ](https://github.com/ray-project/ray/pull/58915).
+Here's an example of a PR with a good description: [[Data] Refactor PhysicalOperator.completed to fix side effects](https://github.com/ray-project/ray/pull/58915).
 
 ### Keep pull requests small
 
