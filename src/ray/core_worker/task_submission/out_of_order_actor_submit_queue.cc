@@ -20,6 +20,13 @@
 
 namespace ray {
 namespace core {
+namespace {
+
+bool IsRestartFailureCandidate(const TaskSpecification &spec) {
+  return !spec.IsRetry() && spec.MaxRetries() == 0;
+}
+
+}  // namespace
 
 void OutofOrderActorSubmitQueue::Emplace(const std::string &concurrency_group,
                                          uint64_t position,
@@ -87,10 +94,27 @@ void OutofOrderActorSubmitQueue::MarkTaskCanceled(const std::string &concurrency
   }
   auto sending_it = sending_queue_per_group_.find(concurrency_group);
   if (sending_it != sending_queue_per_group_.end()) {
-    sending_it->second.erase(position);
+    auto task_it = sending_it->second.find(position);
+    if (task_it == sending_it->second.end()) {
+      return;
+    }
+    EraseRestartFailureCandidate(concurrency_group, position);
+    sending_it->second.erase(task_it);
     if (sending_it->second.empty()) {
       sending_queue_per_group_.erase(sending_it);
     }
+  }
+}
+
+void OutofOrderActorSubmitQueue::EraseRestartFailureCandidate(
+    const std::string &concurrency_group, uint64_t position) {
+  auto group_it = restart_failure_candidates_per_group_.find(concurrency_group);
+  if (group_it == restart_failure_candidates_per_group_.end()) {
+    return;
+  }
+  group_it->second.erase(position);
+  if (group_it->second.empty()) {
+    restart_failure_candidates_per_group_.erase(group_it);
   }
 }
 
@@ -115,13 +139,19 @@ void OutofOrderActorSubmitQueue::MarkDependencyResolved(
   auto it = pending_it->second.find(position);
   RAY_CHECK(it != pending_it->second.end());
   auto spec = std::move(it->second.first);
+  const bool is_restart_failure_candidate = IsRestartFailureCandidate(spec);
   pending_it->second.erase(it);
   if (pending_it->second.empty()) {
     pending_queue_per_group_.erase(pending_it);
   }
 
-  sending_queue_per_group_[concurrency_group].emplace(
+  const auto inserted = sending_queue_per_group_[concurrency_group].emplace(
       position, std::make_pair(std::move(spec), /*dependency_resolved*/ true));
+  RAY_CHECK(inserted.second);
+  if (is_restart_failure_candidate) {
+    RAY_CHECK(
+        restart_failure_candidates_per_group_[concurrency_group].insert(position).second);
+  }
 }
 
 std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
@@ -138,6 +168,7 @@ std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
     }
   }
   sending_queue_per_group_.clear();
+  restart_failure_candidates_per_group_.clear();
   return task_ids;
 }
 
@@ -148,6 +179,7 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
     auto &sending = it->second;
     auto task_it = sending.begin();
     if (task_it != sending.end()) {
+      EraseRestartFailureCandidate(it->first, task_it->first);
       auto task_spec = std::move(task_it->second.first);
       sending.erase(task_it);
       if (sending.empty()) {
@@ -162,25 +194,24 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
 std::vector<TaskSpecification>
 OutofOrderActorSubmitQueue::PopTasksToFailOnActorRestart() {
   std::vector<TaskSpecification> tasks_to_fail;
-  // All tasks in the sending queues are dependency-ready, and out-of-order execution
-  // permits any initial zero-retry task to be removed independently.
-  for (auto group_it = sending_queue_per_group_.begin();
-       group_it != sending_queue_per_group_.end();) {
-    auto &sending = group_it->second;
-    for (auto task_it = sending.begin(); task_it != sending.end();) {
-      if (task_it->second.first.IsRetry() || task_it->second.first.MaxRetries() != 0) {
-        ++task_it;
-        continue;
-      }
-
+  // All indexed tasks are dependency-ready, and out-of-order execution permits any
+  // initial zero-retry task to be removed independently.
+  for (auto candidate_group_it = restart_failure_candidates_per_group_.begin();
+       candidate_group_it != restart_failure_candidates_per_group_.end();) {
+    auto sending_group_it = sending_queue_per_group_.find(candidate_group_it->first);
+    RAY_CHECK(sending_group_it != sending_queue_per_group_.end());
+    auto &sending = sending_group_it->second;
+    for (const auto position : candidate_group_it->second) {
+      auto task_it = sending.find(position);
+      RAY_CHECK(task_it != sending.end());
+      RAY_CHECK(IsRestartFailureCandidate(task_it->second.first));
       tasks_to_fail.push_back(std::move(task_it->second.first));
-      task_it = sending.erase(task_it);
+      sending.erase(task_it);
     }
     if (sending.empty()) {
-      sending_queue_per_group_.erase(group_it++);
-    } else {
-      ++group_it;
+      sending_queue_per_group_.erase(sending_group_it);
     }
+    restart_failure_candidates_per_group_.erase(candidate_group_it++);
   }
   return tasks_to_fail;
 }
