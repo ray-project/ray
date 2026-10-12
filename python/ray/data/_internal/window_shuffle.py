@@ -1,6 +1,6 @@
 """Window shuffle using batch maps and optional strict repartition."""
 
-from typing import TYPE_CHECKING, Callable, Iterable
+from typing import Callable, Iterable
 
 import numpy as np
 import pyarrow as pa
@@ -12,9 +12,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import WindowShuffle
 from ray.data._internal.random_config import RandomSeedConfig, get_timestamp_seed
 from ray.data.context import DataContext
-
-if TYPE_CHECKING:
-    from ray.data.dataset import Dataset
+from ray.data.dataset import Dataset
 
 
 def _shuffle_window(
@@ -50,7 +48,7 @@ def _shuffle_windows(
 
 
 def window_shuffle(
-    self: "Dataset",
+    self: Dataset,
     window_size: int,
     *,
     strict: bool = False,
@@ -58,9 +56,7 @@ def window_shuffle(
     compute: TaskPoolStrategy | None = None,
     num_cpus: float | None = None,
     memory: float | None = None,
-) -> "Dataset":
-    from ray.data.dataset import Dataset
-
+) -> Dataset:
     if isinstance(window_size, bool) or not isinstance(window_size, int):
         raise TypeError("window_size must be an integer")
     if window_size <= 0:
