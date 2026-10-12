@@ -348,12 +348,13 @@ def test_hash_partition_polars_consistent_across_blocks():
 @pytest.mark.parametrize(
     "dtype,values",
     [
+        (pa.bool_(), [True, False, True]),
         (pa.int32(), [1, 2, 3]),
         (pa.int64(), [1, 2**53 + 1, 3]),
         (pa.uint64(), [1, 2**63 + 1, 3]),
     ],
 )
-def test_hash_partition_nullable_integer_consistent_across_blocks(dtype, values):
+def test_hash_partition_nullable_dtype_consistent_across_blocks(dtype, values):
     without_null = pa.table({"k": pa.array(values, type=dtype)})
     with_null = pa.table({"k": pa.array([None] + values, type=dtype)})
 
