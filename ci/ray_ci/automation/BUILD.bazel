@@ -100,6 +100,38 @@ py_binary(
 )
 
 py_library(
+    name = "cut_release_branch_lib",
+    srcs = ["cut_release_branch_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [],
+)
+
+py_test(
+    name = "test_cut_release_branch_lib",
+    size = "small",
+    srcs = ["test_cut_release_branch_lib.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":cut_release_branch_lib",
+    ],
+)
+
+py_binary(
+    name = "cut_release_branch",
+    srcs = ["cut_release_branch.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ci_require("click"),
+        ":cut_release_branch_lib",
+    ],
+)
+
+py_library(
     name = "crane_lib",
     srcs = ["crane_lib.py"],
     data = [
