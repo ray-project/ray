@@ -7,6 +7,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
     Repartition,
     Sort,
+    TopN,
 )
 from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.from_operators import (
@@ -85,6 +86,7 @@ __all__ = [
     "ReadFiles",
     "Repartition",
     "Sort",
+    "TopN",
     "StreamingRepartition",
     "StreamingSplit",
     "Union",
