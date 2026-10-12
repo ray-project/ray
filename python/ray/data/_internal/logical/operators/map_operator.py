@@ -305,7 +305,6 @@ class WindowShuffle(MapBatches, LogicalOperatorPreservesSchema):
     """
 
     can_modify_num_rows: bool = field(init=False, default=False)
-    strict: bool = False
 
     def __post_init__(self):
         super().__post_init__()

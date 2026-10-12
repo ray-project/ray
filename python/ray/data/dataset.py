@@ -30,6 +30,7 @@ import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.data._internal import window_shuffle as window_shuffle_impl
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_id import generate_dataset_ulid
 from ray.data._internal.dataset_repr import (
@@ -90,12 +91,13 @@ from ray.data._internal.logical.operators import (
     StreamingRepartition,
     StreamingSplit,
     Union as UnionLogicalOperator,
+    WindowShuffle,
     Write,
     Zip,
 )
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.random_config import RandomSeedConfig
+from ray.data._internal.random_config import RandomSeedConfig, get_timestamp_seed
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
@@ -2532,17 +2534,55 @@ class Dataset:
         Returns:
             A Dataset containing the shuffled windows.
         """
-        from ray.data._internal.window_shuffle import window_shuffle
+        if isinstance(window_size, bool) or not isinstance(window_size, int):
+            raise TypeError("window_size must be an integer")
+        if window_size <= 0:
+            raise ValueError("window_size must be positive")
+        if not isinstance(strict, bool):
+            raise TypeError("strict must be a boolean")
+        if compute is not None and not isinstance(compute, TaskPoolStrategy):
+            raise TypeError("window_shuffle currently supports TaskPoolStrategy only")
 
-        return window_shuffle(
-            self,
-            window_size,
-            strict=strict,
-            seed=seed,
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+        if seed_config.seed is not None:
+            # Validate on the driver rather than failing a remote shuffle task.
+            np.random.SeedSequence(seed_config.seed)
+        if window_size == 1:
+            return self
+        if seed_config.seed is None:
+            # Pin the base seed when constructing the plan, so task retries replay
+            # the same permutation. Independent executions may reseed, like epochs.
+            seed_config = RandomSeedConfig(
+                seed=get_timestamp_seed(), reseed_after_execution=True
+            )
+
+        if strict:
+            # Consume each prebuilt window whole, preserving its tensor chunks.
+            source = self.repartition(
+                target_num_rows_per_block=window_size, strict=True
+            )
+            batch_size = None
+        else:
+            source = self
+            batch_size = window_size
+        remote_args = {}
+        if num_cpus is not None:
+            remote_args["num_cpus"] = num_cpus
+        if memory is not None:
+            remote_args["memory"] = memory
+
+        op = WindowShuffle(
+            fn=window_shuffle_impl._shuffle_window,
+            input_dependencies=[source._logical_plan.dag],
+            batch_size=batch_size,
+            min_rows_per_bundled_input=batch_size,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+            fn_args=(seed_config,),
             compute=compute,
-            num_cpus=num_cpus,
-            memory=memory,
+            ray_remote_args=remote_args,
         )
+        return Dataset._from_parent(source, LogicalPlan(op, self.context))
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)

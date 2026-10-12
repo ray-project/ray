@@ -22,6 +22,9 @@ import ray
 from ray.data import TaskPoolStrategy
 from ray.data._internal.arrow_ops.transform_pyarrow import take_table
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    ENABLE_CHUNKED_TENSOR_TAKE,
+)
 from ray.data.context import DataContext
 
 VARIANTS = (
@@ -101,6 +104,7 @@ def measure(build: Callable[[], ray.data.Dataset], args: argparse.Namespace) -> 
         "native_ray_commit": ray.__commit__,
         "pyarrow": pa.__version__,
         "numpy": np.__version__,
+        "chunked_tensor_take_enabled": ENABLE_CHUNKED_TENSOR_TAKE,
         "iteration_times_s": durations,
         "median_iteration_s": median,
         "stdev_iteration_s": statistics.stdev(durations) if len(durations) > 1 else 0,

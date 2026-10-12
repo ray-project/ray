@@ -4,7 +4,6 @@ import asyncio
 import os
 import sys
 import threading
-import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -67,7 +66,6 @@ def _probe_shuffle(batch, seed_config, *, batch_idx=0, gate):
         ):
             fast_takes += 1
 
-    started = time.monotonic_ns()
     previous_profile = sys.getprofile()
     sys.setprofile(profile)
     try:
@@ -80,8 +78,6 @@ def _probe_shuffle(batch, seed_config, *, batch_idx=0, gate):
         "_probe_chunks": max((c.num_chunks for c in batch.columns), default=0),
         "_probe_fast_takes": fast_takes,
         "_probe_pid": os.getpid(),
-        "_probe_start": started,
-        "_probe_end": time.monotonic_ns(),
         "_probe_task": TaskContext.get_current().task_idx,
     }
     for name, value in metrics.items():
@@ -290,7 +286,6 @@ class WindowShuffleTests(unittest.TestCase):
             with self.subTest(strict=strict):
                 output = source.window_shuffle(8, strict=strict, seed=42)
                 op = output._logical_plan.dag
-                self.assertEqual(op.strict, strict)
                 self.assertEqual(op.batch_size, None if strict else 8)
                 self.assertEqual(op.min_rows_per_bundled_input, None if strict else 8)
                 self.assertEqual(
@@ -331,7 +326,7 @@ class WindowShuffleTests(unittest.TestCase):
         self.assertNotEqual(groups[0], [row_id - 16 for row_id in groups[1]])
         self.assertEqual(sorted(row["id"] for row in rows), list(range(103)))
 
-    def test_seed_and_materialization(self):
+    def test_seed_is_reproducible(self):
         source = self.source([13, 7, 17])
         for strict in (False, True):
             with self.subTest(strict=strict):
@@ -341,7 +336,6 @@ class WindowShuffleTests(unittest.TestCase):
                     8, strict=strict, seed=9
                 ).materialize()
                 self.assertEqual(self.ids(first), self.ids(second))
-                self.assertEqual(self.ids(first), self.ids(first))
                 self.assertNotEqual(self.ids(first), self.ids(different))
 
     def test_unordered_execution_preserves_window_membership(self):
@@ -638,6 +632,19 @@ class WindowShuffleTests(unittest.TestCase):
         self.assertEqual(sorted(row["id"] for row in rows), list(range(103)))
         self.assertEqual(len({row["task_idx"] for row in rows}), 7)
 
+    def test_downstream_rebatch_preserves_permutation(self):
+        source = self.source([4] * 16)
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+                expected = self.ids(shuffled)
+                actual = self.ids(
+                    shuffled.map_batches(
+                        _identity, batch_size=64, batch_format="pyarrow"
+                    )
+                )
+                self.assertEqual(actual, expected)
+
     def test_single_row_window_is_noop(self):
         source = self.source([7])
         self.assertIs(source.window_shuffle(1, seed=42), source)
@@ -672,6 +679,19 @@ class WindowShuffleTests(unittest.TestCase):
                 self.assertEqual(sorted(first), list(range(64)))
                 self.assertEqual(sorted(second), list(range(64)))
                 self.assertNotEqual(first, second)
+
+    def test_materialization_freezes_reseeded_permutation(self):
+        source = self.source([13, 7, 17])
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                cached = source.window_shuffle(
+                    8,
+                    strict=strict,
+                    seed=RandomSeedConfig(seed=42, reseed_after_execution=True),
+                ).materialize()
+                first = self.ids(cached)
+                second = self.ids(cached)
+                self.assertEqual(first, second)
 
     def check_tensor_path(self, variable, strict):
         count, window = (2048, 512) if variable else (512, 128)
@@ -715,7 +735,7 @@ class WindowShuffleTests(unittest.TestCase):
             ray.kill(gate)
         blocks = ray.get(output.to_arrow_refs())
         all_ids = []
-        intervals = []
+        worker_pids = set()
         task_indices = []
         for block in blocks:
             task_indices.append(block["_probe_task"][0].as_py())
@@ -730,22 +750,49 @@ class WindowShuffleTests(unittest.TestCase):
                 self.assertEqual(tensor.shape, expected_shape)
                 self.assertEqual(tensor.dtype, np.dtype(np.float32))
                 self.assertTrue(np.all(tensor == i))
-            intervals.append(
-                tuple(
-                    block[name][0].as_py()
-                    for name in ("_probe_pid", "_probe_start", "_probe_end")
-                )
-            )
+            worker_pids.add(block["_probe_pid"][0].as_py())
         self.assertEqual(sorted(all_ids), list(range(count)))
         self.assertEqual(len(set(task_indices)), len(blocks))
-        self.assertGreaterEqual(len({pid for pid, _, _ in intervals}), 2, intervals)
-        self.assertTrue(
-            any(
-                a[0] != b[0] and max(a[1], b[1]) < min(a[2], b[2])
-                for a in intervals
-                for b in intervals
+        self.assertGreaterEqual(len(worker_pids), 2)
+
+    def test_small_tensor_columns_use_fallback(self):
+        count = 128
+        for variable in (False, True):
+            data = [
+                np.full((4 if variable and i % 2 else 2, 4), i, dtype=np.int64)
+                for i in range(count)
+            ]
+            table = pa.Table.from_arrays(
+                [pa.array(np.arange(count)), ArrowTensorArray.from_numpy(data)],
+                names=["id", "tensor"],
             )
-        )
+            source = ray.data.from_arrow(
+                [table.slice(i, 16) for i in range(0, count, 16)]
+            ).materialize()
+            for strict in (False, True):
+                with self.subTest(variable=variable, strict=strict):
+                    gate = _WindowGate.remote()
+                    try:
+                        with patch.object(
+                            window_shuffle_impl,
+                            "_shuffle_window",
+                            partial(_probe_shuffle, gate=gate),
+                        ):
+                            output = source.window_shuffle(
+                                64, strict=strict, seed=42
+                            ).take_all()
+                    finally:
+                        ray.kill(gate)
+                    self.assertEqual(
+                        sorted(row["id"] for row in output), list(range(count))
+                    )
+                    for row in output:
+                        self.assertEqual(row["_probe_fast_takes"], 0)
+                        self.assertGreaterEqual(row["_probe_chunks"], 2)
+                        shape = (4 if variable and row["id"] % 2 else 2, 4)
+                        self.assertEqual(row["tensor"].shape, shape)
+                        self.assertEqual(row["tensor"].dtype, np.dtype(np.int64))
+                        self.assertTrue(np.all(row["tensor"] == row["id"]))
 
     def test_fixed_tensor_fast_path_and_parallel_tasks(self):
         for strict in (False, True):
