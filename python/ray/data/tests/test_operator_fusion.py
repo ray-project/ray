@@ -580,8 +580,8 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
     if shuffle and ctx.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
         assert "ReadRange->MapBatches(fn)" in ds.stats()
         prefix = "Disk" if ctx.use_disk_based_hash_shuffle else ""
-        assert f"{prefix}RoundRobinShuffleMap(partitions=2)" in ds.stats()
-        assert f"{prefix}RoundRobinShuffleReduce(partitions=2)" in ds.stats()
+        assert f"{prefix}SliceShuffleMap(partitions=2)" in ds.stats()
+        assert f"{prefix}SliceShuffleReduce(partitions=2)" in ds.stats()
     elif shuffle:
         assert "ReadRange->MapBatches(fn)->Repartition" in ds.stats()
     else:
@@ -611,7 +611,7 @@ def test_fuse_map_into_shuffle_reduce(
     reduce_name = (
         "HashShuffleReduce(keys=('id',), partitions=4)"
         if keys
-        else "RoundRobinShuffleReduce(partitions=4)"
+        else "SliceShuffleReduce(partitions=4)"
     )
     assert dag.name == f"{prefix}{reduce_name}->MapBatches(<lambda>)"
     assert dag._fused_output_map_transformer is not None

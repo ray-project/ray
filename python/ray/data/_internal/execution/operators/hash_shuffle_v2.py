@@ -1,10 +1,9 @@
-import random
+import math
 from typing import Dict, Iterable, List
 
-import numpy as np
 import pyarrow as pa
 
-from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition, take_table
+from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     PartitionFn,
     ReduceFn,
@@ -28,16 +27,22 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
     return _partition
 
 
-def _make_round_robin_partition_fn(num_partitions: int) -> PartitionFn:
-    """Return a round-robin partitioner with a random starting partition per block."""
+def _make_slice_partition_fn(num_partitions: int) -> PartitionFn:
+    """Return a partitioner that assigns ceil-sized contiguous slices in order."""
 
     def _partition(block: pa.Table) -> Dict[int, pa.Table]:
         partitions: Dict[int, pa.Table] = {}
-        start_partition = random.randrange(num_partitions)
-        for partition_id in range(min(num_partitions, block.num_rows)):
-            row_indices = np.arange(partition_id, block.num_rows, num_partitions)
-            target_partition = (start_partition + partition_id) % num_partitions
-            partitions[target_partition] = take_table(block, row_indices)
+        num_rows = block.num_rows
+        if num_rows == 0:
+            return partitions
+
+        slice_size = max(1, math.ceil(num_rows / num_partitions))
+        for partition_id in range(num_partitions):
+            row_start = partition_id * slice_size
+            if row_start >= num_rows:
+                break
+            row_end = min((partition_id + 1) * slice_size, num_rows)
+            partitions[partition_id] = block.slice(row_start, row_end - row_start)
         return partitions
 
     return _partition

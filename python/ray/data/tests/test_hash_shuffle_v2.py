@@ -1,3 +1,4 @@
+import math
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -63,12 +64,12 @@ def data_context_shuffle_v2(restore_data_context):
 
 
 @pytest.mark.parametrize(
-    "num_rows,num_partitions", [(0, 4), (12, 1), (12, 4), (11, 4), (3, 5)]
+    "num_rows,num_partitions",
+    [(0, 4), (12, 1), (12, 4), (11, 4), (10, 6), (3, 5)],
 )
-@pytest.mark.parametrize("start_at_end", [False, True])
-def test_round_robin_partition(num_rows, num_partitions, start_at_end):
+def test_slice_partition(num_rows, num_partitions):
     from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-        _make_round_robin_partition_fn,
+        _make_slice_partition_fn,
     )
     from ray.data.extensions import ArrowTensorArray
 
@@ -80,48 +81,35 @@ def test_round_robin_partition(num_rows, num_partitions, start_at_end):
             "null": pa.nulls(12),
         }
     ).slice(0, num_rows)
-    # Exercise the tensor-aware gather on chunked inputs as well.
+    # Exercise slicing on chunked inputs as well.
     table = pa.concat_tables([table.slice(0, 5), table.slice(5)])
-    partition_fn = _make_round_robin_partition_fn(num_partitions)
-    start_partition = num_partitions - 1 if start_at_end else 0
-    with patch("random.randrange", return_value=start_partition):
-        partitions = partition_fn(table)
-    assert set(partitions) == {
-        (start_partition + i) % num_partitions
-        for i in range(min(num_rows, num_partitions))
-    }
+    partition_fn = _make_slice_partition_fn(num_partitions)
+    partitions = partition_fn(table)
+    slice_size = max(1, math.ceil(num_rows / num_partitions))
+    expected_partitions = set()
+    for partition_id in range(num_partitions):
+        if partition_id * slice_size >= num_rows:
+            break
+        expected_partitions.add(partition_id)
+    assert set(partitions) == expected_partitions
     for partition_id, shard in partitions.items():
-        first_row = (partition_id - start_partition) % num_partitions
+        row_start = partition_id * slice_size
+        row_end = min((partition_id + 1) * slice_size, num_rows)
         assert shard.schema == table.schema
-        assert shard["id"].to_pylist() == list(
-            range(first_row, num_rows, num_partitions)
-        )
+        assert shard["id"].to_pylist() == list(range(row_start, row_end))
         assert shard["null"].null_count == shard.num_rows
         np.testing.assert_array_equal(
             shard["tensor"].combine_chunks().to_numpy(),
-            tensors[first_row:num_rows:num_partitions],
+            tensors[row_start:row_end],
         )
-
-
-def test_round_robin_partition_randomizes_each_block():
-    from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-        _make_round_robin_partition_fn,
-    )
-
-    partition_fn = _make_round_robin_partition_fn(4)
-    starts = [0, 3, 1, 2, 3, 0, 2, 1]
-    # Control the draws so this checks per-block randomization without flakiness.
-    with patch("random.randrange", side_effect=starts):
-        for row, start_partition in enumerate(starts):
-            partitions = partition_fn(pa.table({"id": [row]}))
-            assert set(partitions) == {start_partition}
-            assert partitions[start_partition]["id"].to_pylist() == [row]
 
 
 @pytest.mark.parametrize("use_disk", [False, True])
 @pytest.mark.parametrize("input_batch_bytes", [0, 1024 * 1024])
-@pytest.mark.parametrize("num_rows,num_partitions", [(0, 4), (11, 1), (11, 4), (3, 5)])
-def test_round_robin_repartition(
+@pytest.mark.parametrize(
+    "num_rows,num_partitions", [(0, 4), (11, 1), (11, 4), (10, 6), (3, 5)]
+)
+def test_slice_repartition(
     ray_start_regular_shared_2_cpus,
     disable_fallback_to_object_extension,
     use_disk,
@@ -147,26 +135,27 @@ def test_round_robin_repartition(
     assert sorted(row for rows in rows_by_partition for row in rows) == (
         list(range(num_rows)) + list(range(100, 100 + num_rows))
     )
-    # Each input block can choose a different starting partition, but its shards
-    # must still contain every num_partitions-th row.
-    expected_shards = sorted(
-        list(range(p, num_rows, num_partitions)) for p in range(num_partitions)
-    )
+    # Each input block's contiguous slices are assigned in partition order.
+    slice_size = max(1, math.ceil(num_rows / num_partitions))
+    expected_shards = []
+    for partition_id in range(num_partitions):
+        row_start = partition_id * slice_size
+        row_end = min((partition_id + 1) * slice_size, num_rows)
+        expected_shards.append(list(range(row_start, row_end)))
+    expected_shards.sort()
     for start in (0, 100):
         shards = [
-            sorted(row - start for row in rows if start <= row < start + num_rows)
+            [row - start for row in rows if start <= row < start + num_rows]
             for rows in rows_by_partition
         ]
         assert sorted(shards) == expected_shards
     prefix = "Disk" if use_disk else ""
-    assert f"{prefix}RoundRobinShuffleMap(partitions={num_partitions})" in out.stats()
-    assert (
-        f"{prefix}RoundRobinShuffleReduce(partitions={num_partitions})" in out.stats()
-    )
+    assert f"{prefix}SliceShuffleMap(partitions={num_partitions})" in out.stats()
+    assert f"{prefix}SliceShuffleReduce(partitions={num_partitions})" in out.stats()
 
 
 @pytest.mark.parametrize("use_disk", [False, True])
-def test_round_robin_repartition_chunked_extensions(
+def test_slice_repartition_chunked_extensions(
     ray_start_regular_shared_2_cpus, use_disk
 ):
     from ray.data.extensions import ArrowPythonObjectArray, ArrowTensorArray

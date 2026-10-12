@@ -2378,8 +2378,8 @@ class Dataset:
                 output blocks are created from adjacent input blocks,
                 minimizing data movement. When shuffle is enabled with
                 ``ShuffleStrategy.SHUFFLE_V2`` and no keys, rows within each input
-                block are assigned round-robin to output partitions, starting
-                at a randomly selected partition for each block.
+                block are divided into contiguous slices and assigned to output
+                partitions in order.
             keys: List of key columns repartitioning will use to determine which
                 partition will row belong to after repartitioning (by applying
                 hash-partitioning algorithm to the whole dataset). Note that, this
