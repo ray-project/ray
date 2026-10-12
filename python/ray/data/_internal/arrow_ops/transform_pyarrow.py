@@ -229,11 +229,12 @@ def _group_indices(
 
 
 @lru_cache()
-def _get_nullable_integer_dtypes() -> Dict["pyarrow.DataType", Any]:
+def _get_nullable_dtypes() -> Dict["pyarrow.DataType", Any]:
     """Build the pandas dtype map only when the hash fallback is used."""
     import pandas as pd
 
     return {
+        pyarrow.bool_(): pd.BooleanDtype(),
         pyarrow.int8(): pd.Int8Dtype(),
         pyarrow.int16(): pd.Int16Dtype(),
         pyarrow.int32(): pd.Int32Dtype(),
@@ -265,12 +266,12 @@ def _hash_partition(
         # row-by-row loop.
         import pandas as pd
 
-        # ArrowExtensionArray converts nullable integers to float64 when pandas
-        # hashes them, so use pandas' nullable integer dtypes instead.
-        nullable_integer_dtypes = _get_nullable_integer_dtypes()
+        # Use pandas' nullable integer and boolean dtypes so null and non-null
+        # values hash consistently across blocks.
+        nullable_dtypes = _get_nullable_dtypes()
 
         def types_mapper(dtype):
-            return nullable_integer_dtypes.get(dtype) or pd.ArrowDtype(dtype)
+            return nullable_dtypes.get(dtype) or pd.ArrowDtype(dtype)
 
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=types_mapper), index=False
