@@ -4467,6 +4467,38 @@ def test_slow_scheduling_warning_names_label_selectors(mock_deployment_state_man
     )
 
 
+def test_slow_scheduling_warning_names_label_selectors_after_recovery(
+    mock_deployment_state_manager,
+):
+    """A replica recovered after a controller restart still names its selector."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    replica_config = ReplicaConfig.create(
+        lambda x: x,
+        ray_actor_options={"num_cpus": 0.1, "label_selector": {"test": "a"}},
+    )
+    info, _ = deployment_info(num_replicas=1, replica_config=replica_config)
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    dsm.save_checkpoint()
+    dsm.update()
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    replica = ds._replicas.get()[0]
+
+    new_dsm: DeploymentStateManager = create_dsm([replica.replica_id.to_full_id_str()])
+    new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    for recovered in new_ds._replicas.get():
+        recovered._actor.set_status(ReplicaStartupStatus.PENDING_ALLOCATION)
+
+    timer.advance(SLOW_STARTUP_WARNING_S + 1)
+    new_dsm.update()
+
+    assert (
+        'Required node label selector: {"test": "a"}.'
+        in new_ds.curr_status_info.message
+    )
+
+
 def test_gang_pg_leak_detection_survives_state_api_failure(
     mock_deployment_state_manager,
 ):

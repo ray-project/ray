@@ -1518,7 +1518,7 @@ class ActorReplicaWrapper:
         self._rank = rank
         return updating
 
-    def recover(self, ingress: bool = False) -> bool:
+    def recover(self, ingress: bool = False, scheduling_constraints: str = "") -> bool:
         """Recover replica version from a live replica actor.
 
         When controller dies, the deployment state loses the info on the version that's
@@ -1533,6 +1533,8 @@ class ActorReplicaWrapper:
 
         Args:
             ingress: Whether this replica is an ingress replica.
+            scheduling_constraints: The replica's scheduling constraints, as
+                formatted by `format_scheduling_constraints`.
 
         Returns:
             False if the replica actor is no longer alive; the caller drops
@@ -1543,6 +1545,7 @@ class ActorReplicaWrapper:
         """
         logger.info(f"Recovering {self.replica_id}.")
         self._ingress = ingress
+        self._scheduling_constraints = scheduling_constraints
         try:
             self._actor_handle = ray.get_actor(
                 self._actor_name, namespace=SERVE_NAMESPACE
@@ -2367,7 +2370,12 @@ class DeploymentReplica:
             False if the replica actor is no longer alive.
         """
         # If replica is no longer alive
-        if not self._actor.recover(ingress=deployment_info.ingress):
+        if not self._actor.recover(
+            ingress=deployment_info.ingress,
+            scheduling_constraints=format_scheduling_constraints(
+                deployment_info.replica_config
+            ),
+        ):
             return False
 
         self._start_time = time.time()

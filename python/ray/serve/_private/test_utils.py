@@ -742,11 +742,12 @@ class MockReplicaActorWrapper:
         replica_rank_context[self._replica_id.unique_id] = rank
         return updating
 
-    def recover(self, ingress: bool = False):
+    def recover(self, ingress: bool = False, scheduling_constraints: str = ""):
         if self.replica_id in dead_replicas_context:
             return False
 
         self._ingress = ingress
+        self._scheduling_constraints = scheduling_constraints
         self.recovering = True
         self.started = False
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
