@@ -4,6 +4,7 @@ import inspect
 import logging
 import queue
 from dataclasses import dataclass
+from functools import partial
 from threading import Thread
 from types import GeneratorType
 from typing import (
@@ -50,6 +51,7 @@ from ray.data._internal.logical.operators import (
     MapRows,
     Project,
     StreamingRepartition,
+    WindowShuffle,
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
@@ -326,8 +328,16 @@ def plan_udf_map_op(
     )
 
     if isinstance(op, MapBatches):
+        if isinstance(op, WindowShuffle):
+            from ray.data._internal.window_shuffle import _shuffle_windows
+
+            batch_fn = partial(
+                _shuffle_windows, shuffle_fn=op.fn, seed_config=op.fn_args[0]
+            )
+        else:
+            batch_fn = _generate_transform_fn_for_map_batches(fn)
         transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(fn),
+            batch_fn,
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
@@ -359,6 +369,8 @@ def plan_udf_map_op(
         ray_remote_args_fn=op.ray_remote_args_fn,
         ray_remote_args=op.ray_remote_args,
         per_block_limit=op.per_block_limit,
+        # Preserve the shuffle's task grouping and task/batch-indexed RNG stream.
+        supports_fusion=not isinstance(op, WindowShuffle),
     )
 
 

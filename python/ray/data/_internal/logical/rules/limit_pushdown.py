@@ -13,6 +13,7 @@ from ray.data._internal.logical.operators import (
     Read,
     ReadFiles,
     Union,
+    WindowShuffle,
 )
 
 __all__ = [
@@ -178,6 +179,10 @@ class LimitPushdownRule(Rule):
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows
         ):
+            if isinstance(current_op, WindowShuffle):
+                # Permutation preserves row count, but a limit before it would
+                # select different rows and could truncate a shuffle window.
+                break
             if isinstance(current_op, Project) and not current_op.is_idempotent():
                 # Do not push the limit past a projection producing a non-idempotent
                 # column (e.g. monotonically_increasing_id): its value depends on row
