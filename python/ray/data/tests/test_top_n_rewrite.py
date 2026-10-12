@@ -104,6 +104,25 @@ def test_rewrite_consecutive_limits_uses_minimum():
     assert optimized.limit == 10
 
 
+@pytest.mark.parametrize("limit", [0, -1])
+def test_rewrite_keeps_nonpositive_limit_above_top_n(limit):
+    input_operator = _Input()
+    top_n = TopN(
+        sort_key=SortKey("value"),
+        limit=10,
+        input_dependencies=[input_operator],
+    )
+
+    optimized = _optimize_dag(
+        Limit(limit, input_dependencies=[top_n]),
+        _make_context(),
+    )
+
+    assert isinstance(optimized, Limit)
+    assert optimized.limit == limit
+    assert optimized.input_dependencies == [top_n]
+
+
 def test_rewrite_consecutive_sorts_uses_last_sort_key():
     input_operator = _Input()
     first_sort = _make_sort(input_operator)
@@ -199,3 +218,17 @@ def test_rewrite_rejects_invalid_max_limit():
             Limit(5, input_dependencies=[_make_sort(_Input())]),
             context,
         )
+
+
+@pytest.mark.parametrize("config", ["use_polars", "use_polars_sort"])
+def test_rewrite_keeps_sort_limit_for_polars(config):
+    context = _make_context()
+    setattr(context, config, True)
+
+    optimized = _optimize_dag(
+        Limit(5, input_dependencies=[_make_sort(_Input())]),
+        context,
+    )
+
+    assert isinstance(optimized, Limit)
+    assert isinstance(optimized.input_dependencies[0], Sort)

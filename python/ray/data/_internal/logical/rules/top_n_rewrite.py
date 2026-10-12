@@ -28,6 +28,9 @@ class TopNRewriteRule(Rule):
         assert isinstance(plan, LogicalPlan)
         if plan.context.shuffle_strategy != ShuffleStrategy.SHUFFLE_V2:
             return plan
+        # TODO(vicwen): Remove this fallback once Polars sorts nulls last. See #66925.
+        if plan.context.use_polars or plan.context.use_polars_sort:
+            return plan
         if not plan.context.get_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, False):
             return plan
 
@@ -44,6 +47,8 @@ class TopNRewriteRule(Rule):
         def rewrite(operator: LogicalOperator) -> LogicalOperator:
             if not isinstance(operator, Limit):
                 return operator
+            if operator.limit <= 0:
+                return operator
 
             input_operator = operator.input_dependencies[0]
             if isinstance(input_operator, TopN):
@@ -56,7 +61,7 @@ class TopNRewriteRule(Rule):
 
             if not isinstance(input_operator, Sort):
                 return operator
-            if operator.limit <= 0 or operator.limit > max_limit:
+            if operator.limit > max_limit:
                 return operator
             if input_operator.sort_key.boundaries:
                 return operator

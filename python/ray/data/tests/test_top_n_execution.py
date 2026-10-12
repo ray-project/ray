@@ -157,21 +157,18 @@ def test_top_n_fails_before_final_merge_when_actual_candidates_exceed_cap(
         ds.take_all()
 
 
-@pytest.mark.parametrize("use_polars_sort", [False, True])
 def test_top_n_shuffle_v2_arrow_nulls_last(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
-    use_polars_sort,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_polars_sort = use_polars_sort
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
     blocks = [
         pa.table({"key": [3, None], "row_id": [0, 1]}),
         pa.table({"key": [1, 2], "row_id": [2, 3]}),
     ]
 
+    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
     result = ray.data.from_arrow(blocks).sort("key").limit(3).take_all()
 
     assert result == [
