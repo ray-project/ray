@@ -647,7 +647,7 @@ def test_video_option_validation(h264_file):
         window=WindowSpec(length_s=1),
         video=VideoOptions(),
     )
-    for granularity in ("topic", "file"):
+    for granularity in ("topic", "file", "attachment", "metadata"):
         with pytest.raises(ValueError, match="cannot be cut into blocks"):
             MCAPDatasourceV2(
                 [h264_file], read_granularity=granularity, video=VideoOptions()

@@ -11,7 +11,8 @@ At ``message`` granularity a row has the columns of ``message_schema``. Its
 optional ``row_id`` is a deterministic name for the message, built from the
 file path, the chunk's byte offset and the message's position in the chunk. At
 ``window``, ``topic`` and ``file`` granularity a row packs many messages into
-parallel list columns.
+parallel list columns. At ``attachment`` and ``metadata`` granularity a row is
+one record of that kind.
 
 This module groups the manifest by file and finishes every table with its
 partition and synthesized columns. The other modules read and build the rows:
@@ -21,6 +22,7 @@ partition and synthesized columns. The other modules read and build the rows:
 - ``mcap_coarse_rows`` builds window, topic and file rows. ``mcap_windows``
   places the windows, ``mcap_lead_in`` picks the frames a decoder needs first,
   and ``mcap_coarse_layout`` lays the rows out in Arrow.
+- ``mcap_records`` builds attachment and metadata rows.
 - With ``video``, ``mcap_decoded_messages`` builds one row per decoded frame,
   and ``mcap_decoded_windows`` adds each window's frames. ``mcap_video_source``
   picks what a decoding task reads, and ``mcap_decode`` decodes the frames.
@@ -32,6 +34,7 @@ from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     FrozenSet,
     Iterator,
@@ -65,16 +68,24 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     _MessageTableBuilder,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
     DEFAULT_MAX_LEAD_IN_NS,
     MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     TOPIC_GRANULARITY,
     WINDOW_GRANULARITY,
     MCAPSelection,
     VideoOptions,
     WindowSpec,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_records import (
+    RecordRows,
+    iter_records,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
+    attachment_unit_id,
     chunk_unit_id,
+    metadata_unit_id,
     topic_unit_id,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
@@ -106,25 +117,35 @@ logger = logging.getLogger(__name__)
 # size. Payloads use 64-bit offsets, so the cap can be raised past 2 GiB.
 DEFAULT_MAX_ROW_BYTES = GiB
 
+# Names the read unit at a listing row's byte offset when the rows are
+# Attachment or Metadata records. At other granularities the offsets are chunks.
+_RECORD_UNIT_IDS: Dict[str, Callable[[str, int], str]] = {
+    ATTACHMENT_GRANULARITY: attachment_unit_id,
+    METADATA_GRANULARITY: metadata_unit_id,
+}
+
 
 @dataclass(frozen=True)
 class _Assignment:
     """What one task reads of one file.
 
-    ``offsets`` holds the byte offsets of the owned chunks, ``None`` for a
-    whole-file listing row. ``topic`` is set at topic granularity.
+    ``offsets`` holds the byte offsets of the owned chunks, or of the owned
+    records at record granularity, ``None`` for a whole-file listing row.
+    ``unit_id`` names the read unit at an offset. ``topic`` is set at topic
+    granularity.
     """
 
     path: str
     offsets: Optional[Set[int]]
     topic: Optional[str] = None
+    unit_id: Callable[[str, int], str] = chunk_unit_id
 
     @property
     def unit(self) -> ReadUnit:
         """The read unit every table of this assignment reports.
 
         A topic row reports its topic, a whole-file read the file, and a task
-        owning some chunks its first one. Each chunk has one owner, so a
+        owning some chunks or records its first one. Each has one owner, so a
         checkpoint that hands the unit back skips only this task's rows. The
         unit is finished once every table of the file is written.
         """
@@ -133,7 +154,7 @@ class _Assignment:
         if self.offsets is None:
             return ReadUnit(id=self.path, source=self.path, count=1)
         first = min(self.offsets)
-        return ReadUnit(id=chunk_unit_id(self.path, first), source=self.path)
+        return ReadUnit(id=self.unit_id(self.path, first), source=self.path)
 
 
 @DeveloperAPI
@@ -177,8 +198,8 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
 
         Args:
             selection: Which messages to keep.
-            granularity: What one row is: ``message``, ``window``, ``topic`` or
-                ``file``.
+            granularity: What one row is: ``message``, ``window``, ``topic``,
+                ``file``, ``attachment`` or ``metadata``.
             window: Window placement, required at ``window`` granularity.
             video: Decode the video topics in the task: at ``message``
                 granularity one frame per row, at ``window`` granularity the
@@ -242,6 +263,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
             max_lead_in_ns=max_lead_in_ns,
         )
         self._coarse_rows = CoarseRows(settings, self._message_reader, self._finish)
+        self._record_rows = RecordRows(settings, self._finish)
         self._decoded_messages = DecodedMessageRows(
             settings, self._message_reader, self._finish
         )
@@ -261,7 +283,8 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
             return
         retried_io_errors = DataContext.get_current().retried_io_errors
         remaining = self._limit
-        for assignment in _assignments(input_split):
+        unit_id = _RECORD_UNIT_IDS.get(self._granularity, chunk_unit_id)
+        for assignment in _assignments(input_split, unit_id):
             tables = iterate_with_retry(
                 partial(self._read_file, assignment),
                 f"read MCAP file {assignment.path}",
@@ -280,20 +303,35 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
 
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
-        """Yield one ``BlockMetadata`` per file with its selected message count.
+        """Yield one ``BlockMetadata`` per file with its row count.
 
-        ``Statistics`` holds the count per channel, so a selection by topic or
-        schema is summed from it without reading a payload. A file whose
-        summary cannot answer is counted by reading it as ``read`` does.
+        ``Statistics`` counts messages per channel and the attachment and
+        metadata records per file, so no payload is read. A file whose summary
+        cannot answer is counted by reading it as ``read`` does.
         """
         from mcap.reader import SeekingReader
+        from mcap.records import Attachment, Metadata
 
         filesystem = self._filesystem or LocalFileSystem()
         for path in dict.fromkeys(str(p) for p in file_manifest.paths):
             with filesystem.open_input_file(path) as f:
                 summary = SeekingReader(f).get_summary()
                 statistics = summary.statistics if summary is not None else None
-                if (
+                if self._granularity == ATTACHMENT_GRANULARITY:
+                    if statistics is not None:
+                        num_rows = statistics.attachment_count
+                    elif summary is not None and summary.attachment_indexes:
+                        num_rows = len(summary.attachment_indexes)
+                    else:
+                        num_rows = sum(1 for _ in iter_records(f, Attachment))
+                elif self._granularity == METADATA_GRANULARITY:
+                    if statistics is not None:
+                        num_rows = statistics.metadata_count
+                    elif summary is not None and summary.metadata_indexes:
+                        num_rows = len(summary.metadata_indexes)
+                    else:
+                        num_rows = sum(1 for _ in iter_records(f, Metadata))
+                elif (
                     summary is not None
                     and statistics is not None
                     and self._channel_counts_complete(summary)
@@ -364,11 +402,14 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
 
     @override
     def available_metadata(self) -> Set[MetadataType]:
-        # Statistics count messages per channel, not the messages in a time
-        # range, and a coarse row is not a message. A decoded read emits
-        # frames, which ``fps`` thins and a decoder may drop.
+        # Statistics count records, not the records in a time range. Metadata
+        # records carry no time, so a time range does not change their count.
+        # A coarse row is not one record, so nothing counts it. A decoded read
+        # emits frames, which ``fps`` thins and a decoder may drop.
+        if self._granularity == METADATA_GRANULARITY:
+            return {MetadataType.NUM_ROWS}
         if (
-            self._granularity != MESSAGE_GRANULARITY
+            self._granularity not in (MESSAGE_GRANULARITY, ATTACHMENT_GRANULARITY)
             or self._selection.time_range is not None
             or self._video is not None
         ):
@@ -385,6 +426,9 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         """Yield the tables of one file, limited to the assigned chunks."""
         filesystem = self._filesystem or LocalFileSystem()
         with filesystem.open_input_file(assignment.path) as f:
+            if self._granularity in (ATTACHMENT_GRANULARITY, METADATA_GRANULARITY):
+                yield from self._record_rows.tables(f, assignment)
+                return
             summary = self._chunk_summary(f)
             if self._granularity == MESSAGE_GRANULARITY:
                 if self._video is not None:
@@ -534,12 +578,15 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         return array
 
 
-def _assignments(manifest: FileManifest) -> List[_Assignment]:
+def _assignments(
+    manifest: FileManifest, unit_id: Callable[[str, int], str]
+) -> List[_Assignment]:
     """Group a manifest's rows by file (and topic): what this task reads of each.
 
-    A row with chunk metadata contributes its ``unit_ids``, the chunk byte
-    offsets. A row without it means the whole file, which wins over any offsets
-    listed for the same path. A topic-granularity row also names its topic.
+    A row with chunk metadata contributes its ``unit_ids``, the byte offsets of
+    its chunks or records, which ``unit_id`` names. A row without it means the
+    whole file, which wins over any offsets listed for the same path. A
+    topic-granularity row also names its topic.
     """
     owned: Dict[Tuple[str, Optional[str]], Optional[Set[int]]] = {}
     for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
@@ -557,6 +604,6 @@ def _assignments(manifest: FileManifest) -> List[_Assignment]:
             current.update(offsets)
         owned[key] = current
     return [
-        _Assignment(path=path, offsets=offsets, topic=topic)
+        _Assignment(path=path, offsets=offsets, topic=topic, unit_id=unit_id)
         for (path, topic), offsets in owned.items()
     ]
