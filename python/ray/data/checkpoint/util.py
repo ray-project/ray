@@ -1,6 +1,5 @@
 import logging
-import posixpath
-from typing import List
+from typing import Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +31,26 @@ class PrefixTrie:
         return node.is_end
 
 
-def build_pending_checkpoint_trie(file_paths: List, pending_suffix: str) -> PrefixTrie:
-    """Build a PrefixTrie from pending checkpoint file paths.
+def find_owning_checkpoint_id(
+    file_name: str, checkpoint_ids: Set[str]
+) -> Optional[str]:
+    """Find the checkpoint ID of the write task that wrote a data file.
 
-    Strips the given pending suffix to get the data file prefix.
+    Every data file a write task writes starts with that task's checkpoint ID.
+    One task's ID can also be a prefix of another task's ID: task indices are
+    padded to 6 digits, so task 100000's ID ("..._100000") is a prefix of task
+    1000000's ID ("..._1000000") and of its file names. The longest matching
+    ID is the task that wrote the file.
+
+    Args:
+        file_name: The basename of a data file.
+        checkpoint_ids: The IDs of all committed and pending checkpoints.
+
+    Returns:
+        The longest ID in `checkpoint_ids` that is a prefix of `file_name`, or
+        None if no ID is a prefix.
     """
-    trie = PrefixTrie()
-    for f in file_paths:
-        basename = posixpath.basename(f.path)
-        if basename.endswith(pending_suffix):
-            prefix = basename[: -len(pending_suffix)]
-            trie.insert(prefix)
-    return trie
+    for end in range(len(file_name), 0, -1):
+        if file_name[:end] in checkpoint_ids:
+            return file_name[:end]
+    return None

@@ -1,5 +1,5 @@
 import warnings
-from typing import Iterable, List, Tuple
+from typing import Callable, Iterable, Iterator, List, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -9,10 +9,12 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import Write
 from ray.data._internal.planner.plan_write_op import (
+    CHECKPOINT_ALREADY_COMMITTED_KWARG_NAME,
     PENDING_CHECKPOINTS_KWARG_NAME,
     WRITE_UUID_KWARG_NAME,
     _plan_write_op_internal,
     generate_collect_write_stats_fn,
+    generate_write_fn,
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.checkpoint.checkpoint_writer import (
@@ -90,6 +92,11 @@ def plan_write_op_with_checkpoint_writer(
     write and checkpoint write, there's no record of which data files are
     uncommitted.
 
+    A committed task's data files are final. If Ray retries a task after an
+    earlier attempt committed (for example, because the worker died before the
+    task finished), the task skips all three steps and passes its blocks
+    through.
+
     For non-file datasinks (SQLDatasink, etc.):
         Falls back to post-write checkpointing:
         1. Write: Write data to destination
@@ -124,6 +131,11 @@ def plan_write_op_with_checkpoint_writer(
         # Post-write transform: commit checkpoints
         commit_checkpoint_fn = _generate_commit_checkpoint_transform(checkpoint_writer)
 
+        # Write: skip tasks whose checkpoint an earlier attempt already committed
+        write_fn = _generate_write_fn_skipping_committed(
+            generate_write_fn(datasink, **op.write_args)
+        )
+
         pre_transformations = [
             prepare_checkpoint_fn,
         ]
@@ -150,6 +162,7 @@ def plan_write_op_with_checkpoint_writer(
             collect_stats_fn,
         ]
         pre_transformations = []
+        write_fn = None
 
     physical_op = _plan_write_op_internal(
         op,
@@ -157,6 +170,7 @@ def plan_write_op_with_checkpoint_writer(
         data_context,
         post_transformations=post_transformations,
         pre_transformations=pre_transformations,
+        write_fn=write_fn,
     )
 
     return physical_op
@@ -233,6 +247,14 @@ def _generate_prepare_checkpoint_transform(
             # for deterministic naming (same on retry, enabling idempotent writes)
             base_filename = _generate_base_filename(datasink, ctx)
 
+            # If an earlier attempt of this task already committed, its data
+            # files are final. Don't write a new pending checkpoint, and mark
+            # the task so the write stage skips it. Rewriting the files could
+            # leave committed output half-written if this attempt dies too.
+            if checkpoint_writer.is_committed(base_filename):
+                ctx.kwargs[CHECKPOINT_ALREADY_COMMITTED_KWARG_NAME] = True
+                return iter(block_list)
+
             # Extract ID column data for checkpoint
             # Project to the single column first, then convert to Arrow to
             # avoid materializing the entire block as an Arrow table.
@@ -264,16 +286,44 @@ def _generate_prepare_checkpoint_transform(
     )
 
 
+def _generate_write_fn_skipping_committed(
+    write_fn: Callable[[Iterator[Block], TaskContext], Iterator[Block]],
+) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
+    """Wrap the data write so it skips tasks that are already committed.
+
+    `prepare_checkpoint` marks a task whose checkpoint an earlier attempt
+    already committed. For a marked task, this passes the blocks through
+    without writing them, so the task's committed data files stay unchanged
+    and its write stats still count its rows.
+    """
+
+    def write_unless_committed(
+        blocks: Iterator[Block], ctx: TaskContext
+    ) -> Iterator[Block]:
+        # Each stage runs on the first pull from it, so `prepare_checkpoint`
+        # hasn't run yet. Drain first: that runs it, and it marks the task if
+        # an earlier attempt already committed.
+        blocks = list(blocks)
+        if ctx.kwargs.get(CHECKPOINT_ALREADY_COMMITTED_KWARG_NAME, False):
+            return iter(blocks)
+        return write_fn(iter(blocks), ctx)
+
+    return write_unless_committed
+
+
 def _generate_commit_checkpoint_transform(
     checkpoint_writer: CheckpointWriter,
 ) -> BlockMapTransformFn:
     """Generate transform for committing checkpoints AFTER data write.
 
     This transform runs AFTER the data write succeeds, completing the 2-phase
-    commit. The commit operation (renaming pending -> committed) is the atomic
-    point: once committed, the data is considered durably written. If failure
-    occurs before this point, recovery will find the pending checkpoint and
-    can safely delete the orphaned data files using the stored path.
+    commit. Once the committed checkpoint exists, the data is considered
+    durably written. The rename is not atomic on every filesystem (on S3 it is
+    a copy followed by a delete), so a failure can leave the pending
+    checkpoint next to the committed one; recovery treats that task as
+    committed and keeps its data files. If failure occurs before the committed
+    checkpoint exists, recovery will find the pending checkpoint and can
+    safely delete the orphaned data files using the stored path.
 
     Steps:
     1. Retrieves pending checkpoints from ctx.kwargs

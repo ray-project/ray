@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 WRITE_UUID_KWARG_NAME = "write_uuid"
 # Key for storing pending checkpoint paths for commit phase
 PENDING_CHECKPOINTS_KWARG_NAME = "_pending_checkpoints"
+# Key marking a write task whose checkpoint an earlier attempt already committed
+CHECKPOINT_ALREADY_COMMITTED_KWARG_NAME = "_checkpoint_already_committed"
 
 
 def generate_write_fn(
@@ -97,6 +99,9 @@ def _plan_write_op_internal(
     data_context: DataContext,
     post_transformations: List[BlockMapTransformFn],
     pre_transformations: Optional[List[BlockMapTransformFn]] = None,
+    write_fn: Optional[
+        Callable[[Iterator[Block], TaskContext], Iterator[Block]]
+    ] = None,
 ) -> PhysicalOperator:
     """Plan a write operation with optional pre and post write transformations.
 
@@ -107,6 +112,8 @@ def _plan_write_op_internal(
         post_transformations: Transformations to run AFTER the write.
         pre_transformations: Transformations to run BEFORE the write.
             Useful for 2-phase commit where pending checkpoint is written first.
+        write_fn: Function that writes the blocks. Defaults to
+            `generate_write_fn` for the op's datasink.
 
     Returns:
         The physical operator for the write operation.
@@ -115,7 +122,8 @@ def _plan_write_op_internal(
     input_physical_dag = physical_children[0]
 
     datasink = op.datasink_or_legacy_datasource
-    write_fn = generate_write_fn(datasink, **op.write_args)
+    if write_fn is None:
+        write_fn = generate_write_fn(datasink, **op.write_args)
 
     # Build transform chain: pre_write -> write -> post_write
     pre_transforms = pre_transformations or []
