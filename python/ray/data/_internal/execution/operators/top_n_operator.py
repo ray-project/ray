@@ -97,25 +97,28 @@ def _final_top_n_task(
     sort_key: SortKey,
     limit: int,
     output_schema: Optional[Schema],
+    data_context: DataContext,
 ) -> Tuple[Block, BlockMetadataWithSchema]:
     """Merge sorted candidate blocks and return the global Top-N result."""
     blocks: List[Block] = ray.get(candidate_refs)
     if not blocks:
         raise ValueError("TopN final merge received no candidate blocks.")
-    blocks = TableBlockAccessor.normalize_block_types(blocks)
+    with DataContext.current(data_context):
+        blocks = TableBlockAccessor.normalize_block_types(blocks)
 
-    if output_schema is not None and all(
-        BlockAccessor.for_block(block).num_rows() == 0 for block in blocks
-    ):
-        result = _empty_block_from_schema(output_schema)
-    else:
-        # TODO(vicwen): Reuse an exact bounded-selection primitive instead of
-        # fully sorting all final candidates.
-        merged, _ = BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
-            blocks, sort_key
-        )
-        merged_accessor = BlockAccessor.for_block(merged)
-        result = merged_accessor.slice(0, min(limit, merged_accessor.num_rows()))
+        if output_schema is not None and all(
+            BlockAccessor.for_block(block).num_rows() == 0 for block in blocks
+        ):
+            result = _empty_block_from_schema(output_schema)
+        else:
+            # TODO(vicwen): Reuse an exact bounded-selection primitive instead of
+            # fully sorting all final candidates.
+            merged, _ = BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
+                blocks, sort_key
+            )
+            merged_accessor = BlockAccessor.for_block(merged)
+            result = merged_accessor.slice(0, min(limit, merged_accessor.num_rows()))
+
     return result, BlockMetadataWithSchema.from_block(
         result,
         block_exec_stats=BlockExecStats.builder().build(),
@@ -239,6 +242,7 @@ def _make_final_top_n_bulk_fn(
                 sort_key,
                 limit,
                 output_schema,
+                data_context,
             )
             metadata_with_schema: BlockMetadataWithSchema = ray.get(metadata_ref)
             output_bundle = RefBundle(

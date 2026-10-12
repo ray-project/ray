@@ -17,6 +17,7 @@ from ray.data._internal.execution.operators.top_n_operator import (
     TOP_N_MAX_CANDIDATE_ROWS_CONFIG_KEY,
     TopNMergeOperator,
     _check_candidate_budget,
+    _final_top_n_task,
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -156,6 +157,7 @@ def test_top_n_merge_reports_metrics_propagates_options_and_cleans_inputs(
         sort_key,
         2,
         result.schema,
+        context,
     )
     assert destroy_if_owned.call_args_list == [mock.call(bundle) for bundle in bundles]
     assert operator._extra_metrics() == {
@@ -167,6 +169,28 @@ def test_top_n_merge_reports_metrics_propagates_options_and_cleans_inputs(
     assert len(output_bundles) == 1
     assert output_bundles[0].block_refs == [output_ref]
     output_bundles[0].destroy_if_owned()
+
+
+def test_final_top_n_task_installs_data_context(
+    ray_start_regular_shared_2_cpus,
+):
+    context = DataContext()
+    context.use_polars_sort = True
+    block = pa.table({"id": [2, 1]})
+
+    with mock.patch.object(
+        DataContext, "current", wraps=DataContext.current
+    ) as current:
+        result, _ = _final_top_n_task(
+            [ray.put(block)],
+            SortKey("id"),
+            1,
+            block.schema,
+            context,
+        )
+
+    current.assert_called_once_with(context)
+    assert result.to_pylist() == [{"id": 1}]
 
 
 @pytest.mark.parametrize("failure", ["budget", "remote"])
