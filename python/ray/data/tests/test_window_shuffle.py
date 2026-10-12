@@ -30,6 +30,7 @@ from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.context import DataContext
+from ray.data.dataset import MaterializedDataset
 
 _ORIGINAL_SHUFFLE = window_shuffle_impl._shuffle_window
 _BACKPRESSURE_STATE = None
@@ -301,6 +302,19 @@ class WindowShuffleTests(unittest.TestCase):
                     any(name.startswith("StreamingRepartition") for name in names),
                     strict,
                 )
+
+    def test_materialized_input_produces_lazy_output(self):
+        source = self.source([3, 9, 2, 15, 8])
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                output = source.window_shuffle(8, strict=strict, seed=42)
+                self.assertNotIsInstance(output, MaterializedDataset)
+                with self.assertRaises(NotImplementedError):
+                    output.num_blocks()
+                cached = output.materialize()
+                self.assertIsInstance(cached, MaterializedDataset)
+                self.assertGreater(cached.num_blocks(), 0)
+                self.assertEqual(sorted(self.ids(cached)), list(range(37)))
 
     def test_default_large_block_has_distinct_batch_permutations(self):
         source = self.source([103])

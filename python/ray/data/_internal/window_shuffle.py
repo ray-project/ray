@@ -59,6 +59,8 @@ def window_shuffle(
     num_cpus: float | None = None,
     memory: float | None = None,
 ) -> "Dataset":
+    from ray.data.dataset import Dataset
+
     if isinstance(window_size, bool) or not isinstance(window_size, int):
         raise TypeError("window_size must be an integer")
     if window_size <= 0:
@@ -106,4 +108,4 @@ def window_shuffle(
         compute=compute,
         ray_remote_args=remote_args,
     )
-    return self._from_parent(source, LogicalPlan(op, self.context))
+    return Dataset._from_parent(source, LogicalPlan(op, self.context))
