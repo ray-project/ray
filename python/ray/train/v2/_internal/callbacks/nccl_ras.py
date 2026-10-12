@@ -25,11 +25,13 @@ import os
 import queue
 import re
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import (
     Any,
@@ -51,6 +53,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_NCCL_RAS_ACTION,
     DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
     DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S,
+    DEFAULT_NCCL_TIMEOUT_PROBE_INTERVAL_S,
     HANG_DETECTOR_DIRNAME,
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
@@ -58,6 +61,7 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_ADDR_ENV_VAR,
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
+    NCCL_TIMEOUT_PROBE_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
@@ -528,6 +532,209 @@ class RASPoller:
         return result["stdout"]
 
 
+# The key a rank's watchdog writes to the job's global TCPStore on a timeout so
+# its peers dump their flight recorder (``kStoreDumpKey`` in torch's
+# ``ProcessGroupNCCL.hpp``).
+_TORCH_DUMP_SIGNAL_KEY: str = "exception_dump"
+_TORCH_STORE_CONNECT_TIMEOUT_S: float = 2.0
+
+# This worker process's own client of the job's global TCPStore, made on the
+# first probe and reused after.
+_probe_store = None
+
+
+def _get_probe_store(dist: Any) -> Any:
+    """Connect a client to the global TCPStore behind the default process group.
+
+    A separate connection rather than the default group's own client: an op the
+    training thread is blocked in holds that client's lock for its whole
+    duration.
+
+    Args:
+        dist: The ``torch.distributed`` module.
+
+    Returns:
+        The client ``TCPStore``.
+    """
+    global _probe_store
+    if _probe_store is None:
+        store = dist.distributed_c10d._get_default_store()
+        while isinstance(store, dist.PrefixStore):
+            store = store.underlying_store
+        _probe_store = dist.TCPStore(
+            store.host,
+            store.port,
+            is_master=False,
+            timeout=timedelta(seconds=_TORCH_STORE_CONNECT_TIMEOUT_S),
+            wait_for_workers=False,
+        )
+    return _probe_store
+
+
+def probe_torch_timeout() -> Dict[str, Any]:
+    """Check whether PyTorch's NCCL watchdog has timed out in this (worker) process.
+
+    Torch's watchdog never raises into the training thread. On a timeout it
+    marks the process group's backend with ``ErrorType.TIMEOUT``, writes
+    ``exception_dump`` to the global TCPStore, then sleeps ~60s before tearing
+    the process down (peer ranks that only saw the store key wait ~8 minutes).
+    Both signals can be read from here while the training thread is blocked.
+
+    Every torch internal is accessed behind a guard: a failure means "no
+    signal", never an exception.
+
+    Returns:
+        ``{"timed_out_groups": [...], "dump_signal": bool}``: the names of the
+        process groups whose backend reports a timeout (needs torch >= 2.7),
+        and whether the store holds torch's dump signal.
+    """
+    result = {"timed_out_groups": [], "dump_signal": False}
+    # Only look at torch when training already imported it: importing it here
+    # would cost seconds on a worker that never uses it.
+    dist = sys.modules.get("torch.distributed")
+    try:
+        if dist is None or not dist.is_available() or not dist.is_initialized():
+            return result
+        import torch
+
+        error_type = getattr(torch._C._distributed_c10d, "ErrorType", None)
+        timeout = getattr(error_type, "TIMEOUT", None)
+        if timeout is not None:
+            for pg, name in list(dist.distributed_c10d._world.pg_names.items()):
+                try:
+                    backend = pg._get_backend(torch.device("cuda"))
+                    if backend.get_error() == timeout:
+                        result["timed_out_groups"].append(name)
+                except Exception:  # noqa: BLE001
+                    # No CUDA backend for this group, or no `get_error` binding
+                    continue
+    except Exception:  # noqa: BLE001
+        return result
+
+    try:
+        result["dump_signal"] = bool(
+            _get_probe_store(dist).check([_TORCH_DUMP_SIGNAL_KEY])
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    return result
+
+
+@dataclass
+class TorchTimeout:
+    """PyTorch's NCCL watchdog timed out somewhere in the worker group.
+
+    Attributes:
+        timed_out_groups: ``{world_rank: [process group names]}`` for every
+            rank whose own watchdog timed out.
+        dump_signal_ranks: The ranks that saw torch's ``exception_dump`` key.
+    """
+
+    timed_out_groups: Dict[int, List[str]]
+    dump_signal_ranks: List[int]
+
+
+class TorchTimeoutProber:
+    """Probes every worker for a PyTorch NCCL watchdog timeout on a background thread.
+
+    Runs alongside :class:`RASPoller` but independently of it, so a timeout is
+    caught when RAS missed the hang or is unavailable. The first positive probe
+    is published to the queue the controller drains with :meth:`next_result`
+    and the thread exits: torch has already waited out the whole process group
+    timeout, so there is nothing to debounce.
+
+    A worker whose previous probe has not returned is skipped rather than sent
+    another: the worker actor runs one call at a time, so a backlog would delay
+    the stack-trace dump on that rank.
+    """
+
+    def __init__(self, worker_group: WorkerGroup, interval_s: float):
+        self._worker_group = worker_group
+        self._interval_s = interval_s
+
+        self._in_flight: Dict[int, ray.ObjectRef] = {}
+        self._stop = threading.Event()
+        self._results: "queue.SimpleQueue[TorchTimeout]" = queue.SimpleQueue()
+        self._thread = threading.Thread(
+            target=self._run, name="nccl-timeout-prober", daemon=True
+        )
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        """Signal the thread to exit, without waiting for an in-flight probe."""
+        self._stop.set()
+
+    @property
+    def is_alive(self) -> bool:
+        return self._thread.is_alive()
+
+    def next_result(self) -> Optional[TorchTimeout]:
+        """Take the published timeout, or ``None`` if there is none yet."""
+        try:
+            return self._results.get_nowait()
+        except queue.Empty:
+            return None
+
+    def _run(self):
+        """Thread body: probe, publish the first timeout and exit, else repeat."""
+        while not self._stop.is_set():
+            started = time.monotonic()
+            try:
+                timeout = self.probe()
+                if timeout is not None:
+                    self._results.put(timeout)
+                    return
+            except Exception:  # noqa: BLE001
+                logger.exception("Unexpected error probing for a PyTorch timeout.")
+            self._stop.wait(max(0.0, self._interval_s - (time.monotonic() - started)))
+
+    def probe(self) -> Optional[TorchTimeout]:
+        """Probe every worker once, waiting at most one interval for the answers.
+
+        Returns:
+            The timeout if any rank reported one, otherwise ``None``.
+        """
+        for worker in self._worker_group.get_workers():
+            rank = worker.distributed_context.world_rank
+            if rank in self._in_flight:
+                continue
+            try:
+                self._in_flight[rank] = worker.execute_async(probe_torch_timeout)
+            except Exception as e:  # noqa: BLE001
+                logger.debug("Failed to probe rank %d for a timeout: %s", rank, e)
+
+        if not self._in_flight:
+            return None
+        ready, _ = ray.wait(
+            list(self._in_flight.values()),
+            num_returns=len(self._in_flight),
+            timeout=self._interval_s,
+        )
+
+        timed_out_groups: Dict[int, List[str]] = {}
+        dump_signal_ranks: List[int] = []
+        for rank, ref in list(self._in_flight.items()):
+            if ref not in ready:
+                continue
+            del self._in_flight[rank]
+            try:
+                result = ray.get(ref)
+            except Exception as e:  # noqa: BLE001
+                # A dead rank (e.g. torch already tore it down) reports nothing
+                logger.debug("Timeout probe failed on rank %d: %s", rank, e)
+                continue
+            if result["timed_out_groups"]:
+                timed_out_groups[rank] = result["timed_out_groups"]
+            if result["dump_signal"]:
+                dump_signal_ranks.append(rank)
+
+        if timed_out_groups or dump_signal_ranks:
+            return TorchTimeout(timed_out_groups, sorted(dump_signal_ranks))
+        return None
+
+
 @dataclass
 class DiagnosticResult:
     """The results from a diagnostic (nvidia-smi, py-spy, etc) from a node or worker.
@@ -688,6 +895,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
     Every poll is added to a circular buffer so users have a history of ncclras
     queries and for improving the detection.
+
+    RAS can't see every hang (e.g. every rank stuck inside the same collective),
+    so a :class:`TorchTimeoutProber` also watches for PyTorch's own NCCL
+    watchdog timeout and captures the same diagnostics in the window torch
+    leaves before tearing the workers down. When a worker fails and neither
+    detector fired, the RAS history is still saved.
     """
 
     def __init__(self):
@@ -706,6 +919,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             raise ValueError(
                 f"{NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR} must be a positive number "
                 f"of seconds, got {self._confirm_duration_s}."
+            )
+        self._timeout_probe_interval_s = env_float(
+            NCCL_TIMEOUT_PROBE_INTERVAL_S_ENV_VAR, DEFAULT_NCCL_TIMEOUT_PROBE_INTERVAL_S
+        )
+        if self._timeout_probe_interval_s <= 0:
+            raise ValueError(
+                f"{NCCL_TIMEOUT_PROBE_INTERVAL_S_ENV_VAR} must be a positive number "
+                f"of seconds, got {self._timeout_probe_interval_s}."
             )
 
         # Escalation milestones, in polls
@@ -732,6 +953,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
         self._worker_group: Optional[WorkerGroup] = None
         self._ras_poller: Optional[RASPoller] = None
+        self._timeout_prober: Optional[TorchTimeoutProber] = None
 
         # The previous successful poll's report
         self.prev_report: Optional[RASReport] = None
@@ -747,11 +969,16 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # One-time degradation (e.g. missing binary) so we stop querying.
         self._is_ras_degraded: bool = False
 
+        # Whether this worker group's diagnostics were already captured, so a
+        # worker failure after a detected hang doesn't upload them again.
+        self._diagnostics_captured: bool = False
+
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
         self.prev_report = None
         self.ras_history.clear()
         self.reset_hang_counters()
+        self._diagnostics_captured = False
 
     def reset_hang_counters(self):
         """Per-healthy-poll debounce reset `_prev_report` left for the next poll as comparison."""
@@ -761,6 +988,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._worker_group = worker_group
         self.reset_detection_state()
         self._retire_poller()
+        self._retire_timeout_prober()
+        # The timeout probe doesn't need RAS, so it runs even when RAS is degraded
+        self._timeout_prober = TorchTimeoutProber(
+            worker_group, self._timeout_probe_interval_s
+        )
+        self._timeout_prober.start()
         if self._is_ras_degraded:
             return
         self._ras_poller = RASPoller(worker_group, self._poll_interval_s)
@@ -768,6 +1001,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
     def before_worker_group_shutdown(self, worker_group):
         self._retire_poller()
+        self._retire_timeout_prober()
         self._worker_group = None
 
     def _retire_poller(self):
@@ -775,12 +1009,69 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self._ras_poller.stop()
             self._ras_poller = None
 
+    def _retire_timeout_prober(self):
+        if self._timeout_prober is not None:
+            self._timeout_prober.stop()
+            self._timeout_prober = None
+
     def after_worker_group_poll_status(self, worker_group_status):
+        # This hook runs on the controller's poll loop, before the controller
+        # acts on a worker failure, so diagnostics captured here still see the
+        # failing workers. Any error here must never crash training.
+        self.check_torch_timeout()
+        self.check_ras_poll()
+        self.dump_ras_history_on_worker_failure(worker_group_status)
+
+    def check_torch_timeout(self):
+        """Act on a PyTorch NCCL watchdog timeout, if the prober reported one."""
+        if self._timeout_prober is None:
+            return
+        try:
+            timeout = self._timeout_prober.next_result()
+            if timeout is None:
+                return
+            # The prober exits after publishing, so it is done for this group
+            self._retire_timeout_prober()
+            self.handle_torch_timeout(timeout)
+        except NCCLHangError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "PyTorch NCCL timeout detection hit an unexpected error, therefore, "
+                "disabling it for this worker group."
+            )
+            self._retire_timeout_prober()
+
+    def dump_ras_history_on_worker_failure(self, worker_group_status):
+        """Save the RAS history when a worker fails without a detected hang.
+
+        Covers what both detectors miss, e.g. a timeout whose rank died before
+        a probe saw it: the history is kept on the controller, so it can be
+        written even once every worker is gone.
+        """
+        if (
+            self._diagnostics_captured
+            or not self.ras_history
+            or not worker_group_status.errors
+        ):
+            return
+        self._diagnostics_captured = True
+        ras_history_dir = self.capture_diagnostic(
+            "`ncclras` query history", self.dump_ras_query_history
+        )
+        if ras_history_dir:
+            logger.warning(
+                "A worker failed without the NCCL hang detector seeing a hang. If "
+                "the failure was an NCCL timeout, the `ncclras` query history "
+                "leading up to it was saved to %s.",
+                ras_history_dir,
+            )
+
+    def check_ras_poll(self):
+        """Take the RAS poller's next report and advance hang detection on it."""
         if self._is_ras_degraded or self._ras_poller is None:
             return
 
-        # This hook runs on the controller's poll loop, so any error here must
-        # never crash training.
         try:
             result = self._ras_poller.next_result()
             if result is None:
@@ -888,21 +1179,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def handle_confirmed_hangs(
         self, confirmed_comm_hangs: List[str], report: RASReport
     ):
-        ras_human_output = self.fetch_ras_human_report()
-        if ras_human_output:
-            logger.warning("%s", ras_human_output)
-
-        nvidia_smi_dir = self.capture_diagnostic(
-            "nvidia-smi snapshots", self.dump_nodes_nvidia_smi
-        )
-        ras_history_dir = self.capture_diagnostic(
-            "`ncclras` query history",
-            lambda: self.dump_ras_query_history(ras_human_output),
-        )
-        stack_trace_dir = self.capture_diagnostic(
-            "worker stack traces", self.dump_workers_stack_traces
-        )
-
         message = (
             f"{len(confirmed_comm_hangs)} of "
             f"{len(report.comm_op_counts)} communicators have a "
@@ -913,29 +1189,105 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             "The possible reasons for this is: a rank hit a divergent code "
             "path, exited early, a GPU or network hardware failure, or a "
             "collective was launched with a mismatched shape, dtype, or call order.\n"
-            "To debug:\n"
-            "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
         )
-        if stack_trace_dir:
-            message += (
-                "  - Your experiment directory contains the per-rank stack traces "
-                f"({stack_trace_dir})\n"
+        self.act_on_hang(message + self.capture_hang_diagnostics())
+
+    def handle_torch_timeout(self, timeout: TorchTimeout):
+        """Capture the hang diagnostics in the window before torch's teardown.
+
+        Args:
+            timeout: What the prober saw.
+        """
+        if timeout.timed_out_groups:
+            where = "; ".join(
+                f"rank {rank} in process group(s) {', '.join(groups)}"
+                for rank, groups in sorted(timeout.timed_out_groups.items())
             )
-        if ras_history_dir:
-            message += (
-                "  - The `ncclras` query history shows how each rank's collective "
-                f"counts drifted over the polls before the hang ({ras_history_dir})\n"
-            )
-        if nvidia_smi_dir:
-            message += (
-                "  - The per-node `nvidia-smi` snapshots show every GPU's power, "
-                "temperature, clocks and ECC state at the moment of the hang, to "
-                f"rule hardware out issues ({nvidia_smi_dir})\n"
-            )
+        else:
+            # Only the store key was seen: the timing-out rank was not probed in
+            # time (or runs torch < 2.7), but every rank sees the key.
+            where = f"signalled to ranks {timeout.dump_signal_ranks}"
+        logger.warning(
+            "PyTorch's NCCL watchdog timed out a collective (%s). Capturing hang "
+            "diagnostics before PyTorch tears the workers down.",
+            where,
+        )
+        message = (
+            f"PyTorch's NCCL watchdog timed out a collective ({where}) and is "
+            "tearing down the workers. The NCCL RAS hang detector did not confirm "
+            "this hang first, which happens when every rank is stuck inside the "
+            "same collective (e.g. a network or GPU failure, or a shape/dtype "
+            "mismatch) or when NCCL RAS is unavailable.\n"
+        )
+        self.act_on_hang(
+            message + self.capture_hang_diagnostics(stack_traces_first=True)
+        )
+
+    def act_on_hang(self, message: str):
+        """Raise or log a detected hang, per ``RAY_TRAIN_NCCL_RAS_ACTION``."""
         if self._action == NCCL_RAS_ACTION_FAIL:
             raise NCCLHangError(message, worker_failures={})
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
             logger.warning(message)
+
+    def capture_hang_diagnostics(self, stack_traces_first: bool = False) -> str:
+        """Capture every hang diagnostic and say where each one was saved.
+
+        By default the GPUs are snapshotted first, so the reading is as close
+        to the moment of the hang as possible.
+
+        Args:
+            stack_traces_first: Dump the stack traces before anything else.
+                After a PyTorch timeout the timing-out rank has only ~60s
+                left, and the stacks are the diagnostic lost with the process.
+
+        Returns:
+            The "To debug" section of the hang message.
+        """
+        self._diagnostics_captured = True
+        stack_trace_dir = None
+        if stack_traces_first:
+            stack_trace_dir = self.capture_diagnostic(
+                "worker stack traces", self.dump_workers_stack_traces
+            )
+        ras_human_output = self.fetch_ras_human_report()
+        if ras_human_output:
+            logger.warning("%s", ras_human_output)
+        nvidia_smi_dir = self.capture_diagnostic(
+            "nvidia-smi snapshots", self.dump_nodes_nvidia_smi
+        )
+        ras_history_dir = self.capture_diagnostic(
+            "`ncclras` query history",
+            lambda: self.dump_ras_query_history(ras_human_output),
+        )
+        if not stack_traces_first:
+            stack_trace_dir = self.capture_diagnostic(
+                "worker stack traces", self.dump_workers_stack_traces
+            )
+
+        hints = "To debug:\n"
+        if ras_human_output:
+            hints += (
+                "  - Read NCCL RAS report in the logs (identifies the deadlocked "
+                "ranks/communicators)\n"
+            )
+        if stack_trace_dir:
+            hints += (
+                "  - Your experiment directory contains the per-rank stack traces "
+                f"({stack_trace_dir})\n"
+            )
+        if ras_history_dir:
+            hints += (
+                "  - The `ncclras` query history shows how each rank's collective "
+                f"counts drifted over the polls before the hang ({ras_history_dir})\n"
+            )
+        if nvidia_smi_dir:
+            hints += (
+                "  - The per-node `nvidia-smi` snapshots show every GPU's power, "
+                "temperature, clocks and ECC state at the moment of the hang, to "
+                f"rule hardware out issues ({nvidia_smi_dir})\n"
+            )
+        return hints
 
     def handle_suspected_hangs(self, report: RASReport):
         # Communicators that just crossed the first-suspicion threshold this poll
@@ -1006,8 +1358,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         confirmed, when the job is already stalled.
 
         Returns:
-            The report, or ``None`` if no worker could produce one.
+            The report, or ``None`` if no worker could produce one or RAS is
+            unavailable.
         """
+        if self._is_ras_degraded or self._ras_poller is None:
+            return None
         try:
             return self._ras_poller.query("text")
         except RASQueryError as e:

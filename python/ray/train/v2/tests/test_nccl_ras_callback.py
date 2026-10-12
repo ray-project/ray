@@ -19,10 +19,13 @@ from ray.train.v2._internal.callbacks.nccl_ras import (
     RASPoller,
     RASQueryError,
     RASReport,
+    TorchTimeout,
+    TorchTimeoutProber,
     dump_stack_trace,
     fan_out_to_workers,
     parse_ras_addr,
     parse_ras_schema,
+    probe_torch_timeout,
     run_nvidia_smi,
 )
 from ray.train.v2._internal.constants import (
@@ -32,6 +35,11 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_ACTION_OBSERVE,
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
+    NCCL_TIMEOUT_PROBE_INTERVAL_S_ENV_VAR,
+)
+from ray.train.v2._internal.execution.worker_group.poll import (
+    WorkerGroupPollStatus,
+    WorkerStatus,
 )
 from ray.train.v2.api.exceptions import NCCLHangError
 
@@ -448,6 +456,10 @@ def test_parse_ras_addr_malformed_raises(addr):
         parse_ras_addr(addr)
 
 
+# A worker group poll with every worker running fine.
+_NO_ERRORS = WorkerGroupPollStatus(worker_statuses={})
+
+
 class FakePoller:
     """Stand-in for :class:`RASPoller` that hands the controller a scripted
     sequence of poll results, one per tick, and a fixed text report."""
@@ -593,7 +605,7 @@ def test_observe_mode_never_raises(monkeypatch):
     )
 
     for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())  # must not raise
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # must not raise
     assert captured_diagnostics.count(nccl_ras._STACK_TRACES_TOOL) == 1
 
 
@@ -604,10 +616,10 @@ def test_fail_mode_raises_after_confirm(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # baseline
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # frozen -> 1/2
     with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2 -> raise
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # frozen -> 2/2 -> raise
     # The error reports how many communicators were confirmed stalled.
     message = str(exc_info.value)
     assert "1 of 1 communicators" in message
@@ -633,10 +645,10 @@ def test_confirmed_hang_captures_diagnostics(monkeypatch, nvidia_smi):
         nvidia_smi=nvidia_smi,
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # baseline
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # frozen -> 1/2
     with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # frozen -> 2/2
 
     message = str(exc_info.value)
     assert "per-rank stack traces" in message
@@ -684,17 +696,17 @@ def test_deadlock_requires_whole_comm_frozen(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # baseline
     if expect_hang:
-        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # frozen -> 1/2
         assert callback.comm_deadlock_count == {_COMM_A: 1}
         with pytest.raises(NCCLHangError) as exc_info:
-            callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> raise
+            callback.after_worker_group_poll_status(_NO_ERRORS)  # 2/2 -> raise
         assert "1 of 1 communicators" in str(exc_info.value)
         assert captured_diagnostics.count(nccl_ras._STACK_TRACES_TOOL) == 1
     else:
         for _ in reports[1:]:
-            callback.after_worker_group_poll_status(MagicMock())  # never a hang
+            callback.after_worker_group_poll_status(_NO_ERRORS)  # never a hang
         assert callback.comm_deadlock_count == {}
         assert not captured_diagnostics
 
@@ -709,10 +721,10 @@ def test_healthy_resets_deadlock_streak(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=3, reports=reports
     )
 
-    callback.after_worker_group_poll_status(MagicMock())
-    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(_NO_ERRORS)
+    callback.after_worker_group_poll_status(_NO_ERRORS)
     assert callback.comm_deadlock_count == {_COMM_A: 1}
-    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(_NO_ERRORS)
     assert callback.comm_deadlock_count == {}
 
 
@@ -730,7 +742,7 @@ def test_advancing_never_deadlocks(monkeypatch):
     )
 
     for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())
+        callback.after_worker_group_poll_status(_NO_ERRORS)
         assert callback.comm_deadlock_count == {}
     assert not captured_diagnostics
 
@@ -750,10 +762,10 @@ def test_advancing_then_freeze_deadlocks(monkeypatch):
     )
 
     for _ in reports[:-1]:
-        callback.after_worker_group_poll_status(MagicMock())
+        callback.after_worker_group_poll_status(_NO_ERRORS)
     assert callback.comm_deadlock_count == {_COMM_A: 1}
     with pytest.raises(NCCLHangError):
-        callback.after_worker_group_poll_status(MagicMock())
+        callback.after_worker_group_poll_status(_NO_ERRORS)
 
 
 def test_per_communicator_streak_is_independent(monkeypatch):
@@ -768,11 +780,11 @@ def test_per_communicator_streak_is_independent(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # A frozen -> 1/2
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # baseline
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # A frozen -> 1/2
     assert callback.comm_deadlock_count == {_COMM_A: 1}
     with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # A frozen -> 2/2
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # A frozen -> 2/2
     # Only A is confirmed (1 of the 2 communicators), not B.
     assert "1 of 2 communicators" in str(exc_info.value)
 
@@ -793,15 +805,15 @@ def test_communicator_added_after_two_polls(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline (A healthy)
-    callback.after_worker_group_poll_status(MagicMock())  # A advances, healthy
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # baseline (A healthy)
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # A advances, healthy
     assert callback.comm_deadlock_count == {}
-    callback.after_worker_group_poll_status(MagicMock())  # B appears, no baseline yet
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # B appears, no baseline yet
     assert callback.comm_deadlock_count == {}
-    callback.after_worker_group_poll_status(MagicMock())  # B frozen -> 1/2
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # B frozen -> 1/2
     assert callback.comm_deadlock_count == {_COMM_B: 1}
     with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # B frozen -> 2/2
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # B frozen -> 2/2
     # Only B is confirmed (1 of the 2 communicators present this poll).
     assert "1 of 2 communicators" in str(exc_info.value)
     assert captured_diagnostics.count(nccl_ras._STACK_TRACES_TOOL) == 1
@@ -821,12 +833,12 @@ def test_communicator_removed_over_time(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # A frozen -> 1/2
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # baseline
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # A frozen -> 1/2
     assert callback.comm_deadlock_count == {_COMM_A: 1}
-    callback.after_worker_group_poll_status(MagicMock())  # A removed -> streak drops
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # A removed -> streak drops
     assert callback.comm_deadlock_count == {}
-    callback.after_worker_group_poll_status(MagicMock())  # B keeps advancing
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # B keeps advancing
     assert callback.comm_deadlock_count == {}
     assert not captured_diagnostics
 
@@ -839,10 +851,10 @@ def test_no_new_report_is_noop(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=1, reports=reports
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # consumes the report
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # consumes the report
     first_report = callback.prev_report
     assert first_report is not None
-    callback.after_worker_group_poll_status(MagicMock())  # poller published nothing
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # poller published nothing
     assert callback.prev_report is first_report
 
 
@@ -1009,9 +1021,9 @@ def test_callback_degrades_on_fatal_poll_result(monkeypatch):
         reports=[fatal, create_single_comm_report({2: 5, 3: 3})],
     )
 
-    callback.after_worker_group_poll_status(MagicMock())  # fatal -> degrade
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # fatal -> degrade
     assert callback._is_ras_degraded is True
-    callback.after_worker_group_poll_status(MagicMock())  # no-op once degraded
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # no-op once degraded
     assert callback.prev_report is None and not captured
 
     # A degraded callback does not start a poller for a later worker group.
@@ -1027,7 +1039,7 @@ def test_degraded_skips(monkeypatch):
         reports=[create_single_comm_report({2: 5, 3: 3})],
     )
     callback._is_ras_degraded = True
-    callback.after_worker_group_poll_status(MagicMock())  # must not query/raise
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # must not query/raise
     assert callback.prev_report is None
     assert callback.comm_deadlock_count == {}
 
@@ -1046,10 +1058,10 @@ def test_unexpected_error_disables_detection(monkeypatch):
         raise RuntimeError("detector bug")
 
     callback._ras_poller.next_result = boom
-    callback.after_worker_group_poll_status(MagicMock())  # must not raise
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # must not raise
     assert callback._is_ras_degraded is True
     # Once degraded, later polls are a no-op (guarded before next_result).
-    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(_NO_ERRORS)
     assert callback.prev_report is None
 
 
@@ -1084,10 +1096,10 @@ def test_hang_error_propagates_when_diagnostics_fail(
     if fail_ras_history:
         callback.dump_ras_query_history = boom
 
-    callback.after_worker_group_poll_status(MagicMock())  # baseline
-    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # baseline
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # frozen -> 1/2
     with pytest.raises(NCCLHangError) as exc_info:
-        callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> still raises
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # 2/2 -> still raises
 
     message = str(exc_info.value)
     assert ("per-rank stack traces" in message) is not fail_stack_traces
@@ -1104,6 +1116,7 @@ def test_hang_error_propagates_when_diagnostics_fail(
         {NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR: "-1"},
         {NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR: "0"},
         {NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR: "-15"},
+        {NCCL_TIMEOUT_PROBE_INTERVAL_S_ENV_VAR: "0"},
     ],
 )
 def test_invalid_config_fails_fast(monkeypatch, env):
@@ -1154,7 +1167,7 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
 
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
         for _ in reports:
-            callback.after_worker_group_poll_status(MagicMock())
+            callback.after_worker_group_poll_status(_NO_ERRORS)
 
     text = caplog.text
     # New-suspicion announcement names the stalled communicator in a parenthetical.
@@ -1179,7 +1192,7 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
 
     with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
         for _ in reports:
-            callback.after_worker_group_poll_status(MagicMock())
+            callback.after_worker_group_poll_status(_NO_ERRORS)
 
     text = caplog.text
     assert "Possible NCCL hang detected!" in text
@@ -1236,7 +1249,7 @@ def test_ras_history_records_every_poll_and_evicts_the_oldest(monkeypatch):
     monkeypatch.setattr(callback, "ras_history", deque(maxlen=3))
 
     for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())
+        callback.after_worker_group_poll_status(_NO_ERRORS)
 
     assert list(callback.ras_history) == reports[-3:]
 
@@ -1248,7 +1261,7 @@ def test_ras_history_ignores_polls_that_produced_no_report(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=[]
     )
 
-    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(_NO_ERRORS)
 
     assert len(callback.ras_history) == 0
 
@@ -1262,7 +1275,7 @@ def test_ras_history_resets_with_the_worker_group(monkeypatch):
     )
 
     for _ in reports:
-        callback.after_worker_group_poll_status(MagicMock())
+        callback.after_worker_group_poll_status(_NO_ERRORS)
     assert len(callback.ras_history) == 2
 
     callback.reset_detection_state()
@@ -1788,6 +1801,300 @@ def test_stack_traces_upload_per_rank(monkeypatch, uploads):
         (nccl_ras._STACK_DUMP_TIMEOUT_S - 1,),
         nccl_ras._STACK_DUMP_TIMEOUT_S,
     )
+
+
+# ----------------------------------------------------------------------------
+# PyTorch NCCL timeout probe
+# ----------------------------------------------------------------------------
+
+
+def test_probe_without_torch_distributed_reports_nothing(monkeypatch):
+    # A worker that never imported torch.distributed has no process group, and
+    # the probe must not import torch for it.
+    monkeypatch.delitem(sys.modules, "torch.distributed", raising=False)
+    assert probe_torch_timeout() == {"timed_out_groups": [], "dump_signal": False}
+
+
+@pytest.fixture
+def gloo_process_group(monkeypatch):
+    """A real single-rank gloo process group with a TCPStore, as Ray Train sets up."""
+    import torch.distributed as dist
+
+    monkeypatch.setattr(nccl_ras, "_probe_store", None)
+    store = dist.TCPStore("127.0.0.1", 0, world_size=1, is_master=True)
+    dist.init_process_group("gloo", store=store, rank=0, world_size=1)
+    yield store
+    dist.destroy_process_group()
+
+
+def test_probe_sees_the_dump_signal_on_the_global_store(gloo_process_group):
+    # Torch writes `exception_dump` to the unprefixed store behind the default
+    # group; the probe reads it through its own client connection.
+    assert probe_torch_timeout() == {"timed_out_groups": [], "dump_signal": False}
+    gloo_process_group.set(nccl_ras._TORCH_DUMP_SIGNAL_KEY, "1")
+    assert probe_torch_timeout() == {"timed_out_groups": [], "dump_signal": True}
+
+
+def test_probe_reports_the_process_groups_that_timed_out(monkeypatch):
+    # Only groups whose CUDA backend reports TIMEOUT are named; a group without
+    # a CUDA backend is skipped rather than failing the probe.
+    import torch
+
+    error_type = torch._C._distributed_c10d.ErrorType
+
+    def group(error):
+        backend = MagicMock()
+        backend.get_error.return_value = error
+        return MagicMock(_get_backend=MagicMock(return_value=backend))
+
+    no_cuda = MagicMock(_get_backend=MagicMock(side_effect=RuntimeError("no cuda")))
+    fake_dist = types.SimpleNamespace(
+        is_available=lambda: True,
+        is_initialized=lambda: True,
+        distributed_c10d=types.SimpleNamespace(
+            _world=types.SimpleNamespace(
+                pg_names={
+                    group(error_type.SUCCESS): "default_pg",
+                    group(error_type.TIMEOUT): "tp_group",
+                    no_cuda: "cpu_group",
+                }
+            ),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch.distributed", fake_dist)
+    monkeypatch.setattr(nccl_ras, "_probe_store", None)
+
+    # No store to reach here, so the dump signal is just reported absent.
+    assert probe_torch_timeout() == {
+        "timed_out_groups": ["tp_group"],
+        "dump_signal": False,
+    }
+
+
+def make_prober(fan_out, workers, interval_s=0.01):
+    worker_group = MagicMock()
+    worker_group.get_workers.return_value = workers
+    return TorchTimeoutProber(worker_group, interval_s=interval_s)
+
+
+def _no_signal():
+    return {"timed_out_groups": [], "dump_signal": False}
+
+
+def test_prober_reports_nothing_while_healthy(fan_out):
+    prober = make_prober(
+        fan_out, [fan_out.worker(rank, value=_no_signal()) for rank in (0, 1)]
+    )
+    assert prober.probe() is None
+
+
+def test_prober_collects_every_signalling_rank(fan_out):
+    # Rank 0 timed out itself; rank 1 only saw the store key; rank 2 is already
+    # dead (torch tore it down) and is skipped, not an error.
+    prober = make_prober(
+        fan_out,
+        [
+            fan_out.worker(0, value={"timed_out_groups": ["pg"], "dump_signal": True}),
+            fan_out.worker(1, value={"timed_out_groups": [], "dump_signal": True}),
+            fan_out.worker(2, get_error=RuntimeError("actor died")),
+        ],
+    )
+    assert prober.probe() == TorchTimeout(
+        timed_out_groups={0: ["pg"]}, dump_signal_ranks=[0, 1]
+    )
+
+
+def test_prober_does_not_queue_behind_an_unanswered_probe(fan_out):
+    # The worker actor runs one call at a time, so a rank whose last probe is
+    # still running is not sent another.
+    stuck = fan_out.worker(0, ready=False)
+    prober = make_prober(fan_out, [stuck])
+    assert prober.probe() is None
+    assert prober.probe() is None
+    assert stuck.execute_async.call_count == 1
+
+
+def test_prober_thread_publishes_the_first_timeout_and_exits():
+    prober = TorchTimeoutProber(MagicMock(), interval_s=0.01)
+    timeout = TorchTimeout(timed_out_groups={0: ["pg"]}, dump_signal_ranks=[])
+    results = iter([None, None, timeout])
+    prober.probe = lambda: next(results)
+    prober.start()
+    assert _drain(prober, 1) == [timeout]
+    assert _join(prober)
+
+
+class FakeProber:
+    """Stand-in for :class:`TorchTimeoutProber` returning one scripted result."""
+
+    def __init__(self, result):
+        self._result = result
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+    def next_result(self):
+        result, self._result = self._result, None
+        return result
+
+
+_TIMEOUT = TorchTimeout(timed_out_groups={1: ["default_pg"]}, dump_signal_ranks=[0, 1])
+
+
+def make_timeout_callback(monkeypatch, action, timeout=_TIMEOUT, ras_degraded=False):
+    """A callback whose RAS sees nothing and whose prober reports ``timeout``."""
+    callback, captured = make_nccl_ras_callback(
+        monkeypatch, action, confirm_count=100, reports=[]
+    )
+    callback._is_ras_degraded = ras_degraded
+    prober = FakeProber(timeout)
+    callback._timeout_prober = prober
+    return callback, captured, prober
+
+
+def test_torch_timeout_fails_with_diagnostics_stack_traces_first(monkeypatch):
+    callback, captured, prober = make_timeout_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL
+    )
+
+    with pytest.raises(NCCLHangError) as exc_info:
+        callback.after_worker_group_poll_status(_NO_ERRORS)
+
+    # The timing-out rank dies ~60s later, so its stacks are taken first.
+    assert captured == [
+        nccl_ras._STACK_TRACES_TOOL,
+        nccl_ras._NVIDIA_SMI_TOOL,
+        nccl_ras._NCCL_RAS_TOOL,
+    ]
+    message = str(exc_info.value)
+    assert "PyTorch's NCCL watchdog timed out" in message
+    assert "rank 1 in process group(s) default_pg" in message
+    assert "/exp/hang_detector/stack_traces" in message
+    # The prober is done for this worker group once it has fired.
+    assert prober.stopped and callback._timeout_prober is None
+
+
+def test_torch_timeout_from_the_store_signal_alone(monkeypatch):
+    # The rank that timed out was not reached, but its peers saw the store key.
+    callback, captured, _ = make_timeout_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        timeout=TorchTimeout(timed_out_groups={}, dump_signal_ranks=[0, 2]),
+    )
+    with pytest.raises(NCCLHangError, match=r"signalled to ranks \[0, 2\]"):
+        callback.after_worker_group_poll_status(_NO_ERRORS)
+    assert nccl_ras._STACK_TRACES_TOOL in captured
+
+
+def test_torch_timeout_observe_mode_logs(monkeypatch, caplog, propagate_logs):
+    callback, captured, _ = make_timeout_callback(monkeypatch, NCCL_RAS_ACTION_OBSERVE)
+    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+        callback.after_worker_group_poll_status(_NO_ERRORS)  # must not raise
+    assert "PyTorch's NCCL watchdog timed out" in caplog.text
+    assert captured[0] == nccl_ras._STACK_TRACES_TOOL
+
+
+def test_torch_timeout_detected_when_ras_is_degraded(monkeypatch):
+    # The probe is the only detector left when `ncclras` is unavailable; the
+    # RAS text report is skipped instead of queried.
+    callback, captured, _ = make_timeout_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, ras_degraded=True
+    )
+    with pytest.raises(NCCLHangError) as exc_info:
+        callback.after_worker_group_poll_status(_NO_ERRORS)
+    assert callback._ras_poller.text_queries == 0
+    assert "NCCL RAS report" not in str(exc_info.value)
+    assert nccl_ras._STACK_TRACES_TOOL in captured
+
+
+def test_torch_timeout_unexpected_error_disables_only_the_probe(monkeypatch):
+    callback, _, prober = make_timeout_callback(monkeypatch, NCCL_RAS_ACTION_FAIL)
+
+    def boom():
+        raise RuntimeError("probe bug")
+
+    prober.next_result = boom
+    callback.after_worker_group_poll_status(_NO_ERRORS)  # must not raise
+    assert callback._timeout_prober is None
+    assert callback._is_ras_degraded is False
+
+
+def test_callback_starts_the_prober_even_when_ras_is_degraded(monkeypatch):
+    monkeypatch.setenv(NCCL_TIMEOUT_PROBE_INTERVAL_S_ENV_VAR, "0.01")
+    callback = NCCLRASCallback()
+    callback._is_ras_degraded = True
+
+    callback.after_worker_group_start(MagicMock())
+    prober = callback._timeout_prober
+    assert isinstance(prober, TorchTimeoutProber) and prober.is_alive
+    assert callback._ras_poller is None
+
+    callback.before_worker_group_shutdown(MagicMock())
+    assert callback._timeout_prober is None
+    assert _join(prober)
+
+
+# ----------------------------------------------------------------------------
+# RAS history saved on a worker failure that no detector caught
+# ----------------------------------------------------------------------------
+
+
+def _failed(rank=0):
+    return WorkerGroupPollStatus(
+        worker_statuses={
+            rank: WorkerStatus(running=False, error=RuntimeError("worker died"))
+        }
+    )
+
+
+def make_history_callback(monkeypatch, reports):
+    callback, captured = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=reports
+    )
+    for _ in reports:
+        callback.after_worker_group_poll_status(_NO_ERRORS)
+    return callback, captured
+
+
+def test_worker_failure_saves_the_ras_history_once(monkeypatch, caplog, propagate_logs):
+    callback, captured = make_history_callback(
+        monkeypatch, [create_healthy_report()] * 2
+    )
+    assert captured == []
+
+    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+        callback.after_worker_group_poll_status(_failed())
+        callback.after_worker_group_poll_status(_failed())
+
+    assert captured == [nccl_ras._NCCL_RAS_TOOL]
+    assert "/exp/hang_detector/nccl_ras" in caplog.text
+
+
+def test_worker_failure_without_history_saves_nothing(monkeypatch):
+    callback, captured = make_history_callback(monkeypatch, [])
+    callback.after_worker_group_poll_status(_failed())
+    assert captured == []
+
+
+def test_worker_failure_after_a_detected_hang_saves_nothing_more(monkeypatch):
+    # The detected hang already saved everything, history included.
+    callback, captured, _ = make_timeout_callback(monkeypatch, NCCL_RAS_ACTION_OBSERVE)
+    callback.ras_history.append(create_healthy_report())
+    callback.after_worker_group_poll_status(_NO_ERRORS)
+    diagnostics = list(captured)
+
+    callback.after_worker_group_poll_status(_failed())
+    assert captured == diagnostics
+
+
+def test_new_worker_group_can_save_the_history_again(monkeypatch):
+    callback, captured = make_history_callback(monkeypatch, [create_healthy_report()])
+    callback.after_worker_group_poll_status(_failed())
+    callback.reset_detection_state()  # what a worker group (re)start does
+    callback.ras_history.append(create_healthy_report())
+    callback.after_worker_group_poll_status(_failed())
+    assert captured == [nccl_ras._NCCL_RAS_TOOL] * 2
 
 
 if __name__ == "__main__":
