@@ -435,7 +435,11 @@ class Node:
                     )
                     break
                 except RuntimeError as e:
-                    logger.info(f"Failed to get node info {e}")
+                    logger.info(
+                        f"Failed to get node info after "
+                        f"{time.monotonic() - start_time:.1f}s of "
+                        f"{raylet_start_wait_time_s}s: {e}"
+                    )
                 if time.monotonic() - start_time > raylet_start_wait_time_s:
                     raise Exception(
                         "The current node timed out during startup. This "
