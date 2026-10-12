@@ -1,4 +1,8 @@
-export const memoryConverter = (bytes: number) => {
+export const memoryConverter = (bytes: number | undefined | null) => {
+  if (typeof bytes !== "number" || Number.isNaN(bytes)) {
+    return "-";
+  }
+
   if (bytes < 1024) {
     return `${bytes.toFixed(4)}B`;
   }
