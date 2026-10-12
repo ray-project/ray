@@ -492,7 +492,7 @@ cdef class InnerGcsClient:
         are omitted unless include_implicit_resources is True, in which case the
         ones in use are returned.
         """
-        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout is not None else -1
         cdef c_bool c_include_implicit_resources = include_implicit_resources
         cdef CGetAllAvailableResourcesReply c_reply
         cdef c_string serialized_reply
