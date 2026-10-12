@@ -33,6 +33,10 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
 )
+from ray.train.v2._internal.metrics.controller import (
+    NcclHangDetectorMetrics,
+    NcclHangDetectorState,
+)
 from ray.train.v2._internal.state.schema import (
     NcclCommunicatorHangState,
     NcclHangDetectorStatus,
@@ -2617,6 +2621,139 @@ def test_worker_group_start_reads_the_run_and_attempt_ids(monkeypatch):
     callback.before_worker_group_shutdown(worker_group)
     callback.after_worker_group_start(worker_group)
     assert (callback._run_id, callback._attempt_id) == ("run_1", "attempt_2")
+
+
+# ---------------------------------------------------------------------------
+# Run-level state metrics
+# ---------------------------------------------------------------------------
+
+
+class RecordingGauge:
+    """Stand-in for ``ray.util.metrics.Gauge`` that keeps every value set."""
+
+    def __init__(self, name, description="", tag_keys=()):
+        self.name = name
+        self.tag_keys = tag_keys
+        self.history: List[Tuple[float, Dict[str, str]]] = []
+
+    def set(self, value, tags):
+        assert set(tags) == set(self.tag_keys)
+        self.history.append((value, dict(tags)))
+
+
+@pytest.fixture
+def gauges(monkeypatch) -> Dict[str, RecordingGauge]:
+    created: Dict[str, RecordingGauge] = {}
+
+    def make_gauge(name, description="", tag_keys=()):
+        created[name] = RecordingGauge(name, description, tag_keys)
+        return created[name]
+
+    from ray.train.v2._internal.metrics import base
+
+    monkeypatch.setattr(base, "Gauge", make_gauge)
+    monkeypatch.setattr(nccl_ras, "RASPoller", lambda *_: FakePoller([]))
+    return created
+
+
+def start_worker_group(callback, reports, attempt_id="attempt_1"):
+    worker_group = MagicMock()
+    worker_group._train_run_context.run_id = "run_1"
+    worker_group._train_run_context.get_run_config.return_value.name = "my_run"
+    worker_group.get_worker_group_context.return_value.run_attempt_id = attempt_id
+    callback.after_worker_group_start(worker_group)
+    callback._ras_poller = FakePoller(reports)
+    callback.dump_workers_stack_traces = lambda: None
+    callback.dump_nodes_nvidia_smi = lambda: None
+    callback.dump_ras_query_history = lambda _report=None: None
+    return worker_group
+
+
+def values(gauge):
+    return [value for value, _ in gauge.history]
+
+
+def test_state_metrics_follow_the_worst_communicator(monkeypatch, gauges):
+    stalled = create_single_comm_report({0: 5, 1: 4})
+    reports = [stalled] * 4 + [create_healthy_report()]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=3,
+        reports=[],
+        first_suspicion_polls=2,
+    )
+    start_worker_group(callback, reports)
+    poll(callback, 5)
+
+    state = gauges[NcclHangDetectorMetrics.DETECTOR_STATE]
+    stall = gauges[NcclHangDetectorMetrics.STALL_DURATION_S]
+    H, SUS, CON = (float(s) for s in NcclHangDetectorState)
+    # Every poll is recorded, healthy or not: baseline, frozen 1 (below the
+    # suspicion threshold), suspected at 2, confirmed at 3 (recorded before
+    # the action, then again at the end of the poll), then recovered.
+    assert values(state) == [H, H, SUS, CON, CON, H]
+    assert values(stall) == [0.0, 0.0, 2.0, 3.0, 3.0, 0.0]
+    assert state.history[0][1] == {
+        "ray_train_run_name": "my_run",
+        "ray_train_run_id": "run_1",
+        "ray_train_run_attempt_id": "attempt_1",
+    }
+
+
+def test_state_metrics_reset_when_the_worker_group_shuts_down(monkeypatch, gauges):
+    reports = [create_single_comm_report({0: 5, 1: 4})] * 3
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_OBSERVE,
+        confirm_count=10,
+        reports=[],
+        first_suspicion_polls=2,
+    )
+    worker_group = start_worker_group(callback, reports)
+    poll(callback, 3)
+    callback.before_worker_group_shutdown(worker_group)
+
+    first_attempt_state = gauges[NcclHangDetectorMetrics.DETECTOR_STATE]
+    assert values(first_attempt_state)[-2:] == [
+        float(NcclHangDetectorState.SUSPECTED),
+        float(NcclHangDetectorState.HEALTHY),
+    ]
+    assert values(gauges[NcclHangDetectorMetrics.STALL_DURATION_S])[-1] == 0.0
+
+    # The restart's attempt reports under its own label.
+    start_worker_group(callback, [create_healthy_report()], attempt_id="attempt_2")
+    poll(callback, 1)
+    second_attempt_state = gauges[NcclHangDetectorMetrics.DETECTOR_STATE]
+    assert second_attempt_state.history == [
+        (
+            float(NcclHangDetectorState.HEALTHY),
+            {
+                "ray_train_run_name": "my_run",
+                "ray_train_run_id": "run_1",
+                "ray_train_run_attempt_id": "attempt_2",
+            },
+        )
+    ]
+
+
+def test_state_metrics_never_affect_detection(monkeypatch, gauges):
+    reports = [create_single_comm_report({0: 5, 1: 4})] * 3
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=[]
+    )
+    start_worker_group(callback, reports)
+
+    def broken_set(value, tags):
+        raise RuntimeError("metrics agent down")
+
+    for gauge in gauges.values():
+        gauge.set = broken_set
+
+    poll(callback, 2)
+    with pytest.raises(NCCLHangError):
+        poll(callback, 1)
+    assert callback._is_ras_degraded is False
 
 
 if __name__ == "__main__":

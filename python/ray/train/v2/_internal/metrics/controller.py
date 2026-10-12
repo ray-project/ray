@@ -1,10 +1,13 @@
+from enum import IntEnum
 from typing import Dict, Union
 
 from ray.train.v2._internal.execution.controller.state import TrainControllerStateType
 from ray.train.v2._internal.metrics.base import (
+    RUN_ATTEMPT_ID_TAG_KEY,
     RUN_ID_TAG_KEY,
     RUN_NAME_TAG_KEY,
     EnumMetric,
+    GaugeMetric,
     TimeMetric,
 )
 
@@ -63,4 +66,50 @@ class ControllerMetrics:
                 base_tags,
             ),
             cls.CONTROLLER_STATE: cls._create_controller_state_metric(base_tags),
+        }
+
+
+class NcclHangDetectorState(IntEnum):
+    """The NCCL hang detector's view of a run, as a gauge value."""
+
+    HEALTHY = 0
+    SUSPECTED = 1
+    CONFIRMED = 2
+
+
+class NcclHangDetectorMetrics:
+    """Factory for the NCCL hang detector's run-level metrics.
+
+    Labelled by run and attempt only, never by communicator: communicator
+    hashes change on every restart and a job can have many, which would grow
+    an unbounded label set. Each value is the worst across the communicators.
+    """
+
+    # ===== Metric Names =====
+    DETECTOR_STATE = "train_nccl_hang_detector_state"
+    STALL_DURATION_S = "train_nccl_hang_stall_duration_s"
+
+    @classmethod
+    def get_nccl_hang_detector_metrics(
+        cls, run_name: str, run_id: str, run_attempt_id: str
+    ) -> Dict[str, GaugeMetric]:
+        base_tags = {
+            RUN_NAME_TAG_KEY: run_name,
+            RUN_ID_TAG_KEY: run_id,
+            RUN_ATTEMPT_ID_TAG_KEY: run_attempt_id,
+        }
+        return {
+            cls.DETECTOR_STATE: GaugeMetric(
+                name=cls.DETECTOR_STATE,
+                description="State of the Ray Train NCCL hang detector: "
+                "0 healthy, 1 hang suspected, 2 hang confirmed",
+                base_tags=base_tags,
+                default=float(NcclHangDetectorState.HEALTHY),
+            ),
+            cls.STALL_DURATION_S: GaugeMetric(
+                name=cls.STALL_DURATION_S,
+                description="Seconds the Ray Train NCCL hang detector believes "
+                "a hang has been in progress",
+                base_tags=base_tags,
+            ),
         }

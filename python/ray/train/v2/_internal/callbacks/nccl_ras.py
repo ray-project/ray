@@ -66,6 +66,11 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.storage import _upload_to_fs_path
 from ray.train.v2._internal.execution.worker_group import Worker, WorkerGroup
+from ray.train.v2._internal.metrics.base import GaugeMetric
+from ray.train.v2._internal.metrics.controller import (
+    NcclHangDetectorMetrics,
+    NcclHangDetectorState,
+)
 from ray.train.v2._internal.state.schema import (
     NcclCommunicatorHangState,
     NcclCommunicatorState,
@@ -833,6 +838,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     ``EXPORT_TRAIN_NCCL_HANG`` event: a snapshot of every non-healthy
     communicator, so platforms can show the detector's state without parsing
     logs. Exporting never affects detection.
+
+    The run-level detector state (healthy, suspected, confirmed) and the
+    longest stall are also recorded as metrics on every poll, for a time series
+    of the run.
     """
 
     def __init__(self):
@@ -914,6 +923,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # Whether the STOPPED event of the current attempt was exported.
         self._stop_exported: bool = False
 
+        # Run-level state gauges of the current attempt (see
+        # `NcclHangDetectorMetrics`), or None if they couldn't be created.
+        self._metrics: Optional[Dict[str, GaugeMetric]] = None
+
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
         self.prev_report = None
@@ -939,6 +952,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._retire_poller()
         if self._is_ras_degraded:
             return
+        try:
+            self._metrics = NcclHangDetectorMetrics.get_nccl_hang_detector_metrics(
+                worker_group._train_run_context.get_run_config().name,
+                self._run_id,
+                self._attempt_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not create the hang detector metrics.", exc_info=True)
         self._ras_poller = RASPoller(worker_group, self._poll_interval_s)
         self._ras_poller.start()
 
@@ -991,6 +1012,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                         recovered=recovered,
                     )
             self.prev_report = result
+            self.record_state_metrics()
         except NCCLHangError:
             raise
         except Exception:  # noqa: BLE001
@@ -1075,6 +1097,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 recovered=recovered,
             )
         if hang_message is not None:
+            # Before the action, as a fail-mode raise skips the end of the poll.
+            self.record_state_metrics()
             if self._action == NCCL_RAS_ACTION_FAIL:
                 raise NCCLHangError(hang_message, worker_failures={})
             elif self._action == NCCL_RAS_ACTION_OBSERVE:
@@ -1157,8 +1181,38 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         try:
             self.export_stopped(reason)
             self.reset_hang_counters()
+            # The state is unknown from here on, so the gauges stop reporting
+            # a hang rather than keep the last one forever.
+            if self._metrics is not None:
+                for metric in self._metrics.values():
+                    metric.reset()
         except Exception:  # noqa: BLE001
             logger.debug("Could not drop the stalled communicators.", exc_info=True)
+
+    def record_state_metrics(self):
+        """Set the run-level gauges from the worst open stall episode.
+
+        Never raises: metrics must not affect detection.
+        """
+        if self._metrics is None:
+            return
+        try:
+            open_counts = {
+                comm_id: count
+                for comm_id, count in self.comm_deadlock_count.items()
+                if count >= self._suspicion_polls
+            }
+            if self._confirmed_comms:
+                state = NcclHangDetectorState.CONFIRMED
+            elif open_counts:
+                state = NcclHangDetectorState.SUSPECTED
+            else:
+                state = NcclHangDetectorState.HEALTHY
+            stall_s = max(open_counts.values(), default=0) * self._poll_interval_s
+            self._metrics[NcclHangDetectorMetrics.DETECTOR_STATE].record(float(state))
+            self._metrics[NcclHangDetectorMetrics.STALL_DURATION_S].record(stall_s)
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not record the hang detector metrics.", exc_info=True)
 
     def capture_confirmed_hangs(
         self, confirmed_comm_hangs: List[str], report: RASReport

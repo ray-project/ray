@@ -6,6 +6,7 @@ from ray.util.metrics import Gauge
 
 RUN_NAME_TAG_KEY = "ray_train_run_name"
 RUN_ID_TAG_KEY = "ray_train_run_id"
+RUN_ATTEMPT_ID_TAG_KEY = "ray_train_run_attempt_id"
 
 T = TypeVar("T")
 E = TypeVar("E", bound=Enum)
@@ -96,6 +97,40 @@ class TimeMetric(Metric):
     def reset(self):
         self._current_value = self._default
         self._gauge.set(self._default, self._base_tags)
+
+
+class GaugeMetric(Metric):
+    """A metric that holds the latest recorded value."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        base_tags: Dict[str, str],
+        default: float = 0.0,
+    ):
+        self._current_value = default
+        super().__init__(
+            name=name,
+            default=default,
+            description=description,
+            base_tags=base_tags,
+        )
+
+    def record(self, value: float):
+        """Set the metric to ``value``.
+
+        Args:
+            value: The new value of the metric.
+        """
+        self._current_value = value
+        self._gauge.set(value, self._base_tags)
+
+    def get_value(self) -> float:
+        return self._current_value
+
+    def reset(self):
+        self.record(self._default)
 
 
 class EnumMetric(Metric, Generic[E]):
