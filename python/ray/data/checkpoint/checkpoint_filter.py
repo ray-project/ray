@@ -256,14 +256,25 @@ class CheckpointManager(abc.ABC):
                 allow_not_found=True,
             )
         )
-        if not any(f.type == FileType.File for f in entries):
+        committed_checkpoint_paths = [
+            entry.path
+            for entry in entries
+            if entry.type == FileType.File
+            and entry.path.endswith(".parquet")
+            and not entry.path.endswith(f"{PENDING_CHECKPOINT_SUFFIX}.parquet")
+        ]
+        if not committed_checkpoint_paths:
             return None, 0
 
-        # Load the checkpoint data
+        # Read explicit committed files so pending checkpoints can't filter rows
+        # when a sink doesn't provide a data-file directory for cleanup.
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
-            self.checkpoint_path,
+            committed_checkpoint_paths,
             filesystem=self.filesystem,
             partition_filter=self.checkpoint_path_partition_filter,
+            # Checkpoint files already hold the saved IDs; don't stamp a
+            # generated ID column onto them as if they were input data.
+            _add_generated_id_column=False,
         )
         checkpoint_ds.set_name("checkpoint_dataset")
 

@@ -1318,8 +1318,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             non_terminating_nodes.extend(nodes)
 
         # Update the context
-        assert len(all_nodes) == len(
-            terminating_nodes + non_terminating_nodes
+        assert len(all_nodes) == (
+            len(terminating_nodes) + len(non_terminating_nodes)
         ), "The number of nodes should be the same after enforcing max nodes per type."
 
         ctx.update(terminating_nodes + non_terminating_nodes)
@@ -1380,12 +1380,11 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Update the context
         terminating_nodes.extend(to_terminate_nodes)
-        assert len(all_nodes) == len(
-            terminating_nodes + non_terminating_nodes
+        assert len(all_nodes) == (
+            len(terminating_nodes) + len(non_terminating_nodes)
         ), "The number of nodes should be the same after enforcing max nodes."
 
-        all_nodes = terminating_nodes + non_terminating_nodes
-        ctx.update(all_nodes)
+        ctx.update(terminating_nodes + non_terminating_nodes)
 
     @staticmethod
     def _select_nodes_to_terminate(
@@ -2030,8 +2029,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             return None, requests, nodes
 
         # Sort the results by score.
-        results = sorted(
-            results,
+        results.sort(
             key=lambda r: (
                 r.score,
                 recoverable_resource_availabilities.get(r.node.node_type, 1.0),
