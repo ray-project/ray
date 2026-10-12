@@ -21,12 +21,16 @@ from ray.train.v2._internal.state.schema import (
     RunSettings,
     RunStatus,
     ScalingConfig as ScalingConfigSchema,
+    TrainNcclHangEvent,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
     TrainWorker,
 )
-from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
+from ray.train.v2._internal.state.state_actor import (
+    get_or_create_state_actor,
+    get_state_actor,
+)
 from ray.train.v2._internal.state.util import (
     construct_data_config,
     current_time_ns,
@@ -38,6 +42,26 @@ from ray.train.v2._internal.util import TrainingFramework
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 logger = logging.getLogger(__name__)
+
+
+def export_nccl_hang_event(event: TrainNcclHangEvent) -> None:
+    """Hand a NCCL hang detector event to the state actor for export.
+
+    Fire-and-forget and never raises, so exporting can't affect hang
+    detection. The state actor is only looked up, never created: the
+    controller's state manager creates it before any worker group starts.
+
+    Args:
+        event: The event to export.
+    """
+    try:
+        state_actor = get_state_actor()
+        if state_actor is None:
+            logger.debug("No Train state actor to export the NCCL hang event to.")
+            return
+        state_actor.export_train_nccl_hang_event.remote(event)
+    except Exception:  # noqa: BLE001
+        logger.debug("Failed to export a NCCL hang event.", exc_info=True)
 
 
 class TrainStateManager:
