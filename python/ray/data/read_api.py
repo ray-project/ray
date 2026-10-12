@@ -3385,12 +3385,17 @@ def read_mcap(
             (``DataContext.use_datasource_v2``), a file that takes more memory
             to read than one read task's budget
             (``RAY_DATA_MCAP_BIN_PACKING_BYTES``, 128 MiB by default) is split
-            across tasks, cut only where its order holds. With
-            ``DataContext.execution_options.preserve_order``, the file then
-            comes out in order from start to end; without it, only within each
-            task. Where chunks overlap in time, such as cameras and robot state
-            written to chunks of their own, the overlapping stretch stays in one
-            task, so a file with no clean cut is read by one task. A file
+            across tasks. With ``DataContext.execution_options.preserve_order``,
+            it is cut only where its order holds, so it comes out in order from
+            start to end. Where chunks overlap in time, such as cameras and robot
+            state written to chunks of their own, the overlapping stretch then
+            stays in one task, so a file with no clean cut is read by one task.
+            That task holds the overlapping chunks in memory together, so a file
+            whose chunks all overlap is held whole. A warning names a file whose
+            task would hold more than four read-task budgets, unless ``memory``
+            reserves at least that much for each read task.
+            Without ``preserve_order``, tasks finish in any order, so a file's
+            messages are in order within each task only. A file
             without a chunk index is read by one task, which holds its selected
             messages in memory to sort them. ``False`` requires the V2
             datasource.
@@ -3507,6 +3512,10 @@ def read_mcap(
             file_extensions=file_extensions,
             ignore_missing_paths=ignore_missing_paths,
             shuffle=shuffle,
+            # ``memory`` wins over ``ray_remote_args["memory"]``, as for the tasks.
+            read_task_memory=(
+                memory if memory is not None else (ray_remote_args or {}).get("memory")
+            ),
         )
         return _read_datasource_v2(
             datasource_v2,
