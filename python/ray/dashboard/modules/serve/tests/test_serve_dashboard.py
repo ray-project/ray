@@ -389,10 +389,17 @@ def test_rest_api_recovers_after_controller_runtime_env_setup_error(
         ray.get(controller.check_alive.remote(), timeout=180)
 
     serve.start()
-    wait_for_condition(
-        lambda: request_with_auth_token("GET", SERVE_HEAD_URL).status_code == 200,
-        timeout=30,
-    )
+    new_controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    new_controller_id = new_controller._actor_id.hex()
+    assert new_controller_id != controller._actor_id.hex()
+
+    def rest_api_reports_new_controller():
+        response = request_with_auth_token("GET", SERVE_HEAD_URL)
+        assert response.status_code == 200
+        details = ServeInstanceDetails(**response.json())
+        return details.controller_info.actor_id == new_controller_id
+
+    wait_for_condition(rest_api_reports_new_controller, timeout=30)
 
 
 @pytest.mark.skipif(
