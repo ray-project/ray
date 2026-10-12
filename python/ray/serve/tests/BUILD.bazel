@@ -852,8 +852,16 @@ py_test_module_list(
     ],
 )
 
+# Ray workers listen on random ports in the kernel ephemeral range (32768+), so keep
+# the gRPC range below it or a worker can take a port these tests expect free.
+DIRECT_INGRESS_TEST_ENV = {
+    "RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT": "32500",
+    "RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT": "31500",
+}
+
 py_test_module_list(
     size = "large",
+    env = DIRECT_INGRESS_TEST_ENV,
     files = [
         "test_direct_ingress.py",
     ],
@@ -888,7 +896,10 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
-    env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
+    env = dict(
+        DIRECT_INGRESS_TEST_ENV,
+        RAY_SERVE_USE_GRPC_BY_DEFAULT = "1",
+    ),
     files = [
         "test_direct_ingress.py",
     ],
