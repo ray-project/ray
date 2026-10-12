@@ -185,9 +185,11 @@ def test_sort_nulls_last(ray_start_regular, use_polars_sort, descending):
     ]
     expected = [3, 2, 1, None] if descending else [1, 2, 3, None]
 
+    # Each block sort places nulls last, regardless of sort direction.
     sorted_blocks = [BlockAccessor.for_block(block).sort(sort_key) for block in blocks]
     assert sorted_blocks[0]["a"].to_pylist() == [3, None]
 
+    # Merging the sorted blocks preserves null-last ordering globally.
     merged, _ = BlockAccessor.for_block(sorted_blocks[0]).merge_sorted_blocks(
         sorted_blocks, sort_key
     )
@@ -210,6 +212,7 @@ def test_sort_nulls_last_with_multiple_partitions(
         None,
         None,
     ]
+    # Nulls are assigned to the last partition for both sort directions.
     assert len(output_blocks) == 4
     assert [
         value for block in output_blocks for value in block["a"].to_pylist()

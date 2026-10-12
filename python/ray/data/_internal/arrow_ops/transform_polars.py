@@ -25,21 +25,27 @@ def check_polars_installed():
         )
 
 
-def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
-    check_polars_installed()
-    df = pl.from_arrow(table)
+def _sort_dataframe(df, sort_key: "SortKey"):
+    # Keep nulls at the end for both ascending and descending sorts, matching
+    # the behavior of the PyArrow sort implementation.
     if parse_version(pl.__version__) >= _POLARS_SORT_DESCENDING_MIN_VERSION:
         return df.sort(
             sort_key.get_columns(),
             descending=sort_key.get_descending(),
             nulls_last=True,
-        ).to_arrow()
+        )
     else:
         return df.sort(
             sort_key.get_columns(),
             reverse=sort_key.get_descending(),
             nulls_last=True,
-        ).to_arrow()
+        )
+
+
+def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
+    check_polars_installed()
+    df = pl.from_arrow(table)
+    return _sort_dataframe(df, sort_key).to_arrow()
 
 
 def concat_and_sort(
@@ -47,16 +53,5 @@ def concat_and_sort(
 ) -> "pyarrow.Table":
     check_polars_installed()
     blocks = [pl.from_arrow(block) for block in blocks]
-    if parse_version(pl.__version__) >= _POLARS_SORT_DESCENDING_MIN_VERSION:
-        df = pl.concat(blocks).sort(
-            sort_key.get_columns(),
-            descending=sort_key.get_descending(),
-            nulls_last=True,
-        )
-    else:
-        df = pl.concat(blocks).sort(
-            sort_key.get_columns(),
-            reverse=sort_key.get_descending(),
-            nulls_last=True,
-        )
+    df = _sort_dataframe(pl.concat(blocks), sort_key)
     return df.to_arrow()
