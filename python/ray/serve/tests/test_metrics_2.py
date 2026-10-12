@@ -21,67 +21,26 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.test_utils import (
+    METRICS_FIRST_EXPORT_TIMEOUT_S,
     PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
+    check_metric_float,
+    check_sum_metric_eq,
     get_application_url,
+    get_metric_dictionaries,
     ping_fruit_stand,
     ping_grpc_call_method,
     skip_if_haproxy,
+    wait_for_metric,
+    wait_for_metric_export,
 )
 from ray.serve._private.utils import format_actor_name
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-from ray.serve.tests.test_metrics import (
-    check_metric_float_eq,
-    check_sum_metric_eq,
-    get_metric_dictionaries,
-)
 
-# A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
-# needs room for several full-length attempts. A newly registered series is the slow
-# thing to surface, so its debut gets the larger budget and value checks the smaller.
-METRICS_FIRST_EXPORT_TIMEOUT_S = 90
-METRICS_WAIT_TIMEOUT_S = 45
-METRICS_RETRY_INTERVAL_MS = 1000
 # Comfortably longer than the metric waits a held-open request has to survive.
 QUEUED_REQUEST_TIMEOUT_S = 300
-
-
-def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
-    """Waits on a predicate that scrapes, pacing retries so a loaded dashboard
-    agent is not hammered while it catches up."""
-    wait_for_condition(
-        predicate,
-        timeout=budget_s,
-        retry_interval_ms=METRICS_RETRY_INTERVAL_MS,
-        **kwargs,
-    )
-
-
-def wait_for_metric_export(metric_name, timeseries, count=None):
-    """Waits for a series to surface, which is the slow step; count=None accepts
-    any number of samples."""
-
-    def check():
-        metrics = get_metric_dictionaries(
-            metric_name, timeseries=timeseries, wait=False
-        )
-        if count is None:
-            assert metrics, f"Metric {metric_name} not exported yet"
-        else:
-            assert (
-                len(metrics) == count
-            ), f"Expected {count} {metric_name}, got {len(metrics)}"
-        return True
-
-    wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
-
-
-def check_metric_float(**kwargs):
-    """Bounds each scrape to one PROMETHEUS_METRICS_TIMEOUT_S; the shared helper's
-    own 20s default is larger than most callers' retry budgets."""
-    return check_metric_float_eq(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
 
 
 @serve.deployment
@@ -567,6 +526,67 @@ class TestRequestContextMetrics:
         self._wait_for_labeled_metric(
             "ray_my_histogram_sum", expected_metrics, timeseries
         )
+
+    def test_customer_metrics_route_tag_without_explicit_tags(
+        self, metrics_start_shutdown
+    ):
+        """Recording without a `tags` argument must still fill in the route tag.
+
+        `tags` defaults to None on the record methods, so a metric that declares
+        "route" in its tag_keys used to raise TypeError from
+        _add_serve_context_tag_values().
+        """
+
+        @serve.deployment
+        class Model:
+            def __init__(self):
+                self.counter = Counter(
+                    "my_route_counter",
+                    description="my counter metrics",
+                    tag_keys=("route",),
+                )
+                self.histogram = Histogram(
+                    "my_route_histogram",
+                    description=("my histogram "),
+                    boundaries=DEFAULT_LATENCY_BUCKET_MS,
+                    tag_keys=("route",),
+                )
+                self.gauge = Gauge(
+                    "my_route_gauge",
+                    description=("my_gauge"),
+                    tag_keys=("route",),
+                )
+
+            def __call__(self):
+                # No `tags` argument: the route tag must be filled in from the
+                # request context.
+                self.counter.inc()
+                self.histogram.observe(200)
+                self.gauge.set(300)
+                return [
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
+                    ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_id.unique_id,
+                ]
+
+        timeseries = PrometheusTimeseries()
+        serve.run(Model.bind(), name="app", route_prefix="/app")
+        http_url = get_application_url("HTTP", "app")
+        resp = httpx.get(http_url)
+        assert resp.status_code == 200
+        deployment_name, replica_id = resp.json()
+
+        expected_metrics = {
+            "replica": replica_id,
+            "deployment": deployment_name,
+            "application": "app",
+            "route": "/app",
+        }
+        for metric_name in [
+            "ray_my_route_counter_total",
+            "ray_my_route_gauge",
+            "ray_my_route_histogram_sum",
+        ]:
+            self._wait_for_labeled_metric(metric_name, expected_metrics, timeseries)
 
     @pytest.mark.parametrize("use_actor", [False, True])
     def test_serve_metrics_outside_serve(self, use_actor, metrics_start_shutdown):

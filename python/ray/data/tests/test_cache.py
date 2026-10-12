@@ -7,6 +7,17 @@ from ray.data._internal.utils.cache import (
 )
 
 
+class _FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 def test_cache_miss():
     TEST_VALUE = 1
 
@@ -22,9 +33,9 @@ def test_cache_miss():
 def test_cache_hit():
     TEST_VALUE = 1
 
-    time = 0
+    clock = _FakeClock()
 
-    @timed_cache(ttl=10000, get_time_fn=lambda: time)
+    @timed_cache(ttl=10000, get_time_fn=clock)
     def get_value():
         return TEST_VALUE
 
@@ -33,7 +44,7 @@ def test_cache_hit():
     assert v == TEST_VALUE, v
 
     # ttl not expired, should return prev_value
-    time += 9999
+    clock.advance(9999)
     prev_value = TEST_VALUE
     TEST_VALUE += 1
     v = get_value()
@@ -43,9 +54,9 @@ def test_cache_hit():
 def test_cache_ttl_expire():
     TEST_VALUE = 1
 
-    time = 0
+    clock = _FakeClock()
 
-    @timed_cache(ttl=10000, get_time_fn=lambda: time)
+    @timed_cache(ttl=10000, get_time_fn=clock)
     def get_value():
         return TEST_VALUE
 
@@ -54,16 +65,16 @@ def test_cache_ttl_expire():
     assert v == TEST_VALUE, v
 
     # ttl expired, should return new TEST_VALUE
-    time += 10001
+    clock.advance(10001)
     TEST_VALUE += 1
     v = get_value()
     assert v == TEST_VALUE, (v, TEST_VALUE)
 
 
 def test_cache_keys():
-    time = 0
+    clock = _FakeClock()
 
-    @timed_cache(ttl=10000, get_time_fn=lambda: time)
+    @timed_cache(ttl=10000, get_time_fn=clock)
     def get_value(x):
         return x
 
@@ -77,34 +88,26 @@ def test_cache_keys():
 
 
 def test_cache_keys_expire():
-    TEST_VALUE = 100
+    clock = _FakeClock()
+    calls = []
 
-    time = 0
-
-    @timed_cache(ttl=10000, get_time_fn=lambda: time)
+    @timed_cache(ttl=10000, get_time_fn=clock)
     def get_value(x):
-        return x + TEST_VALUE
+        calls.append(x)
+        return x
 
-    # cache miss
-    v = get_value(0)
-    assert v == 100, v
+    # Cache both keys, 9999 apart.
+    assert get_value(0) == 0
+    clock.advance(9999)
+    assert get_value(1) == 1
+    assert calls == [0, 1]
 
-    time += 9999
-
-    # cache miss
-    v = get_value(1)
-    assert v == 101, v
-
-    time += 2
-
-    # At this point, v=0 should expire, but not v=1
-    prev_value = TEST_VALUE
-    TEST_VALUE = 0
-    v = get_value(0)
-    assert v == 0 + TEST_VALUE, v
-
-    v = get_value(1)
-    assert v == 1 + prev_value, v
+    # Key 0 is now 10001 old and has expired; key 1 is only 2 old.
+    clock.advance(2)
+    assert get_value(0) == 0
+    assert calls == [0, 1, 0], "key 0 expired, so it should be recomputed"
+    assert get_value(1) == 1
+    assert calls == [0, 1, 0], "key 1 is still live, so it should be cached"
 
 
 def test_cache_unhashable_args():

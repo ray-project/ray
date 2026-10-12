@@ -224,7 +224,7 @@ def prepare_data_loader(
         at the beginning of each epoch before creating the DataLoader iterator
         is necessary to make shuffling work properly across multiple epochs.
         Otherwise, the same ordering will be always used.
-        See: https://pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
+        See: https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler  # noqa: E501
 
     Example:
 
@@ -346,7 +346,7 @@ def enable_reproducibility(seed: int = 0) -> None:
     .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
         completely reproducible results across executions. To learn more, read
         the `PyTorch notes on randomness
-        <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+        <https://docs.pytorch.org/docs/stable/notes/randomness.html>`_.
     """
     get_accelerator(_TorchAccelerator).enable_reproducibility(seed)
 
@@ -700,11 +700,22 @@ class _WrappedDataLoader(DataLoader):
 
             return item_on_device
 
+    def _iter_tensors(self, item):
+        """Yields every tensor that ``_move_to_device`` would have moved."""
+        if isinstance(item, torch.Tensor):
+            yield item
+        elif isinstance(item, collections.abc.Mapping):
+            for value in item.values():
+                yield from self._iter_tensors(value)
+        elif isinstance(item, (tuple, list)):
+            for i in item:
+                yield from self._iter_tensors(i)
+
     def _wait_for_batch(self, item):
         if self._memcpy_stream is None:
             return
         # Reference:
-        # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
+        # https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
         # The training stream (current) needs to wait until
         # the memory copy stream finishes.
         curr_stream = self.device_manager.get_current_stream()
@@ -714,14 +725,12 @@ class _WrappedDataLoader(DataLoader):
         # to inform the allocator of all these streams. Otherwise,
         # the tensor might be freed once it is no longer used by
         # the creator stream.
-        for i in item:
-            # The Pytorch DataLoader has no restrictions on what is outputted for
-            # each batch. We should only ``record_stream`` if the item has the
-            # ability to do so.
-            try:
+        #
+        # This has to walk the batch recursively to match the data shape.
+        for i in self._iter_tensors(item):
+            # ``record_stream`` is only implemented for accelerator tensors
+            if i.device.type == self.device.type:
                 i.record_stream(curr_stream)
-            except AttributeError:
-                pass
 
     def __len__(self):
         return len(self._dataloader)

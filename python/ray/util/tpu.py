@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
+    DEFAULT_MEGASCALE_PORT,
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     TPU_SUBSLICE_LABEL_PREFIX,
     VALID_TPU_TYPES,
@@ -245,10 +246,10 @@ def get_tpu_coordinator_env_vars(
     coordinator_address: str,
     num_slices: int,
     slice_id: int,
-    coordinator_port: str = "8081",
+    coordinator_port: str = DEFAULT_MEGASCALE_PORT,
 ) -> Dict[str, str]:
     """
-    Returns the environment variables required for JAX multi-slice coordination.
+    Returns the environment variables required for TPU multi-slice coordination.
 
     Args:
         coordinator_address: The IP address or hostname of the coordinator.
@@ -514,30 +515,23 @@ class SlicePlacementGroup:
             This scales the total logical resources reserved by each slice.
 
     Examples:
-
-    .. testcode:: python
-        :skipif: True
-
-        import ray
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-        from ray.util.tpu import SlicePlacementGroup
-
-        slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
-        slice_pg = slice_handle.slice_placement_group
-        ray.get(slice_pg.ready(), timeout=10)
-
-        @ray.remote(num_cpus=0, resources={'TPU': 4})
-        def spmd_task(world, rank):
-            print(f"Current TPU is rank {rank} of {world}")
-
-        tasks = [
-            spmd_task.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=slice_pg,
-                )
-            ).remote(world=4, rank=i)
-            for i in range(slice_handle.num_hosts)
-        ]
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        >>> from ray.util.tpu import SlicePlacementGroup
+        >>> slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
+        >>> slice_pg = slice_handle.slice_placement_group
+        >>> ray.get(slice_pg.ready(), timeout=10)
+        >>> @ray.remote(num_cpus=0, resources={'TPU': 4})
+        ... def spmd_task(world, rank):
+        ...     print(f"Current TPU is rank {rank} of {world}")
+        >>> tasks = [
+        ...     spmd_task.options(
+        ...         scheduling_strategy=PlacementGroupSchedulingStrategy(
+        ...             placement_group=slice_pg,
+        ...         )
+        ...     ).remote(world=4, rank=i)
+        ...     for i in range(slice_handle.num_hosts)
+        ... ]
     """
 
     def __init__(
@@ -1038,31 +1032,23 @@ def run_on_slice(
             avoid leaking resources.
 
     Examples:
-
-    .. testcode:: python
-        :skipif: True
-
-        import ray
-        from ray.util.tpu import run_on_slice, slice_placement_group
-
-        @ray.remote
-        def my_tpu_task():
-            import jax
-            return jax.device_count()
-
-        # One-shot: reserve a v6e 4x4 slice, run on every host, then
-        # release automatically when the driver exits.
-        results = ray.get(
-            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
-        )
-
-        # Reuse an existing slice across multiple calls.
-        slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
-        ray.get(slice_handle.slice_placement_group.ready())
-
-        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
-        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
-        slice_handle.shutdown()
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.util.tpu import run_on_slice, slice_placement_group
+        >>> @ray.remote
+        ... def my_tpu_task():
+        ...     import jax
+        ...     return jax.device_count()
+        >>> # One-shot: reserve a v6e 4x4 slice, run on every host, then
+        >>> # release automatically when the driver exits.
+        >>> results = ray.get(
+        ...     run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
+        ... )
+        >>> # Reuse an existing slice across multiple calls.
+        >>> slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
+        >>> ray.get(slice_handle.slice_placement_group.ready())
+        >>> results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        >>> results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        >>> slice_handle.shutdown()
     """
 
     if not hasattr(fn, "options"):
@@ -2210,31 +2196,24 @@ def subslice_placement_group(
         RuntimeError: If all slices are occupied, or if libtpu is missing.
 
     Examples:
-
-    .. testcode:: python
-        :skipif: True
-
-        import ray
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-        from ray.util.tpu import subslice_placement_group
-
-        sg = subslice_placement_group(
-            subslice_topology="2x4",
-            accelerator_version="v6e",
-        )
-
-        @ray.remote(num_cpus=0, resources={"TPU": 4})
-        def train(world, rank):
-            ...
-
-        tasks = [
-            train.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=sg.placement_group,
-                )
-            ).remote(world=sg.num_hosts, rank=i)
-            for i in range(sg.num_hosts)
-        ]
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        >>> from ray.util.tpu import subslice_placement_group
+        >>> sg = subslice_placement_group(
+        ...     subslice_topology="2x4",
+        ...     accelerator_version="v6e",
+        ... )
+        >>> @ray.remote(num_cpus=0, resources={"TPU": 4})
+        ... def train(world, rank):
+        ...     ...
+        >>> tasks = [
+        ...     train.options(
+        ...         scheduling_strategy=PlacementGroupSchedulingStrategy(
+        ...             placement_group=sg.placement_group,
+        ...         )
+        ...     ).remote(world=sg.num_hosts, rank=i)
+        ...     for i in range(sg.num_hosts)
+        ... ]
     """
     (
         version,

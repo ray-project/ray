@@ -10,6 +10,12 @@ ignorecase: true
 # `vocab: false` so an accept-list entry can't silently shadow a swap. See the note
 # in .vale/styles/KubeRay/Terms.yml for why that shadowing is easy to miss.
 vocab: false
+# `action: replace` makes Vale's JSON output carry the replacement text, so a tool
+# can apply these swaps from Vale's own alerts. Every swap here must be safe to
+# apply without judgment. A term that needs a human decision belongs in an
+# existence rule instead.
+action:
+  name: replace
 swap:
   utilize: use
   utilizes: uses
