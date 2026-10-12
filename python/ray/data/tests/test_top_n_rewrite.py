@@ -232,3 +232,9 @@ def test_rewrite_keeps_sort_limit_for_polars(config):
 
     assert isinstance(optimized, Limit)
     assert isinstance(optimized.input_dependencies[0], Sort)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
