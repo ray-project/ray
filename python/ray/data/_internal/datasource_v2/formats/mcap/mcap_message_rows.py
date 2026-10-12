@@ -36,6 +36,7 @@ def message_schema(
     include_metadata: bool,
     include_row_id: bool,
     data_type: Optional[pa.DataType] = None,
+    frame_type: Optional[pa.DataType] = None,
 ) -> pa.Schema:
     """The Arrow schema of message rows, before partition and synthesized columns.
 
@@ -50,12 +51,16 @@ def message_schema(
         include_row_id: Whether ``row_id`` is present.
         data_type: Type of the ``data`` column when it holds decoded JSON
             values; ``None`` for ``binary``.
+        frame_type: With ``VideoOptions``, the tensor type of the ``frame``
+            column that replaces ``data``.
 
     Returns:
         The schema, columns in output order.
     """
     fields = [
-        pa.field("data", data_type if data_type is not None else pa.binary()),
+        pa.field("frame", frame_type)
+        if frame_type is not None
+        else pa.field("data", data_type if data_type is not None else pa.binary()),
         pa.field("topic", pa.string()),
         pa.field("log_time", pa.int64()),
         pa.field("publish_time", pa.int64()),
@@ -110,6 +115,7 @@ class _MessageTableBuilder:
         include_metadata: bool,
         include_row_id: bool,
         decode_json: bool,
+        decoded: bool = False,
     ):
         # ``None`` means every column. The set decides what is accumulated, so a
         # pruned read never decodes a JSON payload it will not return.
@@ -121,6 +127,8 @@ class _MessageTableBuilder:
         # Fixed by the planned schema: ``data`` is decoded JSON values or bytes
         # for every row of the dataset, never a mix.
         self._decode_json = decode_json
+        # With ``VideoOptions`` a row is a decoded frame: ``frame`` replaces ``data``.
+        self._decoded = decoded
         self.reset()
 
     def reset(self) -> None:
@@ -128,17 +136,26 @@ class _MessageTableBuilder:
         self.estimated_bytes = 0
         self._columns: Dict[str, List[Any]] = {}
 
-    def add(self, selected: _Selected) -> None:
+    def add(self, selected: _Selected, frame: Any = None) -> None:
         schema, channel, message, row_id = selected
         self.num_rows += 1
-        self.estimated_bytes += len(message.data) + _ROW_OVERHEAD_BYTES
+        self.estimated_bytes += _ROW_OVERHEAD_BYTES
         put = self._columns.setdefault
-        if self._want("data"):
-            put("data", []).append(
-                decode_payload(channel, message.data, row_id)
-                if self._decode_json
-                else message.data
-            )
+        if self._decoded:
+            if self._want("frame"):
+                # Each row must carry its frame, or the columns would differ in
+                # length. A caller without frames builds without the column.
+                assert frame is not None, "a decoded row without its frame"
+                self.estimated_bytes += frame.nbytes
+                put("frame", []).append(frame)
+        else:
+            self.estimated_bytes += len(message.data)
+            if self._want("data"):
+                put("data", []).append(
+                    decode_payload(channel, message.data, row_id)
+                    if self._decode_json
+                    else message.data
+                )
         if self._want("topic"):
             put("topic", []).append(channel.topic)
         if self._want("log_time"):
@@ -167,6 +184,10 @@ class _MessageTableBuilder:
         n = self.num_rows
         cols = self._columns
         arrays: Dict[str, pa.Array] = {}
+        if "frame" in cols:
+            # Same-shaped frames become a fixed-shape tensor column. A block that
+            # mixes resolutions gets the variable-shaped tensor type.
+            arrays["frame"] = convert_to_pyarrow_array(cols["frame"], "frame")
         if "data" in cols:
             if self._decode_json:
                 # Ray's converter infers a struct from the decoded values.

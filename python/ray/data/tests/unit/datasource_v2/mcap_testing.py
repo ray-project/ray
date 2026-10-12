@@ -2,10 +2,11 @@
 
 The tests write small MCAP files and drive the indexer, scanner and reader
 directly, as planning and the ``ListFiles`` and ``ReadFiles`` tasks do, with no
-Ray cluster. The writers import ``mcap`` when called, so the test modules still
-collect without it.
+Ray cluster. The writers import ``mcap`` and ``av`` when called, so the test
+modules still collect without them.
 """
 
+import io
 import json
 from typing import Any, Dict, List
 
@@ -13,7 +14,15 @@ import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+    MCAPDatasourceV2,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    VideoOptions,
+    WindowSpec,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summary
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
 SECOND = 1_000_000_000  # one second in nanoseconds
 BASE_TIME = 1_000_000_000  # log time of the first message, in nanoseconds
@@ -166,12 +175,15 @@ def read_all(datasource, *manifests, scanner=None) -> pa.Table:
     return pa.concat_tables(tables)
 
 
-def read_rows(datasource, manifests) -> List[Dict[str, Any]]:
+def read_rows(datasource, manifests, columns=None) -> List[Dict[str, Any]]:
     """Read ``manifests`` with the planned scanner into row dicts.
 
-    Every table must match the planned schema.
+    ``columns`` prunes the read, as a projection does. Every table must match
+    the read schema.
     """
     scanner = scanner_for(datasource)
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
     reader = scanner.create_reader()
     rows: List[Dict[str, Any]] = []
     for manifest in manifests:
@@ -305,3 +317,220 @@ def write_recording(
                 sequence=0,
             )
         writer.finish()
+
+
+# -- encoded video (the decode tests) -----------------------------------------
+
+FRAME_NS = 33_000_000  # ``write_payloads`` logs frame i at i * FRAME_NS: about 30 fps
+HEIGHT, WIDTH = 48, 64  # the frame size ``encode_h264`` defaults to
+FRAME_SHAPE = (HEIGHT, WIDTH, 3)
+HALF_SIZE = (HEIGHT // 2, WIDTH // 2)  # a ``resize`` target, or a smaller camera
+H264_FILE_FRAMES = 30  # frames in the ``h264_file`` fixture
+
+
+def encode_h264(num_frames, width=WIDTH, height=HEIGHT):
+    """H.264 Annex-B access units, one per frame, a keyframe every ``GOP``."""
+    import av
+    import numpy as np
+
+    container = av.open(io.BytesIO(), mode="w", format="h264")
+    # A fixed GOP, no B-frames and no scene-cut keyframes make the keyframe
+    # positions predictable. Without a global header, libx264 repeats SPS/PPS
+    # before every keyframe, as recorders do.
+    stream = container.add_stream(
+        "libx264",
+        rate=30,
+        options={"g": str(GOP), "bf": "0", "sc_threshold": "0", "tune": "zerolatency"},
+    )
+    stream.width, stream.height, stream.pix_fmt = width, height, "yuv420p"
+    packets = []
+    for i in range(num_frames):
+        array = np.full((height, width, 3), i * 8 % 256, dtype=np.uint8)
+        array[:, :, 1] = (i * 3) % 256
+        frame = av.VideoFrame.from_ndarray(array, format="rgb24")
+        packets.extend(bytes(p) for p in stream.encode(frame))
+    packets.extend(bytes(p) for p in stream.encode())
+    return packets
+
+
+def write_payloads(
+    path,
+    payloads,
+    *,
+    schema_name,
+    topic="/camera",
+    chunk_size=1 << 20,
+    log_times=None,
+    extra_topic=None,
+    **writer_options,
+):
+    """Write ``payloads`` on ``topic``, ``FRAME_NS`` apart or at ``log_times``.
+
+    ``extra_topic``, a ``(topic, schema_name, payload)`` triple, adds a channel
+    with one message at each of the same times. ``writer_options`` go to the
+    mcap ``Writer``.
+    """
+    from mcap.writer import CompressionType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream,
+            chunk_size=chunk_size,
+            compression=CompressionType.ZSTD,
+            **writer_options,
+        )
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name=schema_name, encoding="ros2msg", data=b"video\n"
+        )
+        channel_id = writer.register_channel(
+            schema_id=schema_id, topic=topic, message_encoding="cdr"
+        )
+        extra_channel = None
+        extra_payload = b""
+        if extra_topic is not None:
+            extra_schema = writer.register_schema(
+                name=extra_topic[1], encoding="ros2msg", data=b"x\n"
+            )
+            extra_channel = writer.register_channel(
+                schema_id=extra_schema, topic=extra_topic[0], message_encoding="cdr"
+            )
+            extra_payload = extra_topic[2]
+        for i, payload in enumerate(payloads):
+            log_time = log_times[i] if log_times is not None else i * FRAME_NS
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+                sequence=i,
+            )
+            if extra_channel is not None:
+                writer.add_message(
+                    channel_id=extra_channel,
+                    log_time=log_time,
+                    publish_time=log_time,
+                    data=extra_payload,
+                    sequence=i,
+                )
+        writer.finish()
+
+
+def write_two_cameras(path, offset_frames):
+    """Write the same 30-frame H.264 stream on ``/a`` and ``/b``, one message per
+    chunk, ``/b`` running ``offset_frames`` frames behind ``/a``.
+
+        log time / FRAME_NS   0  1  ...  8  9  ...  29  30  ...  37
+        /a frame              0  1  ...  8  9  ...  29
+        /b frame, offset 8               0  1  ...  21  22  ...  29
+
+    Both streams have keyframes at frames 0, 10 and 20. Returns the channel id
+    of each topic.
+    """
+    from mcap.writer import CompressionType, Writer
+
+    packets = encode_h264(30)
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=1, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo", encoding="ros2msg", data=b"video\n"
+        )
+        channels = {
+            topic: writer.register_channel(
+                schema_id=schema_id, topic=topic, message_encoding="cdr"
+            )
+            for topic in ("/a", "/b")
+        }
+        for i, payload in enumerate(packets):
+            for topic, shift in (("/a", 0), ("/b", offset_frames)):
+                log_time = (i + shift) * FRAME_NS
+                writer.add_message(
+                    channel_id=channels[topic],
+                    log_time=log_time,
+                    publish_time=log_time,
+                    data=payload,
+                    sequence=i,
+                )
+        writer.finish()
+    return channels
+
+
+def manifest_for_frames(datasource, path, channels, offset_frames, frames):
+    """Return a manifest that owns exactly ``frames``, and the whole file's manifest.
+
+    ``frames`` holds ``(topic, index)`` pairs. The file has one message per chunk.
+    """
+    (manifest,) = list_manifests(datasource)
+    summary = summary_of(path)
+    by_channel = {cid: topic for topic, cid in channels.items()}
+    wanted_offsets = set()
+    for chunk in summary.chunk_indexes:
+        (channel_id,) = chunk.message_index_offsets
+        topic = by_channel[channel_id]
+        shift = offset_frames if topic == "/b" else 0
+        if (topic, chunk.message_start_time // FRAME_NS - shift) in frames:
+            wanted_offsets.add(chunk.chunk_start_offset)
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    rows = [
+        i
+        for i, md in enumerate(manifest.file_chunk_metadatas)
+        if md is not None and int(md["unit_ids"][0]) in wanted_offsets
+    ]
+    assert len(rows) == len(frames)
+    return FileManifest(block.take(rows)), manifest
+
+
+def split_at_first_idr(packet):
+    """Split an access unit just before the start code of its IDR NAL unit."""
+    i = 0
+    while True:
+        j = packet.find(b"\x00\x00\x01", i)
+        assert j >= 0, "no IDR NAL unit"
+        if packet[j + 3] & 0x1F == H264_IDR:
+            cut = j - 1 if j > 0 and packet[j - 1] == 0 else j
+            return packet[:cut], packet[cut:]
+        i = j + 3
+
+
+def listed_if_custom(schema_name):
+    """``video_topics`` for the test camera: needed only for a custom schema."""
+    return ["/camera"] if schema_name.startswith("custom_msgs/") else None
+
+
+def write_stills(path, seconds, **writer_options):
+    """Write one JPEG at each of ``seconds`` of log time, one message per chunk."""
+    import numpy as np
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.fromarray(np.zeros(FRAME_SHAPE, dtype=np.uint8)).save(buffer, format="JPEG")
+    write_payloads(
+        path,
+        [buffer.getvalue()] * len(seconds),
+        schema_name="sensor_msgs/msg/CompressedImage",
+        chunk_size=1,
+        log_times=[round(s * SECOND) for s in seconds],
+        **writer_options,
+    )
+
+
+def split_after(manifest, first):
+    """Split a manifest into a task owning its first ``first`` chunks and one
+    owning the rest."""
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    return [FileManifest(block.slice(0, first)), FileManifest(block.slice(first))]
+
+
+def window_datasource(path, length_s, stride_s=None, video_topics=None, **video):
+    """A window-granularity datasource over ``path`` that decodes video with the
+    ``video`` options."""
+    return MCAPDatasourceV2(
+        [path],
+        read_granularity="window",
+        window=WindowSpec(length_s=length_s, stride_s=stride_s),
+        video=VideoOptions(**video),
+        video_topics=video_topics,
+    )

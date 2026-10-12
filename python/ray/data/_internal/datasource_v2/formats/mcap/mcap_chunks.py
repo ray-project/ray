@@ -6,6 +6,8 @@ only an earlier chunk declares is read back from that chunk.
 """
 
 import heapq
+import io
+import struct
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -65,6 +67,69 @@ def _scan_declarations(f: Any, chunk_index: "ChunkIndex", declared: _Declared) -
             declared.channels.setdefault(record.id, record)
         elif isinstance(record, Schema):
             declared.schemas.setdefault(record.id, record)
+
+
+def latest_indexed_log_time(
+    f: Any, summary: "Summary", channel_id: int, low: int, high: int
+) -> Optional[int]:
+    """The latest log time of the channel's messages in ``[low, high)``, if any.
+
+    It is read from the Message Index records that follow each chunk, so no
+    chunk is decompressed. A chunk written without them is not searched.
+    """
+    chunks = sorted(
+        (
+            c
+            for c in summary.chunk_indexes
+            if channel_id in c.message_index_offsets
+            and c.message_start_time < high
+            and c.message_end_time >= low
+        ),
+        key=lambda c: c.message_end_time,
+        reverse=True,
+    )
+    latest: Optional[int] = None
+    for chunk in chunks:
+        if latest is not None and chunk.message_end_time <= latest:
+            break
+        offset = chunk.message_index_offsets[channel_id]
+        for log_time, _ in _message_index_entries(f, offset):
+            if low <= log_time < high and (latest is None or log_time > latest):
+                latest = log_time
+    return latest
+
+
+def chunk_may_hold(
+    f: Any, chunk: "ChunkIndex", channel_id: int, low: int, high: int
+) -> bool:
+    """Whether the chunk may hold a message of the channel in ``[low, high)``.
+
+    The chunk's Message Index records answer without decompressing it. A chunk
+    written without them may hold any channel.
+    """
+    if not chunk.message_index_offsets:
+        return True
+    offset = chunk.message_index_offsets.get(channel_id)
+    return offset is not None and any(
+        low <= log_time < high for log_time, _ in _message_index_entries(f, offset)
+    )
+
+
+def _message_index_entries(f: Any, offset: int) -> List[Tuple[int, int]]:
+    """The ``(log_time, offset)`` entries of the Message Index record at ``offset``.
+
+    A record is its opcode (1 byte), its length (8 bytes) and its body. The body
+    is read in one request.
+    """
+    from mcap.data_stream import ReadDataStream
+    from mcap.opcode import Opcode
+    from mcap.records import MessageIndex
+
+    f.seek(offset)
+    opcode, length = struct.unpack("<BQ", f.read(9))
+    if opcode != Opcode.MESSAGE_INDEX:
+        return []
+    return MessageIndex.read(ReadDataStream(io.BytesIO(f.read(length)))).records
 
 
 class SelectedMessageReader:

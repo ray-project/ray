@@ -6,9 +6,12 @@ import pytest
 
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     CHUNKED_FILE_MESSAGES,
+    H264_FILE_FRAMES,
+    encode_h264,
     round_robin_messages,
     summary_of,
     write_mcap,
+    write_payloads,
     write_recording,
 )
 
@@ -45,4 +48,26 @@ def recording(tmp_path):
     write_recording(path)
     summary = summary_of(path)
     assert len(summary.chunk_indexes) > 8, len(summary.chunk_indexes)
+    return path
+
+
+@pytest.fixture
+def h264_file(tmp_path):
+    """30 H.264 access units in ~400-byte chunks, so chunk boundaries fall mid-GOP.
+
+        frame   0 | 1 .. 7 | 8 .. 14 | 15 .. 20 | 21 .. 27 | 28 29
+        chunk   0 |   1    |    2    |    3     |    4     |   5
+
+    Keyframes are frames 0, 10 and 20. Frame ``i`` is logged at
+    ``i * FRAME_NS`` with sequence ``i``.
+    """
+    path = os.path.join(tmp_path, "h264.mcap")
+    write_payloads(
+        path,
+        encode_h264(H264_FILE_FRAMES),
+        schema_name="foxglove.CompressedVideo",
+        chunk_size=400,
+    )
+    summary = summary_of(path)
+    assert len(summary.chunk_indexes) >= 4
     return path

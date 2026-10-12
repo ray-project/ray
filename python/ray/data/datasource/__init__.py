@@ -10,7 +10,10 @@ from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data._internal.datasource.turbopuffer_datasink import (
     TurbopufferDatasink,
 )
-from ray.data._internal.datasource_v2.formats.mcap.mcap_options import WindowSpec
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    VideoOptions,
+    WindowSpec,
+)
 from ray.data._internal.savemode import SaveMode
 from ray.data.datasource.datasink import (
     Datasink,
@@ -76,6 +79,7 @@ __all__ = [
     "BlockBasedFileDatasink",
     "_S3FileSystemWrapper",
     "TimeRange",
+    "VideoOptions",
     "WindowSpec",
     "WriteResult",
     "WriteReturnType",

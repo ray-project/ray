@@ -781,6 +781,119 @@ def test_read_mcap_granularity_validation(
         )
 
 
+def _write_h264_recording(path):
+    """Write 30 H.264 frames at 30 fps on ``/camera``, a keyframe every 10, in
+    small chunks so that tasks can start mid-GOP."""
+    import io
+
+    import av
+    import numpy as np
+    from mcap.writer import CompressionType, Writer
+
+    container = av.open(io.BytesIO(), mode="w", format="h264")
+    stream = container.add_stream(
+        "libx264",
+        rate=30,
+        options={"g": "10", "bf": "0", "sc_threshold": "0", "tune": "zerolatency"},
+    )
+    stream.width, stream.height, stream.pix_fmt = 64, 48, "yuv420p"
+    packets = []
+    for i in range(30):
+        frame = av.VideoFrame.from_ndarray(
+            np.full((48, 64, 3), i * 8 % 256, dtype=np.uint8), format="rgb24"
+        )
+        packets.extend(bytes(p) for p in stream.encode(frame))
+    packets.extend(bytes(p) for p in stream.encode())
+
+    with open(path, "wb") as f:
+        writer = Writer(f, chunk_size=400, compression=CompressionType.ZSTD)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="foxglove.CompressedVideo", encoding="ros2msg", data=b""
+        )
+        channel = writer.register_channel(
+            schema_id=schema_id, topic="/camera", message_encoding="cdr"
+        )
+        for i, payload in enumerate(packets):
+            writer.add_message(
+                channel_id=channel,
+                log_time=i * 33_000_000,
+                publish_time=i * 33_000_000,
+                data=payload,
+                sequence=i,
+            )
+        writer.finish()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("av") is None,
+    reason="av not available. Install with: pip install av",
+)
+def test_read_mcap_decode_video(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """With ``video``, each row is one decoded frame, also from tasks that start
+    mid-GOP."""
+    from ray.data.datasource import VideoOptions
+
+    path = os.path.join(tmp_path, "h264.mcap")
+    _write_h264_recording(path)
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="video"):
+            ray.data.read_mcap(path, video=VideoOptions())
+        return
+
+    # One task per chunk, so most tasks start inside a group of pictures.
+    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
+    ds = ray.data.read_mcap(path, video=VideoOptions(resize=(24, 32)))
+    assert "frame" in ds.schema().names and "data" not in ds.schema().names
+    rows = sorted(ds.take_all(), key=lambda row: row["sequence"])
+    assert [row["sequence"] for row in rows] == list(range(30))
+    assert all(row["frame"].shape == (24, 32, 3) for row in rows)
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("av") is None,
+    reason="av not available. Install with: pip install av",
+)
+def test_read_mcap_decode_windows(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """With ``video``, each window row holds its decoded frames per video topic,
+    whichever task owns the window."""
+    from ray.data.datasource import VideoOptions, WindowSpec
+
+    path = os.path.join(tmp_path, "h264.mcap")
+    _write_h264_recording(path)
+    window = WindowSpec(length_s=0.33)
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="video"):
+            ray.data.read_mcap(
+                path, read_granularity="window", window=window, video=VideoOptions()
+            )
+        return
+
+    # One task per chunk, so most windows are owned by a task starting mid-GOP.
+    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
+    ds = ray.data.read_mcap(
+        path,
+        read_granularity="window",
+        window=window,
+        video=VideoOptions(resize=(24, 32)),
+    )
+    names = ds.schema().names
+    assert names[-2:] == ["frames:/camera", "frame_times:/camera"]
+    assert "data" in names and "frame" not in names
+    rows = sorted(ds.take_all(), key=lambda row: row["window_start"])
+    assert [row["window_start"] for row in rows] == [0, 330_000_000, 660_000_000]
+    for row in rows:
+        assert row["frames:/camera"].shape == (10, 24, 32, 3)
+        assert len(row["frame_times:/camera"]) == 10
+        assert row["num_messages"] == 0 and row["num_lead_in"] == 0
+
+
 if __name__ == "__main__":
     import sys
 

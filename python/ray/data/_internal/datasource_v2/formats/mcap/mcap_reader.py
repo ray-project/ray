@@ -21,6 +21,9 @@ partition and synthesized columns. The other modules read and build the rows:
 - ``mcap_coarse_rows`` builds window, topic and file rows. ``mcap_windows``
   places the windows, ``mcap_lead_in`` picks the frames a decoder needs first,
   and ``mcap_coarse_layout`` lays the rows out in Arrow.
+- With ``video``, ``mcap_decoded_messages`` builds one row per decoded frame,
+  and ``mcap_decoded_windows`` adds each window's frames. ``mcap_video_source``
+  picks what a decoding task reads, and ``mcap_decode`` decodes the frames.
 """
 
 import logging
@@ -51,6 +54,12 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_coarse_rows import (
     CoarseRows,
     RowSettings,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_decoded_messages import (
+    DecodedMessageRows,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_decoded_windows import (
+    DecodedWindowRows,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     _MessageTableBuilder,
 )
@@ -60,6 +69,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     TOPIC_GRANULARITY,
     WINDOW_GRANULARITY,
     MCAPSelection,
+    VideoOptions,
     WindowSpec,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
@@ -134,7 +144,9 @@ class MCAPReader(Reader[FileManifest]):
         selection: MCAPSelection,
         granularity: str = MESSAGE_GRANULARITY,
         window: Optional[WindowSpec] = None,
+        video: Optional[VideoOptions] = None,
         video_topics: FrozenSet[str] = frozenset(),
+        decoded_topics: Sequence[str] = (),
         include_metadata: bool = True,
         include_row_id: bool = False,
         log_time_order: bool = True,
@@ -156,9 +168,14 @@ class MCAPReader(Reader[FileManifest]):
             granularity: What one row is: ``message``, ``window``, ``topic`` or
                 ``file``.
             window: Window placement, required at ``window`` granularity.
+            video: Decode the video topics in the task: at ``message``
+                granularity one frame per row, at ``window`` granularity the
+                window's frames per topic, thinned to ``fps`` and scaled to
+                ``resize``.
             video_topics: Topics to read as video besides those with a known
-                video schema name (``read_mcap(video_topics=...)``). Only used at
-                ``window`` and ``topic`` granularity.
+                video schema name (``read_mcap(video_topics=...)``).
+            decoded_topics: With ``video`` at ``window`` granularity, the topics
+                that get frame columns, settled at planning.
             include_metadata: Whether to emit the channel and schema columns.
             include_row_id: Whether to emit ``row_id``.
             log_time_order: Whether each file's message rows come out in
@@ -185,6 +202,7 @@ class MCAPReader(Reader[FileManifest]):
         self._message_reader = SelectedMessageReader(selection, log_time_order)
         self._decode_json = decode_json
         self._granularity = granularity
+        self._video = video
         self._include_metadata = include_metadata
         self._include_row_id = include_row_id
         self._columns = list(columns) if columns is not None else None
@@ -200,7 +218,9 @@ class MCAPReader(Reader[FileManifest]):
             selection=selection,
             granularity=granularity,
             window=window,
+            video=video,
             video_topics=frozenset(video_topics),
+            decoded_topics=tuple(decoded_topics),
             include_metadata=include_metadata,
             include_row_id=include_row_id,
             columns=self._columns,
@@ -209,6 +229,12 @@ class MCAPReader(Reader[FileManifest]):
             max_lead_in_ns=max_lead_in_ns,
         )
         self._coarse_rows = CoarseRows(settings, self._message_reader, self._finish)
+        self._decoded_messages = DecodedMessageRows(
+            settings, self._message_reader, self._finish
+        )
+        self._decoded_windows = DecodedWindowRows(
+            settings, self._coarse_rows, self._finish
+        )
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read the files and chunks named by ``input_split``.
@@ -245,6 +271,9 @@ class MCAPReader(Reader[FileManifest]):
         with filesystem.open_input_file(assignment.path) as f:
             summary = self._chunk_summary(f)
             if self._granularity == MESSAGE_GRANULARITY:
+                if self._video is not None:
+                    yield from self._decoded_messages.tables(f, assignment, summary)
+                    return
                 if summary is None:
                     messages = self._message_reader.iter_unindexed(f, assignment.path)
                 else:
@@ -253,6 +282,9 @@ class MCAPReader(Reader[FileManifest]):
                     )
                 yield from self._tables(messages, assignment)
             elif self._granularity == WINDOW_GRANULARITY:
+                if self._video is not None:
+                    yield from self._decoded_windows.tables(f, assignment, summary)
+                    return
                 yield from self._coarse_rows.window_tables(f, assignment, summary)
             elif self._granularity == TOPIC_GRANULARITY:
                 yield from self._coarse_rows.topic_tables(f, assignment, summary)
