@@ -765,7 +765,7 @@ if __name__ == "__main__":
             BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
         ),
         install_requires=setup_spec.install_requires,
-        setup_requires=["cython >= 3.0.12", "pip", "wheel"],
+        setup_requires=["cython >= 3.3.0", "pip", "wheel"],
         extras_require=setup_spec.extras,
         entry_points={
             "console_scripts": [

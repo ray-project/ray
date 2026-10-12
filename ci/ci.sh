@@ -263,7 +263,7 @@ install_ray() {
 
     # This is required so that pip does not pick up a cython version that is
     # too high that can break CI, especially on MacOS.
-    pip install -q cython==3.0.12
+    pip install -q cython==3.3.0
 
     # editable_mode=compat: force setuptools (>=64) to emit a legacy
     # .egg-link / easy-install.pth editable install instead of a PEP 660

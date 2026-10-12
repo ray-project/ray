@@ -301,7 +301,7 @@ cdef class InnerGcsClient:
         return self.inner.get().Nodes().IsGcsLeader()
 
     def check_alive(
-        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[float] = None
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -317,7 +317,7 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
-        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
+        self, node_ids: List[NodeID], timeout: Optional[float] = None
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -336,7 +336,7 @@ cdef class InnerGcsClient:
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
-        self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
+        self, node_ids: Sequence[bytes], timeout: Optional[float] = None
     ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         cdef:
@@ -353,7 +353,7 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
-        self, timeout: Optional[int | float] = None,
+        self, timeout: Optional[float] = None,
         node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
@@ -397,7 +397,7 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, timeout: Optional[int | float] = None,
+        self, timeout: Optional[float] = None,
         node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
         limit: Optional[int] = None,
@@ -456,7 +456,7 @@ cdef class InnerGcsClient:
     # NodeResources methods
     #############################################################
     def get_draining_nodes(
-        self, timeout: Optional[int | float] = None
+        self, timeout: Optional[float] = None
     ) -> Dict[str, int]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef CGetDrainingNodesReply c_reply
@@ -479,7 +479,7 @@ cdef class InnerGcsClient:
         }
 
     def get_all_resource_usage(
-        self, timeout: Optional[int | float] = None
+        self, timeout: Optional[float] = None
     ) -> GetAllResourceUsageReply:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef CGetAllResourceUsageReply c_reply
@@ -504,7 +504,7 @@ cdef class InnerGcsClient:
         actor_id: Optional[ActorID] = None,
         job_id: Optional[JobID] = None,
         actor_state_name: Optional[str] = None,
-        timeout: Optional[int | float] = None
+        timeout: Optional[float] = None
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -537,7 +537,7 @@ cdef class InnerGcsClient:
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[int | float] = None
+        timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef c_string c_job_or_submission_id
         cdef optional[c_string] c_optional_job_or_submission_id = nullopt
@@ -560,7 +560,7 @@ cdef class InnerGcsClient:
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[int | float] = None
+        timeout: Optional[float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             c_string c_job_or_submission_id
@@ -684,7 +684,7 @@ cdef class InnerGcsClient:
             reason: int32_t,
             reason_message: c_string,
             deadline_timestamp_ms: int64_t,
-            timeout: Optional[int | float] = None):
+            timeout: Optional[float] = None):
         """Send a DrainNode request to GCS to gracefully terminate a node.
 
         Used by the `ray drain-node` CLI command and by autoscaler v2's
