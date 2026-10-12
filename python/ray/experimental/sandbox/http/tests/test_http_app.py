@@ -84,6 +84,21 @@ def test_auth_disabled_without_token(
         assert client.get(f"{BASE}/sandboxes").status_code == 200
 
 
+def test_non_ascii_authorization_header_is_unauthorized(
+    fake_resolver: FakeResolver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A header the token comparison cannot treat as text is a 401, not a
+    server error."""
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", "sekret")
+    with _client(fake_resolver) as client:
+        response = client.get(
+            f"{BASE}/sandboxes",
+            headers={"Authorization": "Bearer sékret".encode("latin-1")},
+        )
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "unauthorized"
+
+
 # ----------------------------------------------------------------------
 # Sandbox lifecycle
 # ----------------------------------------------------------------------

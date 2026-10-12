@@ -1850,6 +1850,10 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
+    # Internal: Ray Data's own reads of checkpoint files pass ``False`` so they
+    # don't get the generated ID column the checkpoint config asks for on
+    # data reads.
+    add_generated_id_column = arrow_parquet_args.pop("_add_generated_id_column", True)
 
     ctx = DataContext.get_current()
     if ctx.use_datasource_v2:
@@ -1892,6 +1896,12 @@ def read_parquet(
                 parquet_format_kwargs["dictionary_columns"] = parquet_format_kwargs.pop(
                     "read_dictionary"
                 )
+        checkpoint_config = ctx.checkpoint_config
+        generated_id_column_name: Optional[str] = (
+            checkpoint_config.generated_id_column
+            if add_generated_id_column and checkpoint_config is not None
+            else None
+        )
         select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
             # V1 ``columns=[...]`` implicitly retained the synthetic
@@ -1906,6 +1916,11 @@ def read_parquet(
                 select_columns_after_read.append("path")
             if include_row_hash and "row_hash" not in select_columns_after_read:
                 select_columns_after_read.append("row_hash")
+            if (
+                generated_id_column_name is not None
+                and generated_id_column_name not in select_columns_after_read
+            ):
+                select_columns_after_read.append(generated_id_column_name)
             warnings.warn(
                 "`columns=` on `read_parquet` is deprecated. Use "
                 "`ray.data.read_parquet(path).select_columns([...])` instead.",
@@ -1921,6 +1936,7 @@ def read_parquet(
         from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
             ParquetDatasourceV2,
         )
+        from ray.data.checkpoint.generated_id import GeneratedIdColumn
 
         datasource_v2 = ParquetDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
@@ -1935,6 +1951,11 @@ def read_parquet(
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
             parquet_format_kwargs=parquet_format_kwargs,
+            extra_synthesized_columns=(
+                (GeneratedIdColumn(generated_id_column_name),)
+                if generated_id_column_name is not None
+                else ()
+            ),
         )
         ds = _read_datasource_v2(
             datasource_v2,
@@ -3991,7 +4012,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <reading_sql>`.
+        :ref:`Read SQL databases <reading_sql>`.
 
         .. testcode::
 
@@ -4258,7 +4279,7 @@ def read_databricks_tables(
     .. note::
 
         This function is built on the
-        `Databricks statement execution API <https://docs.databricks.com/api/workspace/statementexecution>`_.
+        `Databricks statement execution API <https://docs.databricks.com/api/statement-execution/v1/execute-statement>`_.
 
     Examples:
 
@@ -5214,7 +5235,7 @@ def from_huggingface(
     It is recommended to use :func:`~ray.data.read_parquet` with the ``HfFileSystem``
     filesystem to read Hugging Face datasets rather than ``from_huggingface``.
 
-    See :ref:`Loading Hugging Face datasets <loading_huggingface_datasets>` for more details.
+    See :ref:`Load Hugging Face datasets <loading_huggingface_datasets>` for more details.
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.
@@ -6138,9 +6159,37 @@ def read_delta(
         error_msg = str(e)
         # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
         if "deletionVectors" in error_msg:
+            # No deltalake version lifts this: the restriction is specific to
+            # `to_pyarrow_dataset`, which hands raw Parquet fragments to pyarrow.
+            # pyarrow cannot apply the deletion-vector bitmaps, so honouring them
+            # is impossible on that path and deltalake refuses rather than
+            # returning deleted rows. It refuses on the *declared* reader feature,
+            # so a table with deletion vectors enabled but none written is
+            # rejected too. Don't suggest upgrading -- it will not help.
             raise RuntimeError(
-                f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
-                f"Error: {error_msg}\n"
+                "This Delta table declares the `deletionVectors` reader "
+                "feature, which deltalake cannot honour when reading through "
+                "pyarrow datasets -- the path `ray.data.read_delta` uses. "
+                "Upgrading deltalake will not change this, and note the table "
+                "is rejected for *declaring* the feature, whether or not any "
+                "deletion vectors have actually been written.\n"
+                "\n"
+                "Reading it with Ray Data needs the `delta.enableDeletionVectors"
+                "` table property turned off and the feature dropped from the "
+                "table's protocol. That rewrites data files and changes what "
+                "other readers and writers see, so it is worth reading your "
+                "Delta engine's documentation on removing the feature before "
+                "doing it -- some engines, Databricks included, enable deletion "
+                "vectors by default. If the property is already off, the "
+                "declaration can linger until existing deletion vectors are "
+                "purged and the feature is dropped.\n"
+                "\n"
+                "If reading deletion-vector tables directly matters to you, "
+                "please open or comment on a Ray issue -- it would need a read "
+                "path that does not go through pyarrow datasets, and knowing "
+                "there is demand helps us prioritise it.\n"
+                "\n"
+                f"Underlying error: {error_msg}"
             ) from e
         raise
 

@@ -1,9 +1,10 @@
 import logging
 from dataclasses import dataclass
-from typing import FrozenSet, Iterable, List, Optional, Tuple
+from typing import FrozenSet, Iterable, List, Optional
 
 from pyarrow.fs import FileSelector, FileSystem, FileType
 
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 
 logger = logging.getLogger(__name__)
@@ -11,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PathContents:
-    """Contents of a path: files (path, size) and subdirectories to expand."""
+    """Contents of a path: files and subdirectories to expand."""
 
-    files: List[Tuple[str, Optional[int]]]
+    files: List[FileInfo]
     subdirs: List[str]
 
 
@@ -49,7 +50,7 @@ def _expand_directory(
     assert isinstance(children, list), type(children)
     children.sort(key=lambda file_: file_.path)
 
-    files: List[Tuple[str, Optional[int]]] = []
+    files: List[FileInfo] = []
     subdirs: List[str] = []
 
     for child in children:
@@ -66,7 +67,7 @@ def _expand_directory(
             continue
 
         if child.type == FileType.File:
-            files.append((child.path, child.size))
+            files.append(FileInfo(path=child.path, size=child.size))
         elif child.type == FileType.Directory:
             subdirs.append(child.path)
         elif child.type == FileType.UNKNOWN:
@@ -102,18 +103,18 @@ def _get_path_contents(
         return PathContents(files=[], subdirs=[])
 
     try:
-        file_info = filesystem.get_file_info(path)
+        info = filesystem.get_file_info(path)
     except OSError as e:
         _handle_read_os_error(e, path)
         raise
 
-    if file_info.type == FileType.File:
-        return PathContents(files=[(path, file_info.size)], subdirs=[])
-    elif file_info.type == FileType.Directory:
+    if info.type == FileType.File:
+        return PathContents(files=[FileInfo(path=path, size=info.size)], subdirs=[])
+    elif info.type == FileType.Directory:
         return _expand_directory(
             path, filesystem, ignore_missing_path, skip_paths, root_path=root_path
         )
-    elif file_info.type == FileType.NotFound and ignore_missing_path:
+    elif info.type == FileType.NotFound and ignore_missing_path:
         return PathContents(files=[], subdirs=[])
     else:
         raise FileNotFoundError(path)
@@ -126,8 +127,8 @@ def _get_file_infos(
     skip_paths: FrozenSet[str] = frozenset(),
     *,
     _root_path: Optional[str] = None,
-) -> Iterable[Tuple[str, Optional[int]]]:
-    """Recursively expand a path (file or directory) into ``(path, size)`` tuples."""
+) -> Iterable[FileInfo]:
+    """Recursively expand a path (file or directory) into ``FileInfo``\\ s."""
     if _root_path is None:
         _root_path = path
     contents = _get_path_contents(

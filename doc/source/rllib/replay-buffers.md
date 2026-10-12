@@ -26,12 +26,12 @@ RLlib comes with a set of extendable replay buffers built in. All of them suppor
 
 ### Basic usage
 
-When running an experiment, you rarely define your own replay buffer subclass. Instead, you configure existing buffers. The following example [from RLlib's examples section](https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/replay_buffer_api.py) runs the R2D2 algorithm with [PER](https://arxiv.org/abs/1511.05952), which R2D2 doesn't use by default. The highlighted lines focus on the PER configuration.
+When running an experiment, you rarely define your own replay buffer subclass. Instead, you configure existing buffers. The following example [from RLlib's examples section](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/_old_api_stack/replay_buffer_api.py) runs the R2D2 algorithm with [PER](https://arxiv.org/abs/1511.05952), which R2D2 doesn't use by default. The highlighted lines focus on the PER configuration.
 
 :::{dropdown} **Executable example script**
 :animate: fade-in-slide-down
 
-```{literalinclude} ../../../rllib/examples/_old_api_stack/replay_buffer_api.py
+```{literalinclude} ../../../python/ray/rllib/examples/_old_api_stack/replay_buffer_api.py
 :emphasize-lines: 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70
 :language: python
 :start-after: __sphinx_doc_replay_buffer_api_example_script_begin__
@@ -91,7 +91,7 @@ The following example implements a toy ReplayBuffer class and makes SimpleQ use 
 :end-before: __sphinx_doc_replay_buffer_own_buffer__end__
 ```
 
-For a full implementation, consider other methods such as `get_state()` and `set_state()`. For a more extensive example, see RLlib's [implementation of reservoir sampling](https://github.com/ray-project/ray/blob/master/rllib/utils/replay_buffers/reservoir_replay_buffer.py), the {py:class}`~ray.rllib.utils.replay_buffers.reservoir_replay_buffer.ReservoirReplayBuffer`.
+For a full implementation, consider other methods such as `get_state()` and `set_state()`. For a more extensive example, see RLlib's [implementation of reservoir sampling](https://github.com/ray-project/ray/blob/master/python/ray/rllib/utils/replay_buffers/reservoir_replay_buffer.py), the {py:class}`~ray.rllib.utils.replay_buffers.reservoir_replay_buffer.ReservoirReplayBuffer`.
 
 ## Advanced usage
 

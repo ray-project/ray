@@ -7,7 +7,7 @@ myst:
 (serve-llm-tpu)=
 # TPU serving
 
-Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes the TPU variant of vLLM from `tpu-inference`. For Kubernetes setup, see {doc}`Use TPUs with KubeRay </cluster/kubernetes/user-guides/tpu>`.
+Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes the TPU variant of vLLM from `tpu-inference`. For Kubernetes setup, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 
 ## Topology and placement
 
@@ -111,5 +111,5 @@ This example serves `google/gemma-4-31B-it` on one v6e `4x4` slice with `tensor_
 
 ## See also
 
-- {doc}`Use TPUs with KubeRay </cluster/kubernetes/user-guides/tpu>`
+- {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`
 - [Serve Gemma open models using multi-host TPUs on GKE with Ray](https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/serve-multi-host-tpu-llm)

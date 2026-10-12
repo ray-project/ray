@@ -539,12 +539,14 @@ def op_two_block():
 
     block_delay = 20
     block_meta_list = []
+    unix_base_s = 1_700_000_000.0
     for i in range(len(block_params["num_rows"])):
         start_time_s = time.perf_counter() + i * block_delay
         # The blocks are executing from [0, 5] and [20, 30].
         block_exec_stats = BlockExecStats(
             start_time_s=start_time_s,
             end_time_s=start_time_s + block_params["wall_time"][i],
+            start_unix_time_s=unix_base_s + i * block_delay,
             wall_time_s=block_params["wall_time"][i],
             cpu_time_s=block_params["cpu_time"][i],
             block_transform_time_s=block_params["block_transform_time"][i],

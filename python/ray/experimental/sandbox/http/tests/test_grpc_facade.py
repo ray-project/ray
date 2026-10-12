@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
-from typing import Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 
@@ -24,8 +25,10 @@ from ray.experimental.sandbox.http.tests.conftest import (
 # Guarded import so the module collects (and skips) without grpclib; a
 # module-level importorskip would collect nothing and fail the bazel target.
 try:
+    from google.protobuf import empty_pb2
     from grpclib.client import Channel
     from grpclib.const import Status
+    from grpclib.events import SendRequest, listen
     from grpclib.exceptions import GRPCError
     from grpclib.server import Server
 
@@ -38,6 +41,7 @@ try:
         ModalClientStub,
     )
     from ray.experimental.sandbox.http._proto.sandbox_exec_grpc import (
+        TaskCommandRouterBase,
         TaskCommandRouterStub,
     )
     from ray.experimental.sandbox.http.grpc_facade import (
@@ -58,6 +62,12 @@ pytestmark = pytest.mark.skipif(
 # can never bleed into the next one.
 _next_port = iter(range(50917, 50947))
 
+_TOKEN = "facade-test-token"
+# The token as the client SDK presents it on the control plane (its token
+# secret) and on the command router (the handed-out jwt as a bearer token).
+_SECRET = {"x-modal-token-secret": _TOKEN}
+_BEARER = {"authorization": f"Bearer {_TOKEN}"}
+
 
 class _Facade:
     """Run the facade servicers on a local gRPC server for the test."""
@@ -67,14 +77,15 @@ class _Facade:
         self._port = port
         self._settings = settings
         self._server: Server = None
+        self.servicers: List[Any] = []
 
     async def __aenter__(self) -> "_Facade":
-        servicers = build_servicers(
+        self.servicers = build_servicers(
             self._settings,
             handle_resolver=self._resolver,
             advertise_url=f"http://127.0.0.1:{self._port}",
         )
-        self._server = Server(servicers)
+        self._server = Server(self.servicers)
         await self._server.start("127.0.0.1", self._port)
         return self
 
@@ -83,8 +94,16 @@ class _Facade:
         await self._server.wait_closed()
 
 
-def _channel(port: int) -> Tuple[Channel, ModalClientStub, TaskCommandRouterStub]:
+def _channel(
+    port: int, metadata: Optional[Dict[str, str]] = None
+) -> Tuple[Channel, ModalClientStub, TaskCommandRouterStub]:
     channel = Channel("127.0.0.1", port)
+    if metadata:
+        # Present these on every call, as the client SDK does.
+        async def present(event: SendRequest) -> None:
+            event.metadata.update(metadata)
+
+        listen(channel, SendRequest, present)
     return channel, ModalClientStub(channel), TaskCommandRouterStub(channel)
 
 
@@ -845,6 +864,439 @@ def test_named_create_retry_boots_a_stuck_sandbox() -> None:
                 channel.close()
 
     asyncio.run(scenario())
+
+
+# ----------------------------------------------------------------------
+# Token authentication
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "metadata, accepted",
+    [
+        ({"authorization": "Bearer tok"}, True),
+        ({"x-modal-token-secret": "tok"}, True),
+        ({"x-modal-token-secret": "wrong", "authorization": "Bearer tok"}, True),
+        (None, False),
+        ({}, False),
+        ({"authorization": "Bearer wrong"}, False),
+        ({"x-modal-token-secret": "wrong"}, False),
+        # The bearer form must match exactly, as in the REST app.
+        ({"authorization": "tok"}, False),
+        ({"authorization": "bearer tok"}, False),
+        ({"authorization": "Bearer tok "}, False),
+        ({"authorization": "Bearer tök"}, False),
+        ({"x-modal-token-id": "tok"}, False),
+        ({"x-modal-token-secret": b"tok"}, False),
+    ],
+)
+def test_carries_token(metadata: Any, accepted: bool) -> None:
+    assert grpc_facade._carries_token(metadata, "tok") is accepted
+
+
+class _Reached(Exception):
+    """Raised by _FakeStream once a handler starts reading its request."""
+
+
+class _FakeStream:
+    def __init__(self, metadata: Optional[Dict[str, str]]) -> None:
+        self.metadata = metadata
+        self.reads = 0
+
+    async def recv_message(self) -> Any:
+        self.reads += 1
+        raise _Reached()
+
+
+def test_every_rpc_requires_the_token_before_reading_its_request(
+    monkeypatch,
+) -> None:
+    """The gate covers every RPC in the servicers' handler tables, filled-in
+    unimplemented ones included, and rejects a call before its handler
+    reads the request."""
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    servicers = build_servicers(
+        handle_resolver=FakeResolver(), advertise_url="http://x"
+    )
+
+    @grpc_facade._fill_unimplemented
+    class _Unimplemented(grpc_facade._TokenGate, TaskCommandRouterBase):
+        def __init__(self, state: Any) -> None:
+            self._state = state
+
+    servicers.append(_Unimplemented(servicers[0]._state))
+
+    async def call(func: Any, metadata: Optional[Dict[str, str]]) -> Tuple[Any, int]:
+        stream = _FakeStream(metadata)
+        try:
+            await func(stream)
+        except GRPCError as exc:
+            return exc.status, stream.reads
+        except _Reached:
+            return "reached", stream.reads
+        raise AssertionError("the handler neither failed nor read its request")
+
+    async def scenario() -> None:
+        for servicer in servicers:
+            mapping = servicer.__mapping__()
+            assert mapping
+            for path, handler in mapping.items():
+                for metadata in (None, {}, {"authorization": "Bearer wrong"}):
+                    result = await call(handler.func, metadata)
+                    assert result == (Status.UNAUTHENTICATED, 0), path
+                for metadata in (_BEARER, _SECRET):
+                    assert await call(handler.func, metadata) == ("reached", 1), path
+
+    asyncio.run(scenario())
+
+
+def test_without_a_token_the_handlers_are_unchanged() -> None:
+    """Tokenless, the gate adds nothing: each table entry is the handler."""
+    for servicer in build_servicers(
+        handle_resolver=FakeResolver(), advertise_url="http://x"
+    ):
+        for path, handler in servicer.__mapping__().items():
+            assert handler.func == getattr(servicer, path.rsplit("/", 1)[1]), path
+
+
+def test_without_a_token_the_facade_stays_open() -> None:
+    """Like the REST app, an unset token disables the check; main() then
+    keeps the facade on loopback."""
+    port = next(_next_port)
+
+    async def scenario() -> str:
+        async with _Facade(FakeResolver(), port):
+            channel, control, _ = _channel(port)
+            try:
+                await control.AppGetOrCreate(
+                    api_pb2.AppGetOrCreateRequest(app_name="open")
+                )
+                access = await control.TaskGetCommandRouterAccess(
+                    api_pb2.TaskGetCommandRouterAccessRequest()
+                )
+                return access.jwt
+            finally:
+                channel.close()
+
+    assert asyncio.run(scenario()) == "ray-sandbox-facade"
+
+
+def test_calls_without_the_token_are_rejected_on_the_wire(monkeypatch) -> None:
+    """Unary, server-streaming, and client-streaming calls are refused
+    without the token, and refused request bodies never stall the
+    connection, which then serves an authenticated call."""
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    port = next(_next_port)
+
+    async def stdin_stream(router: TaskCommandRouterStub, metadata: Any) -> None:
+        async with router.TaskExecStdinWriteStream.open(metadata=metadata) as stream:
+            start = sr_pb2.TaskExecStdinWriteStreamStart(exec_id="ex")
+            await stream.send_message(
+                sr_pb2.TaskExecStdinWriteStreamRequest(start=start)
+            )
+            await stream.send_message(
+                sr_pb2.TaskExecStdinWriteStreamRequest(data=b"x" * 1024)
+            )
+            end = sr_pb2.TaskExecStdinWriteStreamEnd()
+            await stream.send_message(
+                sr_pb2.TaskExecStdinWriteStreamRequest(end=end), end=True
+            )
+            await stream.recv_message()
+
+    async def scenario() -> List[Tuple[str, Any]]:
+        async with _Facade(FakeResolver(), port):
+            channel, control, router = _channel(port)
+            try:
+                calls = {
+                    "ClientHello": lambda md: control.ClientHello(
+                        empty_pb2.Empty(), metadata=md
+                    ),
+                    "ImageJoinStreaming": lambda md: control.ImageJoinStreaming(
+                        api_pb2.ImageJoinStreamingRequest(), metadata=md
+                    ),
+                    "TaskExecStdioRead": lambda md: router.TaskExecStdioRead(
+                        sr_pb2.TaskExecStdioReadRequest(exec_id="ex"), metadata=md
+                    ),
+                    "TaskExecStdinWriteStream": lambda md: stdin_stream(router, md),
+                    # Would fail as UNIMPLEMENTED if it reached its handler.
+                    "TaskSetNetworkAccess": lambda md: router.TaskSetNetworkAccess(
+                        sr_pb2.TaskSetNetworkAccessRequest(), metadata=md
+                    ),
+                    # Three refused 3 MiB bodies exceed the connection's
+                    # flow-control window unless the facade releases them.
+                    "TaskExecStdinWrite": lambda md: router.TaskExecStdinWrite(
+                        sr_pb2.TaskExecStdinWriteRequest(
+                            exec_id="ex", data=b"x" * (3 * 1024 * 1024)
+                        ),
+                        metadata=md,
+                    ),
+                }
+                rejected = []
+                for name, call in calls.items():
+                    for metadata in (
+                        None,
+                        {"authorization": "Bearer wrong"},
+                        {"x-modal-token-secret": "wrong"},
+                    ):
+                        with pytest.raises(GRPCError) as failed:
+                            await asyncio.wait_for(call(metadata), timeout=10)
+                        rejected.append((name, failed.value.status))
+                await asyncio.wait_for(
+                    control.ClientHello(empty_pb2.Empty(), metadata=_BEARER),
+                    timeout=10,
+                )
+                return rejected
+            finally:
+                channel.close()
+
+    rejected = asyncio.run(scenario())
+    assert len(rejected) == 6 * 3
+    assert all(status == Status.UNAUTHENTICATED for _, status in rejected), rejected
+
+
+def test_the_token_authenticates_both_planes(monkeypatch) -> None:
+    """A session with the token as the client SDK sends it: the control
+    plane takes the token secret and hands the token out as the command
+    router's credential, which the router accepts as a bearer token."""
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    port = next(_next_port)
+    payload = os.urandom(64 * 1024)
+
+    async def scenario() -> dict:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        runtime.exec_results.append(FakeExecResult(stdout="hello"))
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            sdk_channel, control, _ = _channel(port, _SECRET)
+            try:
+                sandbox_id = await _make_sandbox(control)
+                await _wait_running(control, sandbox_id)
+                access = await control.TaskGetCommandRouterAccess(
+                    api_pb2.TaskGetCommandRouterAccessRequest()
+                )
+            finally:
+                sdk_channel.close()
+
+            router_channel, bearer_control, router = _channel(
+                port, {"authorization": f"Bearer {access.jwt}"}
+            )
+            try:
+                await router.TaskExecStart(
+                    sr_pb2.TaskExecStartRequest(
+                        task_id=sandbox_id,
+                        exec_id="ex-echo",
+                        command_args=["echo", "hello"],
+                    )
+                )
+                stdout = await _read_stdout(router, "ex-echo")
+                code = await router.TaskExecWait(
+                    sr_pb2.TaskExecWaitRequest(exec_id="ex-echo")
+                )
+                # A file write streams its content over the exec's stdin.
+                await router.TaskExecStart(
+                    sr_pb2.TaskExecStartRequest(
+                        task_id=sandbox_id,
+                        exec_id="ex-write",
+                        command_args=[
+                            _FS_TOOLS_PATH,
+                            json.dumps({"WriteFile": {"path": "/tmp/up.bin"}}),
+                        ],
+                    )
+                )
+                async with router.TaskExecStdinWriteStream.open() as stream:
+                    start = sr_pb2.TaskExecStdinWriteStreamStart(
+                        task_id=sandbox_id, exec_id="ex-write"
+                    )
+                    await stream.send_message(
+                        sr_pb2.TaskExecStdinWriteStreamRequest(start=start)
+                    )
+                    await stream.send_message(
+                        sr_pb2.TaskExecStdinWriteStreamRequest(data=payload)
+                    )
+                    end = sr_pb2.TaskExecStdinWriteStreamEnd()
+                    await stream.send_message(
+                        sr_pb2.TaskExecStdinWriteStreamRequest(end=end), end=True
+                    )
+                    await stream.recv_message()
+                write_code = await router.TaskExecWait(
+                    sr_pb2.TaskExecWaitRequest(exec_id="ex-write")
+                )
+                # Either form of the token works on either plane.
+                await bearer_control.SandboxGetTaskId(
+                    api_pb2.SandboxGetTaskIdRequest(sandbox_id=sandbox_id)
+                )
+            finally:
+                router_channel.close()
+
+            secret_channel, _, secret_router = _channel(port, _SECRET)
+            try:
+                poll = await secret_router.TaskExecPoll(
+                    sr_pb2.TaskExecPollRequest(exec_id="ex-echo")
+                )
+            finally:
+                secret_channel.close()
+        return {
+            "jwt": access.jwt,
+            "stdout": stdout,
+            "code": code.code,
+            "write_code": write_code.code,
+            "uploaded": runtime.written_files.get("/tmp/up.bin") == payload,
+            "poll_code": poll.code,
+        }
+
+    result = asyncio.run(scenario())
+    assert result == {
+        "jwt": _TOKEN,
+        "stdout": b"hello",
+        "code": 0,
+        "write_code": 0,
+        "uploaded": True,
+        "poll_code": 0,
+    }
+
+
+def test_rejected_calls_have_no_side_effects(monkeypatch) -> None:
+    """A refused create, exec, or terminate never reaches the resolver, the
+    exec table, or the sandbox."""
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    port = next(_next_port)
+
+    async def scenario() -> dict:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port) as facade:
+            authed, authed_control, _ = _channel(port, _BEARER)
+            anonymous, control, router = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(authed_control)
+                await _wait_running(authed_control, sandbox_id)
+                creates = len(resolver.create_options)
+                execs = len(runtime.exec_calls)
+                calls = [
+                    lambda: control.SandboxCreate(
+                        api_pb2.SandboxCreateRequest(
+                            app_id=grpc_facade._encode_id("ap-", "facade-test"),
+                            definition=api_pb2.Sandbox(
+                                image_id=grpc_facade._encode_id("im-", "ubuntu:24.04"),
+                                name="anonymous",
+                            ),
+                        )
+                    ),
+                    lambda: router.TaskExecStart(
+                        sr_pb2.TaskExecStartRequest(
+                            task_id=sandbox_id,
+                            exec_id="ex-anonymous",
+                            command_args=["true"],
+                        )
+                    ),
+                    lambda: control.SandboxTerminate(
+                        api_pb2.SandboxTerminateRequest(sandbox_id=sandbox_id)
+                    ),
+                ]
+                statuses = []
+                for call in calls:
+                    with pytest.raises(GRPCError) as failed:
+                        await call()
+                    statuses.append(failed.value.status)
+                return {
+                    "statuses": statuses,
+                    "new_creates": len(resolver.create_options) - creates,
+                    "new_execs": len(runtime.exec_calls) - execs,
+                    "exec_table": list(facade.servicers[0]._state.execs),
+                    "killed": resolver.killed,
+                    "deleted": runtime.deleted,
+                }
+            finally:
+                authed.close()
+                anonymous.close()
+
+    assert asyncio.run(scenario()) == {
+        "statuses": [Status.UNAUTHENTICATED] * 3,
+        "new_creates": 0,
+        "new_execs": 0,
+        "exec_table": [],
+        "killed": [],
+        "deleted": [],
+    }
+
+
+def _record_serve(monkeypatch) -> List[Tuple[str, int, List[Any]]]:
+    """Stub out the cluster connection and the server; record serve()."""
+    import ray
+
+    calls = []
+
+    async def fake_serve(host: str, port: int, servicers: List[Any]) -> None:
+        calls.append((host, port, servicers))
+
+    monkeypatch.setattr(ray, "init", lambda *args, **kwargs: None)
+    monkeypatch.setattr(grpc_facade, "serve", fake_serve)
+    return calls
+
+
+@pytest.fixture
+def facade_log(caplog) -> Any:
+    """Capture the facade's log records; the ``ray`` logger does not
+    propagate to the root logger caplog listens on."""
+    logger = logging.getLogger(grpc_facade.__name__)
+    logger.addHandler(caplog.handler)
+    try:
+        yield caplog
+    finally:
+        logger.removeHandler(caplog.handler)
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "10.0.0.5", "facade.internal", ""])
+def test_main_refuses_a_network_address_without_a_token(
+    monkeypatch, capsys, host: str
+) -> None:
+    import ray
+
+    def connect(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("connected to the cluster before refusing")
+
+    monkeypatch.setattr(ray, "init", connect)
+    with pytest.raises(SystemExit) as exited:
+        grpc_facade.main(["--host", host])
+    assert exited.value.code == 2
+    error = capsys.readouterr().err
+    assert "RAY_SANDBOX_API_TOKEN" in error
+    assert "--allow-unauthenticated" in error
+
+
+@pytest.mark.parametrize("host", [None, "127.0.0.1", "localhost", "::1", "127.0.0.2"])
+def test_main_serves_loopback_without_a_token(monkeypatch, host: str) -> None:
+    calls = _record_serve(monkeypatch)
+    grpc_facade.main([] if host is None else ["--host", host])
+    ((_, _, servicers),) = calls
+    assert servicers[0]._state.token is None
+
+
+def test_main_serves_a_network_address_with_a_token(
+    monkeypatch, capsys, facade_log
+) -> None:
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    calls = _record_serve(monkeypatch)
+    grpc_facade.main(["--host", "0.0.0.0"])
+    ((host, _, servicers),) = calls
+    assert host == "0.0.0.0"
+    assert servicers[0]._state.token == _TOKEN
+    assert "RAY_SANDBOX_API_TOKEN" in facade_log.text
+    captured = capsys.readouterr()
+    assert _TOKEN not in facade_log.text + captured.out + captured.err
+
+
+def test_main_allow_unauthenticated_serves_a_network_address(
+    monkeypatch, facade_log
+) -> None:
+    calls = _record_serve(monkeypatch)
+    grpc_facade.main(["--host", "0.0.0.0", "--allow-unauthenticated"])
+    ((host, _, servicers),) = calls
+    assert host == "0.0.0.0"
+    assert servicers[0]._state.token is None
+    assert "without authentication" in facade_log.text
 
 
 if __name__ == "__main__":

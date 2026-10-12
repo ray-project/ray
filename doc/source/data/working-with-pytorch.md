@@ -175,7 +175,7 @@ For more information on transforming data, see {ref}`Transforming data <transfor
 
 ### Use built-in PyTorch transforms
 
-You can use built-in Torch transforms from `torchvision`, `torchtext`, and `torchaudio`.
+You can use built-in Torch transforms from `torchvision` and `torchtext`.
 
 ::::{tab-set}
 
