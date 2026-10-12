@@ -5,7 +5,7 @@ set. Listing reads each file's summary, drops files that cannot match the
 selection, and emits one row per chunk (``MCAPSummaryIndexer``), weighted by
 the memory reading it is estimated to need. Read tasks hold about
 ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that estimate (128 MiB by default).
-``OrderedFileCutter`` cuts a large file into tasks where its order holds, and
+``OrderedFileCutter`` cuts a large file into tasks that leave in order, and
 ``OnlineBinPacker`` packs small files whole into shared tasks
 (``mcap_file_cuts``). ``TaskSummaryPartitioner`` adds to each task the summary
 records it needs.
@@ -111,6 +111,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         file_extensions: Optional[Union[List[str], tuple[str, ...]]] = ("mcap",),
         ignore_missing_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
+        read_task_memory: Optional[float] = None,
     ):
         super().__init__(name="MCAP", category=DatasourceCategory.FILE_BASED)
         _check_import(self, module="mcap", package="mcap")
@@ -134,6 +135,9 @@ class MCAPDatasourceV2(FileDataSourceV2):
         )
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
+        # What each read task reserves (``read_mcap(memory=...)``); the cutter's
+        # memory warning stays quiet when it covers the estimate.
+        self._read_task_memory = read_task_memory
         self._include_paths = include_paths
         synthesized: List[SynthesizedColumn] = []
         if include_paths:
@@ -174,9 +178,9 @@ class MCAPDatasourceV2(FileDataSourceV2):
 
     def get_file_partitioner(self, **kwargs):
         # Each listing row is one chunk weighted by its estimated read memory,
-        # so read tasks are sized by that estimate. A large file is cut where
-        # its order holds and its tasks leave in order; small files are packed
-        # whole (``mcap_file_cuts``).
+        # so read tasks are sized by that estimate. A large file is cut into
+        # tasks that leave in order, and small files are packed whole
+        # (``mcap_file_cuts`` says where a file may be cut).
         #
         # Packing is per listing shard, not global, so listing can run as many
         # parallel tasks. Each chunk still lands in exactly one read task; the
@@ -191,7 +195,10 @@ class MCAPDatasourceV2(FileDataSourceV2):
             requires_global_input=False,
         )
         cutter = OrderedFileCutter(
-            packer, budget=_BIN_PACKING_BYTES, log_time_order=self._log_time_order
+            packer,
+            budget=_BIN_PACKING_BYTES,
+            log_time_order=self._log_time_order,
+            reserved_memory=self._read_task_memory,
         )
         return TaskSummaryPartitioner(cutter)
 
