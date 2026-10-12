@@ -88,3 +88,46 @@ steps:
       - linux_wheels
     depends_on:
       - ray-core-build(python=3.13)
+
+  # Experimental free-threaded wheel (cp315-cp315t), postmerge only and not part of the
+  # release matrix. The regular 3.15 wheel is its driver-side counterpart for the
+  # mixed-interpreter test.
+  - name: ray-core-build-experimental
+    label: "wanda: core binary parts py{{array.python}} (x86_64, experimental)"
+    wanda: ci/docker/ray-core.wanda.yaml
+    array:
+      python:
+        - "3.15"
+        - "3.15t"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+    tags:
+      - linux_wheels
+      - skip-on-premerge
+
+  - name: ray-wheel-build-experimental
+    label: "wanda: wheel py{{array.python}} (x86_64, experimental)"
+    wanda: ci/docker/ray-wheel.wanda.yaml
+    array:
+      python:
+        - "3.15"
+        - "3.15t"
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      JDK_SUFFIX: "-jdk"
+      RAY_JAVA_IMAGE: "cr.ray.io/rayproject/ray-java-build"
+      RAY_DASHBOARD_IMAGE: "cr.ray.io/rayproject/ray-dashboard"
+      WHEEL_NAME_SUFFIX: ""
+    tags:
+      - linux_wheels
+      - skip-on-premerge
+    depends_on:
+      - ray-core-build-experimental($)
+      - ray-java-build
+      - ray-dashboard-build

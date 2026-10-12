@@ -25,6 +25,24 @@ steps:
       - oss
       - skip-on-premerge
 
+  - label: ":arrow_up: upload: wheel py3.15t (x86_64, experimental)"
+    key: linux_wheels_upload_experimental
+    instance_type: small
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
+        --wanda-image-name=ray-wheel-py3.15t
+        --file-glob='*.whl'
+        --output-dir=.whl
+      - ./ci/build/copy_build_artifacts.sh wheel
+    depends_on:
+      - ray-wheel-build-experimental(python=3.15t)
+      - forge
+    tags:
+      - linux_wheels
+      - oss
+      - skip-on-premerge
+
   - name: ray-cpp-core-build
     label: "wanda: cpp core (x86_64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
